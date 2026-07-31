@@ -10,6 +10,7 @@
 //! Authoritative pipe command:
 //!   `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report`
 
+use slicer_test_support::pnp_cli_bin;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -19,25 +20,6 @@ fn repo_root() -> PathBuf {
         .join("..")
         .canonicalize()
         .expect("repo root canonicalize")
-}
-
-fn pnp_cli_bin() -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let profile = if std::env::var("PROFILE").as_deref() == Ok("release") {
-        "release"
-    } else {
-        "debug"
-    };
-    PathBuf::from(manifest)
-        .join("..")
-        .join("..")
-        .join("target")
-        .join(profile)
-        .join(if cfg!(windows) {
-            "pnp_cli.exe"
-        } else {
-            "pnp_cli"
-        })
 }
 
 fn core_modules_dir() -> PathBuf {

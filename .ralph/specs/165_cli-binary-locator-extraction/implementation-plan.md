@@ -16,8 +16,8 @@
 - Precondition: Step 0 gate returned `READY`; the derived ADR number is fresh (derive it in this step, immediately before writing — `ls docs/adr | rg -o '^[0-9]{4}' | sort | tail -1`, +1; a parallel session may have consumed a number since any earlier derivation).
 - Postcondition: the ADR file exists; AC-7's command prints `PASS`.
 - Files allowed to read, with ranges when over 300 lines:
-  - `docs/adr/0004-test-support-lives-in-slicer-sdk.md` (72 lines, whole)
-  - `crates/pnp-cli/Cargo.toml` (44 lines, whole)
+  - `docs/adr/0004-test-support-lives-in-slicer-sdk.md` (short; read whole)
+  - `crates/pnp-cli/Cargo.toml` (short; read whole)
   - `.ralph/specs/162_wit-lifecycle-export-removal/design.md` - §"CLI freshness — three sites, fixed in place" and §"Open Questions" only
 - Files allowed to edit (at most 3):
   - `docs/adr/<NNNN>-host-side-test-support-crate.md` (new)
@@ -62,19 +62,19 @@
 ### Step 3a: Point the two slicer-runtime sites at the crate
 
 - Task IDs: `TASK-146d`
-- Objective: add the `slicer-test-support` dev-dependency to `crates/slicer-runtime/Cargo.toml`; in `slicer_cache.rs` delete the moved fn bodies and add `pub use slicer_test_support::{pnp_cli_bin, staleness_reason, newest_source_mtime};`; in `gate_evidence.rs` delete the `pnp_cli_bin` mirror, import from the crate, and correct the module doc-comment whose self-containment justification is now void.
+- Objective: add the `slicer-test-support` dev-dependency to `crates/slicer-runtime/Cargo.toml`; in `slicer_cache.rs` delete the moved fn bodies and add `#[allow(unused_imports)] pub use slicer_test_support::{pnp_cli_bin, staleness_reason};` (two symbols only — `newest_source_mtime` has zero consumers outside `slicer-test-support`, re-derive with `rg -n 'newest_source_mtime' crates/ --glob '!crates/slicer-test-support/**'`; the `#[allow]` is required because the module is `#[path]`-included as a private module and the otherwise-unused `staleness_reason` re-export fails `cargo clippy --workspace --all-targets -- -D warnings` in `arachne_wall_sequence_e2e_tdd`); in `gate_evidence.rs` delete the `pnp_cli_bin` mirror, import from the crate, and correct the module doc-comment whose self-containment justification is now void.
 - Precondition: Step 2 done (the crate compiles and is a member).
 - Postcondition: `cargo check -p slicer-runtime --all-targets` passes (tests + benches compile); no locator fn body remains in either file.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/tests/common/slicer_cache.rs` - locator block + module header only
-  - `crates/slicer-runtime/benches/gate_evidence.rs` (154 lines pre-162; read whole if grown ≤300, else locator block + doc-comment)
+  - `crates/slicer-runtime/benches/gate_evidence.rs` (short; read whole if ≤300 lines, else locator block + doc-comment)
   - `crates/slicer-runtime/Cargo.toml` - `[dev-dependencies]` section only
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/Cargo.toml`
   - `crates/slicer-runtime/tests/common/slicer_cache.rs`
   - `crates/slicer-runtime/benches/gate_evidence.rs`
 - Files explicitly out of bounds:
-  - every file under `crates/slicer-runtime/tests/e2e/**` and `tests/integration/**` — the re-export exists so they need zero edits; touching one means the re-export is wrong
+  - every file under `crates/slicer-runtime/tests/e2e/**` and `tests/integration/**` — the re-export exists so the caller files need zero edits; touching one means the re-export is wrong. The four locator-copy sites in those trees are Step 3c's, not this step's.
   - `crates/slicer-scheduler/**` (Step 3b)
 - Expected sub-agent dispatches:
   - Question: "Run `cargo check -p slicer-runtime --all-targets`; pass/fail + first 20 error lines"; scope: workspace; return: `FACT` + SNIPPETS ≤20
@@ -85,7 +85,7 @@
 - Verification:
   - `cargo check -p slicer-runtime --all-targets` - FACT pass/fail
   - `cargo bench -p slicer-runtime --bench gate_evidence --no-run 2>&1 | tail -3` - FACT pass/fail (compile-only; never run the bench)
-- Exit condition: both commands pass AND `rg -c 'fn (pnp_cli_bin|staleness_reason|newest_source_mtime)\(' crates/slicer-runtime/` finds no match. A green check with a surviving local fn body means the site still shadows the crate — step not done.
+- Exit condition: both commands pass AND `rg -c 'fn (pnp_cli_bin|staleness_reason|newest_source_mtime)\(' crates/slicer-runtime/tests/common/slicer_cache.rs crates/slicer-runtime/benches/gate_evidence.rs` finds no match. A green check with a surviving local fn body means the site still shadows the crate — step not done. The grep is scoped to these two files, not all of `crates/slicer-runtime/`, because the premise correction found four further copies under `tests/e2e/**` and `tests/integration/**` that Step 3c owns; a crate-wide grep here would report failure for work this step does not do.
 
 ### Step 3b: Point the slicer-scheduler site at the crate
 
@@ -94,7 +94,7 @@
 - Precondition: Step 2 done. (Independent of Step 3a; either order.)
 - Postcondition: `cargo check -p slicer-scheduler --all-targets` passes; `fn bin(` gone from the file.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-scheduler/tests/integration/dag_cli_integration.rs` (316 lines pre-162; whole if ≤300 post-162, else the header + `bin`/`workspace_root` block and the `Command::new` call sites by grep)
+  - `crates/slicer-scheduler/tests/integration/dag_cli_integration.rs` (long; ranged reads only — the header plus the `bin`/`workspace_root` block, and the `Command::new` call sites located by grep)
   - `crates/slicer-scheduler/Cargo.toml` - `[dev-dependencies]` section only
 - Files allowed to edit (at most 3):
   - `crates/slicer-scheduler/Cargo.toml`
@@ -109,14 +109,48 @@
 - OrcaSlicer refs: none — no parity content.
 - Verification:
   - `cargo check -p slicer-scheduler --all-targets` - FACT pass/fail
-  - AC-3 command from `packet.spec.md` - FACT PASS/FAIL (all three sites now migrated)
-- Exit condition: AC-3 prints `PASS` and AC-2 prints `PASS` (single definition workspace-wide — first point in the plan where AC-2 can go green).
+  - AC-3 command from `packet.spec.md` - FACT PASS/FAIL, **expected FAIL here**: sites 4–7 are still unmigrated until Step 3c. Run it for the diagnostic (its `missing=`/`local=` lists should name only those four); do not gate the step on it.
+- Exit condition: `cargo check -p slicer-scheduler --all-targets` passes and `rg -c '\bfn bin\(' crates/slicer-scheduler/tests/integration/dag_cli_integration.rs` finds no match. **AC-2 and AC-3 can *not* go green here** — the premise correction found four further locator copies (sites 4–7, see `design.md` §Code Change Surface), which are still present at this point. Both first go green at Step 3c. Expecting them green here would either stall the step or invite an implementer to widen Step 3b's file list, which is wrong.
+
+### Step 3c: Migrate the four discovered locator copies
+
+- Task IDs: `TASK-146d`
+- Objective: at each of the four locator-copy sites found by the premise correction, delete the local `fn pnp_cli_bin` (and, with it, the inert `std::env::var("PROFILE")` branch it contains — Cargo sets `PROFILE` for build scripts, not test binaries, so the branch never selects `release`) and add `use slicer_test_support::pnp_cli_bin;`. A qualified `slicer_test_support::pnp_cli_bin()` call site is equally acceptable; AC-3 and AC-8 accept both name-resolution-equivalent forms. This closes the missing freshness gate at four sites packet 162 never covered.
+- Precondition: Step 2 done (the crate exists, compiles, and is a workspace member) **and Step 3a done** — Step 3a adds `[dev-dependencies] slicer-test-support` to `crates/slicer-runtime/Cargo.toml`, which is the manifest all four of these files resolve through. These four need **no manifest edit of their own**: one `slicer-runtime` dev-dependency serves the entire `tests/` tree. Independent of Step 3b (either order).
+- Postcondition: `cargo check -p slicer-runtime --all-targets` passes; none of the four defines `fn pnp_cli_bin(`; none mentions `PROFILE`; each names `slicer_test_support`. Exactly one `fn pnp_cli_bin(` definition remains workspace-wide (the shared crate's).
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/tests/integration/no_linker_module_degraded_raw_output_tdd.rs` - the `pnp_cli_bin` block + the `use` header only (locate by name)
+  - `crates/slicer-runtime/tests/e2e/infill_overlap_changes_gcode_tdd.rs` - same
+  - `crates/slicer-runtime/tests/e2e/modifier_infill_tdd.rs` - same
+  - `crates/slicer-runtime/tests/e2e/wedge_linked_infill_report_tdd.rs` - same
+- Files allowed to edit (four — exceeds the usual at-most-3 cap; justified):
+  - `crates/slicer-runtime/tests/integration/no_linker_module_degraded_raw_output_tdd.rs`
+  - `crates/slicer-runtime/tests/e2e/infill_overlap_changes_gcode_tdd.rs`
+  - `crates/slicer-runtime/tests/e2e/modifier_infill_tdd.rs`
+  - `crates/slicer-runtime/tests/e2e/wedge_linked_infill_report_tdd.rs`
+  - Justification for the cap overrun: these are four instances of one edit — deleting an identical copied block and adding one `use` line. No file is edited for more than one reason, no file requires reading beyond its locator block, and splitting into two steps would leave AC-2 red at an intermediate boundary for no diagnostic benefit. The 3-file cap exists to bound reasoning surface, not file count; the reasoning surface here is a single edit shape.
+- Files explicitly out of bounds:
+  - every *other* file under `crates/slicer-runtime/tests/e2e/**` and `crates/slicer-runtime/tests/integration/**` — the `slicer_cache.rs` re-export exists so the other caller files need zero edits; touching one means the re-export is wrong. The caller population is single-digit, not the "~30" earlier revisions claimed (re-derive with `rg -l 'slicer_cache' crates/slicer-runtime/tests/`), and only `crates/slicer-runtime/tests/integration/pnp_cli_freshness_tdd.rs` consumes a re-exported *locator* symbol. The `pub use` is justified independently of the magnitude: it preserves packet 162's registered regression home (`pnp_cli_freshness_tdd.rs`) without relocating that test.
+  - `crates/slicer-runtime/Cargo.toml` (Step 3a's; already carries the dev-dependency — re-editing it here signals a misdiagnosis)
+  - `crates/slicer-runtime/tests/common/slicer_cache.rs`, `crates/slicer-runtime/benches/gate_evidence.rs` (Step 3a); `crates/slicer-scheduler/**` (Step 3b); `crates/slicer-test-support/**` (Step 2)
+- Expected sub-agent dispatches:
+  - Question: "Run `cargo check -p slicer-runtime --all-targets`; pass/fail + first 20 error lines on failure"; scope: workspace; return: `FACT` + SNIPPETS ≤20
+  - Question: "Run the AC-2, AC-3, and AC-8 audit commands from `packet.spec.md`; return the three PASS/FAIL lines"; scope: repo files; return: `FACT` ≤3 lines
+- Context cost: `S`
+- Authoritative docs:
+  - `.ralph/specs/165_cli-binary-locator-extraction/design.md` - §"Code Change Surface" → "Sites 4–7" and §"Risks and Tradeoffs" (the loudness-contract consequence) only
+- OrcaSlicer refs: none — no parity content.
+- Verification:
+  - `cargo check -p slicer-runtime --all-targets` - FACT pass/fail
+  - AC-8 command from `packet.spec.md` - FACT PASS/FAIL (the premise-correction gate; FAILs on the pre-migration tree by construction)
+  - AC-2 command from `packet.spec.md` - FACT PASS/FAIL. **AC-2 first goes green here, not at Step 3b** — with four copies outstanding, Step 3b cannot satisfy it.
+- Exit condition: `cargo check -p slicer-runtime --all-targets` passes AND AC-8 prints `PASS` AND AC-2 prints `PASS` AND AC-3 prints `PASS`. A green check with a surviving `PROFILE` reference in any of the four means the inert branch was left behind — step not done.
 
 ### Step 4: Full gates, baseline, and backlog row
 
 - Task IDs: `TASK-146d`
 - Objective: run every packet gate; add the TASK-146d row to `docs/07_implementation_status.md` by dispatch.
-- Precondition: Steps 1–3b done.
+- Precondition: Steps 1–3c done (3c included — AC-2, AC-3, and AC-8 cannot be green without it).
 - Postcondition: all AC commands PASS; backlog row present.
 - Files allowed to read, with ranges when over 300 lines:
   - `target/test-output.log` - `^test result` lines and failure context only (never re-run to see more output)
@@ -127,14 +161,14 @@
 - Expected sub-agent dispatches:
   - Question: "Run `cargo check --workspace --all-targets` then `cargo clippy --workspace --all-targets -- -D warnings`; pass/fail each + first 20 error lines on failure"; scope: workspace; return: `FACT` + SNIPPETS ≤20
   - Question: "Run the AC-4, AC-5, `perimeter_parity`, and `legacy_zero_matches_golden` commands from `requirements.md` §Verification Commands (each already rg-filtered); return the four `test result:` lines"; scope: workspace; return: `FACT` ≤5 lines
-  - Question: "Run the AC-1, AC-2, AC-3, AC-7, AC-N1 audit commands; return the five PASS/FAIL lines"; scope: repo files; return: `FACT` ≤5 lines
+  - Question: "Run the AC-1, AC-2, AC-3, AC-7, AC-8, AC-N1 audit commands; return the six PASS/FAIL lines"; scope: repo files; return: `FACT` ≤6 lines
   - Question: "Append the TASK-146d row to `docs/07_implementation_status.md` (TASK-119a/TASK-194a sub-letter convention); return the added line"; scope: `docs/07_implementation_status.md`; return: `FACT`
 - Context cost: `S`
 - Authoritative docs:
   - `CLAUDE.md` §"Test Discipline" - direct read (already loaded)
 - OrcaSlicer refs: none — no parity content.
 - Verification:
-  - every pipe-suffixed AC command in `packet.spec.md` - FACT PASS/FAIL each
+  - every pipe-suffixed AC command in `packet.spec.md` — AC-1 through **AC-8** plus AC-N1 - FACT PASS/FAIL each. AC-8 is the premise-correction gate over the four discovered sites; it is not optional and it is not a duplicate of AC-2 (AC-2 counts definitions workspace-wide, AC-8 additionally asserts the inert `PROFILE` branch is gone).
   - baseline: `perimeter_parity` reports `3 passed; 0 failed` and `legacy_zero_matches_golden` reports `1 passed; 0 failed` (both name-filtered; `0 passed` = FAIL)
 - Exit condition: all ACs PASS, clippy clean, baseline green, `rg -q 'TASK-146d' docs/07_implementation_status.md` succeeds. Any red returns to the owning step; do not patch forward from here.
 
@@ -146,6 +180,7 @@
 | Step 2 | S | code moved, not written |
 | Step 3a | S | 3 files, mechanical |
 | Step 3b | S | 2 files, mechanical |
+| Step 3c | S | 4 files, one identical mechanical edit each; premise correction — no manifest edit |
 | Step 4 | S | dispatch-only gates |
 
 Aggregate `S`. No step approaches L.

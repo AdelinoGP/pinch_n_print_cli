@@ -12,6 +12,7 @@ members = [
     "crates/slicer-helpers",
     "crates/slicer-model-io",
     "crates/slicer-wasm-host",
+    "crates/slicer-test-support",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
     "modules/core-modules/rectilinear-infill",

@@ -34,6 +34,7 @@
 //!   `cargo test -p slicer-runtime --test e2e -- modifier_infill_two_densities`
 //!   `cargo test -p slicer-runtime --test e2e -- modifier_infill_boundary_anchoring`
 
+use slicer_test_support::pnp_cli_bin;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -43,26 +44,6 @@ fn repo_root() -> PathBuf {
         .join("..")
         .canonicalize()
         .expect("repo root canonicalize")
-}
-
-fn pnp_cli_bin() -> PathBuf {
-    // Tests run via `cargo test` so the binary is the standard workspace target.
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let profile = if std::env::var("PROFILE").as_deref() == Ok("release") {
-        "release"
-    } else {
-        "debug"
-    };
-    PathBuf::from(manifest)
-        .join("..")
-        .join("..")
-        .join("target")
-        .join(profile)
-        .join(if cfg!(windows) {
-            "pnp_cli.exe"
-        } else {
-            "pnp_cli"
-        })
 }
 
 fn core_modules_dir() -> PathBuf {

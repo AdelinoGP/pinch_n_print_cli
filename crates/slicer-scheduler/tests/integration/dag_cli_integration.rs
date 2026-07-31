@@ -11,109 +11,24 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::Value;
+use slicer_test_support::pnp_cli_bin;
 
-fn staleness_reason(
-    bin_mtime: Option<std::time::SystemTime>,
-    newest_src_mtime: std::time::SystemTime,
-) -> Option<String> {
-    match bin_mtime {
-        None => Some("pnp_cli is stale because its resolved path is absent.".to_string()),
-        Some(artifact_mtime) if newest_src_mtime > artifact_mtime => {
-            Some("pnp_cli is older than crates/*/src/** and must be rebuilt.".to_string())
-        }
-        Some(_) => None,
-    }
-}
+// The pnp_cli locator, its staleness scan, and the panic wording all live in
+// the shared `slicer-test-support` crate now (ADR-0054); see
+// `slicer_test_support::pnp_cli_bin`. It panics loudly when the binary is
+// absent or older than `crates/*/src/**` - there is no release/debug fallback
+// probe - and the panic names the remedy `cargo build -p pnp-cli`, because a
+// narrow `cargo test -p slicer-scheduler` does not rebuild another package's
+// binary.
 
-fn newest_source_mtime(root: &std::path::Path) -> std::time::SystemTime {
-    fn visit(path: &std::path::Path, extension: Option<&str>, newest: &mut std::time::SystemTime) {
-        let entries = match std::fs::read_dir(path) {
-            Ok(entries) => entries,
-            Err(_) => return,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                visit(&path, extension, newest);
-            } else if path.is_file() {
-                let matches_extension = match extension {
-                    Some(wanted) => path.extension().and_then(|s| s.to_str()) == Some(wanted),
-                    None => true,
-                };
-                if !matches_extension {
-                    continue;
-                }
-                if let Ok(mtime) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
-                {
-                    *newest = (*newest).max(mtime);
-                }
-            }
-        }
-    }
-
-    let mut newest = std::time::UNIX_EPOCH;
-    let crates_root = root.join("crates");
-    if let Ok(entries) = std::fs::read_dir(&crates_root) {
-        for entry in entries.flatten() {
-            let crate_root = entry.path();
-            if !crate_root.is_dir() {
-                continue;
-            }
-            visit(&crate_root.join("src"), None, &mut newest);
-            let manifest = crate_root.join("Cargo.toml");
-            if let Ok(mtime) = std::fs::metadata(manifest).and_then(|metadata| metadata.modified())
-            {
-                newest = newest.max(mtime);
-            }
-        }
-    }
-    visit(
-        &root.join("crates/slicer-schema/wit"),
-        Some("wit"),
-        &mut newest,
-    );
-    if let Ok(mtime) =
-        std::fs::metadata(root.join("Cargo.toml")).and_then(|metadata| metadata.modified())
-    {
-        newest = newest.max(mtime);
-    }
-    newest
-}
-
-fn bin() -> PathBuf {
-    let exe_name = if cfg!(windows) {
-        "pnp_cli.exe"
-    } else {
-        "pnp_cli"
-    };
-    let root = workspace_root();
-    if let Ok(test_exe) = std::env::current_exe() {
-        if let Some(profile_dir) = test_exe.parent().and_then(|p| p.parent()) {
-            let bin = profile_dir.join(exe_name);
-            let newest_src_mtime = newest_source_mtime(&root);
-            if let Some(reason) = staleness_reason(
-                std::fs::metadata(&bin)
-                    .ok()
-                    .and_then(|metadata| metadata.modified().ok()),
-                newest_src_mtime,
-            ) {
-                panic!(
-                    "{reason} Resolved path: {}. Run `cargo build -p pnp-cli`; \
-                     `cargo test -p slicer-scheduler` does not rebuild another package's binary.",
-                    bin.display(),
-                );
-            }
-            return bin;
-        }
-    }
-    panic!(
-        "could not resolve the pnp_cli path from the integration-test executable; \
-         run `cargo build -p pnp-cli`. The binary may be older than \
-         crates/*/src/**, and `cargo test -p slicer-scheduler` does not rebuild \
-         another package's binary."
-    )
-}
-
+/// Repo root, deliberately **not** canonicalized — do not replace this with the
+/// shared `slicer_test_support::workspace_root`, which does canonicalize.
+///
+/// This value flows through [`core_modules_path`] into the `--module-dir`
+/// argv of a spawned `pnp_cli`. On Windows `std::fs::canonicalize` returns a
+/// `\\?\`-prefixed extended-length path, which child processes mishandle. The
+/// equivalent locator in `crates/slicer-runtime/benches/gate_evidence.rs`
+/// (`repo_root`) documents the same constraint.
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -129,7 +44,7 @@ fn core_modules_path() -> PathBuf {
 
 fn run_dag(args: &[&str]) -> (Value, i32) {
     let core = core_modules_path();
-    let mut cmd = Command::new(bin());
+    let mut cmd = Command::new(pnp_cli_bin());
     cmd.arg("dag");
     for a in args {
         cmd.arg(a);
@@ -185,7 +100,7 @@ fn dag_stages_against_core_modules_returns_known_stages() {
 fn dag_stages_with_empty_module_dir_surfaces_host_builtin_stages_only() {
     let tmp = std::env::temp_dir().join("dag_cli_empty_dir");
     let _ = std::fs::create_dir_all(&tmp);
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("dag")
         .arg("stages")
         .arg("--module-dir")
@@ -244,7 +159,7 @@ fn dag_stage_layer_infill_returns_serial_edges_with_flat_reasons() {
 #[test]
 fn dag_stage_unknown_id_exits_nonzero() {
     let core = core_modules_path();
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("dag")
         .arg("stage")
         .arg("Layer::DoesNotExist")
@@ -282,7 +197,7 @@ fn dag_depends_for_known_module_returns_global_edges() {
 #[test]
 fn dag_depends_unknown_module_exits_nonzero() {
     let core = core_modules_path();
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("dag")
         .arg("depends")
         .arg("com.example.does-not-exist")
@@ -314,7 +229,7 @@ fn dag_claims_returns_interchangeable_for_multi_holder_claims() {
 #[test]
 fn diagnose_clean_core_modules_returns_pass_true_exit_zero() {
     let core = core_modules_path();
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("module")
         .arg("diagnose")
         .arg("--module-dir")
@@ -345,7 +260,7 @@ fn diagnose_malformed_manifest_exits_two() {
     std::fs::write(tmp.join("bad.toml"), "this is not valid toml = [").unwrap();
     std::fs::write(tmp.join("bad.wasm"), &[0u8; 4]).unwrap();
 
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("module")
         .arg("diagnose")
         .arg("--module-dir")
@@ -371,7 +286,7 @@ fn diagnose_nonexistent_module_dir_exits_one() {
     let tmp = std::env::temp_dir().join("dag_cli_nonexistent_root");
     let _ = std::fs::remove_dir_all(&tmp);
 
-    let output = Command::new(bin())
+    let output = Command::new(pnp_cli_bin())
         .arg("module")
         .arg("diagnose")
         .arg("--module-dir")

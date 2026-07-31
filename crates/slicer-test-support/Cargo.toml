@@ -1,0 +1,8 @@
+[package]
+name = "slicer-test-support"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pinch 'n Print Team"]
+
+[lints]
+workspace = true

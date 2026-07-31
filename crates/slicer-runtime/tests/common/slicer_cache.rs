@@ -31,7 +31,24 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+/// The `pnp_cli` locator and its staleness gate live in `slicer-test-support`
+/// (ADR-0054), not here. Re-exported so every existing
+/// `common::slicer_cache::{pnp_cli_bin, staleness_reason}` import keeps
+/// resolving through this module unchanged. `pnp_cli_bin` is used below by
+/// [`run_pnp_cli_uncached`]; `staleness_reason` is re-exported for
+/// `tests/integration/pnp_cli_freshness_tdd.rs`. `newest_source_mtime` is not
+/// re-exported — nothing consumes it through this module; import it from
+/// `slicer_test_support` directly if a future caller needs it.
+///
+/// `allow(unused_imports)` is load-bearing, not decorative: this module is
+/// `#[path]`-included into several test binaries, and most of them
+/// (`arachne_wall_sequence_e2e_tdd`, for one) use `pnp_cli_bin` via
+/// [`run_pnp_cli_uncached`] but never touch `staleness_reason`, so the
+/// re-export is genuinely unused there and `-D warnings` rejects the build
+/// without this. Same reason the module carries a blanket `allow(dead_code)`.
+#[allow(unused_imports)]
+pub use slicer_test_support::{pnp_cli_bin, staleness_reason};
 
 /// Discriminator for `--module-dir` scenarios. Each variant maps to a
 /// stable list of paths the cache feeds the binary as repeated
@@ -97,119 +114,11 @@ static CACHE: OnceLock<Mutex<CacheMap>> = OnceLock::new();
 static MODULE_DIR_PATHS: OnceLock<Mutex<HashMap<ModuleDirKind, Vec<PathBuf>>>> = OnceLock::new();
 
 /// Canonicalized repo root (parent of `crates/`).
+///
+/// Thin wrapper over `slicer_test_support::workspace_root`, which canonicalizes
+/// the same way the previous local copy did.
 pub fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .canonicalize()
-        .expect("repo root canonicalize")
-}
-
-/// Return a diagnostic when the CLI artifact is absent or older than sources.
-pub fn staleness_reason(
-    bin_mtime: Option<SystemTime>,
-    newest_src_mtime: SystemTime,
-) -> Option<String> {
-    match bin_mtime {
-        None => Some(
-            "pnp_cli is stale because its resolved path is absent; run `cargo build --bin pnp_cli`."
-                .to_string(),
-        ),
-        Some(artifact_mtime) if newest_src_mtime > artifact_mtime => Some(
-            "pnp_cli is stale at its resolved path; run `cargo build --bin pnp_cli` to rebuild it."
-                .to_string(),
-        ),
-        Some(_) => None,
-    }
-}
-
-fn newest_source_mtime(root: &Path) -> SystemTime {
-    fn visit(path: &Path, extension: Option<&str>, newest: &mut SystemTime) {
-        let entries = match std::fs::read_dir(path) {
-            Ok(entries) => entries,
-            Err(_) => return,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                visit(&path, extension, newest);
-            } else if path.is_file() {
-                let matches_extension = match extension {
-                    Some(wanted) => path.extension().and_then(|s| s.to_str()) == Some(wanted),
-                    None => true,
-                };
-                if !matches_extension {
-                    continue;
-                }
-                if let Ok(mtime) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
-                {
-                    *newest = (*newest).max(mtime);
-                }
-            }
-        }
-    }
-
-    let mut newest = UNIX_EPOCH;
-    let crates_root = root.join("crates");
-    if let Ok(entries) = std::fs::read_dir(&crates_root) {
-        for entry in entries.flatten() {
-            let crate_root = entry.path();
-            if !crate_root.is_dir() {
-                continue;
-            }
-            visit(&crate_root.join("src"), None, &mut newest);
-            let manifest = crate_root.join("Cargo.toml");
-            if let Ok(mtime) = std::fs::metadata(manifest).and_then(|metadata| metadata.modified())
-            {
-                newest = newest.max(mtime);
-            }
-        }
-    }
-    visit(
-        &root.join("crates/slicer-schema/wit"),
-        Some("wit"),
-        &mut newest,
-    );
-    if let Ok(mtime) =
-        std::fs::metadata(root.join("Cargo.toml")).and_then(|metadata| metadata.modified())
-    {
-        newest = newest.max(mtime);
-    }
-    newest
-}
-
-/// Path to the compiled `pnp_cli` binary for integration tests.
-pub fn pnp_cli_bin() -> PathBuf {
-    let exe_name = if cfg!(windows) {
-        "pnp_cli.exe"
-    } else {
-        "pnp_cli"
-    };
-
-    // Prefer the binary whose profile matches our own test binary. Cargo lays
-    // out integration-test executables at `target/{debug,release}/deps/<bucket>-<hash>{.exe}`,
-    // so the test's profile dir is `current_exe().parent().parent()` and the
-    // sibling `pnp_cli{.exe}` is the right-profile binary.
-    if let Ok(test_exe) = std::env::current_exe() {
-        if let Some(profile_dir) = test_exe.parent().and_then(|p| p.parent()) {
-            let bin = profile_dir.join(exe_name);
-            let root = repo_root();
-            let newest_src_mtime = newest_source_mtime(&root);
-            if let Some(reason) = staleness_reason(
-                std::fs::metadata(&bin)
-                    .ok()
-                    .and_then(|metadata| metadata.modified().ok()),
-                newest_src_mtime,
-            ) {
-                panic!("{reason} Resolved path: {}.", bin.display());
-            }
-            return bin;
-        }
-    }
-    panic!(
-        "could not resolve the pnp_cli path from the integration-test executable; \
-         run `cargo build --bin pnp_cli` first."
-    );
+    slicer_test_support::workspace_root()
 }
 
 pub fn fixture_stl() -> PathBuf {
