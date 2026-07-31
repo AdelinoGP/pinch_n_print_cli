@@ -64,6 +64,7 @@ fn make_entity(entity_id: u64, x: f32, y: f32, z: f32) -> PrintEntity {
 
 fn make_layer(entities: Vec<PrintEntity>, travel_moves: Vec<TravelMove>) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,

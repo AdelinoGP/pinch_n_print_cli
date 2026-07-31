@@ -519,3 +519,362 @@ fn wipe_speed_resolves_correctly() {
         .unwrap();
     assert_eq!(resolved, 96.0 * 60.0);
 }
+
+// =============================================================================
+// Packet 189 - per-point speed factor carrier (EntitySpeedProfile)
+// =============================================================================
+
+/// Build a `Point3WithWidth` at (x, y) on the z=0.2 plane.
+fn p189_point(x: f32, y: f32) -> Point3WithWidth {
+    Point3WithWidth {
+        x,
+        y,
+        z: 0.2,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        dist_to_top_mm: 0.0,
+    }
+}
+
+/// Build a `PrintEntity` from an explicit point list.
+fn p189_entity(entity_id: u64, role: ExtrusionRole, points: Vec<Point3WithWidth>) -> PrintEntity {
+    PrintEntity {
+        entity_id,
+        path: ExtrusionPath3D {
+            points,
+            role: role.clone(),
+            speed_factor: 1.0,
+        },
+        role,
+        tool_index: 0,
+        region_key: RegionKey {
+            region_id: entity_id,
+            global_layer_index: 0,
+            object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
+        },
+        topo_order: 0,
+    }
+}
+
+/// A `ResolvedConfig` that disables BOTH simplification passes, so emitted
+/// `Move`s map 1:1 onto the input points.
+fn p189_no_simplification_config() -> ResolvedConfig {
+    ResolvedConfig {
+        gcode_resolution: 0.0,
+        infill_resolution: 0.0,
+        min_segment_length: 0.0,
+        ..Default::default()
+    }
+}
+
+/// Collect the `f` value of every `Move` carrying the given role.
+fn p189_f_values(gcode_ir: &GCodeIR, want_role: &ExtrusionRole) -> Vec<f32> {
+    gcode_ir
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            GCodeCommand::Move {
+                f: Some(f_val),
+                role,
+                ..
+            } if role == want_role => Some(*f_val),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A `speed_profiles` row supplies one factor per point, so a single entity
+/// emits several distinct F tokens instead of one repeated whole-entity value.
+#[test]
+fn per_point_speed_profile_varies_f_within_one_entity() {
+    let entity = p189_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![
+            p189_point(0.0, 0.0),
+            p189_point(5.0, 0.0),
+            p189_point(10.0, 0.0),
+            p189_point(15.0, 0.0),
+        ],
+    );
+
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity],
+        speed_profiles: vec![EntitySpeedProfile {
+            entity_id: 1,
+            factors: vec![1.0, 0.5, 0.5, 0.25],
+        }],
+        ..Default::default()
+    };
+
+    let config = FeedrateConfig {
+        outer_wall_speed: 60.0,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config)
+        .with_resolved_config(p189_no_simplification_config());
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+
+    let fs = p189_f_values(&gcode_ir, &ExtrusionRole::OuterWall);
+    assert_eq!(
+        fs,
+        vec![3600.0f32, 1800.0, 1800.0, 900.0],
+        "each point F must be base_speed*60*factors[i], got {:?}",
+        fs
+    );
+
+    let mut distinct: Vec<f32> = fs.clone();
+    distinct.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "expected three distinct F values across the entity, got {:?}",
+        fs
+    );
+}
+
+/// The profile is indexed by the point ORIGINAL index. With `gcode_resolution`
+/// at 0.0 the Douglas-Peucker pass is skipped entirely, so the ONLY simplification
+/// is `drop_short_segments_mm`: interior point index 2 sits 0.02 mm from index 1,
+/// below the 0.05 mm `min_segment_length`, so it is dropped. The surviving points
+/// (original indices 0, 1, 3, 4) must read factors[0], [1], [3], [4] - not the
+/// first four entries of the factor vector.
+#[test]
+fn per_point_speed_profile_indexes_original_points_after_simplification() {
+    let entity = p189_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![
+            p189_point(0.0, 0.0),  // idx 0 - kept (first)
+            p189_point(5.0, 0.0),  // idx 1 - kept
+            p189_point(5.02, 0.0), // idx 2 - DROPPED (0.02 mm < min_segment_length 0.05)
+            p189_point(10.0, 0.0), // idx 3 - kept
+            p189_point(15.0, 0.0), // idx 4 - kept (last)
+        ],
+    );
+
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity],
+        speed_profiles: vec![EntitySpeedProfile {
+            entity_id: 1,
+            factors: vec![1.0, 0.5, 0.9, 0.25, 0.75],
+        }],
+        ..Default::default()
+    };
+
+    let config = FeedrateConfig {
+        outer_wall_speed: 60.0,
+        ..Default::default()
+    };
+    // D-P off (gcode_resolution 0.0); min-segment pruning ON at its 0.05 mm default.
+    let resolved = ResolvedConfig {
+        gcode_resolution: 0.0,
+        min_segment_length: 0.05,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config)
+        .with_resolved_config(resolved);
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+
+    let fs = p189_f_values(&gcode_ir, &ExtrusionRole::OuterWall);
+    assert_eq!(
+        fs.len(),
+        4,
+        "interior point index 2 must be dropped by min-segment pruning, got {:?}",
+        fs
+    );
+    // ORIGINAL-index reading: factors[0], [1], [3], [4].
+    assert_eq!(
+        fs,
+        vec![3600.0f32, 1800.0, 900.0, 2700.0],
+        "surviving points must read factors[original_index], got {:?}",
+        fs
+    );
+    // Position-in-kept reading would have produced factors[0..4].
+    assert_ne!(
+        fs,
+        vec![3600.0f32, 1800.0, 3240.0, 900.0],
+        "profile must NOT be indexed by position among the kept points"
+    );
+}
+
+/// An entity with no `speed_profiles` row in a layer that has one keeps the exact
+/// pre-packet behaviour: a single F from `resolve_feedrate(role, path.speed_factor)`.
+#[test]
+fn unprofiled_entity_in_a_profiled_layer_keeps_whole_entity_speed() {
+    let profiled = p189_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![
+            p189_point(0.0, 0.0),
+            p189_point(5.0, 0.0),
+            p189_point(10.0, 0.0),
+        ],
+    );
+    let mut unprofiled = p189_entity(
+        2,
+        ExtrusionRole::InnerWall,
+        vec![
+            p189_point(0.0, 5.0),
+            p189_point(5.0, 5.0),
+            p189_point(10.0, 5.0),
+        ],
+    );
+    unprofiled.path.speed_factor = 0.5;
+
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![profiled, unprofiled],
+        speed_profiles: vec![EntitySpeedProfile {
+            entity_id: 1,
+            factors: vec![1.0, 0.5, 0.25],
+        }],
+        ..Default::default()
+    };
+
+    let config = FeedrateConfig {
+        outer_wall_speed: 60.0,
+        inner_wall_speed: 60.0,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config)
+        .with_resolved_config(p189_no_simplification_config());
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+
+    // Entity 1 (profiled) varies.
+    let profiled_fs = p189_f_values(&gcode_ir, &ExtrusionRole::OuterWall);
+    assert_eq!(
+        profiled_fs,
+        vec![3600.0f32, 1800.0, 900.0],
+        "profiled entity F must follow its per-point factors, got {:?}",
+        profiled_fs
+    );
+
+    // Entity 2 (unprofiled) is flat at the whole-entity value: 60 * 60 * 0.5.
+    let expected = emitter
+        .resolve_feedrate(&ExtrusionRole::InnerWall, 0.5)
+        .expect("InnerWall feedrate should resolve");
+    let unprofiled_fs = p189_f_values(&gcode_ir, &ExtrusionRole::InnerWall);
+    assert_eq!(
+        unprofiled_fs.len(),
+        3,
+        "unprofiled entity should emit one Move per point, got {:?}",
+        unprofiled_fs
+    );
+    for f in &unprofiled_fs {
+        assert_eq!(
+            *f, expected,
+            "unprofiled entity must keep the whole-entity F {}, got {:?}",
+            expected, unprofiled_fs
+        );
+    }
+    assert_eq!(expected, 1800.0, "sanity: 60 mm/s * 60 * 0.5 = F1800");
+}
+
+/// A present per-point factor REPLACES `entity.path.speed_factor` for that point;
+/// it is NOT composed with (multiplied by) it.
+///
+/// Every other packet-189 fixture uses `path.speed_factor == 1.0`, where replace
+/// and multiply are indistinguishable. Here the whole-entity factor is 0.5, so the
+/// two readings diverge on every point:
+///
+/// | idx | profile factor | REPLACE (correct) | MULTIPLY (regression) |
+/// |-----|----------------|-------------------|-----------------------|
+/// |  0  | 1.0            | 3600              | 1800                  |
+/// |  1  | 0.8            | 2880              | 1440                  |
+/// |  2  | 0.4            | 1440              |  720                  |
+/// |  3  | 0.2            |  720              |  360                  |
+///
+/// No value is clamped under either reading (the smallest composed factor is
+/// 0.1, still above the 0.05 lower clamp), so the clamp cannot mask the
+/// difference. If `emit.rs`'s `unwrap_or(entity.path.speed_factor)` were turned
+/// into a multiplication, this test fails on the very first element.
+#[test]
+fn per_point_profile_replaces_rather_than_scales_whole_entity_speed_factor() {
+    let mut entity = p189_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![
+            p189_point(0.0, 0.0),
+            p189_point(5.0, 0.0),
+            p189_point(10.0, 0.0),
+            p189_point(15.0, 0.0),
+        ],
+    );
+    // Deliberately NOT 1.0: this is the value the per-point factors must override.
+    entity.path.speed_factor = 0.5;
+
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity],
+        speed_profiles: vec![EntitySpeedProfile {
+            entity_id: 1,
+            factors: vec![1.0, 0.8, 0.4, 0.2],
+        }],
+        ..Default::default()
+    };
+
+    let config = FeedrateConfig {
+        outer_wall_speed: 60.0,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config)
+        .with_resolved_config(p189_no_simplification_config());
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+
+    let fs = p189_f_values(&gcode_ir, &ExtrusionRole::OuterWall);
+
+    // Expected: resolve_feedrate(role, factors[i]) - the per-point factor ALONE.
+    let expected_replace: Vec<f32> = [1.0f32, 0.8, 0.4, 0.2]
+        .iter()
+        .map(|f| {
+            emitter
+                .resolve_feedrate(&ExtrusionRole::OuterWall, *f)
+                .expect("OuterWall feedrate should resolve")
+        })
+        .collect();
+    assert_eq!(
+        expected_replace,
+        vec![3600.0f32, 2880.0, 1440.0, 720.0],
+        "sanity: 60 mm/s * 60 * factor"
+    );
+    assert_eq!(
+        fs, expected_replace,
+        "per-point factor must REPLACE path.speed_factor (0.5), got {:?}",
+        fs
+    );
+
+    // The composition reading (factor * path.speed_factor) must NOT be observed.
+    let expected_multiply: Vec<f32> = [1.0f32, 0.8, 0.4, 0.2]
+        .iter()
+        .map(|f| {
+            emitter
+                .resolve_feedrate(&ExtrusionRole::OuterWall, *f * 0.5)
+                .expect("OuterWall feedrate should resolve")
+        })
+        .collect();
+    assert_eq!(
+        expected_multiply,
+        vec![1800.0f32, 1440.0, 720.0, 360.0],
+        "sanity: the composition variant halves every F"
+    );
+    assert_ne!(
+        fs, expected_multiply,
+        "per-point factor must NOT be multiplied by path.speed_factor"
+    );
+    // Element-wise: the two readings differ at every single point, so no partial
+    // regression can slip through a whole-vector comparison.
+    for (i, (r, m)) in expected_replace.iter().zip(&expected_multiply).enumerate() {
+        assert_ne!(r, m, "readings must diverge at point {}", i);
+        assert_eq!(fs[i], *r, "point {} must read the replace value", i);
+    }
+}

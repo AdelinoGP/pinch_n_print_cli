@@ -624,7 +624,12 @@ names, and return types, read the on-disk file.
     `modify-entity` / `sort-layer-by` / `insert-synthetic-layer` /
     `insert-synthetic-layer-after` / `insert-entity-at` / `set-entity-order` /
     `get-ordered-entities`.
-  - `entity-mutation` (variant) — packet 41 enum-serialisable mutations.
+  - `entity-mutation` (variant) — packet 41 enum-serialisable mutations:
+    `set-speed-factor(f32)`, `set-flow-factor(f32)`, and the additive
+    `set-point-speed-factors(list<f32>)` case (packet 189), which carries one
+    speed factor per path point (length must match `path.points`). The package
+    version was deliberately not bumped for this additive case — see ADR-0044
+    (WIT world versions are advisory and erased from guest binaries).
   - `sort-key` (enum) — sort discriminators consumed by `sort-layer-by`.
   - `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path3d>`.
 - `interface layer-finalization` (exported): `run: func(layers: list<layer-collection-view>,

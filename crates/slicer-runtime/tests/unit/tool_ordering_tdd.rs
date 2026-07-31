@@ -120,6 +120,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
     // The executor will find this pre-staged IR before Layer::PathOptimization
     // and the module's set_entity_order will be validated against it.
     let layer_collection = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,
@@ -240,6 +241,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,
@@ -332,6 +334,7 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,

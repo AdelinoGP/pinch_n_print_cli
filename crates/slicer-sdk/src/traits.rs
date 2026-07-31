@@ -25,9 +25,9 @@ use crate::prepass_types::{
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
-    ConfigView, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation, LayerAnnotationKind,
-    LayerCollectionIR, LightningTreeIR, PaintSemantic, PrintEntity, RegionKey, SliceIR,
-    SupportPlanIR,
+    ConfigView, EntitySpeedProfile, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation,
+    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, PrintEntity, RegionKey,
+    SliceIR, SupportPlanIR,
 };
 
 /// Support-paint policy for a per-region eligibility decision.
@@ -816,6 +816,13 @@ pub enum EntityMutation {
     SetSpeedFactor(f32),
     /// Set the flow factor for every point on an entity's path.
     SetFlowFactor(f32),
+    /// Set a per-point speed factor carrier for an entity (packet 189).
+    ///
+    /// The payload length must equal the target entity's point count; the
+    /// applier rejects a mismatch atomically. Upsert semantics (ADR-0052):
+    /// a repeat mutation for the same `entity_id` REPLACES the existing
+    /// `EntitySpeedProfile` row rather than appending a second one.
+    SetPointSpeedFactors(Vec<f32>),
 }
 
 /// Ordering key for sorting entities within a layer during finalization.
@@ -1413,35 +1420,89 @@ impl FinalizationOutputBuilder {
                     layer: layer_idx,
                     entity_id,
                     mutation,
-                } => {
-                    let layer = layers
-                        .iter_mut()
-                        .find(|l| l.global_layer_index == layer_idx);
-                    // If layer not found, treat as entity-not-found (entity_id error).
-                    let entity = layer.and_then(|l| {
-                        l.ordered_entities
-                            .iter_mut()
-                            .find(|e| e.entity_id == entity_id)
-                    });
-                    match entity {
-                        Some(e) => match mutation {
-                            EntityMutation::SetSpeedFactor(v) => {
-                                e.path.speed_factor = v;
-                            }
-                            EntityMutation::SetFlowFactor(v) => {
-                                for pt in e.path.points.iter_mut() {
-                                    pt.flow_factor = v;
-                                }
-                            }
-                        },
-                        None => {
+                } => match mutation {
+                    // Packet 189: per-point speed carrier. This arm cannot share
+                    // the scalar arms' shape — writing `layer.speed_profiles`
+                    // needs the entity borrow released first, so we capture the
+                    // layer index, read the point count in a scope that ends,
+                    // validate, and only then upsert.
+                    EntityMutation::SetPointSpeedFactors(v) => {
+                        let Some(li) = layers
+                            .iter()
+                            .position(|l| l.global_layer_index == layer_idx)
+                        else {
                             return Err(format!(
                                 "modify_entity: entity_id {} not found in layer {}",
                                 entity_id, layer_idx
                             ));
+                        };
+                        let n = {
+                            let Some(e) = layers[li]
+                                .ordered_entities
+                                .iter()
+                                .find(|e| e.entity_id == entity_id)
+                            else {
+                                return Err(format!(
+                                    "modify_entity: entity_id {} not found in layer {}",
+                                    entity_id, layer_idx
+                                ));
+                            };
+                            e.path.points.len()
+                        };
+                        // Atomic: reject before any write, so nothing partial lands.
+                        if v.len() != n {
+                            return Err(format!(
+                                "modify_entity: SetPointSpeedFactors length mismatch for \
+                                 entity_id {} in layer {}: got {} factors but the entity \
+                                 has {} points",
+                                entity_id,
+                                layer_idx,
+                                v.len(),
+                                n
+                            ));
+                        }
+                        // Upsert (ADR-0052): at most one row per entity_id.
+                        let sp = &mut layers[li].speed_profiles;
+                        match sp.iter_mut().find(|p| p.entity_id == entity_id) {
+                            Some(p) => p.factors = v,
+                            None => sp.push(EntitySpeedProfile {
+                                entity_id,
+                                factors: v,
+                            }),
                         }
                     }
-                }
+                    mutation => {
+                        let layer = layers
+                            .iter_mut()
+                            .find(|l| l.global_layer_index == layer_idx);
+                        // If layer not found, treat as entity-not-found (entity_id error).
+                        let entity = layer.and_then(|l| {
+                            l.ordered_entities
+                                .iter_mut()
+                                .find(|e| e.entity_id == entity_id)
+                        });
+                        match entity {
+                            Some(e) => match mutation {
+                                EntityMutation::SetSpeedFactor(v) => {
+                                    e.path.speed_factor = v;
+                                }
+                                EntityMutation::SetFlowFactor(v) => {
+                                    for pt in e.path.points.iter_mut() {
+                                        pt.flow_factor = v;
+                                    }
+                                }
+                                // Handled by the outer arm above.
+                                EntityMutation::SetPointSpeedFactors(_) => unreachable!(),
+                            },
+                            None => {
+                                return Err(format!(
+                                    "modify_entity: entity_id {} not found in layer {}",
+                                    entity_id, layer_idx
+                                ));
+                            }
+                        }
+                    }
+                },
 
                 MergeOp::SortLayer {
                     layer: layer_idx,

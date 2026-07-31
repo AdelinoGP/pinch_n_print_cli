@@ -82,6 +82,7 @@ fn three_entity_arena() -> LayerArena {
     ];
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,
@@ -99,6 +100,7 @@ fn single_entity_arena_with_path(start: Point3WithWidth, end: Point3WithWidth) -
     let entity = entity_with_points(vec![start, end], 0);
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,
@@ -287,6 +289,7 @@ fn get_ordered_entities_projects_staged_entities_in_index_order() {
     ];
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,

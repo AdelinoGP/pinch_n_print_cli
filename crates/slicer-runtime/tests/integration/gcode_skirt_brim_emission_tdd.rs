@@ -109,6 +109,7 @@ fn outer_wall_entity() -> PrintEntity {
 
 fn make_layer(entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(),
         global_layer_index: 0,
         z: 0.2,

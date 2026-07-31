@@ -98,6 +98,7 @@ fn layer_with_entity(
     entity: slicer_ir::PrintEntity,
 ) -> slicer_ir::LayerCollectionIR {
     slicer_ir::LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,

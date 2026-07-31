@@ -55,6 +55,10 @@ interface layer-finalization-types {
     variant entity-mutation {
         set-speed-factor(f32),
         set-flow-factor(f32),
+        // Packet 189: per-point speed factor carrier. The payload length MUST
+        // equal the target entity's point count; the host applier rejects any
+        // mismatch atomically (no partial write).
+        set-point-speed-factors(list<f32>),
     }
 
     enum sort-key {

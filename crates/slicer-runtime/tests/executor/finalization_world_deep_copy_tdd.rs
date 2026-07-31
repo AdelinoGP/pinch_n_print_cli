@@ -150,6 +150,7 @@ fn make_layer(
     z_hops: Vec<ZHop>,
 ) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index,
         z,

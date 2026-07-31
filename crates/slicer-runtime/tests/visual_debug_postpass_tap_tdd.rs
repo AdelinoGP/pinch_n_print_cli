@@ -114,6 +114,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
         tool_index: 0,
     };
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
         global_layer_index: index,
         z,

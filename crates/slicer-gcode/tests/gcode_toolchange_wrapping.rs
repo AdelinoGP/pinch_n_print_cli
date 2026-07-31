@@ -138,6 +138,7 @@ fn toolchange_emits_retract_prime_wipe() {
     let wipe_entity = make_wipe_entity(2, purge_len_mm, 1);
 
     let layer = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
         global_layer_index: 0,
         z: 0.2,
@@ -271,6 +272,7 @@ fn purge_volume_within_tolerance() {
     let wipe_entity = make_wipe_entity(2, path_len_mm, 1);
 
     let layer = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
         global_layer_index: 0,
         z: 0.2,
@@ -353,6 +355,7 @@ fn bare_toolchange_rejected() {
     let entity1 = make_entity(2, 6.0, 5.0, ExtrusionRole::OuterWall, 1);
 
     let layer = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
         global_layer_index: 0,
         z: 0.2,

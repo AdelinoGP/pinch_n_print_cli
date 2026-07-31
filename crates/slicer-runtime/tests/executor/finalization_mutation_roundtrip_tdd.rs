@@ -185,6 +185,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
 
 fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,

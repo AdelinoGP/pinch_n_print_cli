@@ -72,6 +72,7 @@ fn make_entity(
 
 fn empty_layer(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,

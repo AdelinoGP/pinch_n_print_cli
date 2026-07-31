@@ -1382,6 +1382,7 @@ Applies a serialisable `EntityMutation` to the entity identified by
 |---|---|
 | `SetSpeedFactor(f32)` | Override the entity's path-level speed factor. |
 | `SetFlowFactor(f32)`  | Scale the entity's extrusion flow. |
+| `SetPointSpeedFactors(Vec<f32>)` | Attach a per-point speed profile to the entity (packet 189). `factors.len()` MUST equal the entity's `path.points.len()`; on a length mismatch `apply_to` returns `Err` naming both lengths and the layer is left unmodified. Each factor REPLACES the whole-entity `speed_factor` for that point. The profile is stored as an `EntitySpeedProfile` row in `LayerCollectionIR::speed_profiles`, keyed by `entity_id`; writes upsert (a second write for the same `entity_id` replaces the row, never appends). An entity with no row keeps its uniform `ExtrusionPath3D::speed_factor` exactly as before. |
 
 Every variant is serialisable across the WIT boundary. This replaces the
 closure-based draft from packet 40 so that all mutations are fully

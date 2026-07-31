@@ -534,6 +534,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(perimeter_ir).unwrap();
     arena.set_layer_collection(LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: slicer_ir::SemVer {
             major: 1,
             minor: 0,

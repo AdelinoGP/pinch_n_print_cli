@@ -1653,7 +1653,7 @@ responsibility. 138/139 inherit this contract.
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`
-**Current schema_version: 1.1.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
+**Current schema_version: 1.2.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
 
 **Ownership lifecycle — three phases:**
 
@@ -1714,6 +1714,10 @@ pub struct LayerCollectionIR {
     /// Travels between entities. Anchors are by `entity_id`, not positional index
     /// (packet 39), so finalization mutations cannot dangle anchors.
     pub travel_moves: Vec<TravelMove>,
+    /// Optional per-point speed-factor overrides, keyed by `entity_id`
+    /// (packet 189). `#[serde(default)]`; an entity with no row here keeps
+    /// its uniform `ExtrusionPath3D::speed_factor` exactly as before.
+    pub speed_profiles: Vec<EntitySpeedProfile>,
 }
 
 pub struct PrintEntity {
@@ -1755,6 +1759,21 @@ pub struct TravelMove {
     pub z: Option<f32>,
     /// Feed-rate override in mm/s. `None` keeps the current speed.
     pub f: Option<f32>,
+}
+
+pub struct EntitySpeedProfile {
+    /// Which entity in `ordered_entities` this profile applies to. Same
+    /// `entity_id` key as `TravelMove` — both are `entity_id`-keyed side
+    /// tables, so inserting or sorting entities cannot invalidate them.
+    pub entity_id: u64,
+    /// One factor per point of that entity's `path.points`; `factors.len()`
+    /// always equals `path.points.len()`. Each factor REPLACES the
+    /// whole-entity `ExtrusionPath3D::speed_factor` for that point.
+    /// An ABSENT profile row means the entity uses the uniform
+    /// `speed_factor` unchanged. At most one row per `entity_id` — the
+    /// finalization applier upserts (a second write for the same
+    /// `entity_id` replaces the row, never appends).
+    pub factors: Vec<f32>,
 }
 
 pub struct ToolChange {
@@ -1833,13 +1852,16 @@ explicit priorities), insertion order is preserved (stable sort).
 
 ### `LayerCollectionIR::default()` contract (Normative — Packet 79 fixture support)
 
-`LayerCollectionIR` derives `Default`. The default-field values are
+`LayerCollectionIR` implements `Default` (an explicit impl, not a
+derive). The default-field values are
 load-bearing because the test-support
 `LayerCollectionFixtureBuilder` (in `slicer-sdk::test_support::fixtures`)
 only sets four fields explicitly (`global_layer_index`, `z`,
 `ordered_entities`, `tool_changes`) and lets `Default` populate the
 rest: `z_hops = vec![]`, `annotations = vec![]`, `travel_moves =
-vec![]`, and `schema_version = CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`.
+vec![]`, `speed_profiles = vec![]` (packet 189), and `schema_version =
+CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`. Because the impl is explicit,
+`speed_profiles = vec![]` is written there literally.
 Tests that assemble synthetic layers via the fixture builder rely on
 these defaults; changing the field set or the defaulted values is a
 breaking change for the fixture surface, not just the production IR.

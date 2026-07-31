@@ -598,6 +598,14 @@ fn modify_entity_set_speed_factor_applies() {
             );
         }
     }
+
+    // Packet 189: a whole-entity SetSpeedFactor must NOT create a per-point
+    // carrier row. `speed_profiles` stays empty for the pre-packet behaviour.
+    assert!(
+        layers[0].speed_profiles.is_empty(),
+        "SetSpeedFactor must not write any EntitySpeedProfile row, got {}",
+        layers[0].speed_profiles.len()
+    );
 }
 
 // =============================================================================
@@ -698,5 +706,208 @@ fn closure_api_is_fully_removed() {
     assert!(
         !source.contains("F: Fn(&PrintEntity)"),
         "closure bound 'F: Fn(&PrintEntity)' must be removed from traits.rs"
+    );
+}
+
+// =============================================================================
+// Packet 189 AC: modify_entity_set_point_speed_factors_applies
+// =============================================================================
+
+/// Build an `ExtrusionPath3D` with exactly `n` points along +X.
+fn make_path_with_n_points(role: ExtrusionRole, n: usize) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: (0..n)
+            .map(|i| slicer_ir::Point3WithWidth {
+                x: i as f32,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+            })
+            .collect(),
+        role,
+        speed_factor: 1.0,
+    }
+}
+
+/// Build a `PrintEntity` whose path has exactly `n` points.
+fn make_entity_with_n_points(entity_id: u64, role: ExtrusionRole, n: usize) -> PrintEntity {
+    PrintEntity {
+        entity_id,
+        path: make_path_with_n_points(role.clone(), n),
+        role,
+        tool_index: 0,
+        region_key: make_region_key(),
+        topo_order: 0,
+    }
+}
+
+/// `EntityMutation::SetPointSpeedFactors` on a 4-point entity writes exactly one
+/// `EntitySpeedProfile` row (entity_id == 2, factors == the supplied vector) into
+/// `layers[0].speed_profiles`, leaves the untouched entity without a row, and does
+/// NOT overwrite any entity's whole-entity `path.speed_factor`.
+#[test]
+fn modify_entity_set_point_speed_factors_applies() {
+    let entities = vec![
+        make_entity_with_n_points(1, ExtrusionRole::OuterWall, 4),
+        make_entity_with_n_points(2, ExtrusionRole::InnerWall, 4),
+    ];
+    let mut layers = vec![make_layer(0, 0.2, entities)];
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(
+            0,
+            2,
+            EntityMutation::SetPointSpeedFactors(vec![0.5, 0.6, 0.7, 0.8]),
+        )
+        .expect("modify_entity should succeed");
+
+    builder
+        .apply_to(&mut layers)
+        .expect("apply_to should succeed");
+
+    assert_eq!(
+        layers[0].speed_profiles.len(),
+        1,
+        "exactly one EntitySpeedProfile row should be written, got {}",
+        layers[0].speed_profiles.len()
+    );
+    let profile: &slicer_ir::EntitySpeedProfile = &layers[0].speed_profiles[0];
+    assert_eq!(
+        profile.entity_id, 2,
+        "the profile row must belong to entity_id 2"
+    );
+    assert_eq!(
+        profile.factors,
+        vec![0.5f32, 0.6, 0.7, 0.8],
+        "profile factors must match the mutation payload verbatim"
+    );
+
+    // The untouched entity contributes no row.
+    assert!(
+        !layers[0].speed_profiles.iter().any(|p| p.entity_id == 1),
+        "entity_id=1 was not mutated and must not have a profile row"
+    );
+
+    // Whole-entity scalars are untouched by the per-point carrier.
+    for entity in &layers[0].ordered_entities {
+        assert!(
+            (entity.path.speed_factor - 1.0).abs() < 1e-6,
+            "entity_id={} path.speed_factor must stay 1.0, got {}",
+            entity.entity_id,
+            entity.path.speed_factor
+        );
+    }
+}
+
+// =============================================================================
+// Packet 189 NEG: modify_entity_set_point_speed_factors_length_mismatch_errors
+// =============================================================================
+
+/// A `SetPointSpeedFactors` payload whose length differs from the target entity's
+/// point count makes `apply_to` return Err naming BOTH lengths, and writes no
+/// partial profile row.
+#[test]
+fn modify_entity_set_point_speed_factors_length_mismatch_errors() {
+    let entities = vec![
+        make_entity_with_n_points(1, ExtrusionRole::OuterWall, 4),
+        make_entity_with_n_points(2, ExtrusionRole::InnerWall, 4),
+    ];
+    let mut layers = vec![make_layer(0, 0.2, entities)];
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(0, 2, EntityMutation::SetPointSpeedFactors(vec![0.5, 0.6]))
+        .expect("recording modify_entity should succeed (error deferred to apply_to)");
+
+    let result = builder.apply_to(&mut layers);
+    assert!(
+        result.is_err(),
+        "apply_to should return Err on a factors/points length mismatch"
+    );
+    let msg = result.unwrap_err();
+    // The message must name both the supplied length (2) and the point count (4).
+    // Match on standalone tokens so an unrelated "24" cannot satisfy the check.
+    let has_token = |msg: &str, tok: char| {
+        msg.char_indices().any(|(i, c)| {
+            c == tok
+                && !msg[..i].ends_with(|p: char| p.is_ascii_digit())
+                && !msg[i + 1..].starts_with(|p: char| p.is_ascii_digit())
+        })
+    };
+    assert!(
+        has_token(&msg, '2'),
+        "error message should name the supplied factor count 2, got: {:?}",
+        msg
+    );
+    assert!(
+        has_token(&msg, '4'),
+        "error message should name the entity point count 4, got: {:?}",
+        msg
+    );
+
+    assert!(
+        layers[0].speed_profiles.is_empty(),
+        "no partial EntitySpeedProfile row may be written on error, got {}",
+        layers[0].speed_profiles.len()
+    );
+}
+
+// =============================================================================
+// Packet 189 / ADR-0052 Decision 1: the upsert guarantee
+// =============================================================================
+
+/// A second `SetPointSpeedFactors` for the SAME `entity_id` REPLACES the existing
+/// `EntitySpeedProfile` row rather than appending a second one, and the later
+/// submission wins. Packet 191 relies on this (geometry mutation followed by a
+/// resized profile for the same entity).
+#[test]
+fn modify_entity_set_point_speed_factors_upsert_replaces_row() {
+    let entities = vec![
+        make_entity_with_n_points(1, ExtrusionRole::OuterWall, 4),
+        make_entity_with_n_points(2, ExtrusionRole::InnerWall, 4),
+    ];
+    let mut layers = vec![make_layer(0, 0.2, entities)];
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(
+            0,
+            2,
+            EntityMutation::SetPointSpeedFactors(vec![0.5, 0.6, 0.7, 0.8]),
+        )
+        .expect("first modify_entity should succeed");
+    builder
+        .modify_entity(
+            0,
+            2,
+            EntityMutation::SetPointSpeedFactors(vec![0.1, 0.2, 0.3, 0.4]),
+        )
+        .expect("second modify_entity should succeed");
+
+    builder
+        .apply_to(&mut layers)
+        .expect("apply_to should succeed");
+
+    assert_eq!(
+        layers[0].speed_profiles.len(),
+        1,
+        "the second write must REPLACE the row, not append: got {} rows ({:?})",
+        layers[0].speed_profiles.len(),
+        layers[0].speed_profiles
+    );
+    let profile: &slicer_ir::EntitySpeedProfile = &layers[0].speed_profiles[0];
+    assert_eq!(
+        profile.entity_id, 2,
+        "the surviving row must still belong to entity_id 2"
+    );
+    assert_eq!(
+        profile.factors,
+        vec![0.1f32, 0.2, 0.3, 0.4],
+        "submission order wins: the SECOND payload must be the stored one, got {:?}",
+        profile.factors
     );
 }

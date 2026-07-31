@@ -402,6 +402,7 @@ fn mesh_fixture() -> MeshIR {
 
 fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,

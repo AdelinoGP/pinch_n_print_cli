@@ -1212,7 +1212,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             })
                             .collect();
                         let ir = ::slicer_ir::LayerCollectionIR {
-                            schema_version: ::slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+                            schema_version: ::slicer_ir::CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
                             global_layer_index: wit_layer.layer_index(),
                             z: wit_layer.z(),
                             ordered_entities,
@@ -1221,6 +1221,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             annotations: ::std::vec::Vec::new(),
                             retracts: ::std::vec::Vec::new(),
                             travel_moves: ::std::vec::Vec::new(),
+                            speed_profiles: ::std::vec::Vec::new(),
                         };
                         sdk_layers.push(::slicer_sdk::traits::LayerCollectionView::new(ir));
                     }
@@ -1259,8 +1260,13 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                 let wit_mutation = match mutation {
                                     ::slicer_sdk::traits::EntityMutation::SetSpeedFactor(v) => EntityMutation::SetSpeedFactor(*v),
                                     ::slicer_sdk::traits::EntityMutation::SetFlowFactor(v) => EntityMutation::SetFlowFactor(*v),
+                                    // Vec<f32> is not Copy: clone rather than deref.
+                                    ::slicer_sdk::traits::EntityMutation::SetPointSpeedFactors(v) => EntityMutation::SetPointSpeedFactors(v.clone()),
                                 };
-                                let _ = output.modify_entity(*layer, *entity_id, wit_mutation);
+                                // Packet 189: `entity-mutation` now carries a
+                                // `list<f32>` payload, so wit-bindgen generates a
+                                // by-reference parameter here (it is no longer Copy).
+                                let _ = output.modify_entity(*layer, *entity_id, &wit_mutation);
                             }
                             ::slicer_sdk::traits::MergeOp::SortLayer { layer, key } => {
                                 let wit_key = match key {

@@ -175,6 +175,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
 
 fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,
@@ -232,6 +233,7 @@ fn make_module_with_config(
 
 fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,

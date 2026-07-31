@@ -45,6 +45,7 @@ pub use slice_ir::{
     ConfigValue,
     ConfigView,
 
+    EntitySpeedProfile,
     ExPolygon,
     ExtrusionJunction,
     ExtrusionLine,

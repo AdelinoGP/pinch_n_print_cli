@@ -212,14 +212,14 @@
 - Precondition: Step 4 complete; workspace compiles apart from the Step 1 red tests.
 - Postcondition: `cargo test -p slicer-sdk --test finalization_builder_tdd` is green including the three new/extended tests; `cargo xtask build-guests --check` reports no `STALE:`.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit` (under 120 lines) - read whole
+  - `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit` (under 120 lines) - read whole
   - `crates/slicer-sdk/src/traits.rs` - locate `pub enum EntityMutation` and the `MergeOp::ModifyEntity` arm in `apply_to`, open ±40 lines around each
   - `crates/slicer-wasm-host/src/host.rs` - locate `pub enum WitEntityMutation` and the `fm::EntityMutation::SetSpeedFactor` match arm, open ±20 lines around each
   - `crates/slicer-wasm-host/src/dispatch.rs` - locate `host::WitEntityMutation::SetSpeedFactor`, open ±20 lines
   - `crates/slicer-macros/src/lib.rs` - locate `::slicer_sdk::traits::EntityMutation::SetSpeedFactor`, open ±20 lines
   - `CLAUDE.md` §"WIT/Type Changes Checklist" and §"Guest WASM Staleness" - read both sections
 - Files allowed to edit (this step edits the five channel files plus the WIT; the chain cannot be split without leaving the workspace non-compiling mid-step):
-  - `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`
+  - `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
   - `crates/slicer-sdk/src/traits.rs`
   - `crates/slicer-wasm-host/src/host.rs`
   - `crates/slicer-wasm-host/src/dispatch.rs`
@@ -238,7 +238,7 @@
 - OrcaSlicer refs:
   - none for this step
 - Verification:
-  - `bash -c 'rg -q "SetPointSpeedFactors\(Vec<f32>\)" crates/slicer-sdk/src/traits.rs && rg -q "set-point-speed-factors\(list<f32>\)" crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit && rg -q "SetPointSpeedFactors" crates/slicer-wasm-host/src/host.rs && rg -q "SetPointSpeedFactors" crates/slicer-wasm-host/src/dispatch.rs && rg -q "SetPointSpeedFactors" crates/slicer-macros/src/lib.rs && echo PASS || echo "FAIL: SetPointSpeedFactors missing from at least one of the five channel files"'` - FACT (this is AC-3's command)
+  - `bash -c 'rg -q "SetPointSpeedFactors\(Vec<f32>\)" crates/slicer-sdk/src/traits.rs && rg -q "set-point-speed-factors\(list<f32>\)" crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit && rg -q "SetPointSpeedFactors" crates/slicer-wasm-host/src/host.rs && rg -q "SetPointSpeedFactors" crates/slicer-wasm-host/src/dispatch.rs && rg -q "SetPointSpeedFactors" crates/slicer-macros/src/lib.rs && echo PASS || echo "FAIL: SetPointSpeedFactors missing from at least one of the five channel files"'` - FACT (this is AC-3's command)
   - `bash -c 'cargo test -p slicer-sdk --test finalization_builder_tdd -- modify_entity_set_point_speed_factors_applies --exact 2>&1 | rg "^test result:" | rg -q "^test result: ok\. [1-9]" && echo PASS || echo "FAIL: modify_entity_set_point_speed_factors_applies did not run or did not pass"'` - FACT (AC-4)
   - `bash -c 'cargo test -p slicer-sdk --test finalization_builder_tdd -- modify_entity_set_point_speed_factors_length_mismatch_errors --exact 2>&1 | rg "^test result:" | rg -q "^test result: ok\. [1-9]" && echo PASS || echo "FAIL: modify_entity_set_point_speed_factors_length_mismatch_errors did not run or did not pass"'` - FACT (AC-N1)
   - `bash -c 'cargo test -p slicer-sdk --test finalization_builder_tdd -- modify_entity_set_speed_factor_applies --exact 2>&1 | rg "^test result:" | rg -q "^test result: ok\. [1-9]" && python3 -c "import io,sys; s=io.open(r\"crates/slicer-sdk/tests/finalization_builder_tdd.rs\",encoding=\"utf-8\").read(); b=s.index(\"fn modify_entity_set_speed_factor_applies\"); e=s.index(chr(10)+chr(125)+chr(10), b); sys.exit(0 if \"speed_profiles\" in s[b:e] else 1)" && echo PASS || echo "FAIL: the SetSpeedFactor test did not pass, or it still never asserts speed_profiles stays empty"'` - FACT (**AC-N2, verbatim.** This step implements the `apply_to` branch, so it is the step that could accidentally re-implement `SetSpeedFactor` as an expanded per-point profile — the exact failure AC-N2 forbids. AC-N2 was named by **no** step's Verification block before this round: a criterion with zero copies in the plan is invisible to a copy-vs-copy drift check, which is how the orphaning survived a clean run. It is the criterion the whole "absent profile ⇒ byte-identical output" claim rests on.)

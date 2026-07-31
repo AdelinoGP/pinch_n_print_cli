@@ -428,6 +428,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     .or_default()
                     .push(tm);
             }
+            // speed_profiles: per entity_id, at most one row per layer. An absent
+            // entry means the entity carries no per-point profile and every point
+            // falls back to the uniform whole-entity `path.speed_factor`.
+            let speed_profiles_by_entity: std::collections::HashMap<u64, &Vec<f32>> = layer
+                .speed_profiles
+                .iter()
+                .map(|sp| (sp.entity_id, &sp.factors))
+                .collect();
 
             // Process each entity
             for (entity_idx, entity) in layer.ordered_entities.iter().enumerate() {
@@ -475,7 +483,12 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 // back onto the original Point3WithWidth slice so metadata is preserved.
                 let tol = tolerance_for_role(role, &self.resolved_config);
                 let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
-                let simplified_points: Vec<&slicer_ir::Point3WithWidth> = if points.len() >= 2 {
+                // Each surviving point keeps its ORIGINAL index so a per-point
+                // speed profile (indexed against the unsimplified path) stays
+                // aligned even when simplification drops interior vertices.
+                let simplified_points: Vec<(usize, &slicer_ir::Point3WithWidth)> = if points.len()
+                    >= 2
+                {
                     let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
                     let simplified_xy = if tol > 0.0 {
                         simplify_polyline_mm(&xy, tol)
@@ -499,7 +512,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                             if (points[i].x - kx).abs() < f32::EPSILON
                                 && (points[i].y - ky).abs() < f32::EPSILON
                             {
-                                kept.push(&points[i]);
+                                kept.push((i, &points[i]));
                                 search_from = i + 1;
                                 break;
                             }
@@ -507,12 +520,15 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     }
                     kept
                 } else {
-                    points.iter().collect()
+                    points.iter().enumerate().collect()
                 };
+
+                // Per-point speed factors for this entity, if any.
+                let profile = speed_profiles_by_entity.get(&entity.entity_id).copied();
 
                 // Emit Move commands for each point in the path
                 let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
-                for point in simplified_points {
+                for (original_index, point) in simplified_points {
                     // Calculate extrusion (E) based on travel distance and width
                     let e_delta = if let Some(prev) = prev_point {
                         // Calculate 3D distance
@@ -545,7 +561,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         } else {
                             None
                         },
-                        f: self.resolve_feedrate(role, entity.path.speed_factor),
+                        // Per-point factor REPLACES the whole-entity scalar when
+                        // present (fallback, never composition — see ADR-0052).
+                        f: self.resolve_feedrate(
+                            role,
+                            profile
+                                .and_then(|p| p.get(original_index).copied())
+                                .unwrap_or(entity.path.speed_factor),
+                        ),
                         role: role.clone(),
                     });
 

@@ -3383,6 +3383,9 @@ fn apply_finalization_pushes(
                 let sdk_mutation = match mutation {
                     host::WitEntityMutation::SetSpeedFactor(v) => EntityMutation::SetSpeedFactor(v),
                     host::WitEntityMutation::SetFlowFactor(v) => EntityMutation::SetFlowFactor(v),
+                    host::WitEntityMutation::SetPointSpeedFactors(v) => {
+                        EntityMutation::SetPointSpeedFactors(v)
+                    }
                 };
                 sdk_builder
                     .modify_entity(layer_index, entity_id, sdk_mutation)

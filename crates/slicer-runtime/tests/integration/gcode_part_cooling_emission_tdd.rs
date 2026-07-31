@@ -100,6 +100,7 @@ fn trailing_fan_off() -> LayerAnnotation {
 
 fn layer(index: u32, z: f32, annotations: Vec<LayerAnnotation>) -> LayerCollectionIR {
     LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,

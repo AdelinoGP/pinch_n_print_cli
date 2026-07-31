@@ -305,9 +305,11 @@ pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
 
 /// Schema version for `LayerCollectionIR`. 1.1.0 — packet 125 follow-up added
 /// the additive `PrintEntity.tool_index` field (tool/identity split).
+/// 1.2.0 — packet `189-per-point-speed-factor-carrier` added the additive
+/// `LayerCollectionIR.speed_profiles` per-point speed carrier.
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -2273,6 +2275,25 @@ pub struct LayerAnnotation {
     pub kind: LayerAnnotationKind,
 }
 
+/// Per-point speed factor profile for a single entity, keyed by
+/// `PrintEntity.entity_id`.
+///
+/// This is a side table on `LayerCollectionIR`: an **absent** row means the
+/// entity carries no per-point profile and the emitter falls back to the
+/// uniform whole-entity `ExtrusionPath3D::speed_factor` — the pre-packet
+/// behaviour, unchanged.
+///
+/// When a row **is** present, `factors.len()` always equals the entity's
+/// `path.points.len()`; `factors[i]` is the multiplier applied at point `i`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EntitySpeedProfile {
+    /// Stable identifier of the entity in `LayerCollectionIR.ordered_entities`
+    /// this profile applies to.
+    pub entity_id: u64,
+    /// Per-point speed multipliers, one per point of the entity's path.
+    pub factors: Vec<f32>,
+}
+
 /// Layer collection IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerCollectionIR {
@@ -2294,6 +2315,11 @@ pub struct LayerCollectionIR {
     pub retracts: Vec<TravelRetract>,
     /// Travel move destinations from `Layer::PathOptimization`.
     pub travel_moves: Vec<TravelMove>,
+    /// Per-point speed factor profiles, keyed by `PrintEntity.entity_id`.
+    /// An entity with no row here keeps the uniform whole-entity
+    /// `ExtrusionPath3D::speed_factor` behaviour unchanged.
+    #[serde(default)]
+    pub speed_profiles: Vec<EntitySpeedProfile>,
 }
 
 impl Default for LayerCollectionIR {
@@ -2308,6 +2334,7 @@ impl Default for LayerCollectionIR {
             annotations: Vec::new(),
             retracts: Vec::new(),
             travel_moves: Vec::new(),
+            speed_profiles: Vec::new(),
         }
     }
 }

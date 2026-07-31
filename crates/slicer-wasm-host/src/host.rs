@@ -787,6 +787,8 @@ pub enum WitEntityMutation {
     SetSpeedFactor(f32),
     /// Set the per-point `flow_factor` on the matched entity's path.
     SetFlowFactor(f32),
+    /// Carry a per-point speed factor vector for the matched entity (packet 189).
+    SetPointSpeedFactors(Vec<f32>),
 }
 
 /// Sort key selector (mirrors WIT `sort-key` enum).
@@ -4419,6 +4421,9 @@ mod finalization_impls {
             let wit_mutation = match mutation {
                 fm::EntityMutation::SetSpeedFactor(v) => WitEntityMutation::SetSpeedFactor(v),
                 fm::EntityMutation::SetFlowFactor(v) => WitEntityMutation::SetFlowFactor(v),
+                fm::EntityMutation::SetPointSpeedFactors(v) => {
+                    WitEntityMutation::SetPointSpeedFactors(v)
+                }
             };
             data.pushes.push(FinalizationBuilderPush::ModifyEntity {
                 layer_index,

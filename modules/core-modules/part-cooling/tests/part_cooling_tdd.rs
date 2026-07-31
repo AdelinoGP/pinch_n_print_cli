@@ -50,6 +50,7 @@ fn entity(role: ExtrusionRole) -> PrintEntity {
 
 fn layer_view(index: u32, roles: &[ExtrusionRole]) -> LayerCollectionView {
     let ir = LayerCollectionIR {
+        speed_profiles: Vec::new(),
         schema_version: SemVer {
             major: 1,
             minor: 0,
