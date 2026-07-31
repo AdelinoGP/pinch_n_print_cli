@@ -201,7 +201,7 @@ need it; never read one out of this table.
 |---|---|---|---|---|---|
 | 1 | `.ralph/specs/181-dispatch-missing-component-handling` | DEV-087 | T1 | — | generated · draft · TASK-297 |
 | 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 |
-| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike) | T1 | — | generated · draft · TASK-296 |
+| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike), DEV-098 remediation | T1 | — | generated · active · TASK-296 (reopened) |
 | 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | generated · draft · TASK-303 |
 | 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 |
 | 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
@@ -216,12 +216,10 @@ need it; never read one out of this table.
 | 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 |
 
 **Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
-`.ralph/specs/183-arachne-voronoi-panic-diagnosis` is `status: draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
-all of which are also `draft`. Packet 183 is a **diagnosis spike**: its whole output is a verdict on D-167 (close as inert, or narrow to a successor
-owning `preprocess_input_outline` hardening). That verdict **does not exist yet**, and D-154's design is gated on it — the spike decides whether the
-skeletal path needs hardening before `discretize_edge`'s 3-branch dispatch is ported at all. Authoring row 6 now would mean inventing a verdict to
-design against. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`. Resume them only after packet
-183 has been executed and its D-167 verdict recorded** — not merely after 183 is generated.
+`.ralph/specs/183-arachne-voronoi-panic-diagnosis` was `status: draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
+all of which were also `draft`. Packet 183 has since been implemented and is now **reopened** for the DEV-098 workspace-test remediation while
+retaining its D-167 verdict. Row 6 remains dependent on packet 183's recorded verdict; the remediation does not reopen that dependency or change
+the D-154 design gate. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`.**
 
 **Queue amendment (2026-07-25b): rows 8 and 9 were each decomposed into three packets. Neither may ship at aggregate `L`.**
 The plan rates both `L`, and the Batch Protocol forbids shipping a packet at aggregate `L`; the remedy is decomposition, not scope compression.

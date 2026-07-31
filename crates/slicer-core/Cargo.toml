@@ -7,6 +7,10 @@ authors = ["Pinch 'n Print Team"]
 [features]
 default = []
 host-algos = ["dep:rayon", "dep:boostvoronoi"]
+# Opt-in only for the synthetic panic regression. Keeping this off the
+# workspace's normal test feature set prevents boostvoronoi diagnostics from
+# leaking into unrelated crates' test harnesses.
+voronoi-panic-regression = ["boostvoronoi/console_debug"]
 
 [dependencies]
 clipper2-rust = { workspace = true }
@@ -22,15 +26,6 @@ serde = { version = "1", features = ["derive"] }
 criterion = { workspace = true }
 serde_json = "1"
 slicer-model-io = { path = "../slicer-model-io" }
-# Enable boostvoronoi's `console_debug` feature for tests so that production
-# `assert!`s in `robust_fpt` and `lazy_circle_formation` (which guard the
-# `is_finite()` predicate) are compiled in. This lets the
-# `voronoi_from_segments_predicate_panic_fires_on_synthetic_input` regression
-# test below actually exercise the `catch_unwind` arm in
-# `voronoi_from_segments` rather than being silently compiled out. Tests only —
-# production builds (without `--features host-algos` and without this dev-dep)
-# never see the feature.
-boostvoronoi = { version = "0.12", features = ["console_debug"] }
 
 [[bench]]
 name = "polygon_ops"
@@ -79,6 +74,10 @@ required-features = ["host-algos"]
 [[test]]
 name = "voronoi_stress"
 required-features = ["host-algos"]
+
+[[test]]
+name = "voronoi_panic_regression"
+required-features = ["host-algos", "voronoi-panic-regression"]
 
 [[test]]
 name = "flow_tdd"

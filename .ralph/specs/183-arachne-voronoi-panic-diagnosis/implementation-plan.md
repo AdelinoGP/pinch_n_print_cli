@@ -81,7 +81,7 @@
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
-  - `bash -c 'rg -q "catch_unwind" crates/slicer-core/src/voronoi.rs && rg -q "AssertUnwindSafe" crates/slicer-core/src/voronoi.rs && echo PASS || echo FAIL'` — FACT PASS/FAIL (AC-1).
+  - `bash -c 'rg -q "catch_unwind" crates/slicer-core/src/voronoi.rs && rg -q "AssertUnwindSafe" crates/slicer-core/src/voronoi.rs && rg -q "PredicatePanic" crates/slicer-core/src/voronoi.rs && echo PASS || echo FAIL'` — FACT PASS/FAIL (AC-1).
   - `cargo check --workspace --all-targets` — FACT pass/fail; catches any non-exhaustive `VoronoiError` match.
 - Exit condition: AC-1 passes, the workspace compiles, and no empty-graph-on-catch shortcut was introduced.
 
@@ -93,31 +93,35 @@
 - Postcondition: AC-N1 passes.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-core/tests/medial_axis_degenerate_input_tdd.rs` — full; reuse its degenerate-input construction.
-  - `crates/slicer-core/tests/voronoi_stress.rs` — full; match its existing harness style.
+  - `crates/slicer-core/tests/voronoi_stress.rs` — full; match its existing harness style for the ordinary host-algos tests.
+  - `crates/slicer-core/tests/voronoi_panic_regression.rs` — new explicit-feature target for the synthetic panic assertion.
 - Files allowed to edit (at most 3):
   - `crates/slicer-core/tests/voronoi_stress.rs`
+  - `crates/slicer-core/tests/voronoi_panic_regression.rs`
+  - `crates/slicer-core/Cargo.toml`
 - Files explicitly out of bounds:
   - `crates/slicer-core/src/voronoi.rs` (frozen after Step 2 — do not relax the guard to make the test pass)
-  - `crates/slicer-core/Cargo.toml` — `voronoi_stress` already declares `required-features = ["host-algos"]`; no manifest change is needed and none may be made.
 - Blast-radius discipline: not applicable — test-only, adds no struct field or constant.
 - Expected sub-agent dispatches:
-  - Question: run the new test and report only the assertion outcome; scope: `cargo test -p slicer-core --features host-algos --test voronoi_stress -- voronoi_from_segments_degenerate_input_returns_result_not_panic --exact`; return: `FACT` (<=5 lines)
+  - Question: run the new test and report only the assertion outcome; scope: `bash -c 'L=target/183-voronoi-n1.log; mkdir -p target || exit $?; cargo test -p slicer-core --features host-algos --test voronoi_stress -- voronoi_from_segments_degenerate_input_returns_result_not_panic --exact 2>&1 | tee "$L" >/dev/null; cargo_status=${PIPESTATUS[0]}; if [ "$cargo_status" -eq 0 ] && rg -q "^test result: ok\." "$L"; then echo PASS; else echo FAIL; exit 1; fi'`; return: `FACT` (<=5 lines)
+  - Question: run the explicit synthetic panic target with `voronoi-panic-regression` enabled, then repeat after temporarily removing the production catch arm; return: `FACT` (<=5 lines per run)
 - Context cost: `S`
 - Authoritative docs:
   - None required for this step.
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
-  - `cargo test -p slicer-core --features host-algos --test voronoi_stress -- voronoi_from_segments_degenerate_input_returns_result_not_panic --exact 2>&1 | tail -20` — FACT pass/fail (AC-N1).
-  - `cargo test -p slicer-core --features host-algos --test voronoi_stress 2>&1 | tail -15` — FACT pass/fail; no stress regression.
+  - `bash -c 'L=target/183-voronoi-n1.log; mkdir -p target || exit $?; cargo test -p slicer-core --features host-algos --test voronoi_stress -- voronoi_from_segments_degenerate_input_returns_result_not_panic --exact 2>&1 | tee "$L" >/dev/null; cargo_status=${PIPESTATUS[0]}; if [ "$cargo_status" -eq 0 ] && rg -q "^test result: ok\." "$L"; then echo PASS; else echo FAIL; exit 1; fi'` — FACT pass/fail (AC-N1).
+  - `bash -c 'L=target/183-voronoi-stress.log; mkdir -p target || exit $?; cargo test -p slicer-core --features host-algos --test voronoi_stress 2>&1 | tee "$L" >/dev/null; cargo_status=${PIPESTATUS[0]}; if [ "$cargo_status" -eq 0 ] && rg -q "^test result: ok\." "$L"; then echo PASS; else echo FAIL; exit 1; fi'` — FACT pass/fail; no stress regression.
+  - `bash -c 'L=target/183-voronoi-panic-regression.log; mkdir -p target || exit $?; cargo test -p slicer-core --features host-algos,voronoi-panic-regression --test voronoi_panic_regression 2>&1 | tee "$L" >/dev/null; cargo_status=${PIPESTATUS[0]}; if [ "$cargo_status" -eq 0 ] && rg -q "^test result: ok\." "$L"; then echo PASS; else echo FAIL; exit 1; fi'` — FACT pass/fail; explicit production-assert coverage.
 - Exit condition: AC-N1 passes and the whole `voronoi_stress` binary is green.
 
 ### Step 4: Measure the workload and the geometry delta
 
 - Task IDs: `TASK-296`
-- Objective: Re-run the `perimeter_parity` workload with the guard in place; record how many builder panics are now caught, the characterization of each offending segment set, and the owning layer/region ids. Compare wall-loop output on affected layers/regions against the Step 1 baseline to answer whether the panicking computation was feeding live geometry.
+- Objective: Re-run the `perimeter_parity` workload with the guard in place; record how many builder panics are now caught, the characterization of each offending segment set, and the owning layer/region ids. If the caught count is greater than zero, compare wall-loop output on affected layers/regions against the Step 1 baseline; if it is zero, explicitly record that geometry comparison is not applicable because no affected computation was observed.
 - Precondition: Steps 1-3 complete; the Step 1 baseline exists.
-- Postcondition: AC-2 passes and the raw data for AC-3's `## Caught panic count`, `## Input characterization`, and geometry-delta findings is captured.
+- Postcondition: AC-2 passes and the raw data for AC-3's `## Caught panic count`, `## Input characterization`, and geometry-delta findings is captured. A zero caught count produces an explicit no-affected-computation statement, not a fabricated geometry delta.
 - Files allowed to read, with ranges when over 300 lines:
   - `target/183-parity.log` — via delegated grep only; never load the full log.
 - Files allowed to edit (at most 3):
@@ -126,17 +130,17 @@
   - All production source — this is a measurement step.
 - Blast-radius discipline: not applicable — no source change.
 - Expected sub-agent dispatches:
-  - Question: run the workload, then report the final `test result:` line, the count of caught-panic diagnostics, and up to 10 captured segment characterizations; scope: `cargo test -p slicer-runtime --test integration -- perimeter_parity`; return: `SUMMARY` (<=200 words)
+  - Question: run the workload, then report the final `test result:` line, the count of caught-panic diagnostics, and up to 10 captured segment characterizations; when the count is zero, report that no affected computation was observed and geometry comparison is not applicable; scope: `cargo test -p slicer-runtime --test integration -- perimeter_parity`; return: `SUMMARY` (<=200 words)
 - Context cost: `M`
 - Authoritative docs:
   - None required for this step.
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
-  - `bash -c 'F=.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md; mkdir -p target && cargo xtask build-guests --check && cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 | tee target/183-parity.log | rg "^test result"; rg -q "^## Baseline" "$F" && rg -q "^## Caught panic count" "$F" && rg -q "^## Suite status vs baseline" "$F" && echo PASS || echo "FAIL: FINDINGS.md is missing the Baseline / Caught panic count / Suite status vs baseline sections"'` — FACT: suite status must match the Step-1 baseline, and the three `FINDINGS.md` sections must exist (AC-2). The `build-guests --check` prefix is mandatory — `--test integration` loads core-module WASMs, so a stale guest would fail this workload and be misattributed to the new guard. **Do not re-add a "raw panic count must be 0" clause:** `catch_unwind` does not suppress the default panic hook, `rg 'set_hook|take_hook' crates/slicer-core/src/` returns nothing, and the process-global-hook alternative was rejected as racy under the `par_iter` in `crates/slicer-runtime/src/layer_executor.rs`. See AC-2 in `packet.spec.md`.
+  - `bash -c 'F=.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md; L=target/183-parity.log; mkdir -p target || exit $?; cargo xtask build-guests --check || exit $?; cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 | tee "$L" >/dev/null; cargo_status=${PIPESTATUS[0]}; if [ "$cargo_status" -eq 0 ] && rg -q "^test result: ok\." "$L" && rg -q "^## Baseline" "$F" && rg -q "^## Caught panic count" "$F" && rg -q "^## Suite status vs baseline" "$F" && rg -q "Debug-profile comparison: unchanged.*3/3.*3/3" "$F" && rg -q "Geometry comparison: not applicable.*caught panic count is 0.*no affected computation was observed" "$F"; then echo PASS; else echo "FAIL: cargo/test-result/FINDINGS checks failed"; exit 1; fi'` — FACT: the debug-profile suite status must match the Step-1 baseline, and the required `FINDINGS.md` headings plus explicit unchanged-status and no-affected-geometry evidence must exist (AC-2). The `build-guests --check` prefix is mandatory — `--test integration` loads core-module WASMs, so a stale guest would fail this workload and be misattributed to the new guard. **Do not re-add a "raw panic count must be 0" clause:** `catch_unwind` does not suppress the default panic hook, `rg 'set_hook|take_hook' crates/slicer-core/src/` returns nothing, and the process-global-hook alternative was rejected as racy under the `par_iter` in `crates/slicer-runtime/src/layer_executor.rs`. See AC-2 in `packet.spec.md`.
   - `bash -c 'rg -c "fpv_?\.is_finite|assertion failed.*is_finite" target/183-parity.log || echo "0 raw panic lines"'` — FACT: **recorded, not asserted.** Raw panic lines are expected to persist (the guard converts the unwind, not the printing); the count is a datum for `FINDINGS.md`, not a pass/fail gate.
   - `bash -c 'rg -q "## Caught panic count" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && rg -q "## Input characterization" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && echo PASS || echo FAIL'` — FACT PASS/FAIL.
-- Exit condition: the suite's pass/fail status matches the Step 1 baseline; `FINDINGS.md` carries `## Baseline`, `## Caught panic count`, `## Input characterization`, and `## Suite status vs baseline` — including an explicit `0` if the panics do not reproduce on this tree. Raw stderr panic lines are recorded as a datum, not required to be zero.
+- Exit condition: the debug-profile suite's pass/fail status matches the Step 1 baseline; `FINDINGS.md` carries `## Baseline`, `## Caught panic count`, `## Input characterization`, and `## Suite status vs baseline` — including an explicit `0` if the panics do not reproduce on this tree and an explicit statement that geometry comparison is not applicable when no affected computation was observed. Raw stderr panic lines are recorded as a datum, not required to be zero.
 
 ### Step 5: Write the verdict and update the deviation row
 
@@ -162,7 +166,7 @@
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
-  - `bash -c 'rg -q "## Verdict" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && echo PASS || echo FAIL'` — FACT PASS/FAIL (AC-3).
+  - `bash -c 'F=.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md; if rg -q "^## Caught panic count" "$F" && rg -q "^## Input characterization" "$F" && rg -q "^## Verdict" "$F" && rg -q "Owning layer/region IDs:" "$F" && rg -q "panicking computation.*(live geometry|discarded)" "$F"; then echo PASS; else echo FAIL; exit 1; fi'` — FACT PASS/FAIL (AC-3).
   - `rg -q '^\|\s*D-167-BOOSTVORONOI-ROBUST-FPT-PANICS\b.*\|\s*\*{0,2}(Closed|Open — narrowed)[^|]*\|?\s*$' docs/DEVIATION_LOG.md && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-4). Copy verbatim: the alternation pipe must be bare `|` (rg's `\|` is a *literal* pipe, which makes the check unpassable), and the `[^|]*\|?\s*$` tail is what pins the match to the Status cell instead of matching "Closed" anywhere in the row. See AC-4 in `packet.spec.md` for the full rationale.
 - Exit condition: the verdict is explicit, the D-167 row matches it, and any successor id was re-derived from the log at the moment of writing rather than assumed from this packet's text.
 
@@ -183,10 +187,12 @@ Split before activation if aggregate cost exceeds M or any step is L.
 
 - All steps and exits complete.
 - Every pipe-suffixed AC command returns PASS.
-- `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` are clean.
+- `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo xtask test --summary --workspace` are clean. The workspace test gate must run through `cargo xtask test` so the guest freshness check fires first; its `VERDICT` and process exit must agree.
+- The now-passing `pnp_cli_rebuild_abort_is_nonzero_with_named_failure_detail` test in `xtask/src/test.rs` is recorded in `FINDINGS.md`; it proves nonzero status plus named failure detail for the synthetic controlled runner, not a real `pnp_cli` kill.
+- The `support-surface-ironing --test ironing_tdd` failures remain a separately tracked external fixture blocker under `modules/core-modules/support-surface-ironing/**`; they are out of scope and must not be conflated with packet-local completion or the passing named abort-path evidence.
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read: register `TASK-296` complete and reconcile the D-167 line.
 - If the verdict is "geometry is lost", the successor deviation row exists and a follow-up packet for `preprocess_input_outline` hardening is appended to `docs/specs/deviation-backlog-remediation-plan.md`'s Packet Queue.
-- The `medial_axis` degrade-to-empty inconsistency row is filed (Low / Open, id re-derived at filing time), and no ADR was authored for it. Verify: `bash -c 'rg -q "medial_axis" docs/DEVIATION_LOG.md && echo PASS || echo "FAIL: inconsistency row not filed"'`.
+- The `medial_axis` degrade-to-empty inconsistency row is filed (Low / Open, id re-derived at filing time), and no ADR was authored for it. Verify: `bash -c 'rg -q "^\|.*DEV-[0-9]{3}.*(\bLow\b.*\bOpen\b.*medial_axis|\bLow\b.*medial_axis.*\bOpen\b|\bOpen\b.*\bLow\b.*medial_axis|\bOpen\b.*medial_axis.*\bLow\b|medial_axis.*\bLow\b.*\bOpen\b|medial_axis.*\bOpen\b.*\bLow\b).*\|$" docs/DEVIATION_LOG.md && echo PASS || echo "FAIL: dedicated Low/Open medial_axis deviation row not filed"'`.
 - Step 0's attribution stands: `FINDINGS.md` `## Panic attribution` names the producing call site, and the guard was scoped to it — not assumed.
 - No reopened/superseded packet transitions apply.
 - `packet.spec.md` is ready for `status: implemented`.
@@ -194,7 +200,28 @@ Split before activation if aggregate cost exceeds M or any step is L.
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
+- Re-dispatch the reopened DEV-098 checks: the ordinary workspace test build
+  does not enable `boostvoronoi/console_debug`; the explicit
+  `voronoi_panic_regression` target does enable it and passes; removing the
+  production catch arm makes that target fail; and
+  `cargo xtask test --summary --workspace` reaches the executor without a
+  process-abort failure. The current ceremony run remains red on the
+  independently reproducible unrelated unit assertion recorded in
+  `FINDINGS.md`; packet 183 stays active until that workspace gate is cleared
+  or explicitly accepted by the maintainer.
+- The now-passing named abort-path test is
+  `pnp_cli_rebuild_abort_is_nonzero_with_named_failure_detail` in
+  `xtask/src/test.rs` (`cargo test -p xtask`, 41/41 green). It proves the
+  synthetic controlled runner returns nonzero and reports named failure
+  detail; it is not a real `pnp_cli` kill.
+- The `support-surface-ironing --test ironing_tdd` failures are the independent
+  external fixture blocker recorded in `FINDINGS.md` and are explicitly out of
+  scope under `modules/core-modules/support-surface-ironing/**`. They remain a
+  separate workspace-gate concern and must not be conflated with packet-local
+  completion or with the passing named abort-path evidence.
+- Exercise the `pnp_cli` rebuild failure path and require `cargo xtask test` to
+  return a nonzero exit code rather than treating the aborted run as a pass.
 - Record remaining packet-local risk: this packet makes a previously-unwinding failure observable; it does **not** harden the degenerate inputs. If the verdict is that geometry was being lost, that defect remains open under the successor id and must not be reported as closed by this packet.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+Workspace `cargo check` and `cargo clippy` gates use `--all-targets`; targeted `cargo test --test ...` verification commands intentionally select their named test binary. Do not combine `--all-targets` with an explicit `--test` target: the workspace check/clippy gates compile all targets, while targeted test commands verify the requested binary.

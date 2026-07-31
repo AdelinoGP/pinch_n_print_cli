@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-296`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `active`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -35,6 +35,13 @@ This is one coherent slice: add the missing guard (which is also the instrumenta
 - Add a degenerate-input regression test to the existing `voronoi_stress` binary proving `voronoi_from_segments` returns a `Result` rather than unwinding.
 - Write `FINDINGS.md` in this packet directory recording counts, input characterization, and an explicit verdict.
 - Update the D-167 row in `docs/DEVIATION_LOG.md` with the verdict.
+- Remove the workspace-wide feature leak caused by the `console_debug` dev
+  dependency: expose it through an explicitly invoked `slicer-core` feature
+  and isolate the synthetic panic regression in its own required-feature test
+  target.
+- Make `cargo xtask test` fail nonzero when the `pnp_cli` rebuild aborts, and
+  make `--summary` report allocator/test-binary abort evidence when no
+  libtest failure block exists.
 
 ## Out of Scope
 
@@ -55,6 +62,9 @@ Reference, never copy, criteria from `packet.spec.md`.
 - Positive: `AC-0` (baseline panics attributed to a call site before the guard is scoped), `AC-1` (guard + distinct error variant present), `AC-2` (`perimeter_parity` pass/fail status unchanged from baseline, and the baseline / caught-panic / suite-status sections recorded in `FINDINGS.md` — **not** "zero raw panic lines", which is unsatisfiable: `catch_unwind` does not suppress the default panic hook and nothing in `crates/slicer-core/src/` installs one), `AC-3` (`FINDINGS.md` records counts, input characterization, and an explicit verdict), `AC-4` (D-167 row carries the verdict).
 - Negative: `AC-N1` (degenerate segment set returns a `Result` instead of unwinding the calling thread).
 - Cross-packet impact: the verdict gates the queued T3 D-154 packet's design; if the verdict is "geometry is lost", a successor packet owning `preprocess_input_outline` hardening must be filed and named in the D-167 row.
+- Reopen impact: the packet-level completion gate must execute the workspace
+  test suite through `cargo xtask test --summary --workspace`, not only
+  compile-only gates.
 
 ## Verification Commands
 
@@ -69,6 +79,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 | `cargo test -p slicer-core --features host-algos --test voronoi_stress -- voronoi_from_segments_degenerate_input_returns_result_not_panic --exact 2>&1 \| tail -20` | AC-N1 no unwind | FACT pass/fail |
 | `cargo check --workspace --all-targets` | Compilation gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint gate | FACT pass/fail |
+| `cargo xtask test --summary --workspace` | Reopened workspace test gate, including guest freshness | FACT pass/fail; inspect `target/test-output.log` |
 
 ## Step Completion Expectations
 

@@ -1,12 +1,12 @@
 use std::fs;
+use std::io::{self, Read, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::build_guests;
-
-// Note: we spawn via a shell (cmd /C on Windows, sh -c on Unix) so we can use
-// `tee` to stream live output while also capturing it to the log file.
 
 fn newest_mtime_in(root: &Path) -> Option<SystemTime> {
     fn visit(path: &Path, newest: &mut Option<SystemTime>) {
@@ -155,42 +155,12 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         }
     }
 
-    let exe_name = if cfg!(windows) {
-        "pnp_cli.exe"
-    } else {
-        "pnp_cli"
-    };
-    let pnp_cli_path = ["release", "debug"]
-        .iter()
-        .map(|profile| ws_root.join("target").join(profile).join(exe_name))
-        .find(|path| path.is_file());
-    let newest_source_mtime = build_guests::compute_shared_freshness(ws_root).newest_mtime;
-    let pnp_cli_mtime_src = newest_mtime_in(&ws_root.join("crates/pnp-cli/src"))
-        .into_iter()
-        .chain(build_guests::file_mtime(
-            &ws_root.join("crates/pnp-cli/Cargo.toml"),
-        ))
-        .max()
-        .unwrap_or(UNIX_EPOCH);
-    let cutoff = newest_source_mtime.max(pnp_cli_mtime_src);
-    let pnp_cli_mtime = pnp_cli_path.as_deref().and_then(build_guests::file_mtime);
-    if pnp_cli_mtime.is_none_or(|mtime| cutoff > mtime) {
-        eprintln!("xtask test: pnp_cli is stale or absent; rebuilding...");
-        match Command::new("cargo")
-            .args(["build", "--bin", "pnp_cli"])
-            .current_dir(ws_root)
-            .status()
-        {
-            Ok(status) if status.success() => {}
-            Ok(status) => {
-                eprintln!("xtask test: pnp_cli rebuild failed; aborting test run.");
-                return status.code().unwrap_or(1);
-            }
-            Err(error) => {
-                eprintln!("xtask test: failed to start pnp_cli rebuild: {error}");
-                return 1;
-            }
+    let freshness = ensure_pnp_cli_fresh(ws_root);
+    if freshness.code != 0 {
+        if let Some(detail) = freshness.failure_detail {
+            eprintln!("{detail}");
         }
+        return freshness.code;
     }
 
     // Step 2: ensure target/ exists; choose output strategy.
@@ -237,39 +207,14 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         let succeeded = out.status.success();
         (code, succeeded)
     } else {
-        // Live-stream mode: shell out with `tee` so output is visible AND logged.
-        #[cfg(windows)]
-        {
-            let test_cmd = format!(
-                "cargo test {} 2>&1 | tee {}",
-                test_args.join(" "),
-                log_path.display()
-            );
-            eprintln!("xtask test: running `cargo test {}`", test_args.join(" "));
-            match Command::new("cmd").arg("/C").arg(&test_cmd).status() {
-                Ok(s) if s.success() => (s.code().unwrap_or(0), true),
-                Ok(s) => (s.code().unwrap_or(1), false),
-                Err(e) => {
-                    eprintln!("xtask test: failed to spawn cargo test: {e}");
-                    return 1;
-                }
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let test_cmd = format!(
-                "cargo test {} 2>&1 | tee {}",
-                test_args.join(" "),
-                log_path.display()
-            );
-            eprintln!("xtask test: running `cargo test {}`", test_args.join(" "));
-            match Command::new("sh").arg("-c").arg(&test_cmd).status() {
-                Ok(s) if s.success() => (s.code().unwrap_or(0), true),
-                Ok(s) => (s.code().unwrap_or(1), false),
-                Err(e) => {
-                    eprintln!("xtask test: failed to spawn cargo test: {e}");
-                    return 1;
-                }
+        // Stream both child pipes directly so a shell pipeline cannot replace
+        // cargo's failure status with `tee`'s successful exit status.
+        eprintln!("xtask test: running `cargo test {}`", test_args.join(" "));
+        match run_streaming_test(ws_root, &test_args, &log_path) {
+            Ok(code) => (code, code == 0),
+            Err(error) => {
+                eprintln!("xtask test: {error}");
+                return 1;
             }
         }
     };
@@ -283,6 +228,144 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     }
 
     exit_code
+}
+
+/// Outcome of the pnp_cli freshness gate: the exit code `test_command` should
+/// propagate (0 = fresh or rebuilt) plus, on abort, the named process-failure
+/// detail identifying which subprocess failed.
+struct PnpCliFreshness {
+    code: i32,
+    failure_detail: Option<String>,
+}
+
+fn ensure_pnp_cli_fresh(ws_root: &Path) -> PnpCliFreshness {
+    ensure_pnp_cli_fresh_with(ws_root, |ws_root| {
+        Command::new("cargo")
+            .args(["build", "--bin", "pnp_cli"])
+            .current_dir(ws_root)
+            .status()
+    })
+}
+
+fn ensure_pnp_cli_fresh_with(
+    ws_root: &Path,
+    run_rebuild: impl FnOnce(&Path) -> io::Result<std::process::ExitStatus>,
+) -> PnpCliFreshness {
+    let exe_name = if cfg!(windows) {
+        "pnp_cli.exe"
+    } else {
+        "pnp_cli"
+    };
+    let pnp_cli_path = ["release", "debug"]
+        .iter()
+        .map(|profile| ws_root.join("target").join(profile).join(exe_name))
+        .find(|path| path.is_file());
+    let newest_source_mtime = build_guests::compute_shared_freshness(ws_root).newest_mtime;
+    let pnp_cli_mtime_src = newest_mtime_in(&ws_root.join("crates/pnp-cli/src"))
+        .into_iter()
+        .chain(build_guests::file_mtime(
+            &ws_root.join("crates/pnp-cli/Cargo.toml"),
+        ))
+        .max()
+        .unwrap_or(UNIX_EPOCH);
+    let cutoff = newest_source_mtime.max(pnp_cli_mtime_src);
+    let pnp_cli_mtime = pnp_cli_path.as_deref().and_then(build_guests::file_mtime);
+    if pnp_cli_mtime.is_some_and(|mtime| cutoff <= mtime) {
+        return PnpCliFreshness {
+            code: 0,
+            failure_detail: None,
+        };
+    }
+    eprintln!("xtask test: pnp_cli is stale or absent; rebuilding...");
+    match run_rebuild(ws_root) {
+        Ok(status) if status.success() => PnpCliFreshness {
+            code: 0,
+            failure_detail: None,
+        },
+        Ok(_) => {
+            // Do not propagate the platform-specific process status: the
+            // xtask entry point narrows i32 codes to ExitCode's u8 and a
+            // failed subprocess code can otherwise wrap to zero.
+            let detail = "xtask test: pnp_cli rebuild failed; aborting test run.".to_string();
+            PnpCliFreshness {
+                code: 1,
+                failure_detail: Some(detail),
+            }
+        }
+        Err(error) => {
+            let detail = format!("xtask test: failed to start pnp_cli rebuild: {error}");
+            PnpCliFreshness {
+                code: 1,
+                failure_detail: Some(detail),
+            }
+        }
+    }
+}
+
+fn run_streaming_test(
+    ws_root: &Path,
+    test_args: &[String],
+    log_path: &Path,
+) -> Result<i32, String> {
+    let log = fs::File::create(log_path)
+        .map_err(|error| format!("failed to create {}: {error}", log_path.display()))?;
+    let log = Arc::new(Mutex::new(log));
+
+    let mut child = Command::new("cargo")
+        .arg("test")
+        .args(test_args)
+        .current_dir(ws_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to spawn cargo test: {error}"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "cargo test stdout pipe was not available".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "cargo test stderr pipe was not available".to_string())?;
+
+    let stdout_log = Arc::clone(&log);
+    let stdout_thread = thread::spawn(move || tee_reader(stdout, io::stdout(), stdout_log));
+    let stderr_thread = thread::spawn(move || tee_reader(stderr, io::stderr(), log));
+
+    let status = child
+        .wait()
+        .map_err(|error| format!("failed waiting for cargo test: {error}"))?;
+    stdout_thread
+        .join()
+        .map_err(|_| "cargo test stdout tee thread panicked".to_string())?
+        .map_err(|error| format!("failed writing cargo stdout: {error}"))?;
+    stderr_thread
+        .join()
+        .map_err(|_| "cargo test stderr tee thread panicked".to_string())?
+        .map_err(|error| format!("failed writing cargo stderr: {error}"))?;
+
+    Ok(status.code().unwrap_or(1))
+}
+
+fn tee_reader<R, W>(mut reader: R, mut terminal: W, log: Arc<Mutex<fs::File>>) -> io::Result<()>
+where
+    R: Read,
+    W: Write,
+{
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(());
+        }
+
+        terminal.write_all(&buffer[..count])?;
+        let mut log = log
+            .lock()
+            .map_err(|_| io::Error::other("test log mutex was poisoned"))?;
+        log.write_all(&buffer[..count])?;
+    }
 }
 
 /// Print a compact, LLM-friendly digest of the test log.
@@ -368,7 +451,8 @@ fn print_summary(log_path: &Path, succeeded: bool) {
         }
     }
 
-    let has_failures = !blocks.is_empty() || !bare_panics.is_empty();
+    let process_details = collect_process_failure_details(&lines);
+    let has_failures = !blocks.is_empty() || !bare_panics.is_empty() || !process_details.is_empty();
     if has_failures {
         println!();
         println!("---- failure detail ----");
@@ -382,6 +466,9 @@ fn print_summary(log_path: &Path, succeeded: bool) {
         for p in &bare_panics {
             println!("{p}");
         }
+        for detail in &process_details {
+            println!("{detail}");
+        }
     }
 
     // 3. Final verdict.
@@ -390,5 +477,100 @@ fn print_summary(log_path: &Path, succeeded: bool) {
         println!("VERDICT: PASS");
     } else {
         println!("VERDICT: FAIL");
+    }
+}
+
+/// Extract failure evidence that libtest does not format as a per-test block.
+///
+/// An allocator abort can terminate a test binary while the other workspace
+/// binaries have already printed green summaries. In that case there is no
+/// `FAILED` test block or panic line for `print_summary` to collect, but Cargo
+/// still records the abnormal process exit and the allocator may leave a
+/// diagnostic marker in the log.
+fn collect_process_failure_details(lines: &[&str]) -> Vec<String> {
+    let hard_markers = [
+        "error: test failed",
+        "process didn't exit successfully:",
+        "OOM-GUARD TRIPPED",
+        "requested SINGLE allocation",
+    ];
+    let has_hard_marker = lines
+        .iter()
+        .any(|line| hard_markers.iter().any(|marker| line.contains(marker)));
+    if !has_hard_marker {
+        return Vec::new();
+    }
+
+    lines
+        .iter()
+        .filter(|line| {
+            hard_markers.iter().any(|marker| line.contains(marker))
+                || line.contains("has been running for over")
+        })
+        .map(|line| (*line).to_string())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_process_failure_details;
+
+    #[test]
+    fn summary_collects_allocator_abort_without_libtest_failure_block() {
+        let lines = [
+            "test cube_4color_gcode_output_tdd::mmu_no_oversized_alloc_repeat has been running for over 60 seconds",
+            "=================== OOM-GUARD TRIPPED (SINGLE) ===================",
+            "requested SINGLE allocation = 1744830464 bytes  (1.625 GiB)",
+            "Caused by:",
+            "process didn't exit successfully: executor.exe (exit code: 173)",
+        ];
+
+        let details = collect_process_failure_details(&lines);
+
+        assert!(details
+            .iter()
+            .any(|line| line.contains("mmu_no_oversized_alloc_repeat")));
+        assert!(details.iter().any(|line| line.contains("1744830464")));
+        assert!(details.iter().any(|line| line.contains("exit code: 173")));
+    }
+
+    #[test]
+    fn summary_ignores_long_running_notice_without_failure_marker() {
+        let lines = [
+            "test slow_test has been running for over 60 seconds",
+            "test slow_test ... ok",
+        ];
+
+        assert!(collect_process_failure_details(&lines).is_empty());
+    }
+
+    #[test]
+    fn pnp_cli_rebuild_abort_is_nonzero_with_named_failure_detail() {
+        // An empty workspace root has no target/{release,debug}/pnp_cli binary,
+        // so the freshness gate deterministically decides a rebuild is needed
+        // and invokes the injected runner instead of the real cargo build.
+        let ws_root = std::env::temp_dir().join(format!(
+            "xtask-pnp-cli-rebuild-abort-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&ws_root).expect("create fake workspace root");
+
+        #[cfg(windows)]
+        let failed_status = std::os::windows::process::ExitStatusExt::from_raw(1);
+        #[cfg(unix)]
+        let failed_status = std::os::unix::process::ExitStatusExt::from_raw(1 << 8);
+
+        let outcome = super::ensure_pnp_cli_fresh_with(&ws_root, move |_| Ok(failed_status));
+
+        std::fs::remove_dir_all(&ws_root).ok();
+
+        assert_ne!(outcome.code, 0, "rebuild abort must return nonzero");
+        let detail = outcome
+            .failure_detail
+            .expect("rebuild abort must report named process-failure detail");
+        assert!(
+            detail.contains("pnp_cli rebuild failed"),
+            "failure detail must name the failing process, got: {detail}"
+        );
     }
 }

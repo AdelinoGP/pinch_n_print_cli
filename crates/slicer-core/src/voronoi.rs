@@ -284,47 +284,6 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
         })
         .collect();
 
-    let segment_count = segments.len();
-    let first_segment = segments[0];
-    let (mut min_x, mut min_y, mut max_x, mut max_y) = (
-        first_segment.a.x,
-        first_segment.a.y,
-        first_segment.a.x,
-        first_segment.a.y,
-    );
-    let mut has_zero_length_segment = false;
-    for segment in segments {
-        min_x = min_x.min(segment.a.x).min(segment.b.x);
-        min_y = min_y.min(segment.a.y).min(segment.b.y);
-        max_x = max_x.max(segment.a.x).max(segment.b.x);
-        max_y = max_y.max(segment.a.y).max(segment.b.y);
-        has_zero_length_segment |= segment.a == segment.b;
-    }
-
-    const NEAR_COLLINEAR_EPSILON: f64 = 1e-9;
-    let mut has_duplicate_endpoint = false;
-    let mut has_near_collinear_pair = false;
-    for (left_index, left) in segments.iter().enumerate() {
-        for right in segments.iter().skip(left_index + 1) {
-            let shares_endpoint =
-                left.a == right.a || left.a == right.b || left.b == right.a || left.b == right.b;
-            if !shares_endpoint {
-                continue;
-            }
-
-            has_duplicate_endpoint = true;
-            let left_dx = (i128::from(left.b.x) - i128::from(left.a.x)) as f64;
-            let left_dy = (i128::from(left.b.y) - i128::from(left.a.y)) as f64;
-            let right_dx = (i128::from(right.b.x) - i128::from(right.a.x)) as f64;
-            let right_dy = (i128::from(right.b.y) - i128::from(right.a.y)) as f64;
-            let cross = (left_dx * right_dy - left_dy * right_dx).abs();
-            let direction_scale = left_dx.hypot(left_dy) * right_dx.hypot(right_dy);
-            if direction_scale > 0.0 && cross <= NEAR_COLLINEAR_EPSILON * direction_scale {
-                has_near_collinear_pair = true;
-            }
-        }
-    }
-
     let builder = Builder::<i64>::default()
         .with_segments(lines.iter())
         .map_err(map_bv_error)?;
@@ -337,6 +296,49 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
         Ok(Ok(diagram)) => diagram,
         Ok(Err(err)) => return Err(map_bv_error(err)),
         Err(_) => {
+            let segment_count = segments.len();
+            let first_segment = segments[0];
+            let (mut min_x, mut min_y, mut max_x, mut max_y) = (
+                first_segment.a.x,
+                first_segment.a.y,
+                first_segment.a.x,
+                first_segment.a.y,
+            );
+            let mut has_zero_length_segment = false;
+            for segment in segments {
+                min_x = min_x.min(segment.a.x).min(segment.b.x);
+                min_y = min_y.min(segment.a.y).min(segment.b.y);
+                max_x = max_x.max(segment.a.x).max(segment.b.x);
+                max_y = max_y.max(segment.a.y).max(segment.b.y);
+                has_zero_length_segment |= segment.a == segment.b;
+            }
+
+            const NEAR_COLLINEAR_EPSILON: f64 = 1e-9;
+            let mut has_duplicate_endpoint = false;
+            let mut has_near_collinear_pair = false;
+            for (left_index, left) in segments.iter().enumerate() {
+                for right in segments.iter().skip(left_index + 1) {
+                    let shares_endpoint = left.a == right.a
+                        || left.a == right.b
+                        || left.b == right.a
+                        || left.b == right.b;
+                    if !shares_endpoint {
+                        continue;
+                    }
+
+                    has_duplicate_endpoint = true;
+                    let left_dx = (i128::from(left.b.x) - i128::from(left.a.x)) as f64;
+                    let left_dy = (i128::from(left.b.y) - i128::from(left.a.y)) as f64;
+                    let right_dx = (i128::from(right.b.x) - i128::from(right.a.x)) as f64;
+                    let right_dy = (i128::from(right.b.y) - i128::from(right.a.y)) as f64;
+                    let cross = (left_dx * right_dy - left_dy * right_dx).abs();
+                    let direction_scale = left_dx.hypot(left_dy) * right_dx.hypot(right_dy);
+                    if direction_scale > 0.0 && cross <= NEAR_COLLINEAR_EPSILON * direction_scale {
+                        has_near_collinear_pair = true;
+                    }
+                }
+            }
+
             return Err(VoronoiError::PredicatePanic {
                 segment_count,
                 min_x,
@@ -346,7 +348,7 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
                 has_duplicate_endpoint,
                 has_zero_length_segment,
                 has_near_collinear_pair,
-            })
+            });
         }
     };
 
