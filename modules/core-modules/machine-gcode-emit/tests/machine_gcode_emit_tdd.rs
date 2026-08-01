@@ -137,6 +137,409 @@ fn whitespace_only_template_is_skipped() {
 }
 
 // ---------------------------------------------------------------------------
+// Layer-scoped custom G-code
+// ---------------------------------------------------------------------------
+
+#[test]
+fn layer_scoped_points_emit_in_canonical_order() {
+    let output = run(
+        &[
+            (
+                "before_layer_change_gcode",
+                ConfigValue::String("BEFORE".into()),
+            ),
+            ("time_lapse_gcode", ConfigValue::String("TIMELAPSE".into())),
+            ("layer_change_gcode", ConfigValue::String("CHANGE".into())),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.200".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.200".into(),
+            },
+            GCodeCommand::Raw {
+                text: "G1 X1".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";LAYER_CHANGE",
+            ";Z:0.200",
+            ";HEIGHT:0.200",
+            "BEFORE",
+            "TIMELAPSE",
+            "CHANGE",
+            "G1 X1",
+        ],
+        "layer-scoped points must follow the complete layer marker triple in canonical order"
+    );
+}
+
+#[test]
+fn layer_variables_are_one_based_and_carry_source_text() {
+    let output = run(
+        &[(
+            "layer_change_gcode",
+            ConfigValue::String("L=[layer_num] Z=[layer_z] MAX=[max_layer_z]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.6".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.6".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";LAYER_CHANGE",
+            ";Z:0.2",
+            ";HEIGHT:0.2",
+            "L=1 Z=0.2 MAX=0.2",
+            ";LAYER_CHANGE",
+            ";Z:0.4",
+            ";HEIGHT:0.4",
+            "L=2 Z=0.4 MAX=0.4",
+            ";LAYER_CHANGE",
+            ";Z:0.6",
+            ";HEIGHT:0.6",
+            "L=3 Z=0.6 MAX=0.6",
+        ],
+        "layer variables must be one-based and preserve the source Z text"
+    );
+}
+
+#[test]
+fn machine_end_gcode_sees_final_layer_context() {
+    let output = run(
+        &[(
+            "machine_end_gcode",
+            ConfigValue::String("END L=[layer_num] Z=[layer_z] MAX=[max_layer_z]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.6".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.6".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";LAYER_CHANGE",
+            ";Z:0.2",
+            ";HEIGHT:0.2",
+            ";LAYER_CHANGE",
+            ";Z:0.4",
+            ";HEIGHT:0.4",
+            ";LAYER_CHANGE",
+            ";Z:0.6",
+            ";HEIGHT:0.6",
+            "END L=3 Z=0.6 MAX=0.6",
+        ],
+        "machine_end_gcode must resolve against the final layer context"
+    );
+}
+
+#[test]
+fn unset_layer_points_emit_nothing() {
+    let output = run(
+        &[
+            ("machine_start_gcode", ConfigValue::String("START".into())),
+            (
+                "before_layer_change_gcode",
+                ConfigValue::String(String::new()),
+            ),
+            ("time_lapse_gcode", ConfigValue::String(String::new())),
+            ("layer_change_gcode", ConfigValue::String(String::new())),
+            ("machine_end_gcode", ConfigValue::String("END".into())),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.6".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.6".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.8".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.8".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            "START",
+            ";LAYER_CHANGE",
+            ";Z:0.2",
+            ";HEIGHT:0.2",
+            ";LAYER_CHANGE",
+            ";Z:0.4",
+            ";HEIGHT:0.4",
+            ";LAYER_CHANGE",
+            ";Z:0.6",
+            ";HEIGHT:0.6",
+            ";LAYER_CHANGE",
+            ";Z:0.8",
+            ";HEIGHT:0.8",
+            "END",
+        ],
+        "unset layer points must emit no additional Raw commands"
+    );
+}
+
+#[test]
+fn layer_macro_in_start_gcode_passes_through_with_warning() {
+    install_log_capture();
+    let (result, output) = try_run(
+        &[
+            (
+                "machine_start_gcode",
+                ConfigValue::String("START:[layer_num]".into()),
+            ),
+            (
+                "before_layer_change_gcode",
+                ConfigValue::String("BEFORE".into()),
+            ),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.200".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.200".into(),
+            },
+        ],
+    );
+    let logs = take_log_messages();
+
+    result.expect("an unavailable layer macro at start must not fail the slice");
+    assert!(
+        raw_texts(&output).contains(&"START:[layer_num]".to_string()),
+        "an unavailable layer macro must pass through verbatim: {:?}",
+        raw_texts(&output)
+    );
+    assert!(
+        raw_texts(&output).contains(&"BEFORE".to_string()),
+        "the layer registry must still emit configured layer points: {:?}",
+        raw_texts(&output)
+    );
+    let warnings: Vec<&str> = logs
+        .iter()
+        .filter(|(level, _)| *level == LogLevel::Warn)
+        .map(|(_, msg)| msg.as_str())
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "an unavailable start-layer macro must produce exactly one warning: {logs:?}"
+    );
+    assert!(
+        warnings[0].contains("layer_num")
+            && warnings[0].contains("machine_start_gcode")
+            && warnings[0].contains("PrintStart"),
+        "the warning must name the unavailable key and its site: {warnings:?}"
+    );
+}
+
+/// Per `docs/adr/0051-gcode-marker-contract-ownership.md` (amendment
+/// recorded as `D-285-ADR-0051-AMENDED` in `docs/DEVIATION_LOG.md`): a
+/// `;LAYER_CHANGE` with no `;Z:` within two commands emits exactly one
+/// `ERR_MALFORMED_LAYER_MARKER` warning, reuses the prior layer Z, and
+/// returns `Ok`. The warning is the obligation; the prior Z is the documented
+/// fallback.
+#[test]
+fn malformed_layer_marker_warns_and_uses_prior_z_per_adr_0051() {
+    install_log_capture();
+    let (result, output) = try_run(
+        &[(
+            "layer_change_gcode",
+            ConfigValue::String("Z=[layer_z]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.250".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.250".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: "G1 X1".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.250".into(),
+            },
+        ],
+    );
+    let logs = take_log_messages();
+
+    result.expect("a malformed layer marker must not fail the slice");
+    let emitted = raw_texts(&output);
+    assert_eq!(
+        emitted
+            .iter()
+            .filter(|text| text.as_str() == "Z=0.250")
+            .count(),
+        2,
+        "a malformed layer marker must reuse the prior source Z: {emitted:?}"
+    );
+    let warnings: Vec<&str> = logs
+        .iter()
+        .filter(|(level, _)| *level == LogLevel::Warn)
+        .map(|(_, msg)| msg.as_str())
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "a malformed layer marker must produce exactly one warning: {logs:?}"
+    );
+    assert!(
+        warnings[0].contains("ERR_MALFORMED_LAYER_MARKER")
+            && warnings[0].contains("command index 3")
+            && warnings[0].contains("LayerChange"),
+        "the malformed-marker warning must carry its identifier, command index, and site: {warnings:?}"
+    );
+}
+
+#[test]
+fn unknown_macro_in_layer_change_gcode_passes_through_with_warning() {
+    install_log_capture();
+    let (result, output) = try_run(
+        &[(
+            "layer_change_gcode",
+            ConfigValue::String("CHANGE:[unknown_layer_key]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.200".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.200".into(),
+            },
+        ],
+    );
+    let logs = take_log_messages();
+
+    result.expect("an unknown layer-change macro must not fail the slice");
+    assert!(
+        raw_texts(&output).contains(&"CHANGE:[unknown_layer_key]".to_string()),
+        "an unknown layer-change macro must pass through verbatim: {:?}",
+        raw_texts(&output)
+    );
+    let warnings: Vec<&str> = logs
+        .iter()
+        .filter(|(level, _)| *level == LogLevel::Warn)
+        .map(|(_, msg)| msg.as_str())
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "an unknown layer-change macro must produce exactly one warning: {logs:?}"
+    );
+    assert!(
+        warnings[0].contains("unknown_layer_key")
+            && warnings[0].contains("layer_change_gcode")
+            && warnings[0].contains("LayerChange"),
+        "the warning must name the unknown key and its site: {warnings:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Placeholder substitution
 // ---------------------------------------------------------------------------
 

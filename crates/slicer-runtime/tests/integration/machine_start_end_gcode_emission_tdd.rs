@@ -1,8 +1,8 @@
 //! TDD test file for packet 59: machine-start-end-gcode-emission.
 //!
-//! Tests compile today but ALL fail because the `machine-gcode-emit` module,
-//! `GCodeCommand::ExtrusionMode` variant, and the five config keys do not yet exist.
-//! This is the intended red state â€” tests graduate to green as production code lands.
+//! The `machine-gcode-emit` module and these tests now exist and cover the five
+//! registered injection points: `machine_start_gcode`, `before_layer_change_gcode`,
+//! `time_lapse_gcode`, `layer_change_gcode`, and `machine_end_gcode`.
 //!
 //! Acceptance criteria sourced from `.ralph/specs/59_machine-start-end-gcode-emission/packet.spec.md`.
 
@@ -420,6 +420,92 @@ fn end_block_position_after_last_g1_before_config_block() {
     assert!(
         print_end_offset < config_start_offset,
         "PRINT_END offset ({print_end_offset}) must be before CONFIG_BLOCK_START ({config_start_offset})"
+    );
+}
+
+/// AC-7: layer-change custom G-code is substituted and emitted once per layer.
+#[test]
+fn layer_change_gcode_fires_once_per_emitted_layer() {
+    let mut raw = HashMap::new();
+    raw.insert(
+        ConfigKey::from("layer_change_gcode"),
+        ConfigValue::String("; PNP_LAYER [layer_num] AT [layer_z]".to_string()),
+    );
+
+    let gcode = try_slice_with_raw(raw).expect("pipeline must succeed");
+    let lines: Vec<&str> = gcode.lines().collect();
+
+    let total_layers_line = lines
+        .iter()
+        .find(|line| line.starts_with("; total layer number:"))
+        .expect("header must contain total layer number");
+    let total_layers: usize = total_layers_line
+        .strip_prefix("; total layer number:")
+        .and_then(|value| value.trim().parse().ok())
+        .expect("total layer number must be an integer");
+
+    let marker_positions: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| (*line == ";LAYER_CHANGE").then_some(index))
+        .collect();
+    assert_eq!(
+        marker_positions.len(),
+        total_layers,
+        "LAYER_CHANGE marker count must match the header total"
+    );
+
+    let injected_lines: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| line.starts_with("; PNP_LAYER "))
+        .collect();
+    assert_eq!(
+        injected_lines.len(),
+        marker_positions.len(),
+        "layer-change G-code must be emitted exactly once per LAYER_CHANGE marker"
+    );
+
+    for (layer_index, marker_position) in marker_positions.iter().enumerate() {
+        let segment_end = marker_positions
+            .get(layer_index + 1)
+            .copied()
+            .unwrap_or(lines.len());
+        let segment_injections: Vec<&str> = lines[*marker_position..segment_end]
+            .iter()
+            .copied()
+            .filter(|line| line.starts_with("; PNP_LAYER "))
+            .collect();
+
+        assert_eq!(
+            segment_injections.len(),
+            1,
+            "layer {} must have exactly one custom G-code line",
+            layer_index + 1
+        );
+        let expected_prefix = format!("; PNP_LAYER {} AT ", layer_index + 1);
+        assert!(
+            segment_injections[0].starts_with(&expected_prefix),
+            "layer {} custom G-code must resolve [layer_num]: {:?}",
+            layer_index + 1,
+            segment_injections[0]
+        );
+        assert!(
+            !segment_injections[0][expected_prefix.len()..]
+                .trim()
+                .is_empty(),
+            "layer {} custom G-code must resolve [layer_z]",
+            layer_index + 1
+        );
+    }
+
+    let first_layer_z = injected_lines[0]
+        .strip_prefix("; PNP_LAYER 1 AT ")
+        .expect("first injected line must start with layer 1")
+        .trim();
+    assert!(
+        !first_layer_z.is_empty(),
+        "first line must read `; PNP_LAYER 1 AT <first-layer-z>`"
     );
 }
 

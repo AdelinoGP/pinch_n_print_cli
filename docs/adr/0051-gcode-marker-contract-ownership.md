@@ -92,6 +92,52 @@ closest this gets today, and it is the boundary to watch.
   regression pin on output aesthetics; it is the contract test for a
   cross-crate format. Weakening or regenerating it to accommodate a marker
   change is the wrong move — see obligation 1.
+
+## Amendment — 2026-08-01 (packet 187)
+
+This amendment retires the obligation #3 clause below verbatim, in both of its
+prose forms, and replaces it with the warn-and-pass behaviour
+`.ralph/specs/187-custom-gcode-injection-registry` lands for
+`machine-gcode-emit`. The amendment is recorded in
+`docs/DEVIATION_LOG.md` as `D-285-ADR-0051-AMENDED`.
+
+### Retired clause (verbatim, lines 78–83 of the original)
+
+> 3. **A consumer must fail loudly on an unrecognised stream, never guess.**
+>    Packet 187's `ERR_MALFORMED_LAYER_MARKER` is the pattern: a `;LAYER_CHANGE`
+>    without a `;Z:` within two commands is a fatal module error naming the
+>    command index. The rejected alternative — reuse the previous layer's Z —
+>    would put a plausible wrong number into printer G-code, which is exactly the
+>    class of failure the custom-G-code trilogy exists to remove.
+
+### What stands
+
+The architecture of obligation #3 stands: a consumer must surface a malformed
+marker stream to the user, never silently guess at a Z it cannot observe. The
+user-facing **"no silent guess"** half of the obligation is preserved. The
+mechanism for surfacing the malformed stream, and the rule for what to do
+instead of guessing, are the parts that change.
+
+Obligations #1, #2 and #4 are unchanged: a marker-spelling change is still a
+coordinated cross-crate change, every consumer must be registered in the table
+above, and consumers outside `slicer-gcode` still do not emit these markers.
+
+### Replacement text
+
+A consumer must surface a malformed stream to the user, never silently guess.
+For `machine-gcode-emit`, surface means: emit exactly one warning named
+`ERR_MALFORMED_LAYER_MARKER` per occurrence, continue with the prior layer's Z
+(or, for layer 1, with layer 1's own initial Z context), and return `Ok` from
+`run_gcode_postprocess`. The previous layer's Z is the documented fallback; the
+warning is the obligation.
+
+A future consumer that cannot degrade gracefully — that is, one for which a
+plausible wrong number is *worse* than aborting the slice — must fail loud
+instead, and must record that choice here. The warn-and-pass policy is
+specific to the postpass injection-point model, where the walk can fall back to
+a Z already in scope. Consumers that see the marker stream as their only
+source of Z do not have that fallback and remain on the original "fail loudly"
+rule.
 - **Two consumers parse text; two match structured commands.** `m73.rs` and the
   187 module see `GCodeCommand::Raw` variants before serialization;
   `visual_debug_gcode.rs` and `run.rs` see serialized lines. A change that

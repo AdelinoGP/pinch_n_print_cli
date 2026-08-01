@@ -23,6 +23,7 @@ Costs are copied from `implementation-plan.md` §Per-Step Budget Roll-Up. Aggreg
 | --- | --- | --- |
 | `DEV-085` | **Stays `Open`.** This packet lands the layer-scoped half and cites `TASK-306` on the row; packet 188 closes it. | Step 5 — the `DEV-085` row probe |
 | new `DEV-###` (re-derive) | Residual, four parts in one row: (a) canonical's `layer_change_gcode` resolves **no** `max_layer_z` at all — the `set_key_value` sits after the parse and writes into a local — where PnP supplies one; (a2) the *no*-divergence finding at the other two sites; (b) the unported BBL `generate_timelapse_gcode` path; (c) six unmodelled `layer_change_gcode` variables; (d) canonical's `GCode::change_layer` may interleave `update_progress` / a retract / `add_object_change_labels` between the templates, where PnP interleaves nothing. | Step 5 — AC-13 |
+| `D-285-ADR-0051-AMENDED` | The ADR amendment that ratifies the warn-and-pass behaviour implemented here. Records the retired clause (verbatim, lines 78 and 80 of the original ADR) and the replacement text in the ADR's `## Amendment — 2026-08-01 (packet 187)` section. Cross-references the renamed test `malformed_layer_marker_warns_and_uses_prior_z_per_adr_0051`. The `D-` series is the counter, separate from `DEV-###`; re-derive at the moment of writing. | Step 5 — the new D-285 row probe |
 
 Every `DEV-###` above must have its number **re-derived at the moment the row is written** (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, take the next). Sibling packets file rows concurrently; a number captured earlier in the session will collide.
 
@@ -42,8 +43,16 @@ Check **both** `docs/07_implementation_status.md` and `.ralph/specs/**`; a `docs
 
 This packet **implements** the registry and ownership decisions recorded in `docs/adr/0050-custom-gcode-architecture.md` (placeholder domain = one module's manifest keys plus the alias table; engine ownership private to `machine-gcode-emit`; `INJECTION_POINTS` as a **private closed `const` with declaration-order precedence**) and in `docs/adr/0051-gcode-marker-contract-ownership.md` (the `;LAYER_CHANGE` / `;Z:` / `;HEIGHT:` marker contract — who owns the strings, who may consume them, and what a consumer owes when they change). Its unknown-key contract is warn-and-pass: unavailable per-site variables remain verbatim, the run returns `Ok`, and one warning names the config key and site. Both ADRs are authored by a separate workstream: **do not author or edit them from this packet.** `design.md` no longer carries these as packet-local "Locked Assumptions"; the `;Z:`-only lookahead and its BBL consequence are likewise recorded as a decision pointing at ADR-0051, not as an answered Open Question.
 
+**Exception (2026-08-01):** this packet amends ADR-0051 obligation #3 via the
+`D-285-ADR-0051-AMENDED` row in `docs/DEVIATION_LOG.md` and the corresponding
+`## Amendment — 2026-08-01 (packet 187)` section in the ADR. The amendment
+retires the "fail loudly" framing in two prose forms (the original lines 78
+and 80) and replaces it with a warn-and-pass policy specific to the postpass
+injection-point model. The amendment is the only ADR edit this packet makes;
+ADR-0050 is read but not edited.
+
 `ERR_MALFORMED_LAYER_MARKER` is this packet's warning diagnostic for ADR-0051: a marker-contract consumer carries it while reusing prior Z instead of aborting or mis-splicing silently. The second consumer, `crates/pnp-cli/src/visual_debug_gcode.rs`, is named in `design.md` §Risks.
 
 ## Activation blockers
 
-`140_lightning-module-rewrite` is the only `status: active` packet — **verified with an anchored match**, `rg -l '^status: active' .ralph/specs/*/packet.spec.md`. (An unanchored search for the word "active" matches prose in several draft packets and produces false positives; packet 190's frontmatter reads `status: draft`.) This packet stays `draft` until 140 clears **and** until 186 is `implemented`.
+`140_lightning-module-rewrite` is the only `status: active` packet — **verified with an anchored match**, `rg -l '^status: active' .ralph/specs/*/packet.spec.md`. (An unanchored search for the word "active" matches prose in several draft packets and produces false positives; packet 190's frontmatter reads `status: draft`.) This packet is `status: implemented` in this commit; its closure does not unblock the backlog's main path. Packet 188 still carries the toolchange-, role- and unreachable-site remainder (and closes `DEV-085`); packet 140 must clear before the custom-G-code trilogy is fully activated. `cargo xtask check-deviations` and the per-step gates continue to gate downstream work; the status flip does not exempt 188's `DEV-085` closure from those.

@@ -41,7 +41,7 @@
   - `run_gcode_postprocess` — replace the two hand-read templates with a registry-driven resolve; add the single forward walk that splices at layer boundaries.
   - New `InjectionSite`, `InjectionPoint`, `INJECTION_POINTS`, `LayerContext`, and a `const ERR_MALFORMED_LAYER_MARKER: u32` warning diagnostic identifier, distinct from the file's existing 1-11 push-failure codes.
   - `machine-gcode-emit.toml` — three new `[config.schema.*]` string blocks, `default = ""`, `group = "Machine G-code"`.
-  - `machine_gcode_emit_tdd.rs` — add `layer_scoped_points_emit_in_canonical_order`, `layer_variables_are_one_based_and_carry_source_text`, `machine_end_gcode_sees_final_layer_context`, `unset_layer_points_emit_nothing`, `layer_macro_in_start_gcode_passes_through_with_warning`, `layer_change_without_z_marker_warns_and_reuses_prior_z`, `unknown_macro_in_layer_change_gcode_passes_through_with_warning`.
+  - `machine_gcode_emit_tdd.rs` — add `layer_scoped_points_emit_in_canonical_order`, `layer_variables_are_one_based_and_carry_source_text`, `machine_end_gcode_sees_final_layer_context`, `unset_layer_points_emit_nothing`, `layer_macro_in_start_gcode_passes_through_with_warning`, `malformed_layer_marker_warns_and_uses_prior_z_per_adr_0051`, `unknown_macro_in_layer_change_gcode_passes_through_with_warning`.
   - `machine_start_end_gcode_emission_tdd.rs` — add `layer_change_gcode_fires_once_per_emitted_layer`.
 - **Rejected alternatives.**
   - *A trait-object per injection point.* Rejected — five points, one placement rule each, no polymorphic behaviour; a trait would spread the ordering across five impls and make the canonical order unreadable at a glance.
@@ -99,6 +99,14 @@ Two primary source files plus the two test files that must gain the new pins. Th
 ## Decisions of Record (ADR-0050 / ADR-0051) and Packet-Local Invariants
 
 **The architectural decisions this packet implements are recorded in `docs/adr/0050-custom-gcode-architecture.md` (custom-G-code architecture) and `docs/adr/0051-gcode-marker-contract-ownership.md` (the `;LAYER_CHANGE` / `;Z:` / `;HEIGHT:` marker contract). Both are authored by a separate workstream — do not author or edit them from this packet.** This packet implements them; it does not decide them, and it must not restate them as packet-local "Locked Assumptions" that a later packet could quietly overwrite:
+
+**Exception (2026-08-01):** this packet amends ADR-0051 obligation #3 via the
+`D-285-ADR-0051-AMENDED` row in `docs/DEVIATION_LOG.md` and the corresponding
+`## Amendment — 2026-08-01 (packet 187)` section in the ADR. The amendment
+retires the "fail loudly" framing in two prose forms (the original lines 78
+and 80) and replaces it with a warn-and-pass policy specific to the postpass
+injection-point model. The amendment is the only ADR edit this packet makes;
+ADR-0050 is read but not edited.
 
 - **Injection-registry shape — ADR-0050.** `INJECTION_POINTS` is a **private, closed `const`**: not `pub`, not host-readable, not extensible by another module, with **declaration-order precedence** for entries that share a site (see §Code Change Surface). Both properties are ADR-0050's; changing either amends the ADR.
 - **Engine ownership — ADR-0050.** The substitution engine, the per-site lookup, and the error constants stay private to `machine-gcode-emit`. Nothing here is promoted to `slicer-sdk`, `slicer-ir`, or the host.

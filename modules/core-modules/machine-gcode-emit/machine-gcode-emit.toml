@@ -2,7 +2,7 @@
 id           = "com.core.machine-gcode-emit"
 version      = "0.1.0"
 display-name = "Machine G-code Emit"
-description  = "Emits machine_start_gcode / machine_end_gcode by prepending and appending Raw commands to the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
+description  = "Emits the five registered injection points machine_start_gcode, before_layer_change_gcode, time_lapse_gcode, layer_change_gcode, and machine_end_gcode by inserting Raw commands into the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
 author       = "modular-slicer"
 license      = "MIT"
 
@@ -38,6 +38,21 @@ group   = "Machine G-code"
 type    = "string"
 default = "PRINT_END"
 display = "Machine End G-code"
+group   = "Machine G-code"
+
+[config.schema.before_layer_change_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.layer_change_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.time_lapse_gcode]
+type    = "string"
+default = ""
 group   = "Machine G-code"
 
 [config.schema.bed_temperature_initial_layer_single]

@@ -135,10 +135,13 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
+| `before_layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
+| `time_lapse_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `inner_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
 | `outer_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
 | `overhang_1_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
@@ -419,64 +422,39 @@ See `docs/02_ir_schemas.md` "G-code envelope blocks" for the full envelope forma
 
 ---
 
-## Machine start / end G-code (packet 59)
+## Custom G-code injection points
+<!-- anchor: custom-gcode-injection-points -->
 
-Keys read by the designated `PostPass::GCodePostProcess` machine-gcode module
-(default: `machine-gcode-emit`). Defaults and ranges are in the generated
-**Module-owned config keys** table above (module `machine-gcode-emit`).
-`machine_start_gcode` / `machine_end_gcode` are templates supporting `[key]`
-placeholder substitution.
+The `machine-gcode-emit` module registers five custom-G-code injection points:
+`machine_start_gcode`, `before_layer_change_gcode`, `time_lapse_gcode`,
+`layer_change_gcode`, and `machine_end_gcode`. Their defaults and types are in
+the generated **Module-owned config keys** table above. Each value is a
+single-pass template using square-bracket placeholders such as `[key]`.
 
-Substitution is a deliberately narrow subset of OrcaSlicer's `PlaceholderParser`:
-single-pass, square-bracket placeholders only, no arithmetic, no conditionals, no
-builtins.
+At a layer boundary, the canonical emission order is the reserved tags
+`;LAYER_CHANGE`, `;Z:`, and `;HEIGHT:`, followed by
+`before_layer_change_gcode`, `time_lapse_gcode`, and
+`layer_change_gcode`, in that order. `machine_start_gcode` is emitted before
+the first layer, and `machine_end_gcode` is emitted after the last layer.
 
-**The placeholder domain is a rule, not a list.** A `[key]` resolves if and only
-if `key` is either (a) declared in this module's own manifest
-(`modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`), or (b) a
-legacy name in the module's placeholder-alias table, which maps an OrcaSlicer
-spelling onto a declared key. Nothing else resolves. The domain therefore grows
-and shrinks with the manifest — read the manifest (or the generated
-**Module-owned config keys** table above, module `machine-gcode-emit`) for the
-current membership rather than trusting a list transcribed here. The decision to
-scope the domain this way is recorded in
-`docs/adr/0050-custom-gcode-architecture.md`.
+The layer macros `[layer_num]`, `[layer_z]`, and `[max_layer_z]` are available
+only at the layer-aware sites: `before_layer_change_gcode`,
+`time_lapse_gcode`, `layer_change_gcode`, and `machine_end_gcode`. They are not
+available at `machine_start_gcode`.
 
-Declared keys usable as macros today include
-`[bed_temperature_initial_layer_single]`, `[nozzle_temperature_initial_layer]`,
-and `[nozzle_diameter]`. `[first_layer_temperature]` is an **alias** of
-`[nozzle_temperature_initial_layer]` — it is not a config key of its own, cannot
-be set, and exists only so canonical-flavoured templates keep working.
+Placeholder availability is site-specific. When a per-site variable is
+unavailable, its placeholder remains verbatim, the run returns `Ok`, and
+exactly one warning names the config key and injection site. The unresolved
+bracketed text is therefore emitted unchanged rather than aborting the slice.
 
-> **An unresolved placeholder passes through verbatim and is warned about — it is
-> not a slice error.** A module's `ConfigView` is scoped to its own manifest, so a
-> key this module cannot resolve may legitimately belong to a module that is not
-> loaded. Failing the slice would break composition, which is why PnP does not do
-> it. The slice logs one warning naming every unresolved key and every injection
-> point (template key) it appeared in, so one run surfaces all of them, and the
-> bracketed text is emitted unchanged.
-
-Be aware of the consequence: an unresolved `[key]` reaches the printer as literal
-bracketed text. Check the slice warnings if a machine rejects a start or end
-block.
-
-Residual wrinkle, recorded in ADR-0050 rather than special-cased in code: the
-template keys are themselves manifest-declared `string` keys, so
-`[machine_start_gcode]` / `[machine_end_gcode]` resolve *inside* their own
-templates. This is a harmless consequence of the domain rule, not a designed
-feature; do not rely on it.
-
-There is **no escape syntax** for a literal `[foo]`, and none is needed: a bracketed
-word that is not a declared key or alias is simply left alone and passed through.
-Canonical's legacy `[key]` form has no escape either, though it differs in what it
-does with an unknown name — see `docs/DEVIATION_LOG.md`.
-
-Macros an older revision of this document advertised that **do not resolve**, and
-are therefore emitted verbatim (with a warning) rather than substituted:
-`[bed_temperature]`, `[filament_type]`, `[tool_count]`, `[layer_count]`,
-`[print_time_estimate_s]`, `[x_max]`, `[y_max]`, `[z_max]`. See
-`docs/DEVIATION_LOG.md` for the custom-G-code parity gap and the canonical
-counterparts of these names.
+Per `docs/adr/0051-gcode-marker-contract-ownership.md` (amendment recorded as
+`D-285-ADR-0051-AMENDED` in `docs/DEVIATION_LOG.md`), the same warn-and-pass
+policy covers a malformed `;LAYER_CHANGE` marker — one not followed within two
+commands by a `;Z:` marker — at the layer-scoped injection sites. The
+`machine-gcode-emit` walk reuses the prior layer Z (or, for layer 1, layer 1's
+own initial Z context) and surfaces the malformed stream with one
+`ERR_MALFORMED_LAYER_MARKER` warning. This is the documented fallback, not a
+coincidental behaviour.
 
 ---
 

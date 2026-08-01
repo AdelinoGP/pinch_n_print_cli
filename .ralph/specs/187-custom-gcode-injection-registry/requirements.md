@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-306`
 - Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `DEV-085`, tranche T3 (referenced by identity — row numbers rot), split 2 of 3; registered in `docs/07_implementation_status.md` by this packet
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
