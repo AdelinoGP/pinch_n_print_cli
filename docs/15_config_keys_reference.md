@@ -136,11 +136,17 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
 | `before_layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `change_filament_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `filament_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `filament_end_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `filament_start_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
+| `process_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `time_lapse_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `inner_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
 | `outer_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
@@ -425,11 +431,14 @@ See `docs/02_ir_schemas.md` "G-code envelope blocks" for the full envelope forma
 ## Custom G-code injection points
 <!-- anchor: custom-gcode-injection-points -->
 
-The `machine-gcode-emit` module registers five custom-G-code injection points:
+The `machine-gcode-emit` module registers eleven custom-G-code injection points:
 `machine_start_gcode`, `before_layer_change_gcode`, `time_lapse_gcode`,
-`layer_change_gcode`, and `machine_end_gcode`. Their defaults and types are in
-the generated **Module-owned config keys** table above. Each value is a
-single-pass template using square-bracket placeholders such as `[key]`.
+`layer_change_gcode`, `machine_end_gcode`, `filament_end_gcode`,
+`change_filament_gcode`, `filament_start_gcode`,
+`change_extrusion_role_gcode`, `filament_change_extrusion_role_gcode`, and
+`process_change_extrusion_role_gcode`. Their defaults and types are in the
+generated **Module-owned config keys** table above. Each value is a single-pass
+template using square-bracket placeholders such as `[key]`.
 
 At a layer boundary, the canonical emission order is the reserved tags
 `;LAYER_CHANGE`, `;Z:`, and `;HEIGHT:`, followed by
@@ -437,15 +446,57 @@ At a layer boundary, the canonical emission order is the reserved tags
 `layer_change_gcode`, in that order. `machine_start_gcode` is emitted before
 the first layer, and `machine_end_gcode` is emitted after the last layer.
 
-The layer macros `[layer_num]`, `[layer_z]`, and `[max_layer_z]` are available
-only at the layer-aware sites: `before_layer_change_gcode`,
-`time_lapse_gcode`, `layer_change_gcode`, and `machine_end_gcode`. They are not
-available at `machine_start_gcode`.
+For a toolchange, the injection order is
+`filament_end_gcode` -> `change_filament_gcode` -> `T<n>` ->
+`filament_start_gcode`. Thus the tool-select command sits between
+`change_filament_gcode` and `filament_start_gcode`; it does not precede all
+three injection points.
 
-Placeholder availability is site-specific. When a per-site variable is
-unavailable, its placeholder remains verbatim, the run returns `Ok`, and
-exactly one warning names the config key and injection site. The unresolved
-bracketed text is therefore emitted unchanged rather than aborting the slice.
+For an extrusion-role change, the order is
+`change_extrusion_role_gcode` -> `filament_change_extrusion_role_gcode` ->
+`process_change_extrusion_role_gcode` -> `;TYPE:<label>`. All three role
+injection points are emitted before the `;TYPE:` raw marker.
+
+Placeholder availability is site-specific. The common layer context is
+available as `[layer_num]`, `[layer_z]`, and `[max_layer_z]` at
+`before_layer_change_gcode`, `time_lapse_gcode`, `layer_change_gcode`, and
+`machine_end_gcode`. It is also available at each toolchange and role site as
+specified below; it is not available at `machine_start_gcode`.
+
+| Injection point | Available placeholders |
+| --- | --- |
+| `machine_start_gcode` | none |
+| `before_layer_change_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]` |
+| `time_lapse_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]` |
+| `layer_change_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]` |
+| `machine_end_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]` |
+| `filament_end_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]`, `[filament_extruder_id]` (the old tool) |
+| `change_filament_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]`, `[previous_extruder]`, `[next_extruder]`, `[toolchange_count]` |
+| `filament_start_gcode` | `[layer_num]`, `[layer_z]`, `[max_layer_z]`, `[filament_extruder_id]` (the new tool) |
+| `change_extrusion_role_gcode` | `[layer_num]`, `[layer_z]`, `[extrusion_role]`, `[last_extrusion_role]` |
+| `filament_change_extrusion_role_gcode` | `[layer_num]`, `[layer_z]`, `[extrusion_role]`, `[last_extrusion_role]` |
+| `process_change_extrusion_role_gcode` | `[layer_num]`, `[layer_z]`, `[extrusion_role]`, `[last_extrusion_role]` |
+
+At the three role sites, `[layer_num]` is N+1, where N is the current layer
+index. At every other site, including all toolchange sites, `[layer_num]` is N.
+The `[filament_extruder_id]` at `filament_end_gcode` identifies the old tool;
+at `filament_start_gcode` it identifies the new tool. The role sites do not
+provide `[max_layer_z]`.
+
+When a per-site variable is unavailable, its placeholder remains verbatim, the
+run returns `Ok`, and exactly one warning names the config key and injection
+site. The unresolved bracketed text is therefore emitted unchanged rather than
+aborting the slice.
+
+### Not implemented
+
+These canonical injection points are not reachable through the PnP pipeline:
+
+- `file_start_gcode` — the canonical point is emitted above `; HEADER_BLOCK_START`, but `DefaultGCodeSerializer::serialize_gcode` writes the header block before post-pass commands; the nearest serializer point is after `; HEADER_BLOCK_END`.
+- `wrapping_detection_gcode` — it is gated by canonical `enable_wrapping_detection`, which has no PnP configuration or emission path.
+- `machine_pause_gcode` — it is tied to per-print-Z `CustomGCode::PausePrint`, which PnP does not model.
+- `template_custom_gcode` — it is tied to per-print-Z `CustomGCode::Template`, which PnP does not model.
+- `printing_by_object_gcode` — it requires a by-object print sequence, and PnP has no by-object path.
 
 Per `docs/adr/0051-gcode-marker-contract-ownership.md` (amendment recorded as
 `D-285-ADR-0051-AMENDED` in `docs/DEVIATION_LOG.md`), the same warn-and-pass

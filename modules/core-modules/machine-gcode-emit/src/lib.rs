@@ -12,11 +12,20 @@
 //! `machine_start_gcode` prepends ahead of every command; the layer-scoped
 //! points (`before_layer_change_gcode`, `time_lapse_gcode`,
 //! `layer_change_gcode`) splice after each layer's `;LAYER_CHANGE` / `;Z:` /
-//! `;HEIGHT:` marker triple, in that order; `machine_end_gcode` appends after
-//! the last command. Every template goes through single-pass [key]
+//! `;HEIGHT:` marker triple, in that order; filament toolchange points bracket
+//! each `ToolChange`; `machine_end_gcode` appends after the last command. Every
+//! template goes through single-pass [key]
 //! substitution against the effective ConfigView plus per-site layer
 //! variables. Substitution lives in the WASM guest; the host serializer just
 //! renders the command list.
+//! The eleven registered points are machine_start_gcode,
+//! before_layer_change_gcode, time_lapse_gcode, layer_change_gcode,
+//! filament_end_gcode, change_filament_gcode, filament_start_gcode,
+//! change_extrusion_role_gcode, filament_change_extrusion_role_gcode,
+//! process_change_extrusion_role_gcode, and machine_end_gcode. The five
+//! unreachable points are file_start_gcode, wrapping_detection_gcode,
+//! machine_pause_gcode, template_custom_gcode, and printing_by_object_gcode;
+//! they remain intentionally unimplemented.
 //!
 //! Per `docs/adr/0051-gcode-marker-contract-ownership.md` (amendment recorded
 //! as `D-285-ADR-0051-AMENDED` in `docs/DEVIATION_LOG.md`), a malformed
@@ -72,6 +81,14 @@ enum InjectionSite {
     TimeLapse,
     /// Immediately after the layer marker triple, last of the three.
     LayerChange,
+    /// Immediately before a toolchange, first of the two pre-toolchange points.
+    FilamentEnd,
+    /// Immediately before a toolchange, after `FilamentEnd`.
+    FilamentChange,
+    /// Immediately after a toolchange.
+    FilamentStart,
+    /// Immediately before each `;TYPE:` extrusion-role marker.
+    ExtrusionRoleChange,
     /// After the last command (ahead of the host's CONFIG_BLOCK, which is not
     /// part of this stream).
     PrintEnd,
@@ -85,6 +102,10 @@ impl InjectionSite {
             Self::BeforeLayerChange => "BeforeLayerChange",
             Self::TimeLapse => "TimeLapse",
             Self::LayerChange => "LayerChange",
+            Self::FilamentEnd => "FilamentEnd",
+            Self::FilamentChange => "FilamentChange",
+            Self::FilamentStart => "FilamentStart",
+            Self::ExtrusionRoleChange => "ExtrusionRoleChange",
             Self::PrintEnd => "PrintEnd",
         }
     }
@@ -101,7 +122,8 @@ struct InjectionPoint {
 ///
 /// Declaration order is the emission precedence: `machine_start_gcode`
 /// prepends, the three layer-scoped points splice after each layer's marker
-/// triple in the order listed here, and `machine_end_gcode` appends.
+/// triple in the order listed here, the filament points bracket each
+/// `ToolChange`, and `machine_end_gcode` appends.
 const INJECTION_POINTS: &[InjectionPoint] = &[
     InjectionPoint {
         config_key: "machine_start_gcode",
@@ -120,6 +142,30 @@ const INJECTION_POINTS: &[InjectionPoint] = &[
         site: InjectionSite::LayerChange,
     },
     InjectionPoint {
+        config_key: "filament_end_gcode",
+        site: InjectionSite::FilamentEnd,
+    },
+    InjectionPoint {
+        config_key: "change_filament_gcode",
+        site: InjectionSite::FilamentChange,
+    },
+    InjectionPoint {
+        config_key: "filament_start_gcode",
+        site: InjectionSite::FilamentStart,
+    },
+    InjectionPoint {
+        config_key: "change_extrusion_role_gcode",
+        site: InjectionSite::ExtrusionRoleChange,
+    },
+    InjectionPoint {
+        config_key: "filament_change_extrusion_role_gcode",
+        site: InjectionSite::ExtrusionRoleChange,
+    },
+    InjectionPoint {
+        config_key: "process_change_extrusion_role_gcode",
+        site: InjectionSite::ExtrusionRoleChange,
+    },
+    InjectionPoint {
         config_key: "machine_end_gcode",
         site: InjectionSite::PrintEnd,
     },
@@ -135,6 +181,19 @@ struct LayerContext {
     layer_num: u32,
     layer_z: String,
     max_layer_z: String,
+}
+
+/// Values available while processing one `ToolChange` command.
+struct ToolChangeContext {
+    previous_extruder: String,
+    next_extruder: String,
+    toolchange_count: u32,
+}
+
+/// Values available while processing one `;TYPE:` marker.
+struct ExtrusionRoleContext {
+    current_role: String,
+    last_role: String,
 }
 
 /// Diagnostic identifier for a `;LAYER_CHANGE` marker not followed by a `;Z:`
@@ -201,9 +260,12 @@ impl PostpassModule for MachineGcodeEmit {
         // order. Empty or absent templates are skipped at their site.
         let templates: Vec<Option<String>> = INJECTION_POINTS
             .iter()
-            .map(|point| match config.get(point.config_key) {
-                Some(ConfigValue::String(s)) if !s.is_empty() => Some(s.clone()),
-                _ => None,
+            .map(|point| {
+                let configured = config.get(point.config_key);
+                match configured {
+                    Some(ConfigValue::String(s)) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                }
             })
             .collect();
         // Unresolved [key]s gathered per site, so one aggregated warning at
@@ -226,7 +288,7 @@ impl PostpassModule for MachineGcodeEmit {
         for (idx, point) in INJECTION_POINTS.iter().enumerate() {
             if matches!(&point.site, &InjectionSite::PrintStart) {
                 if let Some(template) = &templates[idx] {
-                    let lookup = site_lookup(&base_lookup, None);
+                    let lookup = site_lookup(&base_lookup, &point.site, None, None, None);
                     let (resolved, unresolved) = substitute_placeholders(template, &lookup);
                     unresolved_per_site[idx].extend(unresolved);
                     if !resolved.trim().is_empty() {
@@ -239,8 +301,9 @@ impl PostpassModule for MachineGcodeEmit {
         }
 
         // Step 5: Single forward walk over the input stream. Every command is
-        // re-emitted unchanged; at each `;LAYER_CHANGE` the layer context is
-        // updated from the marker triple and the three layer-scoped points
+        // re-emitted unchanged; toolchange points splice around each
+        // `ToolChange`, and at each `;LAYER_CHANGE` the layer context is
+        // updated from the marker triple before the three layer-scoped points
         // splice immediately after the `;HEIGHT:` marker, in declaration
         // order.
         let mut ctx = LayerContext {
@@ -248,9 +311,120 @@ impl PostpassModule for MachineGcodeEmit {
             layer_z: String::new(),
             max_layer_z: String::new(),
         };
+        let mut toolchange_count = 0u32;
+        let mut last_extrusion_role = String::new();
         let mut i = 0usize;
         while i < commands.len() {
+            let toolchange = match &commands[i] {
+                GCodeCommand::ToolChange { from, to, .. } => {
+                    toolchange_count += 1;
+                    Some(ToolChangeContext {
+                        previous_extruder: from.to_string(),
+                        next_extruder: to.to_string(),
+                        toolchange_count,
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some(toolchange) = toolchange.as_ref() {
+                for (idx, point) in INJECTION_POINTS.iter().enumerate() {
+                    if matches!(
+                        &point.site,
+                        &InjectionSite::FilamentEnd | &InjectionSite::FilamentChange
+                    ) {
+                        if let Some(template) = &templates[idx] {
+                            let lookup = site_lookup(
+                                &base_lookup,
+                                &point.site,
+                                Some(&ctx),
+                                Some(toolchange),
+                                None,
+                            );
+                            let (resolved, unresolved) = substitute_placeholders(template, &lookup);
+                            unresolved_per_site[idx].extend(unresolved);
+                            if !resolved.trim().is_empty() {
+                                output.push_raw(resolved).map_err(|e| {
+                                    ModuleError::fatal(
+                                        13,
+                                        format!("push_raw {}: {e}", point.config_key),
+                                    )
+                                })?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let extrusion_role = match &commands[i] {
+                GCodeCommand::Raw { text } => {
+                    text.strip_prefix(";TYPE:")
+                        .map(|current_role| ExtrusionRoleContext {
+                            current_role: current_role.to_string(),
+                            last_role: last_extrusion_role.clone(),
+                        })
+                }
+                _ => None,
+            };
+
+            if let Some(extrusion_role) = extrusion_role.as_ref() {
+                for (idx, point) in INJECTION_POINTS.iter().enumerate() {
+                    if matches!(&point.site, &InjectionSite::ExtrusionRoleChange) {
+                        if let Some(template) = &templates[idx] {
+                            let lookup = site_lookup(
+                                &base_lookup,
+                                &point.site,
+                                Some(&ctx),
+                                None,
+                                Some(extrusion_role),
+                            );
+                            let (resolved, unresolved) = substitute_placeholders(template, &lookup);
+                            unresolved_per_site[idx].extend(unresolved);
+                            if !resolved.trim().is_empty() {
+                                output.push_raw(resolved).map_err(|e| {
+                                    ModuleError::fatal(
+                                        13,
+                                        format!("push_raw {}: {e}", point.config_key),
+                                    )
+                                })?;
+                            }
+                        }
+                    }
+                }
+            }
+
             reemit_command(&commands[i], output)?;
+
+            if let Some(extrusion_role) = extrusion_role.as_ref() {
+                last_extrusion_role = extrusion_role.current_role.clone();
+            }
+
+            if let Some(toolchange) = toolchange.as_ref() {
+                for (idx, point) in INJECTION_POINTS.iter().enumerate() {
+                    if matches!(&point.site, &InjectionSite::FilamentStart) {
+                        if let Some(template) = &templates[idx] {
+                            let lookup = site_lookup(
+                                &base_lookup,
+                                &point.site,
+                                Some(&ctx),
+                                Some(toolchange),
+                                None,
+                            );
+                            let (resolved, unresolved) = substitute_placeholders(template, &lookup);
+                            unresolved_per_site[idx].extend(unresolved);
+                            if !resolved.trim().is_empty() {
+                                output.push_raw(resolved).map_err(|e| {
+                                    ModuleError::fatal(
+                                        13,
+                                        format!("push_raw {}: {e}", point.config_key),
+                                    )
+                                })?;
+                            }
+                        }
+                    }
+                }
+            }
+
             if matches!(&commands[i], GCodeCommand::Raw { text } if text == ";LAYER_CHANGE") {
                 ctx.layer_num += 1;
                 // The emitter always writes `;Z:` and `;HEIGHT:` as the two
@@ -309,7 +483,8 @@ impl PostpassModule for MachineGcodeEmit {
                             | &InjectionSite::LayerChange
                     ) {
                         if let Some(template) = &templates[idx] {
-                            let lookup = site_lookup(&base_lookup, Some(&ctx));
+                            let lookup =
+                                site_lookup(&base_lookup, &point.site, Some(&ctx), None, None);
                             let (resolved, unresolved) = substitute_placeholders(template, &lookup);
                             unresolved_per_site[idx].extend(unresolved);
                             if !resolved.trim().is_empty() {
@@ -332,7 +507,7 @@ impl PostpassModule for MachineGcodeEmit {
         for (idx, point) in INJECTION_POINTS.iter().enumerate() {
             if matches!(&point.site, &InjectionSite::PrintEnd) {
                 if let Some(template) = &templates[idx] {
-                    let lookup = site_lookup(&base_lookup, Some(&ctx));
+                    let lookup = site_lookup(&base_lookup, &point.site, Some(&ctx), None, None);
                     let (resolved, unresolved) = substitute_placeholders(template, &lookup);
                     unresolved_per_site[idx].extend(unresolved);
                     if !resolved.trim().is_empty() {
@@ -461,18 +636,118 @@ fn reemit_command(cmd: &GCodeCommand, output: &mut GcodeOutputBuilder) -> Result
     Ok(())
 }
 
-/// Build the per-site substitution lookup: the base lookup plus, when the
-/// site has a layer context, the `layer_num` / `layer_z` / `max_layer_z`
-/// variables.
+const LAYER_VARIABLES: &[&str] = &["layer_num", "layer_z", "max_layer_z"];
+const FILAMENT_END_VARIABLES: &[&str] = &[
+    "layer_num",
+    "layer_z",
+    "max_layer_z",
+    "filament_extruder_id",
+];
+const FILAMENT_CHANGE_VARIABLES: &[&str] = &[
+    "layer_num",
+    "layer_z",
+    "max_layer_z",
+    "previous_extruder",
+    "next_extruder",
+    "toolchange_count",
+];
+const FILAMENT_START_VARIABLES: &[&str] = &[
+    "layer_num",
+    "layer_z",
+    "max_layer_z",
+    "filament_extruder_id",
+];
+const EXTRUSION_ROLE_VARIABLES: &[&str] = &[
+    "layer_num",
+    "layer_z",
+    "extrusion_role",
+    "last_extrusion_role",
+];
+const SITE_VARIABLES: &[&str] = &[
+    "layer_num",
+    "layer_z",
+    "max_layer_z",
+    "filament_extruder_id",
+    "previous_extruder",
+    "next_extruder",
+    "toolchange_count",
+    "extrusion_role",
+    "last_extrusion_role",
+];
+
+/// Returns the dynamic variables permitted at one injection site.
+fn site_variables(site: &InjectionSite) -> &'static [&'static str] {
+    match site {
+        InjectionSite::PrintStart => &[],
+        InjectionSite::BeforeLayerChange
+        | InjectionSite::TimeLapse
+        | InjectionSite::LayerChange
+        | InjectionSite::PrintEnd => LAYER_VARIABLES,
+        InjectionSite::FilamentEnd => FILAMENT_END_VARIABLES,
+        InjectionSite::FilamentChange => FILAMENT_CHANGE_VARIABLES,
+        InjectionSite::FilamentStart => FILAMENT_START_VARIABLES,
+        InjectionSite::ExtrusionRoleChange => EXTRUSION_ROLE_VARIABLES,
+    }
+}
+
+/// Build the per-site substitution lookup from the base config plus only the
+/// dynamic variables registered for that site.
 fn site_lookup(
     base: &HashMap<String, String>,
-    ctx: Option<&LayerContext>,
+    site: &InjectionSite,
+    layer: Option<&LayerContext>,
+    toolchange: Option<&ToolChangeContext>,
+    role_context: Option<&ExtrusionRoleContext>,
 ) -> HashMap<String, String> {
     let mut lookup = base.clone();
-    if let Some(ctx) = ctx {
-        lookup.insert("layer_num".to_string(), ctx.layer_num.to_string());
-        lookup.insert("layer_z".to_string(), ctx.layer_z.clone());
-        lookup.insert("max_layer_z".to_string(), ctx.max_layer_z.clone());
+    for variable in SITE_VARIABLES {
+        lookup.remove(*variable);
+    }
+    for variable in site_variables(site) {
+        let value = if *variable == "layer_num" {
+            layer.map(|ctx| {
+                if matches!(site, InjectionSite::ExtrusionRoleChange) {
+                    (ctx.layer_num + 1).to_string()
+                } else {
+                    ctx.layer_num.to_string()
+                }
+            })
+        } else if *variable == "layer_z" {
+            layer.map(|ctx| ctx.layer_z.clone())
+        } else if *variable == "max_layer_z" {
+            layer.map(|ctx| ctx.max_layer_z.clone())
+        } else if *variable == "extrusion_role" {
+            role_context.map(|role| role.current_role.clone())
+        } else if *variable == "last_extrusion_role" {
+            role_context.map(|role| role.last_role.clone())
+        } else if *variable == "filament_extruder_id" {
+            match site {
+                InjectionSite::FilamentEnd => {
+                    toolchange.map(|toolchange| toolchange.previous_extruder.clone())
+                }
+                InjectionSite::FilamentStart => {
+                    toolchange.map(|toolchange| toolchange.next_extruder.clone())
+                }
+                InjectionSite::PrintStart
+                | InjectionSite::BeforeLayerChange
+                | InjectionSite::TimeLapse
+                | InjectionSite::LayerChange
+                | InjectionSite::FilamentChange
+                | InjectionSite::ExtrusionRoleChange
+                | InjectionSite::PrintEnd => None,
+            }
+        } else if *variable == "previous_extruder" {
+            toolchange.map(|toolchange| toolchange.previous_extruder.clone())
+        } else if *variable == "next_extruder" {
+            toolchange.map(|toolchange| toolchange.next_extruder.clone())
+        } else if *variable == "toolchange_count" {
+            toolchange.map(|toolchange| toolchange.toolchange_count.to_string())
+        } else {
+            None
+        };
+        if let Some(value) = value {
+            lookup.insert((*variable).to_string(), value);
+        }
     }
     lookup
 }

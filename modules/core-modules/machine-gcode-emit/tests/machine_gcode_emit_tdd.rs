@@ -943,3 +943,420 @@ fn machine_start_gcode_precedes_m73_and_extrusion_mode() {
          start at {start_at}, ExtrusionMode at {extrusion_mode_at} in {cmds:#?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Conditional toolchange and extrusion-role G-code
+// ---------------------------------------------------------------------------
+
+#[test]
+fn toolchange_trio_brackets_the_tool_select_in_canonical_order() {
+    let output = run(
+        &[
+            ("filament_end_gcode", ConfigValue::String("FEND".into())),
+            ("change_filament_gcode", ConfigValue::String("FCHG".into())),
+            ("filament_start_gcode", ConfigValue::String("FSTART".into())),
+        ],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 2,
+        }],
+    );
+
+    let cmds = output.commands();
+    let position_of_raw = |text: &str| {
+        cmds.iter()
+            .position(|command| {
+                matches!(
+                    command,
+                    GcodeOutputCommand::Command(GCodeCommand::Raw { text: actual })
+                        if actual == text
+                )
+            })
+            .unwrap_or_else(|| panic!("raw command {text:?} not found in {cmds:#?}"))
+    };
+    let fend_at = position_of_raw("FEND");
+    let fchg_at = position_of_raw("FCHG");
+    let toolchange_at = cmds
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                GcodeOutputCommand::Command(GCodeCommand::ToolChange { from: 0, to: 2, .. })
+            )
+        })
+        .expect("the tool change must be re-emitted");
+    let fstart_at = position_of_raw("FSTART");
+
+    assert!(
+        fend_at < fchg_at && fchg_at < toolchange_at && toolchange_at < fstart_at,
+        "toolchange G-code must be FEND({fend_at}) < FCHG({fchg_at}) < ToolChange({toolchange_at}) < FSTART({fstart_at}); got {cmds:#?}"
+    );
+}
+
+#[test]
+fn toolchange_variables_carry_from_to_and_running_count() {
+    let output = run(
+        &[(
+            "change_filament_gcode",
+            ConfigValue::String(
+                "T[previous_extruder]->[next_extruder] N=[toolchange_count] L=[layer_num]".into(),
+            ),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 0,
+                to: 2,
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 2,
+                to: 1,
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";LAYER_CHANGE",
+            ";Z:0.2",
+            ";HEIGHT:0.2",
+            ";LAYER_CHANGE",
+            ";Z:0.4",
+            ";HEIGHT:0.2",
+            "T0->2 N=1 L=2",
+            "T2->1 N=2 L=2",
+        ],
+        "toolchange placeholders must use from/to, a print-wide 1-based count, and the current layer"
+    );
+}
+
+#[test]
+fn role_trio_precedes_the_type_marker_with_current_and_last_role() {
+    let output = run(
+        &[
+            (
+                "change_extrusion_role_gcode",
+                ConfigValue::String("R1[extrusion_role]".into()),
+            ),
+            (
+                "filament_change_extrusion_role_gcode",
+                ConfigValue::String("R2[last_extrusion_role]".into()),
+            ),
+            (
+                "process_change_extrusion_role_gcode",
+                ConfigValue::String("R3".into()),
+            ),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";TYPE:Outer wall".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Sparse infill".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            "R1Outer wall",
+            "R2",
+            "R3",
+            ";TYPE:Outer wall",
+            "R1Sparse infill",
+            "R2Outer wall",
+            "R3",
+            ";TYPE:Sparse infill",
+        ],
+        "role-change G-code must precede each TYPE marker and carry current/previous labels"
+    );
+}
+
+#[test]
+fn unset_toolchange_and_role_points_emit_nothing() {
+    let output = run(
+        &[
+            ("filament_end_gcode", ConfigValue::String(String::new())),
+            ("change_filament_gcode", ConfigValue::String(String::new())),
+            ("filament_start_gcode", ConfigValue::String(String::new())),
+            (
+                "change_extrusion_role_gcode",
+                ConfigValue::String(String::new()),
+            ),
+            (
+                "filament_change_extrusion_role_gcode",
+                ConfigValue::String(String::new()),
+            ),
+            (
+                "process_change_extrusion_role_gcode",
+                ConfigValue::String(String::new()),
+            ),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";TYPE:Outer wall".into(),
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 0,
+                to: 1,
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Sparse infill".into(),
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 1,
+                to: 0,
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Top surface".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Inner wall".into(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";TYPE:Outer wall",
+            ";TYPE:Sparse infill",
+            ";TYPE:Top surface",
+            ";TYPE:Inner wall",
+        ],
+        "empty conditional points must not insert Raw commands"
+    );
+    let toolchanges: Vec<_> = output
+        .commands()
+        .iter()
+        .filter(|command| {
+            matches!(
+                command,
+                GcodeOutputCommand::Command(GCodeCommand::ToolChange { .. })
+            )
+        })
+        .collect();
+    assert_eq!(
+        toolchanges.len(),
+        2,
+        "empty conditional points must preserve both input tool changes"
+    );
+}
+
+#[test]
+fn role_sites_carry_layer_num_plus_one_while_toolchange_sites_do_not() {
+    let output = run(
+        &[
+            (
+                "change_extrusion_role_gcode",
+                ConfigValue::String("R=[layer_num]".into()),
+            ),
+            (
+                "change_filament_gcode",
+                ConfigValue::String("T=[layer_num]".into()),
+            ),
+        ],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Sparse infill".into(),
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 0,
+                to: 1,
+            },
+        ],
+    );
+
+    assert_eq!(
+        raw_texts(&output),
+        vec![
+            ";LAYER_CHANGE",
+            ";Z:0.2",
+            ";HEIGHT:0.2",
+            ";LAYER_CHANGE",
+            ";Z:0.4",
+            ";HEIGHT:0.2",
+            "R=3",
+            ";TYPE:Sparse infill",
+            "T=2",
+        ],
+        "role sites use N+1 while toolchange sites use the current emitted layer N"
+    );
+}
+
+#[test]
+fn layer_variables_resolve_at_filament_start_gcode() {
+    let output = run(
+        &[(
+            "filament_start_gcode",
+            ConfigValue::String("S=[layer_num] Z=[layer_z]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 0,
+                to: 2,
+            },
+        ],
+    );
+
+    assert!(
+        raw_texts(&output).contains(&"S=2 Z=0.4".to_string()),
+        "filament_start_gcode must resolve layer variables at the toolchange site: {:?}",
+        raw_texts(&output)
+    );
+}
+
+#[test]
+fn max_layer_z_in_role_gcode_passes_through_verbatim() {
+    install_log_capture();
+    let (result, output) = try_run(
+        &[(
+            "change_extrusion_role_gcode",
+            ConfigValue::String("M=[max_layer_z]".into()),
+        )],
+        &[
+            GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";Z:0.4".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";HEIGHT:0.2".into(),
+            },
+            GCodeCommand::Raw {
+                text: ";TYPE:Sparse infill".into(),
+            },
+        ],
+    );
+    let logs = take_log_messages();
+
+    result.expect("an unavailable role macro must not fail the slice");
+    let emitted = raw_texts(&output);
+    let marker_at = emitted
+        .iter()
+        .position(|text| text == ";TYPE:Sparse infill")
+        .expect("the TYPE marker must be re-emitted");
+    let injection_at = emitted
+        .iter()
+        .position(|text| text == "M=[max_layer_z]")
+        .expect("the unavailable role macro must pass through verbatim");
+    assert!(
+        injection_at < marker_at,
+        "the unresolved role macro must be emitted before its TYPE marker: {emitted:?}"
+    );
+    let warnings: Vec<&str> = logs
+        .iter()
+        .filter(|(level, _)| *level == LogLevel::Warn)
+        .map(|(_, message)| message.as_str())
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "an unavailable role macro must produce exactly one warning: {logs:?}"
+    );
+    assert!(
+        warnings[0].contains("max_layer_z") && warnings[0].contains("change_extrusion_role_gcode"),
+        "the warning must name the unavailable key and role injection point: {warnings:?}"
+    );
+}
+
+#[test]
+fn next_extruder_in_filament_start_gcode_passes_through_verbatim() {
+    install_log_capture();
+    let (result, output) = try_run(
+        &[(
+            "filament_start_gcode",
+            ConfigValue::String("F=[next_extruder]".into()),
+        )],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 2,
+        }],
+    );
+    let logs = take_log_messages();
+
+    result.expect("an unavailable filament-start macro must not fail the slice");
+    assert!(
+        raw_texts(&output).contains(&"F=[next_extruder]".to_string()),
+        "the unavailable filament-start macro must pass through verbatim: {:?}",
+        raw_texts(&output)
+    );
+    let warnings: Vec<&str> = logs
+        .iter()
+        .filter(|(level, _)| *level == LogLevel::Warn)
+        .map(|(_, message)| message.as_str())
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "an unavailable filament-start macro must produce exactly one warning: {logs:?}"
+    );
+    assert!(
+        warnings[0].contains("next_extruder") && warnings[0].contains("filament_start_gcode"),
+        "the warning must name the unavailable key and filament-start injection point: {warnings:?}"
+    );
+}

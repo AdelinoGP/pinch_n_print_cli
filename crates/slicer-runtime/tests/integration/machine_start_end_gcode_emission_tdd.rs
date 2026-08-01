@@ -509,6 +509,52 @@ fn layer_change_gcode_fires_once_per_emitted_layer() {
     );
 }
 
+#[test]
+fn role_change_gcode_precedes_every_type_marker() {
+    let raw = HashMap::from([(
+        ConfigKey::from("change_extrusion_role_gcode"),
+        ConfigValue::String("; PNP_ROLE [extrusion_role]".to_string()),
+    )]);
+
+    let gcode = slice_with_raw(raw);
+    let lines: Vec<&str> = gcode.lines().collect();
+    let type_markers: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| line.strip_prefix(";TYPE:"))
+        .collect();
+    let role_line_count = lines
+        .iter()
+        .filter(|line| line.starts_with("; PNP_ROLE "))
+        .count();
+
+    assert_eq!(
+        role_line_count,
+        type_markers.len(),
+        "role-change G-code count must match ;TYPE: marker count"
+    );
+
+    for (index, marker) in lines.iter().enumerate() {
+        let Some(label) = marker.strip_prefix(";TYPE:") else {
+            continue;
+        };
+        let previous = lines[..index]
+            .iter()
+            .rev()
+            .find(|line| {
+                let line = line.trim();
+                !line.is_empty() && line != "\"\""
+            })
+            .expect("each ;TYPE: marker must have a preceding non-blank line");
+        let expected = format!("; PNP_ROLE {label}");
+        assert_eq!(
+            *previous,
+            expected,
+            "role-change G-code must immediately precede ;TYPE:{label}; nearby lines: {:?}",
+            &lines[index.saturating_sub(4)..=index]
+        );
+    }
+}
+
 /// AC-5: default config; exactly one of M82 or M83 appears between
 /// HEADER_BLOCK_END and the first G1 extrusion move.
 /// Regression sentry for M82/M83 promotion.

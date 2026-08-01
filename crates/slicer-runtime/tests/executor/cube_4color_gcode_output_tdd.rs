@@ -26,12 +26,13 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
+    BoundingBox3, ConfigValue, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3,
+    SemVer, Transform3d,
 };
 use slicer_runtime::{run_slice, SliceOutcome, SliceRunOptions};
 
@@ -195,6 +196,45 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+    };
+    run_slice(opts)
+        .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
+}
+
+fn slice_fixture_file_with_overrides(overrides: HashMap<String, ConfigValue>) -> SliceOutcome {
+    let model_path = cube_4color_path();
+    assert!(
+        model_path.exists(),
+        "fixture missing: {} — run from workspace root or restore resources/",
+        model_path.display()
+    );
+    let module_dir = core_modules_dir();
+    assert!(
+        module_dir.exists(),
+        "core-modules directory must exist at {}",
+        module_dir.display()
+    );
+
+    let mesh = Arc::new(
+        slicer_model_io::load_model(&model_path)
+            .unwrap_or_else(|e| panic!("load_model({}) failed: {e}", model_path.display())),
+    );
+    let opts = SliceRunOptions {
+        mesh,
+        model_label: model_path.to_string_lossy().into_owned(),
+        config_path: None,
+        output_path: None,
+        module_dirs: vec![module_dir],
+        no_default_module_paths: true,
+        thumbnail: None,
+        report: None,
+        report_verbose: false,
+        instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
+        progress_events: false,
+        cancel_flag: None,
+        config_overrides: overrides,
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -832,6 +872,60 @@ fn cube_4color_gcode_emits_all_four_tool_indices() {
         "cube_4color emitted tools {found:?}, expected {expected:?} per D9 dispatch wiring \
          (Step 19 must route per-region variant chains so each Material ToolIndex \
          produces its own `T<n>` line)"
+    );
+}
+
+#[test]
+fn change_filament_gcode_precedes_every_tool_select() {
+    let mut overrides = HashMap::new();
+    overrides.insert(
+        "change_filament_gcode".to_string(),
+        ConfigValue::String("; PNP_TOOLCHANGE [previous_extruder] [next_extruder]".to_string()),
+    );
+
+    let outcome = slice_fixture_file_with_overrides(overrides);
+    let lines: Vec<&str> = outcome.gcode_text.lines().collect();
+    let mut toolchange_count = 0;
+
+    for (line_index, line) in lines.iter().enumerate() {
+        let Some(payload) = line.trim().strip_prefix("; PNP_TOOLCHANGE") else {
+            continue;
+        };
+        let fields: Vec<&str> = payload.split_whitespace().collect();
+        assert_eq!(
+            fields.len(),
+            2,
+            "toolchange line must contain previous and next extruder indices: {line}"
+        );
+        let previous: u32 = fields[0]
+            .parse()
+            .unwrap_or_else(|_| panic!("invalid previous extruder in toolchange line: {line}"));
+        let next: u32 = fields[1]
+            .parse()
+            .unwrap_or_else(|_| panic!("invalid next extruder in toolchange line: {line}"));
+
+        let following = lines
+            .iter()
+            .skip(line_index + 1)
+            .find(|candidate| !candidate.trim().is_empty())
+            .copied()
+            .unwrap_or_else(|| panic!("toolchange line has no following tool select: {line}"));
+        let selected = following
+            .trim()
+            .strip_prefix('T')
+            .and_then(|index| index.parse::<u32>().ok())
+            .unwrap_or_else(|| panic!("toolchange line is not followed by a tool select: {line}"));
+
+        assert_eq!(
+            selected, next,
+            "toolchange T{previous}->T{next} was followed by {following}"
+        );
+        toolchange_count += 1;
+    }
+
+    assert!(
+        toolchange_count >= 4,
+        "expected at least four toolchange records, found {toolchange_count}"
     );
 }
 

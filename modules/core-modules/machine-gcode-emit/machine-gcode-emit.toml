@@ -2,7 +2,7 @@
 id           = "com.core.machine-gcode-emit"
 version      = "0.1.0"
 display-name = "Machine G-code Emit"
-description  = "Emits the five registered injection points machine_start_gcode, before_layer_change_gcode, time_lapse_gcode, layer_change_gcode, and machine_end_gcode by inserting Raw commands into the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
+description  = "Emits the eleven registered injection points machine_start_gcode, before_layer_change_gcode, time_lapse_gcode, layer_change_gcode, filament_end_gcode, change_filament_gcode, filament_start_gcode, change_extrusion_role_gcode, filament_change_extrusion_role_gcode, process_change_extrusion_role_gcode, and machine_end_gcode by inserting Raw commands into the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
 author       = "modular-slicer"
 license      = "MIT"
 
@@ -51,6 +51,36 @@ default = ""
 group   = "Machine G-code"
 
 [config.schema.time_lapse_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.filament_end_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.change_filament_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.filament_start_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.change_extrusion_role_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.filament_change_extrusion_role_gcode]
+type    = "string"
+default = ""
+group   = "Machine G-code"
+
+[config.schema.process_change_extrusion_role_gcode]
 type    = "string"
 default = ""
 group   = "Machine G-code"

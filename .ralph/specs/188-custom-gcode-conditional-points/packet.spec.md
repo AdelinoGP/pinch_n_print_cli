@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 188-custom-gcode-conditional-points
 task_ids:
   - TASK-307
