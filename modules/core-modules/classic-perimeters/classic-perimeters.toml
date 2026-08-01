@@ -56,20 +56,24 @@ display = "Line Width"
 group   = "Walls"
 
 [config.schema.outer_wall_line_width]
-type    = "float"
-default = 0.4
-min     = 0.1
-max     = 2.0
-display = "Outer Wall Line Width"
-group   = "Walls"
+type        = "float_or_percent"
+default     = 0.4
+min         = 0.0
+max         = 2.0
+unit        = "mm"
+display     = "Outer Wall Line Width"
+description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frExternalPerimeter. PnP keeps a 0.4 mm manifest default; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
+group       = "Walls"
 
 [config.schema.inner_wall_line_width]
-type    = "float"
-default = 0.4
-min     = 0.1
-max     = 2.0
-display = "Inner Wall Line Width"
-group   = "Walls"
+type        = "float_or_percent"
+default     = 0.4
+min         = 0.0
+max         = 2.0
+unit        = "mm"
+display     = "Inner Wall Line Width"
+description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frPerimeter. PnP keeps a 0.4 mm manifest default; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
+group       = "Walls"
 
 [config.schema.precise_outer_wall]
 type    = "bool"
@@ -212,12 +216,12 @@ description = "OrcaSlicer coBool key overhang_reverse_internal_only; when true, 
 group       = "Walls"
 
 [config.schema.min_width_top_surface]
-type        = "float"
-default     = 1.2
+type        = "float_or_percent"
+default     = "0.0"
 min         = 0.0
-unit        = "mm"
+unit        = "%"
 display     = "Minimum top surface width"
-description = "OrcaSlicer coFloatOrPercent key min_width_top_surface, default 300% of line width (≈1.2mm at the common 0.4mm line width). No coFloatOrPercent/literal-percent representation precedent found in modules/core-modules/*/*.toml (grepped); represented here as a plain mm float per the docs/03_wit_and_manifest.md unit=\"mm\" convention (see tree_support_branch_diameter). Not yet consumed by run_perimeters in this packet."
+description = "OrcaSlicer coFloatOrPercent key min_width_top_surface (PrintConfigDef::init_fff_params); erosion threshold gating the only_one_wall_top single-wall collapse. Resolved with get_abs_value against the inner wall line width, matching canonical PerimeterGenerator::split_top_surfaces and the arachne-perimeters module. A top sub-area whose minimum bounding-box extent is below the threshold keeps its full wall count instead of collapsing to one wall. The 0.0 default leaves the gate off; canonical's ext_perimeter_spacing/2 floor is deliberately not ported."
 group       = "Walls"
 
 [config.schema.alternate_extra_wall]

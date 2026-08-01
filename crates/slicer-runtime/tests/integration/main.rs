@@ -10,6 +10,8 @@ mod common;
 
 mod adapt_slice_regions_completeness_tdd;
 mod arachne_wall_width_follows_config_tdd;
+mod classic_min_width_top_surface_tdd;
+mod classic_wall_width_resolution_tdd;
 mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
 mod extra_perimeters_config_tdd;

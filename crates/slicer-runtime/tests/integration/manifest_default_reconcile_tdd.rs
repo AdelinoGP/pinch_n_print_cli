@@ -203,12 +203,16 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("detect_overhang_wall", Unread), // declared; classic never reads it
     ("overhang_reverse", Unread),
     ("overhang_reverse_internal_only", Unread),
-    ("min_width_top_surface", Float(1.2)),
+    ("min_width_top_surface", Str("0.0")),
     ("alternate_extra_wall", Unread),
     ("bridge_flow", Float(1.0)),
     ("thick_bridges", Bool(false)),
-    // Derived: nozzle_diameter falls back to inner_wall_line_width ->
-    // line_width -> 0.4; effective empty-config fallback is 0.4.
+    // Derived: nozzle_diameter falls back directly to legacy_line_width
+    // (`line_width`), itself 0.4; effective empty-config fallback is 0.4.
+    // Packet 184 / D-164 broke the old nozzle_diameter -> inner_wall_line_width
+    // chain: the two wall widths are now `float_or_percent` keys resolved
+    // against nozzle_diameter, so the read moved above them and its fallback
+    // became legacy_line_width. The 0.4 value is unchanged.
     ("nozzle_diameter", Float(0.4)),
     ("layer_height", Float(0.2)),
 ];

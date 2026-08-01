@@ -99,16 +99,16 @@ is the authoritative catalog of their defaults and ranges.
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
 | `gap_fill_medial_axis_on_painted` | bool | `false` | — | `classic-perimeters` |
 | `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
-| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | `classic-perimeters` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
-| `min_width_top_surface` | float | `1.2` | >= 0.0 | `classic-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | `classic-perimeters` |
 | `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters` |
@@ -550,23 +550,36 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 |---|---|---|---|---|
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
-| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
-| `min_width_top_surface` | float | `1.2` | — | `classic-perimeters` |
-| `min_width_top_surface` | float_or_percent | `0.0` (code fallback: filter disabled; upstream default `300%`) | base: `inner_wall_line_width` | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` (gate off; upstream default `300%`) | base: `inner_wall_line_width` | `classic-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` (code fallback: filter disabled; upstream default `300%`) | base: `preferred_bead_width_outer` | `arachne-perimeters` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 
 **`only_one_wall_first_layer`** — when `true`, the perimeter generator emits a single outer wall on the first layer of the print (layer index 0).
 
-**`outer_wall_line_width`** — extrusion width for the outermost wall loop (mm). Overrides the module-level `line_width` for outer walls only; allows a narrower outer wall for surface detail without affecting inner walls.
+**`outer_wall_line_width`** — extrusion width for the outermost wall loop. Overrides the module-level `line_width` for outer walls only; allows a narrower outer wall for surface detail without affecting inner walls.
 
-**`inner_wall_line_width`** — extrusion width for all inner wall loops (mm). Overrides `line_width` for inner walls only.
+**`inner_wall_line_width`** — extrusion width for all inner wall loops. Overrides `line_width` for inner walls only.
+
+**Packet 184 (wall-width type parity, D-164 classic half).** Both keys on `classic-perimeters` are retyped `float_or_percent` with `unit = "mm"`, `ratio_over` the nozzle diameter, `max = 2.0`, and `min` lowered from `0.1` to `0.0` — the lowered floor exists so the canonical auto sentinel is accepted, because scalar range checks run against the raw *unresolved* magnitude. `ClassicPerimeters::run_perimeters` resolves each width via `ConfigView::get_abs_value(key, nozzle_diameter)` with three arms:
+
+- a resolved value `> 0.0` — used as-is (an explicit mm float, or a percent of nozzle diameter);
+- a resolved value of exactly `0` — OrcaSlicer's **auto sentinel**. Canonical `Flow.cpp::new_from_config_width` routes `0` to `Flow.cpp::auto_extrusion_width`, which returns `1.125 × nozzle_diameter` for both `frExternalPerimeter` and `frPerimeter`. PnP now honours that, so a profile ported from OrcaSlicer carrying `0` derives the same width;
+- key absent — falls back to PnP's `legacy_line_width` (`0.4` mm).
+
+The `nozzle_diameter` read is hoisted **above** both width reads and its own fallback is `legacy_line_width` (previously `inner_wall_line_width`), breaking a read cycle between the nozzle key and the widths it now feeds.
+
+Two residuals survive and are tracked as one shared row in `docs/DEVIATION_LOG.md`:
+
+1. PnP keeps a manifest `default` of `0.4` and an **absent-key** fallback of `0.4` mm, where canonical's upstream default is `0` (i.e. auto → `1.125 × nozzle_diameter`). Changing PnP's default is a user-visible output change and was deliberately left out of packet 184 (`[FWD-1]`).
+2. **Ingestion residual:** no live slice can carry a `Percent` / `FloatOrPercent` value end-to-end today, because no live-path *producer* of either variant exists. The barrier is the config **parser**: `parse_percent_default` (`crates/slicer-scheduler/src/manifest.rs`) is the only non-test origin of either `ConfigValue` variant, and both of its `parse_config_field_entry` call sites invoke it as a bare validation statement and discard the returned value. `ResolvedConfig::to_config_map`'s `extensions` pass-through is *not* the barrier — it is a transparent channel that already carries any variant. Until the parser retains what it parses, the percent form of these keys is expressible in a manifest but unreachable at runtime; the `float` form and the `0` auto sentinel work today.
 
 **`precise_outer_wall`** — when `true`, the perimeter generator compensates outer-wall width to hit the model boundary precisely. Gated on `wall_sequence == InnerOuter` because inner walls must be committed first for the compensation math to work.
 
@@ -579,7 +592,13 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 - `InnerOuter` — inner walls print first; better dimensional accuracy (default).
 - `InnerOuterInner` — inner walls first, outer wall next, remaining inner walls last; balances both goals by bracketing the outer wall.
 
-**`min_width_top_surface`** — OrcaSlicer `min_width_top_surface` (`coFloatOrPercent`, canonical default `300%` of line width). Minimum wall width applied when narrowing walls on top solid surfaces. `classic-perimeters` still registers this as a fixed mm float (`1.2` ≈ 300% of the common `0.4` mm line width). **Packet 150:** `arachne-perimeters`'s copy is retyped `float_or_percent`, base `inner_wall_line_width` (300%), resolved module-side via `ConfigView::get_abs_value`, closing G6/D-104h for this key. **Packet 152:** `arachne-perimeters` now consumes it — the `only_one_wall_top` second WallToolPaths pass filters top sub-area walls by this width (resolved via `ConfigView::get_abs_value`). `classic-perimeters` still reads-and-validates it without gating its `only_one_wall_top` narrowing on it (tracked as `D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER`).
+**`min_width_top_surface`** — OrcaSlicer `min_width_top_surface` (`coFloatOrPercent`, canonical default `300%` of line width). Minimum wall width applied when narrowing walls on top solid surfaces. **Packet 150:** `arachne-perimeters`'s copy is retyped `float_or_percent`, resolved module-side via `ConfigView::get_abs_value`, closing G6/D-104h for this key. **Packet 152:** `arachne-perimeters` consumes it — the `only_one_wall_top` second WallToolPaths pass filters top sub-area walls by this width.
+
+**Packet 184 (D-152 classic half, now closed).** `classic-perimeters` no longer registers this as a fixed mm float and no longer reads-and-discards it. Both perimeter modules now agree on `type = "float_or_percent"`, `default = "0.0"`, `unit = "%"`, `min = 0.0`, and `classic-perimeters` **gates its `only_one_wall_top` split on it**: at the split call site, top sub-areas whose minimum bounding-box extent falls below the resolved threshold are retained out of the top portion (they keep the full configured wall count), and the survivors are passed through `offset2_ex` (shrink by `-t`, expand by `+t + 0.85 × perimeter_width`, the `0.85` thin-lettering constant kept verbatim from canonical `PerimeterGenerator::split_top_surfaces`) with an empty-result fallback. At the `"0.0"` default the gate is **off**, so behaviour is unchanged for existing profiles.
+
+**Nuance — the two modules resolve the same key against different bases.** `classic-perimeters` resolves it via `get_abs_value` against `inner_wall_line_width`, matching canonical's `ratio_over`. `arachne-perimeters` resolves it against `ArachneParams::preferred_bead_width_outer` (the canonical `bead_width_0` target, derived from `outer_wall_line_width` per ADR-0043). When outer and inner wall widths are equal — the default — the two agree; when they differ, the *same percent string* resolves to a different absolute threshold in each module. Reconciling the arachne base to the inner width is not packet 184's work.
+
+The gate deliberately does **not** port canonical's additional `ext_perimeter_spacing/2` floor on the threshold (`[FWD-2]`), matching the already-landed arachne half.
 
 ---
 

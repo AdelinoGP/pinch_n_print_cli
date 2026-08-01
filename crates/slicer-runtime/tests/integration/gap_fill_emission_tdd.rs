@@ -77,13 +77,15 @@ fn make_thin_arm_region(z: f32) -> SliceRegionView {
 /// - At least one WallLoop with `loop_type == GapFill`.
 /// - Every GapFill loop has `path.role == ExtrusionRole::GapFill`.
 /// - GapFill widths vary along the path (medial-axis output, not constant).
-/// - No individual GapFill segment has length < 0.5 mm (AC-4 contract).
+/// - Every GapFill polyline's TOTAL length is ≥ 0.5 mm (AC-4 contract; this
+///   mirrors the production filter, which sums segment lengths — it is NOT a
+///   per-segment guarantee).
 /// - `infill_areas` does not contain any polygon whose centroid lies inside
 ///   the arm bounding box (the gap was consumed, not left as infill).
 #[test]
 fn gap_fill_emitted_for_narrow_gap() {
     let inner_w = 0.4_f32;
-    // Assertion threshold for segment length (AC-4 contract: 0.5 mm).
+    // Assertion threshold for TOTAL polyline length (AC-4 contract: 0.5 mm).
     let filter_mm = 0.5_f32;
 
     let config = ConfigViewBuilder::new()
@@ -145,20 +147,28 @@ fn gap_fill_emitted_for_narrow_gap() {
             }
         }
 
-        // No individual segment length below the AC-4 contract threshold (0.5 mm).
+        // The AC-4 contract threshold applies to the TOTAL polyline length, not to
+        // individual segments. The production filter in `ClassicPerimeters`
+        // (`modules/core-modules/classic-perimeters/src/lib.rs`) sums the segment
+        // lengths of the medial axis and drops the polyline only when that TOTAL is
+        // below `filter_out_gap_fill`. A per-segment assertion was over-strict:
+        // canonical guarantees nothing about individual medial-axis segment lengths,
+        // and a legitimate long spine routinely contains sub-0.5 mm segments.
         let pts = &gl.path.points;
-        for i in 0..pts.len().saturating_sub(1) {
-            let dx = pts[i + 1].x - pts[i].x;
-            let dy = pts[i + 1].y - pts[i].y;
-            let seg_len = (dx * dx + dy * dy).sqrt();
-            assert!(
-                seg_len >= filter_mm - 1e-4,
-                "GapFill segment {}->{} length {:.4} mm is below 0.5 mm contract threshold",
-                i,
-                i + 1,
-                seg_len
-            );
-        }
+        let total_len: f32 = pts
+            .windows(2)
+            .map(|w| {
+                let dx = w[1].x - w[0].x;
+                let dy = w[1].y - w[0].y;
+                (dx * dx + dy * dy).sqrt()
+            })
+            .sum();
+        assert!(
+            total_len >= filter_mm - 1e-4,
+            "GapFill polyline total length {:.4} mm is below the {:.4} mm contract threshold",
+            total_len,
+            filter_mm
+        );
     }
 
     // The gap must be consumed by gap-fill, not left as residual infill area.

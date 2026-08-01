@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 
-use slicer_core::flow::bridging_flow;
+use slicer_core::flow::{bridging_flow, line_width_to_spacing};
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
     generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
@@ -73,6 +73,11 @@ pub struct ClassicPerimeters {
 /// touched; it rejects only genuinely degenerate contours.
 const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
 
+/// Fatal module-error code for a wall width / layer height combination whose
+/// rounded-cross-section spacing collapses to <= 0. Mirrors the identically
+/// named constant in `arachne-perimeters`.
+const ERR_NEGATIVE_SPACING: u32 = 1;
+
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
@@ -123,14 +128,33 @@ impl LayerModule for ClassicPerimeters {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
         };
-        let outer_wall_line_width = match _config.get("outer_wall_line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => legacy_line_width,
-        };
-        let inner_wall_line_width = match _config.get("inner_wall_line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => legacy_line_width,
-        };
+        // ── Nozzle diameter (packet 184 / D-164): read BEFORE the wall widths,
+        //    because both widths are `float_or_percent` keys resolved against it
+        //    (canonical `ratio_over = "nozzle_diameter"`). Its own fallback is
+        //    `legacy_line_width`, not `inner_wall_line_width` — that would be a
+        //    read cycle. Also feeds the R4 threshold and bridging flow.
+        let nozzle_diameter = _config
+            .get_float("nozzle_diameter")
+            .map(|v| v as f32)
+            .unwrap_or(legacy_line_width);
+        // Canonical `Flow::new_from_config_width` treats a non-percent value
+        // <= 0 as the *auto* sentinel and defers to `Flow::auto_extrusion_width`,
+        // which returns `1.125 * nozzle_diameter` for both `frExternalPerimeter`
+        // and `frPerimeter`. A missing key keeps PnP's `legacy_line_width`
+        // fallback (packet 184 scope decision: we do not adopt canonical's
+        // auto default for the absent-key case).
+        let outer_wall_line_width =
+            match _config.get_abs_value("outer_wall_line_width", nozzle_diameter as f64) {
+                Some(v) if v > 0.0 => v as f32,
+                Some(_) => 1.125 * nozzle_diameter,
+                None => legacy_line_width,
+            };
+        let inner_wall_line_width =
+            match _config.get_abs_value("inner_wall_line_width", nozzle_diameter as f64) {
+                Some(v) if v > 0.0 => v as f32,
+                Some(_) => 1.125 * nozzle_diameter,
+                None => legacy_line_width,
+            };
         let wall_sequence = match _config.get("wall_sequence") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "InnerOuter" => WallSequence::InnerOuter,
@@ -182,12 +206,6 @@ impl LayerModule for ClassicPerimeters {
         let precise_outer_wall =
             precise_outer_wall_raw && matches!(wall_sequence, WallSequence::InnerOuter);
 
-        // ── Nozzle diameter for R4 threshold (falls back to inner_wall_line_width
-        //    if not provided — preserves behaviour on older profiles). ───────────
-        let nozzle_diameter = _config
-            .get_float("nozzle_diameter")
-            .map(|v| v as f32)
-            .unwrap_or(inner_wall_line_width);
         // layer_height (packet 150 step 5): needed alongside nozzle_diameter
         // by bridging_flow's thick_bridges round-cross-section formula
         // (D-104g); threaded through emit_walls the same way nozzle_diameter
@@ -233,22 +251,22 @@ impl LayerModule for ClassicPerimeters {
             .map(|v| v as f32)
             .unwrap_or(10.0);
         let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
-        // min_width_top_surface (D-104d, deferred): OrcaSlicer's width
-        // threshold (mm) gating the `only_one_wall_top` single-wall cutoff —
-        // a top-surface loop narrower than this keeps its full wall count
-        // instead of collapsing to one (PerimeterGenerator.cpp:2160-2245;
-        // PrintConfig.cpp:1491-1511). `only_one_wall_top` above is
-        // unconditional (no per-loop width comparison yet) — behavior
-        // deferred, see D-104d-MIN-WIDTH-TOP-SURFACE-NONE. Read and
-        // validated here (must be a finite, non-negative mm value) so the
-        // config key round-trips correctly ahead of that follow-up; the
-        // value itself is intentionally unused until then.
-        let min_width_top_surface = _config.get_float("min_width_top_surface").unwrap_or(1.2);
-        debug_assert!(
-            min_width_top_surface.is_finite() && min_width_top_surface >= 0.0,
-            "min_width_top_surface must be a finite, non-negative mm value, got {min_width_top_surface}"
-        );
-        let _ = min_width_top_surface;
+        // min_width_top_surface (D-152, packet 184): the erosion threshold that
+        // gates the `only_one_wall_top` single-wall collapse. Canonical
+        // `PerimeterGenerator::split_top_surfaces` resolves it with
+        // `get_abs_value` against the perimeter width — it is a
+        // `coFloatOrPercent` key (`PrintConfigDef::init_fff_params`), NOT a raw
+        // mm float, and it is NOT a per-loop wall-width comparison: a top
+        // sub-area narrower than the threshold is eroded out of the top portion
+        // and therefore keeps the full configured wall count. Applied at the
+        // split call site below; mirrors `arachne-perimeters`'
+        // `emit_only_one_wall_top_second_pass`. `0.0` (the manifest default)
+        // leaves the gate OFF. Canonical additionally floors the threshold at
+        // `ext_perimeter_spacing/2 + 10`; packet 184 deliberately does not port
+        // that floor ([FWD-2]), matching the already-landed arachne half.
+        let min_width_top = _config
+            .get_abs_value("min_width_top_surface", inner_wall_line_width as f64)
+            .unwrap_or(0.0);
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
@@ -301,8 +319,27 @@ impl LayerModule for ClassicPerimeters {
                 continue;
             }
             let top_shell = region.top_shell_index();
+            // D-152 (packet 184), whole-region collapse site: a region that is
+            // entirely top surface (`top_shell_index == Some(0)`) collapses to
+            // a single wall — but only if it survives canonical
+            // `split_top_surfaces`' `min_width_top_surface` erosion. A region
+            // narrower than the threshold would be eroded out of the top
+            // portion and therefore keeps the full configured wall count. The
+            // same gate is applied to the partial-top split branch below.
+            // `0.0` (the manifest default) leaves the gate OFF.
             let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                1
+                let qualifies = min_width_top <= 0.0
+                    || region
+                        .polygons()
+                        .iter()
+                        .map(|ep| ex_polygon_min_width_mm(ep) as f64)
+                        .fold(f64::INFINITY, f64::min)
+                        >= min_width_top;
+                if qualifies {
+                    1
+                } else {
+                    layer_wall_count
+                }
             } else {
                 layer_wall_count
             };
@@ -404,6 +441,38 @@ impl LayerModule for ClassicPerimeters {
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
                 let split = split_top_surfaces(polygons, region.top_solid_fill());
+                // `min_width_top_surface` gate (D-152). The threshold is applied
+                // HERE, at the call site, not inside `split_top_surfaces`: that
+                // free fn is reused above as a generic mask split for the
+                // overhang footprint, where top-surface erosion must not apply.
+                // Shape mirrors canonical `PerimeterGenerator::split_top_surfaces`
+                // and `arachne-perimeters`' second pass: drop top sub-areas whose
+                // minimum bounding-box extent is below the threshold (they fall
+                // through to the full-wall-count portion), then shrink/expand the
+                // survivors by `-t` / `+t + 0.85*perimeter_width` (the `0.85`
+                // thin-lettering constant is kept verbatim from canonical).
+                let split = if min_width_top > 0.0 {
+                    let (kept, dropped): (Vec<ExPolygon>, Vec<ExPolygon>) = split
+                        .top_portion
+                        .into_iter()
+                        .partition(|ep| (ex_polygon_min_width_mm(ep) as f64) >= min_width_top);
+                    let expanded = offset2_ex(
+                        &kept,
+                        -min_width_top,
+                        min_width_top + 0.85 * inner_wall_line_width as f64,
+                        OffsetJoinType::Miter,
+                        3.0,
+                    );
+                    let top_portion = if expanded.is_empty() { kept } else { expanded };
+                    let mut non_top_portion = split.non_top_portion;
+                    non_top_portion.extend(dropped);
+                    slicer_core::top_surface_split::TopSurfaceSplit {
+                        top_portion,
+                        non_top_portion,
+                    }
+                } else {
+                    split
+                };
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
                         &split.top_portion,
@@ -509,15 +578,15 @@ impl ClassicPerimeters {
     /// Emit wall loops (plus seam candidates and infill) for `polygons`.
     ///
     /// T-051/T-052: outer (i==0) uses `outer_wall_line_width`; inner (i>=1) uses
-    /// `inner_wall_line_width`. The first inset is by `outer_wall_line_width / 2`;
-    /// subsequent insets are by `inner_wall_line_width` (canonical OrcaSlicer
-    /// ext_perimeter_spacing2 perimeter_spacing arithmetic).
+    /// `inner_wall_line_width`. The first inset is by `outer_wall_line_width / 2`
+    /// (canonical `ext_perimeter_width / 2`); the i==1 inset is by
+    /// `ext_perimeter_spacing2` and i>=2 by `perimeter_spacing` — both derived from
+    /// Flow *spacing*, not line width (canonical `PerimeterGenerator::process_classic`).
     ///
     /// R1 (P105 AC-7): when `precise_outer_wall` is active (precise_outer_wall=true
-    /// AND wall_sequence=InnerOuter), the first inset uses `ext_perimeter_spacing2`
-    /// = (outer_wall_line_width + inner_wall_line_width)/2 and inner walls are
-    /// emitted before the outer wall.
-    /// OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
+    /// AND wall_sequence=InnerOuter), `ext_perimeter_spacing2` is instead the mean
+    /// of the two *widths*, the first inset uses it, and inner walls are emitted
+    /// before the outer wall.
     #[allow(clippy::too_many_arguments)]
     fn line_width_for(
         &self,
@@ -591,20 +660,40 @@ impl ClassicPerimeters {
         // innermost contour (bisector included), flooding 300+ slivers per cube.
         let mut gaps: Vec<ExPolygon> = Vec::new();
 
+        // D-105 / T-052: canonical `PerimeterGenerator::process_classic` insets by
+        // Flow *spacing* (rounded cross-section), not by line width:
+        //   perimeter_spacing     = perimeter_flow.spacing()
+        //   ext_perimeter_spacing = ext_perimeter_flow.spacing()
+        //   ext_perimeter_spacing2 = precise_outer_wall && wall_sequence==InnerOuter
+        //       ? 0.5 * (ext_perimeter_flow.width()   + perimeter_flow.width())
+        //       : 0.5 * (ext_perimeter_flow.spacing() + perimeter_flow.spacing())
+        // A width/layer-height pair whose spacing collapses to <= 0 is a fatal
+        // config error, not a silently clamped inset.
+        let ext_perimeter_spacing = line_width_to_spacing(outer_wall_line_width, layer_height)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))?;
+        let perimeter_spacing = line_width_to_spacing(inner_wall_line_width, layer_height)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))?;
+        let ext_perimeter_spacing2 = if precise_outer_wall {
+            0.5 * (outer_wall_line_width + inner_wall_line_width)
+        } else {
+            0.5 * (ext_perimeter_spacing + perimeter_spacing)
+        };
+
         for i in 0..wall_count {
             let inset_delta = if i == 0 {
                 // R1 (P105 AC-7): precise mode uses ext_perimeter_spacing2 for the
-                // outer wall inset (same as the gap between outer and first inner).
-                // OrcaSlicer PerimeterGenerator.cpp:1501-1506
+                // outer wall inset (same as the gap between outer and first inner);
+                // otherwise canonical insets the first loop by ext_perimeter_width/2.
+                // Canonical `process_classic` (`PerimeterGenerator.cpp`).
                 if precise_outer_wall {
-                    -((outer_wall_line_width + inner_wall_line_width) / 2.0)
+                    -ext_perimeter_spacing2
                 } else {
                     -(outer_wall_line_width / 2.0)
                 }
             } else if i == 1 {
-                -((outer_wall_line_width + inner_wall_line_width) / 2.0)
+                -ext_perimeter_spacing2
             } else {
-                -inner_wall_line_width
+                -perimeter_spacing
             };
             let inset_result = offset(
                 &current_polygons,
@@ -898,13 +987,16 @@ impl ClassicPerimeters {
         // matches Orca parity AND removes the sub-/super-threshold slivers that
         // were driving the RNG medial-axis (and thus non-deterministic gcode).
         if emit_inner && !gaps.is_empty() && medial_axis_enabled {
-            // R4 (P105): OrcaSlicer parity gap-fill min_width.
-            // OrcaSlicer PerimeterGenerator.cpp:1924:
-            // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
-            // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
-            let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
-            // OrcaSlicer max = 2 * perimeter_spacing (PerimeterGenerator.cpp:1947).
-            let perimeter_spacing = (outer_wall_line_width + inner_wall_line_width) / 2.0;
+            // R4 (P105) / D-105: canonical `process_classic` gap-fill width band.
+            //   min = 0.2 * min(perimeter_width, ext_perimeter_width)
+            //             * (1 - INSET_OVERLAP_TOLERANCE)
+            //   max = 2 * perimeter_spacing
+            // INSET_OVERLAP_TOLERANCE is 0.4, declared in `libslic3r/libslic3r.h`
+            // (`static constexpr double INSET_OVERLAP_TOLERANCE = 0.4;`).
+            let min_gap_fill_width =
+                0.2 * outer_wall_line_width.min(inner_wall_line_width) * (1.0 - 0.4_f32);
+            // `perimeter_spacing` here is the hoisted rounded-cross-section spacing
+            // derived from `inner_wall_line_width`, not a width average.
             let max_gap_fill_width = 2.0 * perimeter_spacing;
             // diff(open(gaps, min/2), open(gaps, max/2)) = gaps in width band [min, max].
             let opened_min = opening_ex(
@@ -1158,6 +1250,28 @@ fn seam_paint_box(center: slicer_ir::Point2, half: i64) -> ExPolygon {
     }
 }
 
+/// Minimum bounding-box extent of `ep`'s outer contour, in mm — the smaller of
+/// the contour's bbox width and height.
+///
+/// Cheap width proxy for the `min_width_top_surface` gate (D-152). Mirrors
+/// `arachne-perimeters`' `ex_polygon_min_width_mm` so both perimeter
+/// generators classify a top sub-area identically.
+fn ex_polygon_min_width_mm(ep: &ExPolygon) -> f32 {
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for p in &ep.contour.points {
+        let x = units_to_mm(p.x);
+        let y = units_to_mm(p.y);
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+    }
+    (max_x - min_x).min(max_y - min_y)
+}
+
 /// Narrow-island classification (T-072/T-073, P108).
 ///
 /// An island is classified "narrow" when it is narrower than
@@ -1167,8 +1281,8 @@ fn seam_paint_box(center: slicer_ir::Point2, half: i64) -> ExPolygon {
 /// second condition filters out tiny slivers/noise from being misclassified
 /// as genuine narrow islands, it is not an upper bound.
 ///
-/// Loosely follows OrcaSlicer PerimeterGenerator.cpp:1611-1628's "narrow but
-/// not too long" island classification, adapted to this port's own
+/// Loosely follows canonical OrcaSlicer `PerimeterGenerator`'s "narrow but not
+/// too long" island classification, adapted to this port's own
 /// `smaller_perimeter_threshold_mm` / `narrow_loop_length_threshold_mm`
 /// config keys (see classic-perimeters.toml).
 fn classify_narrow_island(
@@ -1230,7 +1344,7 @@ mod tests {
     // `ConfigView::from_declared` (docs/03 host-boundary enforcement),
     // which drops any key absent from the manifest schema before the guest
     // ever sees it — so both reads were permanently dead, silently falling
-    // back to inner_wall_line_width / a hardcoded 0.2 regardless of what a
+    // back to the line-width fallback / a hardcoded 0.2 regardless of what a
     // profile supplied. This test fails pre-Step-6 (schema sections absent)
     // and passes now that both are registered.
     #[test]
@@ -1251,24 +1365,28 @@ mod tests {
 
         // Behavioral corroboration: once declared and bound by the host, the
         // exact read expression at run_perimeters
-        // (`_config.get_float("nozzle_diameter").unwrap_or(inner_wall_line_width)`)
-        // must honor a supplied nozzle_diameter that differs from
-        // inner_wall_line_width, not silently fall back to it.
-        let inner_wall_line_width: f32 = 0.4;
+        // (`_config.get_float("nozzle_diameter").unwrap_or(legacy_line_width)`)
+        // must honor a supplied nozzle_diameter that differs from that
+        // fallback, not silently fall back to it. (Packet 184 / D-164 moved the
+        // read above the two wall-width reads and swapped its fallback from
+        // `inner_wall_line_width` to `legacy_line_width`, because both wall
+        // widths are now `float_or_percent` keys resolved against
+        // nozzle_diameter — the old fallback would have been a read cycle.)
+        let legacy_line_width: f32 = 0.4;
         let mut fields = HashMap::new();
         fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
         let config = ConfigView::from_map(fields);
         let nozzle_diameter = config
             .get_float("nozzle_diameter")
             .map(|v| v as f32)
-            .unwrap_or(inner_wall_line_width);
+            .unwrap_or(legacy_line_width);
         assert!(
             (nozzle_diameter - 0.6).abs() < f32::EPSILON,
             "expected supplied nozzle_diameter=0.6 to be read verbatim, got {nozzle_diameter}"
         );
         assert!(
-            (nozzle_diameter - inner_wall_line_width).abs() > f32::EPSILON,
-            "nozzle_diameter must not silently equal inner_wall_line_width when \
+            (nozzle_diameter - legacy_line_width).abs() > f32::EPSILON,
+            "nozzle_diameter must not silently equal legacy_line_width when \
              a differing value was supplied"
         );
 
