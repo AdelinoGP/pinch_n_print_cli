@@ -9,7 +9,9 @@
 //! `FlowErrorNegativeSpacing` (iff the result is non-positive), and the
 //! vestigial `nozzle_diameter` parameter is gone.
 
-use slicer_core::flow::{flow_to_width, line_width_to_spacing};
+use slicer_core::flow::{
+    flow_to_width, line_width_to_spacing, resolve_role_width, ExtrusionRole, RoleWidthContext,
+};
 
 /// Canonical OrcaSlicer case: width=0.4 mm, layer_height=0.2 mm.
 /// Expected: 0.4 - 0.2 * (1 - PI/4) ≈ 0.3571 mm.
@@ -141,4 +143,163 @@ fn flow_to_width_result_is_at_least_spacing() {
         w >= spacing,
         "flow_to_width({spacing}, {layer_height}) = {w} < spacing"
     );
+}
+
+fn role_width_context() -> RoleWidthContext {
+    RoleWidthContext {
+        line_width: 0.4,
+        nozzle_diameter: 0.4,
+        bridge_line_width: 0.91,
+        initial_layer_line_width: 0.81,
+        outer_wall_line_width: 0.71,
+        inner_wall_line_width: 0.61,
+        top_surface_line_width: 0.51,
+        internal_solid_infill_line_width: 0.49,
+        sparse_infill_line_width: 0.39,
+    }
+}
+
+fn roles() -> [ExtrusionRole; 9] {
+    [
+        ExtrusionRole::OuterWall,
+        ExtrusionRole::InnerWall,
+        ExtrusionRole::ThinWall,
+        ExtrusionRole::TopSolidInfill,
+        ExtrusionRole::BottomSolidInfill,
+        ExtrusionRole::InternalSolidInfill,
+        ExtrusionRole::SparseInfill,
+        ExtrusionRole::BridgeInfill,
+        ExtrusionRole::GapFill,
+    ]
+}
+
+fn role_width(role: ExtrusionRole, context: &RoleWidthContext) -> f32 {
+    match role {
+        ExtrusionRole::OuterWall => context.outer_wall_line_width,
+        ExtrusionRole::InnerWall | ExtrusionRole::ThinWall | ExtrusionRole::GapFill => {
+            context.inner_wall_line_width
+        }
+        ExtrusionRole::TopSolidInfill => context.top_surface_line_width,
+        ExtrusionRole::BottomSolidInfill | ExtrusionRole::InternalSolidInfill => {
+            context.internal_solid_infill_line_width
+        }
+        ExtrusionRole::SparseInfill => context.sparse_infill_line_width,
+        ExtrusionRole::BridgeInfill => context.bridge_line_width,
+        _ => 0.0,
+    }
+}
+
+fn set_role_width(context: &mut RoleWidthContext, role: ExtrusionRole, width: f32) {
+    match role {
+        ExtrusionRole::OuterWall => context.outer_wall_line_width = width,
+        ExtrusionRole::InnerWall | ExtrusionRole::ThinWall | ExtrusionRole::GapFill => {
+            context.inner_wall_line_width = width
+        }
+        ExtrusionRole::TopSolidInfill => context.top_surface_line_width = width,
+        ExtrusionRole::BottomSolidInfill | ExtrusionRole::InternalSolidInfill => {
+            context.internal_solid_infill_line_width = width
+        }
+        ExtrusionRole::SparseInfill => context.sparse_infill_line_width = width,
+        ExtrusionRole::BridgeInfill => context.bridge_line_width = width,
+        _ => {}
+    }
+}
+
+#[test]
+fn resolve_role_width_bridge_and_first_layer_precedence_matrix() {
+    for role in roles() {
+        let context = role_width_context();
+        for first_layer in [false, true] {
+            for bridge in [false, true] {
+                let expected = if bridge {
+                    context.bridge_line_width
+                } else if first_layer {
+                    context.initial_layer_line_width
+                } else {
+                    role_width(role.clone(), &context)
+                };
+                let actual = resolve_role_width(role.clone(), first_layer, bridge, &context);
+                assert_eq!(
+                    actual, expected,
+                    "role={role:?}, first_layer={first_layer}, bridge={bridge}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn resolve_role_width_bridge_fallback_covers_zero_and_absent_widths() {
+    for role in roles() {
+        let mut context = role_width_context();
+        context.bridge_line_width = 0.0;
+        context.initial_layer_line_width = 0.0;
+        let expected_role_width = role_width(role.clone(), &context);
+        let expected = if expected_role_width > 0.0 {
+            expected_role_width
+        } else {
+            context.line_width
+        };
+        assert_eq!(
+            resolve_role_width(role.clone(), false, true, &context),
+            expected,
+            "bridge zero must fall back to role width for {role:?}"
+        );
+
+        context.initial_layer_line_width = 0.81;
+        assert_eq!(
+            resolve_role_width(role.clone(), true, true, &context),
+            context.initial_layer_line_width,
+            "bridge fallback must allow the first-layer override for {role:?}"
+        );
+
+        context.initial_layer_line_width = 0.0;
+        context.line_width = 0.0;
+        let expected = if expected_role_width > 0.0 {
+            expected_role_width
+        } else {
+            1.125 * context.nozzle_diameter
+        };
+        assert_eq!(
+            resolve_role_width(role.clone(), true, true, &context),
+            expected,
+            "zero bridge and first-layer widths must fall through for {role:?}"
+        );
+    }
+}
+
+#[test]
+fn resolve_role_width_role_zero_and_positive_matrix() {
+    for role in roles() {
+        let mut context = role_width_context();
+        context.initial_layer_line_width = 0.0;
+        let expected = role_width(role.clone(), &context);
+        assert_eq!(
+            resolve_role_width(role.clone(), false, false, &context),
+            expected,
+            "configured role width must stay unchanged for {role:?}"
+        );
+
+        set_role_width(&mut context, role.clone(), 0.0);
+        assert_eq!(
+            resolve_role_width(role.clone(), false, false, &context),
+            context.line_width,
+            "zero or absent role width must fall back to line width for {role:?}"
+        );
+    }
+}
+
+#[test]
+fn resolve_role_width_auto_sentinel_uses_line_width_then_nozzle_width() {
+    for role in roles() {
+        let mut context = RoleWidthContext {
+            nozzle_diameter: 0.4,
+            ..RoleWidthContext::default()
+        };
+        set_role_width(&mut context, role.clone(), 0.0);
+        assert_eq!(
+            resolve_role_width(role, false, false, &context),
+            1.125 * context.nozzle_diameter
+        );
+    }
 }

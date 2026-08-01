@@ -28,6 +28,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_core::flow::{resolve_role_width, RoleWidthContext};
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
@@ -77,10 +78,27 @@ impl LayerModule for RectilinearInfill {
             _ => BASE_SPEED,
         };
 
-        let line_width = match config.get("line_width") {
+        let width_value = |key: &str| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
+            Some(ConfigValue::Int(w)) => *w as f32,
+            _ => 0.0,
         };
+        let width_context = RoleWidthContext {
+            line_width: match config.get("line_width") {
+                Some(ConfigValue::Float(w)) => *w as f32,
+                Some(ConfigValue::Int(w)) => *w as f32,
+                _ => 0.4,
+            },
+            nozzle_diameter: 0.4,
+            bridge_line_width: width_value("bridge_line_width"),
+            initial_layer_line_width: width_value("initial_layer_line_width"),
+            top_surface_line_width: width_value("top_surface_line_width"),
+            internal_solid_infill_line_width: width_value("internal_solid_infill_line_width"),
+            sparse_infill_line_width: width_value("sparse_infill_line_width"),
+            ..RoleWidthContext::default()
+        };
+        let line_width =
+            resolve_role_width(ExtrusionRole::SparseInfill, false, false, &width_context);
 
         let infill_shift_step = match config.get("infill_shift_step") {
             Some(ConfigValue::Float(s)) => *s as f32,

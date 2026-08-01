@@ -61,7 +61,9 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_core::flow::{bridging_flow, flow_to_width, line_width_to_spacing};
+use slicer_core::flow::{
+    bridging_flow, flow_to_width, line_width_to_spacing, resolve_role_width, RoleWidthContext,
+};
 use slicer_core::perimeter_utils::{
     build_wall_flags, generate_sharp_corner_seam_candidates, point_in_any_polygon,
     wall_sequence_reorder,
@@ -136,7 +138,10 @@ fn signed_area_of_points(pts: &[slicer_ir::Point3WithWidth]) -> f64 {
 const ERR_NEGATIVE_SPACING: u32 = 1;
 
 #[rustfmt::skip]
-fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, ModuleError> {
+fn arachne_params_from_config(
+    config: &ConfigView,
+    first_layer: bool,
+) -> Result<ArachneParams, ModuleError> {
     let defaults = ArachneParams::default();
 
     // `layer_height`/`nozzle_diameter` are Z-axis-convention / physical-spec
@@ -176,15 +181,35 @@ fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, Modu
     // arachne output was INVARIANT to `outer_wall_line_width` /
     // `inner_wall_line_width`. Those keys are retired; the wall-width keys are
     // plain mm (no units_to_mm), same as classic-perimeters reads them.
-    let optimal_width = {
-        let raw_width_mm = config
+    let width_context = RoleWidthContext {
+        line_width: config
+            .get_float("line_width")
+            .unwrap_or(defaults.optimal_width) as f32,
+        nozzle_diameter: nozzle_diameter_mm as f32,
+        bridge_line_width: config.get_float("bridge_line_width").unwrap_or(0.0) as f32,
+        initial_layer_line_width: config
+            .get_float("initial_layer_line_width")
+            .unwrap_or(0.0) as f32,
+        outer_wall_line_width: config
+            .get_float("outer_wall_line_width")
+            .unwrap_or(0.0) as f32,
+        inner_wall_line_width: config
             .get_float("inner_wall_line_width")
-            .unwrap_or(defaults.optimal_width);
+            .unwrap_or(0.0) as f32,
+        ..RoleWidthContext::default()
+    };
+    let optimal_width = {
+        let raw_width_mm = resolve_role_width(
+            ExtrusionRole::InnerWall,
+            first_layer,
+            false,
+            &width_context,
+        );
         // D-162: no fallback. A non-positive spacing is a config error
         // (canonical throws FlowErrorNegativeSpacing and aborts the slice);
         // the former `spacing <= 0 -> raw width` branch smuggled a WIDTH into
         // the SPACING-domain strategy stack.
-        line_width_to_spacing(raw_width_mm as f32, layer_height_mm as f32)
+        line_width_to_spacing(raw_width_mm, layer_height_mm as f32)
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64
     };
     // AC-3 (cont'd): OrcaSlicer sets `bead_width_0 = ext_perimeter_spacing`
@@ -194,9 +219,12 @@ fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, Modu
     // the precise_outer_wall inset formula below, which mirrors OrcaSlicer's
     // `wall_0_inset = -(ext_perimeter_width/2 - ext_perimeter_spacing/2)` and
     // needs the true (unconverted) `ext_perimeter_width`.
-    let preferred_bead_width_outer_raw = config
-        .get_float("outer_wall_line_width")
-        .unwrap_or(defaults.preferred_bead_width_outer);
+    let preferred_bead_width_outer_raw = resolve_role_width(
+        ExtrusionRole::OuterWall,
+        first_layer,
+        false,
+        &width_context,
+    ) as f64;
     // D-162: no fallback — see `optimal_width` above.
     let preferred_bead_width_outer =
         line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
@@ -432,7 +460,7 @@ impl LayerModule for ArachnePerimeters {
         output: &mut PerimeterOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let mut params = arachne_params_from_config(config)?;
+        let mut params = arachne_params_from_config(config, layer_index == 0)?;
         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
         // in object coordinates). PnP historically folded this into
         // is_initial_layer; both flags are kept distinct so downstream flag
@@ -1144,7 +1172,7 @@ mod tests {
             ConfigValue::Float(0.025),
         );
         let config = ConfigView::from_map(fields);
-        let params = arachne_params_from_config(&config).expect("valid config");
+        let params = arachne_params_from_config(&config, false).expect("valid config");
         assert!(
             (params.smallest_line_segment_squared - 0.25).abs() < 1e-9,
             "expected smallest_line_segment_squared = 0.5² = 0.25 mm², got {}",

@@ -901,7 +901,10 @@ fn object_metadata_to_config_data(
             "layer_height"
             | "brim_width"
             | "support_threshold_angle"
-            | "support_top_z_distance" => match value.parse::<f64>() {
+            | "support_top_z_distance"
+            | "inner_wall_line_width"
+            | "outer_wall_line_width"
+            | "sparse_infill_line_width" => match value.parse::<f64>() {
                 Ok(parsed) if parsed.is_finite() => {
                     out.insert(key.clone(), ConfigValue::Float(parsed));
                 }

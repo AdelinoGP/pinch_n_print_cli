@@ -1,6 +1,6 @@
 //! TDD tests for TASK-201 / packet 60 Step 1: 7 new precision keys on `ResolvedConfig`.
 
-use slicer_ir::resolved_config::ResolvedConfig;
+use slicer_ir::{resolved_config::ResolvedConfig, ConfigValue};
 
 #[test]
 fn new_precision_keys_have_orca_defaults() {
@@ -12,4 +12,46 @@ fn new_precision_keys_have_orca_defaults() {
     assert_eq!(cfg.gcode_xy_decimals, 3_u32);
     assert_eq!(cfg.perimeter_arc_tolerance, 0.0125_f32);
     assert_eq!(cfg.slice_closing_radius, 0.049_f32);
+}
+
+#[test]
+fn line_width_defaults_are_auto_sentinels() {
+    let cfg = ResolvedConfig::default();
+    let widths: Vec<_> = cfg
+        .to_config_map()
+        .into_iter()
+        .filter(|(key, _)| key.ends_with("line_width"))
+        .collect();
+
+    assert!(widths.iter().any(|(key, _)| key == "line_width"));
+    assert!(widths
+        .iter()
+        .any(|(key, _)| key == "initial_layer_line_width"));
+    for (key, value) in widths {
+        assert_eq!(
+            value,
+            ConfigValue::Float(0.0),
+            "{key} should default to auto"
+        );
+    }
+}
+
+#[test]
+fn explicit_width_round_trips_with_canonical_initial_layer_name() {
+    let cfg = ResolvedConfig {
+        line_width: 0.4_f32,
+        initial_layer_line_width: 0.4_f32,
+        ..ResolvedConfig::default()
+    };
+
+    let map = cfg.to_config_map();
+    assert_eq!(
+        map.get("line_width"),
+        Some(&ConfigValue::Float(f64::from(0.4_f32)))
+    );
+    assert_eq!(
+        map.get("initial_layer_line_width"),
+        Some(&ConfigValue::Float(f64::from(0.4_f32)))
+    );
+    assert!(!map.contains_key("first_layer_line_width"));
 }

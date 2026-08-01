@@ -292,6 +292,15 @@ fn parses_cube_cilindrical_modifier_sidecar() {
         Some("0.6"),
         "modifier part 2 should carry the inner_wall_line_width override"
     );
+    for key in ["outer_wall_line_width", "sparse_infill_line_width"] {
+        assert!(
+            part2
+                .metadata
+                .get(key)
+                .is_some_and(|value| value.parse::<f64>().is_ok()),
+            "modifier part 2 should carry numeric {key} override"
+        );
+    }
     assert_eq!(
         part2
             .metadata

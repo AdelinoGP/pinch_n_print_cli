@@ -211,10 +211,40 @@ max-ir-schema     = "5.0.0"
   # below, exactly like classic-perimeters. ArachneParams' struct FIELDS keep
   # the canonical names; only the config keys are gone (ADR-0043).
 
-  [config.schema.inner_wall_line_width]
+  [config.schema.line_width]
   type        = "float"
-  default     = 0.4
-  min         = 0.1
+  default     = 0
+  min         = 0.0
+  max         = 2.0
+  unit        = "mm"
+  display     = "Line Width"
+  description = "Base extrusion line width in mm used when a role-specific width is not set."
+  group       = "Walls"
+
+  [config.schema.initial_layer_line_width]
+  type        = "float"
+  default     = 0.0
+  min         = 0.0
+  max         = 2.0
+  unit        = "mm"
+  display     = "Initial Layer Line Width"
+  description = "Optional first-layer extrusion line width in mm; zero uses the role or base width."
+  group       = "Walls"
+
+  [config.schema.bridge_line_width]
+  type        = "float"
+  default     = 0.0
+  min         = 0.0
+  max         = 2.0
+  unit        = "mm"
+  display     = "Bridge Line Width"
+  description = "Optional bridge extrusion line width in mm; zero uses the role or base width."
+  group       = "Quality"
+
+  [config.schema.inner_wall_line_width]
+  type        = "float_or_percent"
+  default     = 0
+  min         = 0.0
   max         = 2.0
   display     = "Inner Wall Line Width"
   description = "Inner wall extrusion line width in mm (plain mm, not scaled units). Canonical bead_width_x: PerimeterGenerator passes perimeter_spacing = perimeter_flow.scaled_spacing() into WallToolPaths; arachne_params_from_config applies the same width->spacing conversion (line_width_to_spacing) before feeding the beading strategy stack, and emission converts back (VariableWidth.cpp::thick_polyline_to_multi_path)."
@@ -229,9 +259,9 @@ max-ir-schema     = "5.0.0"
   advanced    = true
 
   [config.schema.outer_wall_line_width]
-  type        = "float"
-  default     = 0.4
-  min         = 0.1
+  type        = "float_or_percent"
+  default     = 0
+  min         = 0.0
   max         = 2.0
   display     = "Outer Wall Line Width"
   description = "Outer wall extrusion line width in mm (plain mm, not scaled units). Canonical bead_width_0: PerimeterGenerator passes ext_perimeter_spacing = ext_perimeter_flow.scaled_spacing() into WallToolPaths; maps to ArachneParams::preferred_bead_width_outer (RedistributeBeadingStrategy's optimal_width_outer, and the base optimal_width when max_bead_count <= 2, per BeadingStrategyFactory::makeStrategy). Also feeds the precise_outer_wall inset formula, which needs the true ext_perimeter_width."

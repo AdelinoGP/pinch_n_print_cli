@@ -122,10 +122,27 @@ impl LayerModule for GyroidInfill {
             _ => BASE_SPEED,
         };
 
-        let line_width = match config.get("line_width") {
+        let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
+            Some(ConfigValue::Int(w)) => *w as f32,
+            _ => fallback,
         };
+
+        let line_width = slicer_core::flow::resolve_role_width(
+            ExtrusionRole::SparseInfill,
+            false,
+            false,
+            &slicer_core::flow::RoleWidthContext {
+                line_width: width("line_width", 0.4),
+                nozzle_diameter: 0.4,
+                bridge_line_width: width("bridge_line_width", 0.0),
+                initial_layer_line_width: width("initial_layer_line_width", 0.0),
+                sparse_infill_line_width: width("sparse_infill_line_width", 0.0),
+                internal_solid_infill_line_width: width("internal_solid_infill_line_width", 0.0),
+                top_surface_line_width: width("top_surface_line_width", 0.0),
+                ..Default::default()
+            },
+        );
 
         Ok(Self {
             density,

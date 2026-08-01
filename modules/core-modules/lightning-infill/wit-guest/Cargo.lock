@@ -254,6 +254,7 @@ dependencies = [
 name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
+ "slicer-core",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

@@ -419,6 +419,12 @@ pub struct ConfigFieldEntry {
     pub field_type: String,
     /// Default value as a string representation.
     pub default: Option<String>,
+    /// Parsed `default` for `"percent"` / `"float_or_percent"` field types,
+    /// retained from `parse_percent_default` rather than discarded
+    /// (packet 185 / DEV-100). `None` for every other field type. Skipped in
+    /// serialization so the config-schema wire shape is unchanged.
+    #[serde(skip)]
+    pub parsed_default: Option<ConfigValue>,
     /// Minimum for int/float fields.
     pub min: Option<f64>,
     /// Maximum for int/float fields.
@@ -1073,14 +1079,22 @@ fn parse_config_field_entry(
 ) -> Result<ConfigFieldEntry, LoadError> {
     // Handle shorthand: value is just a string like "int" or "float"
     if let Some(type_str) = value.as_str() {
-        if type_str == "percent" || type_str == "float_or_percent" {
+        let parsed_default = if type_str == "percent" || type_str == "float_or_percent" {
             // Shorthand form carries no `default` — percent/float_or_percent
             // fields always need one (they're base-value-relative), so this
             // is rejected rather than silently defaulting to 0 (packet 150).
-            parse_percent_default(field_key, type_str, None, manifest_path)?;
-        }
+            Some(parse_percent_default(
+                field_key,
+                type_str,
+                None,
+                manifest_path,
+            )?)
+        } else {
+            None
+        };
         return Ok(ConfigFieldEntry {
             field_type: type_str.to_string(),
+            parsed_default,
             ..Default::default()
         });
     }
@@ -1103,9 +1117,19 @@ fn parse_config_field_entry(
         "type",
     )?;
     let default = table.get("default").map(|v| v.to_string());
-    if field_type == "percent" || field_type == "float_or_percent" {
-        parse_percent_default(field_key, &field_type, table.get("default"), manifest_path)?;
-    }
+    // Retain the parsed percent default on the entry (packet 185 / DEV-100)
+    // instead of discarding it, so the resolver can thread the
+    // `Percent` / `FloatOrPercent` variant into `ResolvedConfig.extensions`.
+    let parsed_default = if field_type == "percent" || field_type == "float_or_percent" {
+        Some(parse_percent_default(
+            field_key,
+            &field_type,
+            table.get("default"),
+            manifest_path,
+        )?)
+    } else {
+        None
+    };
     let min = get_float_opt(table, "min");
     let max = get_float_opt(table, "max");
     let step = get_float_opt(table, "step");
@@ -1147,6 +1171,7 @@ fn parse_config_field_entry(
     Ok(ConfigFieldEntry {
         field_type,
         default,
+        parsed_default,
         min,
         max,
         step,
@@ -1598,6 +1623,7 @@ mod tests {
             ConfigFieldEntry {
                 field_type: "float".to_string(),
                 default: Some("0.15".to_string()),
+                parsed_default: None,
                 min: Some(0.0),
                 max: Some(1.0),
                 step: Some(0.05),

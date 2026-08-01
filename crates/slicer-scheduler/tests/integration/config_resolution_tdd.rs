@@ -3,13 +3,48 @@
 //! These tests cover the four acceptance criteria pinned by packet
 //! 35a_resolved-config-propagation Step 2.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
-use slicer_ir::ConfigValue;
+use slicer_ir::{ConfigValue, SemVer};
 use slicer_scheduler::{
     resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs, ConfigBoundsIndex,
-    ConfigResolutionError,
+    ConfigFieldEntry, ConfigResolutionError, ConfigSchema, LoadedModuleBuilder,
 };
+
+/// Build a one-module `ConfigBoundsIndex` whose schema declares
+/// `experimental_percent` as a `float_or_percent` field with a parsed
+/// `"50%"` default — the same shape `read_config_schema` produces for a real
+/// `[config.schema.*]` manifest entry.
+fn percent_schema_bounds() -> ConfigBoundsIndex {
+    let mut entries = BTreeMap::new();
+    entries.insert(
+        "experimental_percent".to_string(),
+        ConfigFieldEntry {
+            field_type: "float_or_percent".to_string(),
+            default: Some("50%".to_string()),
+            parsed_default: Some(ConfigValue::FloatOrPercent {
+                value: 50.0,
+                is_percent: true,
+            }),
+            ..Default::default()
+        },
+    );
+    let module = LoadedModuleBuilder::new(
+        "percent-fixture",
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        "Layer::Perimeter",
+        "legacy",
+        PathBuf::from("fixtures/percent-fixture.wasm"),
+    )
+    .config_schema(ConfigSchema { entries })
+    .build();
+    ConfigBoundsIndex::from_modules([&module])
+}
 
 /// AC-1: A known field (top_shell_layers) is applied; unlisted fields keep
 /// their defaults; extensions must be empty.
@@ -50,6 +85,47 @@ fn resolver_unknown_key_routes_to_extensions() {
         resolved.extensions.get("experimental_xyz"),
         Some(&ConfigValue::String("on".to_string())),
         "unknown key should land in extensions"
+    );
+}
+
+/// A percent default parsed from a `[config.schema.*]` manifest entry must
+/// retain its percent variant while crossing config resolution: with no
+/// profile value present, the parsed schema default lands in `extensions`
+/// via the live `ConfigBoundsIndex::from_modules` → `resolve_global_config`
+/// path (packet 185 / AC-6, TASK-303).
+#[test]
+fn percent_round_trip() {
+    let source: HashMap<String, ConfigValue> = HashMap::new();
+    let bounds = percent_schema_bounds();
+    let resolved = resolve_global_config(&source, &bounds).expect("resolution should succeed");
+
+    assert_eq!(
+        resolved.extensions.get("experimental_percent"),
+        Some(&ConfigValue::FloatOrPercent {
+            value: 50.0,
+            is_percent: true,
+        }),
+        "parsed percent schema default must reach extensions uncoerced"
+    );
+}
+
+/// A profile-supplied percent value still overrides the threaded schema
+/// default on the same key.
+#[test]
+fn percent_profile_value_overrides_schema_default() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "experimental_percent".to_string(),
+        ConfigValue::Percent(75.0),
+    );
+
+    let bounds = percent_schema_bounds();
+    let resolved = resolve_global_config(&source, &bounds).expect("resolution should succeed");
+
+    assert_eq!(
+        resolved.extensions.get("experimental_percent"),
+        Some(&ConfigValue::Percent(75.0)),
+        "profile value must win over the parsed schema default"
     );
 }
 
@@ -166,4 +242,45 @@ fn resolver_rejects_string_for_top_shell_layers() {
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
+}
+
+#[test]
+fn legacy_first_layer_line_width_alias_resolves() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "first_layer_line_width".to_string(),
+        ConfigValue::Float(0.4),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let resolved = resolve_global_config(&source, &bounds).expect("legacy alias should resolve");
+
+    assert_eq!(resolved.initial_layer_line_width, 0.4);
+    assert!(!resolved.extensions.contains_key("first_layer_line_width"));
+}
+
+#[test]
+fn both_keys_rejected() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "initial_layer_line_width".to_string(),
+        ConfigValue::Float(0.4),
+    );
+    source.insert(
+        "first_layer_line_width".to_string(),
+        ConfigValue::Float(0.5),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let err = resolve_global_config(&source, &bounds).expect_err("both keys must be rejected");
+    let message = err.to_string();
+
+    assert!(
+        message.contains("initial_layer_line_width"),
+        "error should name the canonical key: {message}"
+    );
+    assert!(
+        message.contains("first_layer_line_width"),
+        "error should name the legacy key: {message}"
+    );
 }

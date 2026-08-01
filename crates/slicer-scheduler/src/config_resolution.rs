@@ -70,6 +70,13 @@ impl NumericBounds {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigBoundsIndex {
     bounds: HashMap<String, NumericBounds>,
+    /// Parsed schema defaults for `percent` / `float_or_percent` fields
+    /// (packet 185 / AC-6, TASK-303). Threaded into
+    /// `ResolvedConfig.extensions` by [`resolve_global_config`] when the
+    /// profile supplies no value for the key, so module-owned percent keys
+    /// reach the live transport as `Percent` / `FloatOrPercent` values
+    /// instead of vanishing at the parser.
+    schema_defaults: HashMap<String, ConfigValue>,
 }
 
 impl ConfigBoundsIndex {
@@ -78,6 +85,7 @@ impl ConfigBoundsIndex {
     pub fn empty() -> Self {
         Self {
             bounds: HashMap::new(),
+            schema_defaults: HashMap::new(),
         }
     }
 
@@ -87,10 +95,26 @@ impl ConfigBoundsIndex {
     /// `float-list`, `int-list`) and that carry at least one of `min`/`max`
     /// contribute to the index. On collision across modules, ranges are
     /// intersected.
+    ///
+    /// Entries carrying a parsed `percent` / `float_or_percent` schema
+    /// default (`ConfigFieldEntry::parsed_default`) additionally populate the
+    /// schema-default table consumed by [`resolve_global_config`]; on
+    /// collision the first module's default wins.
     pub fn from_modules<'a, I>(modules: I) -> Self
     where
         I: IntoIterator<Item = &'a LoadedModule>,
     {
+        let modules: Vec<&LoadedModule> = modules.into_iter().collect();
+        let mut schema_defaults: HashMap<String, ConfigValue> = HashMap::new();
+        for module in &modules {
+            for (key, entry) in &module.config_schema().entries {
+                if let Some(default) = &entry.parsed_default {
+                    schema_defaults
+                        .entry(key.clone())
+                        .or_insert_with(|| default.clone());
+                }
+            }
+        }
         let declarations = modules.into_iter().flat_map(|module| {
             let module_id = module.id().to_string();
             module
@@ -112,7 +136,9 @@ impl ConfigBoundsIndex {
                     })
                 })
         });
-        Self::from_declarations(declarations)
+        let mut index = Self::from_declarations(declarations);
+        index.schema_defaults = schema_defaults;
+        index
     }
 
     /// Build the index from an explicit iterator of per-module
@@ -157,7 +183,10 @@ impl ConfigBoundsIndex {
             }
         }
 
-        Self { bounds: index }
+        Self {
+            bounds: index,
+            schema_defaults: HashMap::new(),
+        }
     }
 
     /// Validate a single `(key, value)` pair against the merged bounds.
@@ -176,6 +205,12 @@ impl ConfigBoundsIndex {
         };
         check_value(key, value, bounds, None)
     }
+
+    /// Iterate the parsed `percent` / `float_or_percent` schema defaults
+    /// collected by [`ConfigBoundsIndex::from_modules`].
+    pub fn schema_defaults(&self) -> impl Iterator<Item = (&String, &ConfigValue)> {
+        self.schema_defaults.iter()
+    }
 }
 
 fn is_numeric_field_type(field_type: &str) -> bool {
@@ -183,6 +218,31 @@ fn is_numeric_field_type(field_type: &str) -> bool {
         field_type,
         "int" | "float" | "float-list" | "int-list" | "percent" | "float_or_percent"
     )
+}
+
+const INITIAL_LAYER_LINE_WIDTH_KEY: &str = "initial_layer_line_width";
+const LEGACY_FIRST_LAYER_LINE_WIDTH_KEY: &str = "first_layer_line_width";
+
+fn reject_initial_layer_line_width_alias_conflict(
+    canonical_present: bool,
+    legacy_present: bool,
+) -> Result<(), ConfigResolutionError> {
+    if canonical_present && legacy_present {
+        return Err(ConfigResolutionError::TypeMismatch {
+            key: format!("{INITIAL_LAYER_LINE_WIDTH_KEY} and {LEGACY_FIRST_LAYER_LINE_WIDTH_KEY}"),
+            expected: "one config key",
+            actual: "both config keys supplied".into(),
+        });
+    }
+    Ok(())
+}
+
+fn canonical_config_key(key: &str) -> &str {
+    if key == LEGACY_FIRST_LAYER_LINE_WIDTH_KEY {
+        INITIAL_LAYER_LINE_WIDTH_KEY
+    } else {
+        key
+    }
 }
 
 fn check_value(
@@ -359,6 +419,11 @@ pub fn resolve_global_config(
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
     let mut cfg = ResolvedConfig::default();
 
+    reject_initial_layer_line_width_alias_conflict(
+        source.contains_key(INITIAL_LAYER_LINE_WIDTH_KEY),
+        source.contains_key(LEGACY_FIRST_LAYER_LINE_WIDTH_KEY),
+    )?;
+
     for (key, value) in source {
         // Skip per-object overlay keys â€” handled by resolve_per_object_configs.
         if key.starts_with("object_config:") {
@@ -379,13 +444,33 @@ pub fn resolve_global_config(
 
         // Enforce numeric min/max declared in any module's manifest before
         // routing the value into a declared field or the extensions bucket.
-        bounds.check(key.as_str(), value)?;
+        let resolved_key = canonical_config_key(key.as_str());
+        bounds.check(resolved_key, value)?;
 
         // Dispatch into the macro-generated per-field setter. Unknown keys
         // fall through to the `extensions` overflow bucket. Single source of
         // truth lives in `slicer-ir::resolved_config`.
-        if !cfg.apply_cli_key(key.as_str(), value)? {
+        if !cfg.apply_cli_key(resolved_key, value)? {
             cfg.extensions.insert(key.clone(), value.clone());
+        }
+    }
+
+    // Packet 185 / AC-6 (TASK-303): thread parsed `percent` /
+    // `float_or_percent` schema defaults into the resolved config so
+    // module-owned percent keys cross the live transport when the profile
+    // supplies no value. Keys claimed by a declared `ResolvedConfig` field
+    // keep the macro default instead (a schema default whose variant the
+    // declared extractor rejects is skipped, not an error — the profile did
+    // not supply it).
+    for (key, default) in bounds.schema_defaults() {
+        if source.contains_key(key) || cfg.extensions.contains_key(key) {
+            continue;
+        }
+        match cfg.apply_cli_key(canonical_config_key(key.as_str()), default) {
+            Ok(true) | Err(_) => {}
+            Ok(false) => {
+                cfg.extensions.insert(key.clone(), default.clone());
+            }
         }
     }
 
@@ -532,6 +617,11 @@ fn apply_overlay(
     // Simplest correct approach: clone base, then patch each override key.
     let mut cfg = base.clone();
 
+    reject_initial_layer_line_width_alias_conflict(
+        overrides.contains_key(INITIAL_LAYER_LINE_WIDTH_KEY),
+        overrides.contains_key(LEGACY_FIRST_LAYER_LINE_WIDTH_KEY),
+    )?;
+
     for (key, value) in overrides {
         // object_config / object_height prefixes won't appear here (already
         // stripped), but skip them defensively.
@@ -539,9 +629,10 @@ fn apply_overlay(
             continue;
         }
 
-        bounds.check(key.as_str(), value)?;
+        let resolved_key = canonical_config_key(key.as_str());
+        bounds.check(resolved_key, value)?;
 
-        if !cfg.apply_cli_key(key.as_str(), value)? {
+        if !cfg.apply_cli_key(resolved_key, value)? {
             cfg.extensions.insert(key.clone(), value.clone());
         }
     }

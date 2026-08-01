@@ -100,6 +100,9 @@ impl From<voronoi_graph::MmuGraphError> for PaintSegmentationError {
 /// (Step 19 dispatch wiring).
 pub const PAINT_VARIANT_REGION_ID_STRIDE: u64 = 1_000_000;
 
+/// Default nozzle diameter used when a width config carries the auto sentinel.
+const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
+
 /// Deterministic 64-bit content hash of a single `(semantic, value)` chain
 /// entry, used to synthesize a unique `region_id` per painted variant chain in
 /// `execute_paint_segmentation`.
@@ -1195,7 +1198,11 @@ pub fn execute_paint_segmentation(
             Some(cfg) => (
                 cfg.top_shell_layers as usize,
                 cfg.bottom_shell_layers as usize,
-                cfg.line_width,
+                if cfg.line_width <= 0.0 {
+                    1.125 * DEFAULT_NOZZLE_DIAMETER_MM
+                } else {
+                    cfg.line_width
+                },
                 // `cfg.layer_height` is `f64` (Z-formula precision); cast to
                 // `f32` here — shell-window math uses it as a thickness, not
                 // as a Z-plane coordinate, so f32 precision is sufficient.

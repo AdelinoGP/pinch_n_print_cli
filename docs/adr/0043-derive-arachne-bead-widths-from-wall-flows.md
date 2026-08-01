@@ -66,3 +66,13 @@ OrcaSlicer PrintConfig.cpp option — upstream sets it internally."
 - Upstream models both wall-width keys as `coFloatOrPercent` with default `0`
   = "auto from nozzle"; PnP's plain float `min 0.1` cannot express auto —
   logged as its own deviation row rather than silently narrowed.
+
+## Amendments
+
+### D-185-ADR-0043-AMENDED (2026-08-01)
+
+The original Decision item 2 specified: "plain mm floats, default 0.4, range [0.1, 2.0]".
+Packet 185 changes module-owned wall-width keys to `float_or_percent` with
+auto-`0` to match OrcaSlicer's `Flow.cpp::new_from_config_width` +
+`auto_extrusion_width` for canonical parity.
+Reference: deviation row `D-185-ADR-0043-AMENDED`.

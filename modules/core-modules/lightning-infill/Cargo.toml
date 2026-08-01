@@ -9,6 +9,7 @@ description = "Lightning-style branching sparse infill generator implementing La
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }

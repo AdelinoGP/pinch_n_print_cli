@@ -16,6 +16,8 @@ use crate::algos::lightning::error::LightningTreeError;
 use crate::algos::lightning::generator::Generator;
 use crate::polygon_ops::clip_polylines;
 
+const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
+
 /// Discrete support-distance field used by the Lightning tree generator.
 pub mod distance_field;
 pub mod error;
@@ -81,10 +83,15 @@ pub fn generate_lightning_trees(
                         .map_or_else(Vec::new, |polygon| polygon.contour.points.clone())
                 })
                 .collect();
+            let line_width_mm = if config.line_width <= 0.0 {
+                1.125 * DEFAULT_NOZZLE_DIAMETER_MM
+            } else {
+                config.line_width
+            };
             let mut generator = Generator::new(
                 outlines,
                 config.infill_density as f64,
-                mm_to_units(config.line_width),
+                mm_to_units(line_width_mm),
                 1,
                 mm_to_units(config.layer_height as f32),
                 config.infill_angle as f64,

@@ -4,6 +4,7 @@
 //! Layer::Perimeters stage per docs/01_system_architecture.md.
 
 use classic_perimeters::ClassicPerimeters;
+use slicer_core::flow::line_width_to_spacing;
 use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole, LoopType, Polygon, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -110,6 +111,49 @@ fn single_square_two_walls() {
     // Infill area should be non-empty and smaller than input
     let infill = output.infill_areas();
     assert!(!infill.is_empty(), "Infill areas should be computed");
+}
+
+#[test]
+fn infill_boundary_inset_uses_flow_spacing_not_raw_width() {
+    let line_width = 0.8_f32;
+    let layer_height = 0.2_f32;
+    let config = ConfigViewBuilder::new()
+        .int("wall_count", 1)
+        .float("line_width", line_width as f64)
+        .float("outer_wall_line_width", line_width as f64)
+        .float("inner_wall_line_width", line_width as f64)
+        .float("layer_height", layer_height as f64)
+        .build();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
+    let regions = vec![make_region(10.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let infill = output.infill_areas();
+    assert_eq!(
+        infill.len(),
+        1,
+        "the square should produce one infill polygon"
+    );
+    let contour = &infill[0][0].contour;
+    let min_x = contour.points.iter().map(|p| p.x).min().unwrap() as f64;
+    let max_x = contour.points.iter().map(|p| p.x).max().unwrap() as f64;
+    let actual_side_mm = (max_x - min_x) / 10_000.0;
+    let spacing = line_width_to_spacing(line_width, layer_height).unwrap() as f64;
+    let expected_side_mm = 10.0 - line_width as f64 - 2.0 * spacing;
+
+    assert!(
+        (actual_side_mm - expected_side_mm).abs() < 0.01,
+        "infill boundary must use flow spacing {spacing}, not raw width {line_width}: expected side {expected_side_mm}, got {actual_side_mm}"
+    );
+    assert!(
+        (actual_side_mm - (10.0 - 3.0 * line_width as f64)).abs() > 0.03,
+        "infill boundary must not use the raw line-width inset"
+    );
 }
 
 #[test]
@@ -306,6 +350,157 @@ fn speed_factor_from_config() {
     // Verify boundary types
     assert_eq!(outer.boundary_type, WallBoundaryType::ExteriorSurface);
     assert_eq!(inner.boundary_type, WallBoundaryType::Interior);
+}
+
+fn make_overlap_config(infill_overlap: f64, top_bottom_overlap: f64) -> ConfigView {
+    ConfigViewBuilder::new()
+        .int("wall_count", 1)
+        .float("line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
+        .float("inner_wall_line_width", 0.4)
+        .float("layer_height", 0.2)
+        .float("infill_wall_overlap", infill_overlap)
+        .float("top_bottom_infill_wall_overlap", top_bottom_overlap)
+        .build()
+}
+
+fn make_top_shell_region(side_mm: f32, z: f32, top_shell_index: Option<u8>) -> SliceRegionView {
+    let mut region = make_region(side_mm, z);
+    region.set_top_shell_index(top_shell_index);
+    region
+}
+
+fn infill_area_mm2(output: &PerimeterOutputBuilder) -> f64 {
+    output
+        .infill_areas()
+        .iter()
+        .flat_map(|call| call.iter())
+        .map(|polygon| polygon_area_mm(&polygon.contour))
+        .sum()
+}
+
+#[test]
+fn overlap_schema_declares_context_specific_percent_keys() {
+    let manifest = include_str!("../classic-perimeters.toml");
+    assert!(manifest.contains(
+        "[config.schema.infill_wall_overlap]\ntype       = \"percent\"\ndefault    = \"15%\"\nratio_over = \"inner_wall_line_width\""
+    ));
+    assert!(manifest.contains(
+        "[config.schema.top_bottom_infill_wall_overlap]\ntype       = \"percent\"\ndefault    = \"25%\"\nratio_over = \"inner_wall_line_width\""
+    ));
+}
+
+#[test]
+fn overlap_uses_top_bottom_key_on_layer_zero() {
+    let config = make_overlap_config(0.0, 0.1);
+    let module = ClassicPerimeters::from_config(&config).unwrap();
+    let regions = vec![make_region(10.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+
+    let mut layer_zero = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(0, &regions, &paint, &mut layer_zero, &config)
+        .unwrap();
+    let mut regular_layer = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(1, &regions, &paint, &mut regular_layer, &config)
+        .unwrap();
+
+    assert!(
+        infill_area_mm2(&layer_zero) > infill_area_mm2(&regular_layer),
+        "layer zero must use top_bottom_infill_wall_overlap"
+    );
+}
+
+#[test]
+fn overlap_uses_top_bottom_key_for_topmost_top_shell() {
+    let config = make_overlap_config(0.0, 0.1);
+    let module = ClassicPerimeters::from_config(&config).unwrap();
+    let paint = PaintRegionLayerView::new(0);
+    let topmost = vec![make_top_shell_region(10.0, 0.4, Some(0))];
+    let non_topmost = vec![make_top_shell_region(10.0, 0.4, Some(1))];
+
+    let mut topmost_output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(1, &topmost, &paint, &mut topmost_output, &config)
+        .unwrap();
+    let mut non_topmost_output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(1, &non_topmost, &paint, &mut non_topmost_output, &config)
+        .unwrap();
+
+    assert!(
+        infill_area_mm2(&topmost_output) > infill_area_mm2(&non_topmost_output),
+        "top_shell_index == Some(0) must use top_bottom_infill_wall_overlap"
+    );
+}
+
+#[test]
+fn only_one_wall_top_topmost_is_unconditional() {
+    let config = ConfigViewBuilder::new()
+        .int("wall_count", 2)
+        .float("line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
+        .float("inner_wall_line_width", 0.4)
+        .float("layer_height", 0.2)
+        .bool("only_one_wall_top", true)
+        .float("min_width_top_surface", 5.0)
+        .build();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
+    let regions = vec![make_top_shell_region(1.0, 0.4, Some(0))];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(1, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    assert_eq!(
+        output.wall_loops().len(),
+        1,
+        "topmost top sub-area must force exactly one wall despite min_width_top_surface"
+    );
+}
+
+#[test]
+fn only_one_wall_top_non_topmost_uses_min_width_top_surface() {
+    let make_config_with_threshold = |threshold| {
+        ConfigViewBuilder::new()
+            .int("wall_count", 2)
+            .float("line_width", 0.4)
+            .float("outer_wall_line_width", 0.4)
+            .float("inner_wall_line_width", 0.4)
+            .float("layer_height", 0.2)
+            .bool("only_one_wall_top", true)
+            .float("min_width_top_surface", threshold)
+            .build()
+    };
+    let mut region = make_top_shell_region(10.0, 0.4, Some(1));
+    region.set_top_solid_fill(vec![make_square(4.0)]);
+    let regions = vec![region];
+    let paint = PaintRegionLayerView::new(0);
+
+    let low_threshold = make_config_with_threshold(0.0);
+    let low_module = ClassicPerimeters::from_config(&low_threshold).unwrap();
+    let mut low_output = PerimeterOutputBuilder::new();
+    low_module
+        .run_perimeters(1, &regions, &paint, &mut low_output, &low_threshold)
+        .unwrap();
+
+    let high_threshold = make_config_with_threshold(5.0);
+    let high_module = ClassicPerimeters::from_config(&high_threshold).unwrap();
+    let mut high_output = PerimeterOutputBuilder::new();
+    high_module
+        .run_perimeters(1, &regions, &paint, &mut high_output, &high_threshold)
+        .unwrap();
+
+    let low_wall_count = low_output.wall_loops().len();
+    let high_wall_count = high_output.wall_loops().len();
+    assert!(
+        high_wall_count > low_wall_count,
+        "a non-topmost top sub-area below min_width_top_surface must keep full walls: \
+         low={low_wall_count}, high={high_wall_count}"
+    );
 }
 
 /// Helper: compute signed area of a polygon in mm^2 from scaled i64 coords.

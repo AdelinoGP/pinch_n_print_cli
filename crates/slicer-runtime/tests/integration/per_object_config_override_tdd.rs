@@ -17,8 +17,10 @@
 //! per-invocation argument) rather than cached struct fields, so any caller
 //! that passes a different ConfigView at invoke time gets the override applied.
 
+use arachne_perimeters::ArachnePerimeters;
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::LoopType;
+use slicer_ir::slice_ir::ConfigView;
+use slicer_ir::{ConfigValue, ExtrusionRole, LoopType, ResolvedConfig};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -161,6 +163,139 @@ fn per_object_inner_wall_line_width_override() {
                 pt.width,
                 override_inner_w
             );
+        }
+    }
+}
+
+fn matrix_value(width_mm: f64, as_percent: bool) -> ConfigValue {
+    if as_percent {
+        ConfigValue::FloatOrPercent {
+            value: width_mm / 0.4 * 100.0,
+            is_percent: true,
+        }
+    } else {
+        ConfigValue::FloatOrPercent {
+            value: width_mm,
+            is_percent: false,
+        }
+    }
+}
+
+fn matrix_config(as_percent: bool, bridge_width_mm: Option<f64>) -> ConfigView {
+    let mut resolved = ResolvedConfig::default();
+    resolved.extensions.insert(
+        "outer_wall_line_width".to_owned(),
+        matrix_value(0.5, as_percent),
+    );
+    resolved.extensions.insert(
+        "inner_wall_line_width".to_owned(),
+        matrix_value(0.4, as_percent),
+    );
+    if let Some(bridge_width_mm) = bridge_width_mm {
+        resolved.extensions.insert(
+            "bridge_line_width".to_owned(),
+            matrix_value(bridge_width_mm, as_percent),
+        );
+    }
+    ConfigView::from_map(resolved.to_config_map())
+}
+
+fn matrix_region(top_shell_index: Option<u8>) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(0.2)
+        .top_shell_index(top_shell_index)
+        .bridge_areas(vec![square_polygon(-4.0, -4.0, 4.0)])
+        .add_polygon(square_polygon(0.0, 0.0, 10.0))
+        .build()
+}
+
+#[test]
+fn arachne_width_bridge_precedence_matrix() {
+    const ROLES: &[ExtrusionRole] = &[
+        ExtrusionRole::OuterWall,
+        ExtrusionRole::InnerWall,
+        ExtrusionRole::InternalSolidInfill,
+        ExtrusionRole::TopSolidInfill,
+        ExtrusionRole::BridgeInfill,
+        ExtrusionRole::GapFill,
+        ExtrusionRole::SupportMaterial,
+        ExtrusionRole::SupportInterface,
+        ExtrusionRole::Skirt,
+        ExtrusionRole::Brim,
+        ExtrusionRole::Ironing,
+    ];
+
+    for role in ROLES {
+        let is_outer_wall = matches!(role, &ExtrusionRole::OuterWall);
+        let is_wall_role = matches!(role, &ExtrusionRole::OuterWall | &ExtrusionRole::InnerWall);
+        let role_width_mm = if is_outer_wall { 0.5 } else { 0.4 };
+
+        for first_layer in [true, false] {
+            for bridge_width_mm in [Some(0.8), Some(0.0), None] {
+                for as_percent in [false, true] {
+                    for top_shell_index in [None, Some(0)] {
+                        let config = matrix_config(as_percent, bridge_width_mm);
+                        let outer_width = config
+                            .get_abs_value("outer_wall_line_width", 0.4)
+                            .expect("outer wall width must cross extensions");
+                        let inner_width = config
+                            .get_abs_value("inner_wall_line_width", 0.4)
+                            .expect("inner wall width must cross extensions");
+                        let bridge_width = config
+                            .get_abs_value("bridge_line_width", role_width_mm)
+                            .unwrap_or(0.0);
+                        let expected_role_width = if is_outer_wall {
+                            outer_width
+                        } else {
+                            inner_width
+                        };
+                        let expected_bridge_width = if bridge_width > 0.0 {
+                            bridge_width
+                        } else {
+                            expected_role_width
+                        };
+                        assert!((expected_role_width - role_width_mm).abs() < 0.0001);
+                        if let Some(bridge_width_mm) = bridge_width_mm {
+                            let expected = if bridge_width_mm > 0.0 {
+                                if as_percent {
+                                    bridge_width_mm / 0.4 * role_width_mm
+                                } else {
+                                    bridge_width_mm
+                                }
+                            } else {
+                                role_width_mm
+                            };
+                            assert!((expected_bridge_width - expected).abs() < 0.0001);
+                        } else {
+                            assert!((expected_bridge_width - role_width_mm).abs() < 0.0001);
+                        }
+
+                        let module = ArachnePerimeters::from_config(&config).unwrap();
+                        let layer_index = u32::from(!first_layer);
+                        let regions = vec![matrix_region(top_shell_index)];
+                        let paint = PaintRegionLayerView::new(layer_index);
+                        let mut output = PerimeterOutputBuilder::new();
+                        module
+                            .run_perimeters(layer_index, &regions, &paint, &mut output, &config)
+                            .unwrap();
+
+                        assert!(!output.wall_loops().is_empty());
+                        assert!(output
+                            .wall_loops()
+                            .iter()
+                            .flat_map(|wall| wall.feature_flags.iter())
+                            .any(|flags| flags.is_bridge));
+                        if is_wall_role {
+                            assert!(output
+                                .wall_loops()
+                                .iter()
+                                .any(|wall| &wall.path.role == role));
+                        }
+                    }
+                }
+            }
         }
     }
 }

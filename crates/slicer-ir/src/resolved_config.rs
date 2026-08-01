@@ -42,8 +42,8 @@ impl ResolvedConfig {
             ConfigValue::Float(self.first_layer_height),
         );
         m.insert(
-            "first_layer_line_width".into(),
-            ConfigValue::Float(f64::from(self.first_layer_line_width)),
+            "initial_layer_line_width".into(),
+            ConfigValue::Float(f64::from(self.initial_layer_line_width)),
         );
         m.insert(
             "wall_count".into(),
@@ -820,13 +820,13 @@ declare_resolved_config! {
     /// exact `f32 ==` plane test. See `extract_f64` for the full rationale.
     cli "layer_height"           layer_height: f64 = 0.2 => extract_f64;
     /// Line width in millimeters.
-    cli "line_width"             line_width: f32 = 0.4 => extract_float;
+    cli "line_width"             line_width: f32 = 0.0 => extract_float;
     /// First layer height in millimeters. `f64` for the same reason as
     /// `layer_height` — feeds the layer-Z formula and must not be re-tainted
     /// by an `f32` round-trip. See `layer_height` and `extract_f64`.
     cli "first_layer_height"     first_layer_height: f64 = 0.2 => extract_f64;
     /// First layer line width in millimeters.
-    cli "first_layer_line_width" first_layer_line_width: f32 = 0.4 => extract_float;
+    cli "initial_layer_line_width" initial_layer_line_width: f32 = 0.0 => extract_float;
     /// Filament diameter in millimeters. Used by the G-code emitter to convert
     /// extruded volume (width × height × length) into filament length (E).
     /// Filament diameter in mm. Orca declares this `coFloats` (one entry per
@@ -999,7 +999,7 @@ impl PartialEq for ResolvedConfig {
         self.layer_height.to_bits() == other.layer_height.to_bits()
             && self.line_width.to_bits() == other.line_width.to_bits()
             && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
-            && self.first_layer_line_width.to_bits() == other.first_layer_line_width.to_bits()
+            && self.initial_layer_line_width.to_bits() == other.initial_layer_line_width.to_bits()
             && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
             && self.wall_count == other.wall_count
             && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
@@ -1094,7 +1094,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.layer_height.to_bits().hash(state);
         self.line_width.to_bits().hash(state);
         self.first_layer_height.to_bits().hash(state);
-        self.first_layer_line_width.to_bits().hash(state);
+        self.initial_layer_line_width.to_bits().hash(state);
         self.filament_diameter.to_bits().hash(state);
         self.wall_count.hash(state);
         self.outer_wall_speed.to_bits().hash(state);

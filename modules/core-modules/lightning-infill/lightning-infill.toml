@@ -46,10 +46,34 @@ group   = "Infill"
 
 [config.schema.line_width]
 type    = "float"
-default = 0.4
-min     = 0.1
+default = 0
+min     = 0.0
 max     = 2.0
 display = "Line Width"
+group   = "Infill"
+
+[config.schema.initial_layer_line_width]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 2.0
+display = "Initial Layer Line Width"
+group   = "Infill"
+
+[config.schema.bridge_line_width]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 2.0
+display = "Bridge Line Width"
+group   = "Infill"
+
+[config.schema.sparse_infill_line_width]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 2.0
+display = "Sparse Infill Line Width"
 group   = "Infill"
 
 [config.overridable-per-region]

@@ -46,3 +46,13 @@ Additionally, the xtask is invoked from the agentic build hook. Hook latency mat
 - Do not add `slicer-runtime`, `slicer-wasm-host`, `wasmtime`, or any heavy crate as an `xtask` dep. Verify with `cargo tree -p xtask --edges normal`.
 - Do not migrate discovery back to `cargo_metadata` without first removing the `[workspace]` sentinels and measuring the impact on host build times.
 - If a new tree-root is added for a third class of guest (e.g. example modules), add a new shape predicate alongside the existing two — do not relax the existing ones.
+
+## Amendments
+
+### D-185-ADR-0014-AMENDED (2026-08-01)
+
+The original stale freshness exclusion was: "`slicer-core` and `slicer-helpers` are explicitly NOT tracked (the former is optional per guest; the latter is host-only)."
+Packet 185's current freshness rule tracks `slicer-core` as a universal guest
+dependency in `xtask/src/build_guests.rs::shared_crates` (since 2026-07-25).
+Packet 185 edits `slicer-core` and requires `cargo xtask build-guests --check`
+to catch stale guests. Reference: deviation row `D-185-ADR-0014-AMENDED`.

@@ -39,6 +39,8 @@
 //! `ext_perimeter_spacing2 = (outer + inner) / 2` (T-052) and
 //! `perimeter_spacing = inner` (T-052) arithmetic live in `perimeter_utils`.
 
+pub use slicer_ir::ExtrusionRole;
+
 /// Error returned when the flow formula produces a non-positive spacing —
 /// the Rust analog of canonical `FlowErrorNegativeSpacing` (`Flow.hpp`, a
 /// `Slic3r::InvalidArgument`): canonical throws and the slice aborts with a
@@ -155,6 +157,74 @@ pub fn bridging_flow(
         core::f32::consts::PI * dmr * dmr / (4.0 * bead_width * layer_height)
     } else {
         bridge_flow_ratio
+    }
+}
+
+/// Resolved line-width inputs used by [`resolve_role_width`].
+///
+/// A width of zero means that the corresponding setting is absent or unset.
+/// Widths are in millimetres, matching the rest of this module.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RoleWidthContext {
+    /// Base line width in millimetres.
+    pub line_width: f32,
+    /// Nozzle diameter in millimetres, used by the automatic fallback.
+    pub nozzle_diameter: f32,
+    /// Bridge line width in millimetres.
+    pub bridge_line_width: f32,
+    /// First-layer line width in millimetres.
+    pub initial_layer_line_width: f32,
+    /// Outer-wall line width in millimetres.
+    pub outer_wall_line_width: f32,
+    /// Inner-wall line width in millimetres.
+    pub inner_wall_line_width: f32,
+    /// Top-surface line width in millimetres.
+    pub top_surface_line_width: f32,
+    /// Internal solid-infill line width in millimetres.
+    pub internal_solid_infill_line_width: f32,
+    /// Sparse-infill line width in millimetres.
+    pub sparse_infill_line_width: f32,
+}
+
+/// Resolve the line width for an extrusion role using canonical precedence.
+///
+/// Bridge and first-layer overrides take precedence over role-specific widths.
+/// A zero role or base line width falls through to the automatic width of
+/// `1.125 * nozzle_diameter`.
+pub fn resolve_role_width(
+    role: ExtrusionRole,
+    first_layer: bool,
+    bridge: bool,
+    context: &RoleWidthContext,
+) -> f32 {
+    if bridge && context.bridge_line_width > 0.0 {
+        return context.bridge_line_width;
+    }
+
+    if first_layer && context.initial_layer_line_width > 0.0 {
+        return context.initial_layer_line_width;
+    }
+
+    let role_width = match role {
+        ExtrusionRole::OuterWall => context.outer_wall_line_width,
+        ExtrusionRole::InnerWall | ExtrusionRole::ThinWall | ExtrusionRole::GapFill => {
+            context.inner_wall_line_width
+        }
+        ExtrusionRole::TopSolidInfill => context.top_surface_line_width,
+        ExtrusionRole::BottomSolidInfill | ExtrusionRole::InternalSolidInfill => {
+            context.internal_solid_infill_line_width
+        }
+        ExtrusionRole::SparseInfill => context.sparse_infill_line_width,
+        ExtrusionRole::BridgeInfill => context.bridge_line_width,
+        _ => 0.0,
+    };
+
+    if role_width > 0.0 {
+        role_width
+    } else if context.line_width > 0.0 {
+        context.line_width
+    } else {
+        1.125 * context.nozzle_diameter
     }
 }
 

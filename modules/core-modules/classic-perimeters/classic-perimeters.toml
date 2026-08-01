@@ -49,31 +49,61 @@ group   = "Walls"
 
 [config.schema.line_width]
 type    = "float"
-default = 0.4
-min     = 0.1
+default = 0
+min     = 0.0
 max     = 2.0
 display = "Line Width"
 group   = "Walls"
 
+[config.schema.initial_layer_line_width]
+type        = "float_or_percent"
+default     = 0.0
+min         = 0.0
+max         = 2.0
+unit        = "mm"
+display     = "Initial Layer Line Width"
+description = "Canonical initial-layer line-width override; zero falls back to the resolved wall role width."
+group       = "Walls"
+
+[config.schema.bridge_line_width]
+type        = "float_or_percent"
+default     = 0.0
+min         = 0.0
+max         = 2.0
+unit        = "mm"
+display     = "Bridge Line Width"
+description = "Canonical bridge line-width override; zero falls back to the resolved role width."
+group       = "Walls"
+
 [config.schema.outer_wall_line_width]
 type        = "float_or_percent"
-default     = 0.4
+default     = 0
 min         = 0.0
 max         = 2.0
 unit        = "mm"
 display     = "Outer Wall Line Width"
-description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frExternalPerimeter. PnP keeps a 0.4 mm manifest default; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
+description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frExternalPerimeter. The manifest default is the auto sentinel 0, matching upstream; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
 group       = "Walls"
 
 [config.schema.inner_wall_line_width]
 type        = "float_or_percent"
-default     = 0.4
+default     = 0
 min         = 0.0
 max         = 2.0
 unit        = "mm"
 display     = "Inner Wall Line Width"
-description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frPerimeter. PnP keeps a 0.4 mm manifest default; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
+description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel: canonical Flow new_from_config_width routes it to Flow auto_extrusion_width, which returns 1.125 * nozzle_diameter for frPerimeter. The manifest default is the auto sentinel 0, matching upstream; min is 0.0 so the auto sentinel is accepted, since scalar range checks run against the raw unresolved magnitude."
 group       = "Walls"
+
+[config.schema.infill_wall_overlap]
+type       = "percent"
+default    = "15%"
+ratio_over = "inner_wall_line_width"
+
+[config.schema.top_bottom_infill_wall_overlap]
+type       = "percent"
+default    = "25%"
+ratio_over = "inner_wall_line_width"
 
 [config.schema.precise_outer_wall]
 type    = "bool"

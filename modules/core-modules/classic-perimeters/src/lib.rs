@@ -21,7 +21,9 @@
 
 use std::collections::HashMap;
 
-use slicer_core::flow::{bridging_flow, line_width_to_spacing};
+use slicer_core::flow::{
+    bridging_flow, line_width_to_spacing, resolve_role_width, RoleWidthContext,
+};
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
     generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
@@ -125,36 +127,62 @@ impl LayerModule for ClassicPerimeters {
         // These 7 keys support per-object/per-layer overrides and MUST be read
         // from _config here, not cached at from_config.
         let legacy_line_width = match _config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
+            Some(ConfigValue::Float(w)) if *w > 0.0 => *w as f32,
+            // Auto sentinel (`0` or negative, canonical
+            // `Flow::new_from_config_width`) or an absent key: 0.0 routes
+            // through `resolve_role_width`, which falls back to
+            // `1.125 * nozzle_diameter` — no hardcoded 0.4 here.
+            _ => 0.0,
         };
         // ── Nozzle diameter (packet 184 / D-164): read BEFORE the wall widths,
         //    because both widths are `float_or_percent` keys resolved against it
         //    (canonical `ratio_over = "nozzle_diameter"`). Its own fallback is
-        //    `legacy_line_width`, not `inner_wall_line_width` — that would be a
-        //    read cycle. Also feeds the R4 threshold and bridging flow.
+        //    `legacy_line_width` when that carries an explicit width, else the
+        //    canonical 0.4 mm machine default — not `inner_wall_line_width`,
+        //    which would be a read cycle. Also feeds the R4 threshold and
+        //    bridging flow.
         let nozzle_diameter = _config
             .get_float("nozzle_diameter")
             .map(|v| v as f32)
-            .unwrap_or(legacy_line_width);
+            .unwrap_or(if legacy_line_width > 0.0 {
+                legacy_line_width
+            } else {
+                0.4
+            });
         // Canonical `Flow::new_from_config_width` treats a non-percent value
         // <= 0 as the *auto* sentinel and defers to `Flow::auto_extrusion_width`,
         // which returns `1.125 * nozzle_diameter` for both `frExternalPerimeter`
-        // and `frPerimeter`. A missing key keeps PnP's `legacy_line_width`
-        // fallback (packet 184 scope decision: we do not adopt canonical's
-        // auto default for the absent-key case).
-        let outer_wall_line_width =
-            match _config.get_abs_value("outer_wall_line_width", nozzle_diameter as f64) {
-                Some(v) if v > 0.0 => v as f32,
-                Some(_) => 1.125 * nozzle_diameter,
-                None => legacy_line_width,
-            };
-        let inner_wall_line_width =
-            match _config.get_abs_value("inner_wall_line_width", nozzle_diameter as f64) {
-                Some(v) if v > 0.0 => v as f32,
-                Some(_) => 1.125 * nozzle_diameter,
-                None => legacy_line_width,
-            };
+        // and `frPerimeter`. `resolve_role_width` implements that fallback; a
+        // zero `legacy_line_width` is the auto sentinel, not a literal width.
+        let width_context = RoleWidthContext {
+            line_width: legacy_line_width,
+            nozzle_diameter,
+            bridge_line_width: _config
+                .get_abs_value("bridge_line_width", nozzle_diameter as f64)
+                .unwrap_or(0.0) as f32,
+            initial_layer_line_width: _config
+                .get_abs_value("initial_layer_line_width", nozzle_diameter as f64)
+                .unwrap_or(0.0) as f32,
+            outer_wall_line_width: _config
+                .get_abs_value("outer_wall_line_width", nozzle_diameter as f64)
+                .unwrap_or(0.0) as f32,
+            inner_wall_line_width: _config
+                .get_abs_value("inner_wall_line_width", nozzle_diameter as f64)
+                .unwrap_or(0.0) as f32,
+            ..RoleWidthContext::default()
+        };
+        let outer_wall_line_width = resolve_role_width(
+            ExtrusionRole::OuterWall,
+            layer_index == 0,
+            false,
+            &width_context,
+        );
+        let inner_wall_line_width = resolve_role_width(
+            ExtrusionRole::InnerWall,
+            layer_index == 0,
+            false,
+            &width_context,
+        );
         let wall_sequence = match _config.get("wall_sequence") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "InnerOuter" => WallSequence::InnerOuter,
@@ -314,32 +342,27 @@ impl LayerModule for ClassicPerimeters {
                     surface_group.shell_count,
                     outer_wall_line_width,
                     inner_wall_line_width,
+                    layer_height,
                     output,
                 )?;
                 continue;
             }
             let top_shell = region.top_shell_index();
-            // D-152 (packet 184), whole-region collapse site: a region that is
-            // entirely top surface (`top_shell_index == Some(0)`) collapses to
-            // a single wall — but only if it survives canonical
-            // `split_top_surfaces`' `min_width_top_surface` erosion. A region
-            // narrower than the threshold would be eroded out of the top
-            // portion and therefore keeps the full configured wall count. The
-            // same gate is applied to the partial-top split branch below.
-            // `0.0` (the manifest default) leaves the gate OFF.
+            // Top/bottom surfaces use the canonical larger overlap. Layer zero
+            // is always bottom-surface context; a region at top-shell depth zero
+            // is the topmost top-surface context.
+            let overlap_key = if layer_index == 0 || top_shell == Some(0) {
+                "top_bottom_infill_wall_overlap"
+            } else {
+                "infill_wall_overlap"
+            };
+            let infill_wall_overlap = _config
+                .get_abs_value(overlap_key, inner_wall_line_width as f64)
+                .unwrap_or(0.0) as f32;
+            // A topmost top sub-area unconditionally collapses to one wall. The
+            // min_width_top_surface gate applies only to non-topmost sub-areas.
             let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                let qualifies = min_width_top <= 0.0
-                    || region
-                        .polygons()
-                        .iter()
-                        .map(|ep| ex_polygon_min_width_mm(ep) as f64)
-                        .fold(f64::INFINITY, f64::min)
-                        >= min_width_top;
-                if qualifies {
-                    1
-                } else {
-                    layer_wall_count
-                }
+                1
             } else {
                 layer_wall_count
             };
@@ -396,6 +419,7 @@ impl LayerModule for ClassicPerimeters {
                         thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
+                        infill_wall_overlap,
                         wall_sequence,
                         precise_outer_wall,
                         detect_thin_wall,
@@ -426,6 +450,7 @@ impl LayerModule for ClassicPerimeters {
                         thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
+                        infill_wall_overlap,
                         wall_sequence,
                         precise_outer_wall,
                         detect_thin_wall,
@@ -490,6 +515,7 @@ impl LayerModule for ClassicPerimeters {
                         thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
+                        infill_wall_overlap,
                         wall_sequence,
                         precise_outer_wall,
                         detect_thin_wall,
@@ -520,6 +546,7 @@ impl LayerModule for ClassicPerimeters {
                         thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
+                        infill_wall_overlap,
                         wall_sequence,
                         precise_outer_wall,
                         detect_thin_wall,
@@ -550,6 +577,7 @@ impl LayerModule for ClassicPerimeters {
                     thick_bridges,
                     region_outer_wall_line_width,
                     inner_wall_line_width,
+                    infill_wall_overlap,
                     wall_sequence,
                     precise_outer_wall,
                     detect_thin_wall,
@@ -619,6 +647,7 @@ impl ClassicPerimeters {
         thick_bridges: bool,
         outer_wall_line_width: f32,
         inner_wall_line_width: f32,
+        infill_wall_overlap: f32,
         wall_sequence: WallSequence,
         precise_outer_wall: bool,
         detect_thin_wall: bool,
@@ -1093,15 +1122,16 @@ impl ClassicPerimeters {
         }
 
         // Only the inner/infill pass owns the infill region. Inset the innermost
-        // wall by a FULL `inner_wall_line_width` (not half) so the infill region
-        // is consistent with the gap-fill infill-transition collection above:
-        // wide regions keep a non-empty infill center, thin features inset to
-        // empty and are owned entirely by gap-fill. Using half-width here left a
-        // thin residual strip that was double-counted as BOTH infill and gap.
+        // wall by Flow spacing (not raw line width) per canonical process_classic.
+        // D-105-FLOW-NOT-WIRED: keep this final-boundary path spacing-derived.
         if emit_inner && !current_polygons.is_empty() {
+            let infill_inset = (line_width_to_spacing(inner_wall_line_width, layer_height)
+                .unwrap_or(inner_wall_line_width)
+                - infill_wall_overlap)
+                .max(0.0);
             let infill = offset(
                 &current_polygons,
-                -inner_wall_line_width,
+                -infill_inset,
                 OffsetJoinType::Miter,
                 self.perimeter_arc_tolerance,
             );
@@ -1131,14 +1161,30 @@ impl ClassicPerimeters {
         shell_count: u32,
         outer_wall_line_width: f32,
         inner_wall_line_width: f32,
+        layer_height: f32,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
+        // D-105 residual (packet 185): inset consecutive shells by Flow
+        // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
+        // raw line width, matching the `emit_walls` port of canonical
+        // `PerimeterGenerator::process_classic`. The first shell still insets
+        // by width/2 (canonical outer-wall rule); i==1 insets by
+        // 0.5*(ext_spacing + perimeter_spacing); i>=2 by perimeter_spacing. A
+        // width/layer-height pair whose spacing collapses to <= 0 is a fatal
+        // config error, not a silently clamped inset.
+        let ext_perimeter_spacing = line_width_to_spacing(outer_wall_line_width, layer_height)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))?;
+        let perimeter_spacing = line_width_to_spacing(inner_wall_line_width, layer_height)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))?;
+        let ext_perimeter_spacing2 = 0.5 * (ext_perimeter_spacing + perimeter_spacing);
         let mut current_polygons = polygons.to_vec();
         for i in 0..shell_count {
             let inset_delta = if i == 0 {
                 -(outer_wall_line_width / 2.0)
+            } else if i == 1 {
+                -ext_perimeter_spacing2
             } else {
-                -inner_wall_line_width
+                -perimeter_spacing
             };
             let inset_result = offset(
                 &current_polygons,
