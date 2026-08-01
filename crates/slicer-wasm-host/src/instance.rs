@@ -184,7 +184,7 @@ impl WasmEngine {
     /// Create a new engine with the component model enabled and profiling off.
     ///
     /// This is the default for every non-profiling call site: fuel metering
-    /// costs throughput, so it rides an explicit opt-in (ADR-0050).
+    /// costs throughput, so it rides an explicit opt-in (ADR-0055).
     pub fn new() -> Self {
         Self::with_profiling(false)
     }

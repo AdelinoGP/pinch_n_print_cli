@@ -1,4 +1,4 @@
-# ADR-0050 — Custom G-code: fatal unknown placeholders, a manifest-scoped domain, and a module-private engine and injection registry
+# ADR-0050 — Custom G-code: warn-and-pass unknown placeholders, a manifest-scoped domain, and a module-private engine and injection registry
 
 <!-- filename: 0050-custom-gcode-architecture -->
 
@@ -29,39 +29,37 @@ than three times in packet prose:
 3. Where the expansion engine lives.
 4. Who is allowed to add an injection point.
 
-The state of the tree at authoring time: `substitute_placeholders` has signature
-`(&str, &HashMap<String, String>) -> String` and passes an unresolved `[key]`
-through verbatim; `machine-gcode-emit.toml` declares four `[config.schema]`
-keys (`machine_start_gcode`, `machine_end_gcode`,
-`bed_temperature_initial_layer_single`, `nozzle_temperature_initial_layer`);
-there is no alias table and no injection registry. Everything below is the
-target architecture the trilogy implements, not a description of current code.
+The state of the tree at authoring time was superseded by packet 186:
+`substitute_placeholders` now returns rendered text plus unresolved keys,
+passes unresolved `[key]` through verbatim, and `run_gcode_postprocess` emits
+one aggregated warning before continuing. The manifest declares the five
+config keys (`machine_start_gcode`, `machine_end_gcode`,
+`bed_temperature_initial_layer_single`, `nozzle_temperature_initial_layer`,
+and `nozzle_diameter`) and applies the legacy alias table. The registry and
+per-site context remain the target architecture of packets 187 and 188.
 
 ## Decision
 
-### 1. An unresolved placeholder fails the slice
+### 1. An unresolved placeholder passes through with one warning
 
-An `[key]` with no entry in the lookup is a **fatal** module error —
-`ModuleError::fatal(ERR_UNRESOLVED_PLACEHOLDER, …)`, returned **before** any
-`push_raw`, so partially-substituted text never reaches `GcodeOutputBuilder`.
-Unresolved keys are collected across every template, unioned into a
-`BTreeSet<String>` (sorted and deduplicated so the message is byte-identical
-across runs), and reported in one error.
+An `[key]` with no entry in the lookup remains verbatim in the rendered text,
+and the slice proceeds. `run_gcode_postprocess` collects unresolved keys across
+all templates, unions them into a `BTreeSet<String>` (sorted and deduplicated),
+names every contributing injection point, and emits one
+`slicer_sdk::host::log_warn` before continuing with normal output emission.
 
-This conforms to [ADR-0010](./0010-typed-diagnostic-channel.md), which draws the
-line as: "A `Diagnostic` is recoverable (it doesn't abort the slice). Errors
-that should abort use `ModuleError::fatal(...)`." A bracketed literal reaching a
-printer is not a diagnostic about a slice that succeeded; it is a slice that
-produced wrong machine instructions. It belongs on the fatal side of ADR-0010's
-split, and `slicer_sdk::host::log_warn` — the warn-and-pass mechanism — is
-rejected because a host log line neither stops the text nor is observable in a
-module integration test.
+This conforms to the recoverable side of [ADR-0010](./0010-typed-diagnostic-channel.md):
+the module cannot distinguish a nonexistent key from a key owned by a module
+that is not loaded. Failing the latter would make template validity depend on
+the current module graph and would break composition. The warning is the
+module-local diagnostic; the verbatim text preserves the user's template
+rather than silently producing a malformed command such as `M104 S`.
 
 **There is no opt-out config key and no escape syntax for a literal `[foo]`.**
-A `strict_placeholders` toggle is rejected: it keeps the silent-passthrough path
-permanently reachable, which is the state the trilogy exists to end. An escape
-syntax is rejected because canonical's legacy bracket form has none either.
-Reversing this requires a new packet and a new deviation row.
+A `strict_placeholders` toggle is rejected because a module-scoped view cannot
+reliably determine whether a missing key belongs to an unloaded module. An
+escape syntax is unnecessary: a bracketed non-key is passed through unchanged.
+Changing this policy requires a new packet and a new deviation row.
 
 ### 2. The placeholder domain is one module's manifest plus an alias table
 
@@ -113,9 +111,9 @@ the sorted, deduplicated list of bracketed keys that found no entry — and
 `modules/core-modules/machine-gcode-emit/src/lib.rs`**. It is not promoted to
 `slicer-sdk` or `slicer-core`.
 
-The rendered text retains the verbatim `[key]` for an unresolved key so a future
-inline-marker rendering stays possible, even though under decision 1 that text
-never reaches output because the caller fails first.
+The rendered text retains the verbatim `[key]` for an unresolved key. The
+unresolved-key list is consumed by the caller's one-warning aggregation; it is
+not an error list and does not stop output emission.
 
 **Reversal condition.** Promote the engine to `slicer-sdk` when, and only when, a
 **second module** needs to expand placeholders. One module's helper is not a
@@ -194,16 +192,17 @@ residual, this clause states the constraint.
 
 ## Consequences
 
-- **A template canonical accepts can now fail a PnP slice, by a wide margin.**
+- **A template canonical rejects can now slice successfully in PnP, by a wide margin.**
   Canonical's placeholder domain is a persistent parser beneath a local
   `DynamicConfig` override, carrying the full print config plus a large set of
   explicit global assignments; PnP's is one module's manifest plus one alias.
-  The asymmetry is accepted and belongs in a residual deviation row. It is a
-  visible failure rather than a silent one, which is the point.
+  The asymmetry is accepted and belongs in a residual deviation row. PnP emits
+  the bracketed text verbatim and warns rather than treating the module's narrow
+  view as proof that the key is invalid globally.
 - **A start-G-code line legitimately containing `[...]` around a non-key word
-  will fail the slice.** Accepted: Marlin and Klipper command syntax does not use
-  square brackets, canonical has no escape for the legacy form either, and the
-  failure is loud.
+  passes through verbatim with a warning.** Accepted: the module cannot know
+  whether the name belongs to an unloaded module, and no escape syntax is
+  needed under passthrough.
 - **Config values are stringly resolved at expansion time, with no precision
   contract.** The sweep renders each `ConfigValue` with `f.to_string()` for
   `Float(f)`, `i.to_string()` for `Int(i)`, `b.to_string()` for `Bool(b)`, and
@@ -232,19 +231,16 @@ residual, this clause states the constraint.
 
 ## Alternatives considered
 
-- **Warn and pass through**, via `slicer_sdk::host::log_warn`. Rejected: not
-  observable in a module integration test, does not stop the bracketed literal
-  from reaching the printer.
+- **Warn and pass through**, via `slicer_sdk::host::log_warn`. Chosen: it
+  composes with a module-scoped `ConfigView`, preserves the user's text, and
+  provides one deterministic warning across all contributing templates.
 - **Substitute unknown keys with the empty string.** Rejected: turns
   `M104 S[first_layer_temperature]` into `M104 S`, a worse printer command than
   the bracketed form, and silent.
 - **Emit canonical's inline `!!!!! Failed to process the custom G-code template`
-  marker instead of failing.** Rejected as the *sole* behaviour — canonical
-  emits the marker **and** fails, via
-  `GCode::check_placeholder_parser_failed`. PnP adopts canonical's
-  collect-then-fail-once aggregation but fails before emitting anything, because
-  a WASM postpass module has no half-built export to salvage. The difference is
-  confined to a marker comment inside output that is discarded either way.
+  marker.** Rejected — it changes emitted printer text and does not compose
+  with PnP's module-scoped configuration. The aggregated host warning provides
+  the diagnostic without modifying the template.
 - **A `strict_placeholders` opt-out key.** Rejected: canonical has no such
   toggle, and it makes the silent path permanently reachable.
 - **Declare `[bed_temperature]`, `[layer_count]`, `[x_max]` … as manifest keys
@@ -262,7 +258,8 @@ residual, this clause states the constraint.
 ## Cross-references
 
 - ADR-0010 (typed `Diagnostic` channel) — the recoverable-vs-fatal split this
-  ADR conforms to; unresolved placeholders sit on the `ModuleError::fatal` side.
+  ADR conforms to; unresolved placeholders are recoverable diagnostics, while
+  genuine output-builder failures remain module errors.
 - ADR-0018 (region-split priority registry) — the nearest registry analogue, in
   a different subsystem and deliberately open where `INJECTION_POINTS` is closed.
 - ADR-0045 (per-stage versioned interfaces) — assigns the behaviour to
@@ -274,4 +271,4 @@ residual, this clause states the constraint.
   `.ralph/specs/187-custom-gcode-injection-registry`,
   `.ralph/specs/188-custom-gcode-conditional-points` — the implementing packets.
 - `docs/15_config_keys_reference.md` §"Machine start / end G-code" — the
-  user-facing macro contract, whose "only the two macros" count is wrong today.
+  user-facing macro contract for the manifest domain and warn-and-pass policy.

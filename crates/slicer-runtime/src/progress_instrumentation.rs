@@ -132,7 +132,7 @@ impl ProgressPipelineInstrumentation {
         }
     }
 
-    /// Route fuel/scope marks into `aggregator` (ADR-0050).
+    /// Route fuel/scope marks into `aggregator` (ADR-0055).
     ///
     /// `verbose` mirrors `--report-verbose`: aggregation always happens, and
     /// `verbose` additionally hangs each individual call's scope fold off its

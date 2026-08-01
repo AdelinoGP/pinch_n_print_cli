@@ -56,6 +56,16 @@ max     = 300
 display = "Nozzle Temperature (Initial Layer)"
 group   = "Machine G-code"
 
+[config.schema.nozzle_diameter]
+type        = "float"
+default     = 0.4
+min         = 0.1
+max         = 2.0
+unit        = "mm"
+display     = "Nozzle diameter"
+description = "OrcaSlicer coFloat key nozzle_diameter; exposed here so machine_start_gcode / machine_end_gcode templates can reference [nozzle_diameter] and have it substituted with the effective nozzle diameter. Bounds mirror the classic-perimeters declaration of the same key."
+group       = "Machine G-code"
+
 [config.overridable-per-region]
 keys = []
 

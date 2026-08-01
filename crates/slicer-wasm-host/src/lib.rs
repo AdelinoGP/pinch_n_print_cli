@@ -16,7 +16,7 @@ pub mod instance;
 pub mod marshal;
 pub mod pool;
 /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
-/// process-global scope-name registry (ADR-0050).
+/// process-global scope-name registry (ADR-0055).
 pub mod profiling;
 pub mod traits;
 

@@ -1,4 +1,4 @@
-//! Host-side half of fuel-based module profiling (ADR-0050).
+//! Host-side half of fuel-based module profiling (ADR-0055).
 //!
 //! # What a mark is
 //!
@@ -60,7 +60,7 @@ pub struct ProfileMark {
     pub fuel: u64,
     /// Nanoseconds elapsed between the start of the call and this mark.
     ///
-    /// ADR-0050: wall-clock under `--profile` is inflated by the mark host calls
+    /// ADR-0055: wall-clock under `--profile` is inflated by the mark host calls
     /// themselves. Fuel ratios are unaffected; wall-clock here is indicative.
     pub wall_ns: u64,
 }

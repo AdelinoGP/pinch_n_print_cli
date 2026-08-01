@@ -1,6 +1,6 @@
 //! The other half of `profile_guest_sink_enabled_tdd.rs`: with the host
 //! reporting profiling **off**, an installed guest sink must never call the host
-//! again (ADR-0050, "Always compiled in, host-gated").
+//! again (ADR-0055, "Always compiled in, host-gated").
 //!
 //! Marks ship in every guest, so this is the property that makes that
 //! affordable: after the one cached `profile-enabled` answer, a marked

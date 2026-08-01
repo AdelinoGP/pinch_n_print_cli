@@ -1,5 +1,5 @@
 //! End-to-end proof that the guest profiling sink turns `slicer-core`'s inert
-//! scope marks into host calls (ADR-0050).
+//! scope marks into host calls (ADR-0055).
 //!
 //! # Why this is its own test binary
 //!

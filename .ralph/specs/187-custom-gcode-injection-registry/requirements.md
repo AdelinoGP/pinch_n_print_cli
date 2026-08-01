@@ -15,6 +15,8 @@
 
 The three layer-scoped points are reachable today. `DefaultGCodeEmitter` (`crates/slicer-gcode/src/emit.rs`) pushes three consecutive `GCodeCommand::Raw` markers at every emitted layer — `;LAYER_CHANGE`, `;Z:<z>`, `;HEIGHT:<h>` — before the layer's first command, and `machine-gcode-emit` already receives and re-emits `Raw` commands verbatim. It is the sole module registered at `PostPass::GCodePostProcess` (verified: no other manifest under `modules/core-modules/*/*.toml` names that stage), so nothing else can perturb the stream between the emitter and the splice.
 
+Unavailable per-site variables use a warn-and-pass policy. The original placeholder text remains verbatim, `run_gcode_postprocess` returns `Ok`, and exactly one warning names the config key and injection site. This applies equally to a known variable that is unavailable at a particular site and to an otherwise unknown placeholder.
+
 ## In Scope
 
 - Introduce `InjectionPoint` (config key + site), `InjectionSite` (a `PrintStart` / `BeforeLayerChange` / `TimeLapse` / `LayerChange` / `PrintEnd` enum), and `const INJECTION_POINTS: &[InjectionPoint]` in `modules/core-modules/machine-gcode-emit/src/lib.rs`, with five entries.
@@ -22,7 +24,7 @@ The three layer-scoped points are reachable today. `DefaultGCodeEmitter` (`crate
 - Walk `commands` once to locate every layer boundary (a `Raw` whose text is exactly `;LAYER_CHANGE`), splice the resolved `before_layer_change_gcode`, `time_lapse_gcode` and `layer_change_gcode` immediately after that boundary's `;HEIGHT:` marker, in that order.
 - Supply a per-site variable set on top of the manifest config keys: `layer_num` (1-based), `layer_z` and `max_layer_z` at `BeforeLayerChange`, `TimeLapse`, `LayerChange` and `PrintEnd`; **none** at `PrintStart`.
 - Substitute `layer_z` and `max_layer_z` as the **verbatim text** that followed the `;Z:` marker, never as a re-formatted parse of it.
-- Add `ERR_MALFORMED_LAYER_MARKER` and fail when a `;LAYER_CHANGE` marker is not followed within two commands by a `;Z:` marker.
+- Add `ERR_MALFORMED_LAYER_MARKER` as a warning diagnostic identifier and warn when a `;LAYER_CHANGE` marker is not followed within two commands by a `;Z:` marker; continue by reusing the prior layer Z, with layer 1 using its own initial Z context.
 - Declare `before_layer_change_gcode`, `layer_change_gcode` and `time_lapse_gcode` in `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`, each `type = "string"`, `default = ""`, `group = "Machine G-code"`.
 - Add the tests named by AC-3 through AC-7 and AC-N1 through AC-N3.
 - Rewrite `docs/15_config_keys_reference.md` §"Machine start / end G-code" for the registry; regenerate the `module-config-keys` block; update the `DEV-085` row; file one new residual `DEV-###` row; register `TASK-306`.
@@ -35,7 +37,7 @@ The three layer-scoped points are reachable today. `DefaultGCodeEmitter` (`crate
 "` sentinel, so it is a *post*-header inserter that would have to be both extended to prepend and given a substitution engine. `file_start_gcode` is therefore unreachable from this stage and is recorded, with that evidence, as a residual by packet 188 rather than faked into a post-header position here.
 - **The BBL timelapse path.** `GCode::generate_timelapse_gcode`, its `M624`/`M625` object labels and its eight extra variables are not ported; PnP implements canonical's non-BBL inline `time_lapse_gcode` emission only. Recorded in this packet's new residual row.
 - **Canonical's dead-write `max_layer_z` at `layer_change_gcode`.** Re-measured, and sharper than an earlier draft claimed: in `GCode::process_layer` each template gets its **own block-scoped** `DynamicConfig`, and the `layer_change_gcode` block never sets `max_layer_z` before its parse — the `set_key_value("max_layer_z", …)` sits after the parse and writes into a local destroyed at the closing brace. No base or global layer carries the key (`max_layer_z` is declared only in `CustomGcodeSpecificConfigDef`, and there is no `placeholder_parser().set` for it). So canonical resolves **no `max_layer_z` at all** at that site, not a one-layer-late value. PnP supplies the running maximum inclusive of the current layer. **At `before_layer_change_gcode` and `time_lapse_gcode` there is no divergence at all** — canonical sets the key before both parses, and `m_max_layer_z = std::max(m_max_layer_z, m_last_layer_z)` runs before the `before_layer_change_gcode` block, so PnP's inclusive running maximum is exact parity there. Only the `layer_change_gcode` site diverges, and it is recorded in the new residual row rather than reproduced.
-- **A `{…}` expression syntax**, an escape for literal square brackets, and any relaxation of packet 186's fatal-on-unresolved-placeholder rule.
+- **A `{…}` expression syntax** and an escape for literal square brackets. The warn-and-pass policy for unavailable per-site variables is part of this packet and is not replaced with a new expression or escaping mechanism.
 - **`docs/ORCA_CONFIG_REFERENCE.md`** — no edit (see `packet.spec.md` §Doc Impact Statement).
 
 ## Authoritative Docs
@@ -63,7 +65,7 @@ Files to inspect for this packet:
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` through `AC-14`. Change-proving: `AC-1`, `AC-2`, `AC-3`, `AC-4`, `AC-5`, `AC-6`, `AC-7`, `AC-11`, `AC-12` (row clauses), `AC-13`, `AC-14`. Explicit do-not-regress guards: `AC-8`, `AC-9`, `AC-10`, and `AC-12`'s `gen-config-docs --check` half.
-- Negative: `AC-N1` (a layer macro at `PrintStart` is fatal — the criterion that proves the lookup is per-site), `AC-N2` (a `;LAYER_CHANGE` with no `;Z:` within two commands is fatal under a distinct code), `AC-N3` (packet 186's unresolved-placeholder rule extends to the new sites).
+- Negative: `AC-N1` (a layer macro at `PrintStart` passes through verbatim with one key/site warning — the criterion that proves the lookup is per-site), `AC-N2` (a `;LAYER_CHANGE` with no `;Z:` within two commands warns and reuses prior Z), `AC-N3` (an unknown placeholder in a new site passes through verbatim with one key/site warning).
 - Cross-packet impact: `InjectionPoint`, `InjectionSite` and `INJECTION_POINTS` are the surface packet 188 extends with toolchange and extrusion-role variants; the per-site variable lookup is the mechanism 188 uses to add `filament_extruder_id`, `extrusion_role` and `last_extrusion_role`. 188 must extend the enum and table, never fork them.
 
 ## Verification Commands

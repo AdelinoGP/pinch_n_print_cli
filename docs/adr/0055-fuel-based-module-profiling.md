@@ -1,6 +1,6 @@
-# ADR-0050 — Fuel-based module profiling
+# ADR-0055 — Fuel-based module profiling
 
-<!-- filename: 0050-fuel-based-module-profiling -->
+<!-- filename: 0055-fuel-based-module-profiling -->
 
 ## Status
 

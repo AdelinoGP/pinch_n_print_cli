@@ -41,7 +41,7 @@ use crate::layer_executor::LayerProgressSink;
 /// executor drop-site. Unlike the human `log`-facade channel, this stream is
 /// never de-duplicated.
 ///
-/// 1.5.0 (additive, ADR-0050): `profile_summary` event type plus the optional
+/// 1.5.0 (additive, ADR-0055): `profile_summary` event type plus the optional
 /// `profile` field it carries, and the optional `profile_scopes` field on
 /// `module_complete`. Both are emitted only under `pnp_cli slice --profile`
 /// (`profile_scopes` additionally requires `--profile-verbose`). A run without
@@ -123,7 +123,7 @@ pub enum ProgressEventType {
     /// (instrumented stream only). Introduced at schema 1.4.0.
     ModuleLog,
     /// Emitted exactly once per profiled slice, at slice end, carrying the
-    /// run-wide per-(module, scope) fuel and wall-clock fold (ADR-0050).
+    /// run-wide per-(module, scope) fuel and wall-clock fold (ADR-0055).
     /// Introduced at schema 1.5.0; present only under `--profile`.
     ProfileSummary,
 }
@@ -847,7 +847,7 @@ impl ProgressEvent {
         }
     }
 
-    /// Create the single `profile_summary` event (schema 1.5.0, ADR-0050).
+    /// Create the single `profile_summary` event (schema 1.5.0, ADR-0055).
     ///
     /// Emitted once per `--profile` slice, at slice end, strictly after the
     /// last `module_complete`. It carries the whole run's per-(module, scope)

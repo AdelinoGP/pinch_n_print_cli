@@ -206,7 +206,7 @@ need it; never read one out of this table.
 | 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 |
 | 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
 | 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | **pending — dependency-blocked** (see amendment 2026-07-25a) |
-| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · draft · TASK-305 |
+| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · implemented · TASK-305 |
 | 8b | `.ralph/specs/187-custom-gcode-injection-registry` | DEV-085 (layer-scoped points) | T3 | #8a | generated · draft · TASK-306 |
 | 8c | `.ralph/specs/188-custom-gcode-conditional-points` | DEV-085 (tool/role-scoped points + residuals) | T3 | #8b | generated · draft · TASK-307 |
 | 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | DEV-009 (carrier prerequisite) | T3 | — | generated · draft · TASK-308 |

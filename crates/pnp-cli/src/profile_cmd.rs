@@ -1,5 +1,5 @@
 //! `pnp_cli profile --from <events.jsonl>` — re-summarise a captured
-//! progress-event stream without re-slicing (ADR-0050).
+//! progress-event stream without re-slicing (ADR-0055).
 //!
 //! A profiled slice is expensive; re-running one to look at the numbers a
 //! second time is the mistake this command exists to prevent. It is the same

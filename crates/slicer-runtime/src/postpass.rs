@@ -132,7 +132,7 @@ pub fn execute_postpass(
 }
 
 /// Drain the profiling marks and fuel totals a postpass dispatch left in the
-/// runner's per-call stashes and hand them to `instrumentation` (ADR-0050).
+/// runner's per-call stashes and hand them to `instrumentation` (ADR-0055).
 ///
 /// Unlike the layer/prepass path — where `last_profile_marks` is a thread-local
 /// holding exactly the last call — `PostpassStageRunner` accumulates one entry
@@ -288,7 +288,7 @@ pub fn execute_postpass_with_capture(
                     input,
                     &mut gcode_ir.commands,
                 );
-                // Fuel/scope marks (ADR-0050). Drained per dispatch rather than
+                // Fuel/scope marks (ADR-0055). Drained per dispatch rather than
                 // once at the end like `take_batch_calls`: the per-dispatcher
                 // stash is a `Vec` per call, and a batch drain would have no way
                 // to say which module each entry came from.

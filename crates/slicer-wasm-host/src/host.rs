@@ -1301,7 +1301,7 @@ pub struct HostExecutionContext {
     /// to sample guest memory growth for the slicer report.
     pub(crate) mem_tracker: MemTracker,
 
-    // ── Fuel profiling (ADR-0050) ────────────────────────────────────
+    // ── Fuel profiling (ADR-0055) ────────────────────────────────────
     /// Whether the host is recording profile marks for this call. Answers the
     /// WIT `profiling.profile-enabled`, and gates the mark recorder so a guest
     /// that ignores that answer still costs almost nothing.
@@ -2347,7 +2347,7 @@ impl layer_perimeters::slicer::common::module_errors::Host for HostExecutionCont
 
 impl geo::Host for HostExecutionContext {}
 
-// ── Fuel profiling (ADR-0050) ───────────────────────────────────────────
+// ── Fuel profiling (ADR-0055) ───────────────────────────────────────────
 
 impl crate::instance::FuelSampleSink for HostExecutionContext {
     fn record_host_entry_fuel(&mut self, consumed: u64) {

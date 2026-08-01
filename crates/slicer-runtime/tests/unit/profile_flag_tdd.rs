@@ -1,4 +1,4 @@
-//! `--profile` must be strictly opt-in (ADR-0050).
+//! `--profile` must be strictly opt-in (ADR-0055).
 //!
 //! The plumbing added for fuel profiling touches every executor drop-site and
 //! the shared `WasmEngine` construction, so the failure mode worth guarding is

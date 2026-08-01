@@ -59,7 +59,7 @@ thread_local! {
         const { std::cell::RefCell::new(Vec::new()) };
 
     /// Per-worker-thread slot holding the profile marks emitted by the most
-    /// recent layer- or prepass-module invocation on this thread (ADR-0050).
+    /// recent layer- or prepass-module invocation on this thread (ADR-0055).
     /// Read and cleared by `last_profile_marks` on the runner traits. Same
     /// thread-locality argument as `LAST_BATCH_CALLS`. Always empty when
     /// profiling is off — no store meters fuel then, and `profile_mark`

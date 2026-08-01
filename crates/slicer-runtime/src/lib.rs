@@ -16,7 +16,7 @@ pub mod pipeline;
 pub mod postpass;
 pub mod prepass;
 /// Run-wide aggregation, native-sink installation, and ranked rendering for
-/// fuel-based module profiling (ADR-0050).
+/// fuel-based module profiling (ADR-0055).
 pub mod profiling_report;
 pub mod progress_events;
 pub mod progress_instrumentation;

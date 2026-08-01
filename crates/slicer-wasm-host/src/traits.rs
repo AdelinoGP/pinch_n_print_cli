@@ -64,7 +64,7 @@ pub trait LayerStageRunner {
     }
 
     /// Returns the profiling scope transitions the module emitted during the
-    /// most recent `run_stage` call, in emission order (ADR-0050).
+    /// most recent `run_stage` call, in emission order (ADR-0055).
     ///
     /// Always empty unless the runner's engine was built with
     /// `WasmEngine::with_profiling(true)` *and* the guest emits marks. Fold with
@@ -122,7 +122,7 @@ pub trait PrepassStageRunner {
     }
 
     /// Returns the profiling scope transitions the module emitted during the
-    /// most recent `run_stage` call, in emission order (ADR-0050). See
+    /// most recent `run_stage` call, in emission order (ADR-0055). See
     /// [`LayerStageRunner::last_profile_marks`].
     fn last_profile_marks(&self) -> Vec<ProfileMark> {
         Vec::new()
@@ -177,7 +177,7 @@ pub trait PostpassStageRunner {
 
     /// Drain the profiling scope transitions accumulated across postprocessing
     /// calls, one inner `Vec` per dispatch call, in emission order within each
-    /// (ADR-0050). Default returns an empty `Vec`.
+    /// (ADR-0055). Default returns an empty `Vec`.
     fn take_profile_marks(&mut self) -> Vec<Vec<ProfileMark>> {
         Vec::new()
     }
@@ -208,7 +208,7 @@ pub trait FinalizationStageRunner {
     }
 
     /// Returns the profiling scope marks captured during the most recent
-    /// `run_stage` call (ADR-0050). Default returns an empty `Vec` for runners
+    /// `run_stage` call (ADR-0055). Default returns an empty `Vec` for runners
     /// that do not instrument scopes.
     fn last_profile_marks(&self) -> Vec<ProfileMark> {
         Vec::new()

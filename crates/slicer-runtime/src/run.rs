@@ -94,7 +94,7 @@ pub struct SliceRunOptions {
     /// JSONL stream during the slice (schema version `"1.2.0"`).
     pub instrument_stderr: bool,
     /// When true, meter wasmtime fuel and collect scope marks, then emit one
-    /// `profile_summary` event at slice end (ADR-0050).
+    /// `profile_summary` event at slice end (ADR-0055).
     ///
     /// Separate from `instrument_stderr` because fuel metering costs
     /// throughput: a plain instrumented run must stay unaffected. Setting this
@@ -132,7 +132,7 @@ pub struct SliceOutcome {
     /// Wall-clock time of the pipeline in milliseconds.
     pub wallclock_ms: u64,
     /// Run-wide fuel/scope fold, present only when
-    /// [`SliceRunOptions::profile`] was set (ADR-0050).
+    /// [`SliceRunOptions::profile`] was set (ADR-0055).
     ///
     /// Returned as well as emitted on the JSONL stream so `pnp_cli` can print
     /// its ranked table without parsing back the stream it just wrote.
@@ -442,7 +442,7 @@ pub fn run_slice_with_collector(
     let t0 = Instant::now();
     let channel = build_progress_channel(opts.progress_events, collector);
 
-    // Fuel-based profiling (ADR-0050). The aggregator's existence is the single
+    // Fuel-based profiling (ADR-0055). The aggregator's existence is the single
     // switch: nothing downstream records anything without it. The native sink
     // is installed here too so host built-ins report under the same
     // `polygon_ops::*` vocabulary the guests use — with wall-clock only, since
@@ -921,7 +921,7 @@ pub fn run_slice_with_collector(
     });
     // `profile_summary` precedes `slice_stats` / `slice_complete`: the
     // terminal events stay terminal, so a consumer that stops reading at
-    // `slice_complete` never misses the profile (ADR-0050).
+    // `slice_complete` never misses the profile (ADR-0055).
     if let Some(summary) = profile_summary.as_ref() {
         channel.sink.record(ProgressEvent::profile_summary(
             channel.slice_id.clone(),

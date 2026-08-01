@@ -46,7 +46,7 @@ fn error_fixture(fatal: bool) -> ProgressError {
 }
 
 // ============================================================================
-// Test 1: Event schema version is "1.5.0" (bumped from 1.4.0 by ADR-0050's
+// Test 1: Event schema version is "1.5.0" (bumped from 1.4.0 by ADR-0055's
 // additive `profile_summary` event / `profile` / `profile_scopes` fields).
 // ============================================================================
 

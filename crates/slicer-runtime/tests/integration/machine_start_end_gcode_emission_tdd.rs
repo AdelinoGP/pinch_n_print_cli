@@ -1,7 +1,7 @@
 //! TDD test file for packet 59: machine-start-end-gcode-emission.
 //!
 //! Tests compile today but ALL fail because the `machine-gcode-emit` module,
-//! `GCodeCommand::ExtrusionMode` variant, and the four config keys do not yet exist.
+//! `GCodeCommand::ExtrusionMode` variant, and the five config keys do not yet exist.
 //! This is the intended red state â€” tests graduate to green as production code lands.
 //!
 //! Acceptance criteria sourced from `.ralph/specs/59_machine-start-end-gcode-emission/packet.spec.md`.
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
-    run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
+    run_pipeline_with_raw_config, PipelineConfig, PipelineError, PipelineStageRunners,
 };
 use slicer_runtime::{
     build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
@@ -59,6 +59,12 @@ fn core_modules_dir() -> PathBuf {
 /// Run the pipeline with the real `machine-gcode-emit` WASM postpass module.
 /// `raw` overrides are merged into the config source before module binding.
 fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
+    try_slice_with_raw(raw).expect("pipeline must succeed")
+}
+
+/// Fallible sibling of [`slice_with_raw`]: returns the pipeline's `Result` so
+/// negative tests can assert on `PipelineError` instead of panicking.
+fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, PipelineError> {
     let module_dir = core_modules_dir();
     assert!(
         module_dir.exists(),
@@ -241,8 +247,7 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
 
     // 8. Run the pipeline. pipeline_source drives CONFIG_BLOCK generation.
     run_pipeline_with_raw_config(config, &pipeline_source, &NoopLayerProgressSink)
-        .expect("pipeline must succeed")
-        .gcode_text
+        .map(|output| output.gcode_text)
 }
 
 fn slice_default() -> String {
@@ -631,10 +636,10 @@ fn empty_end_gcode_emits_no_block() {
     );
 }
 
-/// AC-9: fallback â€” each of the four config keys appears as a comment line
+/// AC-9: fallback â€” each of the five config keys appears as a comment line
 /// in the CONFIG_BLOCK of a default-config out.gcode.
 #[test]
-fn module_manifest_registers_four_keys_with_expected_types_and_defaults() {
+fn module_manifest_registers_five_keys_with_expected_types_and_defaults() {
     let gcode = slice_default();
 
     let config_start = gcode
@@ -663,9 +668,13 @@ fn module_manifest_registers_four_keys_with_expected_types_and_defaults() {
         config_block.contains("; nozzle_temperature_initial_layer = 215"),
         "CONFIG_BLOCK must contain '; nozzle_temperature_initial_layer = 215'"
     );
+    assert!(
+        config_block.contains("; nozzle_diameter = 0.4"),
+        "CONFIG_BLOCK must contain '; nozzle_diameter = 0.4'"
+    );
 }
 
-/// AC-10: default slicing run; each of the four key=value lines appears
+/// AC-10: default slicing run; each of the five key=value lines appears
 /// exactly once in CONFIG_BLOCK.
 #[test]
 fn new_keys_appear_in_config_block() {
@@ -685,6 +694,7 @@ fn new_keys_appear_in_config_block() {
         "; machine_end_gcode =",
         "; bed_temperature_initial_layer_single = 60",
         "; nozzle_temperature_initial_layer = 215",
+        "; nozzle_diameter = 0.4",
     ] {
         assert_eq!(
             count_occurrences(config_block, expected),
@@ -698,7 +708,10 @@ fn new_keys_appear_in_config_block() {
 // NEGATIVE TESTS (3)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Negative-1: unknown placeholder passes through verbatim; no panic.
+/// An unresolvable `[key]` must NOT fail the slice. A module's `ConfigView` is
+/// scoped to its own manifest, so a template may legitimately reference a key
+/// owned by a module that is not loaded in this pipeline; aborting would break
+/// composition. The key is emitted verbatim (the module warns once).
 #[test]
 fn unknown_placeholder_passes_through_verbatim() {
     let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
@@ -706,11 +719,49 @@ fn unknown_placeholder_passes_through_verbatim() {
         "machine_start_gcode".to_string(),
         ConfigValue::String("TEMP [no_such_key] DONE".to_string()),
     );
+    let gcode = match try_slice_with_raw(raw) {
+        Ok(gcode) => gcode,
+        Err(err) => panic!("slice must succeed with an unresolved placeholder; got: {err}"),
+    };
+
+    let header_end = gcode
+        .find("; HEADER_BLOCK_END")
+        .expect("HEADER_BLOCK_END must be present");
+    let m82_offset = gcode[header_end..]
+        .find("\nM82")
+        .map(|p| header_end + p + 1);
+    let m83_offset = gcode[header_end..]
+        .find("\nM83")
+        .map(|p| header_end + p + 1);
+    let extrusion_mode_end = match (m82_offset, m83_offset) {
+        (Some(a), Some(b)) => a.min(b),
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => gcode.len(),
+    };
+    let start_block = &gcode[header_end..extrusion_mode_end];
+
+    assert!(
+        start_block.contains("TEMP [no_such_key] DONE"),
+        "the unresolved [key] must reach the emitted start block verbatim, \
+         brackets included; start block was:\n{start_block}"
+    );
+}
+
+/// `[nozzle_diameter]` is declared in the machine-gcode-emit manifest, so it
+/// resolves end-to-end through the config sweep into the emitted start block.
+#[test]
+fn nozzle_diameter_macro_resolves_end_to_end() {
+    let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    raw.insert(
+        "machine_start_gcode".to_string(),
+        ConfigValue::String("; nozzle is [nozzle_diameter]".to_string()),
+    );
     let gcode = slice_with_raw(raw);
 
     let header_end = gcode
         .find("; HEADER_BLOCK_END")
-        .expect("HEADER_BLOCK_END must be present â€” not yet emitted (red)");
+        .expect("HEADER_BLOCK_END must be present");
     let m82_offset = gcode[header_end..]
         .find("\nM82")
         .map(|p| header_end + p + 1);
@@ -727,10 +778,10 @@ fn unknown_placeholder_passes_through_verbatim() {
     let start_block = &gcode[header_end..extrusion_mode_end];
 
     assert_eq!(
-        count_occurrences(start_block, "TEMP [no_such_key] DONE"),
+        count_occurrences(start_block, "; nozzle is 0.4"),
         1,
-        "unknown placeholder must pass through verbatim in start block; \
-         start_block:\n{start_block}"
+        "[nozzle_diameter] must resolve to the schema default 0.4 in the start \
+         block; start_block:\n{start_block}"
     );
 }
 

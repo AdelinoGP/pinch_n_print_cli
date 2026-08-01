@@ -1,5 +1,5 @@
 //! Run-wide aggregation and presentation for fuel-based module profiling
-//! (ADR-0050).
+//! (ADR-0055).
 //!
 //! `slicer-wasm-host`'s [`profiling`](slicer_wasm_host::profiling) module owns
 //! the *per-call* half of the contract: it records [`ProfileMark`]s and folds
@@ -606,7 +606,7 @@ const LABEL_WIDTH: usize = 42;
 #[must_use]
 pub fn format_profile_summary(summary: &ProfileSummary) -> String {
     let mut out = String::new();
-    out.push_str("=== fuel profile (ADR-0050) ===\n");
+    out.push_str("=== fuel profile (ADR-0055) ===\n");
     if summary.is_empty() {
         out.push_str(
             "no profile marks recorded.\n\

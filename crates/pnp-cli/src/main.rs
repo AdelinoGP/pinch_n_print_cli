@@ -87,7 +87,7 @@ enum Cmd {
         #[arg(long = "instrument-stderr")]
         instrument_stderr: bool,
         /// Meter wasmtime fuel, attribute it to scopes, and print a ranked
-        /// summary to stderr at slice end (ADR-0050). Costs throughput.
+        /// summary to stderr at slice end (ADR-0055). Costs throughput.
         #[arg(long)]
         profile: bool,
         /// Also attach each dispatch call's scope fold to its `module_complete`

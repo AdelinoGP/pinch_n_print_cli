@@ -1,4 +1,4 @@
-//! Guest-side half of fuel-based module profiling (ADR-0050).
+//! Guest-side half of fuel-based module profiling (ADR-0055).
 //!
 //! # What this module is for
 //!
@@ -20,7 +20,7 @@
 //! One host call per guest *instance* — the cached [`ProfilingHost::profile_enabled`]
 //! answer. After that, every mark costs an `OnceLock::get` (one acquire load) plus
 //! a branch on a cached `bool`, and no scope name is ever registered. Marks ship in
-//! every guest precisely because that is cheap enough to leave in (ADR-0050,
+//! every guest precisely because that is cheap enough to leave in (ADR-0055,
 //! "Always compiled in, host-gated").
 //!
 //! # Scope identity

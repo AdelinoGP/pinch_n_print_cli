@@ -16,7 +16,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use slicer_ir::ConfigView;
 use slicer_ir::{ConfigValue, GCodeCommand};
@@ -27,6 +27,19 @@ use slicer_sdk::traits::PostpassModule;
 
 /// Machine-gcode-emit GCodePostProcess module.
 pub struct MachineGcodeEmit;
+
+/// Legacy placeholder names that canonical accepts as aliases of a current
+/// config key.
+///
+/// Ported from canonical `GCode::update_placeholder_parser_with_variant_params`,
+/// which sets `first_layer_temperature` unconditionally under the comment
+/// "first_layer_temperature is a legacy alias of nozzle_temperature_initial_layer".
+/// Applied *after* the `config.keys()` sweep, so a real config key of the same
+/// name would win if one ever appeared. These are not manifest keys.
+const PLACEHOLDER_ALIASES: &[(&str, &str)] = &[(
+    "first_layer_temperature",
+    "nozzle_temperature_initial_layer",
+)];
 
 #[slicer_module]
 impl PostpassModule for MachineGcodeEmit {
@@ -75,19 +88,58 @@ impl PostpassModule for MachineGcodeEmit {
             if lookup.contains_key(&key) {
                 continue;
             }
-            let val_str = match config.get(&key) {
-                Some(ConfigValue::String(s)) => s.clone(),
-                Some(ConfigValue::Int(i)) => i.to_string(),
-                Some(ConfigValue::Float(f)) => f.to_string(),
-                Some(ConfigValue::Bool(b)) => b.to_string(),
-                _ => continue,
+            let val_str = match config.get(&key).and_then(format_placeholder_value) {
+                Some(s) => s,
+                None => continue,
             };
             lookup.insert(key, val_str);
         }
+        // Legacy aliases resolve only where the sweep above left a gap.
+        for (alias, target) in PLACEHOLDER_ALIASES {
+            if lookup.contains_key(*alias) {
+                continue;
+            }
+            if let Some(val) = lookup.get(*target).cloned() {
+                lookup.insert((*alias).to_string(), val);
+            }
+        }
 
         // Step 3: Perform substitution on both templates.
-        let resolved_start = substitute_placeholders(&start_template, &lookup);
-        let resolved_end = substitute_placeholders(&end_template, &lookup);
+        //
+        // An unresolved `[key]` is **not** a slice error. A module's
+        // `ConfigView` is scoped to its own manifest, so "unknown to
+        // machine-gcode-emit" is not "unknown to the slicer": a template may
+        // legitimately name a key owned by a module that is not loaded in this
+        // pipeline. Aborting would break composition. Instead the key passes
+        // through verbatim (brackets included) and we warn once, aggregated
+        // over both injection points.
+        let (resolved_start, unresolved_start) = substitute_placeholders(&start_template, &lookup);
+        let (resolved_end, unresolved_end) = substitute_placeholders(&end_template, &lookup);
+
+        if !unresolved_start.is_empty() || !unresolved_end.is_empty() {
+            let keys: BTreeSet<String> = unresolved_start
+                .iter()
+                .chain(unresolved_end.iter())
+                .cloned()
+                .collect();
+            let mut sites: Vec<&str> = Vec::new();
+            if !unresolved_start.is_empty() {
+                sites.push("machine_start_gcode");
+            }
+            if !unresolved_end.is_empty() {
+                sites.push("machine_end_gcode");
+            }
+            let key_list = keys
+                .iter()
+                .map(|k| format!("[{k}]"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            slicer_sdk::host::log_warn(&format!(
+                "machine-gcode-emit: unresolved custom G-code placeholder(s): \
+                 {key_list} (in {sites}); emitted verbatim",
+                sites = sites.join(", ")
+            ));
+        }
 
         // Step 4: Emit resolved_start (if non-empty).
         if !resolved_start.trim().is_empty() {
@@ -189,22 +241,68 @@ impl PostpassModule for MachineGcodeEmit {
     }
 }
 
+/// Renders one `ConfigValue` as the text a `[key]` placeholder substitutes to,
+/// or `None` when the value has no single-value rendering.
+///
+/// `ConfigValue::List` resolves to its **first element**. Real 3MF input
+/// supplies per-extruder settings as vectors — `nozzle_diameter` arrives as
+/// `['0.4']`, a `List`, never a scalar — and canonical reads element 0 when a
+/// placeholder needs a single value (`nozzle_temperature_initial_layer
+/// .get_at(0)` in `GCode::_do_export`'s `; first_layer_temperature = %d`
+/// preamble). Without this the module's headline placeholders are inert for
+/// every real slice.
+///
+/// An **empty** list yields `None`, so the key stays out of the lookup and its
+/// placeholder stays unresolved (passed through verbatim, and warned about).
+/// Substituting an empty string instead would silently emit `M104 S`, which
+/// `design.md` §Rejected alternatives rules out.
+///
+/// `Percent` and `FloatOrPercent` stay unrendered: they are meaningless without
+/// the base they resolve against.
+fn format_placeholder_value(value: &ConfigValue) -> Option<String> {
+    match value {
+        ConfigValue::String(s) => Some(s.clone()),
+        ConfigValue::Int(i) => Some(i.to_string()),
+        ConfigValue::Float(f) => Some(f.to_string()),
+        ConfigValue::Bool(b) => Some(b.to_string()),
+        ConfigValue::List(items) => items.first().and_then(format_placeholder_value),
+        _ => None,
+    }
+}
+
 /// Single-pass left-to-right placeholder substitution.
 ///
 /// Replaces `[snake_case_key]` with the corresponding value from `lookup`.
-/// Unknown keys pass through verbatim (including brackets). Unclosed `[` on a
-/// line is treated as literal text. No recursion; substituted values are not
-/// re-scanned.
-fn substitute_placeholders(template: &str, lookup: &HashMap<String, String>) -> String {
+/// Returns the rendered text plus the sorted, deduplicated list of bracketed
+/// keys that had no entry in `lookup`. The rendered text keeps the verbatim
+/// `[key]` for an unresolved key; the unresolved list exists so the caller can
+/// warn about them once, not so it can fail.
+///
+/// An unclosed `[` with no `]` before end-of-line is literal text and is *not*
+/// a failure. No recursion; substituted values are not re-scanned.
+///
+/// The scan stays byte-oriented: `[`, `]` and `\n` are ASCII, and UTF-8 is
+/// self-synchronising, so any byte equal to one of them is always at a char
+/// boundary. Literal runs are therefore copied as whole `&str` slices, which
+/// keeps multi-byte characters intact.
+fn substitute_placeholders(
+    template: &str,
+    lookup: &HashMap<String, String>,
+) -> (String, Vec<String>) {
     let mut out = String::with_capacity(template.len());
+    let mut unresolved: BTreeSet<String> = BTreeSet::new();
     let bytes = template.as_bytes();
     let mut i = 0;
+    // Start of the literal run pending copy into `out`.
+    let mut run_start = 0;
     while i < bytes.len() {
         if bytes[i] != b'[' {
-            out.push(bytes[i] as char);
             i += 1;
             continue;
         }
+        // Flush the literal run that ends at this '['.
+        out.push_str(&template[run_start..i]);
+
         // Found '['. Scan for matching ']' on the same line (no newline before ']').
         let mut j = i + 1;
         let mut found = None;
@@ -217,23 +315,27 @@ fn substitute_placeholders(template: &str, lookup: &HashMap<String, String>) -> 
         }
         match found {
             Some(end) => {
-                let key = std::str::from_utf8(&bytes[i + 1..end]).unwrap_or("");
+                let key = &template[i + 1..end];
                 if let Some(val) = lookup.get(key) {
                     out.push_str(val);
-                    i = end + 1;
                 } else {
-                    // Unknown key: pass through verbatim including brackets.
-                    out.push_str(std::str::from_utf8(&bytes[i..=end]).unwrap_or(""));
-                    i = end + 1;
+                    // Unresolved key: keep it verbatim (brackets included) and
+                    // report it so the caller can warn once.
+                    unresolved.insert(key.to_string());
+                    out.push_str(&template[i..=end]);
                 }
+                i = end + 1;
             }
             None => {
                 // Unclosed '['. Treat remainder of this line as literal.
                 let line_end = j; // position of '\n' or bytes.len()
-                out.push_str(std::str::from_utf8(&bytes[i..line_end]).unwrap_or(""));
+                out.push_str(&template[i..line_end]);
                 i = line_end;
             }
         }
+        run_start = i;
     }
-    out
+    // Flush the trailing literal run.
+    out.push_str(&template[run_start..]);
+    (out, unresolved.into_iter().collect())
 }

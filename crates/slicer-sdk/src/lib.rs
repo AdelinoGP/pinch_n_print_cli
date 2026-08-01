@@ -13,7 +13,7 @@
 //! - postpass types (GcodeCommand, GcodeOutputCommand),
 //! - postpass builders (GcodeOutputBuilder, GcodeMoveCmd),
 //! - the guest profiling sink that bridges `slicer_core::profile` to the WIT
-//!   `slicer:common/profiling` interface (ADR-0050).
+//!   `slicer:common/profiling` interface (ADR-0055).
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]

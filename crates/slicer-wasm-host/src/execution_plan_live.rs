@@ -220,7 +220,7 @@ pub fn load_live_modules_for_plan_with_config(
 }
 
 /// Same as [`load_live_modules_for_plan_with_config`], plus control over
-/// whether the shared [`WasmEngine`] meters fuel (ADR-0050).
+/// whether the shared [`WasmEngine`] meters fuel (ADR-0055).
 ///
 /// `profile` is the single switch that turns fuel-based module profiling on for
 /// a whole run. It reaches the guest by two routes, both derived from this one

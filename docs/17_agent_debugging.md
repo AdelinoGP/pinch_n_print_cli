@@ -62,7 +62,7 @@ pnp_cli slice \
 
 `--instrument-stderr` ranks *modules*. `--profile` says what inside a module
 costs, and does it with a signal that a noisy developer machine cannot corrupt.
-Design and rationale: `docs/adr/0050-fuel-based-module-profiling.md`.
+Design and rationale: `docs/adr/0055-fuel-based-module-profiling.md`.
 
 ```
 pnp_cli slice \
@@ -76,7 +76,7 @@ The ranked table goes to **stderr** at slice end (G-code owns stdout), after
 the JSONL stream:
 
 ```
-=== fuel profile (ADR-0050) ===
+=== fuel profile (ADR-0055) ===
 units: fuel = executed wasm instructions (deterministic; mark overhead costs no fuel)
 total: 12,943,955,254 fuel across 15 module(s)
 

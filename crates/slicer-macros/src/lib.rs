@@ -455,7 +455,7 @@ fn resolve_stage_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<Stage
 }
 
 /// The statement every macro-generated WIT export body opens with: it installs
-/// the guest profiling sink (ADR-0050).
+/// the guest profiling sink (ADR-0055).
 ///
 /// # Why here and not somewhere shared
 ///

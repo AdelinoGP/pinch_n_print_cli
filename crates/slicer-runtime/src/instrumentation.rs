@@ -183,7 +183,7 @@ pub trait PipelineInstrumentation: Send + Sync {
 
     /// Called with the profiling marks and total fuel a module's dispatch
     /// produced, immediately *before* the matching [`Self::on_module_end`]
-    /// (ADR-0050).
+    /// (ADR-0055).
     ///
     /// The ordering is deliberate: `on_module_end` is what emits
     /// `module_complete`, and `--profile-verbose` attaches this call's scope
