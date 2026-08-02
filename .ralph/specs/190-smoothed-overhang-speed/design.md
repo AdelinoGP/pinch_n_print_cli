@@ -82,7 +82,7 @@ Include ranges for files over 300 lines.
 - Question: "In `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`'s `GCode::_extrude`, quote both `dynamic_overhang_speeds` vector constructions verbatim."; scope: that file; return: `SNIPPETS` ≤ 2, ≤ 25 lines each; purpose: Step 3's sixth-entry asymmetry.
 - Question: "In `OrcaSlicerDocumented/src/libslic3r/GCode/ExtrusionProcessor.hpp`, quote the `calculate_speed` lambda and the lines that build `speed_sections` verbatim."; scope: that file; return: `SNIPPETS` ≤ 2, ≤ 25 lines each; purpose: Step 3's interpolation port.
 - Question: "Does `cargo xtask build-guests --check` report any `STALE:` line? Return yes/no and at most five such lines."; scope: workspace; return: `FACT` ≤ 6 lines; purpose: Step 5.
-- Question: "Re-derive the highest `DEV-###` currently in `docs/DEVIATION_LOG.md` with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, and confirm `TASK-309` has zero hits in that file."; scope: `docs/DEVIATION_LOG.md`; return: `FACT` ≤ 3 lines; purpose: Step 6's new row.
+- Question: "Re-derive the highest `DEV-###` currently in `docs/DEVIATION_LOG.md` with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, and confirm `TASK-313` has zero hits in that file."; scope: `docs/DEVIATION_LOG.md`; return: `FACT` ≤ 3 lines; purpose: Step 6's new row.
 - Question: "In `crates/slicer-ir/src/feedrate.rs`, what is `FeedrateConfig::default`'s `bridge_speed`?"; scope: that file; return: `FACT` ≤ 2 lines; purpose: Step 2's manifest default.
 
 ## Data and Contract Notes

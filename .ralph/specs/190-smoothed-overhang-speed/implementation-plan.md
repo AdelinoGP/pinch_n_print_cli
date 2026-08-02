@@ -13,7 +13,7 @@
 
 ### Step 0: Confirm the `[BLOCK]` ruling and the 189 + 193 dependencies, and record the baselines
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: prove the maintainer's `[BLOCK-1]`/`[BLOCK-1b]`/`[BLOCK-2]`/`[BLOCK-3]` ruling is recorded, prove packets 189 **and 193** landed, and capture the do-not-regress baselines this packet must not move.
 - Precondition: packets 189 and 193 both reported `status: implemented`, **and** `design.md` carries the maintainer's `RESOLVED [BLOCK-1/1b/2/3]: option <A|B|C>` line. **`AC-18` now PASSES** — the marker reads `option C` and the probe prints `PASS: maintainer chose option C` (measured). That flips this step's character: `AC-18` was the gate that no implementer could clear by writing code, and it is cleared. **What is NOT cleared is the ADR obligation option (C) still carries**, which `AC-19` gates and which *is* implementer work — the three `D-<n>-ADR-####-AMENDED` rows and the `ADR-0053` reference in `DEV-009`. `AC-19` is expected to FAIL here and to be cleared in Step 6.
 - Postcondition: `AC-18` and both dependency probes print PASS, `AC-19` prints its FAIL naming all three missing rows, and the four baseline counts are recorded in the swarm log (not frozen into any file).
@@ -45,7 +45,7 @@
 
 ### Step 1: Red tests for the new algorithm
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: write the **nine** new failing tests in `modules/core-modules/overhang-classifier-default/tests/basic_tdd.rs` — `calculate_speed_matches_canonical_interpolation_and_clamps`, `sixth_speed_section_follows_slowdown_for_curled_perimeters`, `section_speeds_resolve_against_ref_speed_not_original_speed`, `speed_sections_flatten_ties_without_removing_entries`, `per_point_factors_vary_within_one_entity`, **`interpolated_factor_is_not_a_quartile_value`**, `enable_overhang_speed_false_disables_all_mutations_and_absent_defaults_true`, `first_layer_emits_no_speed_mutation`, `non_wall_role_emits_no_mutation_and_no_nan` — and rewrite the existing quartile tests (`quartile_present_receives_speed_factor_below_one`, `quartile_four_is_honored`, plus the two curl tests' mutation matching) onto `EntityMutation::SetPointSpeedFactors`. Keep `quartile_absent_emits_no_mutation` and `all_zero_config_emits_no_mutations` semantically unchanged. **`interpolated_factor_is_not_a_quartile_value` (AC-16) was missing from this list for a round and is the packet's stated primary discriminator** — `AC-5` does not discriminate what it claims to, because with `overhang_quartile.is_some()` still the gate a per-point quartile lookup with zero interpolation yields e.g. `[1.0, 1.0, 0.5, 0.5]` and passes `AC-5` outright. A test the plan never produces is a criterion no step is accountable for; `AC-16`, `AC-17` and `AC-18` all had **zero** hits in this file before this round. **All new tests use `#[module_test]`, not `#[test]`** — measured on the current file: `#[module_test]` 6 occurrences, `#[test]` 0. A `#[test]` here will not be collected by the module harness and will silently not run.
 - Precondition: Step 0 PASS.
 - Postcondition: `cargo test -p overhang-classifier-default --test basic_tdd` fails to compile (the new symbols `calculate_speed`, `build_speed_sections`, `OVERHANG_OVERLAP_LEVELS` do not exist and the module still emits `SetSpeedFactor`). That is the correct red state; do not stub anything to make it link.
@@ -71,7 +71,7 @@
 
 ### Step 2: Declare the three config keys and regenerate the config-key doc
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: add `enable_overhang_speed` (`bool`, `true`), `slowdown_for_curled_perimeters` (`bool`, `false`) and `bridge_speed` (`float`, `25.0`) to `[config.schema]` in `modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml`, each with a `display` string and `group = "Speed"` matching the existing rows' shape; then run `cargo xtask gen-config-docs`.
 - Precondition: Step 1 complete.
 - Postcondition: AC-1 and AC-13 print PASS; `binding_surface_matches_manifest` (`--test slicer_module_binding_tdd`) still passes.
@@ -101,7 +101,7 @@
 
 ### Step 3: Port `speed_sections` and `calculate_speed`
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: add `OVERHANG_OVERLAP_LEVELS`, `build_speed_sections` and `calculate_speed` to `modules/core-modules/overhang-classifier-default/src/lib.rs` as pure functions, with the canonical provenance comments. Do **not** wire them into `run_finalization` yet — this step is proven entirely by the two pure-function tests.
 - Precondition: Step 2 complete.
 - Postcondition: AC-2, AC-3, AC-4, AC-14 and AC-15 print PASS.
@@ -132,7 +132,7 @@
 
 ### Step 4: Rewrite `run_finalization` per point, and update the TRIPWIRE mirror in the same step
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: **read** each point's `overhang_distance_mm` (the signed, `boundary_offset`-normalised value packet 193 stamps) — **do not add any boundary scan, and do not grow the produce phase**; gate on `enable_overhang_speed` (absent ⇒ true) and skip `layers[0]`; per qualifying entity build a `factors` vector of exactly `path.points.len()` entries from `min(calculate_speed(d_curr), calculate_speed(d_next))` clamped to `original_speed` and then `min`ed with the curl-derived speed; emit one `EntityMutation::SetPointSpeedFactors`; delete `EntityMutation::SetSpeedFactor` and the now-callerless `quartile_for_distance`; add `LayerCollectionIR.overhang_distance_mm` to the manifest's `[ir-access] reads`. **In the same step**, rewrite `mirrored_run_finalization` in `crates/slicer-runtime/tests/integration/overhang_classifier_refactor_regression_tdd.rs` to the identical rule, per that file's own TRIPWIRE.
 - **Four things an earlier revision of this step required that option (C) deletes, listed so a reader of that revision does not reinstate them.** (1) `fn distance_to_prev_boundary` — **not written.** (2) The `(x0, y0, x1, y1)` `OuterWall` segment list in the produce phase — **not added**; it would have no consumer and would trip `dead_code` under the `-D warnings` gate Step 5 requires clean. (3) The `+ 0.5 × outer_wall_line_width` proxy compensation — **not applied**; there is no proxy to compensate, and the `0.5 × width` term is already inside the stamped value as canonical's `boundary_offset`. (4) The `OuterWall`-only-vs-all-roles choice — **not made**; nothing here scans a role set.
 - **Two consumption rules, both from packet 193's contract and both easy to get wrong.** (a) The value is **signed**: feed it to `calculate_speed` as-is, never `.abs()`, and never add or subtract an offset. Negative means "over the layer below", which correctly lands below the first section and returns `original_speed`. (b) `None` means "not measured": treat that point as non-overhanging, factor `1.0` — the same outcome the `overhang_quartile.is_some()` gate already produces (`AC-N1`). Never substitute `0.0`, `-1.0` or `f32::MAX`; packet 193's `AC-N1` enumerates all three because each is a live sentinel in packet 191.
@@ -166,7 +166,7 @@
 
 ### Step 5: Rebuild guests and sweep the regression wall
 
-- Task IDs: `TASK-309`
+- Task IDs: `TASK-313`
 - Objective: rebuild the guest WASM artifacts invalidated by the guest `src/` edit, then run the full regression sweep.
 - Precondition: Step 4 complete.
 - Postcondition: AC-11 and AC-12 print PASS, and `cargo clippy --workspace --all-targets -- -D warnings` is clean (the deleted `quartile_for_distance` must not leave a dead-code warning).
@@ -191,10 +191,10 @@
   - `bash -c 'cargo clippy --workspace --all-targets -- -D warnings 2>&1 | rg -q "^error" && echo FAIL || echo PASS'` - FACT
 - Exit condition: four PASS lines. Do not interpret any `slicer-runtime` failure before `--check` is clean.
 
-### Step 6: Docs, the `DEV-009` progress paragraph, the new `DEV-###` row, and `TASK-309`
+### Step 6: Docs, the `DEV-009` progress paragraph, the new `DEV-###` row, and `TASK-313`
 
-- Task IDs: `TASK-309`
-- Objective: land every entry in `packet.spec.md` §Doc Impact Statement — the `docs/04_host_scheduler.md` and `docs/01_system_architecture.md` sentence rewrites, the `DEV-009` progress paragraph naming `ADR-0053` (row stays **`Open`**), **three `D-<n>-ADR-####-AMENDED` rows (ADR-0031, ADR-0032, ADR-0008) each citing `ADR-0053`**, the `crates/slicer-core/src/algos/overhang_annotation.rs` doc-comment correction that `[BLOCK-1b]`'s "proceed" resolution obliges, and the `TASK-309` registration in `docs/07_implementation_status.md` outside the generated block. **No `OuterWall`-centerline proxy row is filed** — option (C) has no proxy; see §Doc Impact Statement's struck entry and its inverted probe.
+- Task IDs: `TASK-313`
+- Objective: land every entry in `packet.spec.md` §Doc Impact Statement — the `docs/04_host_scheduler.md` and `docs/01_system_architecture.md` sentence rewrites, the `DEV-009` progress paragraph naming `ADR-0053` (row stays **`Open`**), **three `D-<n>-ADR-####-AMENDED` rows (ADR-0031, ADR-0032, ADR-0008) each citing `ADR-0053`**, the `crates/slicer-core/src/algos/overhang_annotation.rs` doc-comment correction that `[BLOCK-1b]`'s "proceed" resolution obliges, and the `TASK-313` registration in `docs/07_implementation_status.md` outside the generated block. **No `OuterWall`-centerline proxy row is filed** — option (C) has no proxy; see §Doc Impact Statement's struck entry and its inverted probe.
 - Precondition: Step 5 complete; all code ACs green.
 - Postcondition: every doc verification command in `packet.spec.md` §Doc Impact Statement returns PASS.
 - Files allowed to read, with ranges when over 300 lines:
@@ -213,7 +213,7 @@
   - the interior of `<!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->` in `docs/07_implementation_status.md` — regenerated, never hand-edited
   - `docs/15_config_keys_reference.md` — already handled by the generator in Step 2
 - Expected sub-agent dispatches:
-  - Question: "Re-derive the highest `DEV-###` with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, re-derive the highest `TASK-###` in `docs/07_implementation_status.md`, and confirm `TASK-309` has zero hits in both files."; scope: those two files; return: `FACT` ≤ 4 lines. **Re-derive at the moment of writing** — a parallel packet may have consumed the next ID since this packet was authored, which is exactly how a duplicate row gets filed.
+  - Question: "Re-derive the highest `DEV-###` with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, re-derive the highest `TASK-###` in `docs/07_implementation_status.md`, and confirm `TASK-313` has zero hits in both files."; scope: those two files; return: `FACT` ≤ 4 lines. **Re-derive at the moment of writing** — a parallel packet may have consumed the next ID since this packet was authored, which is exactly how a duplicate row gets filed.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/DEVIATION_LOG.md` - delegated grep only
@@ -223,11 +223,11 @@
 - Verification:
   - `bash -c 'rg -q "SetPointSpeedFactors" docs/04_host_scheduler.md && ! rg -q "config key as .SetSpeedFactor" docs/04_host_scheduler.md && echo PASS || echo FAIL'` - FACT
   - `bash -c 'rg -q "SetPointSpeedFactors" docs/01_system_architecture.md && echo PASS || echo FAIL'` - FACT
-  - `bash -c 'rg -q "^\| DEV-009 .*Open" docs/DEVIATION_LOG.md && rg -q "^\| DEV-009 .*TASK-309" docs/DEVIATION_LOG.md && rg -q "^\| DEV-009 .*ext_perimeter_speed" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` - FACT (the row must stay `Open`; packet 191 closes it. The `ext_perimeter_speed` conjunct forces the paragraph to record the `ref_speed`/`original_speed` collapse; both anchors have zero hits in the file today, verified)
+  - `bash -c 'rg -q "^\| DEV-009 .*Open" docs/DEVIATION_LOG.md && rg -q "^\| DEV-009 .*TASK-313" docs/DEVIATION_LOG.md && rg -q "^\| DEV-009 .*ext_perimeter_speed" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` - FACT (the row must stay `Open`; packet 191 closes it. The `ext_perimeter_speed` conjunct forces the paragraph to record the `ref_speed`/`original_speed` collapse; both anchors have zero hits in the file today, verified)
   - the `AC-19` command - FACT (**the three `D-<n>-ADR-####-AMENDED` rows and the `ADR-0053` reference in `DEV-009`.** This is the step that clears the FAIL Step 0 recorded. Re-derive every `D-` number at the moment of writing; do not reuse one captured earlier in the session.)
   - `bash -c 'rg -q "OuterWall centerline" docs/DEVIATION_LOG.md && echo "FAIL: an OuterWall-centerline proxy row was filed; option (C) has no such proxy" || echo PASS'` - FACT (**an inverted probe, deliberately.** Under option (B) this step owed a boundary-proxy row and the probe asserted its presence. Under (C) the row would describe a mechanism the tree does not contain, so the probe now asserts its *absence*. Leaving the old positive form in place would have had the implementer file a fabricated deviation to turn it green — the failure mode of a criterion that outlives its design.)
   - `bash -c 'rg -q "recorded, intentional deviation" crates/slicer-core/src/algos/overhang_annotation.rs && echo "FAIL: the overhang_annotation.rs doc-comment still calls the six-band gap an intentional deviation, which the tree no longer does" || echo PASS'` - FACT (the `[BLOCK-1b]` doc-comment correction, which ADR-0053 §"Consequent obligation" requires in the same packet that lands the restoration)
-  - `bash -c 'python3 -c "import io,os,sys; p=r\"docs/07_implementation_status.md\"; sys.exit(print(\"FAIL: cannot open \"+p+\" - run from the workspace root\")) if not os.path.exists(p) else None; s=io.open(p,encoding=\"utf-8\").read(); B=\"<!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->\"; E=\"<!-- END GENERATED: open-deviations -->\"; i=s.find(B); j=s.find(E); sys.exit(print(\"FAIL: open-deviations generated markers not found in \"+p)) if (i<0 or j<0 or j<i) else None; outside=s[:i]+s[j+len(E):]; print(\"PASS\" if \"TASK-309\" in outside else \"FAIL: TASK-309 is not registered OUTSIDE the open-deviations generated block\")"'` - FACT (**the §Doc Impact Statement `TASK-309` probe, verbatim.** A whole-file `rg -q "TASK-309"` cannot distinguish a row hand-added outside the markers — which this step requires — from one that landed inside the generated block and will be silently destroyed by the next `cargo xtask check-deviations`. Measured: `TASK-156` occurs both inside and outside that block on this tree today.)
+  - `bash -c 'python3 -c "import io,os,sys; p=r\"docs/07_implementation_status.md\"; sys.exit(print(\"FAIL: cannot open \"+p+\" - run from the workspace root\")) if not os.path.exists(p) else None; s=io.open(p,encoding=\"utf-8\").read(); B=\"<!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->\"; E=\"<!-- END GENERATED: open-deviations -->\"; i=s.find(B); j=s.find(E); sys.exit(print(\"FAIL: open-deviations generated markers not found in \"+p)) if (i<0 or j<0 or j<i) else None; outside=s[:i]+s[j+len(E):]; print(\"PASS\" if \"TASK-313\" in outside else \"FAIL: TASK-313 is not registered OUTSIDE the open-deviations generated block\")"'` - FACT (**the §Doc Impact Statement `TASK-313` probe, verbatim.** A whole-file `rg -q "TASK-313"` cannot distinguish a row hand-added outside the markers — which this step requires — from one that landed inside the generated block and will be silently destroyed by the next `cargo xtask check-deviations`. Measured: `TASK-156` occurs both inside and outside that block on this tree today.)
 - Exit condition: five PASS lines.
 
 ## Per-Step Budget Roll-Up
