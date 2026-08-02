@@ -9,6 +9,7 @@
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 
+use slicer_core::flow::line_width_to_spacing;
 use slicer_core::polygon_ops::union_ex;
 use slicer_ir::{
     ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point2, Point3WithWidth,
@@ -17,7 +18,7 @@ use slicer_ir::{
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::views::PerimeterRegionView;
 
-use crate::connect::chain_or_connect_infill;
+use crate::connect::{chain_or_connect_infill, AnchorParams};
 use crate::offset::{clip_to_offset_boundary, remove_short_polylines, ExPolygonWithOffset};
 
 const WIDTH_EPSILON_MM: f32 = 0.000001;
@@ -32,6 +33,8 @@ enum PathBucket {
 struct RegionConfig {
     line_width: u32,
     density: u32,
+    anchor_length: u32,
+    anchor_length_max: u32,
 }
 
 /// The host-partitioned fill polygons of one region, kept per role.
@@ -121,6 +124,8 @@ struct RegionRecord {
     config: RegionConfig,
     sparse_spacing_mm: f32,
     solid_spacing_mm: f32,
+    anchor_base_mm: f32,
+    sparse_anchor: AnchorParams,
     sparse_paths: Vec<ExtrusionPath3D>,
     solid_paths: Vec<ExtrusionPath3D>,
 }
@@ -177,6 +182,14 @@ pub fn orchestrate_infill(
         let density = config_float(view.config(), "infill_density")
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(0.2);
+        let layer_height = config_float(view.config(), "layer_height")
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(0.2);
+        // Packet-approved deviation: flow.rs treats negative spacing as the canonical
+        // throw analog (`FlowErrorNegativeSpacing`); the linker resolves the percent
+        // base from user config, must not fail a slice on a non-physical width, and the formula port is exact.
+        let anchor_base_mm = line_width_to_spacing(line_width, layer_height).unwrap_or(line_width);
+        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm);
 
         records.push(RegionRecord {
             prior_index,
@@ -188,9 +201,13 @@ pub fn orchestrate_infill(
             config: RegionConfig {
                 line_width: line_width.to_bits(),
                 density: density.to_bits(),
+                anchor_length: sparse_anchor.anchor_length_mm.to_bits(),
+                anchor_length_max: sparse_anchor.anchor_length_max_mm.to_bits(),
             },
             sparse_spacing_mm: (line_width / density).max(f32::EPSILON),
             solid_spacing_mm: line_width.max(f32::EPSILON),
+            anchor_base_mm,
+            sparse_anchor,
             sparse_paths: region.sparse_infill.clone(),
             solid_paths: region.solid_infill.clone(),
         });
@@ -416,7 +433,13 @@ fn link_union_group(
                 .map(move |path| (index, path))
         })
         .collect::<Vec<_>>();
-    let (linked, source_segments) = link_paths(tagged, &boundary, spacing, infill_overlap);
+    let (linked, source_segments) = link_paths(
+        tagged,
+        &boundary,
+        spacing,
+        infill_overlap,
+        anchor(records, group[0], bucket),
+    );
     for path in linked {
         let owner = majority_owner(&path, &source_segments, records, group);
         append_paths(&mut buckets[records[owner].prior_index], bucket, vec![path]);
@@ -434,6 +457,7 @@ fn link_region_group(
 ) {
     for &index in group {
         let spacing_mm = spacing(records, index, bucket);
+        let anchor = anchor(records, index, bucket);
         let boundary = if group.len() == 1 {
             ExPolygonWithOffset::for_infill_overlap(
                 boundary_for(boundaries, index),
@@ -450,7 +474,7 @@ fn link_region_group(
             .cloned()
             .map(|path| (index, path))
             .collect::<Vec<_>>();
-        let (linked, _) = link_paths_without_offset(tagged, &boundary, spacing_mm);
+        let (linked, _) = link_paths_without_offset(tagged, &boundary, spacing_mm, anchor);
         append_paths(&mut buckets[records[index].prior_index], bucket, linked);
     }
 }
@@ -623,15 +647,17 @@ fn link_paths(
     boundary: &[ExPolygon],
     spacing_mm: f32,
     infill_overlap: f32,
+    anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
-    link_paths_without_offset(tagged, offset.polygons_outer(), spacing_mm)
+    link_paths_without_offset(tagged, offset.polygons_outer(), spacing_mm, anchor)
 }
 
 fn link_paths_without_offset(
     tagged: Vec<(usize, ExtrusionPath3D)>,
     boundary: &[ExPolygon],
     spacing_mm: f32,
+    anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let mut clipped = Vec::new();
     let mut source_segments = Vec::new();
@@ -665,7 +691,7 @@ fn link_paths_without_offset(
         chain_or_connect_infill(
             clipped,
             &crate::graph::BoundaryInfillGraph::new(boundary),
-            spacing_mm,
+            anchor,
         ),
         source_segments,
     )
@@ -755,6 +781,16 @@ fn spacing(records: &[RegionRecord], index: usize, bucket: PathBucket) -> f32 {
     match bucket {
         PathBucket::Sparse => records[index].sparse_spacing_mm,
         PathBucket::Solid => records[index].solid_spacing_mm,
+    }
+}
+
+fn anchor(records: &[RegionRecord], index: usize, bucket: PathBucket) -> AnchorParams {
+    match bucket {
+        PathBucket::Sparse => {
+            debug_assert!(records[index].anchor_base_mm.is_finite());
+            records[index].sparse_anchor
+        }
+        PathBucket::Solid => AnchorParams::solid(),
     }
 }
 

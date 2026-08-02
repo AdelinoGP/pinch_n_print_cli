@@ -877,7 +877,7 @@ declare_resolved_config! {
     // Precision / resolution
     /// G-code path resolution in mm (OrcaSlicer: gcode_resolution).
     cli "gcode_resolution"       gcode_resolution: f32 = 0.0125 => extract_float;
-    /// Infill path resolution in mm (OrcaSlicer: infill_anchor_max).
+    /// Infill path-simplification tolerance in mm (OrcaSlicer: resolution).
     cli "infill_resolution"      infill_resolution: f32 = 0.04 => extract_float;
     /// Infill overlap with perimeters in mm (OrcaSlicer: infill_overlap). The
     /// infill path extends past the perimeter boundary by this much so the

@@ -164,6 +164,141 @@ pub fn contour_connector(
     connector
 }
 
+/// Materialises a bounded walk from a boundary position.
+#[must_use]
+pub fn contour_stub(
+    ring: &BoundaryRing,
+    from: f64,
+    direction: RingDirection,
+    budget_units: f64,
+    anchor: &Point3WithWidth,
+) -> Vec<Point3WithWidth> {
+    if !budget_units.is_finite()
+        || budget_units <= 0.0
+        || !ring.length.is_finite()
+        || ring.length <= 0.0
+        || ring.polygon.points.is_empty()
+    {
+        return Vec::new();
+    }
+
+    let points = &ring.polygon.points;
+    let count = points.len();
+    let mut lengths = Vec::with_capacity(count);
+    let mut perimeter = 0.0;
+    for index in 0..count {
+        let current = points[index];
+        let next = points[(index + 1) % count];
+        let length = (next.x as f64 - current.x as f64).hypot(next.y as f64 - current.y as f64);
+        lengths.push(length);
+        perimeter += length;
+    }
+    if !perimeter.is_finite() || perimeter <= 0.0 {
+        return Vec::new();
+    }
+
+    let budget = budget_units.min(ring.length).min(perimeter);
+    if budget <= 0.0 {
+        return Vec::new();
+    }
+
+    let local = ring.local_position(from).min(perimeter);
+    let mut segment = None;
+    let mut arc = 0.0;
+    match direction {
+        RingDirection::Forward => {
+            for (index, &length) in lengths.iter().enumerate() {
+                if length > 0.0 && local < arc + length {
+                    segment = Some((index, local - arc));
+                    break;
+                }
+                arc += length;
+            }
+            if segment.is_none() {
+                segment = lengths
+                    .iter()
+                    .enumerate()
+                    .find(|(_, length)| **length > 0.0)
+                    .map(|(index, length)| (index, 0.0_f64.min(*length)));
+            }
+        }
+        RingDirection::Backward => {
+            for (index, &length) in lengths.iter().enumerate() {
+                if length > 0.0 && local > arc && local <= arc + length {
+                    segment = Some((index, local - arc));
+                    break;
+                }
+                arc += length;
+            }
+            if segment.is_none() {
+                segment = lengths
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, length)| **length > 0.0)
+                    .map(|(index, length)| (index, *length));
+            }
+        }
+    }
+    let Some((mut segment, mut offset)) = segment else {
+        return Vec::new();
+    };
+
+    let point = |x: f32, y: f32| Point3WithWidth { x, y, ..*anchor };
+    let mut walked = 0.0;
+    let mut output = Vec::new();
+    while walked < budget {
+        let length = lengths[segment];
+        let current = points[segment];
+        let next = points[(segment + 1) % count];
+        let remaining_in_segment = match direction {
+            RingDirection::Forward => length - offset,
+            RingDirection::Backward => offset,
+        };
+        let remaining_budget = budget - walked;
+
+        if remaining_budget <= remaining_in_segment {
+            let fraction = match direction {
+                RingDirection::Forward => (offset + remaining_budget) / length,
+                RingDirection::Backward => (offset - remaining_budget) / length,
+            } as f32;
+            let (current_x, current_y) = current.to_mm();
+            let (next_x, next_y) = next.to_mm();
+            output.push(point(
+                lerp(current_x, next_x, fraction),
+                lerp(current_y, next_y, fraction),
+            ));
+            break;
+        }
+
+        walked += remaining_in_segment;
+        let vertex = match direction {
+            RingDirection::Forward => next,
+            RingDirection::Backward => current,
+        };
+        if walked < budget {
+            let (x, y) = vertex.to_mm();
+            output.push(point(x, y));
+        }
+
+        segment = match direction {
+            RingDirection::Forward => (segment + 1) % count,
+            RingDirection::Backward => (segment + count - 1) % count,
+        };
+        while lengths[segment] <= 0.0 {
+            segment = match direction {
+                RingDirection::Forward => (segment + 1) % count,
+                RingDirection::Backward => (segment + count - 1) % count,
+            };
+        }
+        offset = match direction {
+            RingDirection::Forward => 0.0,
+            RingDirection::Backward => lengths[segment],
+        };
+    }
+    output
+}
+
 fn lerp(from: f32, to: f32, fraction: f32) -> f32 {
     from + (to - from) * fraction
 }

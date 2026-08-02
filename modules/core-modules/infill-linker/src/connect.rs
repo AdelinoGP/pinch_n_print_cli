@@ -11,12 +11,63 @@
 
 use std::cmp::Ordering;
 
-use crate::graph::{contour_connector, BoundaryInfillGraph, BoundaryRing};
+pub use crate::graph::contour_stub;
+use crate::graph::{contour_connector, BoundaryInfillGraph, BoundaryRing, RingDirection};
 use slicer_ir::{mm_to_units, ExtrusionPath3D, Point2, Point3WithWidth};
 
-// OrcaSlicer `connect_infill`'s disabled candidate threshold is `1000. / density * spacing`; 1000 nm is 10 units here.
-const LINK_THRESHOLD_SPACINGS: f64 = 10.0;
 const ENDPOINT_WIDTH_EPSILON: f32 = 0.000001;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnchorParams {
+    pub anchor_length_mm: f32,
+    pub anchor_length_max_mm: f32,
+}
+
+impl AnchorParams {
+    pub const UNLIMITED_MM: f32 = 1000.0;
+    pub const DONT_CONNECT_MAX_MM: f32 = 0.05;
+
+    #[must_use]
+    pub fn solid() -> Self {
+        Self {
+            anchor_length_mm: Self::UNLIMITED_MM,
+            anchor_length_max_mm: Self::UNLIMITED_MM,
+        }
+    }
+
+    #[must_use]
+    pub fn dont_connect(&self) -> bool {
+        self.anchor_length_max_mm < Self::DONT_CONNECT_MAX_MM
+    }
+
+    #[must_use]
+    pub fn from_config(config: Option<&slicer_ir::ConfigView>, base_spacing_mm: f32) -> Self {
+        let base_spacing = base_spacing_mm as f64;
+        let anchor_length = config
+            .and_then(|config| config.get_abs_value("infill_anchor", base_spacing))
+            .unwrap_or(4.0 * base_spacing);
+        let anchor_length_max = config
+            .and_then(|config| config.get_abs_value("infill_anchor_max", base_spacing))
+            .unwrap_or(20.0);
+        let anchor_length = nonnegative_finite_mm(anchor_length);
+        let anchor_length_max = nonnegative_finite_mm(anchor_length_max);
+
+        Self {
+            anchor_length_mm: anchor_length.min(anchor_length_max),
+            anchor_length_max_mm: anchor_length_max,
+        }
+    }
+}
+
+fn nonnegative_finite_mm(value: f64) -> f32 {
+    if value.is_finite() && value >= 0.0 {
+        let value = value as f32;
+        if value.is_finite() {
+            return value;
+        }
+    }
+    0.0
+}
 
 #[derive(Debug, Clone, Copy)]
 struct BoundaryPosition {
@@ -42,24 +93,61 @@ struct Candidate {
 pub fn connect_infill(
     paths: Vec<ExtrusionPath3D>,
     graph: &BoundaryInfillGraph,
-    spacing_mm: f32,
+    anchor: AnchorParams,
 ) -> Vec<ExtrusionPath3D> {
+    if anchor.dont_connect() {
+        return paths;
+    }
+
     let mut active = paths
         .into_iter()
         .filter(|path| path.points.len() >= 2)
         .map(Some)
         .collect::<Vec<_>>();
-    let threshold = if spacing_mm.is_finite() && spacing_mm > 0.0 {
-        mm_to_units((LINK_THRESHOLD_SPACINGS * spacing_mm as f64) as f32) as f64
-    } else {
-        0.0
-    };
+    let anchor_length_max_units =
+        if anchor.anchor_length_max_mm.is_finite() && anchor.anchor_length_max_mm > 0.0 {
+            mm_to_units(anchor.anchor_length_max_mm) as f64
+        } else {
+            0.0
+        };
+    let anchor_length_units =
+        if anchor.anchor_length_mm.is_finite() && anchor.anchor_length_mm > 0.0 {
+            mm_to_units(anchor.anchor_length_mm) as f64
+        } else {
+            0.0
+        };
 
-    while let Some(candidate) = nearest_pair_candidate(&active, graph, threshold) {
+    let mut candidates = nearest_pair_candidates(&active, graph);
+    candidates.sort_by(|left, right| {
+        left.distance
+            .total_cmp(&right.distance)
+            .then_with(|| endpoint_order(&left.first, &right.first))
+            .then_with(|| endpoint_order(&left.second, &right.second))
+    });
+    let mut consumed = vec![[false; 2]; active.len()];
+    let mut reversed = vec![false; active.len()];
+    let mut boundary_positions = vec![Vec::new(); graph.rings().len()];
+    for candidate in &candidates {
+        for endpoint in [candidate.first, candidate.second] {
+            if let Some(positions) = boundary_positions.get_mut(endpoint.position.ring_index) {
+                positions.push(endpoint.position.arc_position);
+            }
+        }
+    }
+    for positions in &mut boundary_positions {
+        positions.sort_by(f64::total_cmp);
+    }
+
+    for candidate in candidates {
         let first_index = candidate.first.path_index;
         let second_index = candidate.second.path_index;
-        if first_index == second_index {
-            break;
+        if first_index == second_index
+            || endpoint_consumed(&consumed, candidate.first)
+            || endpoint_consumed(&consumed, candidate.second)
+            || active[first_index].is_none()
+            || active[second_index].is_none()
+        {
+            continue;
         }
 
         // Canonical `connect_infill` wires `prev_on_contour` / `next_on_contour`
@@ -76,8 +164,11 @@ pub fn connect_infill(
                 candidate.first.position.ring_index == candidate.second.position.ring_index
             })
         else {
-            break;
+            continue;
         };
+
+        mark_endpoint_consumed(&mut consumed, candidate.first);
+        mark_endpoint_consumed(&mut consumed, candidate.second);
 
         let (first, second) = if first_index < second_index {
             let (left, right) = active.split_at_mut(second_index);
@@ -87,27 +178,109 @@ pub fn connect_infill(
             (right[0].take(), left[second_index].take())
         };
         let (Some(mut first), Some(mut second)) = (first, second) else {
-            break;
+            continue;
         };
+        let mut first_reversed = reversed[first_index];
+        let mut second_reversed = reversed[second_index];
 
-        orient_for_join(&mut first, candidate.first.at_start, true);
-        orient_for_join(&mut second, candidate.second.at_start, false);
-        // After orientation the join runs from `first`'s last point to
-        // `second`'s first point. Route it along the contour instead of
-        // extruding a bare chord between them.
-        if let (Some(start), Some(end)) =
-            (first.points.last().copied(), second.points.first().copied())
-        {
-            first.points.extend(contour_connector(
-                ring,
-                candidate.first.position.arc_position,
-                candidate.second.position.arc_position,
-                &start,
-                &end,
-            ));
+        if candidate.distance < anchor_length_max_units {
+            orient_for_join_with_state(
+                &mut first,
+                candidate.first.at_start,
+                true,
+                &mut first_reversed,
+            );
+            orient_for_join_with_state(
+                &mut second,
+                candidate.second.at_start,
+                false,
+                &mut second_reversed,
+            );
+            // After orientation the join runs from `first`'s last point to
+            // `second`'s first point. Route it along the contour instead of
+            // extruding a bare chord between them.
+            if let (Some(start), Some(end)) =
+                (first.points.last().copied(), second.points.first().copied())
+            {
+                first.points.extend(contour_connector(
+                    ring,
+                    candidate.first.position.arc_position,
+                    candidate.second.position.arc_position,
+                    &start,
+                    &end,
+                ));
+            }
+            first.points.extend(second.points);
+            active[first_index.min(second_index)] = Some(first);
+            reversed[first_index.min(second_index)] = first_reversed;
+        } else if anchor_length_units > 0.0 {
+            let direction = ring
+                .directed_distance(
+                    candidate.first.position.arc_position,
+                    candidate.second.position.arc_position,
+                )
+                .1;
+            orient_for_join_with_state(
+                &mut first,
+                candidate.first.at_start,
+                true,
+                &mut first_reversed,
+            );
+            orient_for_join_with_state(
+                &mut second,
+                candidate.second.at_start,
+                false,
+                &mut second_reversed,
+            );
+            if let (Some(first_anchor), Some(second_anchor)) =
+                (first.points.last().copied(), second.points.first().copied())
+            {
+                let first_budget = stub_budget(
+                    ring,
+                    candidate.first.position.arc_position,
+                    direction,
+                    anchor_length_units,
+                    &boundary_positions[candidate.first.position.ring_index],
+                );
+                let second_budget = stub_budget(
+                    ring,
+                    candidate.second.position.arc_position,
+                    opposite_direction(direction),
+                    anchor_length_units,
+                    &boundary_positions[candidate.second.position.ring_index],
+                );
+                let first_stub = contour_stub(
+                    ring,
+                    candidate.first.position.arc_position,
+                    direction,
+                    first_budget,
+                    &first_anchor,
+                );
+                let second_stub = contour_stub(
+                    ring,
+                    candidate.second.position.arc_position,
+                    opposite_direction(direction),
+                    second_budget,
+                    &second_anchor,
+                );
+                first.points.extend(first_stub);
+                if !second_stub.is_empty() {
+                    let mut second_stub = second_stub;
+                    second_stub.reverse();
+                    second_stub.extend(second.points);
+                    second.points = second_stub;
+                }
+            }
+            active[first_index] = Some(first);
+            active[second_index] = Some(second);
+            reversed[first_index] = first_reversed;
+            reversed[second_index] = second_reversed;
+        } else {
+            active[first_index] = Some(first);
+            active[second_index] = Some(second);
+            reversed[first_index] = first_reversed;
+            reversed[second_index] = second_reversed;
         }
-        first.points.extend(second.points);
-        active[first_index.min(second_index)] = Some(first);
     }
 
     active.into_iter().flatten().collect()
@@ -117,9 +290,13 @@ pub fn connect_infill(
 pub fn chain_or_connect_infill(
     paths: Vec<ExtrusionPath3D>,
     graph: &BoundaryInfillGraph,
-    spacing_mm: f32,
+    anchor: AnchorParams,
 ) -> Vec<ExtrusionPath3D> {
-    let mut paths = connect_infill(paths, graph, spacing_mm);
+    let mut paths = if anchor.dont_connect() {
+        paths
+    } else {
+        connect_infill(paths, graph, anchor)
+    };
     if paths.len() < 2 {
         return paths;
     }
@@ -204,11 +381,10 @@ fn point_distance_squared(first: &Point3WithWidth, second: Option<&Point3WithWid
     dx.mul_add(dx, dy.mul_add(dy, dz * dz))
 }
 
-fn nearest_pair_candidate(
+fn nearest_pair_candidates(
     active: &[Option<ExtrusionPath3D>],
     graph: &BoundaryInfillGraph,
-    threshold: f64,
-) -> Option<Candidate> {
+) -> Vec<Candidate> {
     let mut endpoints = active
         .iter()
         .enumerate()
@@ -247,7 +423,7 @@ fn nearest_pair_candidate(
                     .rings()
                     .get(endpoint.position.ring_index)?
                     .directed_distance(endpoint.position.arc_position, other.position.arc_position);
-                (distance <= threshold).then_some((*other, distance))
+                Some((*other, distance))
             })
             .min_by(|(left, left_distance), (right, right_distance)| {
                 left_distance
@@ -263,17 +439,55 @@ fn nearest_pair_candidate(
             distance: best.1,
         });
     }
+    candidates
+}
 
-    candidates.sort_by(|left, right| {
-        endpoint_order(&left.first, &right.first)
-            .then_with(|| left.distance.total_cmp(&right.distance))
-            .then_with(|| endpoint_order(&left.second, &right.second))
-    });
-    candidates.into_iter().find(|candidate| {
-        candidate.first.path_index != candidate.second.path_index
-            && active[candidate.first.path_index].is_some()
-            && active[candidate.second.path_index].is_some()
-    })
+fn endpoint_consumed(consumed: &[[bool; 2]], endpoint: Endpoint) -> bool {
+    consumed[endpoint.path_index][endpoint_slot(endpoint)]
+}
+
+fn mark_endpoint_consumed(consumed: &mut [[bool; 2]], endpoint: Endpoint) {
+    consumed[endpoint.path_index][endpoint_slot(endpoint)] = true;
+}
+
+fn endpoint_slot(endpoint: Endpoint) -> usize {
+    if endpoint.at_start {
+        0
+    } else {
+        1
+    }
+}
+
+fn opposite_direction(direction: RingDirection) -> RingDirection {
+    match direction {
+        RingDirection::Forward => RingDirection::Backward,
+        RingDirection::Backward => RingDirection::Forward,
+    }
+}
+
+fn stub_budget(
+    ring: &BoundaryRing,
+    from: f64,
+    direction: RingDirection,
+    requested: f64,
+    boundary_positions: &[f64],
+) -> f64 {
+    if !ring.length.is_finite() || ring.length <= 0.0 {
+        return requested;
+    }
+    let from = ring.local_position(from);
+    let next = boundary_positions
+        .iter()
+        .map(|position| ring.local_position(*position))
+        .filter_map(|position| {
+            let distance = match direction {
+                RingDirection::Forward => (position - from).rem_euclid(ring.length),
+                RingDirection::Backward => (from - position).rem_euclid(ring.length),
+            };
+            (distance > 0.0).then_some(distance)
+        })
+        .min_by(|left, right| left.total_cmp(right));
+    requested.min(next.unwrap_or(f64::INFINITY))
 }
 
 fn compatible_paths(
@@ -384,8 +598,22 @@ fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
     best
 }
 
-fn orient_for_join(path: &mut ExtrusionPath3D, at_start: bool, first: bool) {
-    if (first && at_start) || (!first && !at_start) {
+fn orient_for_join_with_state(
+    path: &mut ExtrusionPath3D,
+    at_start: bool,
+    first: bool,
+    reversed: &mut bool,
+) {
+    let selected_at_start = at_start != *reversed;
+    if orient_for_join(path, selected_at_start, first) {
+        *reversed = !*reversed;
+    }
+}
+
+fn orient_for_join(path: &mut ExtrusionPath3D, at_start: bool, first: bool) -> bool {
+    let should_reverse = (first && at_start) || (!first && !at_start);
+    if should_reverse {
         path.points.reverse();
     }
+    should_reverse
 }

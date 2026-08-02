@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use infill_linker::connect::connect_infill;
+use infill_linker::connect::{connect_infill, AnchorParams};
 use infill_linker::graph::BoundaryInfillGraph;
 use slicer_ir::{
     point_in_polygon_winding, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
@@ -59,7 +59,14 @@ fn raw_paths(role: ExtrusionRole, speed_factor: f32) -> Vec<ExtrusionPath3D> {
 fn linked_paths() -> Vec<ExtrusionPath3D> {
     let boundary = square(10.0);
     let graph = BoundaryInfillGraph::new(&[boundary]);
-    connect_infill(raw_paths(ExtrusionRole::SparseInfill, 1.0), &graph, 1.0)
+    connect_infill(
+        raw_paths(ExtrusionRole::SparseInfill, 1.0),
+        &graph,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 10.0,
+        },
+    )
 }
 
 #[test]
@@ -74,7 +81,14 @@ fn raw_segments_in_linked_polylines_out() {
 fn role_and_speed_preserved() {
     let boundary = square(10.0);
     let graph = BoundaryInfillGraph::new(&[boundary]);
-    let output = connect_infill(raw_paths(ExtrusionRole::SparseInfill, 0.8), &graph, 1.0);
+    let output = connect_infill(
+        raw_paths(ExtrusionRole::SparseInfill, 0.8),
+        &graph,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 10.0,
+        },
+    );
 
     assert!(output
         .iter()
@@ -155,7 +169,10 @@ fn connector_routes_through_the_reflex_corner_instead_of_chording_the_notch() {
             segment((4.0, 7.0), (1.0, 7.0)),
         ],
         &graph,
-        1.0,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 10.0,
+        },
     );
 
     assert_eq!(output.len(), 1, "the two lines share a ring and must link");
@@ -201,7 +218,10 @@ fn connector_walks_a_hole_ring_rather_than_cutting_across_it() {
             segment((5.0, 10.0), (5.0, 6.0)),
         ],
         &graph,
-        0.4,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 4.0,
+        },
     );
 
     assert_eq!(output.len(), 1, "the two lines share the hole ring");
@@ -247,7 +267,10 @@ fn endpoints_on_different_rings_are_never_joined() {
             segment((10.5, 5.0), (15.0, 5.0)),
         ],
         &graph,
-        5.0,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 50.0,
+        },
     );
 
     assert_eq!(

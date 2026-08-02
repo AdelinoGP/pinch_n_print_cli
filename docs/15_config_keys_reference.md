@@ -140,7 +140,11 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0` | [0.0, 2.0] | `gyroid-infill` |
 | `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `infill_anchor` | float_or_percent | `"400%"` | [0.0, 1000.0] | `infill-linker` |
+| `infill_anchor_max` | float_or_percent | `20.0` | [0.0, 1000.0] | `infill-linker` |
 | `infill_overlap` | float | `0.45` | [0.0, 1.0] | `infill-linker` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | `infill-linker` |
+| `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |

@@ -198,8 +198,8 @@
 | "sparse_infill_pattern" | Sparse infill pattern | coEnum | Cross Hatch | rectilinear/zigzag/grid/triangles/cubic/gyroid/... | comSimple | Line pattern for internal sparse infill. | ❌ |
 | "infill_direction" | Sparse infill direction | coFloat | 45 | ° | comAdvanced | Angle controlling the start/main direction of sparse infill. | ❌ |
 | "sparse_infill_rotate_template" | Sparser infill rotation template | coString | "" | ° | comAdvanced | Comma-separated per-layer rotation angles for sparse infill. | ❌ |
-| "infill_anchor_max" | Max length of infill anchor | coFloatOrPercent | 20 | mm or % | comAdvanced | Max length of perimeter segment connecting two infill lines. | ❌ |
-| "infill_anchor" | Sparse infill anchor length | coFloatOrPercent | 400% | mm or % | comAdvanced | Length to connect infill line to perimeter at one side. | ❌ |
+| "infill_anchor_max" | Max length of infill anchor | coFloatOrPercent | 20 | mm or % | comAdvanced | Max length of perimeter segment connecting two infill lines. | ✅ |
+| "infill_anchor" | Sparse infill anchor length | coFloatOrPercent | 400% | mm or % | comAdvanced | Length to connect infill line to perimeter at one side. | ✅ |
 | "internal_solid_infill_pattern" | Internal solid infill pattern | coEnum | monotonic | same as top_surface_pattern | comAdvanced | Line pattern of internal solid infill. | ❌ |
 | "solid_infill_direction" | Solid infill direction | coFloat | 45 | ° | comAdvanced | Angle for solid infill pattern direction. | ❌ |
 | "solid_infill_rotate_template" | Solid infill rotation template | coString | "" | ° | comAdvanced | Comma-separated per-layer rotation template for solid infill. | ❌ |

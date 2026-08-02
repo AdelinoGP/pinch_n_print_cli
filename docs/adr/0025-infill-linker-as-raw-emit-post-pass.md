@@ -288,21 +288,57 @@ same ring are therefore left **unconnected** — the polylines stay separate rat
 than being joined by a chord across the interior or across the gap between two
 disjoint islands.
 
-### Not yet ported from canonical
+### Anchor-length rule now ported
 
-The anchor-length rule is still outstanding — tracked as DEV-089 in
-`docs/DEVIATION_LOG.md`, which is authoritative for its status. Canonical decides per candidate arc:
-if the arc between two adjacent T-joints is shorter than `anchor_length_max` it
-takes the whole arc and merges the two lines into one polyline; otherwise it takes
-only an `anchor_length`-long stub off each end (`take_limited`, which lerps the
-final partial segment so the stub is exactly the requested length) and leaves the
-lines separate. Canonical also sorts candidate arcs shortest-first and consumes
-them greedily. PnP currently has a single distance gate (10 × spacing) with no
-stub mode. This is a *quality* gap, not a containment gap — the connectors it
-emits are contour geometry either way.
+The anchor-length rule is now implemented in the linker. For each candidate arc,
+the whole-arc-vs-stub branch takes the entire contour run and merges the two
+infill lines when the arc is below `anchor_length_max`; otherwise it emits an
+`anchor_length`-long stub from each end and leaves the lines separate. The
+`contour_stub` walk lerps its final partial segment, so a stub ends at the exact
+requested arc budget rather than snapping to a ring vertex. Canonical consumes
+candidate arcs shortest-first. Before this port, PnP's `nearest_pair_candidate`
+picked each endpoint's best partner with `min_by` on distance, then the re-solve
+loop's `candidates.sort_by` keyed on `endpoint_order(first)` with distance only
+as a tiebreak; that pre-fix behavior was lexicographic-by-endpoint rather than
+shortest-first. The implementation now replaces that loop with a distance-first
+single pass over sorted candidates with a consumed-endpoint guard, so shorter
+arcs claim their endpoints first. DEV-089 records the pre-fix behavior and the
+fix precisely.
+
+The two module keys, `infill_anchor` and `infill_anchor_max`, are declared as
+float-or-percent values and resolved against extrusion-flow spacing. Solid and
+bridge buckets force both values to unlimited, matching canonical's solid/bridge
+branch rather than allowing a restrictive sparse-region setting to block those
+connections.
+
+Two parity residuals, one closed transport finding, and one accepted behaviour
+move from this packet are recorded in `docs/DEVIATION_LOG.md`:
+
+- `DEV-110` — canonical's `ContourIntersectionPoint` neighbour bookkeeping
+  (`could_take_prev`, `could_take_next`, `trim_prev`, and `trim_next`) is not
+  ported; PnP clamps the stub to the next boundary position and consequently
+  consumes both endpoints where canonical can leave one unconsumed.
+- `DEV-111` — `parse_percent_default` parses `"400%"` into
+  `ConfigValue::FloatOrPercent`, retained on `ConfigFieldEntry.parsed_default`
+  and injected via the scheduler's schema-default threading (Packet 185 /
+  TASK-303) into `ResolvedConfig.extensions` and hence the runtime
+  `ConfigView`, so `get_abs_value` can take its percent arm against the
+  extrusion-flow spacing base; `AnchorParams::from_config` fallbacks apply when
+  `get_abs_value` returns `None` — i.e. when the corresponding key is absent or
+  non-numeric.
+- `DEV-112` — the percent formula matches canonical, but PnP supplies the
+  module's generic `line_width` rather than canonical's per-role `frInfill`
+  flow width as the base input.
+- `DEV-113` — declaring `line_width` un-deadens the reads that feed spacing and
+  related geometry for non-default user values; the default `0.4` slices are
+  unchanged. This is an accepted disclosed behaviour move, not a parity gap.
 
 ### Regression coverage
 
+- `modules/core-modules/infill-linker/tests/anchor_length_tdd.rs` — whole-arc
+  merging, over-limit stubs, exact lerped partial length, candidate ordering,
+  percent resolution, zero-anchor dispatch, boundary clamping, and solid-bucket
+  forcing.
 - `connect_tdd.rs` — `connector_routes_through_the_reflex_corner_instead_of_chording_the_notch`,
   `connector_walks_a_hole_ring_rather_than_cutting_across_it`,
   `endpoints_on_different_rings_are_never_joined`.
@@ -344,7 +380,9 @@ emits are contour geometry either way.
 - `crates/slicer-runtime/src/region_partition.rs` — wall-inset partition (no overlap applied).
 - `crates/slicer-sdk/src/traits.rs:374-393` — `run_infill_postprocess` trait hook.
 - `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25` — WIT signature.
-- OrcaSlicer `src/libslic3r/Fill/FillBase.cpp:1497-2300` — `connect_infill` / `chain_or_connect_infill` (per-fill linking, the reference being diverged from).
+- OrcaSlicer `Fill::connect_infill` / `Fill::chain_or_connect_infill` — per-fill linking, the reference being diverged from.
 - `docs/DEVIATION_LOG.md` — DEV-081 (lightning-infill transitional inconsistency),
   DEV-088 (the two containment holes recorded in the 2026-07-24 amendment, closed),
-  DEV-089 (the unported anchor-length rule, open).
+  DEV-089 (the anchor-length rule, closed), DEV-110 (neighbour bookkeeping),
+  DEV-111 (percent transport), DEV-112 (percent-base width input), and
+  DEV-113 (accepted `line_width` behaviour move).

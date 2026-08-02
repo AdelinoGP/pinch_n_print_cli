@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use infill_linker::InfillLinker;
+use slicer_core::flow::line_width_to_spacing;
 use slicer_ir::{
     ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point2, Point3WithWidth,
     Polygon,
@@ -52,10 +53,100 @@ fn path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPa
     }
 }
 
+fn vertical_path(x_mm: f32, width_mm: f32) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: vec![
+            Point3WithWidth {
+                x: x_mm,
+                y: 0.0,
+                z: 0.2,
+                width: width_mm,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            },
+            Point3WithWidth {
+                x: x_mm,
+                y: 10.0,
+                z: 0.2,
+                width: width_mm,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            },
+        ],
+        role: ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+    }
+}
+
+fn same_xy(point: &Point3WithWidth, expected: (f32, f32)) -> bool {
+    (point.x - expected.0).abs() < 1e-3 && (point.y - expected.1).abs() < 1e-3
+}
+
+fn contour_stub_lengths(path: &ExtrusionPath3D, input_endpoints: &[(f32, f32)]) -> Vec<f32> {
+    let is_input = |point: &Point3WithWidth| {
+        input_endpoints
+            .iter()
+            .any(|expected| same_xy(point, *expected))
+    };
+    let mut lengths = Vec::new();
+
+    for (start_index, point) in path.points.iter().enumerate() {
+        if !is_input(point) {
+            continue;
+        }
+        for direction in [-1_i32, 1_i32] {
+            let next_index = start_index as i32 + direction;
+            if next_index < 0
+                || next_index >= path.points.len() as i32
+                || is_input(&path.points[next_index as usize])
+            {
+                continue;
+            }
+
+            let mut index = next_index;
+            let mut previous = point;
+            let mut length = 0.0;
+            while index >= 0
+                && index < path.points.len() as i32
+                && !is_input(&path.points[index as usize])
+            {
+                let current = &path.points[index as usize];
+                length +=
+                    ((previous.x - current.x).powi(2) + (previous.y - current.y).powi(2)).sqrt();
+                previous = current;
+                index += direction;
+            }
+            if length > 1e-3 {
+                lengths.push(length);
+            }
+        }
+    }
+
+    lengths
+}
+
 fn config(line_width: f64, density: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("line_width", line_width)
         .float("infill_density", density)
+        .build()
+}
+
+fn config_with_anchor(
+    line_width: f64,
+    density: f64,
+    anchor_length: f64,
+    anchor_max: f64,
+) -> ConfigView {
+    ConfigViewBuilder::new()
+        .float("line_width", line_width)
+        .float("infill_density", density)
+        .float("infill_anchor", anchor_length)
+        .float("infill_anchor_max", anchor_max)
         .build()
 }
 
@@ -83,11 +174,47 @@ fn view(
     view
 }
 
+fn solid_view_with_anchor(
+    region_id: u64,
+    area: ExPolygon,
+    wall_source_region_id: Option<u64>,
+    tool_index: u32,
+    line_width: f64,
+    density: f64,
+    anchor_length: f64,
+    anchor_max: f64,
+) -> slicer_sdk::views::PerimeterRegionView {
+    let mut view = PerimeterRegionViewBuilder::new()
+        .object_id("object")
+        .region_id(region_id)
+        .add_infill_area(area.clone())
+        .sparse_infill_area(vec![area.clone()])
+        .top_solid_fill(vec![area])
+        .wall_source_region_id(wall_source_region_id)
+        .tool_index(tool_index)
+        .build();
+    view.set_config(config_with_anchor(
+        line_width,
+        density,
+        anchor_length,
+        anchor_max,
+    ));
+    view
+}
+
 fn run(
     prior: &[InfillRegion],
     views: &[slicer_sdk::views::PerimeterRegionView],
 ) -> InfillOutputBuilder {
     let module_config = config(0.4, 0.2);
+    run_with_config(prior, views, &module_config)
+}
+
+fn run_with_config(
+    prior: &[InfillRegion],
+    views: &[slicer_sdk::views::PerimeterRegionView],
+    module_config: &ConfigView,
+) -> InfillOutputBuilder {
     let module = InfillLinker::from_config(&module_config).unwrap();
     let mut output = InfillOutputBuilder::new();
     module
@@ -216,4 +343,83 @@ fn different_tool_never_connected() {
         .sparse_path_origins()
         .iter()
         .all(|origin| origin.is_some()));
+}
+
+#[test]
+fn solid_bucket_forces_unlimited_anchor_while_sparse_obeys_the_key() {
+    let sparse = vec![path(0.0, 10.0, 2.0, 0.4), path(0.0, 10.0, 8.0, 0.4)];
+    let mut solid_a = path(0.0, 10.0, 2.0, 0.4);
+    solid_a.role = ExtrusionRole::TopSolidInfill;
+    let mut solid_b = path(0.0, 10.0, 8.0, 0.4);
+    solid_b.role = ExtrusionRole::TopSolidInfill;
+
+    let prior = vec![InfillRegion {
+        object_id: "object".to_string(),
+        region_id: 1,
+        sparse_infill: sparse,
+        solid_infill: vec![solid_a, solid_b],
+        ironing: vec![],
+    }];
+    let views = vec![solid_view_with_anchor(
+        1,
+        square(0.0, 10.0),
+        None,
+        0,
+        0.4,
+        0.2,
+        2.0,
+        1.0,
+    )];
+    let module_config = config_with_anchor(0.4, 0.2, 2.0, 1.0);
+    let output = run_with_config(&prior, &views, &module_config);
+
+    assert_eq!(
+        output.sparse_paths().len(),
+        2,
+        "the sparse bucket must obey the one-millimetre anchor maximum"
+    );
+    assert_eq!(
+        output.solid_paths().len(),
+        1,
+        "solid paths must retain unlimited whole-arc linking"
+    );
+}
+
+#[test]
+fn absent_anchor_keys_fall_back_to_four_hundred_percent_of_flow_spacing() {
+    let base = line_width_to_spacing(0.4, 0.2).unwrap();
+    let prior = vec![sparse_region(
+        1,
+        vec![vertical_path(1.0, 0.4), vertical_path(29.0, 0.4)],
+    )];
+    let views = vec![view(1, square(0.0, 30.0), None, 0, 0.4, 0.2)];
+
+    let sparse = run(&prior, &views);
+    let dense_config = config(0.4, 0.8);
+    let dense = run_with_config(&prior, &views, &dense_config);
+
+    let input_endpoints = [(1.0, 0.0999), (1.0, 9.9001), (29.0, 0.0999), (29.0, 9.9001)];
+    let mut sparse_anchor_lengths = sparse
+        .sparse_paths()
+        .iter()
+        .flat_map(|path| contour_stub_lengths(path, &input_endpoints))
+        .collect::<Vec<_>>();
+    let mut dense_anchor_lengths = dense
+        .sparse_paths()
+        .iter()
+        .flat_map(|path| contour_stub_lengths(path, &input_endpoints))
+        .collect::<Vec<_>>();
+    sparse_anchor_lengths.sort_by(f32::total_cmp);
+    dense_anchor_lengths.sort_by(f32::total_cmp);
+
+    let expected_anchor_length = 4.0 * base;
+    assert!((expected_anchor_length - 1.4283185).abs() < 1e-4);
+    let anchor_length = *sparse_anchor_lengths
+        .first()
+        .expect("fallback anchor must emit a contour stub");
+    assert!((anchor_length - 1.4283185).abs() < 1e-4);
+    assert_eq!(
+        sparse_anchor_lengths, dense_anchor_lengths,
+        "infill_density alone must not change the fallback anchor length"
+    );
 }
