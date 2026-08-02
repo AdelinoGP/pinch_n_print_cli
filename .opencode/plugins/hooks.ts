@@ -1,6 +1,65 @@
 import type { Plugin, Hooks } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 
+const PATH_TOOLS = new Set(["read", "grep", "glob"])
+
+const MISROOTED_PARENT_DIRS = new Set([
+  "crates",
+  "docs",
+  "modules",
+  "xtask",
+  "resources",
+  "tmp",
+  "target",
+])
+
+function normalizeSlashes(path: string): string {
+  return path.replace(/\\/g, "/")
+}
+
+function parentDirOf(root: string): string {
+  return root.slice(0, Math.max(root.lastIndexOf("/"), 0))
+}
+
+export type PathCorrection =
+  | { corrected: string }
+  | { reason: string }
+  | undefined
+
+export function correctToolPath(
+  value: string,
+  directory: string,
+  tool: string,
+): PathCorrection {
+  const input = normalizeSlashes(value)
+  const root = normalizeSlashes(directory).replace(/\/+$/, "")
+  const parent = parentDirOf(root)
+
+  const lowerInput = input.toLowerCase()
+  if (lowerInput.startsWith(parent.toLowerCase() + "/")) {
+    const remainder = input.slice(parent.length + 1)
+    const topLevel = remainder.split("/", 1)[0]
+    if (topLevel && MISROOTED_PARENT_DIRS.has(topLevel)) {
+      return { reason: `${input} is not under the active workspace ${root}. Reissue with a path rooted at ${root}.` }
+    }
+  }
+
+  const siblingRoots = [parent + "/pinch_n_print", parent + "/pinch_n_print_cli"]
+  for (const sibling of siblingRoots) {
+    if (lowerInput.startsWith(sibling.toLowerCase() + "/")) {
+      return { reason: `${input} is a sibling worktree of the active workspace ${root}. Reissue with a path rooted at ${root}.` }
+    }
+  }
+
+  if (/^[A-Za-z]:\//.test(input)) return { corrected: input }
+
+  if (tool === "read" || tool === "grep" || tool === "glob") {
+    return { corrected: `${root}/${input.replace(/^(?:\.\/)+/, "")}` }
+  }
+
+  return { corrected: input }
+}
+
 export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
   const dirtyRootSessions = new Set<string>()
   const rootCache = new Map<string, string>()
@@ -31,6 +90,23 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
   }
 
   return {
+    "tool.execute.before": async (input, output) => {
+      const tool = String(input?.tool ?? "")
+      if (!PATH_TOOLS.has(tool)) return
+
+      const args = output.args as Record<string, unknown> | undefined
+      const value = args?.filePath ?? args?.path
+      if (typeof value !== "string" || !value.trim()) return
+
+      const correction = correctToolPath(value, directory, tool)
+      if (!correction) return
+      if ("reason" in correction) {
+        throw new Error(`Blocked ${tool} on path outside the active workspace: ${correction.reason}`)
+      }
+      if (args?.filePath !== undefined) args.filePath = correction.corrected
+      if (args?.path !== undefined) args.path = correction.corrected
+    },
+
     "tool.execute.after": async (input, output) => {
       const tool = String(input?.tool ?? "")
       if (!/^(edit|write|multiedit|bash|task)$/i.test(tool)) return
