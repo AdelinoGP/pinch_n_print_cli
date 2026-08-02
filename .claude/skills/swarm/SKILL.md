@@ -2,7 +2,7 @@
 name: swarm
 description: Planner-Worker orchestration to implement or refine an active spec packet under .ralph/specs/, including OrcaSlicer parity checks.
 type: anthropic-skill
-version: "1.5"
+version: "1.6"
 metadata:
   internal: true
 ---
@@ -33,7 +33,7 @@ Nearly every packet should finish in standard band. Extended exists for the genu
 
 - NEVER read a file > **600 lines** in full. Use line ranges, symbol search, or delegate.
 - NEVER load generated code, lockfiles, `target/`, or vendored deps.
-- NEVER paste full cargo/test output. The worker schema forbids it; reject any reply that violates it.
+- NEVER paste full cargo/test output — failure evidence caps at ≤ 20 lines in `failing_assertion`.
 - NEVER absorb full worker transcripts. Only the structured return is kept.
 
 The planner reads directly only:
@@ -80,34 +80,37 @@ Each worker dispatch must specify:
 2. **Scope** — exact files allowed to read; exact files allowed to edit.
 3. **Return format** — the worker return schema below (for code/edit workers) or one of FACT / LOCATIONS / SNIPPETS / SUMMARY (for read-only research).
 
-Reject any reply that exceeds the contracted return format. Do not paste it; re-dispatch with tighter scope.
+TOML exists to coerce detailed, structured reports — it is not a strict gate. The planner must be able to understand what the worker sent; absorb deviations rather than re-dispatch.
 
 ### Worker return schema (code/edit workers)
 
-```json
-{
-  "worker_id": "w1",
-  "overall_status": "DONE|PARTIAL|BLOCKED",
-  "steps": [
-    {
-      "step_id": "Step 2",
-      "status": "DONE|PARTIAL|BLOCKED",
-      "files_changed": ["path/to/file"],
-      "commands_run": [
-        {
-          "command": "cargo test ...",
-          "result": "PASS|FAIL|NOT_RUN",
-          "summary": "one line",
-          "failing_assertion": "<≤ 20 lines, only when result=FAIL>"
-        }
-      ],
-      "exit_condition_met": true,
-      "blocker": null
-    }
-  ],
-  "follow_up": ["optional concise next action"]
-}
+```toml
+worker_id = "w1"
+overall_status = "PARTIAL"   # one of DONE|PARTIAL|BLOCKED
+follow_up = "retry Step 4"   # optional, single concise next action; omitted when empty
+
+[[steps]]
+step_id = "Step 2"
+status = "DONE"   # one of DONE|PARTIAL|BLOCKED
+files_changed = ["src/foo.rs"]   # omitted when empty
+exit_condition_met = true
+commands_run = [{command = "cargo test ...", result = "PASS", summary = "one line"}]   # result: PASS|FAIL|NOT_RUN
+
+[[steps]]
+step_id = "Step 4"
+status = "BLOCKED"
+exit_condition_met = false
+blocker = "depends on Step 5"   # only when status=BLOCKED
+failing_assertion = '''<≤ 20 lines, only when a command failed>'''
+unreadable_evidence = '''<exact ls -la / rg --files command run + literal tool output>'''   # only when claiming a file unreadable/ghost/missing
+commands_run = [{command = "cargo check", result = "FAIL", summary = "type error in lib.rs"}]
 ```
+
+Rules:
+- Fields with content appear; empty fields are omitted — there is no null.
+- `failing_assertion`, `blocker`, and `unreadable_evidence` appear only when they hold content.
+- `failing_assertion` caps at ≤ 20 lines; `unreadable_evidence` is a literal `ls -la <path>` / `rg --files <path>` command plus its literal output.
+- Multi-line fields use literal triple-quoted strings (''' ... '''), so tool output pastes as-is — backslashes and quotes need no escaping.
 
 The worker MUST NOT return full diffs, full logs, or repeated packet excerpts.
 
@@ -121,7 +124,7 @@ The worker MUST NOT return full diffs, full logs, or repeated packet excerpts.
 - `cargo metadata --format-version=1 --no-deps` (via worker, summarized) beats reading every `Cargo.toml`.
 - Test failures: worker returns failing test name, assertion, and ≤ 20 lines of relevant code — not the full test file.
 - A `cargo check` worker dispatch beats reading more code to chase a bug.
-- **Worker "unreadable" reports require literal tool evidence.** When a worker reports a file as unreadable, ghost, missing, permissions-blocked, or otherwise unreachable, the planner MUST treat the report as suspect. A "unreadable" return is acceptable only if the worker's structured return includes the exact `ls -la <path>` or `rg --files <path>` (or equivalent) command the worker ran and the literal tool output as the last few lines of the return. Reject any "unreadable" / "ghost" / "permissions" return that lacks that evidence; re-dispatch with a tighter scope. Workers that fabricate a "file is unreadable" diagnosis to skip work cause the planner to silently drop a parity check; this rule exists to make that fabrication impossible.
+- **Worker "unreadable" reports require literal tool evidence.** When a worker reports a file as unreadable, ghost, missing, permissions-blocked, or otherwise unreachable, the planner MUST treat the report as suspect. An "unreadable" return is acceptable only if it carries the exact `ls -la <path>` or `rg --files <path>` (or equivalent) command the worker ran plus the literal tool output, in the `unreadable_evidence` field (or any extractable position). If that evidence is missing, treat the claim as suspect and dispatch one cheap read-only existence check — never silently drop a parity check on a bare "unreadable" claim. Workers that fabricate a "file is unreadable" diagnosis to skip work cause the planner to silently drop a parity check; this rule exists to make that fabrication impossible.
 
 ## Checkpoints
 
@@ -319,7 +322,6 @@ Do not auto-rewrite packet status just because code compiled. If packet status o
 - **Multiple active packets** → don't guess; report the conflict and ask which packet should own the run.
 - **Worker scope overlap after decomposition** → cancel the parallel plan; regroup as sequential steps or read-only workers + planner-owned edits.
 - **Planner context pressure** → rebuild the compact manifest from the packet docs once; discard stale transcripts; retain only step ledger, `changed_steps`/`changed_files`, and command summaries; full logs only via SNIPPETS dispatch on demand. Past the band's decision point (120k standard / 200k extended), switch to delta-only review and stop dispatching exploratory workers.
-- **Worker output overflow** → treat as non-compliant; do not paste; ask for a compact rerun citing the context-discipline rules; never paste verbose worker output into subsequent worker prompts.
 - **Missing/stale verification commands** → packet defect. In `refine-draft` fix the docs; in `implement` stop and report the missing contract.
 - **Step rated context cost L** → recommend a split before activation. In extended band a single justified-unsplittable L step may run on a dedicated worker (serialized); never dispatch an L step silently in standard band. XL steps are always un-runnable — the worker faces the same quality budget the planner does, regardless of window size.
 

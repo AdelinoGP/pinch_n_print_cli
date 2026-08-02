@@ -18,7 +18,7 @@ Context discipline: you are bound by the same hard limits as the planner.
 - Files allowed to edit: <exact list from manifest>
 - You MUST NOT paste full cargo/test logs in your return. Use the `failing_assertion` field with ≤ 20 lines on failure only.
 - You MUST NOT load files outside the allowed-read list, even to "double-check" something. Re-dispatch is the planner's job, not yours.
-- If you report a file as unreadable / ghost / missing / permissions-blocked / inaccessible, your return MUST include the exact `ls -la <path>` or `rg --files <path>` (or equivalent) command you ran and the literal tool output as the last lines of your return. A claim of "unreadable" without that evidence is non-compliant and will be rejected and re-dispatched. This rule exists to prevent fabricating a "file is unreadable" diagnosis to skip work.
+- If you report a file as unreadable / ghost / missing / permissions-blocked / inaccessible, your return MUST include the exact `ls -la <path>` or `rg --files <path>` (or equivalent) command you ran and the literal tool output, in the `unreadable_evidence` field. A claim of "unreadable" without that evidence will be treated as suspect and verified independently.
 
 Packet digest:
 - Goal: <1-3 lines>
@@ -51,7 +51,7 @@ Execution rules:
 3. Validate immediately after the first substantive edit using the step's narrow command.
 4. Do not modify files outside the allowed-edit list.
 5. Do not commit or create branches.
-6. Return JSON matching the worker return schema.
+6. Return TOML matching the worker return schema.
 7. Keep command summaries to one line each. Do not paste full logs unless the failure cannot be summarized in 20 lines.
 ```
 
