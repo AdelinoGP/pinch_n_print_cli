@@ -2,11 +2,32 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 
 export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
-  let dirtyThisTurn = false
+  const dirtyRootSessions = new Set<string>()
+  const rootCache = new Map<string, string>()
   let fixLoopGuard = false
 
   function resetFixGuardAfterDelay() {
     setTimeout(() => { fixLoopGuard = false }, 30_000)
+  }
+
+  async function rootSessionID(sessionID: string): Promise<string | undefined> {
+    const cached = rootCache.get(sessionID)
+    if (cached !== undefined) return cached
+
+    let current = sessionID
+    let root: string | undefined
+    for (let depth = 0; depth < 8; depth++) {
+      const res = await client.session.get({ path: { id: current } })
+      const session = res?.data
+      if (!session) return undefined
+      if (!session.parentID) {
+        root = session.id
+        break
+      }
+      current = session.parentID
+    }
+    if (root) rootCache.set(sessionID, root)
+    return root
   }
 
   return {
@@ -14,7 +35,11 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
       const tool = String(input?.tool ?? "")
       if (!/^(edit|write|multiedit|bash|task)$/i.test(tool)) return
 
-      dirtyThisTurn = true
+      const sessionID = String(input?.sessionID ?? "")
+      if (sessionID) {
+        const root = await rootSessionID(sessionID)
+        if (root) dirtyRootSessions.add(root)
+      }
 
       const args = input?.args as Record<string, unknown> | undefined
       const filePath = String(args?.filePath ?? "")
@@ -25,8 +50,17 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
 
     event: async ({ event }: { event: Event }) => {
       if (event.type !== "session.idle") return
-      if (!dirtyThisTurn) return
-      dirtyThisTurn = false
+
+      const idleSessionID = String(
+        (event as { properties?: { sessionID?: string } }).properties?.sessionID ?? ""
+      )
+      if (!idleSessionID) return
+
+      const root = await rootSessionID(idleSessionID)
+      if (!root || root !== idleSessionID) return
+
+      if (!dirtyRootSessions.has(root)) return
+      dirtyRootSessions.delete(root)
 
       try { await $`cargo fmt`.cwd(directory).quiet() } catch { /* noop */ }
 
@@ -53,12 +87,11 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
         }
       }
 
-      const sessionID = (event as { properties?: { sessionID?: string } }).properties?.sessionID
-      if (issues.length > 0 && sessionID && !fixLoopGuard) {
+      if (issues.length > 0 && !fixLoopGuard) {
         fixLoopGuard = true
         resetFixGuardAfterDelay()
         await client.session.prompt({
-          path: { id: sessionID },
+          path: { id: root },
           body: {
             parts: [{
               type: "text",
