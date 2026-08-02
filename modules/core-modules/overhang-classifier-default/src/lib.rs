@@ -28,7 +28,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_ir::{ConfigView, ExtrusionRole};
+use slicer_ir::{ConfigView, ExtrusionRole, Point3WithWidth};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{
@@ -152,6 +152,325 @@ pub fn calculate_speed(distance: f32, sections: &[(f32, f32)], original_speed: f
     extrusion_speed.min(original_speed)
 }
 
+const EPSILON: f32 = 1e-4;
+
+/// Returns the intersections between a segment and boundary segments, ordered
+/// from the first endpoint of `seg` to the second.
+pub fn segment_intersections(
+    seg: ((f32, f32), (f32, f32)),
+    boundary: &[(f32, f32, f32, f32)],
+) -> Vec<(f32, f32)> {
+    let (start, end) = seg;
+    let direction = (end.0 - start.0, end.1 - start.1);
+    let direction_length_squared = direction.0 * direction.0 + direction.1 * direction.1;
+    let cross = |a: (f32, f32), b: (f32, f32)| a.0 * b.1 - a.1 * b.0;
+    let point_distance_squared = |a: (f32, f32), b: (f32, f32)| {
+        let dx = a.0 - b.0;
+        let dy = a.1 - b.1;
+        dx * dx + dy * dy
+    };
+    let parameter_on_segment = |point: (f32, f32), a: (f32, f32), b: (f32, f32)| {
+        let delta = (b.0 - a.0, b.1 - a.1);
+        let length_squared = delta.0 * delta.0 + delta.1 * delta.1;
+        if length_squared <= EPSILON * EPSILON {
+            return (point_distance_squared(point, a) <= EPSILON * EPSILON).then_some(0.0);
+        }
+        let t = ((point.0 - a.0) * delta.0 + (point.1 - a.1) * delta.1) / length_squared;
+        if !(-EPSILON..=1.0 + EPSILON).contains(&t) {
+            return None;
+        }
+        let projected = (a.0 + t * delta.0, a.1 + t * delta.1);
+        (point_distance_squared(point, projected) <= EPSILON * EPSILON).then_some(t.clamp(0.0, 1.0))
+    };
+
+    let mut intersections = Vec::new();
+    let mut add_unique = |point: (f32, f32)| {
+        if !intersections
+            .iter()
+            .any(|existing| point_distance_squared(*existing, point) <= EPSILON * EPSILON)
+        {
+            intersections.push(point);
+        }
+    };
+    for &(x0, y0, x1, y1) in boundary {
+        let boundary_start = (x0, y0);
+        let boundary_end = (x1, y1);
+        let boundary_direction = (x1 - x0, y1 - y0);
+        let boundary_length_squared = boundary_direction.0 * boundary_direction.0
+            + boundary_direction.1 * boundary_direction.1;
+
+        if direction_length_squared <= EPSILON * EPSILON {
+            if boundary_length_squared <= EPSILON * EPSILON {
+                if point_distance_squared(start, boundary_start) <= EPSILON * EPSILON {
+                    add_unique(start);
+                }
+            } else if parameter_on_segment(start, boundary_start, boundary_end).is_some() {
+                add_unique(start);
+            }
+            continue;
+        }
+
+        if boundary_length_squared <= EPSILON * EPSILON {
+            if parameter_on_segment(boundary_start, start, end).is_some() {
+                add_unique(boundary_start);
+            }
+            continue;
+        }
+
+        let from_start = (boundary_start.0 - start.0, boundary_start.1 - start.1);
+        let denominator = cross(direction, boundary_direction);
+        if denominator.abs() > EPSILON {
+            let segment_t = cross(from_start, boundary_direction) / denominator;
+            let boundary_t = cross(from_start, direction) / denominator;
+            if (-EPSILON..=1.0 + EPSILON).contains(&segment_t)
+                && (-EPSILON..=1.0 + EPSILON).contains(&boundary_t)
+            {
+                let segment_t = segment_t.clamp(0.0, 1.0);
+                add_unique((
+                    start.0 + segment_t * direction.0,
+                    start.1 + segment_t * direction.1,
+                ));
+            }
+        } else if cross(from_start, direction).abs() <= EPSILON {
+            if parameter_on_segment(boundary_start, start, end).is_some() {
+                add_unique(boundary_start);
+            }
+            if parameter_on_segment(boundary_end, start, end).is_some() {
+                add_unique(boundary_end);
+            }
+            if parameter_on_segment(start, boundary_start, boundary_end).is_some() {
+                add_unique(start);
+            }
+            if parameter_on_segment(end, boundary_start, boundary_end).is_some() {
+                add_unique(end);
+            }
+        }
+    }
+
+    intersections.sort_by(|a, b| {
+        let parameter = |point: &(f32, f32)| {
+            ((point.0 - start.0) * direction.0 + (point.1 - start.1) * direction.1)
+                / direction_length_squared
+        };
+        parameter(a)
+            .total_cmp(&parameter(b))
+            .then_with(|| a.0.total_cmp(&b.0))
+            .then_with(|| a.1.total_cmp(&b.1))
+    });
+    intersections
+}
+
+/// Finds the smallest distance at which the section speed is no faster than
+/// `original_speed`, or `-1.0` when no section slows the path.
+pub fn min_distance_from_sections(sections: &[(f32, f32)], original_speed: f32) -> f32 {
+    sections
+        .iter()
+        .filter(|(_, section_speed)| *section_speed <= original_speed)
+        .map(|(distance, _)| *distance)
+        .min_by(|a, b| a.total_cmp(b))
+        .unwrap_or(-1.0)
+}
+
+/// Port of canonical `estimate_points_properties` (`GCode/ExtrusionProcessor.hpp`)
+/// and `ExtrusionQualityEstimator::estimate_extrusion_quality` insertion logic.
+pub fn insert_extended_points(
+    points: &[Point3WithWidth],
+    distances: &[Option<f32>],
+    boundary: &[(f32, f32, f32, f32)],
+    flow_width: f32,
+    min_distance: f32,
+) -> (Vec<Point3WithWidth>, Vec<Option<f32>>) {
+    let min_distances = vec![min_distance; points.len()];
+    insert_extended_points_with_point_widths(
+        points,
+        distances,
+        boundary,
+        flow_width,
+        &min_distances,
+    )
+}
+
+fn insert_extended_points_with_point_widths(
+    points: &[Point3WithWidth],
+    distances: &[Option<f32>],
+    boundary: &[(f32, f32, f32, f32)],
+    fallback_width: f32,
+    min_distances: &[f32],
+) -> (Vec<Point3WithWidth>, Vec<Option<f32>>) {
+    if points.len() != distances.len() || points.len() != min_distances.len() {
+        return (points.to_vec(), distances.to_vec());
+    }
+    if points.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let width_for = |point: Point3WithWidth| {
+        if point.width >= 0.0 {
+            point.width
+        } else {
+            fallback_width
+        }
+    };
+    let distance_3d = |a: Point3WithWidth, b: Point3WithWidth| {
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        let dz = a.z - b.z;
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    };
+    let interpolate = |curr: Point3WithWidth,
+                       next: Point3WithWidth,
+                       t: f32,
+                       curr_distance: f32,
+                       next_distance: f32,
+                       distance: f32| {
+        let curr_is_closer = (curr_distance - distance).abs() <= (next_distance - distance).abs();
+        Point3WithWidth {
+            x: curr.x + t * (next.x - curr.x),
+            y: curr.y + t * (next.y - curr.y),
+            z: curr.z + t * (next.z - curr.z),
+            width: curr.width + t * (next.width - curr.width),
+            flow_factor: curr.flow_factor + t * (next.flow_factor - curr.flow_factor),
+            overhang_quartile: if curr_is_closer {
+                curr.overhang_quartile
+            } else {
+                next.overhang_quartile
+            },
+            dist_to_top_mm: curr.dist_to_top_mm + t * (next.dist_to_top_mm - curr.dist_to_top_mm),
+            overhang_distance_mm: Some(distance),
+        }
+    };
+
+    let mut crossing_points = Vec::with_capacity(points.len() + boundary.len());
+    crossing_points.push((points[0], distances[0], min_distances[0]));
+    for index in 1..points.len() {
+        let (curr, curr_distance, curr_min_distance) = crossing_points
+            .last()
+            .copied()
+            .expect("crossing points always contains the current point");
+        let next = points[index];
+        let next_distance = distances[index];
+        let next_min_distance = min_distances[index];
+        let curr_boundary_offset = 0.5 * width_for(curr);
+        let next_boundary_offset = 0.5 * width_for(next);
+
+        if let (Some(curr_distance), Some(next_distance)) = (curr_distance, next_distance) {
+            if (curr_distance > curr_boundary_offset + EPSILON)
+                != (next_distance > next_boundary_offset + EPSILON)
+            {
+                let curr_min_spacing = width_for(curr) * 0.25;
+                let next_min_spacing = width_for(next) * 0.25;
+                let intersections =
+                    segment_intersections(((curr.x, curr.y), (next.x, next.y)), boundary);
+                for (x, y) in intersections {
+                    let dx = next.x - curr.x;
+                    let dy = next.y - curr.y;
+                    let length_squared = dx * dx + dy * dy;
+                    let t = if length_squared > EPSILON * EPSILON {
+                        (((x - curr.x) * dx + (y - curr.y) * dy) / length_squared).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    let interpolated_distance = curr_distance + t * (next_distance - curr_distance);
+                    let mut candidate = interpolate(
+                        curr,
+                        next,
+                        t,
+                        curr_distance,
+                        next_distance,
+                        interpolated_distance,
+                    );
+                    let candidate_boundary_offset = 0.5 * width_for(candidate);
+                    candidate.overhang_distance_mm = Some(candidate_boundary_offset);
+                    if distance_3d(candidate, curr) > curr_min_spacing
+                        && distance_3d(next, candidate) > next_min_spacing
+                    {
+                        let candidate_min_distance =
+                            curr_min_distance + t * (next_min_distance - curr_min_distance);
+                        crossing_points.push((
+                            candidate,
+                            Some(candidate_boundary_offset),
+                            candidate_min_distance,
+                        ));
+                    }
+                }
+            }
+        }
+        crossing_points.push((next, next_distance, next_min_distance));
+    }
+
+    let mut extended = Vec::with_capacity(crossing_points.len() * 2);
+    extended.push(crossing_points[0]);
+    for index in 0..crossing_points.len() - 1 {
+        let (curr, curr_distance, curr_min_distance) = crossing_points[index];
+        let (next, next_distance, next_min_distance) = crossing_points[index + 1];
+
+        if let (Some(curr_distance), Some(next_distance)) = (curr_distance, next_distance) {
+            let curr_boundary_offset = 0.5 * width_for(curr);
+            let next_boundary_offset = 0.5 * width_for(next);
+            let curr_min_spacing = width_for(curr) * 0.25;
+            let next_min_spacing = width_for(next) * 0.25;
+            let near_boundary = (curr_distance > -curr_boundary_offset
+                && curr_distance < curr_boundary_offset + 2.0)
+                || (next_distance > -next_boundary_offset
+                    && next_distance < next_boundary_offset + 2.0);
+            if near_boundary {
+                let line_len = distance_3d(curr, next);
+                let gate_open = ((curr_min_distance > 0.0
+                    && curr_distance.abs() > curr_min_distance)
+                    || (next_min_distance > 0.0 && next_distance.abs() > next_min_distance))
+                    && line_len >= 2.0
+                    || (curr_min_distance <= 0.0 && next_min_distance <= 0.0 && line_len > 4.0);
+                if gate_open {
+                    let a0 =
+                        ((curr_distance + 3.0 * curr_boundary_offset) / line_len).clamp(0.0, 1.0);
+                    let a1 = (1.0 - (next_distance + 3.0 * next_boundary_offset) / line_len)
+                        .clamp(0.0, 1.0);
+                    let t0 = a0.min(a1);
+                    let t1 = a0.max(a1);
+
+                    let mut add_candidate = |t: f32| {
+                        if !(0.0 < t && t < 1.0) {
+                            return;
+                        }
+                        let candidate_distance =
+                            curr_distance + t * (next_distance - curr_distance);
+                        let candidate = interpolate(
+                            curr,
+                            next,
+                            t,
+                            curr_distance,
+                            next_distance,
+                            candidate_distance,
+                        );
+                        if distance_3d(candidate, curr) > curr_min_spacing
+                            && distance_3d(next, candidate) > next_min_spacing
+                        {
+                            let candidate_min_distance =
+                                curr_min_distance + t * (next_min_distance - curr_min_distance);
+                            extended.push((
+                                candidate,
+                                Some(candidate_distance),
+                                candidate_min_distance,
+                            ));
+                        }
+                    };
+
+                    add_candidate(t0);
+                    if t1 != t0 {
+                        add_candidate(t1);
+                    }
+                }
+            }
+        }
+        extended.push((next, next_distance, next_min_distance));
+    }
+
+    extended
+        .into_iter()
+        .map(|(point, distance, _)| (point, distance))
+        .unzip()
+}
+
 // Deleted with `BAND_BOUNDARY_MULTIPLIERS` and `quartile_for_distance`: the
 // "Keep these two lists numerically identical" invariant no longer has a
 // module-side list to keep in sync.
@@ -266,6 +585,33 @@ impl FinalizationModule for OverhangClassifierDefault {
             } else {
                 Some((layer.z() - layers[idx - 1].z()).max(0.001))
             };
+            let boundary: Vec<(f32, f32, f32, f32)> =
+                if idx == 0 || flow_width <= 0.0 {
+                    Vec::new()
+                } else {
+                    let mut boundary = Vec::new();
+                    for entity in layers[idx - 1].ordered_entities() {
+                        if entity.role != ExtrusionRole::OuterWall {
+                            continue;
+                        }
+                        let points = &entity.path.points;
+                        boundary.extend(points.windows(2).map(|segment| {
+                            (segment[0].x, segment[0].y, segment[1].x, segment[1].y)
+                        }));
+
+                        // Most closed loops repeat their first point, so windows(2)
+                        // already contains the closing edge. Add it explicitly for
+                        // the equivalent closed representation without that repeat.
+                        if points.len() >= 2 {
+                            let first = points[0];
+                            let last = points[points.len() - 1];
+                            if first.x != last.x || first.y != last.y {
+                                boundary.push((last.x, last.y, first.x, first.y));
+                            }
+                        }
+                    }
+                    boundary
+                };
 
             // (1) Consumption: speed is resolved per point from the stamped
             // signed distances, then curl is applied to that already-clamped
@@ -278,7 +624,27 @@ impl FinalizationModule for OverhangClassifierDefault {
                         continue;
                     }
 
-                    let points = &entity.path.points;
+                    let original_points = &entity.path.points;
+                    let distances: Vec<Option<f32>> = original_points
+                        .iter()
+                        .map(|point| point.overhang_distance_mm)
+                        .collect();
+                    let min_distances: Vec<f32> = original_points
+                        .iter()
+                        .map(|point| {
+                            let sections = build_speed_sections(base, point.width, config);
+                            min_distance_from_sections(&sections, base)
+                        })
+                        .collect();
+                    let (new_points, new_distances) = insert_extended_points_with_point_widths(
+                        original_points,
+                        &distances,
+                        &boundary,
+                        flow_width,
+                        &min_distances,
+                    );
+                    let points_grew = new_points.len() > original_points.len();
+                    let points = &new_points;
                     let mut speeds = Vec::with_capacity(points.len());
                     let mut has_distance = false;
                     let mut has_curl = false;
@@ -286,13 +652,15 @@ impl FinalizationModule for OverhangClassifierDefault {
                         let mut extrusion_speed = base;
                         if point.overhang_quartile.is_some() {
                             let sections = build_speed_sections(base, point.width, config);
-                            if let Some(distance) = point.overhang_distance_mm {
+                            if let Some(distance) = new_distances[point_idx] {
                                 has_distance = true;
                                 let current_speed = calculate_speed(distance, &sections, base);
                                 let next_speed = points
                                     .get(point_idx + 1)
                                     .filter(|next| next.overhang_quartile.is_some())
-                                    .and_then(|next| next.overhang_distance_mm)
+                                    .and_then(|_| {
+                                        new_distances.get(point_idx + 1).copied().flatten()
+                                    })
                                     .map(|next_distance| {
                                         let next = &points[point_idx + 1];
                                         let next_sections =
@@ -338,6 +706,15 @@ impl FinalizationModule for OverhangClassifierDefault {
                     }
 
                     let factors: Vec<f32> = speeds.into_iter().map(|speed| speed / base).collect();
+                    if points_grew {
+                        output
+                            .modify_entity(
+                                layer.layer_index(),
+                                entity.entity_id,
+                                EntityMutation::SetPathPoints(new_points),
+                            )
+                            .map_err(ModuleError::from_str)?;
+                    }
                     let mutation = EntityMutation::SetPointSpeedFactors(factors);
                     output
                         .modify_entity(layer.layer_index(), entity.entity_id, mutation)

@@ -26,8 +26,8 @@ use crate::prepass_types::{
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, EntitySpeedProfile, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation,
-    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, PrintEntity, RegionKey,
-    SliceIR, SupportPlanIR,
+    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, Point3WithWidth,
+    PrintEntity, RegionKey, SliceIR, SupportPlanIR,
 };
 
 /// Support-paint policy for a per-region eligibility decision.
@@ -816,6 +816,8 @@ pub enum EntityMutation {
     SetSpeedFactor(f32),
     /// Set the flow factor for every point on an entity's path.
     SetFlowFactor(f32),
+    /// Replace all points on an entity's path (packet 191).
+    SetPathPoints(Vec<Point3WithWidth>),
     /// Set a per-point speed factor carrier for an entity (packet 189).
     ///
     /// The payload length must equal the target entity's point count; the
@@ -1490,6 +1492,29 @@ impl FinalizationOutputBuilder {
                                     for pt in e.path.points.iter_mut() {
                                         pt.flow_factor = v;
                                     }
+                                }
+                                EntityMutation::SetPathPoints(v) => {
+                                    if v.is_empty() {
+                                        return Err(format!(
+                                            "modify_entity: SetPathPoints cannot use an empty point list for entity_id {} in layer {}",
+                                            entity_id, layer_idx
+                                        ));
+                                    }
+                                    if e.path.role.is_loop() {
+                                        let is_closed = match (v.first(), v.last()) {
+                                            (Some(first), Some(last)) if v.len() >= 2 => {
+                                                first.x == last.x && first.y == last.y
+                                            }
+                                            _ => false,
+                                        };
+                                        if !is_closed {
+                                            return Err(format!(
+                                                "modify_entity: SetPathPoints rejected an unclosed loop for entity_id {} in layer {}: a wall mutator dropped the closing repeat",
+                                                entity_id, layer_idx
+                                            ));
+                                        }
+                                    }
+                                    e.path.points = v;
                                 }
                                 // Handled by the outer arm above.
                                 EntityMutation::SetPointSpeedFactors(_) => unreachable!(),

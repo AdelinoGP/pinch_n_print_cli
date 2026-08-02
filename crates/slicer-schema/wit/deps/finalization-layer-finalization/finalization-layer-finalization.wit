@@ -1,7 +1,7 @@
 package slicer:finalization-layer-finalization@1.0.0;
 
 interface layer-finalization-types {
-    use slicer:types/geometry.{extrusion-path3d, extrusion-role};
+    use slicer:types/geometry.{extrusion-path3d, extrusion-role, point3-with-width};
 
     // The finalization world uses its own `layer-idx` and `region-key`
     // types rather than importing them from `ir-handles`. The
@@ -55,6 +55,9 @@ interface layer-finalization-types {
     variant entity-mutation {
         set-speed-factor(f32),
         set-flow-factor(f32),
+        // Packet 191: wholesale path-point replacement. The payload must be
+        // non-empty and preserve the explicit closing repeat for loop roles.
+        set-path-points(list<point3-with-width>),
         // Packet 189: per-point speed factor carrier. The payload length MUST
         // equal the target entity's point count; the host applier rejects any
         // mismatch atomically (no partial write).

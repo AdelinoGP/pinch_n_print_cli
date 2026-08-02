@@ -3385,6 +3385,20 @@ fn apply_finalization_pushes(
                 let sdk_mutation = match mutation {
                     host::WitEntityMutation::SetSpeedFactor(v) => EntityMutation::SetSpeedFactor(v),
                     host::WitEntityMutation::SetFlowFactor(v) => EntityMutation::SetFlowFactor(v),
+                    host::WitEntityMutation::SetPathPoints(v) => EntityMutation::SetPathPoints(
+                        v.into_iter()
+                            .map(|pt| slicer_ir::Point3WithWidth {
+                                x: pt.x,
+                                y: pt.y,
+                                z: pt.z,
+                                width: pt.width,
+                                flow_factor: pt.flow_factor,
+                                overhang_quartile: pt.overhang_quartile,
+                                dist_to_top_mm: pt.dist_to_top_mm,
+                                overhang_distance_mm: pt.overhang_distance_mm,
+                            })
+                            .collect(),
+                    ),
                     host::WitEntityMutation::SetPointSpeedFactors(v) => {
                         EntityMutation::SetPointSpeedFactors(v)
                     }

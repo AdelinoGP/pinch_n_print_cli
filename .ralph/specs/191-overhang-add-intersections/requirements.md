@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-310`
+- Grouped task IDs: `TASK-315`
 - Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` — the Packet Queue rows for DEV-009 in tranche T3, which the orchestrator split into 9a/9b/9c; this packet is row 9c. **Do not quote that row’s text or any TASK-ID hit count here or anywhere else.** The queue is mutable shared state amended while packets are in flight: this line previously froze a row rendering (`<tbd>-gcode-smoothed-speed-add-intersections`) that is now 0 hits in the plan file, and `packet.spec.md` was corrected a round before this file was — the fix landed in one file and not the other, which is the same propagation failure the drift checker now closes. Re-derive at the moment of use with `rg -n '^\| 9[abc] ' docs/specs/deviation-backlog-remediation-plan.md` (the rows begin at column 1, so `^` must anchor directly on the leading `|`; earlier revisions of this line wrote `^.\\|`, which both consumes that `|` and over-escapes the backslash — measured, 0 hits and exit 1, i.e. a silently-empty re-derivation of exactly the kind this paragraph exists to prevent).
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -37,7 +37,7 @@ A fourth, recorded as a residual rather than a correction: the `p1` candidate's 
 ## In Scope
 
 - **The geometry-mutation channel** (five files plus the applier, mirroring packet 189's shape):
-  - `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`: additive `set-path-points(list<point3-with-width>)` on `variant entity-mutation`, **and** `point3-with-width` added to that world's `use slicer:types/geometry.{…}` import list (it imports only `extrusion-path3d, extrusion-role` today, so the record is not in scope there and the case would not parse without it).
+  - `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`: additive `set-path-points(list<point3-with-width>)` on `variant entity-mutation`, **and** `point3-with-width` added to that world's `use slicer:types/geometry.{…}` import list (it imports only `extrusion-path3d, extrusion-role` today, so the record is not in scope there and the case would not parse without it).
   - `crates/slicer-sdk/src/traits.rs`: `EntityMutation::SetPathPoints(Vec<Point3WithWidth>)`; an `apply_to` branch that replaces `e.path.points` wholesale, rejects an empty vector, and rejects a point list that breaks the closing repeat on a role for which `ExtrusionRole::is_loop()` is true.
   - `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-wasm-host/src/dispatch.rs`, `crates/slicer-macros/src/lib.rs`: one translation arm each.
 - **The port** in `modules/core-modules/overhang-classifier-default/src/lib.rs`:
@@ -111,7 +111,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 ## Step Completion Expectations
 
 - The WIT edit and the guest rebuild are one unit. `cargo xtask build-guests --check` must be run — and the rebuild performed if it reports `STALE:` — before any `slicer-runtime` or component result from a later step is interpreted. `CLAUDE.md` forbids attributing such a failure to anything else until `--check` is clean.
-- `point3-with-width` must be added to `world-finalization`'s `use slicer:types/geometry.{…}` list in the **same edit** as the variant case; the world imports only `extrusion-path3d, extrusion-role` today, so the case alone does not parse and the failure surfaces as a bindgen error in an apparently unrelated crate.
+- `point3-with-width` must be added to `finalization-layer-finalization`'s `use slicer:types/geometry.{…}` list in the **same edit** as the variant case; the world imports only `extrusion-path3d, extrusion-role` today, so the case alone does not parse and the failure surfaces as a bindgen error in an apparently unrelated crate.
 - The `mirrored_run_finalization` update must land in the **same step** as the module change. A lagging mirror keeps both regression tests green while validating a rule the module no longer has — the exact failure that file's TRIPWIRE comment exists to prevent.
 - `SetPathPoints` must be submitted **before** the same entity's `SetPointSpeedFactors`. `apply_to` iterates `for op in self.merge_ops` in submission order and packet 189's profile branch length-checks against the entity's *current* point count, so the reverse order is rejected.
 - `target/guard-ac10-addint.txt` is the only shared scratch file; its key is unique to AC-10 and to the §Verification command that repeats it. **Those two are semantically identical but not byte-identical** — they differ in the trailing failure string only — so do not describe them as "identical"; the property the key needs is that nothing else writes that file, and that holds.

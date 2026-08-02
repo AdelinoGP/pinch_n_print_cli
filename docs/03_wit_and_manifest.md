@@ -634,7 +634,10 @@ names, and return types, read the on-disk file.
   - `entity-mutation` (variant) — packet 41 enum-serialisable mutations:
     `set-speed-factor(f32)`, `set-flow-factor(f32)`, and the additive
     `set-point-speed-factors(list<f32>)` case (packet 189), which carries one
-    speed factor per path point (length must match `path.points`). The package
+    speed factor per path point (length must match `path.points`), and the
+    `set-path-points(list<point3-with-width>)` case (packet 191), which replaces
+    an entity's path points wholesale while preserving a loop's closing repeat.
+    The package
     version was deliberately not bumped for this additive case — see ADR-0044
     (WIT world versions are advisory and erased from guest binaries).
   - `sort-key` (enum) — sort discriminators consumed by `sort-layer-by`.

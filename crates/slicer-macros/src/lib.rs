@@ -1264,6 +1264,20 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                     ::slicer_sdk::traits::EntityMutation::SetFlowFactor(v) => EntityMutation::SetFlowFactor(*v),
                                     // Vec<f32> is not Copy: clone rather than deref.
                                     ::slicer_sdk::traits::EntityMutation::SetPointSpeedFactors(v) => EntityMutation::SetPointSpeedFactors(v.clone()),
+                                    ::slicer_sdk::traits::EntityMutation::SetPathPoints(v) => EntityMutation::SetPathPoints(
+                                        v.iter()
+                                            .map(|pt| Point3WithWidth {
+                                                x: pt.x,
+                                                y: pt.y,
+                                                z: pt.z,
+                                                width: pt.width,
+                                                flow_factor: pt.flow_factor,
+                                                overhang_quartile: pt.overhang_quartile,
+                                                dist_to_top_mm: pt.dist_to_top_mm,
+                                                overhang_distance_mm: pt.overhang_distance_mm,
+                                            })
+                                            .collect(),
+                                    ),
                                 };
                                 // Packet 189: `entity-mutation` now carries a
                                 // `list<f32>` payload, so wit-bindgen generates a

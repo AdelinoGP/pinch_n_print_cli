@@ -20,11 +20,22 @@ fn point(
     overhang_quartile: Option<u8>,
     overhang_distance_mm: Option<f32>,
 ) -> Point3WithWidth {
+    point_with_width(x, y, z, PATH_WIDTH, overhang_quartile, overhang_distance_mm)
+}
+
+fn point_with_width(
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+    overhang_quartile: Option<u8>,
+    overhang_distance_mm: Option<f32>,
+) -> Point3WithWidth {
     Point3WithWidth {
         x,
         y,
         z,
-        width: PATH_WIDTH,
+        width,
         flow_factor: 1.0,
         overhang_quartile,
         dist_to_top_mm: 0.0,
@@ -226,7 +237,9 @@ fn quartile_present_receives_speed_factor_below_one() {
             _ => None,
         })
         .expect("expected SetPointSpeedFactors for layer 1 entity 1");
-    assert_eq!(mutation_factors.len(), 4);
+    // The restored 10 mm square opens packet 191's segmentation gate on its
+    // three traversed edges, so geometry and speed factors both expand.
+    assert_eq!(mutation_factors.len(), 10);
     assert!(mutation_factors
         .iter()
         .all(|factor| (*factor - 45.0 / 60.0).abs() < 1e-6));
@@ -237,7 +250,7 @@ fn quartile_present_receives_speed_factor_below_one() {
         1,
         "expected exactly one point-speed mutation"
     );
-    assert_eq!(profiles[0].len(), 4);
+    assert_eq!(profiles[0].len(), 10);
     for factor in &profiles[0] {
         assert!((*factor - 45.0 / 60.0).abs() < 1e-6);
         assert!(*factor < 1.0);
@@ -276,7 +289,8 @@ fn quartile_four_is_honored() {
             _ => None,
         })
         .expect("expected SetPointSpeedFactors for layer 1 entity 1");
-    assert_eq!(mutation_factors.len(), 4);
+    // Packet 191 segmentation is expected on the restored 10 mm square.
+    assert_eq!(mutation_factors.len(), 10);
     assert!(mutation_factors
         .iter()
         .all(|factor| (*factor - 20.0 / 60.0).abs() < 1e-6));
@@ -287,7 +301,7 @@ fn quartile_four_is_honored() {
         1,
         "expected exactly one point-speed mutation"
     );
-    assert_eq!(profiles[0].len(), 4);
+    assert_eq!(profiles[0].len(), 10);
     for factor in &profiles[0] {
         assert!((*factor - 20.0 / 60.0).abs() < 1e-6);
     }
@@ -560,11 +574,13 @@ fn per_point_factors_vary_within_one_entity() {
     let views = two_layer_views(upper);
     let output = run_classifier(&views, &cfg);
 
-    assert_eq!(output.merge_ops().count(), 1);
+    // Packet 191 now emits geometry before the speed mutation when the
+    // restored 10 mm square crosses its segmentation gate.
+    assert_eq!(output.merge_ops().count(), 2);
     let profiles = point_speed_profiles(&output, 1, 1);
     assert_eq!(profiles.len(), 1);
-    assert_eq!(profiles[0].len(), 4);
-    assert_eq!(profiles[0][3], 1.0, "None distance must remain full speed");
+    assert_eq!(profiles[0].len(), 8);
+    assert_eq!(profiles[0][7], 1.0, "None distance must remain full speed");
     let first_factor = profiles[0][0];
     assert!(
         profiles[0].iter().all(|factor| factor.is_finite())
@@ -591,8 +607,14 @@ fn interpolated_factor_is_not_a_quartile_value() {
     let profiles = point_speed_profiles(&output, 1, 1);
 
     assert_eq!(profiles.len(), 1);
-    let t: f32 = (0.15 - 0.1) / (0.2 - 0.1);
-    let expected_factor: f32 = ((1.0 - t) * 30.0 + t * 40.0).round() / 60.0;
+    // The restored 10 mm square inserts two packet-191 candidates on the
+    // first edge; the first speed is clamped by its nearer candidate.
+    assert_eq!(profiles[0].len(), 10);
+    let candidate_t: f32 = (0.15 + 3.0 * (0.5 * PATH_WIDTH)) / 10.0;
+    let candidate_distance: f32 = 0.15 + candidate_t * (-0.1 - 0.15);
+    let candidate_section_t: f32 = (candidate_distance - 0.1) / (0.2 - 0.1);
+    let expected_factor: f32 =
+        ((1.0 - candidate_section_t) * 30.0 + candidate_section_t * 40.0).round() / 60.0;
     assert!((profiles[0][0] - expected_factor).abs() < 1e-6);
     assert!((profiles[0][0] - 30.0 / 60.0).abs() > 1e-6);
     assert!((profiles[0][0] - 40.0 / 60.0).abs() > 1e-6);
@@ -656,4 +678,313 @@ fn non_wall_role_emits_no_mutation_and_no_nan() {
         }
     }
     assert_eq!(output.merge_ops().count(), 0);
+}
+
+#[module_test]
+fn boundary_crossing_inserts_one_vertex_at_boundary_offset() {
+    let points = vec![
+        point(0.0, 0.0, 0.2, None, Some(0.0)),
+        point(10.0, 0.0, 0.2, None, Some(0.4)),
+    ];
+    let distances = vec![Some(0.0), Some(0.4)];
+    let boundary = vec![(5.0, -1.0, 5.0, 1.0)];
+
+    let (extended, extended_distances) = overhang_classifier_default::insert_extended_points(
+        &points, &distances, &boundary, PATH_WIDTH, 1.0,
+    );
+
+    assert_eq!(extended.len(), 3);
+    assert_eq!(extended_distances.len(), 3);
+    assert!((extended[1].x - 5.0).abs() < 1e-4);
+    assert!((extended[1].y).abs() < 1e-4);
+    assert_eq!(extended[1].overhang_distance_mm, Some(PATH_WIDTH * 0.5));
+    assert_eq!(extended_distances[1], Some(PATH_WIDTH * 0.5));
+}
+
+#[module_test]
+fn min_spacing_filter_is_two_sided_quarter_flow_width() {
+    let points = vec![
+        point(0.0, 0.0, 0.2, None, Some(0.0)),
+        point(10.0, 0.0, 0.2, None, Some(0.4)),
+    ];
+    let distances = vec![Some(0.0), Some(0.4)];
+    let run = |x: f32| {
+        overhang_classifier_default::insert_extended_points(
+            &points,
+            &distances,
+            &[(x, -1.0, x, 1.0)],
+            PATH_WIDTH,
+            1.0,
+        )
+    };
+
+    let (too_close_to_start, _) = run(PATH_WIDTH * 0.25 * 0.5);
+    let (too_close_to_end, _) = run(10.0 - PATH_WIDTH * 0.25 * 0.5);
+    let (well_spaced, _) = run(5.0);
+
+    assert_eq!(PATH_WIDTH * 0.25, 0.1);
+    assert_eq!(too_close_to_start.len(), points.len());
+    assert_eq!(too_close_to_end.len(), points.len());
+    assert_eq!(well_spaced.len(), points.len() + 1);
+}
+
+#[module_test]
+fn segmentation_gate_and_t_parameters_match_canonical() {
+    let flow_width = PATH_WIDTH;
+    let line_len = 10.0_f32;
+    let boundary_offset = 0.5 * flow_width;
+    let curr_distance = 0.0_f32;
+    let next_distance = 1.0_f32;
+    let min_distance = 0.5_f32;
+    let points = vec![
+        point(0.0, 0.0, 0.2, None, Some(curr_distance)),
+        point(line_len, 0.0, 0.2, None, Some(next_distance)),
+    ];
+    let distances = vec![Some(curr_distance), Some(next_distance)];
+
+    let a0 = (curr_distance + 3.0 * boundary_offset) / line_len;
+    let a1 = 1.0 - (next_distance + 3.0 * boundary_offset) / line_len;
+    let t0 = a0.min(a1);
+    let t1 = a0.max(a1);
+    assert!((next_distance + 3.0 * boundary_offset) / line_len != 0.5);
+    assert!(min_distance > 0.0);
+    assert!(curr_distance.abs() > min_distance || next_distance.abs() > min_distance);
+    assert!(line_len >= 2.0);
+
+    let (segmented, _) = overhang_classifier_default::insert_extended_points(
+        &points,
+        &distances,
+        &[],
+        flow_width,
+        min_distance,
+    );
+    assert_eq!(segmented.len(), 4);
+    assert!((segmented[1].x - line_len * t0).abs() < 1e-4);
+    assert!((segmented[2].x - line_len * t1).abs() < 1e-4);
+
+    let nonpositive_min_distance = 0.0_f32;
+    let (nonpositive_gate, _) = overhang_classifier_default::insert_extended_points(
+        &points,
+        &distances,
+        &[],
+        flow_width,
+        nonpositive_min_distance,
+    );
+    assert!(nonpositive_min_distance <= 0.0 && line_len > 4.0);
+    assert_eq!(nonpositive_gate.len(), 4);
+}
+
+#[module_test]
+fn min_distance_is_smallest_slower_section_or_minus_one() {
+    let sections = vec![(0.30, 30.0), (0.10, 60.0), (0.20, 20.0), (0.05, 70.0)];
+    assert_eq!(
+        overhang_classifier_default::min_distance_from_sections(&sections, 60.0),
+        0.10
+    );
+
+    let no_slower_sections = vec![(0.04, 61.0), (0.10, 80.0)];
+    assert_eq!(
+        overhang_classifier_default::min_distance_from_sections(&no_slower_sections, 60.0),
+        -1.0
+    );
+}
+
+#[module_test]
+fn crossing_segment_gains_vertices_on_the_original_polyline() {
+    let lower_points = vec![
+        point(0.0, 0.0, 0.0, None, None),
+        point(10.0, 0.0, 0.0, None, None),
+        point(10.0, 10.0, 0.0, None, None),
+        point(0.0, 10.0, 0.0, None, None),
+        point(0.0, 0.0, 0.0, None, None),
+    ];
+    let upper_points = vec![
+        point(-1.0, 5.0, 0.2, Some(1), Some(0.5)),
+        point(5.0, 5.0, 0.2, Some(1), Some(-0.5)),
+        point(11.0, 5.0, 0.2, Some(1), Some(0.5)),
+        point(-1.0, 5.0, 0.2, Some(1), Some(0.5)),
+    ];
+    let lower = entity_with_points(1, ExtrusionRole::OuterWall, lower_points, 0, 0);
+    let upper = entity_with_points(2, ExtrusionRole::OuterWall, upper_points.clone(), 1, 0);
+    let views = vec![
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(0)
+            .z(0.0)
+            .add_entity(lower)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(1)
+            .z(0.2)
+            .add_entity(upper)
+            .build(),
+    ]
+    .into_iter()
+    .map(LayerCollectionView::new)
+    .collect::<Vec<_>>();
+
+    let output = run_classifier(&views, &overhang_config());
+    let new_points = output
+        .merge_ops()
+        .find_map(|op| match op {
+            MergeOp::ModifyEntity {
+                layer,
+                entity_id,
+                mutation: EntityMutation::SetPathPoints(points),
+            } if *layer == 1 && *entity_id == 2 => Some(points.clone()),
+            _ => None,
+        })
+        .expect("expected SetPathPoints for the crossing upper wall");
+
+    assert!(new_points.len() > upper_points.len());
+    assert_eq!(new_points.first(), upper_points.first());
+    assert_eq!(new_points.last(), upper_points.last());
+    assert_eq!(new_points.first(), new_points.last());
+
+    let distance_to_segment = |p: &Point3WithWidth, a: &Point3WithWidth, b: &Point3WithWidth| {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let length_squared = dx * dx + dy * dy;
+        let t = if length_squared > 0.0 {
+            (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let projected_x = a.x + t * dx;
+        let projected_y = a.y + t * dy;
+        ((p.x - projected_x).powi(2) + (p.y - projected_y).powi(2)).sqrt()
+    };
+    let inserted_count = new_points
+        .iter()
+        .filter(|candidate| !upper_points.iter().any(|original| original == *candidate))
+        .count();
+    assert!(inserted_count > 0);
+    for candidate in new_points
+        .iter()
+        .filter(|candidate| !upper_points.iter().any(|original| original == *candidate))
+    {
+        let distance = upper_points
+            .windows(2)
+            .map(|segment| distance_to_segment(candidate, &segment[0], &segment[1]))
+            .fold(f32::INFINITY, f32::min);
+        assert!(
+            distance <= 1e-4,
+            "inserted point {:?} is {distance} mm from the original polyline",
+            candidate
+        );
+    }
+
+    let profiles = point_speed_profiles(&output, 1, 2);
+    assert_eq!(profiles.len(), 1);
+    assert_eq!(profiles[0].len(), new_points.len());
+    assert!(profiles[0]
+        .windows(2)
+        .any(|factors| (factors[0] - factors[1]).abs() > 1e-6));
+}
+
+#[module_test]
+fn no_insertion_when_gates_unmet_leaves_point_count_unchanged() {
+    let check = |line_len: f32, distances: [Option<f32>; 2], min_distance: f32| {
+        let points = vec![
+            point(0.0, 0.0, 0.2, None, distances[0]),
+            point(line_len, 0.0, 0.2, None, distances[1]),
+        ];
+        let (extended, extended_distances) = overhang_classifier_default::insert_extended_points(
+            &points,
+            &distances,
+            &[],
+            PATH_WIDTH,
+            min_distance,
+        );
+        assert_eq!(extended, points);
+        assert_eq!(extended_distances, distances);
+    };
+
+    check(1.0, [Some(0.0), Some(1.0)], 0.5);
+    check(3.0, [Some(0.1), Some(0.2)], 0.5);
+    check(4.0, [Some(0.0), Some(1.0)], 0.0);
+}
+
+#[module_test]
+fn none_distance_takes_the_no_insertion_path() {
+    let cfg = ConfigViewBuilder::new()
+        .float("outer_wall_speed", 20.0)
+        .float("inner_wall_speed", 20.0)
+        .float("thin_wall_speed", 20.0)
+        .float("overhang_1_4_speed", 30.0)
+        .float("overhang_2_4_speed", 40.0)
+        .float("overhang_3_4_speed", 50.0)
+        .float("overhang_4_4_speed", 60.0)
+        .float("bridge_speed", 25.0)
+        .float("line_width", f64::from(PATH_WIDTH))
+        .bool("slowdown_for_curled_perimeters", false)
+        .build();
+    let upper_points = vec![
+        point_with_width(0.0, 0.0, 0.2, 0.2, Some(1), None),
+        point_with_width(6.0, 0.0, 0.2, 0.2, Some(1), None),
+        point_with_width(6.0, 1.0, 0.2, 0.2, Some(1), None),
+        point_with_width(0.0, 0.0, 0.2, 0.2, Some(1), None),
+    ];
+    let upper = entity_with_points(2, ExtrusionRole::OuterWall, upper_points.clone(), 1, 0);
+    let empty_lower = LayerCollectionFixtureBuilder::new()
+        .global_layer_index(0)
+        .z(0.0)
+        .build();
+    let upper_layer = LayerCollectionFixtureBuilder::new()
+        .global_layer_index(1)
+        .z(0.2)
+        .add_entity(upper)
+        .build();
+    let views = vec![
+        LayerCollectionView::new(empty_lower),
+        LayerCollectionView::new(upper_layer),
+    ];
+
+    let output = run_classifier(&views, &cfg);
+
+    assert_eq!(
+        upper_points.len(),
+        4,
+        "fixture must include a segment longer than 4 mm"
+    );
+    assert!(output.merge_ops().next().is_none());
+}
+
+#[module_test]
+fn inserted_vertex_carries_interpolated_overhang_distance() {
+    let start_distance = -0.1_f32;
+    let end_distance = 1.0_f32;
+    let line_len = 10.0_f32;
+    let boundary_offset = 0.5 * PATH_WIDTH;
+    let points = vec![
+        point(0.0, 0.0, 0.2, None, Some(start_distance)),
+        point(line_len, 0.0, 0.2, None, Some(end_distance)),
+    ];
+    let distances = vec![Some(start_distance), Some(end_distance)];
+    let (extended, extended_distances) = overhang_classifier_default::insert_extended_points(
+        &points,
+        &distances,
+        &[],
+        PATH_WIDTH,
+        0.5,
+    );
+
+    assert_eq!(extended.len(), 4);
+    assert_eq!(extended_distances.len(), extended.len());
+    let a0 = (start_distance + 3.0 * boundary_offset) / line_len;
+    let a1 = 1.0 - (end_distance + 3.0 * boundary_offset) / line_len;
+    let expected_t = [a0.min(a1), a0.max(a1)];
+    let mut seen_distances = Vec::new();
+    for (index, t) in expected_t.into_iter().enumerate() {
+        let expected_distance = start_distance + t * (end_distance - start_distance);
+        let inserted = &extended[index + 1];
+        assert!((inserted.x - line_len * t).abs() < 1e-4);
+        assert!(expected_distance > start_distance && expected_distance < end_distance);
+        assert!(
+            (inserted.overhang_distance_mm.expect("inserted distance") - expected_distance).abs()
+                < 1e-6
+        );
+        assert!((extended_distances[index + 1].unwrap() - expected_distance).abs() < 1e-6);
+        seen_distances.push(inserted.overhang_distance_mm.unwrap());
+    }
+    assert!((seen_distances[0] - seen_distances[1]).abs() > 1e-6);
 }

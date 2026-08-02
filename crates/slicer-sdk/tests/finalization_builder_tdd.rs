@@ -806,6 +806,118 @@ fn modify_entity_set_point_speed_factors_applies() {
     }
 }
 
+#[test]
+fn set_path_points_then_point_speed_factors_applies_in_order() {
+    let original_point_count = 3;
+    let entities = vec![make_entity_with_n_points(
+        2,
+        ExtrusionRole::SparseInfill,
+        original_point_count,
+    )];
+    let mut layers = vec![make_layer(0, 0.2, entities)];
+    let new_points = make_path_with_n_points(ExtrusionRole::SparseInfill, 5).points;
+    let new_factors = vec![0.5_f32, 0.6, 0.7, 0.8, 0.9];
+
+    assert!(new_points.len() > original_point_count);
+    assert_eq!(new_points.len(), new_factors.len());
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(0, 2, EntityMutation::SetPathPoints(new_points.clone()))
+        .expect("recording SetPathPoints should succeed");
+    builder
+        .modify_entity(
+            0,
+            2,
+            EntityMutation::SetPointSpeedFactors(new_factors.clone()),
+        )
+        .expect("recording SetPointSpeedFactors should succeed");
+
+    builder
+        .apply_to(&mut layers)
+        .expect("path points must be applied before point speed factors");
+
+    let entity = &layers[0].ordered_entities[0];
+    assert_eq!(entity.path.points, new_points);
+    let profile = layers[0]
+        .speed_profiles
+        .iter()
+        .find(|profile| profile.entity_id == 2)
+        .expect("expected a speed profile for entity_id 2");
+    assert_eq!(profile.factors, new_factors);
+    assert_eq!(profile.factors.len(), entity.path.points.len());
+}
+
+#[test]
+fn set_path_points_rejects_empty_or_unclosed_loop() {
+    let make_point = |x: f32, y: f32| slicer_ir::Point3WithWidth {
+        x,
+        y,
+        z: 0.2,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
+    };
+    let original_points = vec![
+        make_point(0.0, 0.0),
+        make_point(1.0, 0.0),
+        make_point(1.0, 1.0),
+        make_point(0.0, 0.0),
+    ];
+
+    assert!(ExtrusionRole::OuterWall.is_loop());
+
+    let mut empty_layers = {
+        let mut entity = make_entity_with_n_points(1, ExtrusionRole::OuterWall, 4);
+        entity.path.points = original_points.clone();
+        assert!(entity.path.is_closed());
+        vec![make_layer(0, 0.2, vec![entity])]
+    };
+    let mut empty_builder = FinalizationOutputBuilder::new();
+    empty_builder
+        .modify_entity(0, 1, EntityMutation::SetPathPoints(Vec::new()))
+        .expect("recording empty SetPathPoints should succeed");
+    let empty_result = empty_builder.apply_to(&mut empty_layers);
+    assert!(empty_result.is_err());
+    assert_eq!(
+        empty_layers[0].ordered_entities[0].path.points,
+        original_points
+    );
+
+    let mut unclosed_layers = {
+        let mut entity = make_entity_with_n_points(1, ExtrusionRole::OuterWall, 4);
+        entity.path.points = original_points.clone();
+        vec![make_layer(0, 0.2, vec![entity])]
+    };
+    let unclosed_points = vec![
+        make_point(0.0, 0.0),
+        make_point(1.0, 0.0),
+        make_point(1.0, 1.0),
+    ];
+    assert_ne!(
+        (
+            unclosed_points.first().unwrap().x,
+            unclosed_points.first().unwrap().y
+        ),
+        (
+            unclosed_points.last().unwrap().x,
+            unclosed_points.last().unwrap().y
+        )
+    );
+    let mut unclosed_builder = FinalizationOutputBuilder::new();
+    unclosed_builder
+        .modify_entity(0, 1, EntityMutation::SetPathPoints(unclosed_points))
+        .expect("recording unclosed SetPathPoints should succeed");
+    let unclosed_result = unclosed_builder.apply_to(&mut unclosed_layers);
+    assert!(unclosed_result.is_err());
+    assert_eq!(
+        unclosed_layers[0].ordered_entities[0].path.points,
+        original_points
+    );
+}
+
 // =============================================================================
 // Packet 189 NEG: modify_entity_set_point_speed_factors_length_mismatch_errors
 // =============================================================================

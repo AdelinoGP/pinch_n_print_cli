@@ -1794,6 +1794,10 @@ pub struct EntitySpeedProfile {
     /// `speed_factor` unchanged. At most one row per `entity_id` — the
     /// finalization applier upserts (a second write for the same
     /// `entity_id` replaces the row, never appends).
+    /// A geometry mutation that changes this entity's point count, including
+    /// `EntityMutation::SetPathPoints`, invalidates any earlier profile row
+    /// for that entity. The producer MUST resubmit the profile after the
+    /// geometry mutation in the same `merge_ops` sequence.
     pub factors: Vec<f32>,
 }
 
