@@ -120,6 +120,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: perimeter_index as f32 + 0.5,
@@ -129,6 +130,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             flow_factor: 0.9,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
     ];
     WallLoop {

@@ -504,6 +504,7 @@ mod tests {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             end_point: Point3WithWidth {
                 x,
@@ -513,6 +514,7 @@ mod tests {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             point_count: 0,
         }

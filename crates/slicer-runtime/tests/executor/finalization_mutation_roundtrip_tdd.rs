@@ -157,6 +157,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -166,6 +167,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,

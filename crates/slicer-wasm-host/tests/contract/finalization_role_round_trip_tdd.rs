@@ -23,6 +23,7 @@ use slicer_wasm_host::host::{
 fn make_finalization_path(role_tag: &str) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![Point3WithWidth {
+            overhang_distance_mm: None,
             x: 0.0,
             y: 0.0,
             z: 0.2,

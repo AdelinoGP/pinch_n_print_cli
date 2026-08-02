@@ -256,6 +256,7 @@ impl TraditionalSupport {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 };
                 let end = Point3WithWidth {
                     x: slicer_ir::units_to_mm(end_x),
@@ -265,6 +266,7 @@ impl TraditionalSupport {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 };
 
                 paths.push(ExtrusionPath3D {
@@ -309,6 +311,7 @@ impl TraditionalSupport {
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
                         },
                         Point3WithWidth {
                             x: slicer_ir::units_to_mm(end_x),
@@ -318,6 +321,7 @@ impl TraditionalSupport {
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
                         },
                     ],
                     role: ExtrusionRole::SupportMaterial,

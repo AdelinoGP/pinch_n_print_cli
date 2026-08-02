@@ -1375,6 +1375,7 @@ fn make_wall_loop_view() -> WallLoopView {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -1384,6 +1385,7 @@ fn make_wall_loop_view() -> WallLoopView {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
@@ -1451,6 +1453,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 0.0,
@@ -1460,6 +1463,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
@@ -1493,6 +1497,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
     let result = ctx.push_reordered_wall_loop(builder_handle, pos, 0, reordered_wall);
     if result.is_err() {

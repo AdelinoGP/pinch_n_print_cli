@@ -782,6 +782,7 @@ impl ArachnePerimeters {
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
         let overhang_bands = region.overhang_quartile_polygons();
+        let prev_layer_boundary = region.prev_layer_boundary();
         let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
         for line in lines {
             let (role, loop_type) = classify_line(line, params.print_thin_walls);
@@ -881,6 +882,20 @@ impl ArachnePerimeters {
                         );
                     }
                 }
+            }
+
+            for pt in &mut path.points {
+                pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
+                    None
+                } else {
+                    Some(
+                        slicer_core::perimeter_utils::signed_distance_to_boundary(
+                            pt.x,
+                            pt.y,
+                            prev_layer_boundary,
+                        ) + 0.5 * pt.width,
+                    )
+                };
             }
 
             // AC-5 (packet 148): overhang_quartile is set per-vertex on

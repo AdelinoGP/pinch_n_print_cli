@@ -77,6 +77,7 @@ fn region_candidates(region: &SeamPlanningRegionInput) -> Vec<ScoredSeamCandidat
                     width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    overhang_distance_mm: None,
                     dist_to_top_mm: 0.0,
                 },
                 score: 0.0,

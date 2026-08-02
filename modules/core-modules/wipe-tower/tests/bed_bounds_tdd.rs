@@ -47,6 +47,7 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: 6.0,
@@ -56,6 +57,7 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         RegionKey {

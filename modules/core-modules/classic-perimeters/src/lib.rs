@@ -328,6 +328,7 @@ impl LayerModule for ClassicPerimeters {
             if region.polygons().is_empty() {
                 continue;
             }
+            let prev_layer_boundary = region.prev_layer_boundary();
             // ── Non-planar shell branch (T-074b/c/d, P108) ──────────────
             // Highest precedence: a region backed by a resolved SurfaceGroup
             // (region.nonplanar_surface.is_some() at the IR level) emits
@@ -344,6 +345,7 @@ impl LayerModule for ClassicPerimeters {
                     inner_wall_line_width,
                     layer_height,
                     output,
+                    prev_layer_boundary,
                 )?;
                 continue;
             }
@@ -431,6 +433,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         overhang_bands,
+                        prev_layer_boundary,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -462,6 +465,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         overhang_bands,
+                        prev_layer_boundary,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -527,6 +531,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         overhang_bands,
+                        prev_layer_boundary,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -558,6 +563,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         overhang_bands,
+                        prev_layer_boundary,
                     )?;
                 }
             } else {
@@ -589,6 +595,7 @@ impl LayerModule for ClassicPerimeters {
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
                     overhang_bands,
+                    prev_layer_boundary,
                 )?;
             }
         }
@@ -659,6 +666,7 @@ impl ClassicPerimeters {
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
         overhang_bands: &[QuartileBand],
+        prev_layer_boundary: &[ExPolygon],
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -832,7 +840,13 @@ impl ClassicPerimeters {
             // currently correct for a hole ring. D14 painted-variant fuzzy
             // skin still applies (it's whole-region, not per-vertex).
             let build_ring_wall = |ring: &Polygon, poly_idx: usize, is_contour: bool| {
-                let mut points = expolygon_to_path3d(ring, z, bead_flow_width_mm, overhang_bands);
+                let mut points = expolygon_to_path3d(
+                    ring,
+                    z,
+                    bead_flow_width_mm,
+                    overhang_bands,
+                    prev_layer_boundary,
+                );
                 if points.is_empty() {
                     return None;
                 }
@@ -1163,6 +1177,7 @@ impl ClassicPerimeters {
         inner_wall_line_width: f32,
         layer_height: f32,
         output: &mut PerimeterOutputBuilder,
+        prev_layer_boundary: &[ExPolygon],
     ) -> Result<(), ModuleError> {
         // D-105 residual (packet 185): inset consecutive shells by Flow
         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
@@ -1204,7 +1219,7 @@ impl ClassicPerimeters {
             for poly in &inset_result {
                 // Non-planar shells are an explicitly separate concern (D-3); never
                 // stamp overhang_quartile here.
-                let points = expolygon_to_path3d(&poly.contour, z, width, &[]);
+                let points = expolygon_to_path3d(&poly.contour, z, width, &[], prev_layer_boundary);
                 if points.is_empty() {
                     continue;
                 }

@@ -133,6 +133,7 @@ fn wall_entity_with_quartile(layer_index: u32, quartile: u8) -> slicer_ir::Print
         flow_factor: 1.0,
         overhang_quartile: Some(quartile),
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
     print_entity(
         1,

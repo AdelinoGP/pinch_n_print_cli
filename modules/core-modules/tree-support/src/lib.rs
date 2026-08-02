@@ -283,6 +283,7 @@ impl TreeSupport {
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     },
                     Point3WithWidth {
                         x: bx as f32,
@@ -292,6 +293,7 @@ impl TreeSupport {
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     },
                 ],
                 role: ExtrusionRole::SupportMaterial,
@@ -336,6 +338,7 @@ impl TreeSupport {
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
                         },
                         Point3WithWidth {
                             x: cx_pt as f32,
@@ -345,6 +348,7 @@ impl TreeSupport {
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
                         },
                     ],
                     role: ExtrusionRole::SupportMaterial,

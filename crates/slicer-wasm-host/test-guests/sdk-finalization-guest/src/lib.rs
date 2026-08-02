@@ -2,11 +2,11 @@
 //! Authored purely via `#[slicer_module]` — no hand-rolled
 //! `wit_bindgen::generate!` or `export!(Component)` block.
 
+use slicer_ir::ConfigView;
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RegionKey};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
-use slicer_ir::ConfigView;
 use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
 pub struct SdkFinalizationModule;
@@ -72,10 +72,7 @@ impl FinalizationModule for SdkFinalizationModule {
                     .first()
                     .map(|hop| hop.after_entity_index as f32)
                     .unwrap_or(-1.0),
-                first_zhop_height: z_hops
-                    .first()
-                    .map(|hop| hop.hop_height)
-                    .unwrap_or(-1.0),
+                first_zhop_height: z_hops.first().map(|hop| hop.hop_height).unwrap_or(-1.0),
             };
             let marker = ExtrusionPath3D {
                 points: w0.encode(&w1),
@@ -103,6 +100,7 @@ impl FinalizationModule for SdkFinalizationModule {
         if let Some(z) = config.get_float("synthetic_layer_z") {
             let synth = ExtrusionPath3D {
                 points: vec![Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: 0.0,
                     y: 0.0,
                     z: z as f32,

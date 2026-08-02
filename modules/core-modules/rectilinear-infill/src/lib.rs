@@ -472,6 +472,7 @@ fn scan_expolygon(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             };
             let end = Point3WithWidth {
                 x: slicer_ir::units_to_mm(ex + refpt_x + x_shift),
@@ -481,6 +482,7 @@ fn scan_expolygon(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             };
 
             paths.push(ExtrusionPath3D {
@@ -510,6 +512,7 @@ fn scan_expolygon(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             };
             let end = Point3WithWidth {
                 x: slicer_ir::units_to_mm(ex + refpt_x + x_shift),
@@ -519,6 +522,7 @@ fn scan_expolygon(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             };
             paths.push(ExtrusionPath3D {
                 points: vec![start, end],

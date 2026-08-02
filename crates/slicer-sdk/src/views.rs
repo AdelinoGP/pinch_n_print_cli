@@ -73,6 +73,8 @@ pub struct SliceRegionView {
     /// that `overhang_areas` flattens away, for callers that need
     /// severity-aware handling (quartile 1 = least severe, 4 = most severe).
     overhang_quartile_polygons: Vec<QuartileBand>,
+    /// Previous-layer slice boundary polygons, when a previous layer exists.
+    prev_layer_boundary: Vec<ExPolygon>,
     /// Surface group resolved from `SurfaceClassificationIR` for this region's
     /// `nonplanar_surface` ID. `None` when no surface group applies.
     surface_group: Option<SurfaceGroup>,
@@ -109,6 +111,7 @@ impl Default for SliceRegionView {
             held_claims: Vec::new(),
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
+            prev_layer_boundary: Vec::new(),
             surface_group: None,
             config: None,
         }
@@ -463,6 +466,12 @@ impl SliceRegionView {
         self.overhang_areas = overhang_areas;
     }
 
+    /// Override the previous-layer slice boundary polygons (packet 193, AC-6).
+    #[doc(hidden)]
+    pub fn set_prev_layer_boundary(&mut self, polygons: Vec<ExPolygon>) {
+        self.prev_layer_boundary = polygons;
+    }
+
     /// Returns the quartile-banded overhang polygons for this region's layer,
     /// pre-filtered to overlap the region (packet 107).
     ///
@@ -471,6 +480,12 @@ impl SliceRegionView {
     /// same conditions as `overhang_areas`.
     pub fn overhang_quartile_polygons(&self) -> &[QuartileBand] {
         &self.overhang_quartile_polygons
+    }
+
+    /// Returns the previous-layer slice boundary polygons for this region.
+    /// Empty when there is no previous layer or its boundary is unavailable.
+    pub fn prev_layer_boundary(&self) -> &[ExPolygon] {
+        &self.prev_layer_boundary
     }
 
     /// Returns the surface group resolved from `SurfaceClassificationIR` for

@@ -39,6 +39,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 10.0,
@@ -48,6 +49,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 10.0,
@@ -57,6 +59,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 0.0,
@@ -66,6 +69,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
     ];
     let feature_flags: Vec<WallFeatureFlags> = fuzzy_flags.iter().map(|f| flags(*f)).collect();
@@ -95,6 +99,7 @@ fn inner_wall(z: f32) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 9.0,
@@ -104,6 +109,7 @@ fn inner_wall(z: f32) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 9.0,
@@ -113,6 +119,7 @@ fn inner_wall(z: f32) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         Point3WithWidth {
             x: 1.0,
@@ -122,6 +129,7 @@ fn inner_wall(z: f32) -> WallLoop {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
     ];
     WallLoop {

@@ -32,6 +32,7 @@ impl Guest for Component {
                 loop_type: slicer::ir_handles::ir_handles::WallLoopType::Outer,
                 path: slicer::types::geometry::ExtrusionPath3d {
                     points: vec![slicer::types::geometry::Point3WithWidth {
+                        overhang_distance_mm: None,
                         x: walls.len() as f32,
                         y: region.infill_areas().len() as f32,
                         z,

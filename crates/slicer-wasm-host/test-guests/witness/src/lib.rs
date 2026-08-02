@@ -34,6 +34,7 @@ fn point(x: f32, y: f32, z: f32, width: f32, flow_factor: f32) -> Point3WithWidt
         flow_factor,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     }
 }
 

@@ -1877,6 +1877,7 @@ fn build_paint_layer_data_with_plan(
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
                         dist_to_top_mm: p.dist_to_top_mm,
+                        overhang_distance_mm: p.overhang_distance_mm,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1901,6 +1902,7 @@ fn build_paint_layer_data_with_plan(
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     })
                     .collect();
                 bucket.push(pts);

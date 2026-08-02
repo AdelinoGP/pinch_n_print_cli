@@ -207,11 +207,15 @@ The `geometry` interface defines the shared geometric primitives: `point2`
 `polygon`, `ex-polygon`, `extrusion-path3d`, the `extrusion-role` variant, and
 `semver`.
 
-The current `point3-with-width` record has seven fields: `x`, `y`, `z`,
-`width`, `flow-factor`, `overhang-quartile`, and `dist-to-top-mm`. The first
-five are millimeter `f32` geometry/flow values; `overhang-quartile` is the
-optional wall-family classification; and `dist-to-top-mm` is the per-point
-support-planner distance from the point to the top of its support column.
+The current `point3-with-width` record has eight fields: `x`, `y`, `z`,
+`width`, `flow-factor`, `overhang-quartile`, `dist-to-top-mm`, and
+`overhang-distance-mm`. The first five are millimeter `f32` geometry/flow
+values; `overhang-quartile` is the optional wall-family classification;
+`dist-to-top-mm` is the per-point support-planner distance from the point to
+the top of its support column; and `overhang-distance-mm` is the optional
+signed perpendicular distance in millimeters from the point to the previous
+layer's slice boundary, normalised by `boundary_offset` where
+`boundary_offset = 0.5 × width`.
 
 Seam candidates intentionally use the separate six-field
 `seam-point3-with-width` record (`x`, `y`, `z`, `width`, `flow-factor`, and
@@ -271,6 +275,9 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   fields `id`, `facet-indices`, `z-min`, `z-max`, `area-mm2`, `printable`,
   `shell-count`) — distinct from the smaller write-side `surface-group-proposal`
   (PrePass). Added packet 104.
+- `slice-region-view` exposes `prev-layer-boundary: func() -> list<ex-polygon>`,
+  returning the previous layer's slice boundary contours for the current
+  region.
 - `slice-region-view` and `perimeter-region-view` expose
   `config: func() -> config-view`, providing a per-region config accessor for
   resolved settings inside each region loop. Packet 131 bumps `world-layer`

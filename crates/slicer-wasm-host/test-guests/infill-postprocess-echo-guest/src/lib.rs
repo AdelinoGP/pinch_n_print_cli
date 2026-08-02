@@ -64,6 +64,7 @@ impl Guest for Component {
                     .unwrap_or(-1.0);
                 let header = slicer::types::geometry::ExtrusionPath3d {
                     points: vec![slicer::types::geometry::Point3WithWidth {
+                        overhang_distance_mm: None,
                         x: region.tool_index() as f32,
                         y: wall_source,
                         z: 0.0,
@@ -88,6 +89,7 @@ impl Guest for Component {
                 for (field_id, polygons) in fields.iter().enumerate() {
                     for (polygon_index, polygon) in polygons.iter().enumerate() {
                         let mut points = vec![slicer::types::geometry::Point3WithWidth {
+                            overhang_distance_mm: None,
                             x: field_id as f32,
                             y: polygon_index as f32,
                             z: 0.0,
@@ -98,6 +100,7 @@ impl Guest for Component {
                         }];
                         for point in &polygon.contour.points {
                             points.push(slicer::types::geometry::Point3WithWidth {
+                                overhang_distance_mm: None,
                                 x: point.x as f32,
                                 y: point.y as f32,
                                 z: 0.0,
@@ -110,6 +113,7 @@ impl Guest for Component {
                         for hole in &polygon.holes {
                             for point in &hole.points {
                                 points.push(slicer::types::geometry::Point3WithWidth {
+                                    overhang_distance_mm: None,
                                     x: point.x as f32,
                                     y: point.y as f32,
                                     z: 0.0,

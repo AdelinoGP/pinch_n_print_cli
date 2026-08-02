@@ -1034,6 +1034,7 @@ Two new read-only accessors are available on `SliceRegionView` from packet 104 o
 ### SliceRegionView accessors (packet 107)
 
 - `overhang_quartile_polygons(&self) -> &[QuartileBand]` — returns the per-layer overhang quartile bands for this region, host-pre-filtered so the module only sees bands relevant to its region; returns an empty slice when no overhang data exists for the layer. Populated by the same host populator as `overhang_areas()`, from `SurfaceClassificationIR.overhang_quartile_polygons` keyed by `global_layer_index` (`crates/slicer-wasm-host/src/marshal/in_.rs`). Backed by the WIT `quartile-band` record and the `overhang-quartile-polygons` function on `slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`). Mapped into the guest `SliceRegionView` by the `#[slicer_module]` macro adapter (`crates/slicer-macros/src/lib.rs`) alongside `overhang_areas`, `bridge_areas`, `is_bridge`, `bridge_orientation_deg`, and `surface_group` — all available to WASM guests today.
+- `prev_layer_boundary(&self) -> &[ExPolygon]` — returns the previous layer's slice boundary contours for this region; returns an empty slice when no previous-layer boundary is available. Backed by the WIT `prev-layer-boundary: func() -> list<ex-polygon>` accessor on `slice-region-view`.
 
 ---
 

@@ -39,6 +39,7 @@ fn per_role_speed_resolves_to_f_token() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -48,6 +49,7 @@ fn per_role_speed_resolves_to_f_token() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: role.clone(),
@@ -138,6 +140,7 @@ fn speed_factor_modulates_role_speed() {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -147,6 +150,7 @@ fn speed_factor_modulates_role_speed() {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role: ExtrusionRole::OuterWall,
@@ -204,6 +208,7 @@ fn module_supplied_f_wins() {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             }],
             role: ExtrusionRole::InnerWall,
             speed_factor: 1.0,
@@ -272,6 +277,7 @@ fn distinct_feedrates_present() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -281,6 +287,7 @@ fn distinct_feedrates_present() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -298,9 +305,19 @@ fn distinct_feedrates_present() {
     });
 
     layer.ordered_entities.push(PrintEntity {
-        entity_id: 2,
+        entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![
+                Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                },
                 Point3WithWidth {
                     x: 10.0,
                     y: 0.0,
@@ -309,21 +326,13 @@ fn distinct_feedrates_present() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
-                },
-                Point3WithWidth {
-                    x: 20.0,
-                    y: 0.0,
-                    z: 0.2,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
-            role: ExtrusionRole::SparseInfill,
+            role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::SparseInfill,
+        role: ExtrusionRole::OuterWall,
         tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
@@ -383,6 +392,7 @@ fn f_token_within_200_lines() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -392,6 +402,7 @@ fn f_token_within_200_lines() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -534,6 +545,7 @@ fn p189_point(x: f32, y: f32) -> Point3WithWidth {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     }
 }
 

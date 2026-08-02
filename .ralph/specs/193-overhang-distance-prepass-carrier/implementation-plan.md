@@ -13,7 +13,7 @@
 
 ### Step 0: Pin the schema versions, re-derive the sweep, and record the baselines
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: write the two pin files `AC-2` reads, re-derive the struct-literal blast radius that Steps 3-9 are sized against, and capture the do-not-regress baselines.
 - Precondition: tree is at `deviations-fix` HEAD, working tree clean for `crates/slicer-core/src/algos/overhang_annotation.rs` (`AC-N2`'s probe compares against `HEAD`).
 - Postcondition: `target/pin-perimeter-schema-before.txt` and `target/pin-surface-schema-before.txt` exist and hold the pre-packet `major.minor.patch`; `AC-2` prints its "no additive minor bump" FAIL (not its "pin file missing" FAIL); the sweep breakdown is recorded in the swarm log and **frozen into no file**.
@@ -41,7 +41,7 @@
 
 ### Step 1: Red tests for the carrier, the contract, and the two stamping sites
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: write the six failing tests that define the contract before any production code exists — `overhang_distance_is_signed_and_boundary_offset_normalised`, `expolygon_to_path3d_stamps_signed_distance_and_none_on_empty_boundary`, `no_previous_layer_stamps_none_not_zero` and `quartile_stamping_is_unchanged_by_the_distance_carrier` (all in the new `crates/slicer-core/tests/overhang_distance_carrier_tdd.rs`); `absent_overhang_distance_deserializes_as_none` (new `crates/slicer-ir/tests/point3_overhang_distance_roundtrip.rs`); `arachne_stamps_distance_for_regions_with_no_overhang_bands` (new `modules/core-modules/arachne-perimeters/tests/overhang_distance_tdd.rs`).
 - Precondition: Step 0 complete.
 - Postcondition: all three new binaries fail to **compile** (`overhang_distance_mm`, `signed_distance_to_boundary` and `expolygon_to_path3d`'s new parameter do not exist). A non-compiling test binary is the correct red state; do not stub the field to make it link.
@@ -72,7 +72,7 @@
 
 ### Step 2: Add `overhang_distance_mm` to `Point3WithWidth` and the WIT record, and bump the perimeter schema
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: add `#[serde(default)] pub overhang_distance_mm: Option<f32>` to `Point3WithWidth` (`crates/slicer-ir/src/slice_ir.rs`) with a doc-comment carrying the **signed** convention and the `+ boundary_offset` normalisation verbatim from `design.md` §Data and Contract Notes; add `overhang-distance-mm: option<f32>` to `record point3-with-width` (`crates/slicer-schema/wit/deps/types.wit`); take the additive minor bump on `CURRENT_PERIMETER_IR_SCHEMA_VERSION` with a comment naming this packet. **`record seam-point3-with-width` two lines below in the same file gets NOTHING** — see `design.md` §Data and Contract Notes.
 - Precondition: Step 1 complete; the three new test binaries are red for missing symbols.
 - Postcondition: `AC-1`, `AC-2`, `AC-3` and `AC-N3` print PASS; `cargo check --workspace --all-targets` now fails, and every remaining failure is `E0063` (missing field `overhang_distance_mm`) — that failure list is Steps 3-9's worklist.
@@ -107,7 +107,7 @@
 
 ### Step 3: Struct-literal sweep, group A — `slicer-ir`, `slicer-core`, `slicer-macros`
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: add `overhang_distance_mm: None,` to every exhaustive `Point3WithWidth { … }` literal in these three crates. Do not read the files for comprehension — edit the literal and move on.
 - Precondition: Step 2 complete; `cargo check --workspace --all-targets` fails only with `E0063`.
 - Postcondition: `cargo check -p slicer-ir --all-targets`, `cargo check -p slicer-core --all-targets` and `cargo check -p slicer-macros --all-targets` report no `E0063`.
@@ -139,7 +139,7 @@
 
 ### Step 4: Carry the previous-layer boundary from the producer to `SurfaceClassificationIR`, and add the distance helper
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: add `#[serde(default)] pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>` to `SurfaceClassificationIR` keyed by **global** layer index; take the additive minor bump on `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION`; have `annotate_overhangs` (`crates/slicer-core/src/algos/overhang_annotation.rs`) return the previous-layer contours it already computes for the diff; have `commit_overhang_annotation_builtin` (`crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`) populate the map; add `signed_distance_to_boundary` to `crates/slicer-core/src/perimeter_utils.rs` with its unit convention stated in its doc-comment, and extend `expolygon_to_path3d` with the boundary parameter and the stamped field, updating **every** caller in the same step.
 - Precondition: Step 3 complete.
 - Postcondition: `AC-4`, `AC-5` and `AC-N1` print PASS; `AC-N2`'s `BAND_BOUNDARY_MULTIPLIERS` conjunct still prints PASS.
@@ -176,7 +176,7 @@
 
 ### Step 5: WIT accessor, host marshalling, and the `slicer-wasm-host` real edits
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: add `prev-layer-boundary: func() -> list<ex-polygon>` to `resource slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`), beside the existing `overhang-quartile-polygons`; marshal both it and the new `point3-with-width` field in `crates/slicer-wasm-host/src/marshal/{in_,out,leaf}.rs`. Then rebuild guests.
 - Precondition: Step 4 complete.
 - Postcondition: `AC-7` and `AC-9` print PASS.
@@ -204,14 +204,15 @@
 - OrcaSlicer refs:
   - none for this step
 - Verification:
-  - the `AC-7` command - FACT (all four links of the producer→guest path)
+   - `bash -c 'python3 -c "import io,re; p=r\"crates/slicer-ir/src/slice_ir.rs\"; q=r\"target/pin-surface-schema-before.txt\"; s=io.open(p,encoding=\"utf-8\").read(); before=tuple(map(int,io.open(q,encoding=\"utf-8\").read().strip().split(\".\"))); k=\"CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer\"; b=s[s.index(k):s.index(k)+200]; now=tuple(int(re.search(name+r\":\\s*(\\d+)\",b).group(1)) for name in (\"major\",\"minor\",\"patch\")); print(\"PASS\" if now[0]==before[0] and now[1]>before[1] and now[2]==0 else \"FAIL: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION did not take an additive minor bump\")"'` - FACT (compares the live surface constant with the Step-0 pin: same major, strictly greater minor, patch 0)
+   - the `AC-7` command - FACT (all six links of the producer→guest path)
   - the `AC-9` command - FACT (rebuild without `--check` if it reports `STALE:`, then re-run)
   - `bash -c 'cargo check -p slicer-wasm-host 2>&1 | rg -q "^error" && echo FAIL || echo PASS'` - FACT
-- Exit condition: three PASS lines. **Do not proceed to Step 6 while `--check` reports `STALE:`** — every later component, dispatch or module test failure would be unattributable, and `CLAUDE.md` forbids attributing it to anything else until `--check` is clean.
+ - Exit condition: four PASS lines. **Do not proceed to Step 6 while `--check` reports `STALE:`** — every later component, dispatch or module test failure would be unattributable, and `CLAUDE.md` forbids attributing it to anything else until `--check` is clean.
 
 ### Step 6: Struct-literal sweep, group B — `slicer-wasm-host`, `slicer-sdk`, `slicer-gcode`, `pnp-cli`
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: same mechanical `overhang_distance_mm: None,` insertion across this group.
 - Precondition: Step 5 complete; `--check` clean.
 - Postcondition: `cargo check` on all four crates with `--all-targets` reports no `E0063`.
@@ -239,7 +240,7 @@
 
 ### Step 7: Struct-literal sweep, group C — `slicer-runtime` `executor` bucket and crate `src`
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: same mechanical insertion across `crates/slicer-runtime/src/`, `crates/slicer-runtime/tests/*.rs` (the top-level, un-bucketed test files) and the `crates/slicer-runtime/tests/executor/` bucket — the single densest group in the sweep.
 - Precondition: Step 6 complete.
 - Postcondition: `cargo check -p slicer-runtime --all-targets` reports no `E0063` originating in these paths.
@@ -267,7 +268,7 @@
 
 ### Step 8: Struct-literal sweep, group D — `slicer-runtime` `contract`, `integration`, `unit`, `e2e`, `common`, `fixtures` buckets
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: same mechanical insertion across the remaining `slicer-runtime` test buckets.
 - Precondition: Step 7 complete.
 - Postcondition: `cargo check -p slicer-runtime --all-targets` reports **zero** `E0063`.
@@ -296,7 +297,7 @@
 
 ### Step 9a: Struct-literal sweep, group E — `modules/core-modules`, infill and path family
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: same mechanical insertion across `fuzzy-skin`, `gyroid-infill`, `infill-linker`, `lightning-infill`, `overhang-classifier-default`, `part-cooling`, `path-optimization-default` and `rectilinear-infill`.
 - Precondition: Step 8 complete.
 - Postcondition: `cargo check` on each of these module crates with `--all-targets` reports no `E0063`.
@@ -324,7 +325,7 @@
 
 ### Step 9b: Struct-literal sweep, group F — `modules/core-modules`, seam, support and tower family
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: same mechanical insertion across `seam-placer`, `seam-planner-default`, `skirt-brim`, `support-planner`, `support-surface-ironing`, `top-surface-ironing`, `traditional-support`, `tree-support` and `wipe-tower`; plus the two perimeter modules' literals (their *stamping* changes are Step 6-adjacent and land here only as literals if any remain).
 - Precondition: Step 9a complete.
 - Postcondition: `cargo check --workspace --all-targets` reports **zero** `E0063` workspace-wide — `AC-8` prints PASS.
@@ -353,7 +354,7 @@
 
 ### Step 10: Stamp the distance at both perimeter sites, rebuild guests, and sweep the regression wall
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: pass the previous-layer boundary through `modules/core-modules/classic-perimeters/src/lib.rs` into `expolygon_to_path3d`, and stamp `overhang_distance_mm` in `modules/core-modules/arachne-perimeters/src/lib.rs` **outside** its `if !overhang_bands.is_empty()` guard; rebuild the guests; run the full regression sweep including clippy.
 - Precondition: Step 9b complete; `AC-8` green.
 - Postcondition: `AC-6`, `AC-9` and `AC-10` print PASS and `cargo clippy --workspace --all-targets -- -D warnings` is clean.
@@ -387,7 +388,7 @@
 
 ### Step 11: Docs, the new `DEV-###` row, and the TASK registration
 
-- Task IDs: `TASK-312`
+- Task IDs: `TASK-314`
 - Objective: land every entry in `packet.spec.md` §Doc Impact Statement — the `docs/02_ir_schemas.md` IR-7 and `SurfaceClassificationIR` edits, the `docs/03_wit_and_manifest.md` entries, the `docs/05_module_sdk.md` accessor row, one new `DEV-###` row for the per-point-vs-per-path `boundary_offset` divergence, and the TASK registration in `docs/07_implementation_status.md` outside the generated block.
 - Precondition: Step 10 complete; all code ACs green.
 - Postcondition: every doc verification command in `packet.spec.md` §Doc Impact Statement returns PASS, and `DEV-009` is still `Open`.

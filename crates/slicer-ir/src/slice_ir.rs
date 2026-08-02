@@ -182,9 +182,13 @@ impl std::fmt::Display for SemVer {
 /// Minor bump to 1.2.0 (packet 106) adds the additive `OverhangRegion.xy_footprint`
 /// field and `SurfaceClassificationIR.overhang_quartile_polygons` map.
 /// `#[serde(default)]` preserves backward compatibility with 1.1.0 fixtures.
+/// Minor bump to 1.3.0 (packet 193) adds the additive
+/// `SurfaceClassificationIR.prev_layer_boundaries` map of previous-layer slice
+/// boundary contours, keyed by global layer index.
+/// `#[serde(default)]` preserves backward compatibility with 1.2.0 fixtures.
 pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -279,11 +283,12 @@ pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `PerimeterIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `PerimeterIR`. Initial 1.0.0 — bumped to 1.1.0 by
+/// packet 193-overhang-distance-prepass-carrier: added
+/// `Point3WithWidth.overhang_distance_mm` (additive).
 pub const CURRENT_PERIMETER_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -667,6 +672,11 @@ pub struct SurfaceClassificationIR {
     /// annotation pipeline; not mirrored in the WIT boundary.
     #[serde(default)]
     pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
+    /// Previous-layer slice boundary contours keyed by global layer index.
+    /// Host-only aggregation populated by the PrePass overhang annotation
+    /// pipeline; not mirrored in the WIT boundary.
+    #[serde(default)]
+    pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>,
 }
 
 impl Default for SurfaceClassificationIR {
@@ -675,6 +685,7 @@ impl Default for SurfaceClassificationIR {
             schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
             per_object: HashMap::new(),
             overhang_quartile_polygons: HashMap::new(),
+            prev_layer_boundaries: HashMap::new(),
         }
     }
 }
@@ -1747,6 +1758,20 @@ pub struct Point3WithWidth {
     /// Distance from this point to the top of its support column in mm
     #[serde(default)]
     pub dist_to_top_mm: f32,
+    /// The **signed** perpendicular distance, in millimetres, from this point
+    /// to the **previous layer's slice boundary**, already normalised by
+    /// adding `boundary_offset`, where `boundary_offset = 0.5 × width` and
+    /// `width` is this point's own stamped extrusion width.
+    ///
+    /// - Negative ⇒ the point lies inside (over) the previous layer by more
+    ///   than `boundary_offset`.
+    /// - Zero ⇒ the point lies exactly on the offset boundary.
+    /// - Positive ⇒ the point overhangs beyond the offset boundary.
+    /// - `None` ⇒ no distance was measured (no previous layer, or the
+    ///   previous-layer boundary for this region is empty). Never substituted
+    ///   with `0.0`, `-1.0` or `f32::MAX` by any producer or consumer.
+    #[serde(default)]
+    pub overhang_distance_mm: Option<f32>,
 }
 
 /// Extrusion role
@@ -1903,6 +1928,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             })
             .collect(),
         role,

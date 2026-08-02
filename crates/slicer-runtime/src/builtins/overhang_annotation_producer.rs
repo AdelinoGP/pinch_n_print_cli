@@ -132,6 +132,7 @@ pub fn commit_overhang_annotation_builtin(
     // layer index -> quartile -> polygons from every object, in `mesh.objects`
     // iteration order (deterministic).
     let mut per_quartile: HashMap<u32, HashMap<u8, Vec<ExPolygon>>> = HashMap::new();
+    let mut prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
     for object in &mesh.objects {
         // This object's per-layer footprint, in plan order: the concatenated
         // region polygons it owns in each committed `SliceIR` (empty where the
@@ -152,10 +153,11 @@ pub fn commit_overhang_annotation_builtin(
             })
             .collect();
 
-        let per_object = slicer_core::algos::overhang_annotation::annotate_overhangs(
-            &layer_footprints,
-            line_width_mm,
-        );
+        let (per_object, per_object_boundaries) =
+            slicer_core::algos::overhang_annotation::annotate_overhangs(
+                &layer_footprints,
+                line_width_mm,
+            );
         for (layer_index, bands) in per_object {
             let layer_entry = per_quartile.entry(layer_index).or_default();
             for band in bands {
@@ -164,6 +166,12 @@ pub fn commit_overhang_annotation_builtin(
                     .or_default()
                     .extend(band.polygons);
             }
+        }
+        for (layer_index, boundaries) in per_object_boundaries {
+            prev_layer_boundaries
+                .entry(layer_index)
+                .or_default()
+                .extend(boundaries);
         }
     }
     let merged: HashMap<u32, Vec<QuartileBand>> = per_quartile
@@ -180,6 +188,7 @@ pub fn commit_overhang_annotation_builtin(
 
     let updated = SurfaceClassificationIR {
         overhang_quartile_polygons: merged,
+        prev_layer_boundaries,
         ..surface_classification.as_ref().clone()
     };
 

@@ -233,6 +233,7 @@ pub fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionP
                 flow_factor: p.flow_factor,
                 overhang_quartile: p.overhang_quartile,
                 dist_to_top_mm: p.dist_to_top_mm,
+                overhang_distance_mm: p.overhang_distance_mm,
             })
             .collect(),
         role: ir_to_wit_extrusion_role(&path.role),
@@ -357,6 +358,9 @@ pub fn convert_point(
     validate_finite(p.z, "z", index)?;
     validate_finite(p.width, "width", index)?;
     validate_finite(p.flow_factor, "flow_factor", index)?;
+    if let Some(d) = p.overhang_distance_mm {
+        validate_finite(d, "overhang_distance_mm", index)?;
+    }
     Ok(slicer_ir::Point3WithWidth {
         x: p.x,
         y: p.y,
@@ -365,6 +369,7 @@ pub fn convert_point(
         flow_factor: p.flow_factor,
         overhang_quartile: p.overhang_quartile,
         dist_to_top_mm: p.dist_to_top_mm,
+        overhang_distance_mm: p.overhang_distance_mm,
     })
 }
 

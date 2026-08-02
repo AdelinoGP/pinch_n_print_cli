@@ -29,8 +29,9 @@
   - `crates/slicer-ir/src/slice_ir.rs`: `Point3WithWidth` (field), `SurfaceClassificationIR` (field), `CURRENT_PERIMETER_IR_SCHEMA_VERSION`, `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION`.
   - `crates/slicer-schema/wit/deps/types.wit`: `record point3-with-width`.
   - `crates/slicer-schema/wit/deps/ir-types.wit`: `resource slice-region-view`.
+  - `crates/slicer-sdk/src/views.rs`: role: exposes the SDK-side `SliceRegionView` accessors; expected change: `prev_layer_boundary()`.
   - `crates/slicer-core/src/algos/overhang_annotation.rs`: `annotate_overhangs` returns the previous-layer contours alongside the bands. **Constants and banding geometry untouched** — see `requirements.md` §In Scope for the escape hatch if the return change cannot be made without touching tracked content.
-  - `crates/slicer-core/src/perimeter_utils.rs`: new `signed_distance_to_boundary`; `expolygon_to_path3d` gains a boundary parameter and one stamped field.
+  - `crates/slicer-core/src/perimeter_utils.rs`: new `signed_distance_to_boundary(x, y, &[ExPolygon]) -> f32` helper returning a raw signed f32 distance in mm; the stamping sites map "no boundary" to `None`; `expolygon_to_path3d` gains a boundary parameter and one stamped field.
   - `crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`: `commit_overhang_annotation_builtin` populates the new map.
   - `crates/slicer-wasm-host/src/marshal/{in_,out,leaf}.rs`: the new record field and the new accessor. **These three files name `dist_to_top_mm` today and will therefore appear in the sweep's proxy count — they are conversions, not literals, and they need a real edit rather than a blind inserted line.**
   - `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`.
@@ -48,6 +49,7 @@ Target at most 3 primary files; this packet exceeds that because a prepass→gue
 - `crates/slicer-ir/src/slice_ir.rs` — role: owns both carrier types and both schema constants; expected change: two fields, two additive minor bumps.
 - `crates/slicer-schema/wit/deps/types.wit` — role: canonical WIT source read by both host `bindgen!` and the guest macro's `include_str!`; expected change: one record field.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — role: same; expected change: one `slice-region-view` accessor.
+- `crates/slicer-sdk/src/views.rs` — role: exposes the SDK-side `SliceRegionView` accessors; expected change: `prev_layer_boundary()`.
 - `crates/slicer-core/src/perimeter_utils.rs` — role: the classic stamping site and the home of the new distance helper; expected change: one new function, one parameter, one stamped field.
 - `crates/slicer-core/src/algos/overhang_annotation.rs` — role: the producer that already diffs consecutive layers; expected change: return the contours it already computes. **Constants untouched.**
 - `crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs` — role: commits the producer's output into `SurfaceClassificationIR`; expected change: populate one map.

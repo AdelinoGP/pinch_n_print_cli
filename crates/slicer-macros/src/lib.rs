@@ -1093,6 +1093,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             flow_factor: pt.flow_factor,
                             overhang_quartile: pt.overhang_quartile,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: pt.overhang_distance_mm,
                         })
                         .collect(),
                     role: __slicer_role_ir_to_wit(&p.role),
@@ -1113,6 +1114,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             flow_factor: pt.flow_factor,
                             overhang_quartile: pt.overhang_quartile,
                             dist_to_top_mm: 0.0,
+                            overhang_distance_mm: pt.overhang_distance_mm,
                         })
                         .collect(),
                     role: __slicer_role_wit_to_ir(p.role.clone()),
@@ -1835,6 +1837,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                     flow_factor: pt.flow_factor,
                     overhang_quartile: pt.overhang_quartile,
                     dist_to_top_mm: pt.dist_to_top_mm,
+                    overhang_distance_mm: pt.overhang_distance_mm,
                 }).collect())
                 .collect();
             let __slicer_wit_entry = SupportPlanEntry {
@@ -2202,10 +2205,16 @@ fn layer_light_helpers() -> TokenStream2 {
                     .iter()
                     .map(__slicer_wit_quartileband_to_ir)
                     .collect();
+                let prev_layer_boundary: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .prev_layer_boundary()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
                 sdk_view.set_overhang_areas(
                     overhang_areas,
                 );
                 sdk_view.set_overhang_quartile_polygons(overhang_quartile_polygons);
+                sdk_view.set_prev_layer_boundary(prev_layer_boundary);
                 sdk_view.set_surface_group(
                     r.surface_group()
                         .as_ref()
@@ -2298,6 +2307,7 @@ fn layer_light_helpers() -> TokenStream2 {
                                 flow_factor: point.flow_factor,
                                 overhang_quartile: point.overhang_quartile,
                                 dist_to_top_mm: point.dist_to_top_mm,
+                                overhang_distance_mm: point.overhang_distance_mm,
                             })
                             .collect(),
                         role: ::slicer_ir::ExtrusionRole::SupportMaterial,
@@ -2362,6 +2372,7 @@ fn layer_glue_helpers() -> TokenStream2 {
             ::slicer_ir::Point3WithWidth {
                 x: p.x, y: p.y, z: p.z, width: p.width, flow_factor: p.flow_factor,
                 overhang_quartile: p.overhang_quartile, dist_to_top_mm: 0.0,
+                overhang_distance_mm: p.overhang_distance_mm,
             }
         }
         fn __slicer_wit_path_to_ir(p: &WitExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
@@ -2440,6 +2451,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                     x: sc.position.x, y: sc.position.y, z: sc.position.z,
                     width: 0.0, flow_factor: 1.0, overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 score: sc.score, reason: ::slicer_ir::SeamReason::Aligned,
             }
@@ -2509,6 +2521,7 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                     x: pt.x, y: pt.y, z: pt.z, width: pt.width, flow_factor: pt.flow_factor,
                     overhang_quartile: pt.overhang_quartile,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: pt.overhang_distance_mm,
                 }).collect(),
                 role: __slicer_ir_role_to_wit(&p.role),
                 speed_factor: p.speed_factor,
@@ -2710,6 +2723,7 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                         flow_factor: pos.flow_factor,
                         overhang_quartile: pos.overhang_quartile,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: pos.overhang_distance_mm,
                     },
                     *wall_index,
                     &__slicer_ir_wallloop_to_wit(loop_),

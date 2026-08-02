@@ -60,6 +60,7 @@ fn make_wall_loop() -> WallLoopView {
         path: ExtrusionPath3d {
             points: vec![
                 Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: 0.0,
                     y: 0.0,
                     z: 0.2,
@@ -69,6 +70,7 @@ fn make_wall_loop() -> WallLoopView {
                     dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: 10.0,
                     y: 0.0,
                     z: 0.2,

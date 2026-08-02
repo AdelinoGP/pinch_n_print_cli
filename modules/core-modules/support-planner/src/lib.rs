@@ -641,6 +641,7 @@ impl SupportPlanner {
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: dist_a_mm,
+                        overhang_distance_mm: None,
                     },
                     Point3WithWidth {
                         x: nb.x,
@@ -650,6 +651,7 @@ impl SupportPlanner {
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: dist_b_mm,
+                        overhang_distance_mm: None,
                     },
                 ]);
                 if na.dist_to_top == 0 {
@@ -686,6 +688,7 @@ impl SupportPlanner {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 };
                 branch_segments.push(vec![point, point]);
             }
@@ -1442,6 +1445,7 @@ fn push_interface_scan_lines(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: p2x,
@@ -1451,6 +1455,7 @@ fn push_interface_scan_lines(
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ]);
     }

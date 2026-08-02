@@ -536,6 +536,7 @@ fn infill_capture_with_extent(from: f32, to: f32) -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: to,
@@ -545,6 +546,7 @@ fn infill_capture_with_extent(from: f32, to: f32) -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -580,6 +582,7 @@ fn simple_infill_capture(width: f32) -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -589,6 +592,7 @@ fn simple_infill_capture(width: f32) -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -634,6 +638,7 @@ fn perimeter_capture_with_seam(seam_xy: (f32, f32)) -> StageCapture {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         wall_index: 0,
     };
@@ -673,6 +678,7 @@ fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -682,6 +688,7 @@ fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role: ExtrusionRole::OuterWall,

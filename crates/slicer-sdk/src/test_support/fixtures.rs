@@ -153,6 +153,11 @@ pub struct SliceRegionViewBuilder {
     surface_group: Option<SurfaceGroup>,
     overhang_areas: Vec<ExPolygon>,
     overhang_quartile_polygons: Vec<QuartileBand>,
+    /// Test-only storage for packet 193's previous-layer boundary carrier.
+    /// Production host code populates `SliceRegionView`'s overhang_distance
+    /// machinery at the WASM marshal boundary; module tests bypass that
+    /// boundary and wire the carrier here.
+    prev_layer_boundary: Vec<ExPolygon>,
 }
 
 impl SliceRegionViewBuilder {
@@ -187,6 +192,7 @@ impl SliceRegionViewBuilder {
             surface_group: None,
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
+            prev_layer_boundary: Vec::new(),
         }
     }
 
@@ -400,6 +406,17 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the previous-layer slice boundary polygons (packet 193, AC-6).
+    ///
+    /// Test-only carrier used by `arachne-perimeters/tests/overhang_distance_tdd`.
+    /// Production code populates overhang_distance_mm at the WASM marshal
+    /// boundary rather than via this builder.
+    #[must_use]
+    pub fn previous_layer_boundary(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.prev_layer_boundary = polygons;
+        self
+    }
+
     /// Build a [`SliceRegionView`].
     ///
     /// If no infill areas were explicitly added, polygons are cloned
@@ -431,6 +448,7 @@ impl SliceRegionViewBuilder {
             tmp.set_surface_group(self.surface_group);
             tmp.set_overhang_areas(self.overhang_areas);
             tmp.set_overhang_quartile_polygons(self.overhang_quartile_polygons);
+            tmp.set_prev_layer_boundary(self.prev_layer_boundary);
             tmp
         }
     }
@@ -539,6 +557,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         })
         .collect();
     ExtrusionPath3D {
@@ -876,6 +895,7 @@ impl PerimeterRegionViewBuilder {
 ///     flow_factor: 1.0,
 ///     overhang_quartile: None,
 ///     dist_to_top_mm: 0.0,
+///     overhang_distance_mm: None,
 /// }];
 /// let entity = print_entity(
 ///     1,
@@ -929,11 +949,7 @@ pub fn print_entity(
 /// assert_eq!(tc.to_tool, 2);
 /// ```
 #[must_use]
-pub fn tool_change(
-    after_entity_index: u32,
-    from_tool: u32,
-    to_tool: u32,
-) -> ToolChange {
+pub fn tool_change(after_entity_index: u32, from_tool: u32, to_tool: u32) -> ToolChange {
     ToolChange {
         after_entity_index,
         from_tool,
@@ -960,16 +976,13 @@ pub fn tool_change(
 ///     flow_factor: 1.0,
 ///     overhang_quartile: None,
 ///     dist_to_top_mm: 0.0,
+///     overhang_distance_mm: None,
 /// };
 /// let sc = seam_candidate(pos, 0.5, SeamReason::Sharp);
 /// assert!((sc.score - 0.5).abs() < f32::EPSILON);
 /// ```
 #[must_use]
-pub fn seam_candidate(
-    position: Point3WithWidth,
-    score: f32,
-    reason: SeamReason,
-) -> SeamCandidate {
+pub fn seam_candidate(position: Point3WithWidth, score: f32, reason: SeamReason) -> SeamCandidate {
     SeamCandidate {
         position,
         score,

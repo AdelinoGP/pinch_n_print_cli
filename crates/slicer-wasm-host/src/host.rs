@@ -203,6 +203,9 @@ pub struct SliceRegionData {
     /// per-quartile grouping for callers that need severity-aware handling.
     pub overhang_quartile_polygons:
         Vec<layer_perimeters::slicer::ir_handles::ir_handles::QuartileBand>,
+    /// Previous-layer boundary contours for this region, pre-filtered to
+    /// overlap and clipped against the region polygons.
+    pub prev_layer_boundary: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Surface group resolved from SurfaceClassificationIR. None when no group applies.
     pub surface_group: Option<layer_perimeters::slicer::ir_handles::ir_handles::SurfaceGroup>,
 }
@@ -2695,6 +2698,7 @@ impl hs::Host for HostExecutionContext {
                                 flow_factor: j.p.flow_factor,
                                 overhang_quartile: j.p.overhang_quartile,
                                 dist_to_top_mm: j.p.dist_to_top_mm,
+                                overhang_distance_mm: j.p.overhang_distance_mm,
                             },
                             perimeter_index: j.perimeter_index,
                         })
@@ -2808,6 +2812,7 @@ mod region_origin_tests {
                 object_id: "obj-1".to_string(),
                 region_id: "01".to_string(),
                 polygons: Vec::new(),
+                prev_layer_boundary: Vec::new(),
                 infill_areas: Vec::new(),
                 effective_layer_height: 0.2,
                 z: 0.2,
@@ -3209,6 +3214,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         ));
         Ok(self.table.get(&self_)?.overhang_quartile_polygons.clone())
     }
+    fn prev_layer_boundary(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SurfaceClassificationIR.prev-layer-boundary"));
+        Ok(self.table.get(&self_)?.prev_layer_boundary.clone())
+    }
     fn surface_group(
         &mut self,
         self_: Resource<SliceRegionData>,
@@ -3315,6 +3328,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     },
                     wall_index,
                 },
@@ -3811,6 +3825,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     flow_factor: v.start_point.flow_factor,
                     overhang_quartile: v.start_point.overhang_quartile,
                     dist_to_top_mm: v.start_point.dist_to_top_mm,
+                    overhang_distance_mm: v.start_point.overhang_distance_mm,
                 },
                 end_point: Point3WithWidth {
                     x: v.end_point.x,
@@ -3820,6 +3835,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     flow_factor: v.end_point.flow_factor,
                     overhang_quartile: v.end_point.overhang_quartile,
                     dist_to_top_mm: v.end_point.dist_to_top_mm,
+                    overhang_distance_mm: v.end_point.overhang_distance_mm,
                 },
                 point_count: v.point_count,
             })
@@ -4239,6 +4255,7 @@ mod finalization_impls {
                     flow_factor: pt.flow_factor,
                     overhang_quartile: pt.overhang_quartile,
                     dist_to_top_mm: pt.dist_to_top_mm,
+                    overhang_distance_mm: None,
                 })
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),

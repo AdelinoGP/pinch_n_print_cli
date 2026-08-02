@@ -52,6 +52,7 @@ impl Guest for Component {
         let path = slicer::types::geometry::ExtrusionPath3d {
             points: vec![
                 slicer::types::geometry::Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: 0.0,
                     y: 0.0,
                     z,
@@ -61,6 +62,7 @@ impl Guest for Component {
                     dist_to_top_mm: 0.0,
                 },
                 slicer::types::geometry::Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: spacing as f32 * 10.0,
                     y: 0.0,
                     z,
@@ -77,6 +79,7 @@ impl Guest for Component {
         if lightning_segment_count > 0 {
             let witness = slicer::types::geometry::ExtrusionPath3d {
                 points: vec![slicer::types::geometry::Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: lightning_segment_count as f32,
                     y: 0.0,
                     z,

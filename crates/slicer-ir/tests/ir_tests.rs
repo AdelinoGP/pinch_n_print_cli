@@ -269,6 +269,7 @@ mod tests {
             },
             per_object: std::collections::HashMap::new(),
             overhang_quartile_polygons: std::collections::HashMap::new(),
+            prev_layer_boundaries: std::collections::HashMap::new(),
         };
 
         test_serde_roundtrip!(surf_ir);
@@ -656,7 +657,7 @@ fn slice_ir_schema_version_is_one_one_zero() {
 /// AC-10 (packet 36-rev1): bridge_detector_schema_versions_are_constant_sourced
 ///
 /// Asserts that:
-///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 2, 0 }
+///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 3, 0 }
 ///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 6, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
@@ -667,10 +668,10 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
         slicer_ir::CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 1,
-            minor: 2,
+            minor: 3,
             patch: 0
         },
-        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 2, 0)"
+        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 3, 0)"
     );
 
     // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding);

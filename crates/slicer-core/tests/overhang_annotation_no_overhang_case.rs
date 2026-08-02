@@ -48,7 +48,7 @@ fn straight_cube_has_no_overhang_at_any_layer() {
     let mesh = straight_cube_mesh();
     let layer_zs = vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, 5.0_f32];
 
-    let result = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
+    let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
 
     assert!(
         result.is_empty(),
@@ -59,13 +59,13 @@ fn straight_cube_has_no_overhang_at_any_layer() {
 #[test]
 fn empty_layer_list_does_not_panic() {
     let mesh = straight_cube_mesh();
-    let result = annotate_overhangs(&footprints(&mesh, &[]), 0.4);
+    let (result, _) = annotate_overhangs(&footprints(&mesh, &[]), 0.4);
     assert!(result.is_empty());
 }
 
 #[test]
 fn single_layer_has_no_previous_and_does_not_panic() {
     let mesh = straight_cube_mesh();
-    let result = annotate_overhangs(&footprints(&mesh, &[5.0]), 0.4);
+    let (result, _) = annotate_overhangs(&footprints(&mesh, &[5.0]), 0.4);
     assert!(result.is_empty());
 }

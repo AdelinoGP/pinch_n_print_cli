@@ -586,6 +586,7 @@ fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
         },
         perimeter_index: 0,
     };

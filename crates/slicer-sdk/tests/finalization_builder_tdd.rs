@@ -38,6 +38,7 @@ fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D
                 flow_factor,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             slicer_ir::Point3WithWidth {
                 x: 1.0,
@@ -47,6 +48,7 @@ fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D
                 flow_factor,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role,
@@ -725,6 +727,7 @@ fn make_path_with_n_points(role: ExtrusionRole, n: usize) -> ExtrusionPath3D {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             })
             .collect(),
         role,

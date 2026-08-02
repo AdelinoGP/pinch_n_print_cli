@@ -433,6 +433,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             }],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -856,6 +857,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -865,6 +867,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
@@ -874,6 +877,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,

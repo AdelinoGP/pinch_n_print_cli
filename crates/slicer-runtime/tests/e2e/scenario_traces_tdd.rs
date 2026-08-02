@@ -407,6 +407,7 @@ fn seam_aligned_default_e2e() {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
     let make_region = |object_id: &str, region_id: u64, x0: f32, seam_x: Option<f32>| {
         let mut region = slicer_sdk::views::PerimeterRegionView::default();

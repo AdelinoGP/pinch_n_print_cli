@@ -611,6 +611,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -620,6 +621,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -644,6 +646,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             }],
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,

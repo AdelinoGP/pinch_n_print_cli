@@ -124,6 +124,7 @@ fn seeded_surface_classification() -> SurfaceClassificationIR {
         schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         per_object,
         overhang_quartile_polygons,
+        prev_layer_boundaries: HashMap::new(),
     }
 }
 

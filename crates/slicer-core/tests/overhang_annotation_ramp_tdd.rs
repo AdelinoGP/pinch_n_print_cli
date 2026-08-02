@@ -86,7 +86,7 @@ fn ramp_overhang_partitions_into_correctly_ordered_bands() {
     // is 0.9mm wide).
     let layer_zs = vec![3.0_f32, 3.2_f32, 4.1_f32];
 
-    let result = annotate_overhangs(&footprints(&mesh, &layer_zs), LINE_WIDTH_MM);
+    let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), LINE_WIDTH_MM);
 
     // Layer 0 has no previous layer: never overhanging, key absent.
     assert!(

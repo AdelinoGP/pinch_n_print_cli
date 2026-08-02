@@ -64,6 +64,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     // Provide one slice region at z=1.0
     let region_handle = ctx
         .push_slice_region(SliceRegionData {
+            prev_layer_boundary: Vec::new(),
             object_id: "obj-1".into(),
             region_id: "1".into(),
             polygons: vec![],
@@ -176,6 +177,7 @@ fn guest_reads_region_z_from_ir_view() {
         .unwrap();
     let region_handle = ctx
         .push_slice_region(SliceRegionData {
+            prev_layer_boundary: Vec::new(),
             object_id: "obj-z-test".into(),
             region_id: "2".into(),
             polygons: vec![],
@@ -266,6 +268,7 @@ fn guest_emits_output_via_infill_builder() {
         .unwrap();
     let region_handle = ctx
         .push_slice_region(SliceRegionData {
+            prev_layer_boundary: Vec::new(),
             object_id: "obj-out".into(),
             region_id: "3".into(),
             polygons: vec![],
@@ -364,6 +367,7 @@ fn guest_logs_via_host_services() {
         .unwrap();
     let region_handle = ctx
         .push_slice_region(SliceRegionData {
+            prev_layer_boundary: Vec::new(),
             object_id: "obj-log".into(),
             region_id: "4".into(),
             polygons: vec![],
@@ -459,6 +463,7 @@ fn repeated_calls_produce_independent_outputs() {
             .unwrap();
         let region_handle = ctx
             .push_slice_region(SliceRegionData {
+                prev_layer_boundary: Vec::new(),
                 object_id: format!("obj-{i}"),
                 region_id: (i + 1).to_string(),
                 polygons: vec![],

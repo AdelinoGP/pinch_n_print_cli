@@ -1027,6 +1027,7 @@ mod tests {
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 }],
                 role: slicer_ir::ExtrusionRole::OuterWall,
                 speed_factor: 1.0,

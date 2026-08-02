@@ -382,7 +382,7 @@ fn real_wall_entity(
         ],
     };
     let points =
-        slicer_core::perimeter_utils::expolygon_to_path3d(&contour, z, 0.4, overhang_bands);
+        slicer_core::perimeter_utils::expolygon_to_path3d(&contour, z, 0.4, overhang_bands, &[]);
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {

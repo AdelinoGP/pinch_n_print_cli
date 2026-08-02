@@ -358,6 +358,7 @@ pub fn convert_perimeter_output(
                         flow_factor: 1.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     },
                     score: *score,
                     reason: slicer_ir::SeamReason::Aligned,
@@ -380,6 +381,7 @@ pub fn convert_perimeter_output(
                     flow_factor: 1.0,
                     dist_to_top_mm: 0.0,
                     overhang_quartile: None,
+                    overhang_distance_mm: None,
                 },
                 wall_index: *wall_index,
             });

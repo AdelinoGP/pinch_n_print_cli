@@ -309,6 +309,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
                     width: 0.4,
                     flow_factor: 1.0,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                     ..Default::default()
                 }],
                 role: ExtrusionRole::OuterWall,
@@ -360,6 +361,7 @@ fn seam_plan_blackboard_slot_is_write_once() {
         width: 0.4,
         flow_factor: 1.0,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
         ..Default::default()
     };
     let seam_position = SeamPosition {

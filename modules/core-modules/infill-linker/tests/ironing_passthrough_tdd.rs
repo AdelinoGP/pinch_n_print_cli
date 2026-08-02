@@ -16,6 +16,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 flow_factor: 1.0,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: x_offset + 2.0,
@@ -25,6 +26,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 flow_factor: 0.8,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             Point3WithWidth {
                 x: x_offset + 4.0,
@@ -34,6 +36,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 flow_factor: 1.2,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
         ],
         role,

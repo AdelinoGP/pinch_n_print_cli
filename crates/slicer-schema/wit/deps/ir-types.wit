@@ -73,6 +73,7 @@ interface ir-handles {
         held-claims: func() -> list<string>;
         overhang-areas: func() -> list<ex-polygon>;
         overhang-quartile-polygons: func() -> list<quartile-band>;
+        prev-layer-boundary: func() -> list<ex-polygon>;
         surface-group: func() -> option<surface-group>;
         // Ordered (paint-semantic-name, value) pairs identifying this region's
         // paint variant. Carries the painted FuzzySkin signal

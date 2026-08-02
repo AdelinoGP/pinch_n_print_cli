@@ -391,6 +391,11 @@ pub fn sliced_region_to_data(
             .iter()
             .flat_map(|band| band.polygons.clone())
             .collect();
+    let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
+        surface_classification
+            .and_then(|sc| sc.prev_layer_boundaries.get(&global_layer_index))
+            .map(|polygons| ir_to_wit_expolygons(polygons))
+            .unwrap_or_default();
 
     SliceRegionData {
         object_id: region.object_id.clone(),
@@ -414,6 +419,7 @@ pub fn sliced_region_to_data(
         held_claims,
         overhang_areas,
         overhang_quartile_polygons,
+        prev_layer_boundary,
         surface_group,
     }
 }
@@ -661,6 +667,7 @@ pub fn harvest_seam_plan_ir_from(
                     flow_factor: sc.position.flow_factor,
                     overhang_quartile: sc.position.overhang_quartile,
                     dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
                 },
                 score: sc.score,
                 reason: match sc.reason.tag.as_str() {
@@ -681,6 +688,7 @@ pub fn harvest_seam_plan_ir_from(
                 flow_factor: entry.chosen_position.flow_factor,
                 overhang_quartile: entry.chosen_position.overhang_quartile,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             },
             wall_index: entry.chosen_wall_index,
         };
@@ -730,6 +738,7 @@ pub(crate) fn harvest_support_plan_ir_from(
                     flow_factor: p.flow_factor,
                     overhang_quartile: p.overhang_quartile,
                     dist_to_top_mm: p.dist_to_top_mm,
+                    overhang_distance_mm: p.overhang_distance_mm,
                 })
                 .collect();
             branch_segments.push(ExtrusionPath3D {

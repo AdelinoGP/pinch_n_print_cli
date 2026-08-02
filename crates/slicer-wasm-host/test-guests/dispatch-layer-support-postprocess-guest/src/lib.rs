@@ -23,6 +23,7 @@ impl Guest for Component {
             let _region_id = region.region_id();
             let path = slicer::types::geometry::ExtrusionPath3d {
                 points: vec![slicer::types::geometry::Point3WithWidth {
+                    overhang_distance_mm: None,
                     x: region.polygons().len() as f32,
                     y: 0.0,
                     z: region.z(),

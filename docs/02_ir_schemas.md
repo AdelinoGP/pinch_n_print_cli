@@ -519,19 +519,27 @@ caller must call this symbol rather than re-implementing the parse.
 
 **Stage:** Output of `PrePass::MeshAnalysis`  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 1.2.0** (Bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
+**Current schema_version: 1.3.0** (Bumped from 1.2.0 to 1.3.0 by packet 193 — additive `prev_layer_boundaries` map, keyed by GLOBAL layer index exactly as `overhang_quartile_polygons`. Previously bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
 
 ```rust
 pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
     /// Populated by `PrePass::OverhangAnnotation` (packet 106), which atomically
-    /// replaces this IR via `replace_surface_classification()`. Key = global layer
+    /// replaces this IR via `replace_surface_classification()`. Key = GLOBAL layer
     /// index. A layer with no overhang has its key ABSENT (not an empty Vec); layer 0
     /// is always absent. `#[serde(default)]`.
     pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
+    /// Previous-layer slice boundary contours keyed by GLOBAL layer index,
+    /// exactly as `overhang_quartile_polygons`. Host-only aggregation
+    /// populated by the PrePass overhang annotation pipeline; not mirrored in
+    /// the WIT boundary.
+    #[serde(default)]
+    pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>,
 }
 ```
+
+Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by GLOBAL layer index.
 
 **Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); `D-104-OVERHANG-QUARTILE-NONE` closed 2026-07-03.
 
@@ -1018,6 +1026,7 @@ pub struct Point2 { pub x: i64, pub y: i64 }   // 1 unit = 100 nm = 10⁻⁴ mm
 ## IR 7 — PerimeterIR
 
 **Stage:** Output of `Layer::Perimeters`, mutated by `Layer::PerimetersPostProcess`
+**Current schema_version: 1.1.0** (Bumped additively from 1.0.0 to 1.1.0 by packet 193 for the optional `Point3WithWidth.overhang_distance_mm` field.)
 
 ```rust
 pub struct PerimeterIR {
@@ -1184,6 +1193,18 @@ pub struct Point3WithWidth {
     /// Support-planner emits this per point; non-support geometry uses `0.0`.
     /// Added in packet 119.
     pub dist_to_top_mm: f32,
+    /// The **signed** perpendicular distance, in millimetres, from this point
+    /// to the **previous layer's slice boundary**, already normalised by
+    /// adding `boundary_offset`, where `boundary_offset = 0.5 × width` and
+    /// `width` is this point's own stamped extrusion width.
+    ///
+    /// - Negative => the point lies inside (over) the previous layer by more
+    ///   than `boundary_offset`.
+    /// - Zero => the point lies exactly on the offset boundary.
+    /// - Positive => the point overhangs beyond the offset boundary.
+    /// - `None` => no distance was measured.
+    #[serde(default)]
+    pub overhang_distance_mm: Option<f32>,
 }
 ```
 

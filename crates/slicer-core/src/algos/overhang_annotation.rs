@@ -40,7 +40,7 @@
 //!
 //! A layer with **no** overhang (including layer 0, which has no previous
 //! layer and is therefore never overhanging) has its key **absent** from the
-//! returned map — callers must treat a missing key as "no overhang", not
+//! returned maps — callers must treat a missing key as "no overhang", not
 //! distinguish it from an explicit empty `Vec`. This is the chosen semantics
 //! for this packet (the alternative — an explicit empty `Vec<QuartileBand>`
 //! entry — was rejected to keep the map's cardinality proportional to actual
@@ -97,15 +97,19 @@ const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
 ///
 /// # Returns
 ///
-/// A map from layer index to that layer's `QuartileBand` partition. **Layers
-/// with no overhang have their key absent** — see the module doc-comment's
-/// "Empty-layer semantics" section.
+/// A tuple containing maps from layer index to the layer's `QuartileBand`
+/// partition and to the previous layer's slice boundary contours. **Layers
+/// with no overhang have their key absent** in both maps — see the module
+/// doc-comment's "Empty-layer semantics" section.
 pub fn annotate_overhangs(
     layer_footprints: &[(u32, Vec<ExPolygon>)],
     line_width_mm: f32,
-) -> HashMap<u32, Vec<QuartileBand>> {
+) -> (
+    HashMap<u32, Vec<QuartileBand>>,
+    HashMap<u32, Vec<ExPolygon>>,
+) {
     if layer_footprints.len() < 2 {
-        return HashMap::new();
+        return (HashMap::new(), HashMap::new());
     }
 
     // One O(layers) sweep over already-computed cross-sections — the object's
@@ -123,7 +127,7 @@ pub fn annotate_overhangs(
     // which is what keeps the stage's output byte-stable. `difference_ex`,
     // `intersection_ex` and `offset` are pure Clipper2 wrappers holding no
     // shared mutable state, so they are safe to call concurrently.
-    (1..layer_footprints.len())
+    let classified: HashMap<u32, (Vec<QuartileBand>, Vec<ExPolygon>)> = (1..layer_footprints.len())
         .into_par_iter()
         .filter_map(|i| {
             let (_, previous) = &layer_footprints[i - 1];
@@ -143,9 +147,18 @@ pub fn annotate_overhangs(
                 return None;
             }
 
-            Some((*layer_index, bands))
+            Some((*layer_index, (bands, previous.clone())))
         })
-        .collect()
+        .collect();
+
+    // Keep both outputs keyed by the same global layer index.
+    let mut bands_map: HashMap<u32, Vec<QuartileBand>> = HashMap::new();
+    let mut prev_map: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
+    for (layer_index, (bands, prev)) in classified {
+        bands_map.insert(layer_index, bands);
+        prev_map.insert(layer_index, prev);
+    }
+    (bands_map, prev_map)
 }
 
 /// Partitions `overhang_area` (already `current \ previous`) into the 4
@@ -290,7 +303,7 @@ mod tests {
     fn straight_cube_layer0_has_no_previous_and_is_absent() {
         let mesh = flat_cube_mesh();
         let layer_zs = vec![0.5, 1.5];
-        let result = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
+        let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
         assert!(
             !result.contains_key(&0),
             "layer 0 has no previous layer and must never be classified as overhanging"
@@ -387,7 +400,7 @@ mod tests {
         let layers = footprints(&mesh, &layer_zs);
 
         let start = std::time::Instant::now();
-        let result = annotate_overhangs(&layers, 0.4);
+        let (result, _) = annotate_overhangs(&layers, 0.4);
         let elapsed = start.elapsed();
 
         assert!(

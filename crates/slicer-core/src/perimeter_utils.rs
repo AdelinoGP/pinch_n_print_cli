@@ -299,6 +299,77 @@ pub fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
     }
 }
 
+/// Return the raw signed distance from a point to the nearest boundary contour.
+///
+/// The query point `(x, y)` is in millimetres, boundary coordinates are scaled
+/// integer units (1 unit = 100 nm), and the returned distance is in millimetres.
+/// The boundary offset is deliberately not included; callers that stamp a point
+/// must add `0.5 * width` using that point's own extrusion width.
+///
+/// `boundary` must be non-empty. Callers that gate on "no previous-layer
+/// boundary was provided" (the typical empty-slice / first-layer case) must
+/// decide that themselves and stamp `None` on every vertex — never a
+/// sentinel — without invoking this helper.
+pub fn signed_distance_to_boundary(x: f32, y: f32, boundary: &[ExPolygon]) -> f32 {
+    debug_assert!(
+        !boundary.is_empty(),
+        "signed_distance_to_boundary: empty boundary must be gated by the caller"
+    );
+    let query_x = f64::from(x);
+    let query_y = f64::from(y);
+    let point_to_mm = |point: Point2| {
+        (
+            f64::from(slicer_ir::units_to_mm(point.x)),
+            f64::from(slicer_ir::units_to_mm(point.y)),
+        )
+    };
+
+    let inside_region = boundary
+        .iter()
+        .any(|expolygon| slicer_ir::point_in_polygon_winding(expolygon, query_x, query_y, 0.0));
+
+    let mut nearest_distance_sq = None;
+    for expolygon in boundary {
+        for polygon in std::iter::once(&expolygon.contour).chain(expolygon.holes.iter()) {
+            let point_count = polygon.points.len();
+            if point_count == 0 {
+                continue;
+            }
+            for edge_index in 0..point_count {
+                let (ax, ay) = point_to_mm(polygon.points[edge_index]);
+                let (bx, by) = point_to_mm(polygon.points[(edge_index + 1) % point_count]);
+                let dx = bx - ax;
+                let dy = by - ay;
+                let length_sq = dx * dx + dy * dy;
+                let projection = if length_sq == 0.0 {
+                    0.0
+                } else {
+                    ((query_x - ax) * dx + (query_y - ay) * dy) / length_sq
+                };
+                let projection = projection.clamp(0.0, 1.0);
+                let closest_x = ax + projection * dx;
+                let closest_y = ay + projection * dy;
+                let distance_sq = (query_x - closest_x).powi(2) + (query_y - closest_y).powi(2);
+
+                match nearest_distance_sq {
+                    None => nearest_distance_sq = Some(distance_sq),
+                    Some(best) if distance_sq.total_cmp(&best) == std::cmp::Ordering::Less => {
+                        nearest_distance_sq = Some(distance_sq);
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+
+    let distance_mm = nearest_distance_sq.map(|d| d.sqrt() as f32).unwrap_or(0.0);
+    if inside_region {
+        -distance_mm
+    } else {
+        distance_mm
+    }
+}
+
 /// Convert an ExPolygon contour to a Vec<Point3WithWidth> at the given Z and width.
 ///
 /// Converts from scaled i64 coordinates to f32 mm. The returned Vec has N+1
@@ -321,6 +392,7 @@ pub fn expolygon_to_path3d(
     z: f32,
     width: f32,
     overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
+    prev_layer_boundary: &[ExPolygon],
 ) -> Vec<Point3WithWidth> {
     let mut pts: Vec<Point3WithWidth> = contour
         .points
@@ -337,6 +409,11 @@ pub fn expolygon_to_path3d(
                 })
                 .map(|band| band.quartile)
                 .max();
+            let overhang_distance_mm = if prev_layer_boundary.is_empty() {
+                None
+            } else {
+                Some(signed_distance_to_boundary(x, y, prev_layer_boundary) + 0.5 * width)
+            };
             Point3WithWidth {
                 x,
                 y,
@@ -345,6 +422,7 @@ pub fn expolygon_to_path3d(
                 flow_factor: 1.0,
                 overhang_quartile,
                 dist_to_top_mm: 0.0,
+                overhang_distance_mm,
             }
         })
         .collect();

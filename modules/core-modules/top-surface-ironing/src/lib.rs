@@ -188,6 +188,7 @@ fn generate_zigzag_strokes_for_polygon(
         flow_factor,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
 
     let mut points: Vec<Point3WithWidth> = Vec::new();

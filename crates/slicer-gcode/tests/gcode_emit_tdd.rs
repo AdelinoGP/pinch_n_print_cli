@@ -41,6 +41,7 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     }
 }
 
@@ -1740,6 +1741,7 @@ fn emit_e_uses_volumetric_flow_formula() {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
     let p1 = Point3WithWidth {
         x: 10.0,
@@ -1749,6 +1751,7 @@ fn emit_e_uses_volumetric_flow_formula() {
         flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     };
     let entity = print_entity_fixture(vec![p0, p1], ExtrusionRole::OuterWall);
     let layer = layer_with_entity(0, 0.2, entity);

@@ -155,6 +155,11 @@ fn interpolate_point(
             end.overhang_quartile
         },
         dist_to_top_mm: lerp(start.dist_to_top_mm, end.dist_to_top_mm),
+        overhang_distance_mm: if t <= 0.5 {
+            start.overhang_distance_mm
+        } else {
+            end.overhang_distance_mm
+        },
     }
 }
 
@@ -572,6 +577,7 @@ impl LayerModule for SeamPlacer {
                         flow_factor: 0.0,
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     });
 
                 output
