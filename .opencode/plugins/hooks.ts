@@ -3,6 +3,10 @@ import type { Event } from "@opencode-ai/sdk"
 
 const PATH_TOOLS = new Set(["read", "grep", "glob"])
 
+const IS_WINDOWS = process.platform === "win32"
+
+const CONTROL_CHARS = /[\u0000-\u001F]/
+
 const MISROOTED_PARENT_DIRS = new Set([
   "crates",
   "docs",
@@ -14,11 +18,26 @@ const MISROOTED_PARENT_DIRS = new Set([
 ])
 
 function normalizeSlashes(path: string): string {
-  return path.replace(/\\/g, "/")
+  return IS_WINDOWS ? path.replace(/\\/g, "/") : path
 }
 
 function parentDirOf(root: string): string {
   return root.slice(0, Math.max(root.lastIndexOf("/"), 0))
+}
+
+function pathEquals(a: string, b: string): boolean {
+  return IS_WINDOWS ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+function pathStartsWith(path: string, prefix: string): boolean {
+  return IS_WINDOWS
+    ? path.toLowerCase().startsWith(prefix.toLowerCase())
+    : path.startsWith(prefix)
+}
+
+function isAbsolutePath(path: string): boolean {
+  if (IS_WINDOWS) return /^(?:[A-Za-z]:)?\//.test(path)
+  return path.startsWith("/")
 }
 
 export type PathCorrection =
@@ -35,8 +54,7 @@ export function correctToolPath(
   const root = normalizeSlashes(directory).replace(/\/+$/, "")
   const parent = parentDirOf(root)
 
-  const lowerInput = input.toLowerCase()
-  if (lowerInput.startsWith(parent.toLowerCase() + "/")) {
+  if (pathStartsWith(input, parent + "/")) {
     const remainder = input.slice(parent.length + 1)
     const topLevel = remainder.split("/", 1)[0]
     if (topLevel && MISROOTED_PARENT_DIRS.has(topLevel)) {
@@ -46,12 +64,13 @@ export function correctToolPath(
 
   const siblingRoots = [parent + "/pinch_n_print", parent + "/pinch_n_print_cli"]
   for (const sibling of siblingRoots) {
-    if (lowerInput.startsWith(sibling.toLowerCase() + "/")) {
+    if (pathEquals(sibling, root)) continue
+    if (pathStartsWith(input, sibling + "/")) {
       return { reason: `${input} is a sibling worktree of the active workspace ${root}. Reissue with a path rooted at ${root}.` }
     }
   }
 
-  if (/^[A-Za-z]:\//.test(input)) return { corrected: input }
+  if (isAbsolutePath(input)) return { corrected: input }
 
   if (tool === "read" || tool === "grep" || tool === "glob") {
     return { corrected: `${root}/${input.replace(/^(?:\.\/)+/, "")}` }
@@ -92,6 +111,16 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
   return {
     "tool.execute.before": async (input, output) => {
       const tool = String(input?.tool ?? "")
+      if (tool === "bash") {
+        const args = output.args as Record<string, unknown> | undefined
+        const workdir = String(args?.workdir ?? "")
+        if (workdir && CONTROL_CHARS.test(workdir)) {
+          throw new Error(
+            `Blocked bash with a workdir containing control characters (valid paths never contain them): ${JSON.stringify(workdir)}`,
+          )
+        }
+        return
+      }
       if (!PATH_TOOLS.has(tool)) return
 
       const args = output.args as Record<string, unknown> | undefined

@@ -91,3 +91,82 @@ test("hook leaves other tools untouched", async () => {
   await before({ tool: "bash", sessionID: "s", callID: "c" }, { args })
   expect(args.command).toBe("cd F:\\slicerProject")
 })
+
+test("does not block an in-repo hidden path when root collides with the sibling-root name", () => {
+  const result = correctToolPath(
+    "F:/slicerProject/pinch_n_print_cli/.ralph/specs/119_support-validation-wedge-harness/packet.spec.md",
+    "F:/slicerProject/pinch_n_print_cli",
+    "read",
+  )
+  expect(result).toEqual({
+    corrected: "F:/slicerProject/pinch_n_print_cli/.ralph/specs/119_support-validation-wedge-harness/packet.spec.md",
+  })
+})
+
+test("still rejects the true sibling worktree while root collides with its name", () => {
+  const result = correctToolPath(
+    "F:/slicerProject/pinch_n_print/crates/slicer-gcode/src/flavor.rs",
+    "F:/slicerProject/pinch_n_print_cli",
+    "read",
+  )
+  expect(result && "reason" in result).toBe(true)
+  expect(result && "reason" in result ? result.reason : "").toContain("sibling worktree")
+})
+
+test("hook blocks bash with a workdir containing a control character", async () => {
+  const hooks = await ProjectHooks({ directory: ROOT })
+  const before = hooks["tool.execute.before"]
+  if (!before) throw new Error("ProjectHooks did not register a pre-tool hook")
+
+  const args: Record<string, unknown> = {
+    command: "cargo test -p infill-linker 2>&1 | tee target/test-output.log",
+    workdir: "F:\\slicerProject\t hinch_n_print_cli",
+  }
+  await expect(before({ tool: "bash", sessionID: "s", callID: "c" }, { args })).rejects.toThrow(
+    "control characters",
+  )
+})
+
+test("hook allows bash with a clean workdir", async () => {
+  const hooks = await ProjectHooks({ directory: ROOT })
+  const before = hooks["tool.execute.before"]
+  if (!before) throw new Error("ProjectHooks did not register a pre-tool hook")
+
+  const args: Record<string, unknown> = {
+    command: "cargo test -p infill-linker 2>&1 | tee target/test-output.log",
+    workdir: "F:\\slicerProject\\pinch_n_print_cli",
+  }
+  await before({ tool: "bash", sessionID: "s", callID: "c" }, { args })
+  expect(args.workdir).toBe("F:\\slicerProject\\pinch_n_print_cli")
+})
+
+test("leaves a POSIX absolute path unchanged", () => {
+  expect(correctToolPath("/home/user/pinch_n_print_cli/crates/slicer-core/src/lib.rs", "/home/user/pinch_n_print_cli", "read")).toEqual({
+    corrected: "/home/user/pinch_n_print_cli/crates/slicer-core/src/lib.rs",
+  })
+})
+
+test("leaves a relative POSIX path rooted against the workspace", () => {
+  expect(correctToolPath("crates/slicer-sdk/src/traits.rs", "/home/user/pinch_n_print_cli", "read")).toEqual({
+    corrected: "/home/user/pinch_n_print_cli/crates/slicer-sdk/src/traits.rs",
+  })
+})
+
+test("rejects a POSIX sibling-worktree path", () => {
+  const result = correctToolPath(
+    "/home/user/pinch_n_print/crates/slicer-gcode/src/flavor.rs",
+    "/home/user/pinch_n_print_cli",
+    "read",
+  )
+  expect(result && "reason" in result).toBe(true)
+})
+
+test("backslash handling follows the host platform", () => {
+  const result = correctToolPath("/home/user/pinch_n_print_cli/weird\\name/foo.rs", "/home/user/pinch_n_print_cli", "read")
+  const corrected = result && "corrected" in result ? result.corrected : ""
+  expect(corrected).toBe(
+    process.platform === "win32"
+      ? "/home/user/pinch_n_print_cli/weird/name/foo.rs"
+      : "/home/user/pinch_n_print_cli/weird\\name/foo.rs",
+  )
+})
