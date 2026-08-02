@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 190-smoothed-overhang-speed
 task_ids:
   - TASK-313

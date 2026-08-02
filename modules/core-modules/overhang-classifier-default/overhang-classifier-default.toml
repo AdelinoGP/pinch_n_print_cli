@@ -14,7 +14,7 @@ id = "PostPass::LayerFinalization"
 # crates/slicer-scheduler/src/validation.rs and dag.rs); field-level
 # enforcement is not yet supported, so the base IR name must be present
 # for the read to satisfy the cross-stage LayerCollectionIR writers.
-reads  = ["LayerCollectionIR", "LayerCollectionIR.overhang_quartile"]
+reads  = ["LayerCollectionIR", "LayerCollectionIR.overhang_quartile", "LayerCollectionIR.overhang_distance_mm"]
 writes = ["LayerCollectionIR"]
 
 [claims]
@@ -29,6 +29,24 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
+[config.schema.enable_overhang_speed]
+type    = "bool"
+default = true
+display = "Enable Overhang Speed"
+group   = "Speed"
+
+[config.schema.slowdown_for_curled_perimeters]
+type    = "bool"
+default = false
+display = "Slowdown for Curled Perimeters"
+group   = "Speed"
+
+[config.schema.bridge_speed]
+type    = "float"
+default = 25.0
+display = "Bridge Speed"
+group   = "Speed"
+
 [config.schema.overhang_1_4_speed]
 type    = "float"
 default = 0.0

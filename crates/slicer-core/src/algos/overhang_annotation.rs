@@ -13,17 +13,15 @@
 //! code is implemented here). The caller (`PrePass::OverhangAnnotation`)
 //! supplies each object's per-layer footprints from the committed `SliceIR`.
 //!
-//! # Band thresholds and deviation from OrcaSlicer
+//! # Band thresholds and emission-time speed sections
 //!
-//! OrcaSlicer's actual banded overhang classification
-//! (`ExtrusionProcessor.hpp::estimate_extrusion_quality`, `GCode.cpp` overhang
-//! speed bands) uses **6** bands at `extrusion_width × {0.1, 0.25, 0.5, 0.75,
-//! 0.87, 1.0}`, derived from overlap percentages `{90, 75, 50, 25, 13, 0}`,
-//! and is applied to wall extrusion geometry at gcode-emission time. This
-//! packet intentionally deviates and uses **4** bands at
-//! `line_width × {0.5, 1.0, 1.5, 2.0}` per roadmap decision O-4, evaluated at
-//! pre-pass time against raw cross-section geometry rather than wall
-//! extrusion paths. This is a recorded, intentional deviation — not a bug.
+//! The emission-time speed profile consumes the restored `speed_sections` table
+//! `{90, 75, 50, 25, 13, 0}` in `overhang-classifier-default` and interpolates
+//! those sections from each point's prepass-stamped `overhang_distance_mm`.
+//! The four concentric `overhang_quartile` bands below, bounded by
+//! `line_width x {0.5, 1.0, 1.5, 2.0}`, remain PnP's classification geometry,
+//! evaluated at prepass time against raw cross-section geometry; they are not
+//! the emission-time speed schedule.
 //!
 //! Band semantics (distance measured outward from the previous layer's
 //! cross-section boundary, i.e. how far a point in the overhang region sits

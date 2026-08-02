@@ -1320,8 +1320,9 @@ preserves ADR-0001's in-stage-commit pattern without introducing a
   `SliceIR` footprints rather than computing mesh cross-sections.
 - **overhang-classifier-default** (Packet 88, ADR-0008), a `FinalizationModule`
   at `PostPass::LayerFinalization`, consumes the per-vertex `overhang_quartile`
-  and applies the matching `overhang_*_4_speed` config key as `SetSpeedFactor`
-  mutations. Users opt out by curating their module dir without it; with all
+  gate and resolves a per-point speed by interpolating the `speed_sections` table
+  from the prepass-stamped `overhang_distance_mm`, emitting
+  `EntityMutation::SetPointSpeedFactors`. Users opt out by curating their module dir without it; with all
   four keys zero the module short-circuits (byte-identical to pre-Packet-57).
 
 ```

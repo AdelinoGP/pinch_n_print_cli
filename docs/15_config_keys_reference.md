@@ -55,12 +55,15 @@ is the authoritative catalog of their defaults and ranges.
 |---|---|---|---|---|
 | `alternate_extra_wall` | bool | `false` | — | `arachne-perimeters` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `arachne-perimeters` |
+| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
+| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
-| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `arachne-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `arachne-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
+| `line_width` | float | `0` | [0.0, 2.0] | `arachne-perimeters` |
 | `max_bead_count` | int | `0` | >= 0.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
@@ -71,7 +74,7 @@ is the authoritative catalog of their defaults and ranges.
 | `nozzle_diameter` | float | `0.4` | >= 0.01 | `arachne-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `arachne-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
-| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `arachne-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `arachne-perimeters` |
@@ -92,6 +95,7 @@ is the authoritative catalog of their defaults and ranges.
 | `wall_transition_length` | percent | `"100%"` | >= 0.0 | `arachne-perimeters` |
 | `alternate_extra_wall` | bool | `false` | — | `classic-perimeters` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
@@ -99,16 +103,18 @@ is the authoritative catalog of their defaults and ranges.
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
 | `gap_fill_medial_axis_on_painted` | bool | `false` | — | `classic-perimeters` |
 | `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
-| `inner_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
+| `infill_wall_overlap` | percent | `"15%"` | — | `classic-perimeters` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `classic-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | `classic-perimeters` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `line_width` | float | `0` | [0.0, 2.0] | `classic-perimeters` |
 | `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | `classic-perimeters` |
 | `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters` |
@@ -119,21 +125,30 @@ is the authoritative catalog of their defaults and ranges.
 | `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
 | `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
 | `thick_bridges` | bool | `false` | — | `classic-perimeters` |
+| `top_bottom_infill_wall_overlap` | percent | `"25%"` | — | `classic-perimeters` |
 | `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
 | `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
 | `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
+| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `gyroid-infill` |
+| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | `gyroid-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `infill_overlap` | float | `0.45` | [0.0, 1.0] | `infill-linker` |
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
+| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `lightning-infill` |
+| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | `lightning-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
 | `before_layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
@@ -148,12 +163,15 @@ is the authoritative catalog of their defaults and ranges.
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
 | `process_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `time_lapse_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `bridge_speed` | float | `25.0` | — | `overhang-classifier-default` |
+| `enable_overhang_speed` | bool | `true` | — | `overhang-classifier-default` |
 | `inner_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
 | `outer_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
 | `overhang_1_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `overhang_2_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `overhang_3_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `overhang_4_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
+| `slowdown_for_curled_perimeters` | bool | `false` | — | `overhang-classifier-default` |
 | `thin_wall_speed` | float | `30.0` | — | `overhang-classifier-default` |
 | `disable_fan_first_layers` | int | `1` | >= 0.0 | `part-cooling` |
 | `enable_overhang_fan` | bool | `true` | — | `part-cooling` |
@@ -168,10 +186,15 @@ is the authoritative catalog of their defaults and ranges.
 | `retract_mode` | enum | `"gcode"` | — | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
+| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `rectilinear-infill` |
+| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | `rectilinear-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `seam_mode` | enum | `"aligned"` | — | `seam-placer` |
 | `seam_mode` | enum | `"aligned"` | — | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
@@ -307,13 +330,15 @@ keys are still REGISTERED on `feedrate.rs::FeedrateConfig` (table above)
 so host-side fallback resolution stays trivial, but the active CONSUMER
 is the `overhang-classifier-default` FinalizationModule
 (`modules/core-modules/overhang-classifier-default/`) — see ADR-0008.
-The module reads the four keys plus three base wall / infill / travel
-speeds to compute per-quartile speed factors via `SetSpeedFactor`
-mutations on wall-family entities; the host's
-`overhang_classifier::classify_layers` prepass only stamps
-`Point3WithWidth.overhang_quartile` (1..=4), it does NOT read the speed
-keys. Treat the source column above as "registration site"; treat ADR-0008
-as the authoritative pointer to the consumer.
+The module reads each point's prepass-stamped `overhang_distance_mm`, gated
+on `overhang_quartile.is_some()`, then interpolates the six `speed_sections`
+from `OVERHANG_OVERLAP_LEVELS {90, 75, 50, 25, 13, 0}`, rounds and clamps
+the result to the role reference speed, and emits one
+`EntityMutation::SetPointSpeedFactors` per entity. The former whole-entity
+speed-factor mutation is gone. The host's `overhang_classifier::classify_layers`
+prepass stamps the point annotations; it does NOT read the speed keys. Treat
+the source column above as "registration site"; treat ADR-0008 as the
+authoritative pointer to the consumer.
 
 <!-- VERIFY: this section previously documented a `union_paint_regions_at_harvest`
      bool key (default true) on a `paint-segmentation` scope, plus a

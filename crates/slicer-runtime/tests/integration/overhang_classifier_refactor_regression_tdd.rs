@@ -28,10 +28,12 @@
 //! crate this test target cannot depend on under this packet's constraints.
 //!
 //! TRIPWIRE: if `modules/core-modules/overhang-classifier-default/src/lib.rs`
-//! changes its per-entity rule (currently: MAX per-vertex `overhang_quartile`
-//! governs the whole entity; `base <= 0.0` skips; `SetSpeedFactor(overhang_speed(q)
-//! / base)`), `mirrored_run_finalization` below must be updated to match, or
-//! this test will silently validate a stale mirror instead of the real module.
+//! changes its per-point rule (currently: stamped signed distances are
+//! interpolated at each point and its next point, `None` is full speed, curl is
+//! applied after the original-speed clamp, and one `SetPointSpeedFactors` is
+//! emitted per qualifying wall entity), `mirrored_run_finalization` below must
+//! be updated to match, or this test will silently validate a stale mirror
+//! instead of the real module.
 
 #![allow(missing_docs)]
 
@@ -84,28 +86,62 @@ fn overhang_speed(quartile: u8, config: &ConfigView) -> f32 {
     }
 }
 
-/// Mirrors `OverhangClassifierDefault::run_finalization` verbatim (same
-/// early-return gate, same MAX per-vertex quartile governing rule, same
-/// `SetSpeedFactor(overhang_speed(q) / base)` mutation).
+/// Mirrors the per-point speed rule in
+/// `OverhangClassifierDefault::run_finalization`.
 fn mirrored_run_finalization(
     layers: &[LayerCollectionView],
     output: &mut FinalizationOutputBuilder,
     config: &ConfigView,
 ) {
+    if !config.get_bool("enable_overhang_speed").unwrap_or(true) {
+        return;
+    }
     if (1..=4).all(|q| overhang_speed(q, config) == 0.0) {
         return;
     }
-    for layer in layers {
+    for (idx, layer) in layers.iter().enumerate() {
+        if idx == 0 {
+            continue;
+        }
         for entity in layer.ordered_entities() {
-            let pts = entity.path.points.iter();
-            let Some(q) = pts.filter_map(|p| p.overhang_quartile).max() else {
-                continue;
-            };
             let base = base_speed(&entity.role, config);
-            if base <= 0.0 {
+            if base <= 0.0 || entity.path.points.is_empty() {
                 continue;
             }
-            let mutation = EntityMutation::SetSpeedFactor(overhang_speed(q, config) / base);
+
+            let mut speeds = Vec::with_capacity(entity.path.points.len());
+            let mut has_distance = false;
+            for (point_idx, point) in entity.path.points.iter().enumerate() {
+                let mut extrusion_speed = base;
+                if point.overhang_quartile.is_some() {
+                    if let Some(distance) = point.overhang_distance_mm {
+                        has_distance = true;
+                        let current_speed = speed_for_distance(distance, point.width, base, config);
+                        let next_speed = entity
+                            .path
+                            .points
+                            .get(point_idx + 1)
+                            .filter(|next| next.overhang_quartile.is_some())
+                            .and_then(|next| next.overhang_distance_mm)
+                            .map(|next_distance| {
+                                let next = &entity.path.points[point_idx + 1];
+                                speed_for_distance(next_distance, next.width, base, config)
+                            })
+                            .unwrap_or(base);
+                        extrusion_speed = current_speed.min(next_speed).min(base);
+                    }
+                }
+
+                // The regression fixture has no curl reference geometry; the
+                // module's curl path is covered by the module-level tests.
+                speeds.push(extrusion_speed);
+            }
+
+            if !has_distance {
+                continue;
+            }
+            let factors: Vec<f32> = speeds.into_iter().map(|speed| speed / base).collect();
+            let mutation = EntityMutation::SetPointSpeedFactors(factors);
             output
                 .modify_entity(layer.layer_index(), entity.entity_id, mutation)
                 .expect("modify_entity must succeed against a fixture-built layer");
@@ -113,18 +149,82 @@ fn mirrored_run_finalization(
     }
 }
 
+fn speed_for_distance(
+    distance: f32,
+    path_width: f32,
+    original_speed: f32,
+    config: &ConfigView,
+) -> f32 {
+    let levels = [90.0_f32, 75.0, 50.0, 25.0, 13.0, 0.0];
+    let overhang_speed_or_ref = |key: &str| {
+        let configured = speed(config, key);
+        if configured < 0.5 {
+            original_speed
+        } else {
+            configured
+        }
+    };
+    let sixth_speed = if config
+        .get_bool("slowdown_for_curled_perimeters")
+        .unwrap_or(false)
+    {
+        overhang_speed_or_ref("overhang_4_4_speed")
+    } else {
+        speed(config, "bridge_speed")
+    };
+    let configured = [
+        original_speed,
+        overhang_speed_or_ref("overhang_1_4_speed"),
+        overhang_speed_or_ref("overhang_2_4_speed"),
+        overhang_speed_or_ref("overhang_3_4_speed"),
+        overhang_speed_or_ref("overhang_4_4_speed"),
+        sixth_speed,
+    ];
+    let mut sections: Vec<(f32, f32)> = levels
+        .into_iter()
+        .zip(configured)
+        .map(|(overlap, section_speed)| (path_width * (1.0 - overlap / 100.0), section_speed))
+        .collect();
+    sections.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| b.1.total_cmp(&a.1)));
+    for i in 1..sections.len() {
+        if sections[i].0 == sections[i - 1].0 {
+            sections[i].1 = sections[i - 1].1;
+        }
+    }
+    if distance <= sections[0].0 {
+        return original_speed;
+    }
+    if distance >= sections[sections.len() - 1].0 {
+        return sections[sections.len() - 1].1.min(original_speed);
+    }
+    let pair = sections
+        .windows(2)
+        .find(|pair| distance <= pair[1].0)
+        .expect("distance must be bracketed by sorted sections");
+    let (d0, s0) = pair[0];
+    let (d1, s1) = pair[1];
+    let t = ((distance - d0) / (d1 - d0)).clamp(0.0, 1.0);
+    ((1.0 - t) * s0 + t * s1).round().min(original_speed)
+}
+
 // ============================================================================
 // Scenario reconstruction
 // ============================================================================
 
 /// One `OuterWall` square entity (entity_id=1, wall width 0.4mm) per layer,
-/// with every vertex carrying the baseline's recorded per-layer quartile.
-/// Geometry itself is irrelevant post-refactor (the module reads
-/// `overhang_quartile` directly, no distance computation), so a fixed unit
-/// square suffices.
+/// with every vertex carrying the baseline's recorded per-layer quartile and
+/// the corresponding stamped distance at that band's boundary. Geometry
+/// itself is irrelevant to the distance rule, so a fixed unit square suffices.
 fn wall_entity_with_quartile(layer_index: u32, quartile: u8) -> slicer_ir::PrintEntity {
     let w = 0.4_f32;
     let z = layer_index as f32 * 0.2;
+    let distance = match quartile {
+        1 => Some(w * 0.25),
+        2 => Some(w * 0.50),
+        3 => Some(w * 0.75),
+        4 => Some(w * 0.87),
+        _ => None,
+    };
     let pt = |x: f32, y: f32| Point3WithWidth {
         x,
         y,
@@ -133,7 +233,7 @@ fn wall_entity_with_quartile(layer_index: u32, quartile: u8) -> slicer_ir::Print
         flow_factor: 1.0,
         overhang_quartile: Some(quartile),
         dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        overhang_distance_mm: distance,
     };
     print_entity(
         1,
@@ -157,18 +257,22 @@ fn baseline_layer_quartiles() -> Vec<(u32, u8)> {
 }
 
 fn build_layers(quartiles: &[(u32, u8)]) -> Vec<LayerCollectionView> {
-    quartiles
-        .iter()
-        .map(|&(layer_index, q)| {
-            let entity = wall_entity_with_quartile(layer_index, q);
-            let layer = LayerCollectionFixtureBuilder::new()
-                .global_layer_index(layer_index)
-                .z(layer_index as f32 * 0.2)
-                .add_entity(entity)
-                .build();
-            LayerCollectionView::new(layer)
-        })
-        .collect()
+    let mut layers = vec![LayerCollectionView::new(
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(0)
+            .z(0.0)
+            .build(),
+    )];
+    layers.extend(quartiles.iter().map(|&(layer_index, q)| {
+        let entity = wall_entity_with_quartile(layer_index, q);
+        let layer = LayerCollectionFixtureBuilder::new()
+            .global_layer_index(layer_index)
+            .z(layer_index as f32 * 0.2)
+            .add_entity(entity)
+            .build();
+        LayerCollectionView::new(layer)
+    }));
+    layers
 }
 
 fn config_from_json(cfg: &Value) -> ConfigView {
@@ -185,6 +289,7 @@ fn config_from_json(cfg: &Value) -> ConfigView {
         .float("overhang_2_4_speed", f("overhang_2_4_speed"))
         .float("overhang_3_4_speed", f("overhang_3_4_speed"))
         .float("overhang_4_4_speed", f("overhang_4_4_speed"))
+        .float("bridge_speed", 25.0)
         .build()
 }
 
@@ -195,8 +300,11 @@ fn collect_speed_factors(output: &FinalizationOutputBuilder) -> Vec<(u32, u64, f
             MergeOp::ModifyEntity {
                 layer,
                 entity_id,
-                mutation: EntityMutation::SetSpeedFactor(f),
-            } => Some((*layer, *entity_id, *f)),
+                mutation: EntityMutation::SetPointSpeedFactors(factors),
+            } => factors
+                .first()
+                .copied()
+                .map(|factor| (*layer, *entity_id, factor)),
             _ => None,
         })
         .collect()
@@ -252,7 +360,7 @@ fn configured_case_b_matches_baseline_with_documented_q4_delta() {
     assert_eq!(
         mutations.len(),
         5,
-        "expected exactly 5 SetSpeedFactor mutations (one per reconstructed layer, \
+        "expected exactly 5 SetPointSpeedFactors mutations (one per reconstructed layer, \
          including the now-honored Q4 entity); got: {mutations:?}"
     );
 

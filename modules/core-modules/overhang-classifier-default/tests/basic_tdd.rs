@@ -1,15 +1,8 @@
-//! Module-level TDD test for overhang-classifier-default (AC-8).
-//!
-//! Post-refactor: this module is a pure consumer of the per-vertex
-//! `overhang_quartile` field already written onto `Point3WithWidth` by the
-//! upstream PrePass::OverhangAnnotation pipeline (packet 106 / ADR-0031). It
-//! performs NO local geometric computation, so these tests set
-//! `overhang_quartile` directly on fixture points rather than constructing
-//! two-layer geometry for a distance-based classifier.
+//! Module-level TDD tests for the smoothed overhang-speed classifier.
 
 #![allow(missing_docs)]
 
-use slicer_ir::{ExtrusionRole, Point3WithWidth, RegionKey};
+use slicer_ir::{ConfigView, ExtrusionRole, Point3WithWidth, PrintEntity, RegionKey};
 use slicer_sdk::module_test;
 use slicer_sdk::test_prelude::{print_entity, ConfigViewBuilder, LayerCollectionFixtureBuilder};
 use slicer_sdk::traits::{
@@ -18,8 +11,61 @@ use slicer_sdk::traits::{
 
 use overhang_classifier_default::OverhangClassifierDefault;
 
-/// Helper: build a `PrintEntity` with an OuterWall role and a single explicit
-/// `overhang_quartile` value applied to every vertex of a rectangular path.
+const PATH_WIDTH: f32 = 0.4;
+
+fn point(
+    x: f32,
+    y: f32,
+    z: f32,
+    overhang_quartile: Option<u8>,
+    overhang_distance_mm: Option<f32>,
+) -> Point3WithWidth {
+    Point3WithWidth {
+        x,
+        y,
+        z,
+        width: PATH_WIDTH,
+        flow_factor: 1.0,
+        overhang_quartile,
+        dist_to_top_mm: 0.0,
+        overhang_distance_mm,
+    }
+}
+
+fn square_points(
+    z: f32,
+    quartiles: [Option<u8>; 4],
+    distances: [Option<f32>; 4],
+) -> Vec<Point3WithWidth> {
+    vec![
+        point(0.0, 0.0, z, quartiles[0], distances[0]),
+        point(10.0, 0.0, z, quartiles[1], distances[1]),
+        point(10.0, 10.0, z, quartiles[2], distances[2]),
+        point(0.0, 10.0, z, quartiles[3], distances[3]),
+    ]
+}
+
+fn entity_with_points(
+    entity_id: u64,
+    role: ExtrusionRole,
+    points: Vec<Point3WithWidth>,
+    layer_index: u32,
+    topo_order: u32,
+) -> PrintEntity {
+    print_entity(
+        entity_id,
+        role,
+        points,
+        RegionKey {
+            global_layer_index: layer_index,
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        topo_order,
+    )
+}
+
 fn wall_square_with_quartile(
     entity_id: u64,
     x0: f32,
@@ -30,8 +76,8 @@ fn wall_square_with_quartile(
     topo_order: u32,
     layer_index: u32,
     quartile: Option<u8>,
-) -> slicer_ir::PrintEntity {
-    let w = 0.4_f32;
+) -> PrintEntity {
+    let w = PATH_WIDTH;
     let pt = |x: f32, y: f32| Point3WithWidth {
         x,
         y,
@@ -56,11 +102,39 @@ fn wall_square_with_quartile(
     )
 }
 
-/// Config with non-zero overhang speeds and base wall speeds. Also sets
-/// `line_width` (matches `wall_square_with_quartile`'s hardcoded 0.4mm point
-/// width) — required for the curl pathway to activate at all; without it
-/// `flow_width` resolves to 0.0 and curl computation is a defensive no-op.
-fn overhang_config() -> slicer_ir::ConfigView {
+fn wall_square_with_quartile_and_distance(
+    entity_id: u64,
+    z: f32,
+    layer_index: u32,
+    quartile: Option<u8>,
+    distance: Option<f32>,
+) -> PrintEntity {
+    entity_with_points(
+        entity_id,
+        ExtrusionRole::OuterWall,
+        square_points(z, [quartile; 4], [distance; 4]),
+        layer_index,
+        0,
+    )
+}
+
+fn wall_square_with_distances(
+    entity_id: u64,
+    z: f32,
+    layer_index: u32,
+    quartiles: [Option<u8>; 4],
+    distances: [Option<f32>; 4],
+) -> PrintEntity {
+    entity_with_points(
+        entity_id,
+        ExtrusionRole::OuterWall,
+        square_points(z, quartiles, distances),
+        layer_index,
+        0,
+    )
+}
+
+fn base_overhang_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
         .float("outer_wall_speed", 60.0)
         .float("inner_wall_speed", 60.0)
@@ -69,71 +143,113 @@ fn overhang_config() -> slicer_ir::ConfigView {
         .float("overhang_2_4_speed", 40.0)
         .float("overhang_3_4_speed", 50.0)
         .float("overhang_4_4_speed", 60.0)
-        .float("line_width", 0.4)
+        .float("bridge_speed", 25.0)
+        .float("line_width", f64::from(PATH_WIDTH))
+}
+
+/// Config with non-zero overhang speeds and the canonical bridge branch.
+/// `enable_overhang_speed` is intentionally absent so its default is tested.
+fn overhang_config() -> ConfigView {
+    base_overhang_config()
+        .bool("slowdown_for_curled_perimeters", false)
         .build()
 }
 
-/// A wall entity with `overhang_quartile = Some(3)` on every vertex receives
-/// a `SetSpeedFactor` mutation of `overhang_3_4_speed / outer_wall_speed`
-/// (50.0 / 60.0).
-#[module_test]
-fn quartile_present_receives_speed_factor_below_one() {
-    let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
+fn overhang_config_with_q4_speed(q4_speed: f64) -> ConfigView {
+    base_overhang_config()
+        .float("overhang_4_4_speed", q4_speed)
+        .bool("slowdown_for_curled_perimeters", false)
+        .build()
+}
 
-    let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(3));
-    let layer = LayerCollectionFixtureBuilder::new()
-        .global_layer_index(1)
-        .z(0.4)
-        .add_entity(entity)
-        .build();
-
-    let views = vec![LayerCollectionView::new(layer)];
+fn run_classifier(views: &[LayerCollectionView], config: &ConfigView) -> FinalizationOutputBuilder {
+    let classifier = OverhangClassifierDefault::from_config(config).unwrap();
     let mut output = FinalizationOutputBuilder::new();
-
     classifier
-        .run_finalization(&views, &mut output, &cfg)
+        .run_finalization(views, &mut output, config)
         .expect("run_finalization must succeed");
+    output
+}
 
-    let speed_factors: Vec<f32> = output
+fn point_speed_profiles(
+    output: &FinalizationOutputBuilder,
+    layer: u32,
+    entity_id: u64,
+) -> Vec<Vec<f32>> {
+    output
         .merge_ops()
         .filter_map(|op| match op {
             MergeOp::ModifyEntity {
-                layer: 1,
-                entity_id: 1,
-                mutation: EntityMutation::SetSpeedFactor(f),
-            } => Some(*f),
+                layer: op_layer,
+                entity_id: op_entity_id,
+                mutation: EntityMutation::SetPointSpeedFactors(factors),
+            } if *op_layer == layer && *op_entity_id == entity_id => Some(factors.clone()),
             _ => None,
         })
-        .collect();
-
-    assert_eq!(
-        speed_factors,
-        vec![50.0_f32 / 60.0_f32],
-        "expected exactly one SetSpeedFactor mutation matching overhang_3_4_speed / outer_wall_speed"
-    );
+        .collect()
 }
 
-/// A wall entity whose vertices all carry `overhang_quartile = None` (not
-/// classified upstream) receives no mutation at all.
+fn two_layer_views(upper_entity: PrintEntity) -> Vec<LayerCollectionView> {
+    let lower_entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
+    vec![
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(0)
+            .z(0.0)
+            .add_entity(lower_entity)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(1)
+            .z(0.2)
+            .add_entity(upper_entity)
+            .build(),
+    ]
+    .into_iter()
+    .map(LayerCollectionView::new)
+    .collect()
+}
+
+#[module_test]
+fn quartile_present_receives_speed_factor_below_one() {
+    let cfg = overhang_config();
+    let entity = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(3), Some(0.25));
+    let views = two_layer_views(entity);
+    let output = run_classifier(&views, &cfg);
+
+    let mutation_factors = output
+        .merge_ops()
+        .find_map(|op| match op {
+            MergeOp::ModifyEntity {
+                layer,
+                entity_id,
+                mutation: EntityMutation::SetPointSpeedFactors(factors),
+            } if *layer == 1 && *entity_id == 1 => Some(factors.clone()),
+            _ => None,
+        })
+        .expect("expected SetPointSpeedFactors for layer 1 entity 1");
+    assert_eq!(mutation_factors.len(), 4);
+    assert!(mutation_factors
+        .iter()
+        .all(|factor| (*factor - 45.0 / 60.0).abs() < 1e-6));
+
+    let profiles = point_speed_profiles(&output, 1, 1);
+    assert_eq!(
+        profiles.len(),
+        1,
+        "expected exactly one point-speed mutation"
+    );
+    assert_eq!(profiles[0].len(), 4);
+    for factor in &profiles[0] {
+        assert!((*factor - 45.0 / 60.0).abs() < 1e-6);
+        assert!(*factor < 1.0);
+    }
+}
+
 #[module_test]
 fn quartile_absent_emits_no_mutation() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
-
-    let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.2, 0, 0, None);
-    let layer = LayerCollectionFixtureBuilder::new()
-        .global_layer_index(0)
-        .z(0.2)
-        .add_entity(entity)
-        .build();
-
-    let views = vec![LayerCollectionView::new(layer)];
-    let mut output = FinalizationOutputBuilder::new();
-
-    classifier
-        .run_finalization(&views, &mut output, &cfg)
-        .expect("run_finalization must succeed");
+    let entity = wall_square_with_quartile_and_distance(1, 0.2, 1, None, Some(0.25));
+    let views = two_layer_views(entity);
+    let output = run_classifier(&views, &cfg);
 
     assert_eq!(
         output.merge_ops().count(),
@@ -142,68 +258,48 @@ fn quartile_absent_emits_no_mutation() {
     );
 }
 
-/// Quartile 4 ("worst") is honored post-refactor (unlike the pre-refactor
-/// algorithm, which unconditionally skipped quartile >= 4 and left
-/// `overhang_4_4_speed` dead config). This is an intentional, packet-approved
-/// behavior delta — see packet 107 notes.
 #[module_test]
 fn quartile_four_is_honored() {
-    let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
+    let cfg = overhang_config_with_q4_speed(20.0);
+    let entity = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(4), Some(0.348));
+    let views = two_layer_views(entity);
+    let output = run_classifier(&views, &cfg);
 
-    let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(4));
-    let layer = LayerCollectionFixtureBuilder::new()
-        .global_layer_index(1)
-        .z(0.4)
-        .add_entity(entity)
-        .build();
-
-    let views = vec![LayerCollectionView::new(layer)];
-    let mut output = FinalizationOutputBuilder::new();
-
-    classifier
-        .run_finalization(&views, &mut output, &cfg)
-        .expect("run_finalization must succeed");
-
-    let speed_factors: Vec<f32> = output
+    let mutation_factors = output
         .merge_ops()
-        .filter_map(|op| match op {
+        .find_map(|op| match op {
             MergeOp::ModifyEntity {
-                layer: 1,
-                entity_id: 1,
-                mutation: EntityMutation::SetSpeedFactor(f),
-            } => Some(*f),
+                layer,
+                entity_id,
+                mutation: EntityMutation::SetPointSpeedFactors(factors),
+            } if *layer == 1 && *entity_id == 1 => Some(factors.clone()),
             _ => None,
         })
-        .collect();
+        .expect("expected SetPointSpeedFactors for layer 1 entity 1");
+    assert_eq!(mutation_factors.len(), 4);
+    assert!(mutation_factors
+        .iter()
+        .all(|factor| (*factor - 20.0 / 60.0).abs() < 1e-6));
 
+    let profiles = point_speed_profiles(&output, 1, 1);
     assert_eq!(
-        speed_factors,
-        vec![60.0_f32 / 60.0_f32],
-        "expected a SetSpeedFactor mutation matching overhang_4_4_speed / outer_wall_speed"
+        profiles.len(),
+        1,
+        "expected exactly one point-speed mutation"
     );
+    assert_eq!(profiles[0].len(), 4);
+    for factor in &profiles[0] {
+        assert!((*factor - 20.0 / 60.0).abs() < 1e-6);
+    }
 }
 
-/// DEV-009 curled-edge slowdown: a wall directly above a previous-layer wall
-/// that itself curled (via a small lateral offset from ITS OWN previous
-/// layer) receives a `SetSpeedFactor` mutation driven purely by curl — every
-/// vertex on all three layers carries `overhang_quartile: None`, isolating
-/// the curl-only pathway from the pre-existing overhang pathway.
-///
-/// Three layers: layer 0 is the (curl-free, since it has no layer below)
-/// reference geometry; layer 1 is offset 0.3mm in X from layer 0, which
-/// falls inside the malformation distance band `(0.2, 1.1) * line_width`
-/// (line_width = 0.4mm), so its own curled_height comes out positive; layer 2
-/// sits at the SAME XY position as layer 1, well within `dist_limit = 10 *
-/// line_width`, so it must observe layer 1's curl and slow down.
 #[module_test]
 fn curled_edge_triggers_slowdown_on_next_layer() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
     let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
-    let layer2 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.4, 0, 2, None);
+    let layer2 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.4, 0, 2, Some(1));
 
     let views = vec![
         LayerCollectionFixtureBuilder::new()
@@ -226,15 +322,8 @@ fn curled_edge_triggers_slowdown_on_next_layer() {
     .map(LayerCollectionView::new)
     .collect::<Vec<_>>();
 
-    let mut output = FinalizationOutputBuilder::new();
-    classifier
-        .run_finalization(&views, &mut output, &cfg)
-        .expect("run_finalization must succeed");
+    let output = run_classifier(&views, &cfg);
 
-    // Layer 0 and layer 1 must NOT receive a curl-driven mutation: layer 0 has
-    // no layer below (curled_height forced to 0.0), and layer 1's only
-    // reference (layer 0) has curled_height 0.0, so layer 1's own consumption
-    // sees no curl signal either.
     let layer0_and_1_mutations: Vec<_> = output
         .merge_ops()
         .filter(|op| matches!(op, MergeOp::ModifyEntity { layer: 0 | 1, .. }))
@@ -245,42 +334,42 @@ fn curled_edge_triggers_slowdown_on_next_layer() {
         layer0_and_1_mutations
     );
 
-    // Layer 2 must receive a SetSpeedFactor mutation driven by layer 1's curl.
-    let layer2_speed_factors: Vec<f32> = output
+    let mutation_factors = output
         .merge_ops()
-        .filter_map(|op| match op {
+        .find_map(|op| match op {
             MergeOp::ModifyEntity {
-                layer: 2,
-                entity_id: 1,
-                mutation: EntityMutation::SetSpeedFactor(f),
-            } => Some(*f),
+                layer,
+                entity_id,
+                mutation: EntityMutation::SetPointSpeedFactors(factors),
+            } if *layer == 2 && *entity_id == 1 => Some(factors.clone()),
             _ => None,
         })
-        .collect();
+        .expect("expected SetPointSpeedFactors for layer 2 entity 1");
+    assert_eq!(mutation_factors.len(), 4);
+    assert!(mutation_factors.iter().all(|factor| factor.is_finite()));
+    assert!(mutation_factors.iter().any(|factor| *factor < 1.0));
+
+    let profiles = point_speed_profiles(&output, 2, 1);
     assert_eq!(
-        layer2_speed_factors.len(),
+        profiles.len(),
         1,
-        "expected exactly one curl-driven SetSpeedFactor mutation on layer 2"
+        "expected exactly one curl-driven point-speed mutation on layer 2"
     );
+    assert_eq!(profiles[0].len(), 4);
+    assert!(profiles[0].iter().all(|factor| factor.is_finite()));
     assert!(
-        layer2_speed_factors[0] < 1.0,
-        "curl-driven speed factor must slow down the entity (factor < 1.0), got {}",
-        layer2_speed_factors[0]
+        profiles[0].iter().any(|factor| *factor < 1.0),
+        "curl-driven factors must slow down at least one point: {:?}",
+        profiles[0]
     );
 }
 
-/// Control for [`curled_edge_triggers_slowdown_on_next_layer`]: a wall far
-/// away in XY from any curled geometry (well outside `dist_limit`) receives
-/// no curl-driven mutation, even though a curled layer exists below it.
 #[module_test]
 fn curled_edge_out_of_range_emits_no_mutation() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
     let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
-    // Layer 2 is far away in X (100mm offset) — well outside dist_limit
-    // (10 * 0.4mm line width = 4.0mm).
     let layer2 = wall_square_with_quartile(1, 100.0, 0.0, 110.0, 10.0, 0.4, 0, 2, None);
 
     let views = vec![
@@ -304,10 +393,7 @@ fn curled_edge_out_of_range_emits_no_mutation() {
     .map(LayerCollectionView::new)
     .collect::<Vec<_>>();
 
-    let mut output = FinalizationOutputBuilder::new();
-    classifier
-        .run_finalization(&views, &mut output, &cfg)
-        .expect("run_finalization must succeed");
+    let output = run_classifier(&views, &cfg);
 
     let layer2_mutations: Vec<_> = output
         .merge_ops()
@@ -320,8 +406,6 @@ fn curled_edge_out_of_range_emits_no_mutation() {
     );
 }
 
-/// All-zero overhang-speed config yields the early return: zero mutations,
-/// even when vertices carry a classified quartile.
 #[module_test]
 fn all_zero_config_emits_no_mutations() {
     let cfg = ConfigViewBuilder::new()
@@ -333,25 +417,243 @@ fn all_zero_config_emits_no_mutations() {
         .float("overhang_3_4_speed", 0.0)
         .float("overhang_4_4_speed", 0.0)
         .build();
-    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
-
-    let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(2));
-    let layer = LayerCollectionFixtureBuilder::new()
-        .global_layer_index(1)
-        .z(0.4)
-        .add_entity(entity)
-        .build();
-
-    let views = vec![LayerCollectionView::new(layer)];
-    let mut output = FinalizationOutputBuilder::new();
-
-    classifier
-        .run_finalization(&views, &mut output, &cfg)
-        .expect("run_finalization must succeed");
+    let entity = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(2), Some(0.25));
+    let views = two_layer_views(entity);
+    let output = run_classifier(&views, &cfg);
 
     assert_eq!(
         output.merge_ops().count(),
         0,
         "expected no mutations when all overhang speeds are 0.0"
     );
+}
+
+#[module_test]
+fn calculate_speed_matches_canonical_interpolation_and_clamps() {
+    let cfg = overhang_config();
+    let sections = overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+
+    assert_eq!(sections.len(), 6);
+    assert!((sections[0].0 - 0.04).abs() < 1e-6);
+    assert!((sections.last().unwrap().0 - 0.4).abs() < 1e-6);
+
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(0.03, &sections, 40.0),
+        40.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(-0.1, &sections, 40.0),
+        40.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(sections[0].0, &sections, 40.0),
+        40.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(0.4, &sections, 40.0),
+        25.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(0.5, &sections, 40.0),
+        25.0
+    );
+
+    let distance: f32 = 0.15;
+    let t: f32 = (distance - 0.1_f32) / (0.2_f32 - 0.1_f32);
+    let expected: f32 = ((1.0_f32 - t) * 30.0_f32 + t * 40.0_f32).round();
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(distance, &sections, 40.0),
+        expected
+    );
+
+    for distance in [
+        -1.0, 0.03, 0.04, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.34, 0.35, 0.4, 0.5,
+    ] {
+        assert!(
+            overhang_classifier_default::calculate_speed(distance, &sections, 40.0) <= 40.0,
+            "speed exceeded original speed at distance {distance}"
+        );
+    }
+}
+
+#[module_test]
+fn sixth_speed_section_follows_slowdown_for_curled_perimeters() {
+    let false_sections =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &overhang_config());
+    assert_eq!(false_sections.last().unwrap().1, 25.0);
+
+    let true_cfg = base_overhang_config()
+        .float("overhang_4_4_speed", 45.0)
+        .bool("slowdown_for_curled_perimeters", true)
+        .build();
+    let true_sections =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &true_cfg);
+    assert_eq!(true_sections.last().unwrap().1, 45.0);
+
+    let guarded_cfg = base_overhang_config()
+        .float("overhang_4_4_speed", 0.0)
+        .bool("slowdown_for_curled_perimeters", true)
+        .build();
+    let guarded_sections =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &guarded_cfg);
+    assert_eq!(guarded_sections.last().unwrap().1, 60.0);
+}
+
+#[module_test]
+fn section_speeds_resolve_against_ref_speed_not_original_speed() {
+    let cfg = overhang_config();
+    let original_speed: f32 = 40.0;
+    let changed_original_speed: f32 = 100.0;
+    let sections_for_original_speed =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+    let sections_for_changed_original_speed =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+
+    assert_eq!(sections_for_original_speed[0].1, 60.0);
+    assert_eq!(sections_for_original_speed[5].1, 25.0);
+    assert_eq!(
+        sections_for_original_speed,
+        sections_for_changed_original_speed
+    );
+
+    let clamped = overhang_classifier_default::calculate_speed(
+        0.3,
+        &sections_for_original_speed,
+        original_speed,
+    );
+    let unclamped = overhang_classifier_default::calculate_speed(
+        0.3,
+        &sections_for_changed_original_speed,
+        changed_original_speed,
+    );
+    assert!(clamped <= original_speed);
+    assert_eq!(unclamped, 50.0);
+}
+
+#[module_test]
+fn speed_sections_flatten_ties_without_removing_entries() {
+    let cfg = overhang_config();
+    let sections = overhang_classifier_default::build_speed_sections(60.0, 0.0, &cfg);
+
+    assert_eq!(
+        sections.len(),
+        overhang_classifier_default::OVERHANG_OVERLAP_LEVELS.len()
+    );
+    assert!(sections.iter().all(|(distance, _)| *distance == 0.0));
+    assert!(
+        sections.iter().all(|(_, speed)| *speed == 60.0),
+        "equal-distance entries must retain the earlier higher speed: {:?}",
+        sections
+    );
+}
+
+#[module_test]
+fn per_point_factors_vary_within_one_entity() {
+    let cfg = overhang_config();
+    let upper = wall_square_with_distances(
+        1,
+        0.2,
+        1,
+        [Some(1), Some(1), Some(1), Some(1)],
+        [Some(-0.1), Some(0.15), Some(0.25), None],
+    );
+    let views = two_layer_views(upper);
+    let output = run_classifier(&views, &cfg);
+
+    assert_eq!(output.merge_ops().count(), 1);
+    let profiles = point_speed_profiles(&output, 1, 1);
+    assert_eq!(profiles.len(), 1);
+    assert_eq!(profiles[0].len(), 4);
+    assert_eq!(profiles[0][3], 1.0, "None distance must remain full speed");
+    let first_factor = profiles[0][0];
+    assert!(
+        profiles[0].iter().all(|factor| factor.is_finite())
+            && profiles[0]
+                .iter()
+                .any(|factor| (*factor - first_factor).abs() > 1e-6),
+        "expected at least two distinct finite factors: {:?}",
+        profiles[0]
+    );
+}
+
+#[module_test]
+fn interpolated_factor_is_not_a_quartile_value() {
+    let cfg = overhang_config();
+    let upper = wall_square_with_distances(
+        1,
+        0.2,
+        1,
+        [Some(1), Some(1), Some(1), Some(1)],
+        [Some(0.15), Some(-0.1), Some(-0.1), Some(-0.1)],
+    );
+    let views = two_layer_views(upper);
+    let output = run_classifier(&views, &cfg);
+    let profiles = point_speed_profiles(&output, 1, 1);
+
+    assert_eq!(profiles.len(), 1);
+    let t: f32 = (0.15 - 0.1) / (0.2 - 0.1);
+    let expected_factor: f32 = ((1.0 - t) * 30.0 + t * 40.0).round() / 60.0;
+    assert!((profiles[0][0] - expected_factor).abs() < 1e-6);
+    assert!((profiles[0][0] - 30.0 / 60.0).abs() > 1e-6);
+    assert!((profiles[0][0] - 40.0 / 60.0).abs() > 1e-6);
+}
+
+#[module_test]
+fn enable_overhang_speed_false_disables_all_mutations_and_absent_defaults_true() {
+    let disabled_cfg = base_overhang_config()
+        .bool("slowdown_for_curled_perimeters", false)
+        .bool("enable_overhang_speed", false)
+        .build();
+    let disabled_upper = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(2), Some(0.25));
+    let disabled_output = run_classifier(&two_layer_views(disabled_upper), &disabled_cfg);
+    assert_eq!(disabled_output.merge_ops().count(), 0);
+
+    let absent_cfg = overhang_config();
+    let absent_upper = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(2), Some(0.25));
+    let absent_output = run_classifier(&two_layer_views(absent_upper), &absent_cfg);
+    assert_eq!(point_speed_profiles(&absent_output, 1, 1).len(), 1);
+}
+
+#[module_test]
+fn first_layer_emits_no_speed_mutation() {
+    let cfg = overhang_config();
+    let entity = wall_square_with_quartile_and_distance(1, 0.0, 0, Some(2), Some(0.25));
+    let layer = LayerCollectionFixtureBuilder::new()
+        .global_layer_index(0)
+        .z(0.0)
+        .add_entity(entity)
+        .build();
+    let views = vec![LayerCollectionView::new(layer)];
+
+    let output = run_classifier(&views, &cfg);
+    assert_eq!(output.merge_ops().count(), 0);
+}
+
+#[module_test]
+fn non_wall_role_emits_no_mutation_and_no_nan() {
+    let cfg = overhang_config();
+    let upper = entity_with_points(
+        1,
+        ExtrusionRole::SparseInfill,
+        square_points(
+            0.2,
+            [Some(2), Some(2), Some(2), Some(2)],
+            [Some(0.25), Some(0.25), Some(0.25), Some(0.25)],
+        ),
+        1,
+        0,
+    );
+    let views = two_layer_views(upper);
+    let output = run_classifier(&views, &cfg);
+
+    for op in output.merge_ops() {
+        if let MergeOp::ModifyEntity {
+            mutation: EntityMutation::SetPointSpeedFactors(factors),
+            ..
+        } = op
+        {
+            assert!(factors.iter().all(|factor| factor.is_finite()));
+        }
+    }
+    assert_eq!(output.merge_ops().count(), 0);
 }

@@ -76,28 +76,85 @@ fn line_width(config: &ConfigView) -> f32 {
         .unwrap_or(0.0) as f32
 }
 
-/// Same 3 interior band-boundary multipliers as
-/// `crates/slicer-core/src/algos/overhang_annotation.rs::BAND_BOUNDARY_MULTIPLIERS`
-/// (line-width multiples `{0.5, 1.0, 1.5}` bounding quartiles 1-4). Duplicated
-/// rather than imported: that constant is private to `slicer-core`, and this
-/// module (a WASM guest) intentionally does not depend on `slicer-core` (it
-/// carries native-only dependencies unsuitable for a wasm32 target — see
-/// `slicer-ir/src/polygon_predicate.rs`'s module doc-comment for the same
-/// reasoning applied elsewhere). Keep these two lists numerically identical.
-const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
+/// Canonical constructs this list as a stack-local `ConfigOptionPercents
+/// overhang_overlap_levels({90, 75, 50, 25, 13, 0})` inside `GCode::_extrude`.
+/// No config key named `overhang_overlap_levels` exists in canonical
+/// `PrintConfig.cpp`.
+pub const OVERHANG_OVERLAP_LEVELS: [f32; 6] = [90.0, 75.0, 50.0, 25.0, 13.0, 0.0];
 
-/// Buckets a distance (mm) into the same 1-4 quartile scale overhang uses.
-/// `None` for non-positive distance or an unconfigured (zero) line width.
-fn quartile_for_distance(distance: f32, line_width: f32) -> Option<u8> {
-    if distance <= 0.0 || line_width <= 0.0 {
-        return None;
+/// Builds the six distance/speed sections used for overhang speed smoothing.
+pub fn build_speed_sections(
+    ref_speed: f32,
+    path_width: f32,
+    config: &ConfigView,
+) -> Vec<(f32, f32)> {
+    let overhang_speed_or_ref = |key: &str| {
+        let configured = speed(config, key);
+        if configured < 0.5 {
+            ref_speed
+        } else {
+            configured
+        }
+    };
+
+    let sixth_speed = if config
+        .get_bool("slowdown_for_curled_perimeters")
+        .unwrap_or(false)
+    {
+        overhang_speed_or_ref("overhang_4_4_speed")
+    } else {
+        speed(config, "bridge_speed")
+    };
+    let speeds = [
+        ref_speed,
+        overhang_speed_or_ref("overhang_1_4_speed"),
+        overhang_speed_or_ref("overhang_2_4_speed"),
+        overhang_speed_or_ref("overhang_3_4_speed"),
+        overhang_speed_or_ref("overhang_4_4_speed"),
+        sixth_speed,
+    ];
+
+    let mut sections: Vec<_> = OVERHANG_OVERLAP_LEVELS
+        .into_iter()
+        .zip(speeds)
+        .map(|(overlap, section_speed)| (path_width * (1.0 - overlap / 100.0), section_speed))
+        .collect();
+    sections.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| b.1.total_cmp(&a.1)));
+
+    for i in 1..sections.len() {
+        if sections[i].0 == sections[i - 1].0 {
+            sections[i].1 = sections[i - 1].1;
+        }
     }
-    let q = BAND_BOUNDARY_MULTIPLIERS
-        .iter()
-        .position(|&m| distance <= m * line_width)
-        .map_or(4, |i| (i + 1) as u8);
-    Some(q)
+    sections
 }
+
+/// Interpolates a smoothed speed from sorted distance/speed sections.
+pub fn calculate_speed(distance: f32, sections: &[(f32, f32)], original_speed: f32) -> f32 {
+    if sections.is_empty() {
+        return original_speed;
+    }
+    if distance <= sections[0].0 {
+        return original_speed;
+    }
+    if distance >= sections[sections.len() - 1].0 {
+        return sections[sections.len() - 1].1;
+    }
+
+    let pair = sections
+        .windows(2)
+        .find(|pair| distance <= pair[1].0)
+        .expect("distance must be bracketed by sorted sections");
+    let (d0, s0) = pair[0];
+    let (d1, s1) = pair[1];
+    let t = ((distance - d0) / (d1 - d0)).clamp(0.0, 1.0);
+    let extrusion_speed = ((1.0 - t) * s0 + t * s1).round();
+    extrusion_speed.min(original_speed)
+}
+
+// Deleted with `BAND_BOUNDARY_MULTIPLIERS` and `quartile_for_distance`: the
+// "Keep these two lists numerically identical" invariant no longer has a
+// module-side list to keep in sync.
 
 /// Curl-height estimation, ported from OrcaSlicer's `estimate_curled_up_height`
 /// (`SupportSpotsGenerator.cpp:199-236`). `distance` is the unsigned distance
@@ -183,6 +240,10 @@ impl FinalizationModule for OverhangClassifierDefault {
         output: &mut FinalizationOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        if !config.get_bool("enable_overhang_speed").unwrap_or(true) {
+            return Ok(());
+        }
+
         // Curl reuses the overhang speed table (no separate curl-specific
         // config keys — see the module doc-comment), so "all overhang bands
         // are zero" already means the whole feature family is off; skipping
@@ -206,55 +267,82 @@ impl FinalizationModule for OverhangClassifierDefault {
                 Some((layer.z() - layers[idx - 1].z()).max(0.001))
             };
 
-            // (1) Consumption: merge overhang_quartile with a curl-derived
-            // quartile synthesized from nearby curled points on the layer
-            // below, then emit one SetSpeedFactor mutation per entity.
-            for entity in layer.ordered_entities() {
-                let overhang_q = entity
-                    .path
-                    .points
-                    .iter()
-                    .filter_map(|p| p.overhang_quartile)
-                    .max();
-
-                let curl_q = if flow_width > 0.0 && !prev_wall_points.is_empty() {
-                    // Only reachable once `prev_wall_points` has been seeded by a
-                    // prior iteration (idx >= 1), where `layer_height` is always
-                    // `Some`; the `unwrap_or` is a defensive fallback, not the
-                    // expected path.
-                    let lh = layer_height.unwrap_or(flow_width);
-                    let mut max_artificial_distance = 0.0f32;
-                    for p in &entity.path.points {
-                        let Some((distance, curled_height)) =
-                            nearest_reference_point(&prev_wall_points, p.x, p.y)
-                        else {
-                            continue;
-                        };
-                        if distance < dist_limit && curled_height > 0.0 {
-                            // Ported shape from ExtrusionProcessor.hpp's
-                            // artificial_distance_to_curled_lines formula.
-                            let artificial = flow_width
-                                * (1.0 - distance / dist_limit).powi(2)
-                                * (curled_height / (lh * 10.0));
-                            max_artificial_distance = max_artificial_distance.max(artificial);
-                        }
+            // (1) Consumption: speed is resolved per point from the stamped
+            // signed distances, then curl is applied to that already-clamped
+            // point speed. Layer 0 is still produced as curl reference geometry
+            // below, but never enters this speed path.
+            if idx > 0 {
+                for entity in layer.ordered_entities() {
+                    let base = base_speed(&entity.role, config);
+                    if base <= 0.0 || entity.path.points.is_empty() {
+                        continue;
                     }
-                    quartile_for_distance(max_artificial_distance, flow_width)
-                } else {
-                    None
-                };
 
-                let Some(q) = overhang_q.max(curl_q) else {
-                    continue;
-                };
-                let base = base_speed(&entity.role, config);
-                if base <= 0.0 {
-                    continue;
+                    let points = &entity.path.points;
+                    let mut speeds = Vec::with_capacity(points.len());
+                    let mut has_distance = false;
+                    let mut has_curl = false;
+                    for (point_idx, point) in points.iter().enumerate() {
+                        let mut extrusion_speed = base;
+                        if point.overhang_quartile.is_some() {
+                            let sections = build_speed_sections(base, point.width, config);
+                            if let Some(distance) = point.overhang_distance_mm {
+                                has_distance = true;
+                                let current_speed = calculate_speed(distance, &sections, base);
+                                let next_speed = points
+                                    .get(point_idx + 1)
+                                    .filter(|next| next.overhang_quartile.is_some())
+                                    .and_then(|next| next.overhang_distance_mm)
+                                    .map(|next_distance| {
+                                        let next = &points[point_idx + 1];
+                                        let next_sections =
+                                            build_speed_sections(base, next.width, config);
+                                        calculate_speed(next_distance, &next_sections, base)
+                                    })
+                                    .unwrap_or(base);
+                                extrusion_speed = current_speed.min(next_speed).min(base);
+                            }
+
+                            if flow_width > 0.0 && !prev_wall_points.is_empty() {
+                                // Only reachable once `prev_wall_points` has been
+                                // seeded by a prior iteration (idx >= 1), where
+                                // `layer_height` is always `Some`; the `unwrap_or`
+                                // is a defensive fallback, not the expected path.
+                                let lh = layer_height.unwrap_or(flow_width);
+                                if let Some((distance, curled_height)) =
+                                    nearest_reference_point(&prev_wall_points, point.x, point.y)
+                                {
+                                    if distance < dist_limit && curled_height > 0.0 {
+                                        // Ported shape from ExtrusionProcessor.hpp's
+                                        // artificial_distance_to_curled_lines formula.
+                                        let artificial = flow_width
+                                            * (1.0 - distance / dist_limit).powi(2)
+                                            * (curled_height / (lh * 10.0));
+                                        if artificial > 0.0 {
+                                            has_curl = true;
+                                            let curled_speed =
+                                                calculate_speed(artificial, &sections, base);
+                                            // Curl is applied after the original-speed
+                                            // clamp, matching canonical ordering.
+                                            extrusion_speed = curled_speed.min(extrusion_speed);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        speeds.push(extrusion_speed);
+                    }
+
+                    if !has_distance && !has_curl {
+                        continue;
+                    }
+
+                    let factors: Vec<f32> = speeds.into_iter().map(|speed| speed / base).collect();
+                    let mutation = EntityMutation::SetPointSpeedFactors(factors);
+                    output
+                        .modify_entity(layer.layer_index(), entity.entity_id, mutation)
+                        .map_err(ModuleError::from_str)?;
                 }
-                let mutation = EntityMutation::SetSpeedFactor(overhang_speed(q, config) / base);
-                output
-                    .modify_entity(layer.layer_index(), entity.entity_id, mutation)
-                    .map_err(ModuleError::from_str)?;
             }
 
             // (2) Production: record this layer's own OuterWall points as
