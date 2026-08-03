@@ -222,6 +222,17 @@ fn default_emits_fewer_lines_than_legacy() {
 /// This refresh captures packet 172's Orca `enable_support` key spelling and
 /// the currently emitted `M73` progress lines.
 ///
+/// Re-blessed 2026-08-03 (packet 185 closure) after the post-172 geometry
+/// packets: 185 (role-aware width resolution — classic wall widths now
+/// resolve against `outer_wall_width`/`inner_wall_width`, shifting wall
+/// offsets by 0.025 mm), 187/188 (custom-gcode injection points), 190/191
+/// (overhang smoothing / mid-segment vertex insertion) and 193 (overhang
+/// distance prepass carrier). The golden is the pre-172-era baseline that
+/// the seven packet-60 precision keys are validated against; it is
+/// re-blessed only when the drift is canonical-correct (per CLAUDE.md Test
+/// Discipline), never to mask a defect. The diff at re-bless time was
+/// geometry-only (wall coordinates and sparse-infill path counts).
+///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text
 /// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd -- legacy_zero_matches_golden --nocapture

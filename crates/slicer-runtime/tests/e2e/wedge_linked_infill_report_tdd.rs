@@ -141,24 +141,31 @@ fn wedge_linked_infill_report() {
         "wedge slice must produce at least 2 sparse-infill blocks (got {})",
         sparse_moves.len()
     );
-    // (c) Per-bucket linkage: every `;TYPE:Sparse infill` block has at
-    // least 2 G1 extrusion moves. A 2-point raw path is 1 G1 move; linked
-    // output chains segments, raising the count. This is the gcode proxy
-    // for the IR-level `points_per_path > 2` check the spec calls for.
+    // (c) Linkage strength: the mean G1 extrusion moves per
+    // `;TYPE:Sparse infill` block must be well above the raw 2-point
+    // baseline of 1.0. Per-block `>= 2` is NOT asserted: since packet
+    // 192's anchor rewrite (per-arc anchor-length decision), a sparse
+    // block whose boundary arc exceeds `anchor_length_max` keeps its
+    // two-point paths and gains only short anchor stubs, so a single
+    // 2-point path legitimately emits exactly 1 G1 move — see
+    // `.ralph/specs/192-infill-linker-anchor-length/design.md`
+    // §Risks and Tradeoffs ("expect many more, much shorter
+    // polylines"). A mean above the baseline still proves the linker is
+    // wired in the real pipeline: raw unlinked 2-point output would give
+    // mean ~ 1.0 everywhere, not 15-46 in the chained regions.
     //
     // IR-level verification is OUT OF SCOPE for the e2e binary: the
     // `run_slice` API returns only the gcode text, and `InfillIR` is only
     // exposed via the in-process `run_pipeline_with_instrumentation` which
     // requires custom `PipelineStageRunners` and does NOT use the real
     // core-modules WASM. The closest IR-level assertion lives in the
-    // linker module's own tests (packet 133). The gcode proxy proves the
-    // linker is wired in the real pipeline; per-bucket coverage catches
-    // raw 2-point regression.
-    for (k, moves) in sparse_moves.iter().enumerate() {
-        assert!(
-            *moves >= 2,
-            "AC-3: sparse-infill block {k} has only {moves} G1 moves; \
-             raw 2-point output would have 1. Block counts: {sparse_moves:?}"
-        );
-    }
+    // linker module's own tests (packets 133 and 192).
+    let mean_moves =
+        sparse_moves.iter().map(|&m| m as f64).sum::<f64>() / sparse_moves.len() as f64;
+    assert!(
+        mean_moves > 2.0,
+        "AC-3: mean G1 moves per sparse-infill block is {mean_moves:.3}, \
+         expected > 2.0; raw 2-point output would give ~1.0. \
+         Block counts: {sparse_moves:?}"
+    );
 }

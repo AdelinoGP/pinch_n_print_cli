@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 185-arachne-width-bridge-parity
 task_ids:
   - TASK-303
@@ -8,6 +8,20 @@ backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 copy_note: Approved draft; supersedes packet 184's residuals. Orchestrator flips packet 184's status — do not edit 184's files here.
 ---
+
+# Closure Note (2026-08-03, commit 10c32cc3 + follow-up fixes)
+
+Three e2e assertions drifted because post-185 behavior changes are canonical, not defects; the fixes below update the tests to the canonical baseline. Bisect evidence (verified against the tree, working tree clean at verification time):
+
+1. **`crates/slicer-runtime/tests/e2e/wedge_linked_infill_report_tdd.rs` — per-block `moves >= 2` → mean `> 2.0`.** Packet 192's anchor rewrite (`8bf25b65`) makes short canonical stubs (`min(4 × 0.3570796 mm, 20 mm) ≈ 1.43 mm`), so a sparse block can legitimately contain a single 2-point path emitting exactly 1 G1 move. 192's own `design.md` §Risks and Tradeoffs predicts this ("expect many more, much shorter polylines"; "do not treat a large diff in sparse-fill path counts as a defect"). Bisect: green at `48228417` (185's impl), red at HEAD. Fix: assert mean G1/block > 2.0 (raw 2-point output gives ~1.0); per-block >= 2 was catching a post-192 canonical shape, not a regression. The IR-level `points_per_path > 2` guarantee lives in the linker's module tests (packets 133/192).
+
+2. **`crates/slicer-runtime/tests/e2e/slicing_precision_integration_tdd.rs` — `legacy_zero_matches_golden` re-blessed.** The golden predates six post-golden packets (185, 187, 188, 190, 191, 193). Bisect: fails at `48228417` and `a579fc18`, passes at `4f3aa174`. Diff at re-bless time is geometry-only (wall coordinates shifted 0.025 mm via 185's role-aware width resolution; sparse-infill path counts via 192). Re-blessed with `BLESS_GOLDEN=1` per the test's own documented mechanism, justification added to the doc comment (CLAUDE.md Test Discipline: update fixtures to match canonical-correct output).
+
+3. **`crates/slicer-runtime/tests/e2e/infill_overlap_changes_gcode_tdd.rs` — G1-count-delta threshold → CONFIG_BLOCK value assertion.** The total-G1 count delta collapsed from 166 moves (0.51% at `4f3aa174`) to 19 (0.059% at `10c32cc3`) as 185/192 changed sparse path counts; the count-delta is no longer a discriminating signal. The test's own comment names the CONFIG_BLOCK per-run value as the "cleanest signal"; the byte-inequality assertion (`text_30 != text_45`) still proves the slice changed. Fix: assert the CONFIG_BLOCK carries `infill_overlap = 0.3` / `0.45` per run; drop the fragile 0.1% threshold.
+
+4. **Packet 193's AC-10 gate selector amended** (recorded in 193's packet.spec.md, not here): its ceremony skipped the runtime `e2e` bucket and the `slicer-gcode` test binaries — which is how the duplicate-`entity_id` fixture defect (a `slicer-gcode` gcode-emit test) sailed through. The amended gate adds `--test e2e` and `-p slicer-gcode`; the closure ceremony of this session validates it.
+
+No DEVIATION_LOG row is filed for the three adjustments: they are test-side updates matching canonical-correct drift, not parity gaps (the repo convention files disclosed *behavior* changes; these are assertions following behavior that was already disclosed by 185/192).
 
 # Packet Contract: 185-arachne-width-bridge-parity
 
