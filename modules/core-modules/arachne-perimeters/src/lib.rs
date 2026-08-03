@@ -182,9 +182,12 @@ fn arachne_params_from_config(
     // `inner_wall_line_width`. Those keys are retired; the wall-width keys are
     // plain mm (no units_to_mm), same as classic-perimeters reads them.
     let width_context = RoleWidthContext {
-        line_width: config
-            .get_float("line_width")
-            .unwrap_or(defaults.optimal_width) as f32,
+        // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
+        // sentinel, NOT the 0.4 mm legacy default — `resolve_role_width`
+        // routes zero through `auto_extrusion_width` (1.125 × nozzle).
+        // Pre-185 this fell back to `defaults.optimal_width` (0.4 mm),
+        // diverging from classic-perimeters on the absent-key path.
+        line_width: config.get_float("line_width").unwrap_or(0.0) as f32,
         nozzle_diameter: nozzle_diameter_mm as f32,
         bridge_line_width: config.get_float("bridge_line_width").unwrap_or(0.0) as f32,
         initial_layer_line_width: config

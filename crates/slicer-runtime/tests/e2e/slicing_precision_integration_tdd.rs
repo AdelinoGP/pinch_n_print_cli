@@ -224,7 +224,7 @@ fn default_emits_fewer_lines_than_legacy() {
 ///
 /// Re-blessed 2026-08-03 (packet 185 closure) after the post-172 geometry
 /// packets: 185 (role-aware width resolution — classic wall widths now
-/// resolve against `outer_wall_width`/`inner_wall_width`, shifting wall
+/// resolve against `outer_wall_line_width`/`inner_wall_line_width`, shifting wall
 /// offsets by 0.025 mm), 187/188 (custom-gcode injection points), 190/191
 /// (overhang smoothing / mid-segment vertex insertion) and 193 (overhang
 /// distance prepass carrier). The golden is the pre-172-era baseline that
@@ -232,6 +232,14 @@ fn default_emits_fewer_lines_than_legacy() {
 /// re-blessed only when the drift is canonical-correct (per CLAUDE.md Test
 /// Discipline), never to mask a defect. The diff at re-bless time was
 /// geometry-only (wall coordinates and sparse-infill path counts).
+///
+/// Re-blessed a second time 2026-08-03 (packet 185 production-readiness
+/// pass): the absent-`line_width` fallback moved to the canonical auto-0
+/// sentinel (1.125 × nozzle) in `rectilinear-infill` / `gyroid-infill` /
+/// `lightning-infill` (and `arachne-perimeters`), so the sparse-infill line
+/// spacing shifted from 0.4 mm-based to 0.45 mm-based on profiles that
+/// omit `line_width`. Geometry-only drift; re-blessed with the documented
+/// justification.
 ///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text

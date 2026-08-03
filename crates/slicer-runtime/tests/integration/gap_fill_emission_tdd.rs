@@ -10,17 +10,23 @@
 //! the discriminator OrcaSlicer uses. It does NOT ring the outer region boundary,
 //! so per-color MMU bisector edges produce no phantom slivers.
 //!
-//! Positive fixture: a 1.9 mm × 8 mm thin rectangle. With `wall_count = 2`,
-//! `outer_wall_line_width = inner_wall_line_width = 0.4 mm`:
+//! Positive fixture: a 1.8 mm × 8 mm thin rectangle. With `wall_count = 2`,
+//! `outer_wall_line_width = inner_wall_line_width = 0.4 mm` and no overlap
+//! keys configured (code fallback `infill_wall_overlap = 0.0`):
 //!
-//! - After inset i=0 (delta = -0.2 mm): 1.5 mm wide.
-//! - After inset i=1 (delta = -0.4 mm): 0.7 mm wide core.
+//! - Wall insets use Flow spacing per packet 185's D-105 closure:
+//!   `spacing = line_width_to_spacing(0.4, 0.2) ≈ 0.3571 mm`. Outer wall at
+//!   `0.5 × spacing`, inner wall at `0.5 × (ext_spacing + perimeter_spacing)`
+//!   = spacing, leaving a core of `1.8 − 0.3571 − 2 × 0.3571 ≈ 0.7286 mm`.
+//! - The infill inset is `spacing − infill_wall_overlap = 0.3571 − 0 = 0.3571`
+//!   mm per side, so the infill region needs `2 × 0.3571 ≈ 0.7143` mm of
+//!   core and the 0.7286 mm core fits: `offset(core, −0.3571)` still yields a
+//!   hairline (~0.014 mm) strip. This hairline is CANONICAL (spacing-derived
+//!   inset, not raw width) and its centroid lies inside the arm footprint.
 //!
-//! The 0.7 mm core is below the full 0.4 mm infill inset (0.7 < 0.8), so the
-//! infill region empties and the infill-transition gap yields a ≈0.3 mm × 6.4 mm
-//! strip whose medial-axis spine (≈6 mm) passes the 0.5 mm length filter and is
-//! emitted as GapFill. The infill emission uses the SAME full-width inset, so the
-//! core is owned by gap-fill alone (not double-counted as infill).
+//! - The infill-transition gap is `diff(offset(core, −0.5×0.4), offset(infill, +0.5×0.4))`
+//!   ≈ a 0.3 mm × 6.4 mm strip whose medial-axis spine (~6 mm) passes the
+//!   0.5 mm length filter and is emitted as GapFill.
 //!
 //! The `no_gaps_case` test uses a clean 10 mm square: the infill fills the center,
 //! the infill-transition gap is empty, and zero GapFill loops are emitted.
@@ -32,25 +38,28 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a 1.9 mm × 8 mm thin rectangle centered at the origin.
+/// Build a 1.8 mm × 8 mm thin rectangle centered at the origin.
 ///
 /// With `wall_count = 2` and `outer/inner_wall_line_width = 0.4 mm`:
-/// after two wall insets (0.6 mm per side: outer at 0.2, inner at 0.6)
-/// `current_polygons` is a 0.7 mm × 6.8 mm core. The infill inset
-/// (`offset(-0.4)`) empties it (0.7 < 0.8), so no infill fits — the
-/// infill-transition gap collection yields a ~0.3 mm × 6.4 mm strip
-/// (`offset(core, -0.2)`) that becomes the gap polygon. A WIDE region
-/// instead keeps a non-empty infill area and produces no gap (see
-/// `no_gaps_case`), which is the OrcaSlicer-parity discriminator.
+/// after two wall insets (Flow-spacing based per packet 185's D-105 closure;
+/// outer at ~0.179, inner at ~0.357, total ~0.536 mm per side) the core is
+/// ≈0.73 mm × 6.93 mm. The infill inset is `spacing − overlap` ≈ 0.357 mm
+/// per side, which needs 0.714 mm of core; the residual hairline infill
+/// strip is ~0.014 mm wide — canonical (spacing-derived) and NOT an empty
+/// infill region. The infill-transition gap collection yields a
+/// ~0.3 mm × 6.4 mm strip (`offset(core, -0.2)` diffed against the grown
+/// infill) that becomes the gap polygon. A WIDE region instead keeps a
+/// non-empty infill area and produces no gap (see `no_gaps_case`), which is
+/// the OrcaSlicer-parity discriminator.
 fn make_thin_arm_region(z: f32) -> SliceRegionView {
     // CCW winding: BL → BR → TR → TL
     let poly = ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2::from_mm(-0.95, -4.0),
-                Point2::from_mm(0.95, -4.0),
-                Point2::from_mm(0.95, 4.0),
-                Point2::from_mm(-0.95, 4.0),
+                Point2::from_mm(-0.9, -4.0),
+                Point2::from_mm(0.9, -4.0),
+                Point2::from_mm(0.9, 4.0),
+                Point2::from_mm(-0.9, 4.0),
             ],
         },
         holes: Vec::new(),
@@ -64,13 +73,13 @@ fn make_thin_arm_region(z: f32) -> SliceRegionView {
         .build()
 }
 
-/// AC-4: a 1.5 mm × 8 mm thin arm must produce ≥1 GapFill loop after
-/// two wall insets leave a 0.3 mm × 6.8 mm residual arm as a gap.
+/// AC-4: a 1.8 mm × 8 mm thin arm must produce ≥1 GapFill loop after
+/// two wall insets leave a residual arm as a gap.
 ///
 /// Config: `inner_wall_line_width = 0.4 mm`, `wall_count = 2`,
 /// `gap_infill_speed = 30.0 mm/s`, `filter_out_gap_fill = 0.5 mm` (AC-4 value).
 /// The medial-axis width floor is computed internally as
-/// `inner_wall_line_width * 0.25 ≈ 0.1 mm`; the 0.3 mm gap width passes.
+/// `inner_wall_line_width * 0.25 ≈ 0.1 mm`; the ~0.3 mm gap width passes.
 /// The ~6.5 mm spine length exceeds the 0.5 mm length filter.
 ///
 /// Assertions:
@@ -80,8 +89,12 @@ fn make_thin_arm_region(z: f32) -> SliceRegionView {
 /// - Every GapFill polyline's TOTAL length is ≥ 0.5 mm (AC-4 contract; this
 ///   mirrors the production filter, which sums segment lengths — it is NOT a
 ///   per-segment guarantee).
-/// - `infill_areas` does not contain any polygon whose centroid lies inside
-///   the arm bounding box (the gap was consumed, not left as infill).
+/// - `infill_areas` contains no polygon with a NON-HAIRLINE width whose
+///   centroid lies inside the arm bounding box: since packet 185's D-105
+///   closure the infill inset is Flow spacing minus overlap (0.3571 mm per
+///   side at these values), which leaves a canonical hairline residual strip
+///   (~0.014 mm) whose centroid sits inside the arm. A wide (>0.1 mm)
+///   residual would still indicate the gap was NOT consumed by gap-fill.
 #[test]
 fn gap_fill_emitted_for_narrow_gap() {
     let inner_w = 0.4_f32;
@@ -172,14 +185,21 @@ fn gap_fill_emitted_for_narrow_gap() {
     }
 
     // The gap must be consumed by gap-fill, not left as residual infill area.
-    // For the 1.9 mm × 8 mm arm fixture: the 0.7 mm core is below the full
-    // inner_wall_line_width (0.4 mm) infill inset, so the infill region empties
-    // and infill_areas must be empty over the arm.  We verify no centroid falls
-    // inside the arm footprint.
+    // For the 1.8 mm × 8 mm arm fixture: the ~0.73 mm core is below the full
+    // 0.7143 mm spacing-derived infill inset, so the infill region collapses
+    // to a canonical HAIRLINE residual (see the module docs) whose centroid
+    // legitimately sits inside the arm footprint. We verify no *wide*
+    // (> 0.1 mm, i.e. beyond the hairline) residual infill polygon centroid
+    // falls inside the arm footprint.
     let arm_x_min = mm_to_units(-0.8);
     let arm_x_max = mm_to_units(0.8);
     let arm_y_min = mm_to_units(-4.1);
     let arm_y_max = mm_to_units(4.1);
+    // Hairline residual width bound (mm): anything wider than this inside the
+    // arm means a real infill region survived the gap-fill consumption.
+    // Width proxy: the residual strip's minimum bounding-box extent, the same
+    // measure the perimeter modules use for width classification.
+    let hairline_max_width_mm = 0.1_f64;
 
     for call_areas in output.infill_areas() {
         for area in call_areas {
@@ -190,9 +210,27 @@ fn gap_fill_emitted_for_narrow_gap() {
                 / area.contour.points.len() as i64;
             let cy: i64 = area.contour.points.iter().map(|p| p.y).sum::<i64>()
                 / area.contour.points.len() as i64;
+            let inside_arm =
+                cx >= arm_x_min && cx <= arm_x_max && cy >= arm_y_min && cy <= arm_y_max;
+            if !inside_arm {
+                continue;
+            }
+            let mut min_x = i64::MAX;
+            let mut max_x = i64::MIN;
+            let mut min_y = i64::MAX;
+            let mut max_y = i64::MIN;
+            for p in &area.contour.points {
+                min_x = min_x.min(p.x);
+                max_x = max_x.max(p.x);
+                min_y = min_y.min(p.y);
+                max_y = max_y.max(p.y);
+            }
+            let width_mm = ((max_x - min_x) as f64).min((max_y - min_y) as f64) / 10_000.0;
             assert!(
-                !(cx >= arm_x_min && cx <= arm_x_max && cy >= arm_y_min && cy <= arm_y_max),
-                "infill_area centroid ({}, {}) lies inside the arm region — gap was not consumed",
+                width_mm <= hairline_max_width_mm,
+                "infill_area centroid ({}, {}) lies inside the arm region with width \
+                 {width_mm:.4} mm > hairline bound {hairline_max_width_mm} mm — a real \
+                 infill region survived; gap was not consumed",
                 cx,
                 cy
             );

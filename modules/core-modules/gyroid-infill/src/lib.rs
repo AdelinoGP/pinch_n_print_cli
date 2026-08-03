@@ -133,7 +133,9 @@ impl LayerModule for GyroidInfill {
             false,
             false,
             &slicer_core::flow::RoleWidthContext {
-                line_width: width("line_width", 0.4),
+                // Packet 185 (AC-5): absent `line_width` is the canonical
+                // auto-0 sentinel (1.125 × nozzle), not the legacy 0.4 mm.
+                line_width: width("line_width", 0.0),
                 nozzle_diameter: 0.4,
                 bridge_line_width: width("bridge_line_width", 0.0),
                 initial_layer_line_width: width("initial_layer_line_width", 0.0),
@@ -697,7 +699,10 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = GyroidInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
-        assert!((module.line_width - 0.4).abs() < 0.001);
+        // Packet 185 (AC-5): absent line_width resolves to the canonical
+        // auto width 1.125 × nozzle_diameter (0.45 at the module's fixed
+        // 0.4 mm nozzle), not the legacy 0.4 mm default.
+        assert!((module.line_width - 0.45).abs() < 0.001);
     }
 
     #[test]

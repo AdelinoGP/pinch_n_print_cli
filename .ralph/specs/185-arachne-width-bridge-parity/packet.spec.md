@@ -23,6 +23,25 @@ Three e2e assertions drifted because post-185 behavior changes are canonical, no
 
 No DEVIATION_LOG row is filed for the three adjustments: they are test-side updates matching canonical-correct drift, not parity gaps (the repo convention files disclosed *behavior* changes; these are assertions following behavior that was already disclosed by 185/192).
 
+# Closure Note Addendum (2026-08-03, production-readiness pass)
+
+The five remaining `crates/slicer-runtime/tests/integration` failures were bisected to packet 185 (`48228417`; all green at `7f2e94e5`). Three are test-side staleness — tests pinning pre-185 behavior that 185 deliberately replaced with canonical behavior (verified against `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` and `PrintConfig.cpp`); two are manifest-reconcile table gaps. No production-code revert:
+
+1. **`classic_min_width_top_surface_tdd::min_width_top_surface_gates_full_region_collapse` → renamed `topmost_collapse_is_unconditional`.** The pre-185 code gated the whole-region collapse (`top_shell_index == Some(0)`) on `min_width_top_surface`; 185's AC-10 and canonical `process_classic` (topmost layer, `upper_slices == nullptr` → `loop_number = 0`) collapse the topmost sub-area unconditionally. The threshold gates only non-topmost sub-areas (covered by the sibling test).
+
+2. **`gap_fill_emission_tdd::gap_fill_emitted_for_narrow_gap` fixture math updated.** 185's D-105 closure replaced the raw `-inner_wall_line_width` final-infill-boundary inset with canonical spacing-derived `-(spacing − overlap)` (0.3571 mm vs 0.4 mm per side at 0.4 mm width / 0.2 mm layer), so a 1.9 mm arm leaves a hairline (~0.014 mm) residual infill strip inside the arm — canonical, not a gap-consumption regression. Fixture narrowed to 1.8 mm; the empty-infill assertion became a hairline-width (≤ 0.1 mm) residual check.
+
+3. **`classic_wall_width_resolution_tdd::absent_width_keys_still_resolve_to_legacy_default` → renamed `absent_width_keys_resolve_to_canonical_auto_width`.** 185's AC-5 moved defaults to the canonical auto-0 sentinel; absent keys now resolve to `1.125 × nozzle_diameter` (0.675 at nozzle 0.6), identical to the explicit-zero case. The test pinned 184's "keep legacy 0.4 for absent keys" scope decision, which 185 superseded.
+
+4. **`manifest_default_reconcile_tdd` tables updated (classic + arachne).** 185 added seven manifest keys that the exhaustive reconcile tables did not classify: classic `initial_layer_line_width` / `bridge_line_width` (Float(0.0)), classic `infill_wall_overlap` / `top_bottom_infill_wall_overlap` (Str("15%") / Str("25%") — canonical defaults, effective live via schema-default injection per 185 AC-6; the direct-invocation `unwrap_or(0.0)` fallback is test-path-only), arachne `line_width` / `initial_layer_line_width` / `bridge_line_width` (Float(0.0)). Stale 0.4 rows (classic `line_width` / outer / inner; arachne outer / inner) updated to Float(0.0) for the auto-0 code fallback.
+
+5. **Production fix completing 185's AC-5: arachne absent-`line_width` fallback `defaults.optimal_width` (0.4 mm) → auto-0 sentinel.** Pre-185, absent `line_width` yielded 0.4 mm in arachne but auto (`1.125 × nozzle`) in classic — a cross-generator divergence on the absent-key path. Now both route through `resolve_role_width`'s auto sentinel, matching canonical. Recorded as a closure note (completing 185's own defaults-move), not a new deviation row.
+
+6. **Production audit extension (same session): the same absent-key divergence existed in the three infill modules 185 wired into `resolve_role_width`** — `rectilinear-infill`, `gyroid-infill`, `lightning-infill` all kept a 0.4 mm `line_width` fallback while their manifests declared the canonical auto-0 default. All three now fall back to the auto-0 sentinel (resolving to 1.125 × nozzle), their `from_config_defaults` tests updated to expect 0.45 mm, and two fixtures that asserted "configured 0.4 mm" without configuring it now set `line_width: 0.4` explicitly (`perimeter_parity/tapered_wedge/config.json`, `executor/arachne_perimeters_simple_square.rs`). The precision golden was re-blessed a second time for the resulting sparse-infill spacing shift (0.4 → 0.45 mm based).
+
+7. **Packet 193's AC-10 `--skip` exclusions removed** (recorded in 193's packet.spec.md): the five "pre-existing failures (baseline verified 2026-08-01)" are fixed, so the skip list and its prose are stale. The gate now sweeps the full `integration` bucket.
+
+
 # Packet Contract: 185-arachne-width-bridge-parity
 
 ## Goal

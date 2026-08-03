@@ -116,7 +116,14 @@ fn arachne_perimeters_simple_square_produces_walls() {
 
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
+            // Packet 185 moved width defaults to the canonical auto-0
+            // sentinel: an ABSENT line_width now resolves to 1.125 × nozzle
+            // (0.45 mm), not 0.4 mm. This test asserts "the configured 0.4mm",
+            // so 0.4 must actually be configured.
+            std::collections::HashMap::from([(
+                "line_width".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            )]),
         )))
         .build();
 
@@ -231,11 +238,14 @@ fn arachne_perimeters_simple_square_produces_walls() {
         );
     }
 
-    // (d) Correct widths for a UNIFORM region: a 10mm square with all-default
-    // config (0.4mm walls, 0.2mm layer height, wall_count 3) must emit
-    // exactly 3 walls whose every per-vertex width equals the configured
-    // 0.4mm — the emission round-trip `flow_to_width(line_width_to_spacing(
-    // 0.4, 0.2), 0.2) = 0.4` (D-160 Bug B closure).
+    // (d) Correct widths for a UNIFORM region: a 10mm square with
+    // `line_width = 0.4` explicitly configured (see the config_view above;
+    // packet 185's auto-0 defaults mean an absent key now resolves to
+    // 1.125 × nozzle instead of 0.4 mm), 0.2mm layer height, wall_count 3
+    // must emit exactly 3 walls whose every per-vertex width equals the
+    // configured 0.4mm — the emission round-trip
+    // `flow_to_width(line_width_to_spacing(0.4, 0.2), 0.2) = 0.4`
+    // (D-160 Bug B closure).
     //
     // History (2026-07-17 rewrite): this assertion used to demand
     // NON-identical width vectors across walls, "confirmed empirically: 26

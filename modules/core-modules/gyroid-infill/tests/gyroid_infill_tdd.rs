@@ -60,7 +60,9 @@ fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
     let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
-    assert!((module.line_width() - 0.4).abs() < 0.001);
+    // Packet 185 (AC-5): absent line_width resolves to the canonical auto
+    // width 1.125 × nozzle_diameter (0.45 at the fixed 0.4 mm nozzle).
+    assert!((module.line_width() - 0.45).abs() < 0.001);
 }
 
 /// Test 2: Custom config values are read correctly.

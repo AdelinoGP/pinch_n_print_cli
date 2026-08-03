@@ -8,10 +8,11 @@
 //! `Flow::auto_extrusion_width`, which returns `1.125 * nozzle_diameter` for
 //! both `frExternalPerimeter` and `frPerimeter`.
 //!
-//! Test 1 locks the auto sentinel. Test 2 is a regression lock: with the keys
-//! absent entirely we keep the in-tree `legacy_line_width` fallback (0.4 mm),
-//! per the packet's approved scope decision — we do NOT adopt canonical's
-//! auto default for the absent-key case.
+//! Test 1 locks the auto sentinel. Test 2 locks the packet-185 default move:
+//! with the keys absent entirely, the canonical auto-0 default now applies
+//! (`1.125 * nozzle_diameter`) — packet 185's AC-5 superseded packet 184's
+//! "keep the legacy 0.4 mm fallback for the absent-key case" scope decision,
+//! so absent keys behave identically to the explicit auto-0 sentinel in Test 1.
 
 use classic_perimeters::ClassicPerimeters;
 use slicer_sdk::builders::PerimeterOutputBuilder;
@@ -87,13 +88,16 @@ fn zero_width_resolves_to_canonical_auto_extrusion_width() {
 }
 
 #[test]
-fn absent_width_keys_still_resolve_to_legacy_default() {
+fn absent_width_keys_resolve_to_canonical_auto_width() {
     // No outer_wall_line_width, no inner_wall_line_width, no line_width.
-    let expected = 0.4_f32;
+    // Packet 185 moved the defaults to canonical auto-0, so absent keys
+    // resolve exactly like the explicit zero sentinel: 1.125 * nozzle_diameter.
+    let nozzle_diameter = 0.6_f32;
+    let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
 
     let config = ConfigViewBuilder::new()
         .int("wall_count", 3)
-        .float("nozzle_diameter", 0.6)
+        .float("nozzle_diameter", nozzle_diameter as f64)
         .float("layer_height", 0.2)
         .build();
 
@@ -120,10 +124,12 @@ fn absent_width_keys_still_resolve_to_legacy_default() {
         for pt in &wall.path.points {
             assert!(
                 (pt.width - expected).abs() < 0.005,
-                "Wall (perimeter_index {}) vertex width {} != legacy default {}",
+                "Wall (perimeter_index {}) vertex width {} != canonical auto \
+                 width {} (1.125 * nozzle_diameter {})",
                 wall.perimeter_index,
                 pt.width,
-                expected
+                expected,
+                nozzle_diameter
             );
         }
     }

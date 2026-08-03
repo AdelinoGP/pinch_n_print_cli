@@ -11,9 +11,13 @@
 //! `classic-perimeters` read the key and discarded it, so EVERY top sub-area
 //! collapsed to one wall. This test pins the gated behaviour:
 //!
-//! - a NARROW top sub-area (bbox min extent < `min_width_top_surface`) keeps
-//!   all `wall_count` loops,
-//! - a WIDE top sub-area (bbox min extent >= threshold) collapses to 1 loop.
+//! - a NARROW **non-topmost** top sub-area (bbox min extent <
+//!   `min_width_top_surface`) keeps all `wall_count` loops,
+//! - a WIDE **non-topmost** top sub-area (bbox min extent >= threshold)
+//!   collapses to 1 loop,
+//! - a TOPMOST sub-area (`top_shell_index == Some(0)`) collapses to 1 loop
+//!   unconditionally, regardless of the threshold (canonical
+//!   `process_classic`'s topmost-layer `loop_number = 0`; packet 185 AC-10).
 
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::WallLoop;
@@ -54,11 +58,17 @@ fn split_loops_by_island(walls: &[WallLoop]) -> (usize, usize) {
     (narrow, wide)
 }
 
-/// Site B: the whole-region collapse (`top_shell_index == Some(0)`) must
-/// consult the same `min_width_top_surface` gate as the partial-top split
-/// branch. A region narrower than the threshold keeps the full wall count.
+/// Site B: the whole-region collapse (`top_shell_index == Some(0)`) is
+/// UNCONDITIONAL — the topmost top sub-area collapses to one wall regardless
+/// of `min_width_top_surface`. Canonical `PerimeterGenerator::process_classic`
+/// sets `loop_number = 0` on the topmost layer (`upper_slices == nullptr`)
+/// before any threshold is consulted; the threshold gates only the
+/// non-topmost sub-area split (see `min_width_top_surface_gates_only_one_wall_top`).
+/// Packet 185 AC-10 pins this; packet 184's pre-185 code gated the whole-region
+/// collapse too, and this test originally asserted that — updated 2026-08-03 to
+/// the canonical post-185 behavior.
 #[test]
-fn min_width_top_surface_gates_full_region_collapse() {
+fn topmost_collapse_is_unconditional() {
     let config = ConfigViewBuilder::new()
         .int("wall_count", WALL_COUNT)
         .float("outer_wall_line_width", 0.5)
@@ -87,11 +97,10 @@ fn min_width_top_surface_gates_full_region_collapse() {
 
     let walls = output.wall_loops().len();
     assert_eq!(
-        walls, WALL_COUNT as usize,
-        "a fully-top region narrower than min_width_top_surface (bbox min extent \
-         {NARROW_W} mm < {MIN_WIDTH_TOP} mm) must keep the full wall count \
-         {WALL_COUNT}, observed {walls} wall loop(s) — the whole-region \
-         only_one_wall_top collapse is not gated by min_width_top_surface"
+        walls, 1,
+        "a topmost (top_shell_index == Some(0)) region collapses to one wall \
+         unconditionally even below min_width_top_surface (bbox min extent \
+         {NARROW_W} mm < {MIN_WIDTH_TOP} mm), observed {walls} wall loop(s)"
     );
 }
 

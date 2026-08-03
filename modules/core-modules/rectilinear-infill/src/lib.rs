@@ -84,10 +84,13 @@ impl LayerModule for RectilinearInfill {
             _ => 0.0,
         };
         let width_context = RoleWidthContext {
+            // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
+            // sentinel (resolved to 1.125 × nozzle by `resolve_role_width`),
+            // not the legacy 0.4 mm default.
             line_width: match config.get("line_width") {
                 Some(ConfigValue::Float(w)) => *w as f32,
                 Some(ConfigValue::Int(w)) => *w as f32,
-                _ => 0.4,
+                _ => 0.0,
             },
             nozzle_diameter: 0.4,
             bridge_line_width: width_value("bridge_line_width"),
@@ -554,6 +557,9 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = RectilinearInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
-        assert!((module.line_width - 0.4).abs() < 0.001);
+        // Packet 185 (AC-5): absent line_width resolves to the canonical
+        // auto width 1.125 × nozzle_diameter (0.45 at the module's fixed
+        // 0.4 mm nozzle), not the legacy 0.4 mm default.
+        assert!((module.line_width - 0.45).abs() < 0.001);
     }
 }

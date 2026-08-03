@@ -36,8 +36,9 @@
 //! impossible rather than detectable — is split out as a follow-up packet;
 //! see D-160's reconcile follow-up in docs/DEVIATION_LOG.md. It is blocked on
 //! a real design question this test surfaced: several classic fallbacks are
-//! *derived* (`nozzle_diameter` falls back to `inner_wall_line_width`, which
-//! falls back to `line_width`), so a constants table cannot represent every
+//! *derived* (`nozzle_diameter` falls back to the canonical 0.4 mm machine
+//! default when `line_width` is absent/zero, which since packet 185 resolves
+//! through the auto-0 sentinel), so a constants table cannot represent every
 //! key.
 //!
 //! Exit condition: `cargo test -p slicer-runtime --test integration manifest_default_reconcile_tdd`
@@ -178,12 +179,26 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("wall_count", Int(3)),       // from_config `_ => 3`
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
-    ("line_width", Float(0.4)), // legacy_line_width `_ => 0.4`
-    // Derived: falls back to legacy_line_width (`line_width`), itself 0.4 —
-    // the effective empty-config fallback is 0.4. THIS row is the one that
-    // read a false 0.5 in the manifest until D-160's audit.
-    ("outer_wall_line_width", Float(0.4)),
-    ("inner_wall_line_width", Float(0.4)), // derived like outer; effective 0.4
+    // Packet 185 (AC-5): the defaults moved to the canonical auto-0 sentinel.
+    // `legacy_line_width` (run_perimeters) routes an absent/zero `line_width`
+    // through `resolve_role_width`, which resolves to `1.125 * nozzle_diameter`.
+    ("line_width", Float(0.0)),
+    // Packet 185: `float_or_percent` resolved via `get_abs_value` against
+    // `nozzle_diameter`; absent/zero is the auto sentinel (`0`).
+    ("outer_wall_line_width", Float(0.0)),
+    ("inner_wall_line_width", Float(0.0)),
+    // Packet 185: `float_or_percent`; zero falls back to the resolved role
+    // width — the empty-config fallback value is the auto sentinel `0`.
+    ("initial_layer_line_width", Float(0.0)),
+    ("bridge_line_width", Float(0.0)),
+    // Packet 185: `percent` keys. The manifest default (canonical 15%/25%,
+    // PrintConfig.cpp) is effective on live slices through schema-default
+    // injection (185 AC-6, `crates/slicer-scheduler/src/config_resolution.rs`).
+    // The direct-invocation code fallback (`get_abs_value(..).unwrap_or(0.0)`)
+    // is exercised only by tests that bypass the scheduler, so the manifest
+    // value is the reconciled behavior.
+    ("infill_wall_overlap", Str("15%")),
+    ("top_bottom_infill_wall_overlap", Str("25%")),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
     ("detect_thin_wall", Bool(true)),
@@ -207,12 +222,8 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("alternate_extra_wall", Unread),
     ("bridge_flow", Float(1.0)),
     ("thick_bridges", Bool(false)),
-    // Derived: nozzle_diameter falls back directly to legacy_line_width
-    // (`line_width`), itself 0.4; effective empty-config fallback is 0.4.
-    // Packet 184 / D-164 broke the old nozzle_diameter -> inner_wall_line_width
-    // chain: the two wall widths are now `float_or_percent` keys resolved
-    // against nozzle_diameter, so the read moved above them and its fallback
-    // became legacy_line_width. The 0.4 value is unchanged.
+    // Derived: nozzle_diameter falls back to 0.4 mm (the canonical machine
+    // default) when `line_width` is absent or zero; manifest default 0.4.
     ("nozzle_diameter", Float(0.4)),
     ("layer_height", Float(0.2)),
 ];
@@ -246,13 +257,25 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("max_bead_count", Int(0)),
     ("wall_count", Int(3)),
     ("wall_direction", Str("counter_clockwise")),
-    // D-160 Bug A: bead_width_x, read in plain mm; fallback
-    // defaults.optimal_width = 0.4mm.
-    ("inner_wall_line_width", Float(0.4)),
+    // Packet 185: `inner_wall_line_width` resolved via `get_abs_value` against
+    // `nozzle_diameter`; absent/zero is the auto sentinel (`0`).
+    ("inner_wall_line_width", Float(0.0)),
     ("detect_thin_wall", Bool(false)), // defaults.print_thin_walls
     // D-160 Bug A: bead_width_0, plain mm; fallback
     // defaults.preferred_bead_width_outer = 0.4mm.
-    ("outer_wall_line_width", Float(0.4)),
+    // Packet 185 (AC-5): defaults moved to the canonical auto-0 sentinel;
+    // absent/zero resolves through `resolve_role_width` to
+    // `1.125 * nozzle_diameter`.
+    ("outer_wall_line_width", Float(0.0)),
+    // Packet 185: absent `line_width` is the auto-0 sentinel (resolve_role_width
+    // falls back to 1.125 × nozzle). Pre-185 the code fallback was
+    // `defaults.optimal_width` (0.4 mm), diverging from classic on the
+    // absent-key path — corrected 2026-08-03.
+    ("line_width", Float(0.0)),
+    // Packet 185: `float` keys; zero falls back to the resolved role width —
+    // the empty-config fallback value is the auto sentinel `0`.
+    ("initial_layer_line_width", Float(0.0)),
+    ("bridge_line_width", Float(0.0)),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
     ("seam_candidate_angle_threshold_deg", Float(30.0)),
