@@ -53,7 +53,7 @@ row-3 ordinal; row 1 takes the newly derived free `TASK-294`; row 2 takes `TASK-
 **Preflight verdict:** the prior "PREFLIGHT PASS" line is **withdrawn**.
 Packet 178 has been re-derived to `TASK-294` with a `supersedes:` row; the
 caller must run `/spec-review 178 --preflight` to produce the real verdict
-before flipping `status: active`. Packets 179 and 180 remain `status: draft`
+before flipping the front matter to `active`. Packets 179 and 180 remain `draft`
 and have not been re-derived or preflighted. Packet 3 still carries an
 accepted FORWARD-DEP on packets 1 and 2; the deviation row
 `D-283-ADR-0046-AMENDED` to amend ADR-0046 (default `seam_mode` = `aligned`)

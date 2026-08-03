@@ -216,7 +216,7 @@ need it; never read one out of this table.
 | 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 |
 
 **Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
-`.ralph/specs/183-arachne-voronoi-panic-diagnosis` was `status: draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
+`.ralph/specs/183-arachne-voronoi-panic-diagnosis` was `draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
 all of which were also `draft`. Packet 183 has since been implemented and is now **reopened** for the DEV-098 workspace-test remediation while
 retaining its D-167 verdict. Row 6 remains dependent on packet 183's recorded verdict; the remediation does not reopen that dependency or change
 the D-154 design gate. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`.**

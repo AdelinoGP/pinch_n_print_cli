@@ -340,7 +340,7 @@
   - Every pipe-suffixed command in `packet.spec.md`, including the AC-8, AC-9, and AC-N3 filters.
   - `cargo check -p slicer-runtime --all-targets`
   - `cargo clippy -p slicer-runtime --all-targets -- -D warnings`
-- Exit condition: all acceptance tests and freshness/check/clippy gates pass; documentation can retain `status: draft` until the separate status-flip step.
+- Exit condition: all acceptance tests and freshness/check/clippy gates pass; documentation can keep the front matter `draft` until the separate status-flip step.
 
 ## Per-Step Budget Roll-Up
 

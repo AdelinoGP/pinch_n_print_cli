@@ -21,7 +21,7 @@ Touches `modules/core-modules/machine-gcode-emit/src/lib.rs` (four new `Injectio
 
 - Depends on: **`187-custom-gcode-injection-registry` (TASK-306)**, hard — this packet extends `InjectionSite`, `InjectionPoint`, `INJECTION_POINTS` and the per-site lookup that 187 introduces, and reuses its `LayerContext` for the `layer_num` / `layer_z` variables that canonical also sets at toolchange and role sites. Transitively depends on `186-custom-gcode-placeholder-engine` (TASK-305) for placeholder substitution and the collect-all-then-warn-once rule.
 - Unblocks: closing `DEV-085`. This is the last of the three splits, so it is the packet that flips that row to `Closed` — but only for the points it and 186/187 actually landed; the five unreachable points move to their own residual row and stay open there.
-- Activation blockers: none technical. `140_lightning-module-rewrite` is the only `active` packet; this stays `draft` until that clears **and** until 187 is `implemented`. **Packets 181-187 are all `status: draft`** — nothing they file has landed; no claim here may cite any of them as done.
+- Activation blockers: none technical. `140_lightning-module-rewrite` is the only `active` packet; this stays `draft` until that clears **and** until 187 is `implemented`. **Packets 181-187 are all `draft`** — nothing they file has landed; no claim here may cite any of them as done.
 
 ## Acceptance Criteria
 

@@ -29,7 +29,7 @@ scope and pin the deviation closures in their acceptance criteria.
   implementing core modules (rectilinear/gyroid/lightning/top-surface-ironing);
   add a real `Layer::Infill` test-guest calling `lightning-tree-segments`
   through the WIT boundary (reuse `layer-infill-guest`).
-- **Status:** both refined packets stay `status: draft` (preflight gate is the
+- **Status:** both refined packets stay `draft` (preflight gate is the
   activation check; we do not activate in this refinement).
 - **Batch protocol:** single combined author subagent for both packets (user
   chose this; not the parallel-double-dispatch option). I (the planner) own
@@ -267,7 +267,7 @@ One **author** subagent. The subagent:
 
 After the subagent returns, I (the planner) dispatch the
 `spec-review --preflight` skill on each packet. If preflight PASSes, the
-packets stay at `status: draft` (per user decision). If preflight
+packets stay at `draft` (per user decision). If preflight
 BLOCKS, the planner fixes in place and reruns.
 
 ## Resume Instruction
