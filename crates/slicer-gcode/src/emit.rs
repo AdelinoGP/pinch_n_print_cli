@@ -438,10 +438,28 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 .collect();
 
             // Process each entity
+            let mut seen_entity_ids: std::collections::HashSet<u64> =
+                std::collections::HashSet::new();
             for (entity_idx, entity) in layer.ordered_entities.iter().enumerate() {
                 let entity_idx = entity_idx as u32;
                 let points = &entity.path.points;
                 let role = &entity.path.role;
+
+                // `entity_id` must be unique within a layer: `LayerEntityIdGen`
+                // assigns monotonic ids in production, and the side-data
+                // lookups below (`speed_profiles_by_entity`, travel moves) key
+                // on it — a duplicate silently aliases one entity's profile
+                // onto another. A fixture sweep once collapsed two entities
+                // onto the same id and only surfaced as a lost distinct
+                // feedrate (packet 185 review); assert the invariant here so
+                // the class of defect fails loudly at the boundary.
+                debug_assert!(
+                    seen_entity_ids.insert(entity.entity_id),
+                    "gcode_emit: duplicate entity_id {} in layer Z={} — \
+                     entity_ids must be unique per layer",
+                    entity.entity_id,
+                    layer.z,
+                );
 
                 // Defensive: wall loops are emitted with an explicit closing
                 // repeat (OrcaSlicer convention, see ExtrusionPath3D::is_closed).

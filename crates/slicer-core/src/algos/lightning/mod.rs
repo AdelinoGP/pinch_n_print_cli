@@ -83,11 +83,16 @@ pub fn generate_lightning_trees(
                         .map_or_else(Vec::new, |polygon| polygon.contour.points.clone())
                 })
                 .collect();
-            let line_width_mm = if config.line_width <= 0.0 {
-                1.125 * DEFAULT_NOZZLE_DIAMETER_MM
-            } else {
-                config.line_width
-            };
+            let line_width_mm = crate::flow::resolve_role_width(
+                slicer_ir::ExtrusionRole::SparseInfill,
+                false,
+                false,
+                &crate::flow::RoleWidthContext {
+                    line_width: config.line_width,
+                    nozzle_diameter: DEFAULT_NOZZLE_DIAMETER_MM,
+                    ..Default::default()
+                },
+            );
             let mut generator = Generator::new(
                 outlines,
                 config.infill_density as f64,

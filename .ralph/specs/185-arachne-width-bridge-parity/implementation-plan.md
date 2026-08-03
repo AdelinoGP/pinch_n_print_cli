@@ -271,12 +271,12 @@
 ### Step 10: Part-level width metadata allowlist
 
 - Task IDs: `TASK-212b`
-- Objective: extend `object_metadata_to_config_data` in `crates/slicer-model-io/src/loader.rs` so part-level 3MF metadata preserves `inner_wall_line_width`, `outer_wall_line_width`, and `sparse_infill_line_width` in `config_delta.fields` instead of dropping them; extend the existing `parses_cube_cilindrical_modifier_sidecar` regression.
+- Objective: ensure modifier-part 3MF metadata preserves `inner_wall_line_width`, `outer_wall_line_width`, and `sparse_infill_line_width` in `ModifierVolume.config_delta.fields` on the live path — part metadata is ingested generically into `config_delta.fields` in `crates/slicer-model-io/src/loader.rs`; `object_metadata_to_config_data` additionally allows the same three keys at object scope; add a production-loader-path regression test (`part_width_keys_survive_in_config_delta_fields`) asserting the three keys' exact values in `config_delta.fields`.
 - Precondition: the canonical key names are fixed by Step 2; no WIT change is needed because the existing sidecar metadata path already carries arbitrary fields.
-- Postcondition: the three width keys survive part metadata extraction and the existing modifier fixture asserts their values; unrelated unknown keys remain dropped.
+- Postcondition: the three width keys are asserted in `ModifierVolume.config_delta.fields` with their exact fixture values through the production `load_model` path; the raw sidecar regression remains green; unrelated unknown keys remain dropped at object scope.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-model-io/src/loader.rs` - locate `object_metadata_to_config_data` and its part-level allowlist
-  - `crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs` - lines `[235-305]` (`parses_cube_cilindrical_modifier_sidecar`)
+  - `crates/slicer-model-io/src/loader.rs` - locate `object_metadata_to_config_data` and the generic part-metadata ingestion loop (`config_delta.fields`)
+  - `crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs` - lines `[235-312]` (`parses_cube_cilindrical_modifier_sidecar` + `part_width_keys_survive_in_config_delta_fields`)
 - Files allowed to edit (at most 3):
   - `crates/slicer-model-io/src/loader.rs`
   - `crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs`
@@ -285,15 +285,15 @@
   - `crates/slicer-schema/wit/**` (no boundary change)
   - `target/**`, generated code, and unrelated loaders
 - Expected sub-agent dispatches:
-  - Question: verify the three width keys are retained by the part allowlist and unknown keys remain rejected; scope: `crates/slicer-model-io/src/loader.rs crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs`; return: `SNIPPETS`
+  - Question: verify the three width keys reach `config_delta.fields` via the generic part ingestion loop and unknown keys remain dropped at object scope; scope: `crates/slicer-model-io/src/loader.rs crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs`; return: `SNIPPETS`
 - Context cost: `S`
 - Authoritative docs:
   - `docs/07_implementation_status.md` - `TASK-212b` row only
 - OrcaSlicer refs:
   - none
 - Verification:
-   - `set -o pipefail; cargo test -p slicer-model-io --all-targets --test threemf_sidecar_classification_tdd -- parses_cube_cilindrical_modifier_sidecar 2>&1 | tee target/test-output.log | rg '^test result: ok'` - FACT pass/fail
-- Exit condition: all three width keys are asserted in `config_delta.fields`; the existing unknown-key behavior remains asserted; `TASK-212b` has a concrete passing regression.
+   - `set -o pipefail; cargo test -p slicer-model-io --all-targets --test threemf_sidecar_classification_tdd -- part_width_keys_survive_in_config_delta_fields 2>&1 | tee target/test-output.log | rg '^test result: ok'` - FACT pass/fail
+- Exit condition: all three width keys are asserted in `config_delta.fields` with exact values via the production loader; `TASK-212b` has a concrete passing regression.
 
 ### Step 11: precedence-matrix integration tests + deviation log + task crosswalk
 

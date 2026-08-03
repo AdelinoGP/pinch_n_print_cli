@@ -307,7 +307,44 @@ fn parses_cube_cilindrical_modifier_sidecar() {
             .get("sparse_infill_density")
             .map(String::as_str),
         Some("40%"),
-        "modifier part 2 should carry the sparse_infill_density override"
+        "part 2 should carry the sparse_infill_density override"
+    );
+}
+
+#[test]
+fn part_width_keys_survive_in_config_delta_fields() {
+    use slicer_ir::ConfigValue;
+    use slicer_model_io::loader::load_model;
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/cube_cilindrical_modifier.3mf");
+    let mesh_ir = load_model(&path).expect("load_model on cube_cilindrical_modifier.3mf failed");
+
+    let modifier_volumes: Vec<&slicer_ir::ModifierVolume> = mesh_ir
+        .objects
+        .iter()
+        .flat_map(|object| object.modifier_volumes.iter())
+        .collect();
+    assert!(
+        !modifier_volumes.is_empty(),
+        "fixture should produce at least one modifier volume"
+    );
+
+    let fields = &modifier_volumes[0].config_delta.fields;
+    assert_eq!(
+        fields.get("inner_wall_line_width"),
+        Some(&ConfigValue::Float(0.6)),
+        "inner_wall_line_width must survive into modifier config_delta.fields"
+    );
+    assert_eq!(
+        fields.get("outer_wall_line_width"),
+        Some(&ConfigValue::Float(0.5)),
+        "outer_wall_line_width must survive into modifier config_delta.fields"
+    );
+    assert_eq!(
+        fields.get("sparse_infill_line_width"),
+        Some(&ConfigValue::Float(0.4)),
+        "sparse_infill_line_width must survive into modifier config_delta.fields"
     );
 }
 

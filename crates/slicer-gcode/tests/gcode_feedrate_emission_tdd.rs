@@ -305,19 +305,9 @@ fn distinct_feedrates_present() {
     });
 
     layer.ordered_entities.push(PrintEntity {
-        entity_id: 1,
+        entity_id: 2,
         path: ExtrusionPath3D {
             points: vec![
-                Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.2,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                },
                 Point3WithWidth {
                     x: 10.0,
                     y: 0.0,
@@ -328,11 +318,21 @@ fn distinct_feedrates_present() {
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
                 },
+                Point3WithWidth {
+                    x: 20.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                },
             ],
-            role: ExtrusionRole::OuterWall,
+            role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
+        role: ExtrusionRole::SparseInfill,
         tool_index: 0,
         region_key: RegionKey {
             region_id: 0,

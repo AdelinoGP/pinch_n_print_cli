@@ -60,8 +60,19 @@ fn region_key_fixture() -> RegionKey {
 }
 
 fn print_entity_fixture(points: Vec<Point3WithWidth>, role: ExtrusionRole) -> PrintEntity {
+    print_entity_fixture_with_id(points, role, 1)
+}
+
+/// Like [`print_entity_fixture`] but with an explicit `entity_id`, for layers
+/// that carry more than one entity — `entity_id` must be unique per layer
+/// (production assigns monotonic ids via `LayerEntityIdGen`).
+fn print_entity_fixture_with_id(
+    points: Vec<Point3WithWidth>,
+    role: ExtrusionRole,
+    entity_id: u64,
+) -> PrintEntity {
     PrintEntity {
-        entity_id: 1,
+        entity_id,
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
@@ -384,17 +395,20 @@ fn emit_tool_change_at_correct_position() {
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Layer with 3 entities and a tool change after entity 1
-    let entity0 = print_entity_fixture(
+    let entity0 = print_entity_fixture_with_id(
         vec![point3_with_width(0.0, 0.0, 0.2)],
         ExtrusionRole::OuterWall,
+        1,
     );
-    let entity1 = print_entity_fixture(
+    let entity1 = print_entity_fixture_with_id(
         vec![point3_with_width(10.0, 0.0, 0.2)],
         ExtrusionRole::OuterWall,
+        2,
     );
-    let entity2 = print_entity_fixture(
+    let entity2 = print_entity_fixture_with_id(
         vec![point3_with_width(20.0, 0.0, 0.2)],
         ExtrusionRole::OuterWall,
+        3,
     );
     let mut layer = layer_collection_fixture(0, 0.2);
     layer.ordered_entities = vec![entity0, entity1, entity2];
@@ -469,13 +483,15 @@ fn emit_zhop_generates_travel_sequence() {
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Layer with 2 entities and a Z hop after entity 0
-    let entity0 = print_entity_fixture(
+    let entity0 = print_entity_fixture_with_id(
         vec![point3_with_width(0.0, 0.0, 0.2)],
         ExtrusionRole::OuterWall,
+        1,
     );
-    let entity1 = print_entity_fixture(
+    let entity1 = print_entity_fixture_with_id(
         vec![point3_with_width(10.0, 0.0, 0.2)],
         ExtrusionRole::OuterWall,
+        2,
     );
     let mut layer = layer_collection_fixture(0, 0.2);
     layer.ordered_entities = vec![entity0, entity1];
@@ -1174,61 +1190,69 @@ fn emits_orca_type_comments_at_role_boundaries() {
     let serializer = DefaultGCodeSerializer::new();
 
     // Build a layer with one entity per role, no interspersed travel
-    let entity_outer = print_entity_fixture(
+    let entity_outer = print_entity_fixture_with_id(
         vec![
             point3_with_width(0.0, 0.0, 0.2),
             point3_with_width(1.0, 0.0, 0.2),
         ],
         ExtrusionRole::OuterWall,
+        1,
     );
-    let entity_top = print_entity_fixture(
+    let entity_top = print_entity_fixture_with_id(
         vec![
             point3_with_width(1.0, 0.0, 0.2),
             point3_with_width(2.0, 0.0, 0.2),
         ],
         ExtrusionRole::TopSolidInfill,
+        2,
     );
-    let entity_sparse = print_entity_fixture(
+    let entity_sparse = print_entity_fixture_with_id(
         vec![
             point3_with_width(2.0, 0.0, 0.2),
             point3_with_width(3.0, 0.0, 0.2),
         ],
         ExtrusionRole::SparseInfill,
+        3,
     );
-    let entity_support = print_entity_fixture(
+    let entity_support = print_entity_fixture_with_id(
         vec![
             point3_with_width(3.0, 0.0, 0.2),
             point3_with_width(4.0, 0.0, 0.2),
         ],
         ExtrusionRole::SupportMaterial,
+        4,
     );
-    let entity_supp_iface = print_entity_fixture(
+    let entity_supp_iface = print_entity_fixture_with_id(
         vec![
             point3_with_width(4.0, 0.0, 0.2),
             point3_with_width(5.0, 0.0, 0.2),
         ],
         ExtrusionRole::SupportInterface,
+        5,
     );
-    let entity_skirt = print_entity_fixture(
+    let entity_skirt = print_entity_fixture_with_id(
         vec![
             point3_with_width(5.0, 0.0, 0.2),
             point3_with_width(6.0, 0.0, 0.2),
         ],
         ExtrusionRole::Skirt,
+        6,
     );
-    let entity_brim = print_entity_fixture(
+    let entity_brim = print_entity_fixture_with_id(
         vec![
             point3_with_width(6.0, 0.0, 0.2),
             point3_with_width(7.0, 0.0, 0.2),
         ],
         ExtrusionRole::Brim,
+        7,
     );
-    let entity_wipe = print_entity_fixture(
+    let entity_wipe = print_entity_fixture_with_id(
         vec![
             point3_with_width(7.0, 0.0, 0.2),
             point3_with_width(8.0, 0.0, 0.2),
         ],
         ExtrusionRole::PrimeTower,
+        8,
     );
 
     let mut layer = layer_collection_fixture(0, 0.2);
@@ -1471,19 +1495,21 @@ fn omits_absent_role_labels_and_retraction_lines() {
     let serializer = DefaultGCodeSerializer::new();
 
     // Only OuterWall + SparseInfill â€” no support, skirt, wipe/prime tower
-    let entity_outer = print_entity_fixture(
+    let entity_outer = print_entity_fixture_with_id(
         vec![
             point3_with_width(0.0, 0.0, 0.2),
             point3_with_width(1.0, 0.0, 0.2),
         ],
         ExtrusionRole::OuterWall,
+        1,
     );
-    let entity_sparse = print_entity_fixture(
+    let entity_sparse = print_entity_fixture_with_id(
         vec![
             point3_with_width(1.0, 0.0, 0.2),
             point3_with_width(2.0, 0.0, 0.2),
         ],
         ExtrusionRole::SparseInfill,
+        2,
     );
 
     let mut layer = layer_collection_fixture(0, 0.2);

@@ -1198,11 +1198,16 @@ pub fn execute_paint_segmentation(
             Some(cfg) => (
                 cfg.top_shell_layers as usize,
                 cfg.bottom_shell_layers as usize,
-                if cfg.line_width <= 0.0 {
-                    1.125 * DEFAULT_NOZZLE_DIAMETER_MM
-                } else {
-                    cfg.line_width
-                },
+                crate::flow::resolve_role_width(
+                    slicer_ir::ExtrusionRole::OuterWall,
+                    false,
+                    false,
+                    &crate::flow::RoleWidthContext {
+                        line_width: cfg.line_width,
+                        nozzle_diameter: DEFAULT_NOZZLE_DIAMETER_MM,
+                        ..Default::default()
+                    },
+                ),
                 // `cfg.layer_height` is `f64` (Z-formula precision); cast to
                 // `f32` here — shell-window math uses it as a thickness, not
                 // as a Z-plane coordinate, so f32 precision is sufficient.
