@@ -161,7 +161,7 @@ fn vertex_bead_count_at_end(graph: &SkeletalTrapezoidationGraph, edge_idx: usize
 /// from A (the only central neighbor reachable at v1) with `Some(4)`.
 /// Same shape as [`gapped_hand_built_graph`] but with a *thickness gradient*: a
 /// thin source vertex that owns a bead count feeds a MUCH thicker gap vertex.
-/// This is the benchy-hull-spine shape (`D4-INNER-WALL-OVEREXTRUSION`), and the
+/// This is the benchy-hull-spine shape, and the
 /// case [`gapped_hand_built_graph`] structurally cannot catch because every one
 /// of its vertices shares `distance_to_boundary = 5.0` (with uniform thickness,
 /// copying a beading and recomputing it are indistinguishable).
@@ -226,7 +226,7 @@ fn thickness_gradient_gap_graph() -> SkeletalTrapezoidationGraph {
     }
 }
 
-/// Regression pin for `D4-INNER-WALL-OVEREXTRUSION`. Unit-independent
+/// Regression pin for the inner-wall over-extrusion defect. Unit-independent
 /// STRUCTURAL invariant: a beading propagated upward must be the source's
 /// beading **verbatim** — never rescaled to the destination's (larger)
 /// thickness, which would inflate a middle bead into a physically impossible
@@ -270,7 +270,7 @@ fn propagation_upward_copies_beading_without_rescaling_to_thicker_node() {
         widest <= 2.0 * params.optimal_width,
         "propagated beading has a bead of width {widest} units (> 2x optimal_width {}) — the \
          destination's surplus thickness was materialised as an extruded bead instead of infill \
-         (D4-INNER-WALL-OVEREXTRUSION)",
+         (inner-wall over-extrusion defect)",
         params.optimal_width
     );
 
@@ -445,7 +445,7 @@ fn propagation_fills_gap_from_central_neighbor() {
     // `compute(2 * to.distance_to_boundary, bead_count)` at the DESTINATION's
     // thickness turns a thin node's bead count into a giant centre bead on a
     // thicker node (benchy hull spine: `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]`,
-    // a ~19mm extruded "wall" — `D4-INNER-WALL-OVEREXTRUSION`). This fixture never
+    // a ~19mm extruded "wall" — the inner-wall over-extrusion defect). This fixture never
     // caught it because every vertex here shares `distance_to_boundary = 5.0`, so
     // copy-vs-recompute are indistinguishable; see
     // `propagation_upward_copies_beading_without_rescaling_to_thicker_node` for the
@@ -483,7 +483,7 @@ fn propagation_fills_gap_from_central_neighbor() {
 /// 113c interleaved-rib topology: a single central edge `E0` (v0 -> v1, along
 /// y=0 from x=0 to x=100) carries *two* `transition_mids` (so `apply_transitions`
 /// performs two same-edge splits on `E0` — the exact repeated-same-edge-split
-/// shape from `D-112-MMU-TOPOLOGY`'s 6th-pass "busy-hub" bug history), and `v1`
+/// shape from the 6th-pass "busy-hub" bug history), and `v1`
 /// is immediately followed by a rib pair (`E2` forth / `E3` back, `EdgeType::
 /// EXTRA_VD`) built with the *exact* wiring `SkeletalTrapezoidationGraph::
 /// make_rib` produces: `E0.next = E2`, `E2.prev = E0`, `E2.twin = E3`,

@@ -130,7 +130,7 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
 // runs `#[test]` fns concurrently on multiple threads, so a reset+read pair
 // in one test races against increments from unrelated sibling tests unless
 // all of them serialize through this lock for their dispatch critical
-// section. See docs/DEVIATION_LOG.md D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+// section. See the process-wide ordered-entities counter serialization contract.
 static ORDERED_ENTITIES_COUNTER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 pub fn ordered_entities_counter_lock() -> MutexGuard<'static, ()> {

@@ -264,7 +264,7 @@ fn finalize_chain(
         // silently shrank this threshold from 1.2mm to 0.00012mm so the rule
         // never fired and small fragments closed prematurely — then escaped
         // `remove_small_lines`, which exempts `is_closed` lines. See
-        // D-147-STITCH-TINY-POLY-UNITS.
+        // See the unit contract documented above.
         if chain_length + closing_dist < 3.0 * max_gap || junctions.len() <= 2 {
             false
         } else {

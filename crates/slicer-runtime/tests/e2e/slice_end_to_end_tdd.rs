@@ -455,9 +455,9 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
 /// The assertions below are the ones the digest was standing in for, named in
 /// its own comment: "a new CONFIG_BLOCK key, a gcode-comment reshuffle, a
 /// layer-count drift". Each now fails with the thing that changed rather than
-/// with two hex strings. Precedent: ADR-0042, and `D-109C-AC22-PARITY-RESHAPE`
-/// in `docs/DEVIATION_LOG.md`, which replaced a byte-SHA golden with structural
-/// assertions for the same reason.
+/// with two hex strings. Precedent: ADR-0042 and the earlier parity correction
+/// that replaced a byte-SHA golden with structural assertions for the same
+/// reason.
 #[test]
 fn wedge_per_region_config_delivery_structural_canary() {
     /// Layers in the default wedge slice: 40mm of model at 0.2mm.

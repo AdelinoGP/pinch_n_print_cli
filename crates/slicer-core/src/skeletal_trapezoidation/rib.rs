@@ -21,8 +21,7 @@
 //! rib pair between every spine sub-segment. A square (no sharp corners)
 //! therefore has *many* ribs, not zero — the previous corner-only pass left
 //! almost every spine edge un-ribbed, breaking `getNextUnconnected`-style
-//! domain traversal at every junction (`D-112-MMU-TOPOLOGY`,
-//! `D-113B-CONNECTJUNCTIONS`).
+//! domain traversal at every junction.
 //!
 //! Packet 113c moves faithful rib insertion **into**
 //! [`super::graph::SkeletalTrapezoidationGraph::from_polygons`] (the per-cell

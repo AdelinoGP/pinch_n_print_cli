@@ -45,8 +45,8 @@
 //! Geometric partition invariant (per-color ExPolygon sets form a non-overlapping
 //! Voronoi partition of cube_4color's painted face) is asserted in
 //! `crates/slicer-core/tests/paint_segmentation_mmu_partition_tdd.rs`.
-//! The "extrusion-points-in-footprint" investigation was tracked as
-//! D-112-MMU-TOPOLOGY (now Closed — see `docs/DEVIATION_LOG.md`). The P113b
+//! The "extrusion-points-in-footprint" investigation was tracked as a closed
+//! MMU-topology investigation. The P113b
 //! re-verification test `cube_4color_arachne_per_color_footprint_within_bbox`
 //! asserts per-color outer-wall header bboxes stay inside the corresponding
 //! per-color `paint_segmentation` ExPolygon bbox + 2 mm tolerance.
@@ -179,7 +179,7 @@ fn load_cube_4color_mesh() -> slicer_ir::MeshIR {
 /// `wall_generator=arachne` gcode's own `;Z:` headers (`parse_layer_z_values`)
 /// — rather than an independently-synthesized fixed-step reference grid.
 ///
-/// # Why not a synthesized `LayerPlanIR` (D-112-MMU-TOPOLOGY, 11th pass)
+/// # Why not a synthesized `LayerPlanIR` (11th-pass topology investigation)
 ///
 /// `execute_paint_segmentation` (the function this feeds) does not consume a
 /// `LayerPlanIR` at all — only a `Vec<SliceIR>` (for its Z values and input
@@ -188,7 +188,7 @@ fn load_cube_4color_mesh() -> slicer_ir::MeshIR {
 /// extract a `Vec<f32>` of Z values from it, at an independent, coarser
 /// 50-layer/0.5mm step unrelated to the real pipeline's own resolved layer
 /// height. That mismatch aliased the true tool1/tool3 paint-color boundary —
-/// see this file's module doc comment and D-112-MMU-TOPOLOGY's closing note.
+/// see this file's module doc comment and the topology investigation's closing note.
 /// Building the `zs` directly from the real gcode's own Z sequence gives
 /// `paint_segmentation` one sample per real layer, at the real layer's exact
 /// Z, eliminating both the layer-count mismatch and the aliasing.
@@ -266,7 +266,7 @@ fn build_region_map(object_id: &str, layer_count: u32) -> Arc<slicer_ir::RegionM
 /// returned `Vec<SliceIR>` therefore has the same length and Z ordering as the
 /// gcode's own layer sequence, so callers can index it directly by real layer
 /// index instead of nearest-Z matching against an independent reference plan
-/// (see `build_initial_slice_ir`'s doc comment / D-112-MMU-TOPOLOGY).
+/// (see `build_initial_slice_ir`'s doc comment / topology investigation).
 fn run_paint_segmentation(
     mesh: Arc<slicer_ir::MeshIR>,
     layer_zs_mm: &[f32],
@@ -978,7 +978,7 @@ fn cube_4color_arachne_fragments_walls_by_color() {
 /// output — not merely "roughly within a bounding box" (the prior, weaker
 /// check this test used to make; see this file's module doc comment,
 /// "2026-07-05 closure status", and `docs/DEVIATION_LOG.md`
-/// D-112-MMU-TOPOLOGY for that check's own history).
+/// the earlier topology investigation for that check's own history).
 ///
 /// # Why this replaces the bbox-with-tolerance check
 ///
@@ -1023,13 +1023,12 @@ fn cube_4color_arachne_fragments_walls_by_color() {
 /// deleted, in case a follow-on wants the per-color bbox cross-check for a
 /// different purpose.
 // Un-ignored 2026-07-16 (Arachne Parity Recovery, Track C). The
-// D-113C Steps 9-10 residual this test was `#[ignore]`d for — 264
-// outer-wall sub-loops not closing, in the "seam-at-origin" pattern
-// D-113B-WIDE-REGION-COORD-INSTABILITY describes — is resolved: every
+// The residual this test was `#[ignore]`d for — 264
+// outer-wall sub-loops not closing, in the earlier wide-region coordinate
+// instability pattern — is resolved: every
 // mid-body sub-loop now closes at gap 0.000mm. The fix was not in this
-// test's own scope but upstream, in the beading pipeline (D5
-// `5d0e1bcf` taper-peak dropout + D4 `1dfac847` beading-propagation
-// pass order); this test's body is unchanged.
+// test's own scope but upstream, in the beading pipeline (taper-peak dropout
+// plus beading-propagation pass order); this test's body is unchanged.
 #[test]
 fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let outcome = slice_cube_4color_with_arachne();
@@ -1175,7 +1174,7 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
 // spurious centre beads had been fragmenting real loops.
 //
 // Un-ignored 2026-07-16 at the 0-failure bar ADR-0035 requires (and the
-// N1-N13 plan's "F blocks on green" policy). See D-147-CHAIN-CLOSURE.
+// N1-N13 plan's "F blocks on green" policy). See the Arachne chain closure record.
 #[test]
 fn cube_4color_arachne_outer_walls_close_end_to_end() {
     let outcome = slice_cube_4color_with_arachne();

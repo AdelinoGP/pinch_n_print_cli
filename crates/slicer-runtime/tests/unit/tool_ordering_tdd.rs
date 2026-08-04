@@ -100,7 +100,7 @@ fn entity_with_tool(
 #[test]
 fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // Raw assembly order has tools interleaved:
@@ -228,7 +228,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
 #[test]
 fn single_tool_layer_emits_no_synthetic_tool_changes() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // All entities are tool 0 â€" no tool boundary exists.
@@ -320,7 +320,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
 #[test]
 fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // Already in canonical tool-ascending order: [tool0, tool0, tool1, tool1]

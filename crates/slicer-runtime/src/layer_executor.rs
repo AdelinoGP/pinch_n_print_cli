@@ -1629,7 +1629,7 @@ pub(crate) fn assemble_ordered_entities(
             v
         })
         .unwrap_or_default();
-    // D-112-MMU-TOPOLOGY closure: build a parallel set of (object_id,
+    // MMU topology closure: build a parallel set of (object_id,
     // region_id) keys for BASE (unpainted) SlicedRegions. The wall/infill
     // tool resolver below uses this set to *skip* the spatial fallback for
     // BASE walls — a BASE outer wall's first vertex may sit inside a
@@ -1709,7 +1709,7 @@ pub(crate) fn assemble_ordered_entities(
                 .copied();
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
-                // D-112-MMU-TOPOLOGY closure: prefer `variant_tool` (the
+                // MMU topology closure: prefer `variant_tool` (the
                 // per-region paint-derived tool, looked up from the source
                 // `SlicedRegion`'s variant chain) over the spatial fallback.
                 // The previous chain (`paint.or(spatial).or(variant)`) let
@@ -1729,7 +1729,7 @@ pub(crate) fn assemble_ordered_entities(
                 // full-model outer outline, never a per-color cell wall,
                 // and reattributing them to a per-color tool produces
                 // per-color headers that escape their own per-color cells
-                // (D-112-MMU-TOPOLOGY closure).
+                // (MMU topology closure).
                 let region_key = (region.object_id.clone(), region.region_id);
                 let region_is_base = base_region_keys.contains(&region_key);
                 let region_is_tagged = variant_tool_by_region.contains_key(&region_key);
@@ -1792,7 +1792,7 @@ pub(crate) fn assemble_ordered_entities(
                     .points
                     .first()
                     .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
-                // D-112-MMU-TOPOLOGY closure: prefer `variant_tool` over the
+                // MMU topology closure: prefer `variant_tool` over the
                 // spatial fallback for tagged regions, matching the wall-loop
                 // resolver above.
                 let resolved_tool = variant_tool

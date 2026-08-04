@@ -1,4 +1,4 @@
-//! Packet 108 (T-P98-SEAM, D-108-SEAM-CONSUMED): consume painted
+//! Packet 108 (T-P98-SEAM): consume painted
 //! `seam_enforcer` / `seam_blocker` semantics.
 //!
 //! AC-5: a `PaintSemantic::Custom("seam_enforcer")` region biases seam
@@ -8,8 +8,9 @@
 //!
 //! AC-N2 (`blocker_exhausts_candidates_preserves_walls_no_seam`): when a
 //! blocker excludes the ONLY qualifying corner, `seam_candidates` is empty for
-//! that region. Per D-109B-SEAM-FATAL-CORRECTED (superseding packet 108's
-//! fatal-on-empty), `seam-placer` degrades GRACEFULLY — it preserves the
+//! that region. After the later graceful-empty-candidate correction
+//! (superseding packet 108's fatal-on-empty), `seam-placer` degrades GRACEFULLY
+//! — it preserves the
 //! region's walls in the output and leaves `resolved_seam` unset — rather than
 //! aborting the layer, honouring the HIGH-2 wall-preservation invariant and
 //! OrcaSlicer's non-abort behaviour.
@@ -245,8 +246,8 @@ fn enforcer_bias_flips_seam_placer_selection() {
 
 /// A painted `seam_blocker` region over one corner of a square wall excludes
 /// that corner from the emitted `seam_candidates` — proving the paint signal
-/// is actually consumed at candidate-generation time (D-108-SEAM-CONSUMED),
-/// not just plumbed through unread as before (D-98-SEAM-NO-CONSUMER).
+/// is actually consumed at candidate-generation time, not just plumbed through
+/// unread as before.
 #[test]
 fn classic_perimeters_blocker_excludes_painted_corner() {
     let config = ConfigViewBuilder::new()

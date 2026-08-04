@@ -229,7 +229,7 @@ fn arachne_parity_pipeline_only_one_wall_first_layer_forces_single_wall() {
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: only_one_wall_top read but behaviorally inert (D-104d)
+// GAP_ARACHNE_PATH: only_one_wall_top read but behaviorally inert
 // ===========================================================================
 
 /// GAP_ARACHNE_PATH: OrcaSlicer's Arachne branch forces a single wall on the
@@ -241,7 +241,7 @@ fn arachne_parity_pipeline_only_one_wall_first_layer_forces_single_wall() {
 /// `:2242`). `arachne-perimeters` reads the key but explicitly discards it
 /// (`modules/core-modules/arachne-perimeters/src/lib.rs:305-306`,
 /// `let _ = only_one_wall_top;` — deferred under
-/// D-104d-MIN-WIDTH-TOP-SURFACE-NONE), so a top region still gets the full
+/// the minimum-width top-surface gap), so a top region still gets the full
 /// wall count.
 #[test]
 fn arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top() {
@@ -265,12 +265,12 @@ fn arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top() {
          inner walls on non-top area only (PerimeterGenerator.cpp:2160-2246) | \
          got: distinct perimeter indices {indices:?} — the module reads \
          only_one_wall_top and discards it (arachne-perimeters/src/lib.rs:\
-         305-306, D-104d deferred) | ref: PerimeterGenerator.cpp:2140-2246"
+          305-306, behavior deferred) | ref: PerimeterGenerator.cpp:2140-2246"
     );
 }
 
 // ===========================================================================
-// GAP_PIPELINE: wall gap uses Flow spacing, not raw width (D-105)
+// GAP_PIPELINE: wall gap uses Flow spacing, not raw width
 // ===========================================================================
 
 /// GAP_PIPELINE: OrcaSlicer feeds Flow **spacing** values into Arachne, not
@@ -284,7 +284,7 @@ fn arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top() {
 /// passes raw `optimal_width` (0.4 mm) with no `layer_height` awareness
 /// (zero readers in `arachne-perimeters/src/lib.rs`;
 /// `slicer_core::flow::line_width_to_spacing` exists but is unwired —
-/// deviation D-105-FLOW-NOT-WIRED), so adjacent wall centerlines sit one
+/// the remaining spacing gap), so adjacent wall centerlines sit one
 /// full width apart instead of one spacing apart, over-spacing every wall
 /// pair by layer_height·(1 − π/4) ≈ 0.0429 mm at 0.2 mm layers.
 #[test]
@@ -320,13 +320,13 @@ fn arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width() {
          PerimeterGenerator.cpp:578,2172-2173; Flow.hpp:67) | got: centerline \
          gap {observed_gap_mm:.4} mm — raw optimal_width is used, \
          layer_height is never read, and \
-         slicer_core::flow::line_width_to_spacing is unwired \
-         (D-105-FLOW-NOT-WIRED) | ref: PerimeterGenerator.cpp:2129"
+          slicer_core::flow::line_width_to_spacing is unwired | ref: \
+          PerimeterGenerator.cpp:2129"
     );
 }
 
 // ===========================================================================
-// GAP_PIPELINE: thick_bridges bridging flow is a 1.0 stub (D-104g)
+// GAP_PIPELINE: thick_bridges bridging flow is a 1.0 stub
 // ===========================================================================
 
 /// GAP_PIPELINE: OrcaSlicer's Arachne branch extrudes overhang/bridge
@@ -338,8 +338,7 @@ fn arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width() {
 /// 0.4×0.2 mm bead by ≈π·d²/4 ÷ (w·h) ≈ 1.57×. PnP's
 /// `slicer_core::flow::bridging_flow(bridge_flow, thick_bridges)` returns a
 /// hardcoded `1.0` for the `thick_bridges == true` branch
-/// (`crates/slicer-core/src/flow.rs:85-92`, deviation
-/// D-104g-FLOW-FACTOR-PERVERTEX-DIVERGENCE), so bridge vertices get no flow
+/// (`crates/slicer-core/src/flow.rs:85-92`), so bridge vertices get no flow
 /// adjustment at all.
 #[test]
 fn arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one() {
@@ -391,7 +390,7 @@ fn arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one() {
 }
 
 // ===========================================================================
-// GAP_PIPELINE: no percent / float-or-percent config type (D-104h)
+// GAP_PIPELINE: no percent / float-or-percent config type
 // ===========================================================================
 
 /// GAP_PIPELINE: OrcaSlicer's Arachne keys are percent-typed relative to
@@ -400,8 +399,8 @@ fn arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one() {
 /// (`PrintConfig.cpp:1498-1511`), `min_feature_size` is `coPercent` default
 /// 25% of nozzle diameter (`PrintConfig.cpp:7217-7226`),
 /// `wall_transition_length` is `coPercent` default 100%
-/// (`PrintConfig.cpp:7169-7178`). PnP has no percent config type at all
-/// (deviation D-104h-NO-PERCENT-CONFIG-TYPE): these keys are declared
+/// (`PrintConfig.cpp:7169-7178`). PnP has no percent config type at all:
+/// these keys are declared
 /// `type = "float"` with pre-resolved absolute defaults
 /// (`arachne-perimeters.toml:38-42,68-72,257-261`), so changing the nozzle
 /// diameter silently leaves them stale instead of rescaling.

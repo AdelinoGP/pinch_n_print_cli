@@ -951,7 +951,7 @@ pub fn generate_all_transition_ends(
             // Canonical OrcaSlicer does NOT skip (BeadingStrategy.cpp:49-57
             // returns a tiny 10µm length to avoid division-by-zero), but
             // PNP's graph model diverges enough that the skip is needed here.
-            // Fix tracked at D-143-TRANSITION-ENDS.
+            // This remains a deliberate transition-end adaptation.
             if mid.lower_bead_count == 0 {
                 continue;
             }
@@ -1792,7 +1792,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
             // skip gate (`SkeletalTrapezoidation.cpp:2024-2027`), producing
             // empty output for shapes whose medial axis has no central edges
             // (e.g. a square at `wall_transition_angle=10°`). See
-            // `docs/DEVIATION_LOG.md` `D-144-ANGLE-FUDGE-NONCENTRAL`.
+            // See the historical centrality-threshold correction in the deviation log.
             // Side-table write: copy the top vertex's beading verbatim
             // into the bottom vertex's slot when one is available. The
             // `clone` is intentional: we cannot hold an immutable borrow

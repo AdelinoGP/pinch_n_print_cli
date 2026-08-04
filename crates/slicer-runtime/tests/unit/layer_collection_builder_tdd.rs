@@ -596,7 +596,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
     // Serializes against every other test in this binary that dispatches a
     // real Layer::PathOptimization WASM call, since they all increment the
     // same process-wide HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS counter this
-    // test resets and reads. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // test resets and reads. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     let component_path = PathBuf::from(MULTI_READ_GUEST_COMPONENT);

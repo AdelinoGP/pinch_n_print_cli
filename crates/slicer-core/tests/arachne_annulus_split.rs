@@ -21,7 +21,7 @@
 //! UNITS_PER_MM` = 4000mm against this 2mm annulus, which stitched across the
 //! 0.5mm wall and merged the two contours into one loop — so the test demanded
 //! the very merge its header calls a bug. Keep `max_gap` in mm, as production
-//! passes it (D-147-STITCH-TINY-POLY-UNITS).
+//! passes it in millimeters.
 
 #![cfg(feature = "host-algos")]
 
@@ -81,7 +81,7 @@ fn run_pipeline(poly: &ExPolygon) -> Vec<ExtrusionLine> {
     // `max_gap` in mm, matching the production call site
     // (`arachne/pipeline.rs`: `preferred_bead_width_outer - 1e-6`) and
     // `stitch_extrusions`'s documented mm contract. Corrected 2026-07-16
-    // (D-147-CHAIN-CLOSURE) from `0.4 * UNITS_PER_MM` — 4000mm of stitch
+    // (Arachne chain closure correction) from `0.4 * UNITS_PER_MM` — 4000mm of stitch
     // slack against a 2mm annulus, which joined endpoints unconditionally.
     stitch_extrusions(flat, 0.4)
 }

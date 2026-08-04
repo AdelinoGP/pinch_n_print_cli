@@ -3,7 +3,7 @@
 //! `classic-perimeters`.
 //!
 //! This is the discriminating fixture for two defects that hid each other
-//! (`D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH`). It is parameterised over the
+//! (the former wall-width wiring defect). It is parameterised over the
 //! configured width `W` rather than asserting a constant, because a fixture
 //! that cannot vary the quantity under test is not a test of it — the lesson
 //! `tapered_wedge` learned the hard way by asserting `0.3571` (the defect)

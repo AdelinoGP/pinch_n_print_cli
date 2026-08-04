@@ -14,12 +14,13 @@
 //! Modifier-volume SupportEnforcer/Blocker land in `segment_annotations` (D14 path,
 //! separate from the PaintLayer/hex-stroke path).
 //!
-//! # D-98-SEAM-NO-CONSUMER
+//! # Seam consumer gap
 //!
 //! Seam paint (Custom("seam_enforcer") / Custom("seam_blocker")) flows into
 //! SlicedRegion.variant_chain — the data reaches SliceIR. However, NO live downstream
 //! module reads variant_chain("seam_enforcer"/"seam_blocker"). The seam-placer module
-//! uses geometric SeamCandidate scores only. This is recorded as deviation D-98-SEAM-NO-CONSUMER.
+//! uses geometric SeamCandidate scores only. This remains a documented seam
+//! consumer gap.
 
 #![allow(missing_docs)]
 #![allow(dead_code)]
@@ -476,7 +477,8 @@ fn paint_channel_fuzzy_skin_strokes_reach_fuzzy_variant_chain() {
 /// NOTE: painted-support-hex has NO live downstream consumer reading variant_chain
 /// ("support_enforcer"). The support-planner module reads `paint_layers` (WIT side)
 /// from the mesh, not from SlicedRegion.variant_chain. This is a variant_chain dead-end
-/// analogous to seam (pre-existing, not P98's change). See D-98-SEAM-NO-CONSUMER pattern.
+/// analogous to seam (pre-existing, not the paint-channel change). See the
+/// seam consumer-gap pattern.
 #[test]
 fn paint_channel_supports_strokes_reach_consumer() {
     let path = bridge_support_enforcers_path();
@@ -646,7 +648,7 @@ fn paint_channel_supports_strokes_reach_consumer() {
 
 // ---------------------------------------------------------------------------
 // Test 4: Seam channel — disk fixture (cube_cilindrical_modifier.3mf),
-//         data reaches SliceIR, no live consumer (D-98-SEAM-NO-CONSUMER)
+//         data reaches SliceIR, no live consumer
 // ---------------------------------------------------------------------------
 
 /// Seam paint (Custom("seam_enforcer")) loaded from `cube_cilindrical_modifier.3mf`
@@ -657,12 +659,12 @@ fn paint_channel_supports_strokes_reach_consumer() {
 /// cube_cilindrical_modifier.3mf has 1 object (12 tris) with
 /// PaintLayer Custom("seam_enforcer"): 3 facet_values + 2706 sub-facet strokes.
 ///
-/// # D-98-SEAM-NO-CONSUMER
+/// # Seam consumer gap
 ///
 /// Data reaches SlicedRegion.variant_chain as ("seam_enforcer", _) — the routing works.
 /// HOWEVER, NO live downstream module reads variant_chain("seam_enforcer").
 /// The seam-placer uses geometric SeamCandidate scores only (not paint annotations).
-/// This gap is registered as deviation D-98-SEAM-NO-CONSUMER.
+/// This gap is documented as a seam consumer gap.
 #[test]
 fn paint_channel_seam_strokes_have_no_live_consumer() {
     let path = cube_cilindrical_modifier_path();
@@ -692,7 +694,7 @@ fn paint_channel_seam_strokes_have_no_live_consumer() {
         .map(|l| l.facet_values.iter().filter(|v| v.is_some()).count())
         .sum();
     eprintln!(
-        "DIAGNOSTIC [P98-seam disk / D-98-SEAM-NO-CONSUMER]: \
+        "DIAGNOSTIC [P98-seam disk / seam-consumer-gap]: \
          cube_cilindrical_modifier.3mf seam_enforcer — \
          facet_values={facet_value_count}, strokes={stroke_count}"
     );
@@ -717,24 +719,24 @@ fn paint_channel_seam_strokes_have_no_live_consumer() {
     });
 
     eprintln!(
-        "DIAGNOSTIC [P98-seam disk / D-98-SEAM-NO-CONSUMER]: \
+        "DIAGNOSTIC [P98-seam disk / seam-consumer-gap]: \
          variant_chain populated={has_seam_variant_chain}\n\
          DATA REACHES SliceIR via variant_chain. \
          NO live module reads variant_chain(\"seam_enforcer\"). \
          Seam-placer uses geometric SeamCandidate scores only."
     );
 
-    // D-98-SEAM-NO-CONSUMER: Assert data-reaches-SliceIR fact.
+    // Assert the data-reaches-SliceIR fact for the seam channel.
     // The seam paint enters SlicedRegion.variant_chain as ("seam_enforcer", _).
     assert!(
         has_seam_variant_chain,
-        "AC-7 / D-98-SEAM-NO-CONSUMER: Custom(\"seam_enforcer\") PaintLayer from \
+        "AC-7 / seam-consumer-gap: Custom(\"seam_enforcer\") PaintLayer from \
          cube_cilindrical_modifier.3mf must reach at least one SlicedRegion.variant_chain \
          as (\"seam_enforcer\", _).\n\
          facet_value_count={facet_value_count}, stroke_count={stroke_count}.\n\
          ROUTING: painted_subsets path -> variant_chain.\n\
          CONSUMER GAP: No live downstream module reads variant_chain(\"seam_enforcer\"). \
          The seam-placer uses geometric SeamCandidate scores, not paint. \
-         Registered as deviation D-98-SEAM-NO-CONSUMER."
+          Recorded as a seam consumer gap."
     );
 }

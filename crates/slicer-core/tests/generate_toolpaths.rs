@@ -297,7 +297,7 @@ fn outer_wall_closes_for_simple_polygon() {
     let lines: Vec<ExtrusionLine> = raw_buckets.into_iter().flatten().collect();
     // mm, mirroring the production call site (`arachne/pipeline.rs`:
     // `preferred_bead_width_outer - 1e-6`) and `stitch_extrusions`'s documented
-    // mm contract. Corrected 2026-07-16 (D-147-CHAIN-CLOSURE) — the trailing
+    // mm contract. Corrected 2026-07-16 (Arachne chain closure correction) — the trailing
     // `* UNITS_PER_MM` did not match what production passes.
     let max_gap = (0.4_f64 - 1e-6).max(0.0);
     let stitched = stitch_extrusions(lines, max_gap);

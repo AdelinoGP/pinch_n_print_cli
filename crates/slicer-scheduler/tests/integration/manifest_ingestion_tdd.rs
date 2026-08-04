@@ -547,7 +547,7 @@ fn core_modules_directory_is_discoverable_and_all_load() {
 
     // We expect exactly 21 core modules as of 2026-07-19: packet 97 deleted the dead
     // mesh-segmentation WASM-guest module (21 -> 20), packet 108 deleted the fake
-    // iterative-inset `arachne-perimeters` module (20 -> 19, per D-110-DROP-VARIABLE-WIDTH;
+    // iterative-inset `arachne-perimeters` module (20 -> 19; the former
     // `classic-perimeters` was the sole perimeter generator until real Arachne landed),
     // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
     // BeadingStrategy pipeline via the host-service bridge (19 -> 20), and packet 133 added

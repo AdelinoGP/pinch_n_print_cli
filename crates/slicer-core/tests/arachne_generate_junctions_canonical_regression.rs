@@ -15,8 +15,8 @@
 //! `9367d239`. Each bug was independently confirmed against a fresh
 //! OrcaSlicer ground-truth read of `generateJunctions`
 //! (`SkeletalTrapezoidation.cpp:2013-2079`), not from the original audit's
-//! memory of it — see `docs/DEVIATION_LOG.md`'s `D-141-JUNCTION-BANDS`
-//! correction note for the full account.
+//! memory of it — see the correction note in the deviation-log history for the
+//! full account.
 //!
 //! Unlike `arachne_parity_red_junction_bands.rs` (AC-1/AC-2, which run the
 //! full pipeline including the domain-chain walk and are currently blocked
@@ -198,7 +198,7 @@ fn generate_junctions_resolves_beading_at_peak_not_boundary_side() {
         "emitted junction width is {emitted_width_mm}mm, expected ~0.9mm (v1/peak's bead_widths[0]). \
          A width near 0.05mm would mean generate_junctions resolved the beading at v0 (the \
          boundary-side/lower-R vertex) instead of v1 (the peak) -- the exact regression this test \
-         guards against (bug 1 of D-141-JUNCTION-BANDS's correction note)."
+         guards against (the first correction bug)."
     );
     assert!(
         (emitted_width_mm - 0.05).abs() > 1e-3,
@@ -318,7 +318,7 @@ fn generate_junctions_reads_width_from_beadings_own_array_per_bead_index() {
          signature of the pre-fix bug: `strategy.compute(2 * from_r_or_to_r, bead_count)\
          .bead_widths.first()` recomputes a fresh beading per bead call but always reads index \
          0, so every bead on the same edge collapses to the same two (from-side, to-side) \
-         values regardless of its own index (bug 2 of D-141-JUNCTION-BANDS's correction note). \
+         values regardless of its own index (the second correction bug). \
          The fixed implementation reads `bead_widths[idx]` directly from the ONE resolved peak \
          beading, so different bead indices genuinely differ."
     );
@@ -402,7 +402,7 @@ fn generate_junctions_does_not_exclude_ribs() {
         "the rib's upward half (edges[0], boundary -> spine) has NO edge_junctions entry at all \
          -- this is the exact signature of the pre-fix bug: `if !edge.central {{ continue }}` \
          and `if edge.edge_type == EdgeType::EXTRA_VD {{ continue }}` silently dropped every rib \
-         from consideration (bug 3 of D-141-JUNCTION-BANDS's correction note), even though \
+          from consideration (the third correction bug), even though \
          canonical generateJunctions has no such gate anywhere and ribs are the primary \
          near-boundary junction carrier."
     );

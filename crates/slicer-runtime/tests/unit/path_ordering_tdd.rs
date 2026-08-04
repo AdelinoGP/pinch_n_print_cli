@@ -62,7 +62,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
 #[test]
 fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // Raw infill order: (30,0), (10,0), (0,0) â€" expected NN order: (0,0),(10,0),(30,0).
@@ -262,7 +262,7 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
 #[test]
 fn cross_object_ordering_resequences_entities_by_travel_cost() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // A1(0,0) A2(0,100) B1(1,0) B2(1,1) â€" raw order is all A then all B.
@@ -379,7 +379,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
 #[test]
 fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // Both at exactly (5.0, 0.0) â€" equidistant from start (0,0). Bridge wins.
@@ -491,7 +491,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
 #[test]
 fn path_ordering_is_deterministic_across_repeated_runs() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     fn make_infill() -> InfillIR {
@@ -596,7 +596,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
 #[test]
 fn single_or_already_optimal_sequence_is_left_unchanged() {
     // Serializes against sibling live-dispatch tests sharing
-    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See the process-wide counter serialization contract.
     let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
 
     // Already-optimal: (0,0),(10,0),(30,0) â€" NN order from origin is this order.

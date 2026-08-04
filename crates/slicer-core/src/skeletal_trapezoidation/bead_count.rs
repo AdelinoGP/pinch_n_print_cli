@@ -164,7 +164,7 @@ pub fn assign_bead_counts(
     // square's center vertex (a true geometric local maximum at
     // `distance_to_boundary = 5mm`) was skipped — producing empty output.
     // The π hack masked this by making the diagonals central. See
-    // `docs/DEVIATION_LOG.md` `D-144-ANGLE-FUDGE-NONCENTRAL`.
+    // See the historical centrality-threshold correction in the deviation log.
     for v_idx in 0..graph.vertices.len() {
         if !super::centrality::is_local_maximum(graph, v_idx) {
             continue;

@@ -11,7 +11,7 @@
 //! - **GAP_ARACHNE_PATH** — feature implemented in `classic-perimeters` /
 //!   downstream, but NOT in `arachne-perimeters`. The pipeline reaches Orca
 //!   parity via Classic; the Arachne path diverges. Tracked as
-//!   `D-104-OVERHANG-QUARTILE-NONE` and this test suite.
+//!   the former overhang-quartile propagation gap and this test suite.
 //! - **GAP_PIPELINE** — feature absent from the PnP pipeline as a whole.
 //!   D-104f is the sole intentionally open red runtime case (see
 //!   `tmp/arachne_parity_audit_20260709.md`).
@@ -432,14 +432,14 @@ fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
 }
 
 // ===========================================================================
-// GAP_PIPELINE: 3 of 4 overhang config keys (propose D-104c)
+// GAP_PIPELINE: 3 of 4 overhang config keys
 // ====================================================================================
 
 /// GAP_PIPELINE: 3 of 4 overhang config keys are not registered; the 4th
 /// (`extra_perimeters_on_overhangs`) IS wired in classic (T-077).
 ///
 /// OrcaSlicer ref: `PrintConfig.cpp:5003-5066`, `:1519-1534`.
-/// Proposed deviation: `D-104c-OVERHANG-REVERSE-NONE`.
+/// Records the missing overhang-reversal behavior.
 #[test]
 fn arachne_parity_pipeline_overhang_reverse_config_keys() {
     let missing: Vec<&str> = [
@@ -463,8 +463,8 @@ fn arachne_parity_pipeline_overhang_reverse_config_keys() {
          overhang_reverse, overhang_reverse_internal_only (PrintConfig.cpp:\
          5003-5066, :1519-1534) | got: missing keys in arachne-perimeters.toml: \
          {:?}; extra_perimeters_on_overhangs present in arachne manifest: {} \
-         (classic consumes it via resolved config) — propose \
-         D-104c-OVERHANG-REVERSE-NONE for the three missing keys | ref: \
+         (classic consumes it via resolved config) — the three missing keys \
+         remain a pipeline gap | ref: \
          PrintConfig.cpp:5003-5066",
         missing,
         extra_present
@@ -602,7 +602,7 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
 /// anywhere in the pipeline.
 ///
 /// OrcaSlicer ref: `PerimeterGenerator.cpp:2160-2245`; `PrintConfig.cpp:1491-1511`.
-/// Proposed deviation: `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`.
+/// Records the missing minimum-width top-surface behavior.
 #[test]
 fn arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface() {
     let classic_reads_top = CLASSIC_MODULE_SRC.contains("only_one_wall_top");
@@ -617,7 +617,7 @@ fn arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface() {
          1511) | classic path DOES read only_one_wall_top (lib.rs:222, 268) | \
          got: min_width_top_surface has ZERO readers anywhere in the pipeline \
          (classic reads min_width: {}, arachne reads only_one_wall_top: {}) — \
-         propose D-104d-MIN-WIDTH-TOP-SURFACE-NONE | ref: \
+          the minimum-width top-surface behavior is missing | ref: \
          PerimeterGenerator.cpp:2160-2245",
         classic_reads_min_width,
         arachne_reads_top
@@ -625,14 +625,14 @@ fn arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface() {
 }
 
 // ===========================================================================
-// GAP_PIPELINE: alternate_extra_wall (propose D-104e)
+// GAP_PIPELINE: alternate_extra_wall
 // ====================================================================================
 
 /// GAP_PIPELINE: `alternate_extra_wall` is not registered and not
 /// implemented anywhere in the pipeline.
 ///
 /// OrcaSlicer ref: `PrintConfig.cpp:5059-5066`.
-/// Proposed deviation: `D-104e-ALTERNATE-EXTRA-WALL-NONE`.
+/// Records the missing alternating-extra-wall behavior.
 #[test]
 fn arachne_parity_pipeline_alternate_extra_wall_not_registered() {
     let present_in_either = manifest_has_config_key("alternate_extra_wall")
@@ -642,9 +642,9 @@ fn arachne_parity_pipeline_alternate_extra_wall_not_registered() {
         "PARITY GAP: pipeline: alternate_extra_wall config | expected: \
          OrcaSlicer exposes alternate_extra_wall to add an extra wall on \
          alternating layers (PrintConfig.cpp:5059-5066) | got: no \
-         alternate_extra_wall key in arachne-perimeters.toml and no \
-         implementation in classic-perimeters either — propose \
-         D-104e-ALTERNATE-EXTRA-WALL-NONE | ref: PrintConfig.cpp:5059-5066"
+          alternate_extra_wall key in arachne-perimeters.toml and no \
+          implementation in classic-perimeters either — the feature remains \
+          unimplemented | ref: PrintConfig.cpp:5059-5066"
     );
 }
 

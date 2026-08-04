@@ -24,7 +24,8 @@
 //!
 //! AC-10 uses its own `sparse_fill_holder = "gyroid-infill"` config pair
 //! (`AC10_DEFAULT_PRECISION_JSON` / `AC10_LEGACY_PRECISION_JSON`) rather than
-//! NEG-2's plain rectilinear-holder configs — see DEV-083 (2026-07-02, git history)
+//! NEG-2's plain rectilinear-holder configs — see the earlier precision-fixture
+//! correction in git history
 //! for why straight rectilinear lines give D-P/min-segment simplification
 //! nothing to reduce.
 
@@ -74,7 +75,7 @@ const LEGACY_PRECISION_JSON: &str = r#"{
 /// sibling default-value set (all 7 packet-60 keys at OrcaSlicer defaults)
 /// plus `sparse_fill_holder = "gyroid-infill"`.
 ///
-/// DEV-083: on the plain rectilinear-holder path (straight corner-to-corner
+/// On the plain rectilinear-holder path (straight corner-to-corner
 /// lines, no curvature), D-P/min-segment simplification has nothing to
 /// simplify, so `default_count == legacy_count` regardless of code
 /// correctness — that regression was traced to `ea16e992` correctly fixing a
@@ -166,7 +167,7 @@ fn run_with_config(config_json: &str) -> Vec<u8> {
 ///
 /// Uses [`AC10_DEFAULT_PRECISION_JSON`] / [`AC10_LEGACY_PRECISION_JSON`]
 /// (gyroid sparse-fill holder) rather than the plain rectilinear-holder
-/// configs — see DEV-083: straight corner-to-corner rectilinear lines have no
+/// configs — straight corner-to-corner rectilinear lines have no
 /// curvature for D-P/min-segment simplification to reduce, so this AC needs
 /// genuinely curved content to be meaningful.
 #[test]
@@ -213,7 +214,7 @@ fn default_emits_fewer_lines_than_legacy() {
 /// (zero-cost) configuration path — any byte difference indicates a regression
 /// in the legacy path.
 ///
-/// DEV-083: re-blessed 2026-07-02 after `ea16e992` fixed a real duplicate
+/// Re-blessed 2026-07-02 after `ea16e992` fixed a real duplicate
 /// gyroid/lightning fill-emission bug that the previous golden had (unknowingly)
 /// baked in.
 ///

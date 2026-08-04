@@ -14,7 +14,7 @@
 //! convention the production call site (`arachne/pipeline.rs`, which passes
 //! `preferred_bead_width_outer - 1e-6`) uses.
 //!
-//! Corrected 2026-07-16 (D-147-STITCH-TINY-POLY-UNITS): this file used to pass
+//! Corrected 2026-07-16: this file used to pass
 //! `max_gap` in slicer units and rely on `finalize_chain` dividing it back down
 //! by `UNITS_PER_MM`. The scale-up and the divide-down cancelled exactly, so
 //! these tests stayed green while the same division defeated the rule in

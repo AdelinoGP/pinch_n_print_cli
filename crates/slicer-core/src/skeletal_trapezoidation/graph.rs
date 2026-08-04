@@ -24,8 +24,7 @@
 //! longer a 1:1 copy** of boostvoronoi's raw per-cell DCEL. That verbatim copy
 //! encoded "walk around one Voronoi cell's own boundary," which is not the same
 //! as "continue along the medial-axis spine," and broke `getNextUnconnected`-style
-//! domain traversal at every junction (`D-112-MMU-TOPOLOGY`,
-//! `D-113B-CONNECTJUNCTIONS`). Instead, [`SkeletalTrapezoidationGraph::from_polygons`]
+//! domain traversal at every junction. Instead, [`SkeletalTrapezoidationGraph::from_polygons`]
 //! now:
 //!
 //! - iterates the raw Voronoi **cells** (both point-cells at polygon vertices
@@ -527,8 +526,7 @@ impl SkeletalTrapezoidationGraph {
         let he = voronoi::voronoi_from_segments(&segments)?;
 
         // Defensive bounds-clamp on raw boostvoronoi vertex positions
-        // (D-112-MMU-TOPOLOGY / D-113B-WIDE-REGION-COORD-INSTABILITY). See
-        // `clamp_implausible_vertex`'s doc comment for the full rationale.
+        // See `clamp_implausible_vertex`'s doc comment for the full rationale.
         let input_bbox = segments_bbox(&segments);
         let clamped: Vec<Vertex> = he
             .vertices
@@ -1474,7 +1472,7 @@ fn segments_bbox(segments: &[Segment]) -> (f64, f64, f64, f64) {
 /// Clamps a raw boostvoronoi vertex position back into a bounded margin around
 /// the input polygon's own bounding box (`bbox`).
 ///
-/// # Why this exists (D-112-MMU-TOPOLOGY / D-113B-WIDE-REGION-COORD-INSTABILITY)
+/// # Why this exists (captured multi-segment Voronoi corruption)
 ///
 /// Direct instrumentation of the
 /// `cube_4color_arachne_per_color_footprint_within_bbox` regression (see
@@ -1653,8 +1651,8 @@ mod tests {
         );
     }
 
-    /// Regression test for the captured D-112-MMU-TOPOLOGY / D-113B
-    /// reproduction: two disjoint quads that, pre-fix, made boostvoronoi report
+    /// Regression test for the captured runaway-vertex reproduction: two
+    /// disjoint quads that, pre-fix, made boostvoronoi report
     /// a vertex ~64.4mm away. After the fix every vertex stays within a
     /// generous bounded margin of the input polygons' own bbox.
     #[test]

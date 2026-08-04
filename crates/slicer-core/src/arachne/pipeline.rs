@@ -84,7 +84,7 @@ pub struct ArachneParams {
     /// `preferred_bead_width_outer`, i.e. `bead_width_0`).
     ///
     /// NOT the stitch gap threshold — canonical stitches with the INNER width;
-    /// see [`stitch_max_gap`] and `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`.
+    /// see [`stitch_max_gap`] and the canonical inner-width binding.
     pub preferred_bead_width_outer: f64,
     /// Maximum bead count `LimitedBeadingStrategy` will ever request from its
     /// parent.
@@ -342,7 +342,7 @@ fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
 /// Do NOT substitute [`ArachneParams::preferred_bead_width_outer`]: it is
 /// canonical's `bead_width_0`, and the two are equal only while the outer and
 /// inner line widths are configured identically (see
-/// `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`).
+/// the canonical inner-width binding).
 fn stitch_max_gap(params: &ArachneParams) -> f64 {
     (params.optimal_width - 1e-6).max(0.0)
 }
@@ -415,10 +415,10 @@ pub fn run_arachne_pipeline(
     // (re)computed at its OWN, much larger, thickness. On a benchy hull's thick
     // medial spine that turned a thin node's `bead_count = 3` into
     // `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]` — a ~19mm-wide extruded "wall"
-    // (43x the nozzle): the D4 inner-wall over-extrusion. It also left both
+    // (43x the nozzle): the inner-wall over-extrusion defect. It also left both
     // propagation passes' side-table reads dead (the table was still empty),
     // despite `propagate_beadings_downward`'s own comments assuming this pass
-    // had already run. See `docs/DEVIATION_LOG.md` `D4-INNER-WALL-OVEREXTRUSION`.
+    // had already run. See the propagation side-table contract in the deviation log.
     populate_beading_propagation(&mut graph, strategy.as_ref());
 
     propagate_beadings_upward(&mut graph);
@@ -481,7 +481,7 @@ mod stitch_gap_tests {
     /// this test deliberately drives them APART — a fixture that cannot vary
     /// the quantity under test is not a test of it. With the widths equal, the
     /// correct and incorrect operands are indistinguishable, which is exactly
-    /// why `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` survived unnoticed.
+    /// why the stitch-width operand mismatch survived unnoticed.
     #[test]
     fn stitch_gap_follows_inner_bead_width_not_outer() {
         let params = ArachneParams {
