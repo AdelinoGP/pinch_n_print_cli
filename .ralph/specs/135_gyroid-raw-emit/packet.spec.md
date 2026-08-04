@@ -18,7 +18,7 @@ depends-on-after-merge:
 Bring `gyroid-infill` to raw-emit parity: fix the rotation order (rotate the polygon first,
 per FillGyroid.cpp:300-376), delete the broken per-vertex clipping, add `align_to_grid` phase
 coherence and the 10× expand factor, and make the module multi-role by adding the three solid
-claims to its manifest (ADR-0027 / DEV-082). The DEV-082 row is currently `Open` (recorded
+claims to its manifest (ADR-0027 / gyroid multi-role deviation). The gyroid multi-role deviation row is currently `Open` (recorded
 2026-07-03) and this packet realizes the fix.
 
 ## Scope Boundaries
@@ -100,7 +100,7 @@ across all four fill-holder keys; gyroid is not referenced in `resolved_config.r
   the dispatch only fires gyroid when a user explicitly sets the fill-holder key to
   `gyroid-infill`; the existing `square_region_produces_paths` test continues to exercise
   the sparse path and the new test asserts that even with the four declared claims, the
-  default config does not route top/bottom/bridge to gyroid (DEV-082 opt-in guard). |
+  default config does not route top/bottom/bridge to gyroid (gyroid multi-role deviation opt-in guard). |
   `cargo test -p gyroid-infill -- default_holders_gyroid_sparse_only 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Verification
@@ -119,7 +119,7 @@ across all four fill-holder keys; gyroid is not referenced in `resolved_config.r
 - `docs/specs/infill-parity-rectilinear-gyroid-linker.md` §Phase 3 — the stays/deleted lists
   are binding; load Phase 3 only. Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are
   already realized (TASK-254 + TASK-255 closed).
-- `docs/DEVIATION_LOG.md` DEV-082 — the recorded divergence this packet realizes.
+- `docs/DEVIATION_LOG.md` gyroid multi-role deviation — the recorded divergence this packet realizes.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -135,7 +135,7 @@ Files to inspect for this packet:
 ## Doc Impact Statement (Required)
 
 **`none`** — the multi-role divergence and its opt-in semantics are already documented
-(ADR-0027 + DEV-082, landed in commit cddc9f76); no IR/WIT/scheduler/SDK contract changes;
+(ADR-0027 + gyroid multi-role deviation, landed in commit cddc9f76); no IR/WIT/scheduler/SDK contract changes;
 the manifest claim addition realizes exactly what those docs describe.
 
 <!-- snippet: context-discipline -->

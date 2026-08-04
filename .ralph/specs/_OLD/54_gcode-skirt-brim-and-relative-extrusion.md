@@ -34,7 +34,7 @@ Despite all of the above being in place, the user's Benchy emit output contains 
 
 The two tracks share no source files. They are bundled because both are small and the user requested it; the implementation plan keeps them as independent step-tracks. If Track A's diagnosis surfaces a larger fix than budgeted, Track A is split off as packet 54a before continuing — not absorbed.
 
-This packet is the third remediation against DEV-009.
+This packet is the third remediation against overhang-speed deviation.
 
 ## Architecture Constraints
 

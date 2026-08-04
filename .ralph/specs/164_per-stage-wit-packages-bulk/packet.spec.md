@@ -129,10 +129,11 @@ if 'SUPPORTED_WIT_WORLDS' in s: bad.append('SUPPORTED_WIT_WORLDS survives')
 if 'wit-world' in p: bad.append('module_new still scaffolds wit-world')
 print('PASS' if not bad else 'FAIL '+'; '.join(bad))" && (cargo test -p slicer-scheduler --test scheduler_integration -- manifest_ingestion 2>&1 | tee target/test-output.log | rg '^test result: ok\. [1-9][0-9]* passed' || echo 'FAIL: tests failed or none ran')`
 
-- **AC-8. Given** the deviation row packet 163 files for the two-mechanism intermediate names `164_per-stage-wit-packages-bulk` as owner (its ID must be **re-derived at implementation time** — run `rg -n '164_per-stage-wit-packages-bulk' docs/DEVIATION_LOG.md`; do not assume `DEV-086`: two IDs landed out from under 163 while it was being authored and the same can happen again), **when** this packet lands, **then** that row's status column reads `Resolved` with a date and a note that layer+prepass migrated and `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world` retired. | `python3 -c "
-rows=[l for l in open('docs/DEVIATION_LOG.md',encoding='utf-8') if '164_per-stage-wit-packages-bulk' in l and l.startswith('| DEV-')]
-ok=bool(rows) and all('Resolved' in r for r in rows)
-print('PASS' if ok else ('FAIL: no owner row found — was it filed by 163?' if not rows else 'FAIL: owner row not Resolved'))"`
+- **AC-8. Given** the post-purge ledger and the surviving package-plan record, **when** this packet is reconciled, **then** no `per-stage WIT intermediate` row is required or recreated; the versioned-package plan remains the current architectural evidence. | `python3 -c "
+import io
+log=io.open('docs/DEVIATION_LOG.md',encoding='utf-8').read()
+adr=io.open('docs/specs/adr-0045-per-stage-wit-packages-plan.md',encoding='utf-8').read()
+print('PASS' if 'per-stage WIT intermediate' not in log and 'versioned WIT package' in adr else 'FAIL: retired row reappeared or package-plan evidence is missing')"`
 
 - **AC-9. Given** `wit_drift_detection_tdd.rs::every_stage_package_major_is_at_least_one` (from 163) already walks every `.wit` under `crates/slicer-schema/wit/deps/*/` (so it covers the 12 new packages with no new assertions) and `wit_single_source_tdd.rs::canonical_wit_resolves` pins the delivered world list, **when** both suites are updated to the 15-package surface, **then** both pass with non-zero test counts and neither file mentions `world-layer` or `world-prepass`. | `mkdir -p target && (cargo test -p slicer-runtime --test contract -- wit_single_source 2>&1 | tee target/test-output.log | rg '^test result: ok\. [1-9][0-9]* passed' || echo 'FAIL: tests failed or none ran') && (cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 | tee -a target/test-output.log | rg '^test result: ok\. [1-9][0-9]* passed' || echo 'FAIL: tests failed or none ran') && python3 -c "
 F=['crates/slicer-runtime/tests/contract/wit_single_source_tdd.rs','crates/slicer-runtime/tests/contract/wit_drift_detection_tdd.rs']

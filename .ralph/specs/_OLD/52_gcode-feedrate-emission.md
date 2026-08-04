@@ -28,7 +28,7 @@ Two upstream sources of speed exist but are unused at emit time:
 
 This packet closes the gap end-to-end: register the speed keys, resolve them in the emit builder using `(role, speed_factor)`, and serialize the F token on every print and travel move.
 
-This packet does not reopen any prior packet. It is the first remediation against DEV-009 ("Benchy Phase H output is only partially correct on the live path") for the speed-token subset.
+This packet does not reopen any prior packet. It is the first remediation against overhang-speed deviation ("Benchy Phase H output is only partially correct on the live path") for the speed-token subset.
 
 ## Architecture Constraints
 

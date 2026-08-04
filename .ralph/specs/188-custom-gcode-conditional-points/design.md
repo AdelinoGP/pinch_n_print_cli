@@ -43,7 +43,7 @@
   - *A separate forward pass per site class.* Rejected — a `ToolChange` can occur inside a role run and a `;TYPE:` marker inside a layer; separate passes make the interleaving depend on pass order rather than stream order.
   - *One shared variable set across all eleven points.* Rejected — it would make `[max_layer_z]` silently resolvable at a role site and `[next_extruder]` at `filament_start_gcode`, where the site-specific contract excludes them and packet 186 instead leaves them verbatim with a warning, and would erase the only observable difference between the sites. AC-N1 and AC-N2 exist to catch exactly this shortcut.
   - *Emitting `file_start_gcode` after `; HEADER_BLOCK_END`.* Rejected as a fake. Canonical's contract is "above `; HEADER_BLOCK_START`"; a point that lands elsewhere is worse than an absent one because it looks implemented.
-  - *Declaring the five unreachable keys with a "not yet wired" note.* Rejected — a declared key that silently does nothing is precisely the failure mode `DEV-085`'s second half describes for the ten fictional macros.
+  - *Declaring the five unreachable keys with a "not yet wired" note.* Rejected — a declared key that silently does nothing is precisely the failure mode `custom-G-code injection deviation`'s second half describes for the ten fictional macros.
   - *Modelling `custom_gcode_changes_tool`.* Rejected — it requires parsing the user's template for a `T<id>` and conditionally dropping an emitter-produced command.
 
 ## Files in Scope (read + edit)
@@ -56,7 +56,7 @@ Two primary source files plus three test files. The third test file is unavoidab
 - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` — role: single-material e2e pin for the role family; expected change: one test added.
 - `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` — role: four-tool e2e pin for the toolchange family; expected change: one `config_overrides`-accepting harness sibling and one test added.
 - `docs/15_config_keys_reference.md` — role: the user-facing injection-point contract; expected change: eleven points plus the "not implemented, and why" list; generated block regenerated.
-- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: two new residual rows, `DEV-085` closed.
+- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: the current `DEV-103`/`DEV-104`/`DEV-105` residual rows carry the unreachable and variable-level differences; the deleted aggregate label is not recreated.
 - `docs/07_implementation_status.md` — role: backlog; expected change: one `TASK-307` row outside the generated markers.
 
 ## Read-Only Context

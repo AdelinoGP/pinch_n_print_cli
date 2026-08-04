@@ -2,7 +2,7 @@
 status: implemented
 packet: 177-arachne-baselines-to-structural-invariants
 task_ids: []
-backlog_source: docs/DEVIATION_LOG.md D-112-SELFCAPTURED-BASELINES
+backlog_source: docs/DEVIATION_LOG.md self-captured Arachne baselines
 context_cost_estimate: M
 ---
 
@@ -78,13 +78,13 @@ explicit test-count result; an exit code alone is not evidence.
 
 - `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` — structural classes, coverage floor, and spacing-domain bead cap.
 - `docs/specs/arachne-parity-recovery.md` — corrected Track B history and no-recapture rule.
-- `docs/DEVIATION_LOG.md` — `D-112-SELFCAPTURED-BASELINES` and D-104f rows only.
+- `docs/DEVIATION_LOG.md` — the retired `self-captured Arachne baselines` label and the surviving D-109/D-104f fixture evidence only.
 - `docs/08_coordinate_system.md` — mm/unit boundaries.
 - `CONTEXT.md` — `Coverage subject`, `Repeatability margin`, `Self-captured baseline`, and `Structural invariant`.
 
 ## Doc Impact Statement
 
-- `docs/DEVIATION_LOG.md`, `D-112-SELFCAPTURED-BASELINES` row — close only after every AC is green; verification: `rg -q 'D-112-SELFCAPTURED-BASELINES.*Closed' docs/DEVIATION_LOG.md`.
+- `docs/DEVIATION_LOG.md`, retired `self-captured Arachne baselines` label — no historical row is restored; the accepted self-regression limitation remains under D-109. Verification: `! rg -q '^\| self-captured Arachne baselines ' docs/DEVIATION_LOG.md && rg -q '^\| D-109-SELF-CAPTURED-FIXTURES ' docs/DEVIATION_LOG.md && rg -q 'self-regression' docs/DEVIATION_LOG.md`.
 - `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md`, Consequences — record the measured threshold, repeatability margin, five coverage subjects, and deletion of self-captured JSON oracles; verification: `rg -q 'measured coverage threshold' docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md`.
 - `docs/specs/arachne-parity-recovery.md`, Track B — correct the stale RED/rebaseline description and record the structural replacement; verification: `rg -q 'tapered-wedge.*structural|structural.*tapered-wedge' docs/specs/arachne-parity-recovery.md`.
 - `CONTEXT.md`, glossary terms — record the resolved `Coverage subject` and `Repeatability margin` vocabulary; verification: `rg -q '^### Coverage subject$' CONTEXT.md && rg -q '^### Repeatability margin$' CONTEXT.md`.

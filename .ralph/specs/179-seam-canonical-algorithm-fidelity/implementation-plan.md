@@ -142,7 +142,7 @@ Split before activation if any step becomes L or if the packet's aggregate excee
 - All steps and exits complete.
 - Every pipe-suffixed AC command returns PASS.
 - `docs/07_implementation_status.md` receives the `TASK-292` crosswalk through a worker dispatch.
-- `D-168-SEAM-PREPASS-SOURCE` algorithm reductions are closed with evidence; source-geometry reduction remains for packet 180's final projection mitigation.
+- `seam source-geometry deviation` algorithm reductions are closed with evidence; source-geometry reduction remains for packet 180's final projection mitigation.
 - `packet.spec.md` is ready for `status: implemented` only after packet 180 can consume its canonical seam target.
 
 ## Acceptance Ceremony

@@ -35,8 +35,8 @@ Packet 163 proved the per-stage versioned-package mechanism on the three cheapes
 - The **tier concept** is retained (30+ files consume it as tier identity and the naming rule reads the tier from it), but its spelling is corrected: `WORLD_*` → `TIER_*` with bare values (`"layer"`, `"prepass"`, `"postpass"`, `"finalization"`), `StageSpec.world_id` → `tier_id`, `SlicerModuleSchema.world_id` → `tier_id`, `__slicer_world_id()` → `__slicer_tier_id()`, metadata JSON key `"world"` → `"tier"`. Retaining `WORLD_LAYER = "slicer:world-layer"` would have left a constant naming a WIT package that no longer exists. Not renamed: `wit_world` / `wit_world_for_stage_id`, which name the per-stage world (e.g. `perimeters-module`). See `design.md` §Design corrections.
 - `ExportKind` / `ExportBinding` structural collapse beyond the metadata qualification above.
 - Per-stage staleness granularity for **test** guests (`[package.metadata.slicer] stage_id` in 12 `Cargo.toml`s) — conservative over-rebuild is safe and correct; deferred again with rationale in `design.md`.
-- The `pnp_cli` binary-locator extraction (packet 165), DEV-085 (custom G-code injection points), and DEV-026 (advisory DAG).
-- Packet 181's DEV-087 implementation is not in this packet's code scope. The five fatal `MissingComponent` arms are consumed as an existing invariant and must remain fatal through the dispatch refactor; packet 164 adds no duplicate five-stage test.
+- The `pnp_cli` binary-locator extraction (packet 165), custom-G-code injection deviation (custom G-code injection points), and DEV-026 (advisory DAG).
+- Packet 181's missing-component dispatch defect implementation is not in this packet's code scope. The five fatal `MissingComponent` arms are consumed as an existing invariant and must remain fatal through the dispatch refactor; packet 164 adds no duplicate five-stage test.
 - The 7 known-red parity tests' own fixes (their fix landed pre-162 per the plan's §"Status since approval"; this packet only keeps the baseline green).
 - `OrcaSlicerDocumented/` — no parity surface exists for a WASM contract refactor (see `design.md` §Controlling Code Paths).
 

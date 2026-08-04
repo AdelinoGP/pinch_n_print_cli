@@ -117,7 +117,7 @@ Split before activation if any step becomes L or if the packet's aggregate excee
 - All steps and exits complete.
 - Every pipe-suffixed AC command returns PASS.
 - `docs/07_implementation_status.md` receives the `TASK-294` crosswalk through a worker dispatch (free ID re-derived from the live ledger during collision reconciliation; the previously quoted `TASK-284` is the closed `claim:raft-fill` row of packet 124; `TASK-281`/`TASK-282` are closed under packet 117).
-- `D-168-SEAM-PREPASS-SOURCE` is **narrowed** with evidence: part (1) source-geometry divergence is closed by per-region `SliceIR` input; parts (2)-(5) (sample budget, B-spline solver, `curling_influence`, short-string retry) stay Open and are explicitly handed off to packet 179. Update `docs/DEVIATION_LOG.md` row to reflect "Narrowed by packet 178 (part 1 closed); parts 2-5 Open for packet 179."
+- `seam source-geometry deviation` is **narrowed** with evidence: part (1) source-geometry divergence is closed by per-region `SliceIR` input; parts (2)-(5) (sample budget, B-spline solver, `curling_influence`, short-string retry) stay Open and are explicitly handed off to packet 179. Update `docs/DEVIATION_LOG.md` row to reflect "Narrowed by packet 178 (part 1 closed); parts 2-5 Open for packet 179."
 - `packet.spec.md` is ready for `status: implemented` once all of the above hold. (Originally drafted to require packets 179/180 to consume the exports; flipped 2026-07-22 because the technical surface is on disk and green, and the gating rule blocked the two successor packets the parity plan itself names as the rationale.)
 
 ## Acceptance Ceremony

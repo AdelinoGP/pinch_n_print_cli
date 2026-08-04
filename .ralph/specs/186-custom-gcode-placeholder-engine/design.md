@@ -84,7 +84,7 @@
 
   **The residual harm is stated, not hidden.** Bracketed literal text can still
   reach a printer — now accompanied by a warning naming every offending key and
-  site. That is the harm `DEV-085` originally named, and it is not fully closed
+  site. That is the harm `custom-G-code injection deviation` originally named, and it is not fully closed
   here; the residual `DEV-###` row records it as the accepted cost of
   composability, together with the divergence that canonical ultimately *fails*
   an export PnP completes.
@@ -118,7 +118,7 @@ so they belong to the same step (see `implementation-plan.md` Step 2).
 - `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` — role: module-level behaviour pins; expected change: `try_run` helper plus five added tests; the passthrough test keeps asserting passthrough.
 - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` — role: pipeline-level pins through the real WASM component; expected change: `try_slice_with_raw` added, one test added.
 - `docs/15_config_keys_reference.md` — role: the user-facing macro contract; expected change: §"Machine start / end G-code" rewritten to the domain rule and the warn-and-pass policy, generated block regenerated.
-- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: one new residual row, two corrections to the `DEV-085` row.
+- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: the `DEV-100` placeholder residual row carries the eight unresolved macros; the deleted aggregate custom-G-code label is not recreated.
 - `docs/07_implementation_status.md` — role: backlog; expected change: one `TASK-305` row outside the generated markers.
 
 ## Read-Only Context
@@ -151,7 +151,7 @@ so they belong to the same step (see `implementation-plan.md` Step 2).
 - Question: does canonical's `[key]` legacy bracket form error on an undefined variable, and what is the exact message text? Scope: `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp`, functions `MyContext::legacy_variable_expansion` / `MyContext::throw_exception`; return: `FACT`; purpose: the divergence sentence in the residual `DEV-###` row — **not** a justification for a failure policy.
 - Question: how does `GCode::placeholder_parser_process` record a failure, where is it rethrown, and does the export continue in between? Scope: `src/libslic3r/GCode.cpp` in the **sibling checkout** `F:\slicerProject\pinch_n_print_cli_2\OrcaSlicerDocumented` (this repo's mirror has no `GCode.cpp`); return: `FACT`; purpose: the collect-all-then-warn-once shape and the residual row's divergence clause.
 - Question: in `GCode::_do_export`'s `; first_layer_temperature = %d` preamble, does canonical read element 0 of the per-extruder vector? Scope: same sibling checkout; return: `FACT` ≤ 3 lines; purpose: AC-16's canonical anchor.
-- Question: what is the current highest `DEV-###` in `docs/DEVIATION_LOG.md`, and does the `DEV-085` row still say "2 of OrcaSlicer's 15"? Scope: `docs/DEVIATION_LOG.md`; return: `FACT` (two lines); purpose: Step 5's row edits. **Re-derive at the moment of writing.**
+- Question: what is the current highest `DEV-###` in `docs/DEVIATION_LOG.md`, and does the `DEV-100` placeholder row carry the corrected registration/domain evidence? Scope: `docs/DEVIATION_LOG.md`; return: `FACT` (two lines); purpose: Step 5's row edits. **Re-derive at the moment of writing.**
 - Question: is `TASK-305` present in `docs/07_implementation_status.md`, and what is the exact row format used by the last three `TASK-3xx` entries? Scope: `docs/07_implementation_status.md`; return: `FACT` (≤ 5 lines); purpose: Step 5's registration.
 - Question: after the manifest edit, does `cargo xtask gen-config-docs --check` exit 0 and does the generated table pair `nozzle_diameter` with `machine-gcode-emit`? Scope: cargo run; return: `FACT` pass/fail; purpose: AC-12.
 - Question: after `cargo build -p pnp-cli`, are `modifier_infill_tdd::` and `cube_painted_e2e_tdd::` both green under `--test e2e`? Scope: cargo run; return: `FACT` pass/fail plus the two `^test result:` lines; purpose: AC-18.
@@ -204,7 +204,7 @@ Packet-local invariants (this packet's to keep):
 ## Risks and Tradeoffs
 
 - **Bracketed literal text can still reach a printer.** Accepted — this is the
-  residual of `DEV-085`'s user-facing half and is recorded in the residual
+  residual of `custom-G-code injection deviation`'s user-facing half and is recorded in the residual
   `DEV-###` row. Mitigated only by the aggregated warning. The alternative
   (failing the slice) was tried, measured, and rejected: it breaks composition
   and it broke real fixtures.
@@ -233,7 +233,7 @@ Packet-local invariants (this packet's to keep):
 - Aggregate: `M`
 - Largest step: `M` (Step 2 — engine change plus the module test file)
 - Highest-risk dispatch and required return format: the `docs/DEVIATION_LOG.md`
-  read (long file; both the `DEV-085` and residual rows are single very long
+  read (long file; both the `custom-G-code injection deviation` and residual rows are single very long
   lines). Must return `FACT` of at most five lines: the highest `DEV-###`, and
   whether the two quoted error strings are still present. Never request either
   row verbatim.

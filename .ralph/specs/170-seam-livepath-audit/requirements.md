@@ -20,7 +20,7 @@ The fork-gaps handoff item 8 claimed `seam-placer` ignored live seam candidates;
 ## Out of Scope
 
 - The candidates-vs-`resolved_seam` preference order (already correct; verified against the per-mode dispatch in `run_wall_postprocess`).
-- The known planner mesh-corner vs inset-boundary coordinate gap — packet 168 introduced the aligned-aligned compensation, packet 178 superseded 168, and packet 180's continuous projection closed the source-geometry half of `D-168-SEAM-PREPASS-SOURCE` in the deviation log (now `Closed — 2026-07-22`). The nearest/rear/random exact-match tolerance stays as-is here; AC-N1 only pins its graceful degradation in `nearest` mode.
+- The known planner mesh-corner vs inset-boundary coordinate gap — packet 168 introduced the aligned-aligned compensation, packet 178 superseded 168, and packet 180's continuous projection closed the source-geometry half of `seam source-geometry deviation` in the deviation log (now `Closed — 2026-07-22`). The nearest/rear/random exact-match tolerance stays as-is here; AC-N1 only pins its graceful degradation in `nearest` mode.
 - seam-planner-default, host injection/backfill paths (`crates/slicer-wasm-host/src/dispatch.rs`, `crates/slicer-runtime/src/layer_executor.rs`), WIT, manifests, config keys.
 - Any behavior change for regions with empty wall lists (existing `continue` early in the per-region loop unchanged).
 - Packet 180's continuous projection, degraded fallback, or default-mode change — already implemented and tested; this audit piggybacks on its fixture idioms but does not modify the projection logic.

@@ -1,7 +1,7 @@
 ---
 status: implemented
 packet: 126_mmu-painted-cube-parity
-task_ids: [TASK-245, TASK-246, TASK-250, DEV-009]
+task_ids: [TASK-245, TASK-246, TASK-250, overhang-speed deviation]
 ---
 
 # 126_mmu-painted-cube-parity

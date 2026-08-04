@@ -16,7 +16,7 @@
 
 ## Step 1a: Correct production defaults
 
-- Task IDs: none; backlog source `D-112-SELFCAPTURED-BASELINES`.
+- Task IDs: none; backlog source `self-captured Arachne baselines`.
 - Objective: set both production `max_bead_count` defaults to literal `10` and
   explain canonical even-count parity without claiming an odd branch.
 - Precondition: `rg -n 'max_bead_count:\s*9' crates/slicer-core/src/` returns

@@ -112,7 +112,7 @@ Acceptance Criteria are stated **once**, here.
 - `docs/02_ir_schemas.md` — `SliceRegionView` top-shell metadata
   (`top_shell_index`, `top_solid_fill`); delegate the region section.
 - `docs/08_coordinate_system.md` — unit conversions for thresholds (load).
-- `docs/DEVIATION_LOG.md` — `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`
+- `docs/DEVIATION_LOG.md` — `top-surface min-width threshold gap`
   (`DEVIATION_LOG.md:82`) — NOTE its scope covers BOTH modules' deferred
   `min_width_top_surface` behavior; this packet lands only the arachne half
   (see Doc Impact for the narrowing protocol). The classic-perimeters
@@ -129,13 +129,10 @@ Changes a WIT contract and module behavior, so `none` is not eligible:
   NOTE: both keys ALREADY appear in this doc, so a bare key-name grep is
   pre-satisfied today and verifies nothing — the grep below tests the new
   annotation — `rg -q 'P152' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` — narrow `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`: mark the
-  arachne-perimeters half landed (P152) and split the classic-perimeters
-  remainder into a successor entry `D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER`
-  (do NOT mark the whole entry closed — its scope includes classic-perimeters,
-  which this packet does not touch) —
-  `rg -q 'D-104d-MIN-WIDTH-TOP-SURFACE-NONE.*P152' docs/DEVIATION_LOG.md` and
-  `rg -q 'D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the historical `top-surface min-width threshold gap`
+  and `classic top-surface remainder` labels were later purged. The surviving
+  cross-module width evidence is carried by `DEV-101` —
+  `rg -q '^\| DEV-101 ' docs/DEVIATION_LOG.md`
 - `docs/18_arachne_parity_audit.md` — mark G3 (row `:178`) and G10 (row `:185`)
   closed in the PnP-status column, following the file's existing `… closed`
   style — `rg -q 'G10.*closed' docs/18_arachne_parity_audit.md`
@@ -176,7 +173,7 @@ Two Arachne parity gaps concern the topmost printed layer, and both need a
 "topmost layer" signal the pipeline cannot currently express:
 
 - **G3 `only_one_wall_top` (consumes the `min_width_top_surface` behavior
-  deferred under `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`):** OrcaSlicer forces a single wall on the
+  deferred under `top-surface min-width threshold gap`):** OrcaSlicer forces a single wall on the
   topmost layer (`loop_number = 0` when `upper_slices == nullptr`) and, for
   NON-topmost layers whose surface is partly a top surface, runs a SECOND
   `Arachne::WallToolPaths` pass over the non-top sub-area with `inner_loop_number

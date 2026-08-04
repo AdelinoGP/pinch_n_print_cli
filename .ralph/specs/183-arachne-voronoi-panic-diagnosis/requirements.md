@@ -9,7 +9,7 @@
 
 ## Problem Statement
 
-Deviation **D-167-BOOSTVORONOI-ROBUST-FPT-PANICS** (Open — "observed, undiagnosed", 2026-07-16). During the D-160 session, a `perimeter_parity` run printed 13 background-thread panics of the form `rhs.fpv_.is_finite()` originating inside the `boostvoronoi` dependency's `robust_fpt` module, while the suite still reported all tests passing. The output impact was never determined, so the row has sat undiagnosed.
+Deviation **boostvoronoi panic observation** (Open — "observed, undiagnosed", 2026-07-16). During the D-160 session, a `perimeter_parity` run printed 13 background-thread panics of the form `rhs.fpv_.is_finite()` originating inside the `boostvoronoi` dependency's `robust_fpt` module, while the suite still reported all tests passing. The output impact was never determined, so the row has sat undiagnosed.
 
 Grounding identified the structural reason these are invisible, and it is an asymmetry rather than a mystery. There are three boostvoronoi call sites in `crates/slicer-core`:
 

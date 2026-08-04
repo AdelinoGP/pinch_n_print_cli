@@ -8,7 +8,7 @@ task_ids: []
 
 ## Goal
 
-Replace P112's from-first-principles adaptations in the Arachne pipeline with algorithm-faithful OrcaSlicer ports, gated on a synthetic quad/rib topology pass that builds the structural classification (rib edge vs spine edge) that four OrcaSlicer passes depend on: centrality filtering, per-NODE bead count, transition marking, and junction stitching. Close `D-112-CENTRALITY-ADAPT`, `D-112-PROPAGATION-ADAPT`, and the unregistered `connectJunctions` adaptation. Re-validate downstream stages (stitch, simplify, remove_small) against the topology-changed input shape.
+Replace P112's from-first-principles adaptations in the Arachne pipeline with algorithm-faithful OrcaSlicer ports, gated on a synthetic quad/rib topology pass that builds the structural classification (rib edge vs spine edge) that four OrcaSlicer passes depend on: centrality filtering, per-NODE bead count, transition marking, and junction stitching. Close `early centrality adaptation`, `interim propagation adaptation`, and the unregistered `connectJunctions` adaptation. Re-validate downstream stages (stitch, simplify, remove_small) against the topology-changed input shape.
 
 ## Problem Statement
 
@@ -43,7 +43,7 @@ The packet 112 audit (commit `d9466fd7`) identified that the Arachne pipeline's 
 - The `STHalfEdge` rib/spine classification is a faithful port of OrcaSlicer's `makeRib` — verified by SUMMARY dispatch against `SkeletalTrapezoidationGraph.cpp:452` and code review.
 - The `filter_central` predicate `dR < dD * sin(angle/2)` is computed between two SPINE edges at a SPINE vertex. The angle is measured on the quad-decorated graph, not the raw boostvoronoi graph.
 - The `bead_count: Option<u32>` field moves atomically from `STHalfEdge` to the vertex type. No intermediate state where the field exists in both.
-- The 8 re-baselined fixtures are self-captured regression locks. They are accepted as such per the perimeter-parity harness convention established by `D-112-SELFCAPTURED-BASELINES` (same root cause as `D-109-SELF-CAPTURED-FIXTURES` for M1). They do NOT validate against an OrcaSlicer oracle. The re-recording is acceptable because the algorithm-faithfulness criterion is asserted via direct OrcaSlicer code references (`OrcaSlicerDocumented/.../SkeletalTrapezoidationGraph.cpp:452` etc.) — code review, not output match.
+- The 8 re-baselined fixtures are self-captured regression locks. They are accepted as such per the perimeter-parity harness convention established by `self-captured Arachne baselines` (same root cause as `D-109-SELF-CAPTURED-FIXTURES` for M1). They do NOT validate against an OrcaSlicer oracle. The re-recording is acceptable because the algorithm-faithfulness criterion is asserted via direct OrcaSlicer code references (`OrcaSlicerDocumented/.../SkeletalTrapezoidationGraph.cpp:452` etc.) — code review, not output match.
 - `remove_small_lines` primary preservation invariant (`is_closed && inset_idx == 0` lines never removed) is preserved across the topology change. The re-validation test (AC-8 + AC-N3) proves this.
 
 ## Risks and Tradeoffs

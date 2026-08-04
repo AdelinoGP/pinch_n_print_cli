@@ -159,16 +159,16 @@
   - `crates/**` — no source change in this step.
 - Blast-radius discipline: not applicable — documentation only.
 - Expected sub-agent dispatches:
-  - Question: report the D-167 row's current Status cell verbatim and the highest `D-`/`DEV-` id currently present, so a successor id can be allocated without colliding; scope: `docs/DEVIATION_LOG.md`; return: `FACT` (<=5 lines)
+  - Question: report the boostvoronoi panic observation row's current Status cell verbatim and the highest `D-`/`DEV-` id currently present, so a successor id can be allocated without colliding; scope: `docs/DEVIATION_LOG.md`; return: `FACT` (<=5 lines)
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/DEVIATION_LOG.md` — the D-167 row; the file's own rule is that a row is open unless its Status begins with `Closed`.
+  - `docs/DEVIATION_LOG.md` — the boostvoronoi panic observation row; the file's own rule is that a row is open unless its Status begins with `Closed`.
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
   - `bash -c 'F=.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md; if rg -q "^## Caught panic count" "$F" && rg -q "^## Input characterization" "$F" && rg -q "^## Verdict" "$F" && rg -q "Owning layer/region IDs:" "$F" && rg -q "panicking computation.*(live geometry|discarded)" "$F"; then echo PASS; else echo FAIL; exit 1; fi'` — FACT PASS/FAIL (AC-3).
-  - `rg -q '^\|\s*D-167-BOOSTVORONOI-ROBUST-FPT-PANICS\b.*\|\s*\*{0,2}(Closed|Open — narrowed)[^|]*\|?\s*$' docs/DEVIATION_LOG.md && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-4). Copy verbatim: the alternation pipe must be bare `|` (rg's `\|` is a *literal* pipe, which makes the check unpassable), and the `[^|]*\|?\s*$` tail is what pins the match to the Status cell instead of matching "Closed" anywhere in the row. See AC-4 in `packet.spec.md` for the full rationale.
-- Exit condition: the verdict is explicit, the D-167 row matches it, and any successor id was re-derived from the log at the moment of writing rather than assumed from this packet's text.
+  - `rg -q '^\|\s*boostvoronoi panic observation\b.*\|\s*\*{0,2}(Closed|Open — narrowed)[^|]*\|?\s*$' docs/DEVIATION_LOG.md && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-4). Copy verbatim: the alternation pipe must be bare `|` (rg's `\|` is a *literal* pipe, which makes the check unpassable), and the `[^|]*\|?\s*$` tail is what pins the match to the Status cell instead of matching "Closed" anywhere in the row. See AC-4 in `packet.spec.md` for the full rationale.
+- Exit condition: the verdict is explicit, the boostvoronoi panic observation row matches it, and any successor id was re-derived from the log at the moment of writing rather than assumed from this packet's text.
 
 ## Per-Step Budget Roll-Up
 
@@ -190,7 +190,7 @@ Split before activation if aggregate cost exceeds M or any step is L.
 - `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo xtask test --summary --workspace` are clean. The workspace test gate must run through `cargo xtask test` so the guest freshness check fires first; its `VERDICT` and process exit must agree.
 - The now-passing `pnp_cli_rebuild_abort_is_nonzero_with_named_failure_detail` test in `xtask/src/test.rs` is recorded in `FINDINGS.md`; it proves nonzero status plus named failure detail for the synthetic controlled runner, not a real `pnp_cli` kill.
 - The `support-surface-ironing --test ironing_tdd` failures remain a separately tracked external fixture blocker under `modules/core-modules/support-surface-ironing/**`; they are out of scope and must not be conflated with packet-local completion or the passing named abort-path evidence.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read: register `TASK-296` complete and reconcile the D-167 line.
+- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read: register `TASK-296` complete and reconcile the boostvoronoi panic observation line.
 - If the verdict is "geometry is lost", the successor deviation row exists and a follow-up packet for `preprocess_input_outline` hardening is appended to `docs/specs/deviation-backlog-remediation-plan.md`'s Packet Queue.
 - The `medial_axis` degrade-to-empty inconsistency row is filed (Low / Open, id re-derived at filing time), and no ADR was authored for it. Verify: `bash -c 'rg -q "^\|.*DEV-[0-9]{3}.*(\bLow\b.*\bOpen\b.*medial_axis|\bLow\b.*medial_axis.*\bOpen\b|\bOpen\b.*\bLow\b.*medial_axis|\bOpen\b.*medial_axis.*\bLow\b|medial_axis.*\bLow\b.*\bOpen\b|medial_axis.*\bOpen\b.*\bLow\b).*\|$" docs/DEVIATION_LOG.md && echo PASS || echo "FAIL: dedicated Low/Open medial_axis deviation row not filed"'`.
 - Step 0's attribution stands: `FINDINGS.md` `## Panic attribution` names the producing call site, and the guard was scoped to it — not assumed.
@@ -200,7 +200,7 @@ Split before activation if aggregate cost exceeds M or any step is L.
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Re-dispatch the reopened DEV-098 checks: the ordinary workspace test build
+- Re-dispatch the reopened workspace Voronoi-debug allocation issue checks: the ordinary workspace test build
   does not enable `boostvoronoi/console_debug`; the explicit
   `voronoi_panic_regression` target does enable it and passes; removing the
   production catch arm makes that target fail; and

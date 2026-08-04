@@ -38,7 +38,7 @@
 - Exact changes: two new files + `mod.rs` wiring; the producer body in `mod.rs`
   replaces the 137 skeleton's `// 139 wiring point` comment with the real driver; tests
   in the 138 test home + extension of the 137 executor test.
-- **DEVIATION-CLOSURE additions (D-137-LIGHTNING-PER-OBJECT-COLLAPSE):**
+- **DEVIATION-CLOSURE additions (lightning per-object collapse):**
   - `LightningTreeEntry` (`crates/slicer-ir/src/slice_ir.rs:1215`) gains a
     `region_id: RegionId` field (a `u64` type alias at `slice_ir.rs:36`; the
     precedent at `SupportPlanEntry.region_id: RegionId` at `:1129`) between

@@ -15,7 +15,7 @@ low-discrepancy sampling vs canonical RNG, normal-equation Gaussian elimination
 vs Eigen `fullPivHouseholderQr`, fixed `curling_influence = 1.0` (no
 `layer_angle` field), no alternative-start retry for short strings, and a
 hardcoded `0.4 mm` flow width. These reductions are recorded in
-`D-168-SEAM-PREPASS-SOURCE`. This packet closes those algorithm reductions by
+`seam source-geometry deviation`. This packet closes those algorithm reductions by
 restoring canonical behavior, using packet 178's per-region input view to supply
 real flow width, seam paint annotations, and per-region polygon candidates.
 

@@ -3,7 +3,7 @@
 ## Packet Metadata
 
 - Grouped task IDs: none. This is an audit-driven slice sourced from `docs/DEVIATION_LOG.md`.
-- Backlog source: `D-112-SELFCAPTURED-BASELINES`.
+- Backlog source: `self-captured Arachne baselines`.
 - Packet status: `draft` until measurement and packet preflight are green.
 - Aggregate context cost: `M`.
 

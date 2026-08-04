@@ -11,7 +11,7 @@
 
 ## Steps
 
-### Step 0: Per-region refinement bundle (RED→GREEN) — closes `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
+### Step 0: Per-region refinement bundle (RED→GREEN) — closes `lightning per-object collapse`
 
 - Task IDs: `TASK-264`
 - Objective: add `region_id: RegionId` field to `LightningTreeEntry`; fix the host
@@ -85,7 +85,7 @@
   at the seam. The 139 design's `§Context Cost Estimate` carries the
   justification.)
 - Authoritative docs: ADR-0029 (per-region discipline), `docs/DEVIATION_LOG.md`
-  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` (the deviation being closed).
+  `lightning per-object collapse` (the deviation being closed).
 - OrcaSlicer refs: none.
 - Verification:
   - AC-3 pipe command — FACT
@@ -229,7 +229,7 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 0 | L (justified) | per-region IR + dispatch + SDK projection + 137 test update + new test file — atomic coupled bundle that closes D-137-LIGHTNING-PER-OBJECT-COLLAPSE |
+| Step 0 | L (justified) | per-region IR + dispatch + SDK projection + 137 test update + new test file — atomic coupled bundle that closes lightning per-object collapse |
 | Step 1 | M | overhang pass + constants |
 | Step 2 | M | `Layer.cpp` port (448 lines; tripwire armed) |
 | Step 3 | M | two-pass growth + determinism |

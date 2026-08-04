@@ -37,7 +37,7 @@ sweep can consume long low-curvature arcs canonical would keep (distance gates
 absent), altering wall smoothness. This packet fixes all three — the order
 swap, the per-line `min_width`, and the distance-gated simplify.
 
-This packet supersedes `D-112-SIMPLIFY-DP` for the simplify layer (113a's
+This packet supersedes `early Arachne simplification` for the simplify layer (113a's
 DP→VW port was an earlier step; E supersedes the iterative area-only sweep with
 the canonical distance-gated single pass). E does not change A1/A2/B/C/D's
 junction generation, emission, or graph construction — only the post-processing
@@ -50,7 +50,7 @@ pipeline.
 
 - Packet-specific constraint: **E's simplify distance gates may need new config keys** (`meshfix_maximum_resolution`/`_deviation`). The implementer confirms via `docs/15_config_keys_reference.md` whether they are already registered. If not, E adds them to `ArachneParams` + the `arachne-params` WIT record — a WIT record change E must surface in its commit message, not silently absorb. Check `crates/slicer-schema/wit/` for the `arachne-params` record.
 - Packet-specific constraint: **E's `separate_out_inner_contour` is a NEW function** (no PNP equivalent); inner-surface bookkeeping for infill boundary. The implementer confirms its exact responsibility via a delegated SUMMARY of `WallToolPaths.cpp:685`'s `separateOutInnerContour`.
-- Packet-specific constraint: **E supersedes `D-112-SIMPLIFY-DP`** (113a's DP→VW port) for the simplify layer; the iterative area-only sweep is replaced with the canonical distance-gated single pass. `calculateExtrusionAreaDeviationError` becomes an *extra* guard on the near-colinear fast path only, not the primary gate.
+- Packet-specific constraint: **E supersedes `early Arachne simplification`** (113a's DP→VW port) for the simplify layer; the iterative area-only sweep is replaced with the canonical distance-gated single pass. `calculateExtrusionAreaDeviationError` becomes an *extra* guard on the near-colinear fast path only, not the primary gate.
 - Packet-specific constraint: **WASM staleness MAY apply** if E adds fields to the `arachne-params` WIT record (which feeds guest WASM). The implementer MUST run `cargo xtask build-guests --check` after any WIT change. If E does NOT touch WIT (distance gates sourced from existing config keys), WASM staleness does not apply. Include the `wasm-staleness` snippet conditionally.
 
 <!-- snippet: wasm-staleness -->
@@ -68,7 +68,7 @@ pipeline.
 - E's per-line `min_width` = minimum junction width over the line; divisor `min_width/2` on top/bottom layers, `min_width * min_length_factor` otherwise; needs `is_initial_layer` (already on `ArachneParams`).
 - E's simplify is a single linear pass gated by `smallest_line_segment_squared` / `allowed_error_distance_squared`; `calculateExtrusionAreaDeviationError` is an extra guard on the near-colinear fast path only.
 - E keeps N1, N2, N3, N4 red tests GREEN (gated).
-- E supersedes `D-112-SIMPLIFY-DP` for the simplify layer.
+- E supersedes `early Arachne simplification` for the simplify layer.
 - E's `separate_out_inner_contour` is a NEW function (no PNP equivalent).
 - Fixture re-baseline uses the self-capture pattern; never read the JSONs directly.
 - If E adds WIT record fields, it surfaces the change (not silently absorbed) + runs `cargo xtask build-guests --check`.

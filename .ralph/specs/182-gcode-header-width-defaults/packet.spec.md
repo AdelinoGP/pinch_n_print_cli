@@ -11,7 +11,7 @@ context_cost_estimate: S
 
 ## Goal
 
-Correct the `DefaultGCodeSerializer` header-comment wall-width defaults from the non-governing `0.42`/`0.45` to the governing `0.4`/`0.4` fallback, delete the dangling `config_schema.rs` citation, and re-bless the one golden fixture that captured the old values — so the emitted `; outer_wall_line_width` / `; inner_wall_line_width` header lines report the value the pipeline actually falls back to (`resolve_line_width_mm` → `0.4`). Closes deviation D-165-GCODE-HEADER-WIDTH-DEFAULTS-LIE.
+Correct the `DefaultGCodeSerializer` header-comment wall-width defaults from the non-governing `0.42`/`0.45` to the governing `0.4`/`0.4` fallback, delete the dangling `config_schema.rs` citation, and re-bless the one golden fixture that captured the old values — so the emitted `; outer_wall_line_width` / `; inner_wall_line_width` header lines report the value the pipeline actually falls back to (`resolve_line_width_mm` → `0.4`). Closes deviation G-code header width-default gap.
 
 ## Scope Boundaries
 

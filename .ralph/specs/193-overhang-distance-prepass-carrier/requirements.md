@@ -50,7 +50,7 @@ Nothing reads `overhang_distance_mm`. The field lands `None`-by-default on every
 
 - **Any consumer of `overhang_distance_mm`.** `modules/core-modules/overhang-classifier-default/src/lib.rs` is untouched; it keeps emitting one `SetSpeedFactor` per entity. Packet 190 (TASK-309) changes that.
 - **Mid-segment vertex insertion and any path-geometry mutation channel.** Packet 191 (TASK-310).
-- **`annotate_overhangs`' four concentric quartile bands and `BAND_BOUNDARY_MULTIPLIERS`.** Recorded in the `DEV-009` row as an accepted permanent deviation; untouched here, in 190 and in 191. `AC-N2`'s declaration-vs-`HEAD` conjunct is the enforcement.
+- **`annotate_overhangs`' four concentric quartile bands and `BAND_BOUNDARY_MULTIPLIERS`.** Recorded in the overhang-speed parity record as an accepted permanent deviation; untouched here, in 190 and in 191. `AC-N2`'s declaration-vs-`HEAD` conjunct is the enforcement.
 - **`CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`.** Packet 189 is separately specified to move it. `Point3WithWidth` reaches `LayerCollectionIR` transitively through `ExtrusionPath3D::points`, which is a real reason someone might reach for that constant — do not. Two packets bumping one line is a merge conflict dressed as a design decision.
 - **Any new config key.** `enable_overhang_speed` and `slowdown_for_curled_perimeters` belong to packet 190.
 - **`record seam-point3-with-width`.** A separate WIT record for a separate purpose; giving it the field would widen the seam-planning wire format for no consumer.
@@ -63,7 +63,7 @@ Nothing reads `overhang_distance_mm`. The field lands `None`-by-default on every
 - `docs/05_module_sdk.md` — delegated grep only; the "SliceRegionView accessors" section.
 - `docs/adr/0031-overhang-classification-in-prepass.md` — read for the decision this packet **honours**. Note it already carries one in-body amendment (`### Amendment (overhang-after-Slice inversion)`), whose "stands unchanged" list names the multi-consumer motivation, the `SurfaceClassificationIR` extension shape, the quartile-polygon output, and keeping `overhang-classifier-default` as a finalization consumer. The `SurfaceClassificationIR` extension shape being explicitly preserved is what makes this packet's additive field a *continuation* of that ADR rather than a departure from it.
 - `docs/adr/0053-*` — **forward reference; not on the tree at authoring time.** The decision record for the option (C) ruling. Cite it; do not restate it.
-- `docs/DEVIATION_LOG.md` — delegated grep only. The `DEV-009` row is read for scope and is **not** edited by this packet; a new row is filed for the `boundary_offset` divergence with its id re-derived at the moment of writing.
+- `docs/DEVIATION_LOG.md` — delegated grep only. The overhang-speed parity record is read for scope and is **not** edited by this packet; a new row is filed for the `boundary_offset` divergence with its id re-derived at the moment of writing.
 - `CLAUDE.md` §"Guest WASM Staleness" and §"WIT/Type Changes Checklist" — both WIT edits invalidate every guest.
 
 <!-- snippet: orca-delegation -->
@@ -113,6 +113,6 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 - `crates/slicer-ir/src/slice_ir.rs` is very long — **ranged reads only.** Locate `pub struct Point3WithWidth`, `pub struct SurfaceClassificationIR`, `CURRENT_PERIMETER_IR_SCHEMA_VERSION` and `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION` by symbol and open ±30 lines around each. Never load it whole.
 - `docs/02_ir_schemas.md` — read only §"IR 7 — PerimeterIR" and the `SurfaceClassificationIR` block. Never load it whole.
-- `docs/DEVIATION_LOG.md`'s `DEV-009` row is a single multi-thousand-word table cell. Delegate any question about it; do not read the row into the implementer's context.
+- `docs/DEVIATION_LOG.md`'s overhang-speed parity record is a single multi-thousand-word table cell. Delegate any question about it; do not read the row into the implementer's context.
 - **The struct-literal sweep must not be done by reading the files.** Run the Step 0 re-derivation command to get the `file:count` list, edit each literal blind (one inserted `overhang_distance_mm: None,` line), and let `cargo check --workspace --all-targets` be the oracle. A file listed with a count but no `E0063` was a proxy false positive (the definition, or a marshal conversion) and needs no edit.
 - `modules/core-modules/arachne-perimeters/src/lib.rs` and `modules/core-modules/classic-perimeters/src/lib.rs` are long. Only the `overhang_bands` regions are in scope; locate `region.overhang_quartile_polygons()` by symbol and open a window around it.

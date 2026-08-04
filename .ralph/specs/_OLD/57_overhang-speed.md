@@ -9,7 +9,7 @@ task_ids:
 
 ## Goal
 
-Wire OrcaSlicer-parity overhang quartile speed end-to-end on the live G-code path: extend the `point3-with-width` WIT record with an `overhang-quartile: option<u8>` field, add a host-side `overhang_classifier` prepass that buckets wall-family vertices by signed distance to the previous-layer support polygons, and extend `resolve_feedrate` to dispatch `OuterWall | InnerWall | ThinWall` points to the four `overhang_{1,2,3,4}_4_speed` keys registered by packet 52. First remediation against DEV-009 for *quality-modulated* feedrate beyond the bare per-role tokens.
+Wire OrcaSlicer-parity overhang quartile speed end-to-end on the live G-code path: extend the `point3-with-width` WIT record with an `overhang-quartile: option<u8>` field, add a host-side `overhang_classifier` prepass that buckets wall-family vertices by signed distance to the previous-layer support polygons, and extend `resolve_feedrate` to dispatch `OuterWall | InnerWall | ThinWall` points to the four `overhang_{1,2,3,4}_4_speed` keys registered by packet 52. First remediation against overhang-speed deviation for *quality-modulated* feedrate beyond the bare per-role tokens.
 
 ## Problem Statement
 

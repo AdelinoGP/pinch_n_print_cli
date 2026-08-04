@@ -18,7 +18,7 @@ outer wall land at `preferred_bead_width_outer / 2` from the boundary.
 ## Problem Statement
 
 Packet 113c's faithful per-cell graph construction + interleaved-rib topology
-(Steps 1-8b, `D-113C-FAITHFUL-GRAPH-CONSTRUCTION`) fixed the substrate but
+(Steps 1-8b, `faithful Arachne graph construction`) fixed the substrate but
 explicitly left the layer that turns the graph into toolpaths as an
 acknowledged "ADAPTATION" — and the second-pass parity audit
 (`target/arachne_parity_audit_20260706_020657.md`, findings N1 + N7) proved
@@ -45,7 +45,7 @@ gaps in one atomic rewrite — N7 is bundled with N1 because N7 has no dedicated
 red test (only N1's tests validate it), so green-gating N7 in isolation would
 be a weak oracle.
 
-This packet supersedes `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` for the
+This packet supersedes `faithful Arachne graph construction` for the
 junction-generation layer only; 113c's graph construction (Steps 1-3) and
 `insert_node` re-audit (Step 6) remain canonical and untouched. 113c's
 deferred Steps 9-10 (fixture re-baseline + e2e closure) are inherited by this

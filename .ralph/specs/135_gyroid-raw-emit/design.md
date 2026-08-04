@@ -76,7 +76,7 @@
 - `crates/slicer-sdk/src/views.rs` — the 131 config accessor + `should_emit` — ranged.
 - `crates/slicer-ir/src/resolved_config.rs` — fill-holder key names only (gyroid is not
   referenced in defaults).
-- `docs/DEVIATION_LOG.md` — the DEV-082 row only.
+- `docs/DEVIATION_LOG.md` — the gyroid multi-role deviation row only.
 - `docs/03_wit_and_manifest.md` — the `claim:(sparse|top|bottom|bridge)-fill` catalog
   entries (the four claim IDs already exist; we add three to the module's `holds`).
 
@@ -118,7 +118,7 @@
   `PATTERN_TOLERANCE`.
 - Default fill-holders unchanged: gyroid is not in `resolved_config.rs` defaults; default
   prints produce sparse-only gyroid when the user explicitly sets a fill-holder key
-  (AC-N1, DEV-082's opt-in promise).
+  (AC-N1, gyroid multi-role deviation's opt-in promise).
 - Raw waves may extend past the polygon (bounded by the expanded bbox); downstream clipping
   is the linker's (AC-1 pins no-clipping).
 - `solid_fill_role` mapping stays (shared shape with rectilinear; divergence between the two

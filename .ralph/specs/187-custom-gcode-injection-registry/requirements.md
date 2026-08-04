@@ -3,13 +3,13 @@
 ## Packet Metadata
 
 - Grouped task IDs: `TASK-306`
-- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `DEV-085`, tranche T3 (referenced by identity — row numbers rot), split 2 of 3; registered in `docs/07_implementation_status.md` by this packet
+- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `custom-G-code injection deviation`, tranche T3 (referenced by identity — row numbers rot), split 2 of 3; registered in `docs/07_implementation_status.md` by this packet
 - Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-`machine-gcode-emit` has no notion of an injection point. `run_gcode_postprocess` reads two config keys with two hand-written `match config.get("machine_…_gcode")` arms, substitutes them, and frames the re-emitted stream. Adding a third point by copy-paste is exactly the shape `DEV-085` warns about, because OrcaSlicer already demonstrates where it leads: canonical has no abstraction here either, and the same `if (!empty) { DynamicConfig; set_key_value; placeholder_parser_process }` block is hand-inlined 20+ times across `GCode::_do_export`, `GCode::process_layer`, `GCode::set_extruder` and `GCode::_extrude`. Its one registry, `s_CustomGcodeSpecificPlaceholders` (`PrintConfig.cpp`), is validation-only and has already drifted. (**Precision, because the existing `DEV-085` row gets this wrong and the error was inherited verbatim into an earlier draft of this packet:** the table itself compiles **unconditionally** — only its *consumers* are `#if ORCA_CHECK_GCODE_PLACEHOLDERS`-gated, and that macro is defined only under `#if !defined(NDEBUG)`. "Validation-only" is accurate; "the table is gated" is not.) The drift: it keys timelapse under the parser name `timelapse_gcode`, which does **not** match the config key `time_lapse_gcode`, and it omits `wrapping_detection_gcode` entirely even though `GCode::process_layer` emits that option with five placeholder variables.
+`machine-gcode-emit` has no notion of an injection point. `run_gcode_postprocess` reads two config keys with two hand-written `match config.get("machine_…_gcode")` arms, substitutes them, and frames the re-emitted stream. Adding a third point by copy-paste is exactly the shape `custom-G-code injection deviation` warns about, because OrcaSlicer already demonstrates where it leads: canonical has no abstraction here either, and the same `if (!empty) { DynamicConfig; set_key_value; placeholder_parser_process }` block is hand-inlined 20+ times across `GCode::_do_export`, `GCode::process_layer`, `GCode::set_extruder` and `GCode::_extrude`. Its one registry, `s_CustomGcodeSpecificPlaceholders` (`PrintConfig.cpp`), is validation-only and has already drifted. (**Precision, because the existing `custom-G-code injection deviation` row gets this wrong and the error was inherited verbatim into an earlier draft of this packet:** the table itself compiles **unconditionally** — only its *consumers* are `#if ORCA_CHECK_GCODE_PLACEHOLDERS`-gated, and that macro is defined only under `#if !defined(NDEBUG)`. "Validation-only" is accurate; "the table is gated" is not.) The drift: it keys timelapse under the parser name `timelapse_gcode`, which does **not** match the config key `time_lapse_gcode`, and it omits `wrapping_detection_gcode` entirely even though `GCode::process_layer` emits that option with five placeholder variables.
 
 **So a real injection-point registry is an improvement over canonical, not merely parity, and this packet must be read that way.** There is no canonical structure to mirror; what is mirrored is the *behaviour* — the emission order at a layer boundary, and the per-site variable sets that `s_CustomGcodeSpecificPlaceholders` records, drift included, corrected where measured.
 
@@ -27,7 +27,7 @@ Unavailable per-site variables use a warn-and-pass policy. The original placehol
 - Add `ERR_MALFORMED_LAYER_MARKER` as a warning diagnostic identifier and warn when a `;LAYER_CHANGE` marker is not followed within two commands by a `;Z:` marker; continue by reusing the prior layer Z, with layer 1 using its own initial Z context.
 - Declare `before_layer_change_gcode`, `layer_change_gcode` and `time_lapse_gcode` in `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`, each `type = "string"`, `default = ""`, `group = "Machine G-code"`.
 - Add the tests named by AC-3 through AC-7 and AC-N1 through AC-N3.
-- Rewrite `docs/15_config_keys_reference.md` §"Machine start / end G-code" for the registry; regenerate the `module-config-keys` block; update the `DEV-085` row; file one new residual `DEV-###` row; register `TASK-306`.
+- Rewrite `docs/15_config_keys_reference.md` §"Machine start / end G-code" for the registry; regenerate the `module-config-keys` block; preserve the deleted aggregate custom-G-code label's absence; file one residual `DEV-###` row; register `TASK-306`.
 
 ## Out of Scope
 
@@ -44,7 +44,7 @@ Unavailable per-site variables use a warn-and-pass policy. The original placehol
 
 - `docs/15_config_keys_reference.md` — long; ranged reads only (§"Machine start / end G-code" and the `module-config-keys` marker boundaries).
 - `docs/02_ir_schemas.md` — delegated SUMMARY only, for `GCodeIR.commands` and the `PostPass::GCodePostProcess` input surface.
-- `docs/DEVIATION_LOG.md` — long; delegate. The `DEV-085` row only, plus a re-derivation of the highest `DEV-###`.
+- `docs/DEVIATION_LOG.md` — long; delegate. The surviving packet-187 custom-G-code residual row only, plus a re-derivation of the highest `DEV-###`.
 - `docs/07_implementation_status.md` — always delegate.
 
 <!-- snippet: orca-delegation -->

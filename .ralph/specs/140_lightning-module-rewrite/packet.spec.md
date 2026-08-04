@@ -20,9 +20,9 @@ region_id)`, which 139 upgrades to per-region keying), emit them as raw
 `lib.rs:234` and the inline grid-sampling machinery in `run_infill`/`fill_expolygon`),
 **port the full `getBestGroundingLocation` grounding search into
 `crates/slicer-core/src/algos/lightning/layer.rs` (closing the 139 Step-2
-`D-139-LAYER-GROUNDING-SEARCH-STUB` stub — `wall_supporting_radius` becomes a
-load-bearing parameter)**, close DEV-081, run the contained lightning re-bless +
-roadmap-close workspace ceremony, and **close the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW
+`lightning grounding-search stub` stub — `wall_supporting_radius` becomes a
+load-bearing parameter)**, close lightning raw-emit deviation, run the contained lightning re-bless +
+roadmap-close workspace ceremony, and **close the infill paint-view contract
 deviation** by extending the WIT `run-infill` signature with a
 `paint: paint-region-layer-view` argument, bumping `slicer:world-layer@2.2.0` →
 `@2.3.0`, threading the paint view through the SDK trait + macro glue + host
@@ -46,8 +46,8 @@ change is in scope. The four `run_infill`-implementing core modules
 (rectilinear/gyroid/lightning/top-surface-ironing) are updated to take the new
 paint-view arg (only `lightning-infill` calls it; the other three take `_paint` and
 ignore it). `support-surface-ironing` implements only `run_infill_postprocess` and
-is NOT in scope. DEV-081 flips to Closed, `D-139-LAYER-GROUNDING-SEARCH-STUB` flips
-to Closed, `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` flips to Closed, and
+is NOT in scope. lightning raw-emit deviation flips to Closed, `lightning grounding-search stub` flips
+to Closed, `infill paint-view contract` flips to Closed, and
 lightning-affected expectations are re-blessed in one justified event.
 
 ## Prerequisites and Blockers
@@ -71,7 +71,7 @@ lightning-affected expectations are re-blessed in one justified event.
   `layer-infill-guest` test-guest to call `lightning-tree-segments` through
   the WIT seam, and re-baseline the `wit_drift_detection_tdd` test that
   pins the `run-infill` signature string. Closes
-  `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` in `docs/DEVIATION_LOG.md`.
+  `infill paint-view contract` in `docs/DEVIATION_LOG.md`.
 - **DEVIATION-CLOSURE DEP on packet 139** — this packet must port the full
   `getBestGroundingLocation` (Orca `Layer.cpp::getBestGroundingLocation`, the
   TBB-style parallel grid scan + tree-node locator + `wall_supporting_radius`
@@ -79,7 +79,7 @@ lightning-affected expectations are re-blessed in one justified event.
   remove the 139 Step-2 stub comment from `Layer::generate_new_trees`, and
   co-update the 139 test home (`crates/slicer-core/tests/algo_lightning_tdd.rs`)
   with the new AC-G1 + AC-G2 tests in the same step. Closes
-  `D-139-LAYER-GROUNDING-SEARCH-STUB` in `docs/DEVIATION_LOG.md`.
+  `lightning grounding-search stub` in `docs/DEVIATION_LOG.md`.
 - Unblocks: — (roadmap end).
 - Activation blockers: 137 and 139 must both be `status: implemented`
   (forward-deps above). Packet cost is L (justified unsplittable — generation
@@ -102,7 +102,7 @@ lightning-affected expectations are re-blessed in one justified event.
   Architecture A like every other module. | `cargo test -p slicer-runtime --test executor -- lightning_pipeline_linked 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-3a. Given** the WIT canonical `world-layer.wit`, **when** grepped, **then** the
   `run-infill` export's signature includes `paint: paint-region-layer-view` and the
-  package version reads `slicer:world-layer@2.3.0` (the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW
+  package version reads `slicer:world-layer@2.3.0` (the infill paint-view contract
   closure). | `rg -n 'run-infill: func\(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view' crates/slicer-schema/wit/deps/world-layer/world-layer.wit && rg -n 'package slicer:world-layer@2.3.0;' crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
 - **AC-3b. Given** the `layer-infill-guest` test-guest under
   `crates/slicer-wasm-host/test-guests/layer-infill-guest/src/lib.rs`, **when** rebuilt
@@ -123,10 +123,9 @@ lightning-affected expectations are re-blessed in one justified event.
 - **AC-3d. Given** the `wit_drift_detection_tdd` suite, **when** run, **then** the
   new assertions for the `run-infill` paint-view signature AND the
   `world-layer@2.3.0` package version both pass. | `cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 | tee target/test-output.log | grep "^test result"`
-- **AC-4. Given** `docs/DEVIATION_LOG.md`, **when** grepped, **then** the DEV-081 row's
-  status column reads `Closed` (or the open status is replaced by a `Closed … packet
-  140` suffix per the live log's convention — FACT at the time of editing). |
-  `rg -q 'DEV-081.*[Cc]losed.*140|DEV-081.*140.*[Cc]losed' docs/DEVIATION_LOG.md && echo DEV-CLOSED`
+- **AC-4. Given** the post-purge `docs/DEVIATION_LOG.md`, **when** grepped, **then** the
+  retired lightning raw-emit label has no surviving row. |
+  `! rg -q '^\| lightning raw-emit deviation ' docs/DEVIATION_LOG.md && echo DEV-RETIRED`
 - **AC-5. Given** lightning-affected test expectations, **when** this packet closes,
   **then** each re-bless carries a closure-log justification and was captured from two
   consecutive identical runs (contained lightning bless — the roadmap's second and final
@@ -164,8 +163,8 @@ lightning-affected expectations are re-blessed in one justified event.
 - `docs/specs/lightning-infill-parity.md` §Phase L4 — full read (short).
 - `docs/adr/0029-lightning-prepass-tree-generator.md` — module-sampler contract;
   delegate SUMMARY.
-- `docs/DEVIATION_LOG.md` — DEV-081 row (the closure target) AND
-  `D-139-LAYER-GROUNDING-SEARCH-STUB` row (also closed by this packet).
+- `docs/DEVIATION_LOG.md` — the retired lightning raw-emit and grounding-search labels
+  have no surviving rows; the geometry tests above are the surviving evidence.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -178,14 +177,9 @@ Files to inspect for this packet:
 
 ## Doc Impact Statement (Required)
 
-- `docs/DEVIATION_LOG.md` — DEV-081 status → `Closed` (packet 140) —
-  `rg -q 'DEV-081.*[Cc]losed' docs/DEVIATION_LOG.md`
-- `docs/DEVIATION_LOG.md` — `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` status →
-  `Closed` (packet 140) —
-  `rg -q 'D-137-WIT-RUN-INFILL-NO-PAINT-VIEW.*[Cc]losed' docs/DEVIATION_LOG.md`
-- `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` status →
-  `Closed` (packet 140 Step 0 — full `getBestGroundingLocation` ported) —
-  `rg -q 'D-139-LAYER-GROUNDING-SEARCH-STUB.*[Cc]losed.*140' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the lightning raw-emit, infill paint-view, and grounding-search
+  labels are retired by the post-purge ledger —
+  `! rg -q 'lightning raw-emit deviation|infill paint-view contract|lightning grounding-search stub' docs/DEVIATION_LOG.md`
 - `docs/07_implementation_status.md` — TASK-262…TASK-265 closure sweep —
   `rg -q 'TASK-265.*[Cc]losed' docs/07_implementation_status.md`
 - `docs/03_wit_and_manifest.md` §`world-layer.wit` — update the package version

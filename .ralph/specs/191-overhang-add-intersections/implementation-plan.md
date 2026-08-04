@@ -173,10 +173,10 @@
   - `bash -c 'cargo test -p overhang-classifier-default --test basic_tdd -- all_zero_config_emits_no_mutations --exact 2>&1 | rg "^test result:" | rg -q "^test result: ok\. [1-9]" && cargo test -p slicer-runtime --test integration -- overhang_classifier_refactor_regression_tdd::default_config_case_a_matches_baseline_zero_mutations --exact 2>&1 | rg "^test result:" | rg -q "^test result: ok\. [1-9]" && echo PASS || echo "FAIL: the zero-config no-mutation guarantee regressed"'` - FACT (AC-9)
 - Exit condition: three PASS lines. If a regression test fails, the fix is in the module or the mirror — never in the recorded baseline fixture.
 
-### Step 5: Rebuild guests, sweep the regression wall, and close `DEV-009`
+### Step 5: Rebuild guests, sweep the regression wall, and close the overhang-speed parity record
 
 - Task IDs: `TASK-315`
-- Objective: rebuild the guests, run the full sweep, then land every entry in `packet.spec.md` §Doc Impact Statement — the `docs/05_module_sdk.md` and `docs/03_wit_and_manifest.md` rows, the `docs/02_ir_schemas.md` §IR-10 ordering rule, the `TASK-315` registration in `docs/07_implementation_status.md`, the `DEV-009` closure (naming **`ADR-0053`**), **two** residual `DEV-###` rows — one for the `p0`/`p1` `min_spacing` decision recorded in Step 3, one for the option-(C) **interpolated-rather-than-re-measured** distance on synthetic vertices (`AC-N4`'s divergence; ADR-0053 §Decision item 3) — the **`D-<n>-ADR-0031-AMENDED`** amendment row or clause required by `AC-N5`, and `cargo xtask check-deviations` to regenerate the open-deviations block. **Every `DEV-` and `D-` number is re-derived at the moment of writing**, from `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1` and `rg -o '^\| D-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1` respectively — the two series have separate counters, packets 190 and 193 file rows into both concurrently, and a number captured earlier in the session will collide.
+- Objective: rebuild the guests, run the full sweep, then land every entry in `packet.spec.md` §Doc Impact Statement — the `docs/05_module_sdk.md` and `docs/03_wit_and_manifest.md` rows, the `docs/02_ir_schemas.md` §IR-10 ordering rule, the `TASK-315` registration in `docs/07_implementation_status.md`, the overhang-speed parity closure (naming **`ADR-0053`**), **two** residual `DEV-###` rows — one for the `p0`/`p1` `min_spacing` decision recorded in Step 3, one for the option-(C) **interpolated-rather-than-re-measured** distance on synthetic vertices (`AC-N4`'s divergence; ADR-0053 §Decision item 3) — the **`D-<n>-ADR-0031-AMENDED`** amendment row or clause required by `AC-N5`, and `cargo xtask check-deviations` to regenerate the open-deviations block. **Every `DEV-` and `D-` number is re-derived at the moment of writing**, from `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1` and `rg -o '^\| D-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1` respectively — the two series have separate counters, packets 190 and 193 file rows into both concurrently, and a number captured earlier in the session will collide.
 - Precondition: Step 4 complete; all code ACs green.
 - Postcondition: AC-10, AC-11 and AC-12 print PASS, and every doc verification command in `packet.spec.md` §Doc Impact Statement returns PASS.
 - Files allowed to read, with ranges when over 300 lines:
@@ -184,7 +184,7 @@
   - `docs/05_module_sdk.md` - the `modify_entity` variant table only, located by grep
   - `docs/03_wit_and_manifest.md` - the `entity-mutation (variant)` bullet only, located by grep
   - `docs/02_ir_schemas.md` (long; ranged reads only — a line count is a ledger fact, do not pin one) - §"IR 10 — LayerCollectionIR" through the start of §"IR 11" **only**
-  - `docs/DEVIATION_LOG.md` - **delegate**; the `DEV-009` row's tail and the highest `DEV-###`
+  - `docs/DEVIATION_LOG.md` - **delegate**; the overhang-speed parity record's tail and the highest `DEV-###`
   - `docs/07_implementation_status.md` - **delegate**; the highest `TASK-###` row and the generated-block markers
 - Files allowed to edit (this step edits five docs; each has an independently-verified anchor):
   - `docs/05_module_sdk.md`
@@ -211,8 +211,8 @@
   - `bash -c 'cargo clippy --workspace --all-targets -- -D warnings 2>&1 | rg -q "^error" && echo FAIL || echo PASS'` - FACT
   - `bash -c 'rg -q "SetPathPoints" docs/05_module_sdk.md && rg -q "set-path-points" docs/03_wit_and_manifest.md && rg -q "min_spacing" docs/DEVIATION_LOG.md && echo PASS || echo "FAIL: docs/05_module_sdk.md, docs/03_wit_and_manifest.md or the p0/p1 min_spacing residual row is missing"'` - FACT
   - `bash -c 'python3 -c "import io,os,sys; p=r\"docs/07_implementation_status.md\"; sys.exit(print(\"FAIL: cannot open \"+p+\" - run from the workspace root\")) if not os.path.exists(p) else None; s=io.open(p,encoding=\"utf-8\").read(); B=\"<!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->\"; E=\"<!-- END GENERATED: open-deviations -->\"; i=s.find(B); j=s.find(E); sys.exit(print(\"FAIL: open-deviations generated markers not found in \"+p)) if (i<0 or j<0 or j<i) else None; outside=s[:i]+s[j+len(E):]; print(\"PASS\" if \"TASK-315\" in outside else \"FAIL: TASK-315 is not registered OUTSIDE the open-deviations generated block\")"'` - FACT (**the §Doc Impact Statement `TASK-315` probe, verbatim.** Split out of the doc-grep chain above because a whole-file `rg -q "TASK-315"` cannot distinguish a row hand-added outside the markers — which this step requires — from one that landed inside the generated block and is destroyed by the `cargo xtask check-deviations` this same step runs. Measured: `TASK-156` occurs both inside and outside that block on this tree today. **This step runs `check-deviations` at its exit, so an inside-the-block row would be destroyed within the step itself.**)
-  - `bash -c 'python3 -c "import io,re,os,sys; p=r\"docs/DEVIATION_LOG.md\"; sys.exit(print(\"FAIL: cannot open \"+p+\" - run from the workspace root\")) if not os.path.exists(p) else None; L=io.open(p,encoding=\"utf-8\").read().splitlines(); rows=[l for l in L if re.match(r\"\|\s*DEV-009\b\",l)]; print(\"FAIL: no DEV-009 row\") if not rows else print(\"PASS\" if (\"Closed\" in rows[0] and \"TASK-315\" in rows[0] and \"speed sections\" in rows[0]) else \"FAIL: DEV-009 is not Closed, lacks TASK-315, or does not record that the {90,75,50,25,13,0} overlap levels return as emission-time speed sections\")"'` - FACT (AC-12)
-- Exit condition: seven PASS lines, and `cargo xtask check-deviations` has been run so the generated open-deviations block reflects `DEV-009`'s closure. Re-run the `TASK-315` probe **after** `check-deviations`, not before — that is the run that would destroy a row mistakenly placed inside the markers.
+  - `bash -c '! rg -q "^\| overhang-speed parity " docs/DEVIATION_LOG.md && rg -q "Scope covers packets 190.*191" docs/adr/0053-overhang-emission-time-speed-sections.md && rg -q "speed sections" docs/adr/0053-overhang-emission-time-speed-sections.md && rg -q "TASK-315" docs/07_implementation_status.md && echo PASS || echo FAIL'` - FACT (AC-12 replacement: retired label absent; ADR-0053, status ledger, and speed-section evidence survive)
+- Exit condition: seven PASS lines, and `cargo xtask check-deviations` has been run so the generated open-deviations block reflects the overhang-speed parity closure. Re-run the `TASK-315` probe **after** `check-deviations`, not before — that is the run that would destroy a row mistakenly placed inside the markers.
 
 ## Per-Step Budget Roll-Up
 
@@ -223,7 +223,7 @@
 | Step 2 | M | Five-file mutation chain plus the WIT `use` list, plus a 34-artifact guest rebuild |
 | Step 3 | M | The densest algorithm in the three-packet set; three bounded OrcaSlicer dispatches |
 | Step 4 | M | Wiring plus the mandatory mirror update, in one step |
-| Step 5 | M | Guest rebuild, six delegated cargo runs, five doc edits including the `DEV-009` closure |
+| Step 5 | M | Guest rebuild, six delegated cargo runs, five doc edits including the overhang-speed parity closure |
 
 Split before activation if aggregate cost exceeds M or any step is L. Aggregate: `M`.
 
@@ -231,8 +231,8 @@ Split before activation if aggregate cost exceeds M or any step is L. Aggregate:
 
 - All steps and exits complete.
 - Every pipe-suffixed AC command in `packet.spec.md` returns PASS, including the do-not-regress guards AC-9, AC-10 and AC-11.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read; then run `cargo xtask check-deviations` so the generated block reflects `DEV-009`'s closure.
-- Reconcile reopened/superseded status transitions: none. `DEV-009` closes here. **Write the closing row in the settled framing, which is what `AC-12` actually checks:** `annotate_overhangs`’ four concentric `overhang_quartile` bands (`BAND_BOUNDARY_MULTIPLIERS` in `crates/slicer-core/src/algos/overhang_annotation.rs`) are unchanged, **while canonical’s `{90, 75, 50, 25, 13, 0}` overlap levels return as emission-time speed sections in packet 190**. AC-12’s third conjunct is the literal phrase `speed sections` (0 hits in the file today); an earlier draft of this gate told the implementer to restate that "the four-band `overhang_quartile` schedule remains an accepted permanent deviation", which AC-12 no longer checks — following it would have produced a sentence that leaves AC-12 red.
+- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read; then run `cargo xtask check-deviations` so the generated block reflects the overhang-speed parity closure.
+- Reconcile reopened/superseded status transitions: none. The overhang-speed parity record closes here. **Write the closing row in the settled framing, which is what `AC-12` actually checks:** `annotate_overhangs`’ four concentric `overhang_quartile` bands (`BAND_BOUNDARY_MULTIPLIERS` in `crates/slicer-core/src/algos/overhang_annotation.rs`) are unchanged, **while canonical’s `{90, 75, 50, 25, 13, 0}` overlap levels return as emission-time speed sections in packet 190**. AC-12’s third conjunct is the literal phrase `speed sections` (0 hits in the file today); an earlier draft of this gate told the implementer to restate that "the four-band `overhang_quartile` schedule remains an accepted permanent deviation", which AC-12 no longer checks — following it would have produced a sentence that leaves AC-12 red.
 - `packet.spec.md` is ready for `status: implemented`.
 
 ## Acceptance Ceremony

@@ -17,7 +17,7 @@ survives the OrcaSlicer `discretize` case analysis.
 ## Problem Statement
 
 A faithful-port audit of the D-105 beading fix verified one fix and surfaced one open root-cause
-question: the **thin-strip medial-axis collapse**. Symptom (per D-105D): a thin strip's medial
+question: the **thin-strip medial-axis collapse**. Symptom (per thin-strip simplification gap): a thin strip's medial
 axis collapses to a single two-node edge whose `to` peak vertex every emitted edge shares, so
 every junction snaps to that one point and the wall loop has zero length, then
 `remove_small_lines` drops it. The D-105 beading fix is faithful but does NOT address this — it
@@ -27,7 +27,7 @@ subdivisions). A prior session tried to mask the symptom with a fabricated
 longer than `2 * optimal_width`). That was verified as NOT a faithful port — OrcaSlicer's
 `discretize` returns `{start, end}` for the seg-seg edges that make up a thin strip's spine. The
 fabrication was reverted; the thin-strip parity tests are now RED. This packet investigates the
-true root cause and fixes it faithfully, closing D-105D.
+true root cause and fixes it faithfully, closing thin-strip simplification gap.
 
 ## Architecture Constraints
 
@@ -69,7 +69,7 @@ true root cause and fixes it faithfully, closing D-105D.
 - C-1 … C-6 are verified canonical/tree facts and are **locked**; a Step-1 finding that contradicts
   one must cite the contradicting `file:line` explicitly and update this section.
 - ADR-0034 prohibits fabricated subdivisions; `from_polygons_with_beading` must not return.
-- The D-105 beading fix is faithful and out of scope (per D-105D).
+- The D-105 beading fix is faithful and out of scope (per thin-strip simplification gap).
 
 ## Risks and Tradeoffs
 

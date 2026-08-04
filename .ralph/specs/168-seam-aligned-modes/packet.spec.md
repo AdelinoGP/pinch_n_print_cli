@@ -55,7 +55,7 @@ The whole-object aligned machinery lives in `seam-planner-default` (`PrePass::Se
 
 - `docs/03_wit_and_manifest.md` section "world-prepass" — update `run-seam-planning` signature and world version - `rg -q 'layer-plan' docs/03_wit_and_manifest.md`
 - `docs/15_config_keys_reference.md` `seam_mode` entry — add `aligned` / `aligned_back` values - `rg -q 'aligned_back' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` — new row `D-168-SEAM-PREPASS-SOURCE` recording that PnP chains seam strings over prepass mesh-derived contours instead of OrcaSlicer's final perimeter polygons - `rg -q 'D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the retired `seam source-geometry deviation` label has no surviving row; the source-geometry decision remains recorded by ADR-0046 - `! rg -q '^\| seam source-geometry deviation ' docs/DEVIATION_LOG.md && rg -q 'seam-prepass source record' docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 - `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` — new ADR for the prepass placement decision and the WIT parameter addition - `rg -q 'run-seam-planning' docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 
 <!-- snippet: orca-delegation -->

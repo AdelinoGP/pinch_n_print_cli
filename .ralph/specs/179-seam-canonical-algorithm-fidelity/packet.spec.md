@@ -52,14 +52,14 @@ This packet consumes packet 178's per-region seam-planning view and variant-awar
 - `docs/08_coordinate_system.md` - direct coordinate contract; seam data path is f32 millimetres, not integer units.
 - `docs/11_operational_governance_and_acceptance_gate.md` - delegated guest dependency policy and closure-gate locations.
 - `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` - accepted prepass placement decision.
-- `docs/DEVIATION_LOG.md` - `D-168-SEAM-PREPASS-SOURCE` predecessor deviation; this packet closes its enumerated algorithm reductions.
+- `docs/DEVIATION_LOG.md` - `seam source-geometry deviation` predecessor deviation; this packet closes its enumerated algorithm reductions.
 
 ## Doc Impact Statement (Required)
 
 - `docs/05_module_sdk.md` seam-candidate convention and painted seam priority - `rg -q 'seam_enforcer|central_enforcer|SeamComparator' docs/05_module_sdk.md`
 - `docs/05_module_sdk.md` seam-candidate convention and paint priority - `rg -q 'seam_enforcer|central_enforcer|SeamComparator' docs/05_module_sdk.md`
 - `docs/15_config_keys_reference.md` `seam_mode` values and scoring width - `rg -q 'seam_mode|flow_width.*seam' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` closure of `D-168-SEAM-PREPASS-SOURCE` algorithm reductions - `rg -q 'D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the retired `seam source-geometry deviation` label remains absent; the aligned-seam contract is carried by ADR-0046 - `! rg -q '^\| seam source-geometry deviation ' docs/DEVIATION_LOG.md && rg -q 'aligned machinery lives' docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

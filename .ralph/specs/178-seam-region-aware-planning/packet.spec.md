@@ -16,7 +16,7 @@ Make `PrePass::SeamPlanning` consume real per-active-region `SliceIR` geometry a
 
 ## Scope Boundaries
 
-This packet narrows the `D-168-SEAM-PREPASS-SOURCE` deviation by closing part (1) only: it replaces the contour-ordinal `region_id` and mesh-contour source introduced by packet 168 with the full active-region `RegionKey` and per-region `SliceIR` polygons, preserving `variant_chain` through WIT, harvest, blackboard injection, and per-layer seam placement. It extends the prepass input and perimeter-region identity contracts so aligned planning can run after region and paint preparation while remaining a guest module. It does not change Orca scoring, visibility, seam-string retry, spline fitting, or continuous final-wall projection; those belong to packets 179 (parts 2-5 of D-168) and 180.
+This packet narrows the `seam source-geometry deviation` deviation by closing part (1) only: it replaces the contour-ordinal `region_id` and mesh-contour source introduced by packet 168 with the full active-region `RegionKey` and per-region `SliceIR` polygons, preserving `variant_chain` through WIT, harvest, blackboard injection, and per-layer seam placement. It extends the prepass input and perimeter-region identity contracts so aligned planning can run after region and paint preparation while remaining a guest module. It does not change Orca scoring, visibility, seam-string retry, spline fitting, or continuous final-wall projection; those belong to packets 179 (parts 2-5 of D-168) and 180.
 
 ## Prerequisites and Blockers
 
@@ -53,7 +53,7 @@ This packet narrows the `D-168-SEAM-PREPASS-SOURCE` deviation by closing part (1
 - `docs/08_coordinate_system.md` - direct coordinate contract; supplied polygon coordinates are integer units and seam positions are millimetres.
 - `docs/11_operational_governance_and_acceptance_gate.md` - delegated WIT major-bump and closure-gate policy locations.
 - `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` - accepted prepass placement decision.
-- `docs/DEVIATION_LOG.md` - `D-168-SEAM-PREPASS-SOURCE` predecessor deviation.
+- `docs/DEVIATION_LOG.md` - `seam source-geometry deviation` predecessor deviation.
 
 ## Doc Impact Statement (Required)
 
@@ -61,7 +61,7 @@ This packet narrows the `D-168-SEAM-PREPASS-SOURCE` deviation by closing part (1
 - `docs/02_ir_schemas.md` `RegionKey`, `PerimeterRegion`, and `SeamPlanIR` sections — `SeamPlanIR.entries[*]` must carry the full `variant_chain`. | `rg -q 'variant_chain.*SeamPlanIR|SeamPlanIR.*variant_chain' docs/02_ir_schemas.md`
 - `docs/03_wit_and_manifest.md` world-prepass signature and claim contract — must reference the new per-region input view, not the prior `layer-plan` only. | `rg -q 'run-seam-planning.*variant-chain|seam-planning.*variant-chain' docs/03_wit_and_manifest.md`
 - `docs/15_config_keys_reference.md` aligned default and seam mode values — keeps `seam_mode` listed; the `aligned` default change belongs to packet 180, not this one. | `rg -q 'aligned.*default|seam_mode' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` narrow `D-168-SEAM-PREPASS-SOURCE` (close part 1 only; parts 2-5 stay Open for packet 179) — must add a "Narrowed by packet 178" note. | `rg -q 'D-168-SEAM-PREPASS-SOURCE.*Narrowed|Narrowed.*D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the retired `seam source-geometry deviation` label has no surviving row; the source decision remains in ADR-0046. | `! rg -q '^\| seam source-geometry deviation ' docs/DEVIATION_LOG.md && rg -q 'seam-prepass source record' docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

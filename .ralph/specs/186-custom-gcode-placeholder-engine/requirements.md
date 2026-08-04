@@ -3,13 +3,13 @@
 ## Packet Metadata
 
 - Grouped task IDs: `TASK-305`
-- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `DEV-085`, tranche T3 (referenced by identity — row numbers rot), split 1 of 3; registered in `docs/07_implementation_status.md` by this packet
+- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `custom-G-code injection deviation`, tranche T3 (referenced by identity — row numbers rot), split 1 of 3; registered in `docs/07_implementation_status.md` by this packet
 - Packet status: `implemented` after the warn-and-pass migration, ADR alignment, and full closure ceremony
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-`DEV-085` has two halves. This packet closes the second, user-facing one and the
+`custom-G-code injection deviation` has two halves. This packet closes the second, user-facing one and the
 engine defects underneath it; packets 187 and 188 close the injection-point half.
 
 `substitute_placeholders` and its caller in
@@ -86,7 +86,7 @@ than a second config key. The other **eight** are not PnP config keys under any
 name and have no canonical alias PnP can honour; they are recorded as a residual
 deviation rather than invented.
 
-**The `DEV-085` row's own counts are wrong and must not be quoted.** Measured
+**The `custom-G-code injection deviation` row's own counts are wrong and must not be quoted.** Measured
 against canonical `PrintConfigDef::init_fff_params`: there are **16**
 custom-G-code options — **13 `coString`** (`file_start_gcode`,
 `machine_start_gcode`, `machine_end_gcode`, `before_layer_change_gcode`,
@@ -174,8 +174,8 @@ ever sees author-chosen config is not evidence about user-visible behaviour.**
   fixture-level e2e gate of AC-18.
 - Rewrite `docs/15_config_keys_reference.md` §"Machine start / end G-code" to the
   warn-and-pass contract and the domain rule; regenerate the `module-config-keys`
-  block; file one residual `DEV-###` row; correct the two measured errors in the
-  existing `DEV-085` row; register `TASK-305`.
+  block; file one residual `DEV-###` row; preserve the deleted aggregate
+  custom-G-code label's absence; register `TASK-305`.
 
 ## Out of Scope
 
@@ -249,7 +249,7 @@ ever sees author-chosen config is not evidence about user-visible behaviour.**
 ## Authoritative Docs
 
 - `docs/15_config_keys_reference.md` — long; ranged reads only (§"Machine start / end G-code" and the `module-config-keys` marker boundaries). Delegate anything wider.
-- `docs/DEVIATION_LOG.md` — long; delegate. Read only the `DEV-085` row and the residual row, and re-derive the highest `DEV-###`.
+- `docs/DEVIATION_LOG.md` — long; delegate. Read only the surviving `DEV-100` placeholder row and current custom-G-code residual rows, and re-derive the highest `DEV-###`.
 - `docs/07_implementation_status.md` — always delegate.
 - `docs/adr/0050-custom-gcode-architecture.md` — read-only and aligned on the
   unknown-key policy; use its warn-and-pass decision as the authority.
@@ -266,7 +266,7 @@ Files to inspect for this packet:
 
 - `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` — `MyContext::legacy_variable_expansion` and `MyContext::throw_exception`, for the fact that canonical's `[key]` legacy bracket form **errors** on an undefined variable (`"Variable does not exist"`). Borrowed **only as the contrast** this packet documents as a deliberate divergence — no longer as justification for a failure policy.
 - `src/libslic3r/GCode.cpp` (**sibling checkout only**) — `GCode::placeholder_parser_process` and `GCode::check_placeholder_parser_failed`, for the deferral shape: each failure is recorded into `PlaceholderParserIntegration::failed_templates` (dedupe by template name comes from the insert-if-absent guard in `placeholder_parser_process`, not from the checker) and the throw happens once, later, over all of them. Borrowed for the collect-all-then-**warn**-once aggregation, which is the half PnP adopts.
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — `PrintConfigDef::init_fff_params`, for the true registration count (13 `coString` + 3 `coStrings`) that corrects the `DEV-085` row. **Four canonical placeholder names this packet cites live in three OTHER structures, and attributing them to the custom-gcode table sends a worker to an empty result:** `total_layer_count` and `print_time_sec` are in `PrintStatisticsConfigDef` (coInt / coString), `num_extruders` is in `OtherSlicingStatesConfigDef` (coInt), and `print_bed_max` is in `DimensionsConfigDef` (coFloats). None of the four is in `s_CustomGcodeSpecificPlaceholders`, and none is in `CustomGcodeSpecificConfigDef` either. Only `max_layer_z` (and `layer_num`) genuinely live in both custom-gcode structures.
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — `PrintConfigDef::init_fff_params`, for the true registration count (13 `coString` + 3 `coStrings`) that corrects the `custom-G-code injection deviation` row. **Four canonical placeholder names this packet cites live in three OTHER structures, and attributing them to the custom-gcode table sends a worker to an empty result:** `total_layer_count` and `print_time_sec` are in `PrintStatisticsConfigDef` (coInt / coString), `num_extruders` is in `OtherSlicingStatesConfigDef` (coInt), and `print_bed_max` is in `DimensionsConfigDef` (coFloats). None of the four is in `s_CustomGcodeSpecificPlaceholders`, and none is in `CustomGcodeSpecificConfigDef` either. Only `max_layer_z` (and `layer_num`) genuinely live in both custom-gcode structures.
 - `src/libslic3r/GCode.cpp` (**sibling checkout only**) — `GCode::update_placeholder_parser_with_variant_params`, for the **unconditional** `placeholder_parser().set("first_layer_temperature", …)` and its verbatim comment `// first_layer_temperature is a legacy alias of nozzle_temperature_initial_layer`. This is AC-15's authority. **An earlier draft claimed the name was set *only* on `GCode::set_extruder`'s `toolchange_temp_override` path; that is refuted** — the name occurs nine times in that file, and the `tcr.is_contact`-gated `set_key_value` is in `WipeTowerIntegration::append_tcr`, not `get_path_of_change_filament`.
 - `src/libslic3r/GCode.cpp` (**sibling checkout only**) — `GCode::_do_export`, for `nozzle_temperature_initial_layer.get_at(0)` in the `; first_layer_temperature = %d` preamble: canonical also reads **element 0** of a per-extruder vector where a placeholder needs one value. This is AC-16's canonical anchor.
 
@@ -349,7 +349,7 @@ the gate commands.
   is long. Read only `slice_with_raw` / `try_slice_with_raw` and the two
   placeholder tests; do not load the whole file.
 - `docs/15_config_keys_reference.md` and `docs/DEVIATION_LOG.md` are both long
-  and must be range-read or delegated. The residual and `DEV-085` rows are each a
+  and must be range-read or delegated. The residual and `custom-G-code injection deviation` rows are each a
   single very long line.
 - Never open `crates/slicer-ir/src/slice_ir.rs` in full to confirm
   `ConfigView::keys`; its behaviour ("returns the view's own `fields` map,

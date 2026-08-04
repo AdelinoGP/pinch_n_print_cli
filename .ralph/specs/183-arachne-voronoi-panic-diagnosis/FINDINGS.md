@@ -122,7 +122,7 @@ The synthetic-input test `voronoi_from_segments_predicate_panic_fires_on_synthet
 
 **No successor packet for `preprocess_input_outline` hardening is filed.** The measured workload did not produce an affected computation, so it neither demonstrated geometry loss nor established geometry equivalence. Future arachne work that hits the trigger again will surface it via the new typed error and can reopen D-167 with concrete inputs; unseen degenerate inputs are not covered by this closure.
 
-## DEV-098 workspace gate
+## workspace Voronoi-debug allocation issue workspace gate
 
 The required historical reproduction at packet 183's commit `b903620c`
 returned exit 173 at
@@ -148,6 +148,6 @@ These failures are outside packet 183 and remain after the packet's targeted che
 
 This needs its own fixture/contract packet and is not fixed or waived by packet 183.
 
-## DEV-098 abort-path evidence
+## workspace Voronoi-debug allocation issue abort-path evidence
 
 The exact test `pnp_cli_rebuild_abort_is_nonzero_with_named_failure_detail` in `xtask/src/test.rs` passes under `cargo test -p xtask` (41/41 green). It proves that the synthetic controlled runner returns a nonzero status for the simulated `pnp_cli` rebuild abort and reports a named failure detail. This is controlled-runner evidence, not a real `pnp_cli` kill.

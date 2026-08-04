@@ -32,7 +32,7 @@ Packet 168's seam-placer snaps the planner's fitted point to the nearest existin
 - `docs/05_module_sdk.md` - delegated seam-candidate convention and wall-preservation behavior.
 - `docs/15_config_keys_reference.md` - direct `seam_mode` config key and default values (lines 166-226).
 - `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` - accepted prepass placement decision.
-- `docs/DEVIATION_LOG.md` - `D-168-SEAM-PREPASS-SOURCE` predecessor deviation; this packet closes the source-geometry gap via continuous projection.
+- `docs/DEVIATION_LOG.md` - `seam source-geometry deviation` predecessor deviation; this packet closes the source-geometry gap via continuous projection.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

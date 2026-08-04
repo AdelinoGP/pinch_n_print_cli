@@ -45,7 +45,7 @@ contract-complete, deterministic, and absent from ordinary slicing.
   rejected; selection is `Index` / `{start,end}` range / z-only `Detail`.
 - RegionMapping renders real `SliceIR` geometry via region-key join; LayerPlanning
   is an overlay only; no synthetic-diagram render mode (ADR-0037 amendment,
-  deviation `D-161-ADR-0037-AMENDED`).
+  deviation `synthetic-diagram ADR amendment`).
 - Ordinary `pnp_cli slice` must not capture, allocate, serialize, render, spawn a
   visual-debug process, or write visual-debug artifacts.
 - The skill is independent of `.claude/skills/debug-pipeline/SKILL.md`: geometry

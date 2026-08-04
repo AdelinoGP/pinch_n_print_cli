@@ -14,7 +14,7 @@ makes two full top-down passes over **all** layers before any layer can be fille
 PnP's `Layer::Infill` hook sees one layer at a time. Without a cross-layer home, the
 canonical algorithm cannot be ported, which is why the current `lightning-infill` module is
 a single-layer approximation that self-links its own output in violation of ADR-0025
-(DEV-081). PnP's own precedent solves this: `PrePass::SupportGeometry` produces
+(lightning raw-emit deviation). PnP's own precedent solves this: `PrePass::SupportGeometry` produces
 `SupportPlanIR` host-side, and a `Layer::Support` guest reads it via a method on
 `PaintRegionLayerView`. This packet builds the lightning equivalent so 138/139 can port the
 algorithm into a stable seam and 140 can slim the module to a sampler.

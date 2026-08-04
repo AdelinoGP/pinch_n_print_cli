@@ -170,11 +170,11 @@
 ### Step 5: Docs, deviation rows, and provenance corrections
 
 - Task IDs: `TASK-311`
-- Objective: regenerate `docs/15`, close and correct the `DEV-089` row, file **every** new `DEV-###` row enumerated in `packet.spec.md` §Doc Impact Statement — including the disclosed `line_width`-declaration behaviour move (see `design.md` §Risks and Tradeoffs) — each with an independently re-derived ID (do not assume they are consecutive, and do not carry a count forward from this line), rewrite ADR-0025's stale section, flip the two `ORCA_CONFIG_REFERENCE` rows, correct the `resolved_config.rs` doc comment, register `TASK-311`, and update the plan's queue row.
-- Precondition: Steps 1, 2, 3a, 3b and 4 green. `DEV-089` is `Open`, pins `.../src/graph.rs`, and says "no shortest-first ordering". `docs/07_implementation_status.md` has zero `TASK-311` hits. `crates/slicer-ir/src/resolved_config.rs` still says `OrcaSlicer: infill_anchor_max` on `infill_resolution`. ADR-0025 still carries `### Not yet ported from canonical`.
+- Objective: regenerate `docs/15`, reconcile the retired infill-linker anchor label without recreating its row, file **every** new `DEV-###` row enumerated in `packet.spec.md` §Doc Impact Statement — including the disclosed `line_width`-declaration behaviour move (see `design.md` §Risks and Tradeoffs) — each with an independently re-derived ID (do not assume they are consecutive, and do not carry a count forward from this line), rewrite ADR-0025's stale section, flip the two `ORCA_CONFIG_REFERENCE` rows, correct the `resolved_config.rs` doc comment, register `TASK-311`, and update the plan's queue row.
+- Precondition: Steps 1, 2, 3a, 3b and 4 green. The retired infill-linker anchor label is absent; the surviving `DEV-110` row carries the neighbour-bookkeeping residual and the code still says "no shortest-first ordering". `docs/07_implementation_status.md` has zero `TASK-311` hits. `crates/slicer-ir/src/resolved_config.rs` still says `OrcaSlicer: infill_anchor_max` on `infill_resolution`. ADR-0025 still carries `### Not yet ported from canonical`.
 - Postcondition: every Doc Impact bullet in `packet.spec.md` is satisfied and its verification command prints `PASS`.
 - Files allowed to read, with ranges when over 300 lines:
-  - `docs/DEVIATION_LOG.md` — **delegated**; the `DEV-089` row and the highest `DEV-###` only
+  - `docs/DEVIATION_LOG.md` — **delegated**; the surviving `DEV-110`, `DEV-112` and `DEV-114` rows and the highest `DEV-###` only
   - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` — §"Not yet ported from canonical", §"Regression coverage", §References only
   - `docs/ORCA_CONFIG_REFERENCE.md` — **delegated**; the two `coFloatOrPercent` `infill_anchor*` rows only
   - `crates/slicer-ir/src/resolved_config.rs` — the `infill_resolution` declaration and its doc comment only
@@ -189,7 +189,7 @@
   - every other packet directory under `.ralph/specs/`
 - Blast-radius discipline: the `resolved_config.rs` edit touches a **doc comment only**. Do not change `infill_resolution`'s key name, type or `0.04` default — that would move a live config default and pull in every fixture that depends on it, which is not this packet's scope.
 - Expected sub-agent dispatches:
-  - Question: what is the highest `DEV-###` in `docs/DEVIATION_LOG.md` **right now**, and what is the exact current text of the `DEV-089` row?; scope: `docs/DEVIATION_LOG.md`; return: `FACT` (≤5 lines). **Re-run this immediately before writing each new row** — sibling packets in this batch are filing rows concurrently and a number captured earlier in the session will collide, which is exactly how a duplicate row reached `main` once already.
+  - Question: what is the highest `DEV-###` in `docs/DEVIATION_LOG.md` **right now**, and what are the exact current texts of the surviving `DEV-110`, `DEV-112` and `DEV-114` rows?; scope: `docs/DEVIATION_LOG.md`; return: `FACT` (≤5 lines). **Re-run this immediately before writing each new row** — sibling packets in this batch are filing rows concurrently and a number captured earlier in the session will collide, which is exactly how a duplicate row reached `main` once already.
   - Question: after `cargo xtask gen-config-docs`, do the two new keys appear in the `module-config-keys` block with `float_or_percent` in the type column?; scope: `docs/15_config_keys_reference.md`; return: `FACT`
 - Context cost: `M`
 - Authoritative docs:
@@ -200,9 +200,9 @@
   - `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp` — cite `Fill::connect_infill` / `Fill::chain_or_connect_infill` **by function name only** in every row and ADR sentence written here; the ADR's existing `FillBase.cpp:1497-2300` range is dropped as part of this step
 - Verification:
   - The AC-14, AC-15, AC-16, AC-17, AC-18 and AC-19 commands — each FACT PASS/FAIL
-  - `bash -c 'rg -q "could_take_prev" docs/DEVIATION_LOG.md && rg -q "trim_next" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the neighbour-trimming residual row exists
-  - `bash -c 'rg -q "^\|.*parse_percent_default" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the percent-transport path row (DEV-111) documents `parse_percent_default` → `ConfigFieldEntry.parsed_default` → scheduler schema-default threading (Packet 185) into the runtime `ConfigView`; the row is filed and CLOSED
-  - `bash -c 'rg -q "line_width_to_spacing" docs/DEVIATION_LOG.md && rg -q "frInfill" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the percent-base residual row exists (PnP's generic `line_width` vs canonical's per-role `frInfill` flow width; the spacing formula itself matches)
+   - `bash -c 'rg -q "^\| DEV-110 " docs/DEVIATION_LOG.md && rg -q "could_take_prev" docs/DEVIATION_LOG.md && rg -q "trim_next" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the surviving neighbour-trimming residual row carries the canonical and PnP evidence
+   - `bash -c '! rg -q "^\|.*parse_percent_default" docs/DEVIATION_LOG.md && rg -q "^\| DEV-112 " docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the deleted percent-transport label is absent and the current percent-base residual row survives
+   - `bash -c 'rg -q "^\| DEV-112 " docs/DEVIATION_LOG.md && rg -q "line_width_to_spacing" docs/DEVIATION_LOG.md && rg -q "frInfill" docs/DEVIATION_LOG.md && echo PASS || echo FAIL'` — the current percent-base residual row exists (PnP's generic `line_width` vs canonical's per-role `frInfill` flow width; the spacing formula itself matches)
   - `bash -c '! rg -q "FillBase\.cpp:1497-2300" docs/adr/0025-infill-linker-as-raw-emit-post-pass.md && echo PASS || echo FAIL'` — the line-pinned OrcaSlicer citation is gone
   - `bash -c 'rg -q "192-infill-linker-anchor-length" docs/specs/deviation-backlog-remediation-plan.md && echo PASS || echo FAIL'` — queue row 10 updated
   - `cargo check --workspace --all-targets` — the `resolved_config.rs` doc-comment edit did not disturb the macro-generated key table

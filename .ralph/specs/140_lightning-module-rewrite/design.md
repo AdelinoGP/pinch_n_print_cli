@@ -63,11 +63,11 @@
     (`slicer_module_binding_tdd.rs`) is kept verbatim.
   - `crates/slicer-runtime/tests/executor/lightning_pipeline_linked_tdd.rs` (new) +
     `crates/slicer-runtime/tests/executor/main.rs` mod-line — AC-3.
-  - `docs/DEVIATION_LOG.md` (DEV-081 row → `Closed` AND
-    `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` row → `Closed`) +
+  - `docs/DEVIATION_LOG.md` (lightning raw-emit deviation row → `Closed` AND
+    `infill paint-view contract` row → `Closed`) +
     `docs/07_implementation_status.md` (TASK-262…265 closure sweep, via dispatch)
     — closure artifacts.
-- **DEVIATION-CLOSURE additions (D-137-WIT-RUN-INFILL-NO-PAINT-VIEW):**
+- **DEVIATION-CLOSURE additions (infill paint-view contract):**
   - WIT edit at `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25`:
     the `run-infill` export's signature gains a `paint: paint-region-layer-view`
     argument; mirrors the `run-perimeters` and `run-support` signatures at
@@ -117,7 +117,7 @@
     package version.
   - 33 guest artifacts re-stale (21 core-module + 12 test-guests); one
     `cargo xtask build-guests` rebuild is required.
-- **DEVIATION-CLOSURE additions (D-139-LAYER-GROUNDING-SEARCH-STUB) — Step 0:**
+- **DEVIATION-CLOSURE additions (lightning grounding-search stub) — Step 0:**
   - Port the full `getBestGroundingLocation` (Orca
     `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`)
     into `crates/slicer-core/src/algos/lightning/layer.rs`. The Rust port
@@ -150,7 +150,7 @@
   - Coordinate system: 1 unit = 100 nm. Divide all OrcaSlicer nm
     constants by 100. Use `slicer_ir::units_to_mm` /
     `Point2::from_mm` / `mm_to_units()` per `docs/08_coordinate_system.md`.
-  - `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` row
+  - `docs/DEVIATION_LOG.md` — `lightning grounding-search stub` row
     → `Closed` (this step).
 - Rejected alternatives: (a) keeping the stub as a fallback when trees are empty —
   rejected: empty trees mean nothing to print (AC-N2); a silent stub fallback would
@@ -173,11 +173,11 @@
 - `crates/slicer-runtime/tests/executor/lightning_pipeline_linked_tdd.rs` (new) +
   `crates/slicer-runtime/tests/executor/main.rs` (mod-line registration) — role:
   AC-3.
-- `docs/DEVIATION_LOG.md` (DEV-081 row → `Closed` AND
-  `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` row → `Closed`) +
+- `docs/DEVIATION_LOG.md` (lightning raw-emit deviation row → `Closed` AND
+  `infill paint-view contract` row → `Closed`) +
   `docs/07_implementation_status.md` (closure sweep, via dispatch) — role:
   closure artifacts.
-- **DEVIATION-CLOSURE additions (D-137-WIT-RUN-INFILL-NO-PAINT-VIEW):**
+- **DEVIATION-CLOSURE additions (infill paint-view contract):**
   - `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — role: WIT
     signature extension + version bump (one file, two edits).
   - `crates/slicer-sdk/src/traits.rs:369-377` — role: SDK trait extension
@@ -216,7 +216,7 @@
     re-baseline done in packet 137).
 - `docs/03_wit_and_manifest.md` §`world-layer.wit` — role: version + signature
   doc update.
-- **Step 0 (D-139-LAYER-GROUNDING-SEARCH-STUB closure):**
+- **Step 0 (lightning grounding-search stub closure):**
   - `crates/slicer-core/src/algos/lightning/layer.rs` — role: Step 0
     port of `getBestGroundingLocation`; removes the 139 Step-2 stub
     comment.
@@ -227,7 +227,7 @@
   - `crates/slicer-core/tests/algo_lightning_tdd.rs` — role: Step 0
     new test `lightning_layer_wall_supporting_radius` (AC-G1) plus
     continuity re-assertion (AC-G2).
-  - `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` row
+  - `docs/DEVIATION_LOG.md` — `lightning grounding-search stub` row
     status → `Closed` (this step).
 
 ## Read-Only Context
@@ -283,7 +283,7 @@
 - "Run `cargo xtask build-guests --check`; FACT; rebuild if STALE".
 - "Run `cargo xtask test --workspace --summary`; verdict block ONLY" — roadmap-close
   ceremony.
-- "Flip DEV-081 to Closed + docs/07 TASK-262…265 closure notes; FACT + the two Doc
+- "Flip lightning raw-emit deviation to Closed + docs/07 TASK-262…265 closure notes; FACT + the two Doc
   Impact greps".
 
 ## Data and Contract Notes
@@ -309,7 +309,7 @@
 - No generation/clipping/chaining in the module — sampler only.
 - Empty trees → empty emission, slice completes (AC-N2) — no stub fallback exists.
 - Non-lightning output byte-identical (AC-N1).
-- DEV-081 closes here or the packet does not close.
+- lightning raw-emit deviation closes here or the packet does not close.
 
 ## Risks and Tradeoffs
 
@@ -350,7 +350,7 @@
 
 - `[FWD]` Whether Orca's Filler applies a sampling-side transform to mirror —
   settled by the single delegated SUMMARY before Step 2 codes the sampler.
-- `[FWD]` Whether the live DEV-081 row already has a `Closed` status in the log's
+- `[FWD]` Whether the live lightning raw-emit deviation row already has a `Closed` status in the log's
   convention or whether the packet must change the row to `Closed` (FACT at Step 4
   start; the AC-4 grep tolerates both shapes).
 - `[FWD-resolved]` WIT extension shape: per the blast-radius investigation

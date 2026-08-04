@@ -24,7 +24,7 @@ The live G-code emit path produces zero `M106`/`M107` commands. Verified via rec
 
 This packet supersedes TASK-152c by introducing a DIFFERENT surface — the finalization stage, parallel to the existing `SkirtBrim` and `WipeTower` finalization modules (`docs/05_module_sdk.md` § "Finalization Stage Module Surface"). The rejection on the path-optimization surface remains in force; what changes is that the finalization surface is now the documented home for cooling.
 
-This packet is the second remediation against DEV-009 (Benchy live output partially correct).
+This packet is the second remediation against overhang-speed deviation (Benchy live output partially correct).
 
 ## Architecture Constraints
 

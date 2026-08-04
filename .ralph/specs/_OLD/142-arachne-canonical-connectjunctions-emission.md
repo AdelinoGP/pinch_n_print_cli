@@ -20,7 +20,7 @@ genuine branch vertex (3+ edges meeting) instead of driving straight through
 it**.
 
 **2026-07-06 scope correction (read before starting this packet — see
-`docs/DEVIATION_LOG.md`'s `D-141-JUNCTION-BANDS` correction note for the full
+`docs/DEVIATION_LOG.md`'s `junction-band closure` correction note for the full
 account):** after A1's `generate_junctions` was fixed to be genuinely
 canonical (peak-anchored beading, ribs included, no centrality/type gate —
 commit `9367d239`), the *existing* chain walk in `generate_toolpaths`
@@ -82,7 +82,7 @@ groups by `is_odd` (`stitch.rs:83`), so mislabelled walls can't join their
 peers; and the flag is forwarded verbatim across the host boundary
 (`slicer-wasm-host/src/host.rs:1818`, `slicer-sdk/src/host.rs:721`).
 
-This packet supersedes `D-141-JUNCTION-BANDS` for the junction-metadata +
+This packet supersedes `junction-band closure` for the junction-metadata +
 emission layer only; A1's junction *geometry* (upward-half-edge, in-band,
 no-clamp) remains canonical and untouched. A2 also corrects the in-tree test
 `arachne_pipeline.rs:122` (`arachne_pipeline_perimeter_index_is_sequential_per_line`),

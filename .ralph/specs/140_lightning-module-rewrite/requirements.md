@@ -13,11 +13,11 @@
 
 Everything behind the seam is real (137–139: stage, IR, primitives, generator), yet
 lightning prints still come from the 512-LOC single-layer stub — grid samples joined to
-the nearest boundary, self-linked in violation of ADR-0025 (DEV-081), with none of the
+the nearest boundary, self-linked in violation of ADR-0025 (lightning raw-emit deviation), with none of the
 canonical cross-layer tree behavior. The stub is also the roadmap's last self-linking
 module: until it emits raw, the linker's "one place linking happens" invariant has a
 standing exception that paths cannot even be detected (no module identity on paths).
-This packet deletes the stub, samples the committed trees, and closes DEV-081 —
+This packet deletes the stub, samples the committed trees, and closes lightning raw-emit deviation —
 completing both the lightning-parity sub-roadmap and Architecture A's uniformity.
 
 ## In Scope
@@ -41,7 +41,7 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   module-binding test (`tests/slicer_module_binding_tdd.rs`).
 - Pipeline test: `lightning_pipeline_linked` (AC-3) in the runtime executor bucket
   (`crates/slicer-runtime/tests/executor/lightning_pipeline_linked_tdd.rs`, new).
-- **DEVIATION CLOSURE (D-137-WIT-RUN-INFILL-NO-PAINT-VIEW):**
+- **DEVIATION CLOSURE (infill paint-view contract):**
   - WIT edit at `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25`:
     extend the `run-infill` export signature with
     `paint: paint-region-layer-view` (mirrors the `run-perimeters` and
@@ -101,7 +101,7 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   - 33 guest artifacts re-stale (21 core-module + 12 test-guests); a single
     `cargo xtask build-guests` rebuild is required after the WIT + macro
     changes.
-- **DEVIATION CLOSURE (D-139-LAYER-GROUNDING-SEARCH-STUB) — Step 0 of 140:**
+- **DEVIATION CLOSURE (lightning grounding-search stub) — Step 0 of 140:**
   - Port the full `getBestGroundingLocation` (Orca
     `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`)
     into `crates/slicer-core/src/algos/lightning/layer.rs`. The port must
@@ -131,7 +131,7 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   - Coordinate system: 1 unit = 100 nm. Divide all OrcaSlicer nm constants
     by 100 at every port boundary. Use `slicer_ir::units_to_mm` /
     `Point2::from_mm` / `mm_to_units()` per `docs/08_coordinate_system.md`.
-- DEV-081 closure edit; TASK-262…265 docs/07 closure sweep; contained lightning
+- lightning raw-emit deviation closure edit; TASK-262…265 docs/07 closure sweep; contained lightning
   re-bless (AC-5) + the roadmap-close workspace ceremony.
 
 ## Out of Scope
@@ -146,7 +146,7 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   reach it.
 - Any per-region skip-predicate change in the prepass — the skip-predicate stays
   print-wide per 139's `[FWD-resolved]` (the per-region predicate was the
-  unrecoverable half of `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`; 139 closes that
+  unrecoverable half of `lightning per-object collapse`; 139 closes that
   deviation at the IR + dispatch + SDK layer, not the predicate layer).
 - **Out-of-bounds note (revised):** the prior design put
   `crates/slicer-core/src/algos/lightning/**` entirely out-of-bounds. Per
@@ -188,8 +188,8 @@ Files to inspect for this packet:
   WIT-drift re-baseline; AC-4/AC-5 are the closure artifacts.
 - Negative cases: `AC-N1` (wedge byte-identity), `AC-N2` (empty-trees
   totality — also proves the stub fallback is really gone).
-- Cross-packet impact: closes DEV-081, `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
-  (139), `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` (this packet), TASK-262…265,
+- Cross-packet impact: closes lightning raw-emit deviation, `lightning per-object collapse`
+  (139), `infill paint-view contract` (this packet), TASK-262…265,
   and the entire infill-parity roadmap (129–140).
 - **Rejected alternatives for the WIT extension** (per the blast-radius
   investigation in `docs/specs/137-deviations-plan.md`):
@@ -220,9 +220,7 @@ Files to inspect for this packet:
 | `rg -n 'fn run_infill\(' modules/core-modules/{rectilinear,gyroid,lightning,top-surface-ironing}-infill/src/lib.rs` | AC-3c four-module compile | LOCATIONS (4) |
 | `cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3d WIT drift re-baseline | FACT |
 | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N1 | FACT |
-| `rg -q 'DEV-081.*[Cc]losed' docs/DEVIATION_LOG.md && echo OK` | AC-4 | FACT |
-| `rg -q 'D-137-WIT-RUN-INFILL-NO-PAINT-VIEW.*[Cc]losed' docs/DEVIATION_LOG.md && echo OK` | DEV-137-WIT closure | FACT |
-| `rg -q 'D-139-LAYER-GROUNDING-SEARCH-STUB.*[Cc]losed.*140' docs/DEVIATION_LOG.md && echo OK` | D-139 grounding closure (Step 0) | FACT |
+| `! rg -q 'lightning raw-emit deviation|infill paint-view contract|lightning grounding-search stub' docs/DEVIATION_LOG.md && echo OK` | AC-4 / DEV-137-WIT / D-139 | FACT: retired labels have no surviving ledger rows |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_layer_wall_supporting_radius 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G1 grounding exclusion | FACT |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_tree_continuity 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G2 grounding continuity (no regression) | FACT |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning 2>&1 \| tee target/test-output.log \| grep "^test result"` | Step 0 full lightning suite (Step 0 exit gate) | FACT + counts |

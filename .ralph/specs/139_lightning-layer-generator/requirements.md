@@ -28,7 +28,7 @@ the whole PrePass architecture exists (ADR-0029). This packet makes the seam rea
   per-object driver. `generate_lightning_trees(...)` builds the generator over the
   committed `SliceIR` sparse outlines (per-object, top-down) and stores the
   `convertToLines` output as `LightningTreeIR` entries.
-- **DEVIATION CLOSURE (D-137-LIGHTNING-PER-OBJECT-COLLAPSE):**
+- **DEVIATION CLOSURE (lightning per-object collapse):**
   - `LightningTreeEntry` gains `region_id: RegionId` field (a `u64` type alias
     at `slice_ir.rs:36`; mirrors `SupportPlanEntry.region_id: RegionId` at
     `slice_ir.rs:1129` — same shape, same default of `0`). The
@@ -95,13 +95,13 @@ Files to inspect for this packet:
 - Negative cases: `AC-N1` (no overhang → no trees), `AC-N2` (wedge byte-identity; the
   broader `-- wedge` command includes the pre-existing baseline failure
   `wedge_multi_layer_top_bottom_evidence`, so the focused byte-identity test is used),
-  `AC-N3` (per-region accessor isolation — the `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
+  `AC-N3` (per-region accessor isolation — the `lightning per-object collapse`
   closure proof).
 - Cross-packet impact: 140 samples exactly what this packet commits, keyed by
   `region_id`; the per-layer segment ordering AND the per-region keying frozen
   here are 140's input contract.
 - DEVIATION CLOSURE: this packet closes
-  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` via the per-region IR field + dispatch
+  `lightning per-object collapse` via the per-region IR field + dispatch
   keying + SDK projection. The skip-predicate remains print-wide (per the
   investigation's conclusion — `ResolvedConfig::sparse_fill_holder` is print-wide,
   not per-region, and the per-region predicate was the unrecoverable half of the

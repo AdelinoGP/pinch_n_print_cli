@@ -11,14 +11,14 @@
 ### Step 1: Scheduler percent retention and transport
 
 - Task IDs: `TASK-303`
-- Objective: make `parse_config_field_entry`'s call sites in `crates/slicer-scheduler/src/manifest.rs` retain the `ConfigValue::Percent` / `ConfigValue::FloatOrPercent` returned by `parse_percent_default` (today invoked as a bare validation statement and discarded, per `DEV-100`), and thread the retained value through `crates/slicer-scheduler/src/config_resolution.rs` into `ResolvedConfig.extensions` (`crates/slicer-ir/src/resolved_config.rs`, `extensions` at :650). Do NOT touch `ResolvedConfig::to_config_map` — `DEV-100` verified its extensions pass-through is already transparent.
+- Objective: make `parse_config_field_entry`'s call sites in `crates/slicer-scheduler/src/manifest.rs` retain the `ConfigValue::Percent` / `ConfigValue::FloatOrPercent` returned by `parse_percent_default` (today invoked as a bare validation statement and discarded, per the wall-width/percent-transport residual), and thread the retained value through `crates/slicer-scheduler/src/config_resolution.rs` into `ResolvedConfig.extensions` (`crates/slicer-ir/src/resolved_config.rs`, `extensions` at :650). Do NOT touch `ResolvedConfig::to_config_map` — the wall-width/percent-transport residual verified its extensions pass-through is already transparent.
 - Precondition: packet activated; `cargo xtask build-guests --check` clean on the baseline tree.
 - Postcondition: a manifest `[config.schema.*]` entry of type `percent`/`float_or_percent` with a percent default round-trips end-to-end into `ResolvedConfig.extensions` as the same `ConfigValue` variant (no coercion to `Float`); the percent round-trip AC is testable in later steps.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-scheduler/src/manifest.rs` - lines `[1030-1180]` (`read_config_schema` at :1036, `parse_config_field_entry`, `parse_percent_default`)
   - `crates/slicer-scheduler/src/config_resolution.rs` - full if under 300 lines, else resolution-entry functions only
   - `crates/slicer-ir/src/slice_ir.rs` - lines `[686-720]` (`ConfigValue` at :691)
-  - `docs/DEVIATION_LOG.md` - row `DEV-100` (:95) only
+  - `docs/DEVIATION_LOG.md` - the wall-width/percent-transport residual only
 - Files allowed to edit (at most 3):
   - `crates/slicer-scheduler/src/manifest.rs`
   - `crates/slicer-scheduler/src/config_resolution.rs`
@@ -31,7 +31,7 @@
   - Question: list every existing test that asserts percent defaults are rejected or coerced; scope: `crates/slicer-scheduler/tests/**`; return: `LOCATIONS`
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/DEVIATION_LOG.md` - `DEV-100` row only (ranged read)
+  - `docs/DEVIATION_LOG.md` - the wall-width/percent-transport residual only (ranged read)
 - OrcaSlicer refs:
   - none
 - Verification:
@@ -102,7 +102,7 @@
 ### Step 4: classic-perimeters resolver migration + D-105 infill-boundary formula
 
 - Task IDs: `TASK-303`
-- Objective: migrate `classic-perimeters` to `resolve_role_width` for outer/inner wall widths, and port canonical `PerimeterGenerator.cpp::process_classic`'s final-infill-boundary formula, replacing the raw `-inner_wall_line_width` offset in `ClassicPerimeters::emit_walls` (`modules/core-modules/classic-perimeters/src/lib.rs:1104`) — closes the `D-105-FLOW-NOT-WIRED` surviving residual. Manifest declares the flow keys the module consumes.
+- Objective: migrate `classic-perimeters` to `resolve_role_width` for outer/inner wall widths, and port canonical `PerimeterGenerator.cpp::process_classic`'s final-infill-boundary formula, replacing the raw `-inner_wall_line_width` offset in `ClassicPerimeters::emit_walls` (`modules/core-modules/classic-perimeters/src/lib.rs:1104`) — closes the `classic final-infill-boundary gap` surviving residual. Manifest declares the flow keys the module consumes.
 - Precondition: Step 3 green; canonical formula `SNIPPETS` dispatch returned; guests rebuilt after Step 3.
 - Postcondition: infill-boundary inset derives from the canonical formula (verified against the dispatch snippets); module reads widths exclusively via the resolver; manifest keys declared in snake_case.
 - Files allowed to read, with ranges when over 300 lines:
@@ -120,18 +120,18 @@
   - Question: quote canonical `process_classic`'s final infill-boundary inset (spacing vs raw width); scope: `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp`; return: `SNIPPETS`
 - Context cost: `M`
 - Authoritative docs:
-   - `docs/DEVIATION_LOG.md` - `D-105-FLOW-NOT-WIRED` row (:24) only
+   - `docs/DEVIATION_LOG.md` - `classic final-infill-boundary gap` row (:24) only
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` - delegate; never load
 - Verification:
   - `cargo xtask build-guests --check` then rebuild - FACT
    - `set -o pipefail; cargo test -p classic-perimeters --all-targets --test classic_perimeters_tdd 2>&1 | tee target/test-output.log | rg '^test result: ok'` - FACT pass/fail (goldens may drift; drift is recorded for Step 11, NOT re-blessed here)
-- Exit condition: resolver wired, canonical formula in place, module tests green except recorded golden drift; `D-105-FLOW-NOT-WIRED` residual code path removed.
+- Exit condition: resolver wired, canonical formula in place, module tests green except recorded golden drift; `classic final-infill-boundary gap` residual code path removed.
 
 ### Step 5: arachne-perimeters resolver migration
 
 - Task IDs: `TASK-303`
-- Objective: migrate `arachne-perimeters` wall-width resolution to `resolve_role_width` (shared `DEV-100` arachne half); manifest declares consumed flow keys. Do not alter beading, second-pass, or top-area logic.
+- Objective: migrate `arachne-perimeters` wall-width resolution to `resolve_role_width` (shared wall-width/percent-transport residual, Arachne half); manifest declares consumed flow keys. Do not alter beading, second-pass, or top-area logic.
 - Precondition: Step 3 green; guests rebuilt after Step 4.
 - Postcondition: width reads route through the shared resolver; arachne parity tests unchanged in outcome except recorded drift.
 - Files allowed to read, with ranges when over 300 lines:
@@ -148,7 +148,7 @@
   - Question: list current width-key read sites in arachne-perimeters; scope: `modules/core-modules/arachne-perimeters/src/**`; return: `LOCATIONS`
 - Context cost: `S`
 - Authoritative docs:
-   - `docs/DEVIATION_LOG.md` - `DEV-100` (:95) and `D-164-WALL-WIDTH-KEYS-NOT-FLOAT-OR-PERCENT` (:90) rows only
+   - `docs/DEVIATION_LOG.md` - the wall-width/percent-transport residual and `DEV-101` rows only
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Flow.cpp` - delegate; never load
 - Verification:
@@ -260,7 +260,7 @@
   - Question: quote canonical `only_one_wall_top` topmost vs non-topmost branches and the `min_width_top_surface` threshold in `process_classic`; scope: `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp`; return: `SNIPPETS`
 - Context cost: `M`
 - Authoritative docs:
-   - `docs/DEVIATION_LOG.md` - `D-152-TOP-AREA-SOURCE` (:126) and `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` (:105) rows only
+   - `docs/DEVIATION_LOG.md` - `D-152-TOP-AREA-SOURCE` (:126) and `top-surface min-width threshold gap` (:105) rows only
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` - delegate; never load
 - Verification:
@@ -298,11 +298,11 @@
 ### Step 11: precedence-matrix integration tests + deviation log + task crosswalk
 
 - Task IDs: `TASK-303`, `TASK-212b`
-- Objective: land the full parameterized precedence-matrix suite (every role × first-layer × bridge override/fallback × percent transport × module parity × both top-overlap contexts) BEFORE any golden re-bless; then update `docs/DEVIATION_LOG.md` (close the `D-105-FLOW-NOT-WIRED` surviving residual and `D-164-WALL-WIDTH-KEYS-NOT-FLOAT-OR-PERCENT`/`DEV-100` ingestion residual; add `D-185-ADR-0043-AMENDED` quoting ADR-0043's contested wall-width clause; add `D-185-ADR-0014-AMENDED` quoting ADR-0014's stale `slicer-core` freshness exclusion; create `DEV-102` for deferred flow-ratio controls — re-derive the next free DEV number at execution time with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`; leave `D-152-TOP-AREA-SOURCE` untouched) and the `docs/07_implementation_status.md` `TASK-303`/`TASK-212b` rows via worker dispatch (never a full backlog read).
+- Objective: land the full parameterized precedence-matrix suite (every role × first-layer × bridge override/fallback × percent transport × module parity × both top-overlap contexts) BEFORE any golden re-bless; then update `docs/DEVIATION_LOG.md` (close the classic final-infill-boundary residual and the wall-width/percent-transport ingestion residual; add `Arachne wall-width ADR amendment` quoting ADR-0043's contested wall-width clause; add `guest-freshness ADR amendment` quoting ADR-0014's stale `slicer-core` freshness exclusion; create `DEV-102` for deferred flow-ratio controls — re-derive the next free DEV number at execution time with `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`; leave `D-152-TOP-AREA-SOURCE` untouched) and the `docs/07_implementation_status.md` `TASK-303`/`TASK-212b` rows via worker dispatch (never a full backlog read).
 - Precondition: Steps 1-10 green; drift inventory from Steps 4/5/9 collected.
 - Postcondition: matrix suite green against canonical-correct semantics; deviation rows and task rows reflect reality; re-bless scope enumerated for Step 11.
 - Files allowed to read, with ranges when over 300 lines:
-   - `docs/DEVIATION_LOG.md` - rows `D-105-FLOW-NOT-WIRED` (:24), `D-164-WALL-WIDTH-KEYS-NOT-FLOAT-OR-PERCENT` (:90), `DEV-100` (:95), `D-152-TOP-AREA-SOURCE` (:126), new `D-185-ADR-0043-AMENDED`, and new `D-185-ADR-0014-AMENDED` rows only
+   - `docs/DEVIATION_LOG.md` - surviving width residuals, `D-152-TOP-AREA-SOURCE`, and `DEV-102`; the wall-width and freshness amendment records are read from their ADR files
    - `docs/07_implementation_status.md` - lines `[150-175]` only
    - `docs/adr/0043-derive-arachne-bead-widths-from-wall-flows.md` - lines `[29-44]` only for the quoted Decision item 2 clause
    - `docs/adr/0014-xtask-guest-discovery-via-validated-filesystem-walk.md` - lines `[17-35]` only for the quoted freshness clause
@@ -349,7 +349,7 @@
 - OrcaSlicer refs:
   - none
 - Verification:
-  - `rg -q 'D-185-ADR-0043-AMENDED' docs/adr/0043-derive-arachne-bead-widths-from-wall-flows.md && rg -q 'D-185-ADR-0014-AMENDED' docs/adr/0014-xtask-guest-discovery-via-validated-filesystem-walk.md` - FACT pass/fail
+  - `rg -q 'Arachne wall-width ADR amendment' docs/adr/0043-derive-arachne-bead-widths-from-wall-flows.md && rg -q 'guest-freshness ADR amendment' docs/adr/0014-xtask-guest-discovery-via-validated-filesystem-walk.md` - FACT pass/fail
 - Exit condition: both amendment records exist, quote their contested clauses, and no unrelated ADR content changed.
 
 ### Step 13: Golden re-bless + acceptance
@@ -385,10 +385,10 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | M | Parser retention + transport; DEV-100 ingestion residual |
+| Step 1 | M | Parser retention + transport; wall-width/percent-transport ingestion residual |
 | Step 2 | M | Rename + blast radius; survey dispatch mandatory before authoring |
 | Step 3 | S | Pure-function resolver + unit matrix |
-| Step 4 | M | Classic resolver + D-105-FLOW-NOT-WIRED residual formula |
+| Step 4 | M | Classic resolver + classic final-infill-boundary gap residual formula |
 | Step 5 | S | Arachne resolver swap; no algorithm change |
 | Step 6 | S | Rectilinear resolver swap |
 | Step 7 | S | Gyroid resolver swap |
@@ -407,7 +407,7 @@ Aggregate M; no step is L. Steps 6-8 are separate S steps (rather than one L) to
 - Every pipe-suffixed AC command returns PASS (including the percent round-trip AC and the precedence-matrix AC).
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read.
 - Check TASK-212b only after Step 10's loader allowlist regression passes; the task is not satisfied by a documentation checkbox alone.
-- Reconcile reopened/superseded status transitions: packet 184's residuals (`D-105-FLOW-NOT-WIRED` infill-boundary residual, `D-164-WALL-WIDTH-KEYS-NOT-FLOAT-OR-PERCENT`/`DEV-100` ingestion residual) close here; `D-152-TOP-AREA-SOURCE` stays open; `D-185-ADR-0043-AMENDED` and `D-185-ADR-0014-AMENDED` record the ADR changes; `DEV-102` is created for deferred flow-ratio controls.
+- Reconcile reopened/superseded status transitions: packet 184's infill-boundary and wall-width/percent-transport residuals close here; `D-152-TOP-AREA-SOURCE` stays open; `Arachne wall-width ADR amendment` and `guest-freshness ADR amendment` record the ADR changes; `DEV-102` is created for deferred flow-ratio controls.
 - `packet.spec.md` is ready for `status: implemented`.
 
 ## Acceptance Ceremony

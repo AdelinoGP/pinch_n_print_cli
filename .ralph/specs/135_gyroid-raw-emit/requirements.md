@@ -20,7 +20,7 @@ samples — and under Architecture A it should not clip at all (the 133 linker r
 correctly via `clip_polylines`). (3) Its multi-role emission code is dead: the manifest
 declares only `claim:sparse-fill`, so the dispatch only routes the sparse role to gyroid
 even when a user configures gyroid as the holder for other roles — the contradiction
-ADR-0027 resolved by making multi-role a real opt-in. The DEV-082 row tracks this exact
+ADR-0027 resolved by making multi-role a real opt-in. The gyroid multi-role deviation row tracks this exact
 divergence as Open since 2026-07-03; this packet is the realization.
 
 Note: the plan's Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are already realized
@@ -40,7 +40,7 @@ Note: the plan's Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are alrea
   `2π × scale_factor` (FillGyroid.cpp:322).
 - Expand factor 4.0 → 10.0 × spacing_mm at `lib.rs:259` (FillGyroid.cpp:326).
 - Manifest: `claims.holds` gains `claim:top-fill`, `claim:bottom-fill`,
-  `claim:bridge-fill` (ADR-0027; DEV-082).
+  `claim:bridge-fill` (ADR-0027; gyroid multi-role deviation).
 - Per-region density via the packet-131 accessor in the region loop.
 - TDD per AC-1…AC-6, AC-N1. There are no point-in-polygon tests in the test file
   (verified by FACT I 2026-07-19), so the spec's "delete point-in-polygon tests" is moot —
@@ -57,7 +57,7 @@ Note: the plan's Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are alrea
   list).
 - Default fill-holder changes — `gyroid` is not referenced in
   `crates/slicer-ir/src/resolved_config.rs` defaults; the four fill-holder keys resolve
-  to `rectilinear-infill` (DEV-082 opt-in promise).
+  to `rectilinear-infill` (gyroid multi-role deviation opt-in promise).
 - `multiline` support (spec P3 — deferred).
 - Golden restore (136); changed-output goldens append to the 131 carve list.
 
@@ -66,7 +66,7 @@ Note: the plan's Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are alrea
 - `docs/adr/0027-…` — binding; full read (short).
 - `docs/specs/infill-parity-rectilinear-gyroid-linker.md` §Phase 3 — stays/deleted lists
   binding; Phase 3 only.
-- `docs/DEVIATION_LOG.md` — DEV-082 row only.
+- `docs/DEVIATION_LOG.md` — gyroid multi-role deviation row only.
 - `docs/08_coordinate_system.md` — delegate SUMMARY (gyroid math is mm-domain; the mm↔unit
   boundary sits at polygon input and point emission).
 
@@ -90,7 +90,7 @@ Files to inspect for this packet:
   checkable; AC-7/AC-9 are the per-region density assertions (131 accessor wired into
   both `gyroid-infill` and `rectilinear-infill`, reading through
   `slicer_sdk::config_resolution::resolve_float`).
-- Negative cases: `AC-N1` — the DEV-082 opt-in guard: default config must produce
+- Negative cases: `AC-N1` — the gyroid multi-role deviation opt-in guard: default config must produce
   sparse-only gyroid (held-claims gating), keeping default behavior at OrcaSlicer parity.
 - Cross-packet impact: output changes (correct rotation + linker-clipped wave extents) —
   affected goldens append to the 131 carve list; 136 restores. The multi-role opt-in path is

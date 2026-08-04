@@ -17,7 +17,7 @@ Port the lightning orchestration — `Lightning::Layer` (`generateNewTrees`,
 `crates/slicer-core/src/algos/lightning/`, wire the packet-137 producer so
 `PrePass::LightningTreeGen` commits real per-layer tree segments into
 `LightningTreeIR`, and add the per-region refinement that closes
-`D-137-LIGHTNING-PER-OBJECT-COLLAPSE` (`region_id: RegionId` on `LightningTreeEntry`,
+`lightning per-object collapse` (`region_id: RegionId` on `LightningTreeEntry`,
 per-region HashMap keying in the host dispatch, `region_id` honored by the SDK
 accessor).
 
@@ -54,7 +54,7 @@ the 138 tests co-updated in the same step, never left red between steps.
   to the actual `region_id`, and update the SDK accessor
   `lightning_tree_segments_for` in `crates/slicer-sdk/src/traits.rs:195-199`
   to honor its `region_id` argument. Closes
-  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` in `docs/DEVIATION_LOG.md`.
+  `lightning per-object collapse` in `docs/DEVIATION_LOG.md`.
 - Unblocks: `140_lightning-module-rewrite`.
 - Activation blockers: 137 and 138 must both be `status: implemented`
   (forward-deps above).

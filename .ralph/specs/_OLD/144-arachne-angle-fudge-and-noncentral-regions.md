@@ -38,7 +38,7 @@ produces one continuous region. This packet removes both fudges (N5) and ports
 `filterNoncentralRegions` (N6), strictly after A2 lands (the fudges are
 load-bearing until A1/A2's canonical scheme is in place).
 
-This packet supersedes `D-141-JUNCTION-BANDS` for the centrality-parameter
+This packet supersedes `junction-band closure` for the centrality-parameter
 layer only; A1's junction geometry and A2's emission remain canonical and
 untouched. C does not change the `BeadingStrategy` trait (B owns the trait
 extension) — C only threads the already-existing `wall_transition_angle` (on

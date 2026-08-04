@@ -11,7 +11,7 @@
 
 ## Steps
 
-### Step 0: Grounding search port (RED→GREEN) — closes `D-139-LAYER-GROUNDING-SEARCH-STUB`
+### Step 0: Grounding search port (RED→GREEN) — closes `lightning grounding-search stub`
 
 - Task IDs: `TASK-265`
 - Objective: port the full `getBestGroundingLocation` (Orca
@@ -28,7 +28,7 @@
   `lightning_layer_wall_supporting_radius` test (AC-G1) AND a
   re-assertion of the existing `lightning_generator_tree_continuity`
   test (AC-G2 — must still pass; the grounding refinement must not
-  regress continuity). Flip `D-139-LAYER-GROUNDING-SEARCH-STUB` to
+  regress continuity). Flip `lightning grounding-search stub` to
   `Closed` in `docs/DEVIATION_LOG.md`. This step runs FIRST so the
   sampling side (Step 3) samples higher-quality trees.
 - Precondition: packet 139 status `implemented` (the 138 + 139
@@ -36,7 +36,7 @@
   the 139 per-layer `Layer` methods are used as-is).
 - Postcondition: AC-G1 + AC-G2 green; 139 tests still green; 138
   tests still green; `cargo check --workspace --all-targets` clean;
-  `D-139-LAYER-GROUNDING-SEARCH-STUB` flipped to `Closed`.
+  `lightning grounding-search stub` flipped to `Closed`.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-core/src/algos/lightning/layer.rs` (full; small —
     ~210 lines after 139).
@@ -63,7 +63,7 @@
   - `crates/slicer-core/tests/algo_lightning_tdd.rs` (add
     `lightning_layer_wall_supporting_radius` test; re-assert
     `lightning_generator_tree_continuity` is still green).
-  - `docs/DEVIATION_LOG.md` (one line: `D-139-LAYER-GROUNDING-SEARCH-STUB`
+  - `docs/DEVIATION_LOG.md` (one line: `lightning grounding-search stub`
     status → `Closed`).
 - Blast-radius discipline:
   - **`Node::getWeightedDistance` is reused as-is from 139 Step 2.**
@@ -122,9 +122,9 @@
   - Full lightning suite — FACT (138 + 139 tests still green)
 - Exit condition: AC-G1 + AC-G2 green; 138 + 139 tests still
   green; 139 Step-2 stub comment removed;
-  `D-139-LAYER-GROUNDING-SEARCH-STUB` flipped to `Closed`.
+  `lightning grounding-search stub` flipped to `Closed`.
 
-### Step 1: WIT extension bundle (RED→GREEN) — closes `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`
+### Step 1: WIT extension bundle (RED→GREEN) — closes `infill paint-view contract`
 
 - Task IDs: `TASK-265`
 - Objective: extend the WIT `run-infill` signature at
@@ -262,7 +262,7 @@
   runtime and leaves the workspace un-compiling at the seam. The 140
   design's `§Context Cost Estimate` carries the justification.)
 - Authoritative docs: ADR-0044 (WIT version-bump semantics),
-  `docs/DEVIATION_LOG.md` `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` (the deviation
+  `docs/DEVIATION_LOG.md` `infill paint-view contract` (the deviation
   being closed), `docs/03_wit_and_manifest.md` (the read-view contract).
 - OrcaSlicer refs: none.
 - Verification:
@@ -400,13 +400,13 @@
   - AC-3, AC-N1 pipe commands — FACT each
 - Exit condition: uniformity + identity green.
 
-### Step 5: Closure — DEV-081, D-137, contained bless, roadmap ceremony
+### Step 5: Closure — lightning raw-emit deviation, D-137, contained bless, roadmap ceremony
 
 - Task IDs: `TASK-265`
-- Objective: resolve the `[FWD]` (FACT on the live DEV-081 row's status field —
+- Objective: resolve the `[FWD]` (FACT on the live lightning raw-emit deviation row's status field —
   if `Closed` already, leave it; otherwise flip to `Closed` and add a reference
   note per the log's convention); resolve the `[FWD]` on the
-  `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` row's status field (FACT — if
+  `infill paint-view contract` row's status field (FACT — if
   `Closed` already, leave it; otherwise flip to `Closed` and add a reference
   note); re-bless lightning-affected expectations (two consecutive identical
   runs; per-expectation justification); docs/07 closure sweep for TASK-262…265
@@ -416,7 +416,7 @@
 - Postcondition: AC-4, AC-5 green; ceremony PASS recorded; packet + roadmap closed.
 - Files allowed to read: none directly (all delegated).
 - Files allowed to edit (at most 3):
-  - `docs/DEVIATION_LOG.md` (DEV-081 row + `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`
+  - `docs/DEVIATION_LOG.md` (lightning raw-emit deviation row + `infill paint-view contract`
     row, if not already Closed)
   - lightning-affected expectation files (bless waves; identify via dispatch
     against the in-tree bless test pattern — FACT first)
@@ -428,10 +428,10 @@
     the expectations directory before editing any file).
 - Files explicitly out-of-bounds for this step: everything else.
 - Expected sub-agent dispatches:
-  - "FACT: what is the current status column of the DEV-081 row in
+  - "FACT: what is the current status column of the lightning raw-emit deviation row in
     `docs/DEVIATION_LOG.md` (line 32 region)?" — `[FWD]` resolution.
   - "FACT: what is the current status column of the
-    `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` row in
+    `infill paint-view contract` row in
     `docs/DEVIATION_LOG.md`?" — `[FWD]` resolution.
   - "LOCATIONS ≤ 10: which expectation files mention lightning-infill or
     `sparse_fill_holder == 'lightning-infill'` (the bless-wave targets)."
@@ -444,15 +444,15 @@
 - OrcaSlicer refs: none.
 - Verification:
   - AC-4 + AC-5 pipe commands + the ceremony verdict — FACT each
-- Exit condition: DEV-081 Closed; `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`
+- Exit condition: lightning raw-emit deviation Closed; `infill paint-view contract`
   Closed; ceremony PASS; TASK-262…265 closed; packet + roadmap closed.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 0 | M | Grounding search port (`getBestGroundingLocation` + tree-node locator + `wall_supporting_radius` exclusion) — closes `D-139-LAYER-GROUNDING-SEARCH-STUB`; focused ~150-line port |
-| Step 1 | L (justified) | WIT + trait + macro + dispatch + 4-module + test-guest + drift-re-baseline + 33-guest rebuild — atomic coupled bundle that closes D-137-WIT-RUN-INFILL-NO-PAINT-VIEW |
+| Step 0 | M | Grounding search port (`getBestGroundingLocation` + tree-node locator + `wall_supporting_radius` exclusion) — closes `lightning grounding-search stub`; focused ~150-line port |
+| Step 1 | L (justified) | WIT + trait + macro + dispatch + 4-module + test-guest + drift-re-baseline + 33-guest rebuild — atomic coupled bundle that closes infill paint-view contract |
 | Step 2 | M | Orca FACT + classification + RED |
 | Step 3 | M | the rewrite |
 | Step 4 | S | pipeline + guard |
@@ -464,7 +464,7 @@
 - Every pipe-suffixed AC command returns PASS.
 - Update `docs/07_implementation_status.md` through a worker dispatch (TASK-262…265
   closure sweep), never a full backlog read.
-- Reconcile reopened/superseded status transitions (DEV-081 closure recorded).
+- Reconcile reopened/superseded status transitions (lightning raw-emit deviation closure recorded).
 - `packet.spec.md` is ready for `status: implemented`.
 
 ## Acceptance Ceremony

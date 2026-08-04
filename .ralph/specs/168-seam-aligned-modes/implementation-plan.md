@@ -193,7 +193,7 @@
 ### Step 8: Docs, ADR, deviation row, crosswalk
 
 - Task IDs: `TASK-274`
-- Objective: Land the four Doc Impact edits (docs/03 signature + version, docs/15 `seam_mode` values, `docs/DEVIATION_LOG.md` row `D-168-SEAM-PREPASS-SOURCE`, new `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`), and mint the `TASK-274` row in `docs/07_implementation_status.md` per `task-map.md`.
+- Objective: Land the four Doc Impact edits (docs/03 signature + version, docs/15 `seam_mode` values, `docs/DEVIATION_LOG.md` row `seam source-geometry deviation`, new `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`), and mint the `TASK-274` row in `docs/07_implementation_status.md` per `task-map.md`.
 - Precondition: Steps 1-7 complete.
 - Postcondition: all Doc Impact greps PASS; docs/07 row exists.
 - Files allowed to read, with ranges when over 300 lines:

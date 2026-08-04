@@ -3,15 +3,15 @@
 ## Packet Metadata
 
 - Grouped task IDs: `TASK-308`
-- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` — the Packet Queue rows for DEV-009 in tranche T3, which the orchestrator split into 9a/9b/9c; this packet is row 9a. **Do not quote that row’s text or any TASK-ID hit count here or anywhere else.** The queue is mutable shared state amended while packets are in flight: this line previously froze a row rendering (`<tbd>-gcode-smoothed-speed-add-intersections`) that is now 0 hits in the plan file, and `packet.spec.md` was corrected a round before this file was — the fix landed in one file and not the other, which is the same propagation failure the drift checker now closes. Re-derive at the moment of use with `rg -n '^\| 9[abc] ' docs/specs/deviation-backlog-remediation-plan.md` (the rows begin at column 1, so `^` must anchor directly on the leading `|`; earlier revisions of this line wrote `^.\\|`, which both consumes that `|` and over-escapes the backslash — measured, 0 hits and exit 1, i.e. a silently-empty re-derivation of exactly the kind this paragraph exists to prevent).
+- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` — the Packet Queue rows for overhang-speed parity in tranche T3, which the orchestrator split into 9a/9b/9c; this packet is row 9a. **Do not quote that row’s text or any TASK-ID hit count here or anywhere else.** The queue is mutable shared state amended while packets are in flight: this line previously froze a row rendering (`<tbd>-gcode-smoothed-speed-add-intersections`) that is now 0 hits in the plan file, and `packet.spec.md` was corrected a round before this file was — the fix landed in one file and not the other, which is the same propagation failure the drift checker now closes. Re-derive at the moment of use with `rg -n '^\| 9[abc] ' docs/specs/deviation-backlog-remediation-plan.md` (the rows begin at column 1, so `^` must anchor directly on the leading `|`; earlier revisions of this line wrote `^.\\|`, which both consumes that `|` and over-escapes the backslash — measured, 0 hits and exit 1, i.e. a silently-empty re-derivation of exactly the kind this paragraph exists to prevent).
 - Packet status: `draft`
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-### The plan's premise for DEV-009 is falsified in three ways; this packet exists because of the third
+### The plan's premise for overhang-speed parity is falsified in three ways; this packet exists because of the third
 
-`docs/specs/deviation-backlog-remediation-plan.md` describes DEV-009 as "two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`): (a) smoothed-speed interpolation replacing the flat quantized lookup; (b) `ADD_INTERSECTIONS` mid-segment vertex insertion" and lists them as independent. Grounded against the tree, each clause is wrong:
+`docs/specs/deviation-backlog-remediation-plan.md` describes overhang-speed parity as "two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`): (a) smoothed-speed interpolation replacing the flat quantized lookup; (b) `ADD_INTERSECTIONS` mid-segment vertex insertion" and lists them as independent. Grounded against the tree, each clause is wrong:
 
 1. **`resolve_feedrate` contains no quantized lookup.** `DefaultGCodeEmitter::resolve_feedrate` (`crates/slicer-gcode/src/emit.rs`) is a flat per-role `match` selecting a base speed, then `let clamped_factor = speed_factor.clamp(0.05, 5.0); let f_value = base_speed * 60.0 * clamped_factor;` rounded to three decimals. There is no band table in it.
 2. **The quantization lives in a guest module.** `modules/core-modules/overhang-classifier-default/src/lib.rs` takes `entity.path.points.iter().filter_map(|p| p.overhang_quartile).max()` — a **whole-entity maximum** — and emits exactly one `EntityMutation::SetSpeedFactor(overhang_speed(q, config) / base)` per entity. `quartile_for_distance` buckets through `BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5]`.
@@ -45,7 +45,7 @@ The only live producer of speed mutations is `overhang-classifier-default`, and 
 - **Mid-segment vertex insertion and any path-geometry mutation channel.** `EntityMutation` gains no geometry case here; packet 191 (TASK-310) adds one.
 - **A per-point speed field on `Point3WithWidth`.** Rejected on a blast radius in the hundreds of exhaustive struct literals across well over a hundred files, plus a `point3-with-width` WIT record change. **Treat the size as a ledger fact and re-derive it** with `rg -c 'dist_to_top_mm:' --glob '*.rs' crates modules xtask` (the proxy count, since every exhaustive literal names that field once). See `design.md` §Code Change Surface.
 - **Any new config key.** `enable_overhang_speed` and `slowdown_for_curled_perimeters` belong to packet 190.
-- **The four-band `overhang_quartile` schedule** (`BAND_BOUNDARY_MULTIPLIERS` in `crates/slicer-core/src/algos/overhang_annotation.rs`). Recorded in the `DEV-009` row as an accepted permanent deviation; untouched here and in 190.
+- **The four-band `overhang_quartile` schedule** (`BAND_BOUNDARY_MULTIPLIERS` in `crates/slicer-core/src/algos/overhang_annotation.rs`). Recorded in the overhang-speed parity row as an accepted permanent deviation; untouched here and in 190.
 - **Whole-output G-code byte comparison as a verification technique.** `DEV-093` records that two runs of the same unmodified release binary on the same input already differ by ~100-160 lines, so no criterion in this packet uses it.
 
 ## Authoritative Docs
@@ -54,7 +54,7 @@ The only live producer of speed mutations is `overhang-classifier-default`, and 
 - `docs/05_module_sdk.md` — large; delegated grep only. The `modify_entity` variant table is the only section in scope.
 - `docs/03_wit_and_manifest.md` — delegated grep only; the `entity-mutation (variant)` bullet.
 - `docs/07_implementation_status.md` — **always delegate.** Only needed to register `TASK-308` outside the `open-deviations` generated block.
-- `docs/DEVIATION_LOG.md` — very large rows; delegated grep only. The `DEV-009` row is read for scope and is **not** edited by this packet.
+- `docs/DEVIATION_LOG.md` — very large rows; delegated grep only. The overhang-speed parity row is read for scope and is **not** edited by this packet.
 - `CLAUDE.md` §"Guest WASM Staleness" — the WIT/`slicer-ir`/`slicer-sdk`/`slicer-macros` edits are all guest-build inputs.
 
 <!-- snippet: orca-delegation -->
@@ -101,7 +101,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 ## Context Discipline Notes
 
 - `docs/02_ir_schemas.md` is 2157 lines — read only §"IR 10 — LayerCollectionIR" through the start of §"IR 11 — GCodeIR". Never load it whole.
-- `docs/DEVIATION_LOG.md`'s `DEV-009` row is a single multi-thousand-word table cell. Delegate any question about it; do not read the row into the implementer's context.
+- `docs/DEVIATION_LOG.md`'s overhang-speed parity row is a single multi-thousand-word table cell. Delegate any question about it; do not read the row into the implementer's context.
 - `crates/slicer-gcode/src/emit.rs` is long (over 1200 lines). The only regions in scope are `DefaultGCodeEmitter::resolve_feedrate`, the `travel_moves_by_entity` map construction, the `kept`/`simplified_points` remap block, and the `GCodeCommand::Move { … f: … }` push. Locate by symbol, then open a ±40-line window.
 - `crates/slicer-sdk/src/traits.rs` is long. The two regions in scope are the `pub enum EntityMutation` declaration and the `MergeOp::ModifyEntity` arm inside `apply_to`.
 - The struct-literal sweep must **not** be done by reading the files. Run the re-derivation command in `implementation-plan.md` Step 3 to get the file:count list — remembering it over-counts (definition, `impl Default` header, `-> LayerCollectionIR {` return types) — then edit each real literal blind (one inserted line) and let `cargo check --workspace --all-targets` be the oracle.

@@ -51,15 +51,15 @@ This packet consumes packets 178 and 179's variant-aware canonical seam target a
 - `docs/05_module_sdk.md` - delegated seam-candidate convention and wall-preservation behavior.
 - `docs/15_config_keys_reference.md` - direct `seam_mode` config key and default values.
 - `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` - accepted prepass placement decision.
-- `docs/DEVIATION_LOG.md` - `D-168-SEAM-PREPASS-SOURCE` predecessor deviation; this packet closes the source-geometry gap via continuous projection.
+- `docs/DEVIATION_LOG.md` - `seam source-geometry deviation` predecessor deviation; this packet closes the source-geometry gap via continuous projection.
 
 ## Doc Impact Statement (Required)
 
 - `docs/01_system_architecture.md` seam-first contract and final projection - `rg -q 'continuous.*projection|seam-first.*aligned' docs/01_system_architecture.md`
 - `docs/05_module_sdk.md` seam-candidate convention and degraded fallback - `rg -q 'degraded.*seam|non-fatal.*seam|continuous.*projection' docs/05_module_sdk.md`
 - `docs/15_config_keys_reference.md` `seam_mode` default change - `rg -q 'default.*aligned|seam_mode.*aligned' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` closure of `D-168-SEAM-PREPASS-SOURCE` source-geometry gap - `rg -q 'D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
-- `docs/DEVIATION_LOG.md` new row `D-283-ADR-0046-AMENDED` amending ADR-0046 default from `nearest` to `aligned` - `rg -q 'D-283-ADR-0046-AMENDED' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — the retired `seam source-geometry deviation` label has no surviving row; ADR-0046 records the source-geometry decision - `! rg -q '^\| seam source-geometry deviation ' docs/DEVIATION_LOG.md && rg -q 'default.*aligned' docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
+- `docs/DEVIATION_LOG.md` new `ADR-0046 amendment` row amending ADR-0046 default from `nearest` to `aligned` - `rg -q 'ADR-0046' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

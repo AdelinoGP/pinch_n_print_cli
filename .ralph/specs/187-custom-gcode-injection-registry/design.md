@@ -59,7 +59,7 @@ Two primary source files plus the two test files that must gain the new pins. Th
 - `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` — role: module-level behaviour pins; expected change: seven tests added.
 - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` — role: end-to-end pin against the real component; expected change: one test added.
 - `docs/15_config_keys_reference.md` — role: the user-facing injection-point contract; expected change: §"Machine start / end G-code" rewritten, generated block regenerated.
-- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: `DEV-085` updated, one new residual row.
+- `docs/DEVIATION_LOG.md` — role: parity ledger; expected change: one surviving packet-187 residual row carries the evidence and `TASK-306`; the deleted aggregate custom-G-code label is not recreated.
 - `docs/07_implementation_status.md` — role: backlog; expected change: one `TASK-306` row outside the generated markers.
 
 ## Read-Only Context
@@ -86,7 +86,7 @@ Two primary source files plus the two test files that must gain the new pins. Th
 - Question: does `GCode::change_layer` emit a Z move outside spiral-vase mode? Scope: `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`; return: `FACT` ≤ 3 lines; purpose: the adjacency justification in Step 2.
 - Question: what extra placeholder variables does `s_CustomGcodeSpecificPlaceholders` list for `machine_start_gcode`, `before_layer_change_gcode`, `layer_change_gcode`, `timelapse_gcode` and `machine_end_gcode`? Scope: `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`; return: `FACT` ≤ 6 lines; purpose: Step 2's per-site sets and AC-N1.
 - Question: which variables does `GCode::generate_timelapse_gcode` set that the inline non-BBL path does not? Scope: `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`; return: `FACT` ≤ 5 lines; purpose: Step 5's residual row.
-- Question: what is the current highest `DEV-###` in `docs/DEVIATION_LOG.md`, and does the `DEV-085` row already contain the string `TASK-306`? Scope: `docs/DEVIATION_LOG.md`; return: `FACT` ≤ 3 lines; purpose: Step 5.
+- Question: what is the current highest `DEV-###` in `docs/DEVIATION_LOG.md`, and does exactly one surviving packet-187 residual row already contain `TASK-306`? Scope: `docs/DEVIATION_LOG.md`; return: `FACT` ≤ 3 lines; purpose: Step 5.
 - Question: does `cargo xtask build-guests --check` report `STALE:` after the module edit? Scope: cargo run; return: `FACT` clean/stale; purpose: Steps 2 and 3.
 
 ## Data and Contract Notes

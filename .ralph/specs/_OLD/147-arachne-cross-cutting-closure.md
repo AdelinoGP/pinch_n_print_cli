@@ -9,7 +9,7 @@ task_ids:
 
 ## Goal
 
-Close the Arachne parity N1–N13 packet chain: fix the 7 deferred parity-audit findings from D-147-PARITY-AUDIT-FINDINGS (the cross-cutting closure — these span the chain, not owned by any single A1–E packet), re-green the `cube_4color.3mf` end-to-end outer-wall closure gate, re-baseline the cross-crate `slicer-runtime` perimeter_parity fixtures (the stragglers after A1–E's per-packet re-baselines), register deviation-log supersession entries for the chain, and author ADR `0035-arachne-faithful-emission-and-transitions.md`.
+Close the Arachne parity N1–N13 packet chain: fix the 7 deferred parity-audit findings from Arachne parity-audit findings (the cross-cutting closure — these span the chain, not owned by any single A1–E packet), re-green the `cube_4color.3mf` end-to-end outer-wall closure gate, re-baseline the cross-crate `slicer-runtime` perimeter_parity fixtures (the stragglers after A1–E's per-packet re-baselines), register deviation-log supersession entries for the chain, and author ADR `0035-arachne-faithful-emission-and-transitions.md`.
 
 ## Problem Statement
 
@@ -17,7 +17,7 @@ Packets A1 (`141`), A2 (`142`), B (`143`), C (`144`), D (`145`), E (`146`)
 each own their slice of the N1–N13 fixes and each re-baseline their own
 `crates/slicer-core` fixtures + record their e2e closure delta (record-only,
 per `docs/specs/arachne-parity-N1-N13-plan.md`'s cross-cutting policy). But
-the deep canonical parity audit (9 sub-agents, D-147-PARITY-AUDIT-FINDINGS)
+the deep canonical parity audit (9 sub-agents, Arachne parity-audit findings)
 surfaced 7 divergences that span the chain and are not owned by any single
 A1–E finding-fix packet. These 7 findings ARE the cross-cutting closure —
 they are the residual gaps preventing the e2e gate from going green. In
@@ -33,7 +33,7 @@ cross-crate fixtures, deviation-log closure, ADR 0035).
 
 ## Architecture Constraints
 
-- Packet-specific constraint: **F owns the 7 deferred parity-audit findings from D-147-PARITY-AUDIT-FINDINGS.** N1–N13 are owned by A1–E; F owns the findings the deep parity audit surfaced AFTER A1–E closed. These span `generate_toolpaths.rs`, `stitch.rs`, `centrality.rs`, `graph.rs` — they are the cross-cutting closure. In addition, F owns the cross-cutting artifacts: e2e gate, cross-crate fixtures, deviation-log closure, ADR 0035.
+- Packet-specific constraint: **F owns the 7 deferred parity-audit findings from Arachne parity-audit findings.** N1–N13 are owned by A1–E; F owns the findings the deep parity audit surfaced AFTER A1–E closed. These span `generate_toolpaths.rs`, `stitch.rs`, `centrality.rs`, `graph.rs` — they are the cross-cutting closure. In addition, F owns the cross-cutting artifacts: e2e gate, cross-crate fixtures, deviation-log closure, ADR 0035.
 - Packet-specific constraint: **F cannot close until A1–E are ALL `status: implemented`.** F is the closure gate; if any of A1–E is still `draft` or `active`, F's AC-1 (e2e gate) will fail.
 - Packet-specific constraint: **`cargo xtask test --workspace --summary` is the ONE permitted `cargo test --workspace` run**, per the test-discipline contract. F runs it as AC-N1; no other packet in the chain may run it.
 - Packet-specific constraint: **WASM staleness MAY apply** if E added `arachne-params` WIT record fields. F runs `cargo xtask build-guests --check` unconditionally (AC-N1's closure ceremony includes the freshness gate). The `wasm-staleness` snippet is included conditionally.
@@ -51,11 +51,11 @@ cross-crate fixtures, deviation-log closure, ADR 0035).
 
 ## Locked Assumptions and Invariants
 
-- F owns the 7 deferred parity-audit findings from D-147-PARITY-AUDIT-FINDINGS (these span the chain, not owned by any single A1–E packet).
+- F owns the 7 deferred parity-audit findings from Arachne parity-audit findings (these span the chain, not owned by any single A1–E packet).
 - F cannot close until A1–E are ALL `status: implemented`.
 - F's e2e closure gate (`cube_4color_arachne_outer_walls_close_end_to_end`) is the user-visible acceptance criterion. The 7 finding fixes are the direct cause of the e2e gate failure (finding #2 is the prime blocker).
 - F re-baselines ONLY the cross-crate `slicer-runtime` `perimeter_parity` fixtures; `slicer-core` fixtures are A1–E's per-packet scope (unless the finding fixes require narrow re-baselining).
-- F's deviation-log closure entry (`D-147-CHAIN-CLOSURE`) has addenda on each of the 6 chain entries, not in-place edits. Supersession pattern. `D-147-PARITY-AUDIT-FINDINGS` addendum updated to Closed.
+- F's deviation-log closure entry (`Arachne chain closure`) has addenda on each of the 6 chain entries, not in-place edits. Supersession pattern. `Arachne parity-audit findings` addendum updated to Closed.
 - ADR 0035 is the next free ADR number after 0034.
 - `cargo xtask test --workspace --summary` is the ONE permitted `cargo test --workspace` run (AC-N1).
 - F re-records via the `#[ignore]`d `record_*` functions; NEVER read the big JSONs directly.

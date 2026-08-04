@@ -1,13 +1,13 @@
 # Task Map: 177-arachne-baselines-to-structural-invariants
 
 This packet has no `docs/07_implementation_status.md` task IDs. It is an
-audit-driven remediation sourced from `D-112-SELFCAPTURED-BASELINES` in
+audit-driven remediation sourced from `self-captured Arachne baselines` in
 `docs/DEVIATION_LOG.md`; no `TASK-###` is invented.
 
 Verify the deviation at point of use:
 
 ```text
-rg -n 'D-112-SELFCAPTURED-BASELINES' docs/DEVIATION_LOG.md
+! rg -q '^\| self-captured Arachne baselines ' docs/DEVIATION_LOG.md && rg -q '^\| D-109-SELF-CAPTURED-FIXTURES ' docs/DEVIATION_LOG.md
 ```
 
 | Backlog source | Packet step | Primary evidence | Expected surface | Context cost |

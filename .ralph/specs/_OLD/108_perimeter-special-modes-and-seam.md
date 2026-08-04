@@ -39,7 +39,7 @@ After P105 lands the wall-emission geometry stack, three wall-count override mec
 The seam quality work has two halves:
 
 1. **Sharp-corner threshold (T-080..T-083)**: current modules push **every wall vertex** as a seam candidate. For a 100-vertex polygon, that's 100 candidates per layer-region. Seam-placer's scoring runs over all of them. Replacing with an angle-threshold (only corners with turn-angle ≥ ~30°) reduces candidates ~25× on typical shapes.
-2. **Painted seam consumption (T-P98-SEAM, inherited)**: P98 decoded `paint_seam` sub-facet strokes into `SeamEnforcer`/`SeamBlocker` semantics in `boundary_paint`, but no live module reads them (`D-98-SEAM-NO-CONSUMER`). This packet wires the consumer: enforcer regions bias seam-candidate selection toward enclosed vertices; blocker regions exclude enclosed vertices.
+2. **Painted seam consumption (T-P98-SEAM, inherited)**: P98 decoded `paint_seam` sub-facet strokes into `SeamEnforcer`/`SeamBlocker` semantics in `boundary_paint`, but no live module reads them (`painted-seam consumer gap`). This packet wires the consumer: enforcer regions bias seam-candidate selection toward enclosed vertices; blocker regions exclude enclosed vertices.
 
 T-077 (`extra_perimeters_on_overhangs`) is a real consumer in this packet — its data-flow preconditions (P104 stub accessor + P106 PrePass-side `xy_footprint` population + P107 view-accessor confirmation) all ship before this packet runs. The config key is registered and the consumer code path adds one extra perimeter inside `region.overhang_areas()` polygons when enabled.
 

@@ -41,7 +41,7 @@ wide regions). The `BeadingStrategy` trait (`beading/mod.rs:64-108`) lacks
 entirely — N3 (and N8) require a trait extension. (Note: `wall_transition_angle`
 already exists on the trait at `mod.rs:93`; B must not add a duplicate.)
 
-This packet supersedes `D-112-PROPAGATION-ADAPT` for the transition machinery;
+This packet supersedes `interim propagation adaptation` for the transition machinery;
 A1/A2's junction generation and emission remain canonical and untouched.
 
 ## Architecture Constraints

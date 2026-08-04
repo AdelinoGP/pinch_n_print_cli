@@ -47,10 +47,10 @@ polygon, and reproduced even for a bare 10mm square (the existing
 mis-diagnosis traces to packet 113b's OrcaSlicer-read-delegation protocol: its `makeRib`
 dispatch asked for a SUMMARY of the callee's ~30-line body in isolation, never
 `constructFromPolygons`'s caller loop — the single fact (called after every edge, not just at
-corners) that would have caught this. `docs/DEVIATION_LOG.md`'s `D-112-MMU-TOPOLOGY` and
-`D-113B-CONNECTJUNCTIONS` entries both show `Closed`, but neither closure touched graph
-construction: `D-112-MMU-TOPOLOGY`'s 11th-pass closure was a test-harness realignment (gcode
-header re-pairing to eliminate a sampling-aliasing artifact); `D-113B-CONNECTJUNCTIONS`'s
+corners) that would have caught this. `docs/DEVIATION_LOG.md`'s `interim MMU topology` and
+`interim junction connection` entries both show `Closed`, but neither closure touched graph
+construction: `interim MMU topology`'s 11th-pass closure was a test-harness realignment (gcode
+header re-pairing to eliminate a sampling-aliasing artifact); `interim junction connection`'s
 closure was the central-only domain-walk generalization now proven insufficient (breaks at
 every rib). This packet replaces the graph-construction and junction-connection layer with a
 faithful port of the real algorithm, re-validates every downstream Arachne stage against the
@@ -114,7 +114,7 @@ new graph shape, and corrects the deviation-log record.
   convenience — `getQuadMaxRedgeTo` operates within one such short quad per iteration, not
   across a whole domain.
 - Fixture re-baselining across Steps 5-9 is accepted as self-captured regression-locking, per
-  the established `D-112-SELFCAPTURED-BASELINES`/`D-109-SELF-CAPTURED-FIXTURES` precedent — no
+  the established `self-captured Arachne baselines`/`D-109-SELF-CAPTURED-FIXTURES` precedent — no
   OrcaSlicer binary exists to validate output against. The algorithm-faithfulness criterion is
   asserted via direct OrcaSlicer code references and the invariant suite (AC-8), not output
   match.
@@ -147,6 +147,6 @@ new graph shape, and corrects the deviation-log record.
   explicitly scoped to check this, not just re-run existing tests.
 - **Deviation log supersession pattern is new to this project** (prior packets always closed
   in place). Mitigation: documented explicitly in `packet.spec.md`'s Doc Impact Statement and
-  this design.md, so a future reader understands why `D-112-MMU-TOPOLOGY`/
-  `D-113B-CONNECTJUNCTIONS` still show `Closed` with a pointer forward, rather than being
+  this design.md, so a future reader understands why `interim MMU topology`/
+  `interim junction connection` still show `Closed` with a pointer forward, rather than being
   edited to `Reopened`.

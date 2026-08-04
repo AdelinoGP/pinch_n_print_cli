@@ -3,13 +3,13 @@
 ## Packet Metadata
 
 - Grouped task IDs: `TASK-307`
-- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `DEV-085`, tranche T3 (referenced by identity — row numbers rot), split 3 of 3; registered in `docs/07_implementation_status.md` by this packet
+- Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` the Packet Queue entry for `custom-G-code injection deviation`, tranche T3 (referenced by identity — row numbers rot), split 3 of 3; registered in `docs/07_implementation_status.md` by this packet
 - Packet status: `draft`
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-Packets 186 and 187 close the placeholder-engine half of `DEV-085` and the layer-scoped injection points. Six canonical points remain that PnP's pipeline **can** reach, and five that it **cannot**. This packet lands the six and files the five as residuals with measured evidence, so `DEV-085` closes honestly rather than by declaring a feature complete that is not.
+Packets 186 and 187 close the placeholder-engine half of `custom-G-code injection deviation` and the layer-scoped injection points. Six canonical points remain that PnP's pipeline **can** reach, and five that it **cannot**. This packet lands the six and files the five as residuals with measured evidence, so `custom-G-code injection deviation` closes honestly rather than by declaring a feature complete that is not.
 
 **Reachability was determined against this tree, point by point, before this packet was written.** The evidence is recorded here so a reviewer does not have to re-derive it:
 
@@ -41,7 +41,7 @@ Packets 186 and 187 close the placeholder-engine half of `DEV-085` and the layer
 - Declare the six new keys in `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`, each `type = "string"`, `default = ""`, `group = "Machine G-code"`.
 - Add the **ten** tests named by AC-3 through AC-8, AC-19, AC-20, AC-N1 and AC-N2: **eight** module-level tests in `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` (AC-3, AC-4, AC-5, AC-6, AC-19, AC-20, AC-N1, AC-N2 — the enumeration in `design.md` §Code Change Surface is authoritative and names each function), plus AC-7's `integration`-bucket pin and AC-8's `executor`-bucket pin. An earlier draft of this line stopped at "AC-3 through AC-8 and AC-N1, AC-N2", silently dropping AC-19's and AC-20's tests — the two that pin the `layer_num` value asymmetry and the `s_CustomGcodeSpecificPlaceholders` third drift.
 - Add a `config_overrides`-accepting sibling of `slice_fixture_file` in `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` so AC-8 can drive a four-tool slice with a custom `change_filament_gcode`; the existing `slice_fixture_file` keeps passing an empty `config_overrides` map.
-- Extend `docs/15_config_keys_reference.md`'s injection-point section to eleven points plus an explicit "not implemented, and why" list; regenerate the `module-config-keys` block; file two new residual `DEV-###` rows; flip `DEV-085` to `Closed` citing all three task IDs; register `TASK-307`.
+- Extend `docs/15_config_keys_reference.md`'s injection-point section to eleven points plus an explicit "not implemented, and why" list; regenerate the `module-config-keys` block; file two new residual `DEV-###` rows; preserve the deleted aggregate custom-G-code label's absence; register `TASK-307`.
 
 ## Out of Scope
 
@@ -57,7 +57,7 @@ Packets 186 and 187 close the placeholder-engine half of `DEV-085` and the layer
 
 - `docs/15_config_keys_reference.md` — long; ranged reads only (the injection-point section 187 rewrote, and the `module-config-keys` marker boundaries).
 - `docs/02_ir_schemas.md` — delegated SUMMARY only, for `GCodeCommand::ToolChange`'s fields and the postpass input surface.
-- `docs/DEVIATION_LOG.md` — long; delegate. The `DEV-085` row only, plus a re-derivation of the highest `DEV-###`.
+- `docs/DEVIATION_LOG.md` — long; delegate. The surviving `DEV-103`/`DEV-104`/`DEV-105` custom-G-code residual rows only, plus a re-derivation of the highest `DEV-###`.
 - `docs/07_implementation_status.md` — always delegate.
 
 <!-- snippet: orca-delegation -->
@@ -80,7 +80,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` through `AC-20`. Change-proving: `AC-1` through `AC-8`, `AC-13`, `AC-14` (row clauses), `AC-15`, `AC-16`, `AC-17`, `AC-18`, `AC-19` and `AC-20`. Explicit do-not-regress guards: `AC-9`, `AC-10`, `AC-11`, `AC-12`, and `AC-14`'s `gen-config-docs --check` half. Every criterion is now classified: an earlier draft claimed "Positive: AC-1 through AC-20" while leaving `AC-19` and `AC-20` out of both lists, which is how they also ended up with no step-level verification command.
 - Negative: `AC-N1` (`max_layer_z` at a role site remains verbatim, the run returns `Ok`, and one warning names the key and site — proves the per-option sets are transcribed, not unioned), `AC-N2` (`next_extruder` at `filament_start_gcode` remains verbatim, the run returns `Ok`, and one warning names the key and site — proves the two toolchange-adjacent sites do not share one set), `AC-N3` (a **must-stay-absent** guard, already green today: none of the five unreachable points may be declared or registered).
-- Cross-packet impact: this packet closes `DEV-085` and files two new residual rows. Nothing downstream consumes new symbols from it; the `InjectionSite` variants it adds are terminal for this trilogy.
+- Cross-packet impact: this packet files two new residual rows and completes the custom-G-code trilogy's post-purge ledger. Nothing downstream consumes new symbols from it; the `InjectionSite` variants it adds are terminal for this trilogy.
 
 ## Verification Commands
 
@@ -105,7 +105,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only the three gat
 - `cargo xtask gen-config-docs` must run **after** the manifest edit and **before** the AC-13/AC-14 probes.
 - Both residual `DEV-###` IDs are ledger facts: re-derive each at the moment of writing, and note that filing the first one changes the answer for the second. `TASK-307` is already allocated to this packet and must not be re-derived.
 - Packets 186 and 187 must both be `implemented` before this packet's Step 1. If either is still `draft`, stop — do not reimplement their surfaces here.
-- `DEV-085` may only be flipped to `Closed` **after** both residual rows exist, so the log never contains a closed row whose remainder is untracked.
+- The deleted aggregate custom-G-code row must remain absent **after** both new residual rows exist, so the post-purge log never loses an accepted remainder or recreates a retired row.
 
 ## Context Discipline Notes
 

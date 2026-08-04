@@ -17,7 +17,7 @@ task_ids:
 
 Land the M2 foundations layer for real Arachne: write ADR-0023 (D-7 is already CLOSED in the roadmap — the ADR documents the crate selection decision that closes it), add `slicer_core::voronoi` as the Orca-shaped wrapper around boostvoronoi, port `SkeletalTrapezoidationGraph` (half-edge graph storing per-edge R-values), discretize parabolic Voronoi edges to line segments, port the 9-stage Arachne input pre-processing pipeline from `WallToolPaths.cpp:590-604` (including the T-P96-E per-color boundary-level MMU dedup), and CREATE the new `arachne-perimeters/` core-module skeleton (new directory, manifest, empty `LayerModule` impl) with `incompatible-with = ["com.core.classic-perimeters"]`.
 
-**Predecessor P108 (`status: implemented`) already deleted the old fake `arachne-perimeters/`** (the 512-line iterative-inset approximation, removed under D-110-DROP-VARIABLE-WIDTH; `modules/core-modules/arachne-perimeters/` is confirmed absent from the tree). P110/T-205 creates the real-Arachne skeleton FRESH in that now-empty path — this is NOT an edit of an existing module. Real wire-up of `run_perimeters` against the new slicer-core modules is P112's job (T-230).
+**Predecessor P108 (`status: implemented`) already deleted the old fake `arachne-perimeters/`** (the 512-line iterative-inset approximation, removed under fake-Arachne rename decision; `modules/core-modules/arachne-perimeters/` is confirmed absent from the tree). P110/T-205 creates the real-Arachne skeleton FRESH in that now-empty path — this is NOT an edit of an existing module. Real wire-up of `run_perimeters` against the new slicer-core modules is P112's job (T-230).
 
 ## Problem Statement
 

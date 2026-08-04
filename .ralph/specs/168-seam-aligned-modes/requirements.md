@@ -22,7 +22,7 @@ Architecture constraint discovered during grounding: per-layer modules are re-in
 - Replace `run_seam_planning`'s MVP layer enumeration (hardcoded `layer_height = 0.2`, `clamp(1, 100)` at `modules/core-modules/seam-planner-default/src/lib.rs:216-226`) with real layer indices/z from the new layer-plan parameter.
 - `seam-placer` consumption path for `Aligned` / `AlignedBack`: prefer the host-injected `resolved_seam` (the planner's chained choice) over local candidate re-selection, snapping it to the nearest `seam_candidates()` position (fallback: nearest wall-loop vertex when the candidate list is empty) before rotation. This also closes the known exact-match gap noted at `lib.rs:210-214` for the aligned modes.
 - Tests: new `seam_aligned_mode_tdd.rs` (seam-placer) and `seam_aligned_planning_tdd.rs` (seam-planner-default) fixtures per the ACs; keep all existing suites green.
-- Docs: `docs/03_wit_and_manifest.md` signature update, `docs/15_config_keys_reference.md` value list, `docs/DEVIATION_LOG.md` row `D-168-SEAM-PREPASS-SOURCE`, new `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`.
+- Docs: `docs/03_wit_and_manifest.md` signature update, `docs/15_config_keys_reference.md` value list, `docs/DEVIATION_LOG.md` row `seam source-geometry deviation`, new `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`.
 - Guest WASM rebuild for all affected guests (WIT + SDK + macros changes invalidate every guest).
 
 ## Out of Scope

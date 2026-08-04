@@ -74,7 +74,7 @@ Include ranges for files over 300 lines.
 - `OrcaSlicerDocumented/...` — delegate; never load.
 - `target/`, `Cargo.lock`, generated code, vendored dependencies — never load.
 - `modules/core-modules/overhang-classifier-default/**` — **packet 190's exclusive surface.** This packet adds no consumer. Reading it to understand what will consume the field is acceptable once; editing it is not.
-- `crates/slicer-core/src/algos/overhang_annotation.rs`'s `BAND_BOUNDARY_MULTIPLIERS` and every band-geometry expression — editing them reopens a closed user decision recorded in `DEV-009`. `AC-N2` enforces this with a `git diff --quiet` conjunct.
+- `crates/slicer-core/src/algos/overhang_annotation.rs`'s `BAND_BOUNDARY_MULTIPLIERS` and every band-geometry expression — editing them reopens a closed user decision recorded in the overhang-speed parity record. `AC-N2` enforces this with a `git diff --quiet` conjunct.
 - `crates/slicer-ir/src/slice_ir.rs`'s `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` — packet 189's line.
 - `record seam-point3-with-width` (`crates/slicer-schema/wit/deps/types.wit`) — a different record for a different purpose; see §Data and Contract Notes.
 - `crates/slicer-gcode/**` — no emitter change; this packet has no consumer and must move no G-code.
