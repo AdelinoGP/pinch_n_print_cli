@@ -220,7 +220,7 @@ Files to inspect for this packet:
 | `rg -n 'fn run_infill\(' modules/core-modules/{rectilinear,gyroid,lightning,top-surface-ironing}-infill/src/lib.rs` | AC-3c four-module compile | LOCATIONS (4) |
 | `cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3d WIT drift re-baseline | FACT |
 | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N1 | FACT |
-| `! rg -q 'lightning raw-emit deviation|infill paint-view contract|lightning grounding-search stub' docs/DEVIATION_LOG.md && echo OK` | AC-4 / DEV-137-WIT / D-139 | FACT: retired labels have no surviving ledger rows |
+| `! rg -q 'lightning raw-emit deviation\|infill paint-view contract\|lightning grounding-search stub' docs/DEVIATION_LOG.md && echo OK` | AC-4 (retired lightning raw-emit label) | FACT: retired labels have no surviving ledger rows |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_layer_wall_supporting_radius 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G1 grounding exclusion | FACT |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_tree_continuity 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G2 grounding continuity (no regression) | FACT |
 | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning 2>&1 \| tee target/test-output.log \| grep "^test result"` | Step 0 full lightning suite (Step 0 exit gate) | FACT + counts |

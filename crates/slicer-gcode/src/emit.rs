@@ -373,8 +373,8 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     // changes too (the entity-loop synth at the bottom of this
                     // function only handles intra-layer tool changes recorded
                     // in `layer.tool_changes`; the layer-boundary one here is
-                    // emitted via a separate path). See packet 58 / DEV-054
-                    // follow-up (i).
+                    // emitted via a separate path). See packet 58 tool-rotation
+                    // scheduling contract follow-up (i).
                     if self.resolved_config.wipe_tower_enabled {
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).
@@ -682,7 +682,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         // push a TravelRetract from a finalization-stage module, the
                         // host emitter owns this retract synthesis. Gated on
                         // wipe_tower_enabled so single-material prints are untouched.
-                        // (See packet 58 / DEV-054 follow-up (i).)
+                        // (See packet 58 tool-rotation scheduling contract follow-up (i).)
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).
                             length: self.retract_length_for_tool(tc.from_tool),
@@ -926,7 +926,7 @@ pub fn reconcile_finalization_travel(
 /// Apply cross-layer tool rotation to entity order.
 ///
 /// The WASM path-optimization module always orders entity clusters in ascending
-/// tool order (it cannot carry cross-layer state — see DEV-054 follow-up (iii),
+/// tool order (it cannot carry cross-layer state — see packet 58 tool-rotation scheduling contract follow-up (iii),
 /// H1). This function post-processes `LayerCollectionIR` entries in layer-index
 /// order to rotate each layer's clusters so the first cluster's tool matches the
 /// previous layer's ending tool. This avoids a redundant `T0` tool-change at the
@@ -1026,7 +1026,7 @@ mod tests {
         assert_eq!(emitter.slicer_version(), "1.0.0-test");
     }
 
-    // ── apply_cross_layer_tool_rotation regression tests (packet 58 / DEV-054 (iii)) ──
+    // ── apply_cross_layer_tool_rotation regression tests (packet 58 tool-rotation scheduling contract (iii)) ──
     //
     // The function rotates each layer's first cluster to match the previous
     // layer's ending tool, suppressing redundant T<n> emissions at layer

@@ -212,7 +212,7 @@ fn bead_count_sequence_is_monotonic_within_transition_bounds() {
     // --- Invariant: every assigned bead count is within [0, max_bead_count + 1] ---
     // The +1 accommodates OrcaSlicer's `LimitedBeadingStrategy::getOptimalBeadCount`
     // cap, which returns `max_bead_count + 1` as the "capped" signal when
-    // the parent's uncapped count exceeds the cap (D-105 faithful port).
+    // the parent's uncapped count exceeds the cap (bead-count cap port).
     // `LimitedBeadingStrategy::compute`'s over-cap branch is then responsible
     // for mapping that +1 back to a beading with `max_bead_count` real beads
     // (plus 2 zero-width sentinels at the cap boundary).

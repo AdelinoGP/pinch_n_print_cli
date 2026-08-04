@@ -44,7 +44,7 @@ pub use slicer_ir::ExtrusionRole;
 /// Error returned when the flow formula produces a non-positive spacing —
 /// the Rust analog of canonical `FlowErrorNegativeSpacing` (`Flow.hpp`, a
 /// `Slic3r::InvalidArgument`): canonical throws and the slice aborts with a
-/// config diagnosis, so callers here must treat this as slice-fatal (D-162).
+/// config diagnosis, so callers here must treat this as slice-fatal (the non-positive flow spacing slice-fatal contract).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NegativeSpacingError {
     /// The line width (mm) that was too small.
@@ -83,7 +83,7 @@ impl std::error::Error for NegativeSpacingError {}
 /// as does PnP — manifest `[min, max]` ranges enforced at config resolution).
 ///
 /// Canonical's formula does not reference the nozzle; a former vestigial
-/// `nozzle_diameter` parameter was removed with D-162 so the signature cannot
+/// `nozzle_diameter` parameter was removed with the non-positive flow spacing slice-fatal contract so the signature cannot
 /// re-grow a nozzle clamp unnoticed.
 pub fn line_width_to_spacing(width: f32, layer_height: f32) -> Result<f32, NegativeSpacingError> {
     let pi_minus_quarter = 1.0_f32 - core::f32::consts::PI / 4.0_f32;
@@ -276,8 +276,8 @@ mod tests {
     #[test]
     fn spacing_errors_at_canonicals_actual_threshold() {
         // Canonical throws iff `width - height * (1 - pi/4) <= 0`. For
-        // height = 0.2 that boundary is width = 0.0429. PnP now errors there
-        // (D-162), mirroring the throw — no 0.0 sentinel survives.
+        // height = 0.2 that boundary is width = 0.0429. PnP now errors when
+        // spacing is non-positive, mirroring the canonical throw — no 0.0 sentinel survives.
         let boundary = 0.2 * (1.0 - core::f32::consts::PI / 4.0);
         let err = line_width_to_spacing(boundary, 0.2).unwrap_err();
         assert_eq!(err.width_mm, boundary);
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn zero_or_negative_inputs_error() {
-        // No separate defensive guard (D-162): non-positive width/height
+        // No separate defensive guard: non-positive width/height
         // yields a non-positive spacing, so the single canonical rule rejects
         // them. Config validation upstream (manifest [min,max]) is the real
         // gate, as in canonical.

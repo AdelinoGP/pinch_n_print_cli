@@ -136,7 +136,7 @@ pub fn propagate_top_bottom(
     // `layer_color_stat` lambda):
     //   shell_step = extrusion_spacing + extrusion_width  (inward inset per shell layer)
     //   small_region_threshold ≈ 0.5 · extrusion_width    (opening radius, anti-sliver)
-    // D-162: a non-positive spacing is slice-fatal — canonical calls the
+    // The non-positive flow spacing slice-fatal contract: a non-positive spacing is slice-fatal — canonical calls the
     // throwing `Flow::rounded_rectangle_extrusion_spacing` here, uncaught.
     let width = extrusion_width_mm;
     let spacing = line_width_to_spacing(width, layer_height_mm)

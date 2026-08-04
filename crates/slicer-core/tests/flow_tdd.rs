@@ -4,7 +4,7 @@
 //!
 //! Tests the public `line_width_to_spacing` and `flow_to_width` functions
 //! against the OrcaSlicer formula documented in the module. Updated for
-//! D-162: `line_width_to_spacing` now returns `Result`, erroring exactly
+//! the non-positive flow spacing slice-fatal contract: `line_width_to_spacing` now returns `Result`, erroring exactly
 //! where canonical `Flow::rounded_rectangle_extrusion_spacing` throws
 //! `FlowErrorNegativeSpacing` (iff the result is non-positive), and the
 //! vestigial `nozzle_diameter` parameter is gone.
@@ -49,7 +49,7 @@ fn width_below_layer_height_still_has_positive_spacing() {
 }
 
 /// The error boundary is exactly canonical's throw condition,
-/// `width <= layer_height * (1 - PI/4)` — D-162 replaces the former 0.0
+/// `width <= layer_height * (1 - PI/4)` — the non-positive flow spacing slice-fatal contract replaces the former 0.0
 /// sentinel with `Err(NegativeSpacingError)`.
 #[test]
 fn spacing_errors_at_the_canonical_threshold() {
@@ -62,7 +62,7 @@ fn spacing_errors_at_the_canonical_threshold() {
 }
 
 /// Non-positive width errors under the single canonical rule — no separate
-/// defensive guard (D-162). Zero layer height with a positive width is NOT
+/// defensive guard (the non-positive flow spacing slice-fatal contract). Zero layer height with a positive width is NOT
 /// an error: spacing = width, positive, matching canonical (which relies on
 /// upstream config validation to reject a zero height).
 #[test]

@@ -140,7 +140,7 @@ fn emit_accepts_normal_tool_id() {
 //
 // The sentinel `after_entity_index == u32::MAX` is the established
 // "before entity 0" marker that the entity-loop consumer at `emit.rs:348`
-// uses to schedule a pre-extrusion tool change. See packet 58 / DEV-054 (i).
+// uses to schedule a pre-extrusion tool change. See packet 58 tool-rotation scheduling contract (i).
 
 fn entity_with_tool(tool: u32, role: ExtrusionRole) -> PrintEntity {
     PrintEntity {

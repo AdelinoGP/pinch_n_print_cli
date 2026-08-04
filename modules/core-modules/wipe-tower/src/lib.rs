@@ -226,7 +226,7 @@ impl WipeTower {
                     // flush the old colour. region_id is a pure identity post-split
                     // and is never read as the tool (D-125 invariant).
                     let tool_index = tc.to_tool;
-                    // TODO(packet-41/DEV-047): retire this legacy `process()` path;
+                    // TODO(packet-41): retire this legacy `process()` path;
                     // live path is `run_finalization` which routes through
                     // `push_entity_with_priority(..., WipeTower.default_priority())`.
                     layers[layer_idx].ordered_entities.push(PrintEntity {

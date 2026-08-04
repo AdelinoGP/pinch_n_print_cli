@@ -62,7 +62,7 @@ pub enum PaintSegmentationError {
         value: i64,
     },
     /// The configured extrusion width is too small for the layer height —
-    /// the flow formula produced a non-positive spacing (D-162). Slice-fatal,
+    /// the flow formula produced a non-positive spacing (the non-positive flow spacing slice-fatal contract). Slice-fatal,
     /// mirroring canonical `MultiMaterialSegmentation.cpp`'s uncaught
     /// `FlowErrorNegativeSpacing` throw from `layer_color_stat`.
     NegativeSpacing(crate::flow::NegativeSpacingError),
