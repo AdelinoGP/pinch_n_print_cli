@@ -104,7 +104,7 @@ fn strip_emphasis(cell: &str) -> String {
 ///
 /// Emphasis is stripped first: statuses are routinely written `**Closed …**`,
 /// and matching the raw cell made every bolded closure report as OPEN
-/// (`D-147-CHAIN-CLOSURE` was closed at 0/699 yet appeared in the open map).
+/// (a previously closed Arachne chain-closure record appeared in the open map).
 fn is_open(status: &str) -> bool {
     !strip_emphasis(status)
         .trim_start()
@@ -251,8 +251,8 @@ mod tests {
     #[test]
     fn emphasised_closure_is_still_closed() {
         // Regression: statuses are routinely bolded, and matching the raw cell
-        // made every `**Closed …**` row report as OPEN. D-147-CHAIN-CLOSURE was
-        // closed at 0/699 and still appeared in the generated open map.
+        // made every `**Closed …**` row report as OPEN. A previously closed
+        // Arachne chain-closure record still appeared in the generated map.
         assert!(!is_open(
             "**Closed 2026-07-16 (Arachne Parity Recovery, Track C)**"
         ));
@@ -268,12 +268,12 @@ mod tests {
         let log = "\
 | ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-009 | 2026-04-15 | x | High | **Benchy gap.** more text | owner | TBD | Open |
+| DEV-026 | 2026-04-15 | x | High | **Benchy gap.** more text | owner | TBD | Open |
 | DEV-014 | 2026-04-16 | y | Med | plain rationale here | owner | 2026 | Closed 2026-04-24 |
 ";
         let devs = parse_devs(log).unwrap();
         assert_eq!(devs.len(), 2);
-        assert_eq!(devs[0].id, "DEV-009");
+        assert_eq!(devs[0].id, "DEV-026");
         assert_eq!(devs[0].status, "Open");
         assert_eq!(devs[0].summary, "Benchy gap.");
         assert!(is_open(&devs[0].status));
@@ -287,13 +287,13 @@ mod tests {
         let log = "\
 | ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-009 | 2026-04-15 | x | High | numeric-scheme row | owner | TBD | Open |
-| D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH | 2026-07-16 | y | High | slug-scheme row | owner | TBD | Open |
+| DEV-026 | 2026-04-15 | x | High | numeric-scheme row | owner | TBD | Open |
+| D-163-ARACHNE-BRIDGE-ROLE-CONVERSION-EXEMPTION | 2026-07-16 | y | High | slug-scheme row | owner | TBD | Open |
 | D-147-STITCH-GAP | 2026-07-16 | z | Med | closed slug row | owner | — | Closed — 2026-07-16 |
 ";
         let devs = parse_devs(log).unwrap();
         assert_eq!(devs.len(), 3, "both id schemes must parse");
-        assert_eq!(devs[1].id, "D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH");
+        assert_eq!(devs[1].id, "D-163-ARACHNE-BRIDGE-ROLE-CONVERSION-EXEMPTION");
         assert_eq!(devs[1].summary, "slug-scheme row");
         assert_eq!(
             devs.iter().filter(|d| is_open(&d.status)).count(),
@@ -304,10 +304,10 @@ mod tests {
 
     #[test]
     fn id_schemes_are_disjoint_so_rows_count_once() {
-        assert!(is_deviation_row("| DEV-009 | ..."));
+        assert!(is_deviation_row("| DEV-026 | ..."));
         assert!(is_deviation_row("| D-160-FOO | ..."));
         // `| DEV-` must not also satisfy the `| D-` arm.
-        assert!(!"| DEV-009 | ...".starts_with("| D-"));
+        assert!(!"| DEV-026 | ...".starts_with("| D-"));
         assert!(!is_deviation_row("| ID | Date |"));
         assert!(!is_deviation_row("| --- | --- |"));
     }
@@ -347,8 +347,8 @@ mod tests {
     #[test]
     fn splice_replaces_between_markers() {
         let doc = format!("intro\n\n{BEGIN}\nstale\n{END}\n\noutro\n");
-        let out = splice(&doc, "- **DEV-009** (Open) — gap\n").unwrap();
-        assert!(out.contains(&format!("{BEGIN}\n- **DEV-009** (Open) — gap\n{END}")));
+        let out = splice(&doc, "- **DEV-026** (Open) — gap\n").unwrap();
+        assert!(out.contains(&format!("{BEGIN}\n- **DEV-026** (Open) — gap\n{END}")));
         assert!(out.starts_with("intro"));
         assert!(out.trim_end().ends_with("outro"));
         assert!(!out.contains("stale"));
