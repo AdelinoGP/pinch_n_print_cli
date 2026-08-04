@@ -1109,7 +1109,7 @@ impl ClassicPerimeters {
 
         // Seam candidates belong to the outer wall (the shared-perimeter pass).
         //
-        // Packet 108 (T-P98-SEAM, D-108-SEAM-CONSUMED): consume painted
+        // Packet 108 (T-P98-SEAM): consume painted
         // `seam_enforcer`/`seam_blocker` semantics at candidate-generation
         // time. Outer-wall vertex ordering/count is preserved from the
         // original region contour (see `build_wall_flags` doc comment), so
@@ -1137,7 +1137,7 @@ impl ClassicPerimeters {
 
         // Only the inner/infill pass owns the infill region. Inset the innermost
         // wall by Flow spacing (not raw line width) per canonical process_classic.
-        // D-105-FLOW-NOT-WIRED: keep this final-boundary path spacing-derived.
+        // Keep this final-boundary path spacing-derived.
         if emit_inner && !current_polygons.is_empty() {
             let infill_inset = (line_width_to_spacing(inner_wall_line_width, layer_height)
                 .unwrap_or(inner_wall_line_width)
@@ -1248,8 +1248,7 @@ impl ClassicPerimeters {
 }
 
 /// Extract small "coverage" boxes around outer-wall vertices painted with
-/// `semantic_name` (packet 108: `seam_enforcer` / `seam_blocker` consumption,
-/// D-108-SEAM-CONSUMED).
+/// `semantic_name` (packet 108: `seam_enforcer` / `seam_blocker` consumption).
 ///
 /// `segment_annotations` values live at `PaintSemantic::Custom(semantic_name)`,
 /// indexed `[poly_idx][vertex_idx]` against the ORIGINAL region contour;

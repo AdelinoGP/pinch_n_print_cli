@@ -28,7 +28,7 @@
 //!    the raw waves; packet 133, TASK-258)
 //! 7. Convert to ExtrusionPath3D with the role chosen by the dispatcher
 //!    (`SparseInfill` for sparse-fill; `Top/Bottom/BridgeSolidInfill` when
-//!    the dispatcher explicitly routes those claims to gyroid — DEV-082 opt-in)
+//!    the dispatcher explicitly routes those claims to gyroid — opt-in)
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]

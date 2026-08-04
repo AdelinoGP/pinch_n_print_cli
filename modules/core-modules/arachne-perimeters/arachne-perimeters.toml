@@ -2,7 +2,7 @@
 id           = "com.core.arachne-perimeters"
 version      = "0.1.0"
 display-name = "Arachne Perimeters"
-description  = "Arachne variable-width perimeter generator. Produces perimeter walls via the Arachne/WallToolPaths pipeline (skeletal-trapezoidation graph + beading-strategy stack); selected when wall_generator = \"arachne\" (default \"classic\", see D-112-WALL-GENERATOR-SELECT). Claim-holds Layer::Perimeters and is incompatible with com.core.classic-perimeters."
+description  = "Arachne variable-width perimeter generator. Produces perimeter walls via the Arachne/WallToolPaths pipeline (skeletal-trapezoidation graph + beading-strategy stack); selected when wall_generator = \"arachne\" (default \"classic\", see the wall-generator selection contract). Claim-holds Layer::Perimeters and is incompatible with com.core.classic-perimeters."
 author       = "modular-slicer"
 license      = "MIT"
 

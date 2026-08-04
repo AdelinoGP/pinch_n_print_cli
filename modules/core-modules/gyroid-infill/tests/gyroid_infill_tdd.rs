@@ -6,7 +6,7 @@
 //! - Snaps `bb.min` to a `2π × scale_factor` grid via `align_to_grid` for
 //!   phase coherence across adjacent layers
 //! - Uses a 10 × spacing_mm generation-bbox expansion
-//! - Holds 4 fill claims (sparse, top, bottom, bridge) per ADR-0027/DEV-082;
+//! - Holds 4 fill claims (sparse, top, bottom, bridge) per ADR-0027;
 //!   the dispatcher only routes a non-sparse role to gyroid when the user
 //!   explicitly sets the corresponding `*_fill_holder` key to gyroid-infill
 //!

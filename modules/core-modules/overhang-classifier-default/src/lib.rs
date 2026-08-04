@@ -14,7 +14,7 @@
 // -----------------------------------------------------------------------------
 //! Consumer of the per-vertex `overhang_quartile` annotation written by the
 //! upstream PrePass::OverhangAnnotation pipeline (ADR-0031, packet 106), plus
-//! self-contained curled-edge slowdown (DEV-009): applies speed-factor
+//! self-contained curled-edge slowdown: applies speed-factor
 //! mutations to wall entities on overhangs and near previously-curled wall
 //! geometry.
 //!
