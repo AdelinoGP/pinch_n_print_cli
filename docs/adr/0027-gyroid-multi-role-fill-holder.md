@@ -61,7 +61,7 @@ divergence from OrcaSlicer, not a port bug.
    The `solid_fill_role` mapping (depth-0 = exposed Top/BottomSolidInfill,
    deeper = InternalSolidInfill) already handles the shell-depth distinction.
 
-4. **A DEVIATION_LOG entry (DEV-082) records this as a deliberate divergence**
+4. **A DEVIATION_LOG entry records this as a deliberate divergence**
    from OrcaSlicer. The divergence is opt-in: default config matches OrcaSlicer
    (gyroid sparse-only); the user must explicitly configure multi-role to
    activate it.
@@ -81,7 +81,7 @@ divergence from OrcaSlicer, not a port bug.
 - Diverges from OrcaSlicer parity. A user comparing PnP gyroid output to
   OrcaSlicer gyroid output under the same density/angle will see different
   solid-shell geometry if multi-role is configured. Documented in
-  DEV-082 so the divergence is not mistaken for a bug.
+  the deviation record so the divergence is not mistaken for a bug.
 - Gyroid solid shells are not 100% dense (the wave pattern leaves gaps at the
   surface). For top/bottom surfaces where optical finish matters, this
   produces a wavy surface instead of a smooth one. The user is responsible for
@@ -101,7 +101,7 @@ divergence from OrcaSlicer, not a port bug.
 ## Future-Reviewer Notes
 
 - **Do not remove the top/bottom/bridge emission from gyroid-infill "to match
-  OrcaSlicer."** It is a deliberate opt-in user option (ADR-0027 + DEV-082).
+  OrcaSlicer."** It is a deliberate opt-in user option (ADR-0027).
   Removing it closes the option. If OrcaSlicer adds a similar option later, the
   divergence closes naturally; until then, PnP offers it.
 - **Do not change the default fill-holder config** to point solid roles at
@@ -113,7 +113,7 @@ divergence from OrcaSlicer, not a port bug.
 ## References
 
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` — Architecture A (modules emit raw; the gyroid rewrite follows this).
-- `docs/DEVIATION_LOG.md` — DEV-082 (this divergence).
+- `docs/DEVIATION_LOG.md` — this deliberate divergence.
 - `modules/core-modules/gyroid-infill/gyroid-infill.toml:21` — current single claim.
 - `modules/core-modules/gyroid-infill/src/lib.rs:180-210` — existing multi-role emission (currently dead).
 - `crates/slicer-sdk/src/views.rs:466-482` — `should_emit` held-claim gate.

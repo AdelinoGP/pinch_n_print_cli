@@ -110,7 +110,7 @@ They are not bugs; they are the PnP architecture.
   The user's task is "rectilinear-infill" and "gyroid-infill" only.
 - **Lightning-infill rewrite.** Lightning-infill (out of parity scope) currently
   self-links. Under Architecture A it should switch to raw emit, but that is a
-  separate follow-up packet. Transitional state tracked in DEV-081.
+  separate follow-up packet. Transitional state is tracked as a known gap.
 - **`multiline_fill`.** Multi-extrusion / density > 100% offset. Low priority;
   only affects `fill_multiline > 1`. Deferred.
 - **`fill_surface_trapezoidal`.** Experimental Orca-specific trapezoidal infill.
@@ -659,9 +659,9 @@ until E lands. Flag this in the packet plan.
    rectilinear-infill so adjacent layers' segments interleave; the linker connects what it
    receives.
 
-5. **Lightning-infill (DEV-081) — RESOLVED: full parity in-roadmap.** The roadmap includes
+5. **Lightning-infill — RESOLVED: full parity in-roadmap.** The roadmap includes
    full OrcaSlicer lightning parity (ADR-0029, `docs/specs/lightning-infill-parity.md`,
-   packets 137–140); DEV-081 closes at packet 140. Note: the pass-through premise below was
+   packets 137–140); the lightning gap closes at packet 140. Note: the pass-through premise below was
    found weaker than written — paths carry no module identity, so the linker cannot detect
    already-linked output; the raw-emit conversion is the real fix.
 
@@ -684,7 +684,7 @@ until E lands. Flag this in the packet plan.
 - **Linker is required infrastructure.** Every print degrades to raw infill
   without it. The default config MUST include it. Forgetting this is a
   user-visible regression.
-- **Lightning-infill inconsistency.** Transitional; tracked in DEV-081. Not a
+- **Lightning-infill inconsistency.** Transitional; tracked as a known gap. Not a
   blocker for this effort.
 - **Test churn.** Existing tests asserting on linked output from `run_infill`
   modules break. The survey (Phase 5) must be thorough.

@@ -1,9 +1,9 @@
-# Proposal — Fail Loudly on Negative Flow Spacing (D-162)
+# Proposal — Fail Loudly on Negative Flow Spacing
 
 **Status: IMPLEMENTED 2026-07-17** (grilled and approved; implemented directly
 rather than via a packet — user decision). Written 2026-07-16 at the close of
-the D-160 fix session. Ledger row: `D-162-FLOW-NEGATIVE-SPACING-SILENT-ZERO`
-(now Closed). Deltas from the proposal as written: the new e2e test uses
+the wall-width fix session. The corresponding ledger row is closed. Deltas from
+the proposal as written: the new e2e test uses
 0.1mm walls at 1.0mm layer height (both inside manifest `[min,max]` ranges —
 the proposed 2.0mm layer height exceeds the arachne manifest's 1.0 max and
 would be rejected at config resolution before reaching the flow math); the

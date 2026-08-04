@@ -17,7 +17,7 @@ brokenness.** Every pre-existing Arachne parity fixture was a *self-captured
 baseline* — a snapshot of PnP's own prior output, recorded because this
 environment has no OrcaSlicer binary to capture reference output from
 (`docs/DEVIATION_LOG.md` rows `D-109-SELF-CAPTURED-FIXTURES` and
-`D-112-SELFCAPTURED-BASELINES`). A self-captured snapshot regression-locks
+the self-captured-baseline record). A self-captured snapshot regression-locks
 PnP's *own current output*: green means "unchanged from the snapshot," never
 "correct." A visibly broken pipeline can therefore sit behind a 100%-green
 board.
@@ -209,14 +209,14 @@ artifact; present in one and absent in the other = real defect).
   exactly the failure mode this ADR documents three instances of.
 - `docs/DEVIATION_LOG.md` row `D-109-SELF-CAPTURED-FIXTURES` remains an
   open/accepted-limitation record of the underlying no-OrcaSlicer-binary
-  constraint. `D-112-SELFCAPTURED-BASELINES` records the replacement of its 19
-  JSON oracles by the measured structural corpus above; its status remains open
-  until the packet gate verifies the runtime corpus.
+   constraint. The companion record describes the replacement of its 19 JSON
+   oracles by the measured structural corpus above; its status remains open until
+   the packet gate verifies the runtime corpus.
 
 ## Future reviewers
 
 - If an OrcaSlicer reference-capture environment ever becomes available in
-  this build environment (the blocker cited by D-109/D-112), that changes the
+  this build environment (the blocker cited by the self-captured-fixture records), that changes the
   self-captured-baseline calculus but does **not** by itself revive
   absolute-numeric fixtures as an automated basis — the coordinate-system
   divergence and the Z-sampling-plane offset (D3) are independent obstacles

@@ -7,7 +7,8 @@ expanded the infill-parity roadmap to full OrcaSlicer lightning parity (user dec
 replacing the 512-LOC single-layer stub in `modules/core-modules/lightning-infill/` with the
 canonical cross-layer algorithm. Architecture: ADR-0029 — a host-side
 `PrePass::LightningTreeGen` producer builds `LightningTreeIR`; the per-layer module samples it
-and emits raw polylines for the infill-linker (ADR-0025). Closes DEV-081.
+and emits raw polylines for the infill-linker (ADR-0025). Closes the lightning
+transitional gap.
 
 Packet mapping: `137_lightning-prepass-contract` (Phase L1), `138_lightning-distancefield-treenode`
 (Phase L2), `139_lightning-layer-generator` (Phase L3), `140_lightning-module-rewrite` (Phase L4).
@@ -77,7 +78,7 @@ Packet mapping: `137_lightning-prepass-contract` (Phase L1), `138_lightning-dist
   L1 view, emit raw branch polylines (`ExtrusionPath3D`, SparseInfill role, speed factor from
   config). Delete `build_branches` self-linking and the grid sampler. No clipping (linker
   re-clips), no chaining (linker connects).
-- Close DEV-081 in `docs/DEVIATION_LOG.md`.
+- Close the lightning transitional gap in `docs/DEVIATION_LOG.md`.
 - Contained golden re-bless for lightning-bearing fixtures (the roadmap's main bless happened
   at packet 136).
 

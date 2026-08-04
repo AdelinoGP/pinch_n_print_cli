@@ -2,13 +2,13 @@
 
 ## Status
 
-Accepted (2026-07-05). Formalizes a pattern that already shipped twice without a decision record: `medial-axis` (pre-existing) and `generate-arachne-walls` (packet 112, `D-112-HOSTSVC-BRIDGE`). Written retroactively — see "Context" for why.
+Accepted (2026-07-05). Formalizes a pattern that already shipped twice without a decision record: `medial-axis` (pre-existing) and `generate-arachne-walls` (packet 112). Written retroactively — see "Context" for why.
 
 ## Context
 
 Some algorithms a WASM guest module needs (Voronoi construction via `boostvoronoi`, parallelism via `rayon`) are gated behind `slicer-core`'s `host-algos` Cargo feature (`crates/slicer-core/Cargo.toml`: `host-algos = ["dep:rayon", "dep:boostvoronoi"]`) because those dependencies do not compile to `wasm32` at all. A guest module (compiled to `wasm32-wasip1` or similar) can never link `slicer-core` with `host-algos` enabled — the dependency graph simply does not build for that target.
 
-Packet 112 (Arachne extrusion generation) needed exactly this: `arachne-perimeters` is a WASM guest module, but the real wall-generation pipeline (`slicer_core::arachne::pipeline::run_arachne_pipeline`) depends on `SkeletalTrapezoidationGraph::from_polygons`, which depends on `boostvoronoi`. Packet 112's original design assumed an in-guest call chain (`arachne-perimeters` calling `slicer-core` functions directly); this was infeasible for the reason above, discovered during implementation and recorded as `D-112-HOSTSVC-BRIDGE` in `docs/DEVIATION_LOG.md`. The fix mirrored an existing, undocumented instance of the same shape: `medial-axis` (`crates/slicer-schema/wit/deps/common.wit:21`, host impl at `crates/slicer-wasm-host/src/host.rs:1738`, guest-callable SDK wrapper at `crates/slicer-sdk/src/host.rs:310`) already bridges host-only geometry work (also gated by `host-algos`) across the WIT boundary the same way. Neither instance had an ADR; this one exists so a third instance doesn't repeat the pattern without a citable rationale.
+Packet 112 (Arachne extrusion generation) needed exactly this: `arachne-perimeters` is a WASM guest module, but the real wall-generation pipeline (`slicer_core::arachne::pipeline::run_arachne_pipeline`) depends on `SkeletalTrapezoidationGraph::from_polygons`, which depends on `boostvoronoi`. Packet 112's original design assumed an in-guest call chain (`arachne-perimeters` calling `slicer-core` functions directly); this was infeasible for the reason above, discovered during implementation and recorded in `docs/DEVIATION_LOG.md`. The fix mirrored an existing, undocumented instance of the same shape: `medial-axis` (`crates/slicer-schema/wit/deps/common.wit:21`, host impl at `crates/slicer-wasm-host/src/host.rs:1738`, guest-callable SDK wrapper at `crates/slicer-sdk/src/host.rs:310`) already bridges host-only geometry work (also gated by `host-algos`) across the WIT boundary the same way. Neither instance had an ADR; this one exists so a third instance doesn't repeat the pattern without a citable rationale.
 
 ## Decision
 
@@ -31,7 +31,7 @@ This keeps the guest module's build graph clean (no dead `host-algos`-only deps 
 
 - Any future guest-side need for `host-algos`-gated computation (or any other host-only dependency) should follow this same four-layer shape (WIT func → host impl delegating to the native crate → SDK `cfg`-split wrapper → guest calls the wrapper only) rather than re-deriving an ad-hoc bridge.
 - `docs/03_wit_and_manifest.md`'s `host-services` interface listing now documents both `medial-axis` and `generate-arachne-walls` (previously undocumented for both — this ADR's own trigger).
-- `D-112-HOSTSVC-BRIDGE` in `docs/DEVIATION_LOG.md` should be read alongside this ADR: the deviation records *that* the in-guest design was infeasible and the bridge was the fix; this ADR records the *reusable pattern* the fix established.
+- The corresponding host-service bridge entry in `docs/DEVIATION_LOG.md` should be read alongside this ADR: the deviation records *that* the in-guest design was infeasible and the bridge was the fix; this ADR records the *reusable pattern* the fix established.
 - No `Cargo.toml` changes are required by this ADR — the feature-gating structure it documents (`host-algos` unconditional in `slicer-wasm-host`, conditional-on-native in `slicer-sdk`, absent from guest modules that only need bridged access) already exists exactly as described.
 
 ## Future reviewers

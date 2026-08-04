@@ -191,7 +191,7 @@ Two claims in this ADR were sharpened by the 2026-07-01 grilling against the cod
 
 2. **Lightning-infill is no longer a transitional exception.** The roadmap now includes full
    OrcaSlicer lightning parity (ADR-0029: `PrePass::LightningTreeGen` + `LightningTreeIR` +
-   module rewrite to raw emit), closing DEV-081 inside this effort (packet
+   module rewrite to raw emit), closing the lightning transitional gap inside this effort (packet
    `140_lightning-module-rewrite`). Until that packet lands, the transitional note in
    §Consequences stands — but note the pass-through premise is weaker than written: paths
    carry no module identity (`ExtrusionPath3D` has no origin field), so the linker cannot
@@ -302,8 +302,8 @@ loop's `candidates.sort_by` keyed on `endpoint_order(first)` with distance only
 as a tiebreak; that pre-fix behavior was lexicographic-by-endpoint rather than
 shortest-first. The implementation now replaces that loop with a distance-first
 single pass over sorted candidates with a consumed-endpoint guard, so shorter
-arcs claim their endpoints first. DEV-089 records the pre-fix behavior and the
-fix precisely.
+arcs claim their endpoints first. The deviation log records the pre-fix behavior
+and the fix precisely.
 
 The two module keys, `infill_anchor` and `infill_anchor_max`, are declared as
 float-or-percent values and resolved against extrusion-flow spacing. Solid and
@@ -318,8 +318,8 @@ move from this packet are recorded in `docs/DEVIATION_LOG.md`:
   (`could_take_prev`, `could_take_next`, `trim_prev`, and `trim_next`) is not
   ported; PnP clamps the stub to the next boundary position and consequently
   consumes both endpoints where canonical can leave one unconsumed.
-- `DEV-111` — `parse_percent_default` parses `"400%"` into
-  `ConfigValue::FloatOrPercent`, retained on `ConfigFieldEntry.parsed_default`
+- The percent-form transport finding — `parse_percent_default` parses `"400%"`
+  into `ConfigValue::FloatOrPercent`, retained on `ConfigFieldEntry.parsed_default`
   and injected via the scheduler's schema-default threading (Packet 185 /
   TASK-303) into `ResolvedConfig.extensions` and hence the runtime
   `ConfigView`, so `get_abs_value` can take its percent arm against the
@@ -329,9 +329,9 @@ move from this packet are recorded in `docs/DEVIATION_LOG.md`:
 - `DEV-112` — the percent formula matches canonical, but PnP supplies the
   module's generic `line_width` rather than canonical's per-role `frInfill`
   flow width as the base input.
-- `DEV-113` — declaring `line_width` un-deadens the reads that feed spacing and
-  related geometry for non-default user values; the default `0.4` slices are
-  unchanged. This is an accepted disclosed behaviour move, not a parity gap.
+- Declaring `line_width` un-deadens the reads that feed spacing and related
+  geometry for non-default user values; the default `0.4` slices are unchanged.
+  This is an accepted disclosed behaviour move, not a parity gap.
 
 ### Regression coverage
 
@@ -381,8 +381,8 @@ move from this packet are recorded in `docs/DEVIATION_LOG.md`:
 - `crates/slicer-sdk/src/traits.rs:374-393` — `run_infill_postprocess` trait hook.
 - `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25` — WIT signature.
 - OrcaSlicer `Fill::connect_infill` / `Fill::chain_or_connect_infill` — per-fill linking, the reference being diverged from.
-- `docs/DEVIATION_LOG.md` — DEV-081 (lightning-infill transitional inconsistency),
-  DEV-088 (the two containment holes recorded in the 2026-07-24 amendment, closed),
-  DEV-089 (the anchor-length rule, closed), DEV-110 (neighbour bookkeeping),
-  DEV-111 (percent transport), DEV-112 (percent-base width input), and
-  DEV-113 (accepted `line_width` behaviour move).
+- `docs/DEVIATION_LOG.md` — the lightning-infill transitional inconsistency,
+  the two containment holes recorded in the 2026-07-24 amendment (closed),
+  the anchor-length rule, DEV-110 (neighbour bookkeeping),
+  the percent transport finding, DEV-112 (percent-base width input), and
+  the accepted `line_width` behaviour move.

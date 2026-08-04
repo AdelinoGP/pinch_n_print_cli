@@ -65,7 +65,7 @@ existing `polygon_ops` precedent (generic geometry, no domain logic).
   Under this decision, when lightning switches to Architecture A it will either
   delete its self-linking code (raw emit) and rely on the linker, or keep its
   own copy. The raw-emit path is the intended end state; the transitional
-  self-linking is tracked in DEV-081.
+  self-linking is tracked as a transitional inconsistency.
 
 **Trade-offs we explicitly accept**:
 - Algorithm duplication is possible if a future module self-links. We accept

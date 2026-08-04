@@ -374,8 +374,8 @@ via delegation.
 ### Wall line width (vs. bead width vs. flow spacing)
 
 Three width-like quantities that are NOT interchangeable — conflating them
-caused both `D-147-STITCH-TINY-POLY-UNITS`'s neighbourhood and the two D-160
-bugs, so keep the domains straight:
+caused both the tiny-polygon unit issue and the two wall-width bugs, so keep the
+domains straight:
 
 - **Wall line width** — the user-facing extrusion width in mm
   (`outer_wall_line_width` / `inner_wall_line_width`). What the printed bead

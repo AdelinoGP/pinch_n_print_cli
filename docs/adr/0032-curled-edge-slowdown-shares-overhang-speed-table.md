@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-DEV-009's "curled-edge slowdown" sub-item (OrcaSlicer's `prev_curled_extrusions` concept: slow
+The "curled-edge slowdown" sub-item (OrcaSlicer's `prev_curled_extrusions` concept: slow
 down printing near wall material that already curled/lifted on the layer below) was long deferred
 as "blocked on an unbuilt support-spot generator." That premise was false — verified against
 `OrcaSlicerDocumented/src/libslic3r/Support/SupportSpotsGenerator.hpp/.cpp`: the file's
@@ -95,7 +95,7 @@ the same entity would resolve.
 
 ## Cross-references
 
-- `docs/DEVIATION_LOG.md` DEV-009 — the sub-item this ADR closes; also documents the correction of the
+- `docs/DEVIATION_LOG.md` — the sub-item this ADR closes; also documents the correction of the
   false "blocked on unbuilt support-spot generator" premise.
 - ADR-0031 (overhang classification at PrePass) — the `overhang_quartile` field and speed table this
   ADR's curl work reuses.

@@ -327,7 +327,7 @@ on these two points by design.
 - ADR-0045 **amended and accepted** (retitled "per-stage versioned **packages**";
   decision corrected to one package per stage; rejected-alternatives section added).
 - `docs/15_config_keys_reference.md` fictional macro list + wrong stage name **fixed**.
-- **DEV-085** filed for the 13 unimplemented custom-G-code injection points.
+- The 13 unimplemented custom-G-code injection points were filed as a residual.
 - `CONTEXT.md` "Stage interface" corrected (it claimed per-interface versioning,
   which WIT does not permit). "Module tier" / "Stage contract" are intentionally
   left until the code lands — see packet #3.
@@ -411,7 +411,8 @@ moment it applies.
 - `slicer-wasm-host/host.rs`: `pub mod postpass_gcode` / `postpass_text` / `finalization_layer`; `GcodePostprocessModule` / `TextPostprocessModule` / `LayerFinalizationModule`. The five-key `with:` block each repeats is #3's pattern.
 - Guards: `every_stage_package_major_is_at_least_one`, `stage_miss_is_fatal_at_instantiation`, `stage_wit_dir_is_charged_only_to_matching_guest`, `stage_wit_unknown_stage_is_conservative`.
 - **WIT shape:** each resource-bearing stage package pairs an **imported** `<iface>-types` interface with an exported **`run`-only** interface (same package ⇒ one version per stage). An exported interface must declare **no resources** — a resource in an exported interface is guest-owned, and our stages take host-owned ones. `postpass-text-postprocess` needs no `-types` half (its only resource, `config-view`, comes from the already-shared `slicer:config/config-types`).
-- Files `DEV-086` (the two-mechanism intermediate; owner #3). **References** `DEV-087` — does not re-file it.
+- Files for the two-mechanism intermediate (owner #3). **References** the
+  dispatch-missing-component residual — does not re-file it.
 
 ### From #3 `164_per-stage-wit-packages-bulk` (generated, PREFLIGHT PASS)
 

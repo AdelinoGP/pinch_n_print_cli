@@ -21,7 +21,7 @@ parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` modul
   no inter-layer state. The current `lightning-infill` module is a 512-LOC single-layer
   approximation (grid samples + nearest-boundary 2-point branches,
   `modules/core-modules/lightning-infill/src/lib.rs:234,265`) — not the canonical algorithm,
-  and self-linking in violation of ADR-0025 (tracked as DEV-081).
+  and self-linking in violation of ADR-0025 (tracked as a transitional gap).
 - PnP already has the exact pattern for whole-object cross-layer analysis: a PrePass stage
   sees the full committed `SliceIR`, runs host-side, and emits a dedicated IR consumed by
   per-layer modules downstream — `PrePass::SupportGeometry` → `SupportPlanIR`
@@ -47,7 +47,7 @@ parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` modul
 3. **The `lightning-infill` module slims to a per-layer sampler**: it reads its layer's trees
    from a new WIT read-view over `LightningTreeIR`, clips nothing (the infill-linker re-clips
    per ADR-0025), and emits **raw** branch polylines tagged with role + speed factor. Its
-   self-linking code is deleted; DEV-081 closes.
+   self-linking code is deleted; the transitional gap closes.
 
 ## Consequences
 
@@ -85,7 +85,7 @@ parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` modul
 
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` (+ 2026-07-01 amendment).
 - `docs/specs/lightning-infill-parity.md` — the phase plan for packets 137–140.
-- `docs/DEVIATION_LOG.md` — DEV-081 (closes at packet 140).
+- `docs/DEVIATION_LOG.md` — the lightning transitional gap (closes at packet 140).
 - `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp:145` — `build_generator` (per-object).
 - `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp:189-190,342` — constructor + `generateTrees` all-layers passes.
 - `crates/slicer-core/src/algos/support_geometry.rs:93` — the host-producer pattern being copied.

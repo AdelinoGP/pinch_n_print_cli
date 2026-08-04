@@ -75,7 +75,7 @@ This protocol is what turns the gate from "a checklist a confident agent can rat
 - For each DEVIATION-ID with verb `supersede`/`close`/`grep`: `FACT: does '<id>' appear in docs/DEVIATION_LOG.md? Y/N`
 - For each with verb `create`: `FACT: is '<id>' absent from the log AND format-conformant? Y/N`
 
-Derive the real convention from the log at runtime (the first dispatch) — do **not** assume a format. As of 2026-06 the log uses `D-<pkt>-<SLUG>` (e.g. `D-96-AC8-CUBE-REBASELINE`, `D-103-T041-VORONOI-PORTED`) and bare `D-<n>`; a new `D-104-OVERHANG-QUARTILE-NONE` is therefore format-conformant.
+Derive the real convention from the log at runtime (the first dispatch) — do **not** assume a format. As of 2026-06 the log uses `D-<pkt>-<SLUG>` (e.g. `D-96-AC8-CUBE-REBASELINE`, `D-103-T041-VORONOI-PORTED`) and bare `D-<n>`; packet-prefixed IDs with slugs are therefore format-conformant.
 
 **FAIL (HIGH)** if: an ID's format doesn't match the convention the log actually uses; a `supersede`/`close` AC greps `DEVIATION_LOG.md` for an ID that lives only in the roadmap (or nowhere — the common defect: `D-98`, `D-10/12`, `D-9`, `D-7/15` are referenced for closure but absent from the log); or a `create` ID already exists. **Fix:** match the live convention; point supersede/close greps at the file the ID actually lives in (often the roadmap, not the log); register to-be-created IDs in the log as part of the packet.
 

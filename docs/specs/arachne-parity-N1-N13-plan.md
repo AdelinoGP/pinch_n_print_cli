@@ -108,7 +108,7 @@ Linear A1 -> A2 -> rest (B/C strictly after A2; no parallelism with A2).
 - **Acceptance oracle:** `cube_4color_arachne_outer_walls_close_end_to_end` green + `cargo xtask test --workspace --summary` green
 - **Surface:**
   - All fixture batch re-baselines (stragglers after per-packet re-baselines — see policy below).
-  - `D-11X-*` deviation-log supersession entries (addendum pattern per 113c: new ID + addendum, NO in-place edits to `D-112-MMU-TOPOLOGY`/`D-113B-CONNECTJUNCTIONS`).
+  - `D-11X-*` deviation-log supersession entries (addendum pattern per 113c: new ID + addendum, with no in-place edits to the earlier topology records).
   - ADR `0035-arachne-faithful-emission-and-transitions.md` (next free number after 0034).
   - `cube_4color_arachne_outer_walls_close_end_to_end` re-greened as permanent test.
 - **e2e gate policy [user decision]:** Record-only across A1–E; block in F. Each packet runs the e2e test and records the failure delta in its commit message; F is the packet that blocks on green.

@@ -49,10 +49,10 @@ Additionally, the xtask is invoked from the agentic build hook. Hook latency mat
 
 ## Amendments
 
-### D-185-ADR-0014-AMENDED (2026-08-01)
+### Guest freshness amendment (2026-08-01)
 
 The original stale freshness exclusion was: "`slicer-core` and `slicer-helpers` are explicitly NOT tracked (the former is optional per guest; the latter is host-only)."
 Packet 185's current freshness rule tracks `slicer-core` as a universal guest
 dependency in `xtask/src/build_guests.rs::shared_crates` (since 2026-07-25).
 Packet 185 edits `slicer-core` and requires `cargo xtask build-guests --check`
-to catch stale guests. Reference: deviation row `D-185-ADR-0014-AMENDED`.
+to catch stale guests. Reference: the corresponding deviation-log amendment row.

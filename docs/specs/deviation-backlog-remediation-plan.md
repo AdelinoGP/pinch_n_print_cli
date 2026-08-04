@@ -52,7 +52,7 @@ upstream revision their author had open and are unverifiable for anyone else.
 
 Two rows changed classification once verified against source:
 
-- **DEV-070 → DOC-CLOSE (stale).** The `wall_sequence` field/parse and the config-driven
+- **Wall-sequence doc-close (stale).** The `wall_sequence` field/parse and the config-driven
   `role_group` branch have **already been removed** from `PathOptimizationDefault`
   (`modules/core-modules/path-optimization-default/src/lib.rs`); `role_group` is now a fixed
   role→priority match documented as ADR-0011-owned, pinned by
@@ -73,33 +73,34 @@ Names below are slugs; the assigned packet numbers are in the Packet Queue.
 
 ### P-CLASSIC-FLOW — classic-perimeter flow & width parity  · Cluster A · bundled
 One file (`modules/core-modules/classic-perimeters/src/lib.rs`), one classic `perimeter_parity`
-re-record. Internal order: D-164-classic → D-105-classic → D-152-classic.
-- **D-164 (classic half)** — retype `outer_wall_line_width`/`inner_wall_line_width` in
+re-record. Internal order: classic wall-width → classic flow-spacing → classic top-surface width.
+- **Classic wall-width half** — retype `outer_wall_line_width`/`inner_wall_line_width` in
   `classic-perimeters.toml` to float-or-percent, default `0` (auto-from-nozzle). `FloatOrPercent`/
   `Percent` types already exist (`crates/slicer-schema`). Wire `0 → nozzle_diameter` at the
   `on_print_start` read sites. Canonical: `PrintConfig.cpp` `coFloatOrPercent`. M.
-- **D-105-FLOW-NOT-WIRED (classic half, T-052)** — replace width-average `(outer+inner)/2` spacing
+- **Classic flow-spacing gap (T-052)** — replace width-average `(outer+inner)/2` spacing
   in `inset_polygons` / `emit_gap_fill` with `slicer_core::flow::line_width_to_spacing`
   (`ext_perimeter_spacing2`); propagate its fallible `Result`. Canonical: `PerimeterGenerator::process_classic`. M.
-- **D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER** — stop discarding `min_width_top_surface`; gate
+- **Classic top-surface width remainder** — stop discarding `min_width_top_surface`; gate
   the `only_one_wall_top` single-wall collapse on per-loop width ≥ `min_width_top_surface`.
   Canonical: `PerimeterGenerator.cpp` only_one_wall_top logic. M.
 
 ### P-ARACHNE-FLOW — arachne width & bridge parity  · Cluster B · bundled
 `modules/core-modules/arachne-perimeters/src/lib.rs` + `crates/slicer-core/src/arachne/pipeline.rs`;
-one arachne `arachne_parity` re-record. D-164-arachne and D-168 both edit `arachne_params_from_config`.
-- **D-164 (arachne half)** — same float-or-percent retype + auto-resolution at the
+one arachne `arachne_parity` re-record. The wall-width and simplification fallback work both edit
+`arachne_params_from_config`.
+- **Arachne wall-width half** — same float-or-percent retype + auto-resolution at the
   `arachne_params_from_config` read sites. M.
-- **D-168-ARACHNE-SIMPLIFY-FALLBACKS** — fix `ArachneParams::default` fallback constants
+- **Arachne simplification fallbacks** — fix `ArachneParams::default` fallback constants
   (`smallest_line_segment_squared`, `allowed_error_distance_squared`) from 0.05/0.005 mm to canonical
   0.5/0.025 mm (squared: 0.25 / 0.000625). Guard: `manifest_default_reconcile_tdd`. S code / M fixtures.
-- **D-163-ARACHNE-BRIDGE-ROLE-CONVERSION-EXEMPTION** — in `build_walls`, skip `flow_to_width` for
+- **Arachne bridge-role conversion exemption** — in `build_walls`, skip `flow_to_width` for
   `is_bridge` vertices and substitute bridge flow width wholesale, matching canonical's
   `erOverhangPerimeter && flow.bridge()` exemption. Canonical: `VariableWidth.cpp::thick_polyline_to_multi_path`.
   S + design (first per-vertex role exemption).
 
 ### P-GCODE-HEADER — G-code header width truth  · standalone · trivial
-- **D-165-GCODE-HEADER-WIDTH-DEFAULTS-LIE** — in `crates/slicer-gcode/src/serialize.rs`, change the
+- **G-code header width defaults** — in `crates/slicer-gcode/src/serialize.rs`, change the
   header-comment defaults from 0.42/0.45 to the governing 0.4/0.4 and delete the stale
   removed-`config_schema.rs` citation. S.
 
@@ -107,7 +108,7 @@ one arachne `arachne_parity` re-record. D-164-arachne and D-168 both edit `arach
 `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` + the `voronoi` path. Grounding split this
 into a T1 spike and a T3 port (queue rows 3 and 6); see the queue amendment.
 
-- **D-167-BOOSTVORONOI-ROBUST-FPT-PANICS (diagnosis-first spike, T1)** — grounding found the
+- **BoostVoronoi robust-fpt diagnosis (diagnosis-first spike, T1)** — grounding found the
   structural cause: of the three boostvoronoi call sites in `slicer-core`, `medial_axis.rs` and
   `algos/paint_segmentation/voronoi_graph.rs` both wrap the builder in
   `catch_unwind(AssertUnwindSafe(...))` (the former's comment names `assertion failed: fpv.is_finite()`
@@ -132,7 +133,7 @@ into a T1 spike and a T3 port (queue rows 3 and 6); see the queue amendment.
   `#[ignore]`d source-string test with a real geometric assertion. L.
 
 ### P-HOST-DISPATCH — dispatch MissingComponent handling  · standalone · **resolved to option (B)**
-- **DEV-087** — `crates/slicer-wasm-host/src/dispatch.rs` has five (not four — the row is stale)
+- **Dispatch MissingComponent handling** — `crates/slicer-wasm-host/src/dispatch.rs` has five (not four — the row is stale)
   `MissingComponent → Ok(success)` arms. The row offered "(A) prove `None` is unreachable for a real
   module, then narrow the laundering to an explicit placeholder marker; (B) if reachable, make it
   fatal." **Grounding selected (B):** `None` *is* reachable for a real module —
@@ -143,16 +144,16 @@ into a T1 spike and a T3 port (queue rows 3 and 6); see the queue amendment.
   **retires the placeholder-skip capability** rather than conditioning it behind a marker: absent
   component is fatal at load, at the six executor fallbacks, and at all five arms. This avoids widening
   the `wasm_handles` side-table (~21 signatures). It contradicts ADR-0020 §Decision item 1 and so files
-  `D-181-ADR-0020-AMENDED`. Refs ADR-0015, ADR-0020, ADR-0045. M.
+  the ADR-0020 amendment. Refs ADR-0015, ADR-0020, ADR-0045. M.
 
 ### P-CUSTOM-GCODE — machine custom-gcode injection points  · large feature · standalone
-- **DEV-085** — `modules/core-modules/machine-gcode-emit/src/lib.rs` reads only 2 of 15 injection
+- **Machine custom-G-code injection points** — `modules/core-modules/machine-gcode-emit/src/lib.rs` reads only 2 of 15 injection
   points. Build a real injection-point registry, implement the missing points, harden
   `substitute_placeholders` (unknown-key error vs passthrough; fix the `bytes[i] as char` mojibake).
   Refs `docs/15_config_keys_reference.md`, `docs/ORCA_CONFIG_REFERENCE.md`, packet 59. L.
 
 ### P-SPEED — smoothed-speed + ADD_INTERSECTIONS  · large feature · standalone
-- **DEV-009** — two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`): (a) smoothed-speed
+- **Smoothed-speed + ADD_INTERSECTIONS** — two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`): (a) smoothed-speed
   interpolation replacing the flat quantized lookup; (b) `ADD_INTERSECTIONS` mid-segment vertex
   insertion at overhang-quartile band crossings. Six-band schedule stays an accepted permanent
   deviation (out of scope). L.
@@ -167,24 +168,24 @@ into a T1 spike and a T3 port (queue rows 3 and 6); see the queue amendment.
   agree on the same 0.4 default (weak coupling).
 - **Cluster C:** D-167 diagnosis precedes D-154 (shared graph path). D-104f is downstream of the whole
   arachne pipeline.
-- **Independent / parallelizable:** DEV-087, DEV-085, DEV-009.
+- **Independent / parallelizable:** dispatch handling, custom G-code, and speed work.
 
 ## Tranches
 
-- **T1 — quick correctness + unblocking diagnosis:** P-HOST-DISPATCH (DEV-087) · P-GCODE-HEADER (D-165) ·
+- **T1 — quick correctness + unblocking diagnosis:** P-HOST-DISPATCH · P-GCODE-HEADER ·
   P-ARACHNE-GEOM step 1 (D-167 spike, gates D-154).
 - **T2 — flow/config parity:** P-CLASSIC-FLOW · P-ARACHNE-FLOW.
 - **T3 — deeper geometry + big features:** P-ARACHNE-GEOM step 2 (D-154) → P-CONCENTRIC (D-104f);
-  P-CUSTOM-GCODE (DEV-085) and P-SPEED (DEV-009) in parallel.
+  P-CUSTOM-GCODE and P-SPEED in parallel.
 
 ## Excluded (recorded so nothing is silently dropped)
 
 - **Accepted divergences / decision records:** D-109-SELF-CAPTURED-FIXTURES, D-152-TOP-AREA-SOURCE,
-  DEV-039, DEV-009's six-band-schedule portion, D-110-DROP-VARIABLE-WIDTH (recommend flipping its
+  DEV-039, the six-band-schedule portion, and the fake-Arachne deletion decision (recommend flipping its
   stale-open row to Closed).
 - **Already owned by an implemented packet:** D-173-THUMBNAIL-SINGLE-PNG (packet 173),
   D-283-ADR-0046-AMENDED (packet 180).
-- **Reclassified during verification:** DEV-070 (doc-close), DEV-026 (defer).
+- **Reclassified during verification:** the wall-sequence doc-close, DEV-026 (defer).
 
 ## Packet Queue
 
@@ -199,25 +200,25 @@ need it; never read one out of this table.
 
 | # | Packet dir | Deviations | Tranche | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | `.ralph/specs/181-dispatch-missing-component-handling` | DEV-087 | T1 | — | generated · draft · TASK-297 |
+| 1 | `.ralph/specs/181-dispatch-missing-component-handling` | dispatch missing-component handling | T1 | — | generated · draft · TASK-297 |
 | 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 |
-| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike), DEV-098 remediation | T1 | — | generated · active · TASK-296 (reopened) |
-| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | generated · draft · TASK-303 |
-| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 |
+| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | robust-fpt diagnosis spike, workspace remediation | T1 | — | generated · active · TASK-296 (reopened) |
+| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | classic wall-width, flow-spacing, and top-surface width | T2 | — | generated · draft · TASK-303 |
+| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | arachne wall-width, simplification fallback, and bridge-role work | T2 | — | generated · draft · TASK-304 |
 | 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
 | 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | **pending — dependency-blocked** (see amendment 2026-07-25a) |
-| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · implemented · TASK-305 |
-| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | DEV-085 (layer-scoped points) | T3 | #8a | generated · draft · TASK-306 |
-| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | DEV-085 (tool/role-scoped points + residuals) | T3 | #8b | generated · draft · TASK-307 |
-| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | DEV-009 (carrier prerequisite) | T3 | — | generated · draft · TASK-308 |
-| 9a2 | `.ralph/specs/193-overhang-distance-prepass-carrier` | DEV-009 (overhang-distance carrier prerequisite) | T3 | — | generated · draft (see amendment 2026-07-25d) |
-| 9b | `.ralph/specs/190-smoothed-overhang-speed` | DEV-009 (smoothed-speed half) | T3 | #9a, #9a2 | generated · draft · TASK-309 · **maintainer ruled option (C)** (see amendment 2026-07-25d) |
-| 9c | `.ralph/specs/191-overhang-add-intersections` | DEV-009 (ADD_INTERSECTIONS half) | T3 | #9a2, #9b | generated · draft · TASK-310 (not schedulable until #9b resolves) |
-| 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 |
+| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | custom-G-code engine half | T3 | — | generated · implemented · TASK-305 |
+| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | layer-scoped injection points | T3 | #8a | generated · draft · TASK-306 |
+| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | tool/role-scoped points + residuals | T3 | #8b | generated · draft · TASK-307 |
+| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | speed-factor carrier prerequisite | T3 | — | generated · draft · TASK-308 |
+| 9a2 | `.ralph/specs/193-overhang-distance-prepass-carrier` | overhang-distance carrier prerequisite | T3 | — | generated · draft (see amendment 2026-07-25d) |
+| 9b | `.ralph/specs/190-smoothed-overhang-speed` | smoothed-speed half | T3 | #9a, #9a2 | generated · draft · TASK-309 · **maintainer ruled option (C)** (see amendment 2026-07-25d) |
+| 9c | `.ralph/specs/191-overhang-add-intersections` | ADD_INTERSECTIONS half | T3 | #9a2, #9b | generated · draft · TASK-310 (not schedulable until #9b resolves) |
+| 10 | `.ralph/specs/192-infill-linker-anchor-length` | anchor-length work | T3 | — | generated · draft · TASK-311 |
 
 **Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
 `.ralph/specs/183-arachne-voronoi-panic-diagnosis` was `draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
-all of which were also `draft`. Packet 183 has since been implemented and is now **reopened** for the DEV-098 workspace-test remediation while
+all of which were also `draft`. Packet 183 has since been implemented and is now **reopened** for the workspace-test remediation while
 retaining its D-167 verdict. Row 6 remains dependent on packet 183's recorded verdict; the remediation does not reopen that dependency or change
 the D-154 design gate. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`.**
 
@@ -225,7 +226,7 @@ the D-154 design gate. Row 7 (D-104f) depends on both row 5 and row 6, so it inh
 The plan rates both `L`, and the Batch Protocol forbids shipping a packet at aggregate `L`; the remedy is decomposition, not scope compression.
 Grounding then moved the seams away from where this plan predicted them:
 
-- **Row 8 (DEV-085) → 8a/8b/8c.** The row's own headline counts are **wrong and must not be quoted**: canonical `PrintConfigDef::init_fff_params`
+- **Row 8 (the custom-G-code closure) → 8a/8b/8c.** The row's own headline counts are **wrong and must not be quoted**: canonical `PrintConfigDef::init_fff_params`
   registers **16** custom-G-code injection points (13 `coString` + 3 `coStrings`, the latter per-filament vectors resolved via `get_at(filament_id)`),
   not 15; the row's enumerated unimplemented list contains 14 names; and its claim that the extrusion-role family appears in
   `docs/ORCA_CONFIG_REFERENCE.md` is false (zero occurrences of `filament_change_extrusion_role_gcode` / `process_change_extrusion_role_gcode`).
@@ -239,7 +240,7 @@ Grounding then moved the seams away from where this plan predicted them:
   measured unreachability evidence rather than faked. **Note that canonical has no injection-point abstraction to mirror** — the same block is
   hand-inlined 20+ times across `GCode::_do_export`, `GCode::process_layer`, `GCode::set_extruder` and `GCode::_extrude`, and its one table
   (`s_CustomGcodeSpecificPlaceholders`) is validation-only and already drifted. The registry is an improvement over canonical, not parity with it.
-- **Row 9 (DEV-009) → 9a/9b/9c.** This plan describes DEV-009 as "two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`)" that are
+- **Row 9 (the Benchy parity work) → 9a/9b/9c.** This plan describes the Benchy parity work as "two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`)" that are
   independent. **All three parts of that are false.** `resolve_feedrate` (on `DefaultGCodeEmitter`) contains no quantized lookup — it is a flat per-role
   table times a clamped `speed_factor`. The quantization lives in `modules/core-modules/overhang-classifier-default/src/lib.rs`
   (`quartile_for_distance`, `BAND_BOUNDARY_MULTIPLIERS`). And PnP carries **one `speed_factor` per entity**, not per point — the classifier takes a
@@ -271,7 +272,7 @@ verbatim against the artifact:
 
 The options, **in the packet's own lettering — an earlier revision of this line swapped (A) and (B) against
 `190/design.md`, which would have made a recorded ruling ambiguous**: **(A)** conform, dropping the smoothed-speed half
-of DEV-009; **(B)** supersede the two ADRs with amendment rows; **(C)** add a continuous `overhang_distance_mm` beside `overhang_quartile` on
+of the Benchy parity work; **(B)** supersede the two ADRs with amendment rows; **(C)** add a continuous `overhang_distance_mm` beside `overhang_quartile` on
 `Point3WithWidth`, stamped by the same prepass — which *minimises* the supersession rather than avoiding it (AC-6 removes
 `SetSpeedFactor` under every option), at the cost of a further packet ahead of 9b whose struct-literal blast radius is
 `L` and must be split. **Row 9c (191) inherits the block** and additionally departs from ADR-0031 in a direction 9b never
@@ -314,9 +315,9 @@ per-author re-derivation is precisely the collision that made packet 181's first
 re-derives its own at the moment of writing. Each packet carries an explicit "register TASK-### in `docs/07_implementation_status.md`" Doc Impact
 obligation with a verification grep; packets 181–183 allocated IDs without one, which reads as fabrication at preflight.
 
-**Queue amendment (2026-07-24, post-generation):** row 10 was appended after this plan was written. DEV-089 was registered later the same day, from the `infill-linker` containment work (ADR-0025's 2026-07-24 amendment): canonical's per-arc anchor-length rule — whole arc under `anchor_length_max`, otherwise an `anchor_length` stub off each end via `take_limited`, candidates consumed shortest-first — is not ported, and PnP applies a single 10 × spacing gate with no stub mode. T3 with no dependency: it is a quality divergence rather than a containment one, since the connectors are contour geometry either way, and it needs new config keys plus the lerped partial segment.
+**Queue amendment (2026-07-24, post-generation):** row 10 was appended after this plan was written. the anchor-length work was registered later the same day, from the `infill-linker` containment work (ADR-0025's 2026-07-24 amendment): canonical's per-arc anchor-length rule — whole arc under `anchor_length_max`, otherwise an `anchor_length` stub off each end via `take_limited`, candidates consumed shortest-first — is not ported, and PnP applies a single 10 × spacing gate with no stub mode. T3 with no dependency: it is a quality divergence rather than a containment one, since the connectors are contour geometry either way, and it needs new config keys plus the lerped partial segment.
 
 **Queue amendment (2026-07-24, at generation time):** row 3 was authored as a D-167 **diagnosis spike only**. D-154 was split out to new row 6 because grounding confirmed `is_secondary` does **not** exist on `HalfEdge` (`crates/slicer-core/src/voronoi.rs`) and must be added and populated from boostvoronoi — a struct-field change whose blast radius, bundled with the spike, would have made row 3 context-cost `L`. This matches the plan's own tranche text, which already placed the spike in T1 and the discretize port in T3.
 
-Non-packet cleanup (log hygiene, do separately): DEV-070 doc-close, DEV-026 defer-annotate,
-D-110 flip-to-Closed.
+Non-packet cleanup (log hygiene, do separately): the wall-sequence doc-close, DEV-026 defer-annotate,
+the variable-width deletion decision should flip to Closed.

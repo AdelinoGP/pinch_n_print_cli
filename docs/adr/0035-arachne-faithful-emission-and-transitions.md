@@ -163,7 +163,7 @@ determines correctness.
   C++ source and un-ignore **only at 0 failures** — the percentage alone does not measure
   algorithmic faithfulness.
 
-  **DISCHARGED 2026-07-16** (Arachne Parity Recovery, Track C; `D-147-CHAIN-CLOSURE` closed).
+  **DISCHARGED 2026-07-16** (Arachne Parity Recovery, Track C; the chain closure record closed).
   The gate is at **0/699 (0.00%), mean gap 0.0000mm across all 125 layers** and is
   **un-ignored** — it is now a green regression guard. Both conditions were met, and the
   record is worth keeping because **the second one is what had teeth**:
@@ -175,7 +175,7 @@ determines correctness.
     (arachne-vs-classic outer-wall length ratio 0.9963, no region dropped).
   - *Re-audit:* the percentage was **already 0 when the audit ran**, so a
     percentage-only reading would have shipped a live defect. The audit found one:
-    `D-147-STITCH-TINY-POLY-UNITS` — a spurious `/ UNITS_PER_MM` in
+    the tiny-polygon unit correction — a spurious `/ UNITS_PER_MM` in
     `stitch.rs::finalize_chain` defeated canonical's `3 * max_stitch_distance` tiny-polygon
     rule in production. Because that defect *inflates* closure, the gate was re-measured
     after the fix (still 0/699, identical — the rule never fires on cube_4color's

@@ -42,12 +42,12 @@ no other channel.
   `modules/core-modules/seam-planner-default/src/comparator.rs` (candidate
   scoring, ported from canonical `SeamPlacer.cpp`'s seam-comparator logic),
   `visibility.rs` (deterministic raycast visibility, reduced budget — see
-  `D-168-SEAM-PREPASS-SOURCE` in `docs/DEVIATION_LOG.md`), `align.rs`
+  the seam-prepass source record in `docs/DEVIATION_LOG.md`), `align.rs`
   (seam-string chaining + least-squares spline smoothing, ported from canonical
   `SeamPlacer.cpp` + `Curves.hpp`), and `contours.rs` (PnP-original z-plane
   sectioning of `MeshObjectView` triangles into per-layer contours).
   `seam_mode` on `seam-planner-default` accepts `aligned` / `aligned_back`;
-  the default was `nearest` initially; amended 2026-07-22 to `aligned` per packet 180 (see `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md` and packet 180).
+  the default was `nearest` initially; amended 2026-07-22 to `aligned` per packet 180 (see the ADR amendment in `docs/DEVIATION_LOG.md` and packet 180).
 
 - **The WIT export gains a parameter.** The prepass needs real layer z values,
   so `run-seam-planning` (canonical WIT source
@@ -67,7 +67,7 @@ no other channel.
   candidate exists; pristine per-layer behaviour when no planner entry is
   injected). Snapping is what keeps the emitted seam on a real wall vertex even
   though the prepass computed it from mesh-derived contours rather than final
-  perimeters (see `D-168-SEAM-PREPASS-SOURCE`).
+  perimeters (see the seam-prepass source record).
 
 ## Alternatives rejected
 
@@ -93,7 +93,5 @@ no other channel.
 - The aligned path's inputs are mesh-derived contours, not final perimeters —
   a recorded deviation from canonical (which runs `SeamPlacer` after perimeter
   generation), mitigated by the seam-placer snap. Tracked as
-  `D-168-SEAM-PREPASS-SOURCE`.
+  the seam-prepass source record.
 - `nearest` mode is still untouched end-to-end and remains available via `seam_mode`; `aligned` and `aligned_back` are now the defaults (set in both `seam-placer.toml` and `seam-planner-default.toml`), matching OrcaSlicer's `spAligned` default. Users may still opt in to any other mode via `seam_mode`.
-
-**Amendment 2026-07-22 (packet 180):** The default `seam_mode` value was changed from `nearest` to `aligned` in both `seam-placer.toml` and `seam-planner-default.toml` to match OrcaSlicer's canonical `spAligned` default. The change is recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`. The continuous-projection work in packet 180's `seam-placer/src/lib.rs::run_wall_postprocess` closes the source-geometry gap tracked in `D-168-SEAM-PREPASS-SOURCE`. The amendment affects the normative clauses at L50 and L97-98 of this ADR (both now read with the amendment).

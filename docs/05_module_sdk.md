@@ -719,7 +719,7 @@ asserts that a capacity-rejecting builder causes the module to return
 `Err(ModuleError)` whose message contains `"builder at capacity"` — not
 silently `Ok(())`.
 
-### Seam-candidate generation convention (packet 108, D-108-SEAM-CONSUMED)
+### Seam-candidate generation convention (packet 108)
 
 Perimeter-generation modules (currently `classic-perimeters`) emit
 `seam_candidates` for the outer wall only, via
@@ -836,8 +836,8 @@ legitimately produce zero candidates, and non-planar-shell regions
 candidates by design. The audit found no bug in that general path; it stays
 a no-op. Packet 108 (AC-N2) originally made this a hard error
 (`Err(ModuleError::fatal(6, ..))`) when a `seam_blocker` paint region excluded
-every corner candidate. **P109 corrected that (D-109B-SEAM-FATAL-CORRECTED,
-superseding D-108-SEAM-CONSUMED's fatal-on-empty):** for a region with
+every corner candidate. **P109 corrected that, superseding packet 108's
+fatal-on-empty behavior:** for a region with
 **standard** (non non-planar-shell) wall loops, an empty `seam_candidates` list
 **and** no `resolved_seam`, seam-placer now degrades **gracefully** — it emits
 the region's walls pristine and leaves `resolved_seam` unset — rather than

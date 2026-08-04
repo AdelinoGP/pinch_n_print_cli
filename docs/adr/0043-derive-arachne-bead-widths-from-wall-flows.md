@@ -15,7 +15,7 @@ user-facing config keys: `optimal_width` and `preferred_bead_width_outer`
 (both `unit = "units"`, defaulting to 4000 = 0.4mm). `arachne_params_from_config`
 read those keys — and never `outer_wall_line_width` / `inner_wall_line_width` —
 so arachne's emitted wall width was invariant to the user's wall-width setting
-(`D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH`: ask for 0.8mm walls, get 0.357mm).
+(ask for 0.8mm walls, get 0.357mm).
 
 Canonical OrcaSlicer has no such user keys. `PerimeterGenerator` *derives*
 Arachne's two bead-width targets from the user's wall flows:
@@ -32,14 +32,14 @@ OrcaSlicer PrintConfig.cpp option — upstream sets it internally."
    retired outright** — deleted from `arachne-perimeters.toml`, no
    deprecation alias, no override escape hatch. Upstream has no such user
    keys, and keeping them as overrides would preserve the exact wiring that
-   let D-160 hide (a knob that silently shadows the real setting).
+   let the wall-width defect hide (a knob that silently shadows the real setting).
 2. **`arachne-perimeters` declares and reads `outer_wall_line_width` /
    `inner_wall_line_width`** (plain mm floats, default 0.4, range [0.1, 2.0],
    group Walls — mirroring `classic-perimeters`), sourcing
    `preferred_bead_width_outer` from the outer key (canonical `bead_width_0`)
    and `optimal_width` from the inner key (canonical `bead_width_x`). The
    module's existing `line_width_to_spacing` conversion stays where it was;
-   only the raw source changed. (Executing D-160's originally written fix
+   only the raw source changed. (Executing the originally written fix
    shape — wrapping the source in another `line_width_to_spacing` — would
    have double-converted.)
 3. **`ArachneParams`' struct FIELDS keep their canonical names**
@@ -58,8 +58,8 @@ OrcaSlicer PrintConfig.cpp option — upstream sets it internally."
   directly through config. Post-retirement, a test that wants a non-default
   bead target sets the wall-width keys (mm) or builds `ArachneParams`
   directly. 13 test files were migrated `mm_to_units(W)` → plain `W` — a
-  UNIT change, where a miss is a silent 100× error (cf.
-  `D-147-STITCH-TINY-POLY-UNITS`).
+   UNIT change, where a miss is a silent 100× error (cf. the tiny-polygon unit
+   correction).
 - The retirement is hard to reverse: reintroducing the keys later would
   reintroduce the shadow-wiring hazard, so any future need for direct beading
   control should go through `ArachneParams` construction, not config.
@@ -69,10 +69,10 @@ OrcaSlicer PrintConfig.cpp option — upstream sets it internally."
 
 ## Amendments
 
-### D-185-ADR-0043-AMENDED (2026-08-01)
+### Wall-width amendment (2026-08-01)
 
 The original Decision item 2 specified: "plain mm floats, default 0.4, range [0.1, 2.0]".
 Packet 185 changes module-owned wall-width keys to `float_or_percent` with
 auto-`0` to match OrcaSlicer's `Flow.cpp::new_from_config_width` +
 `auto_extrusion_width` for canonical parity.
-Reference: deviation row `D-185-ADR-0043-AMENDED`.
+Reference: the corresponding deviation-log amendment row.

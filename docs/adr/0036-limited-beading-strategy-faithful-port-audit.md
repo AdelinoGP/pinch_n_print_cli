@@ -70,7 +70,7 @@ lines 116-117 does not apply.
   — not "passes the currently-tested fixtures." A partial port that only handles
   the over-cap branch (as the pre-existing port did) is a defect, not a
   documented scope limitation.
-- The thin-strip medial-axis collapse root cause (D-105D, spec packet 154) is
+- The thin-strip medial-axis collapse root cause (spec packet 154) is
   NOT closed by this ADR — it's a graph-construction/topology issue governed by
   ADR-0034. The beading-strategy layer is faithful; the topology layer is not.
 - OrcaSlicer-read dispatches for the beading-strategy layer must follow the same

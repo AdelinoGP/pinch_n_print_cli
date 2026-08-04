@@ -57,10 +57,10 @@ right." The OrcaSlicer gcode stays a steering reference, never an automated nume
   `skeletal_trapezoidation/centrality.rs`, `arachne/remove_small.rs`,
   `arachne/simplify.rs`, `arachne/pipeline.rs`); removed the fictitious
   `MAX_FAILURES=500` guard (the only mechanism is `#[ignore]`).
-- **D-105-FLOW-NOT-WIRED** — reopened (classic half): `classic-perimeters` still uses
+- **Classic flow-spacing gap** — reopened (classic half): `classic-perimeters` still uses
   width-average `(outer+inner)/2` at `lib.rs:600,605,907` with zero `line_width_to_spacing`
   calls; only `arachne-perimeters` was wired (P150). T-052 genuinely open.
-- **D-147-CHAIN-CLOSURE** — reopened: cannot stand `Closed` while its AC-1 gate is
+- **Arachne chain closure** — reopened: cannot stand `Closed` while its AC-1 gate is
   `#[ignore]`d and ~50% failing, per "F blocks on green."
 
 ## RED baseline — triage of the 12 (2026-07-15)
@@ -324,7 +324,7 @@ Experiment: sliced benchy with `wall_generator=classic` (`tmp/benchy_classic.gco
   ~8mm of print height), and distorts/facets the contour where it does generate.
 - **Arachne-specific** (Classic renders the same region correctly) → the defect is in Arachne wall
   generation, not shared pipeline. Suspected root: skeletal-trapezoidation collapsing on the thin/tapering
-  bow — same family as the D-105D thin-strip medial-axis collapse.
+  bow — same family as the thin-strip medial-axis collapse.
 
 **Correction to earlier notes:** the truncated/"faceted" Arachne renders I earlier attributed to a
 "viewport artifact" were REAL geometry loss (D5). The D1 "faceting refuted" result held only for layer
@@ -399,7 +399,7 @@ stale (14/15 are now green regression locks; only the D-104f test is open).
 
 `cube_4color_arachne_outer_walls_close_end_to_end`: **0/699 outer-wall sub-loops fail to
 close (0.00%), mean gap 0.0000mm, across all 125 layers.** Un-ignored, along with the
-sibling `cube_4color_arachne_per_color_footprint_within_bbox`. `D-147-CHAIN-CLOSURE`
+  sibling `cube_4color_arachne_per_color_footprint_within_bbox`. The Arachne chain closure record
 closed. Progression: 283/283 (100%) pre-113c → 455/898 (50.67%) at packet 147 → **0/699**.
 
 **The recorded 49.33% was stale, and re-measuring first was the whole ballgame.** It
@@ -429,7 +429,7 @@ This is the campaign's fourth "the instrument lied, not the code."
 **ADR-0035's second condition paid for itself.** The ADR requires un-ignoring at 0 failures
 **and** a re-audit against OrcaSlicer C++ ("the percentage alone does not measure
 algorithmic faithfulness"). The percentage was already 0; the re-audit still found a real,
-live bug — `D-147-STITCH-TINY-POLY-UNITS`: a spurious `/ UNITS_PER_MM` in
+live bug — a spurious `/ UNITS_PER_MM` in
 `stitch.rs::finalize_chain` defeated canonical's `3 * max_stitch_distance` tiny-polygon
 rule in production (threshold 1.2mm → 0.00012mm), prematurely closing small fragments
 which `remove_small_lines` then exempted from cleanup (it skips `is_closed` lines, matching
@@ -469,9 +469,9 @@ was wrong:
   > and D1 false positives; this campaign's recurring failure mode is *confident attribution
   > without the control experiment*.)
 
-**Second divergence, found by challenging the fix (2026-07-16) — `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`.**
+**Second divergence, found by challenging the fix (2026-07-16) — the stitch-width operand.**
 Asked "goal is OrcaSlicer parity, was your fix correct in that sense?", the re-audit of the
-re-audit found that `D-147-STITCH-TINY-POLY-UNITS` had corrected the **units** of the
+re-audit found that the prior correction had fixed the **units** of the
 tiny-poly comparison but never checked the **operand**. Canonical stitches with
 `bead_width_x` — the INNER wall width (`stitchToolPaths(toolpaths, this->bead_width_x)`);
 PnP passed `preferred_bead_width_outer` (canonical's `bead_width_0`, OUTER). Proven via the
@@ -560,8 +560,8 @@ canonical settles it as INNER.
 
 ### Original entry (2026-07-16, superseded by the resolution above)
 
-`D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH`. Found by completing the width-wiring follow-up
-that the `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` fix parked as "suspected, unverified".
+the wall-width wiring defect. Found by completing the width-wiring follow-up
+that the stitch-width fix parked as "suspected, unverified".
 **Now proven, by measurement and by code.** This is very likely the largest remaining
 Arachne parity defect, and it is *upstream of everything the campaign has fixed so far*:
 D5 and D4 corrected where beads are placed and how thick propagated beadings are — this
@@ -595,7 +595,7 @@ user config and never connects them. The `optimal_width` manifest entry document
 against itself: *"Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream sets it
 internally."*
 
-**This is why `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` was invisible.** Both keys pin to the
+**This is why the stitch-width operand defect was invisible.** Both keys pin to the
 same 4000-unit default, so PnP's outer and inner bead widths are *always equal* — which is
 exactly what made using the outer width where canonical uses the inner numerically
 undetectable. Fixing this wiring makes that operand distinction live, so the two must be

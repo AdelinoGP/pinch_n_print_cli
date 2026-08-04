@@ -185,4 +185,4 @@ Decision item 1 previously said:
 
 That clause is retired. `None` is the empty-commit case only; a missing component is `Err(LayerStageError::FatalModule { ... })`. Missing compiled components are fatal at both module load and dispatch, so they cannot be represented as an empty stage commit.
 
-This amendment closes DEV-087 and is recorded as `D-181-ADR-0020-AMENDED` in `docs/DEVIATION_LOG.md`.
+This amendment records the dispatch behavior change in `docs/DEVIATION_LOG.md`.

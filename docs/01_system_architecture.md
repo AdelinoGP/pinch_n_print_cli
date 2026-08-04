@@ -327,18 +327,17 @@ Layer::Perimeters
             construction itself with a faithful per-cell port of OrcaSlicer's
             `constructFromPolygons`/`transferEdge`/`makeRib`, which is what
             actually closes M2's structural-parity claim — see
-            `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` in `docs/DEVIATION_LOG.md`,
-            which supersedes `D-112-MMU-TOPOLOGY` and
-            `D-113B-CONNECTJUNCTIONS`. The `wall_generator` config key
+            the faithful graph-construction correction in
+            `docs/DEVIATION_LOG.md`. The `wall_generator` config key
            (`classic` default | `arachne`) selects which module wins the
            shared `perimeter-generator` claim at module-load dedup time
-           (packet 112; see D-112-WALL-GENERATOR-SELECT in
-           docs/DEVIATION_LOG.md). `arachne-perimeters` itself runs as a
+            (packet 112; see the wall-generator selection record in
+            docs/DEVIATION_LOG.md). `arachne-perimeters` itself runs as a
            WASM guest and cannot link the host-algos-gated Voronoi/
            SkeletalTrapezoidation/BeadingStrategy code directly, so it calls
            the real pipeline through a WIT host-service bridge,
            `generate-arachne-walls` (mirrors the existing `medial-axis`
-           bridge; see D-112-HOSTSVC-BRIDGE).
+            bridge; see the host-service bridge record).
            The perimeter module owns wall sequencing: it resolves the
            three-state `wall_sequence`, applies it to the finalized Arachne
            wall lines, and commits `PerimeterRegion.walls` in final print
@@ -971,7 +970,7 @@ width distribution, the base of the chain), `RedistributeBeadingStrategy`
 single-wall regime), `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset),
 and `LimitedBeadingStrategy` (max-bead-count cap with internal zero-width
 sentinel bookkeeping, stripped before external output via a separate
-`compute_and_strip` entry point — see `D-111-ARACHNE-SENTINEL-STRIP` in
+`compute_and_strip` entry point — see the sentinel-strip decision in
 `docs/DEVIATION_LOG.md`) — composed in that order by
 `BeadingStrategyFactory::create_stack` (`beading/factory.rs`). Pure data in/out
 (`thickness`/`bead_count` → `Beading`). Packet 112 wired the stack end-to-end through
@@ -985,8 +984,8 @@ Packet 113c superseded that with a faithful per-cell graph-construction
 port (`constructFromPolygons`/`transferEdge`/`makeRib`) plus a real
 quad-chain `connectJunctions` stitch in `generate_toolpaths.rs`, and is
 what actually closes M2's structural-parity claim (see
-`D-113C-FAITHFUL-GRAPH-CONSTRUCTION`, which supersedes `D-112-MMU-TOPOLOGY`
-and `D-113B-CONNECTJUNCTIONS` in `docs/DEVIATION_LOG.md`). M2 topology
+the faithful graph-construction correction, which supersedes the earlier
+topology records in `docs/DEVIATION_LOG.md`). M2 topology
 chain complete — P110/P111/P112/P113a/P113b/P113c.
 
 ---

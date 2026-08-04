@@ -541,7 +541,7 @@ pub struct SurfaceClassificationIR {
 
 Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by GLOBAL layer index.
 
-**Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); `D-104-OVERHANG-QUARTILE-NONE` closed 2026-07-03.
+**Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03.
 
 ```rust
 
@@ -1268,9 +1268,9 @@ arbitrary guest module — the only production consumer is the new
 `result<list<extrusion-line>, string>` from a host-side call to
 `slicer_core::arachne::pipeline::run_arachne_pipeline`. `arachne-perimeters`
 (the WASM guest) calls this host service because it cannot link the
-`host-algos`-gated Voronoi/SkeletalTrapezoidation/beading code itself
-(`rayon` + `boostvoronoi` are native-only) — see `D-112-HOSTSVC-BRIDGE` in
-`docs/DEVIATION_LOG.md` for the full architecture rationale.
+  `host-algos`-gated Voronoi/SkeletalTrapezoidation/beading code itself
+  (`rayon` + `boostvoronoi` are native-only) — see the host-service bridge
+  record in `docs/DEVIATION_LOG.md` for the full architecture rationale.
 
 #### Overhang quartile bucketization (Normative — Packet 57)
 

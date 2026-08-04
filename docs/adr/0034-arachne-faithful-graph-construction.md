@@ -27,10 +27,10 @@ close into loops (283/283 non-closed headers, mean gap 18.7mm), reproduced in is
 `run_arachne_pipeline` on a single simple polygon, and reproduced even for a bare 10mm square
 (the existing `arachne_perimeters_simple_square` test's own doc comment already admitted 26
 fragmented lines for one square, without anyone treating that as a red flag). `docs/
-DEVIATION_LOG.md`'s `D-112-MMU-TOPOLOGY` and `D-113B-CONNECTJUNCTIONS` entries both show
-`Closed`, but neither closure touched graph construction: `D-112-MMU-TOPOLOGY`'s 11th-pass
+DEVIATION_LOG.md`'s earlier topology entries both show `Closed`, but neither closure
+touched graph construction: the 11th-pass
 "closure" was a test-harness realignment (gcode header re-pairing to eliminate a
-sampling-aliasing artifact); `D-113B-CONNECTJUNCTIONS`'s closure was a central-only domain-walk
+sampling-aliasing artifact); the other closure was a central-only domain-walk
 generalization now proven insufficient (it breaks at every rib once ribs are correctly
 interleaved).
 
@@ -81,14 +81,15 @@ structure).
 
 - **Keep the reflex-corner-only rib pass and patch around its symptoms downstream** (e.g. a more
   aggressive `stitch_extrusions` proximity-bridge, or accepting "open junction graph, not closed
-  rings" as documented, by-design behavior — which is literally what `D-112-MMU-TOPOLOGY`'s
+  rings" as documented, by-design behavior — which is literally what the earlier topology
+  record's
   prior status claimed). Rejected: this is exactly the shape of fix `CLAUDE.md`'s "never game
   verification by weakening assertions... or skipping checks" rule forbids, and it does not
   produce OrcaSlicer parity — the actual stated goal of this branch's work. It also does not fix
   the user-visible symptom (open walls render as holes/gaps in a 3D preview) at its source.
 - **Treat "self-captured fixtures, no OrcaSlicer oracle" as license to approximate the
-  algorithm loosely.** Rejected: the self-captured-fixture precedent (`D-112-SELFCAPTURED-
-  BASELINES`, `D-109-SELF-CAPTURED-FIXTURES`) is about the absence of a literal OrcaSlicer
+  algorithm loosely.** Rejected: the self-captured-fixture precedent
+  (`D-109-SELF-CAPTURED-FIXTURES`) is about the absence of a literal OrcaSlicer
   *binary* to diff numeric output against — it was never meant to license approximating the
   *algorithm* itself when the real source is directly readable, as it is here.
   `docs/adr/0023-arachne-port-strategy.md` already establishes the "faithful port, verified by
@@ -114,8 +115,8 @@ structure).
 - OrcaSlicer-read dispatches for this algorithm family must request caller-loop context, not
   just callee-body summaries — see this ADR's Process corollary and packet
   `113c-arachne-faithful-graph-construction`'s scoped delegation-protocol exception.
-- `docs/DEVIATION_LOG.md`'s `D-112-MMU-TOPOLOGY` and `D-113B-CONNECTJUNCTIONS` entries are
-  superseded by `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` (registered by packet
+- The earlier topology entries in `docs/DEVIATION_LOG.md` are superseded by the faithful
+  graph-construction correction (registered by packet
   `113c-arachne-faithful-graph-construction`) rather than edited in place — their own narrative
   remains a record of what was actually tried and why it fell short, useful for any future
   agent tempted to repeat a similar shortcut.

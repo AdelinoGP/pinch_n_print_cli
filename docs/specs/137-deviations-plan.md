@@ -7,8 +7,8 @@ The packet 137 cold review (post-implementation) returned CHANGES REQUESTED with
 gap. The two open DEVIATION entries (`docs/DEVIATION_LOG.md`) bind to the
 existing `draft` packets:
 
-- `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` → packet 139 (`lightning-layer-generator`)
-- `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` → packet 140 (`lightning-module-rewrite`)
+- The per-object lightning collapse → packet 139 (`lightning-layer-generator`)
+- The missing lightning paint view → packet 140 (`lightning-module-rewrite`)
 
 Both packets exist as `draft` and were authored before 137's deviations were
 known. They need to be **refined in place** (not replaced) to absorb the new
@@ -91,8 +91,8 @@ against four alternatives. The blast radius is concrete and bounded:
 
 | # | Slug | Status (start) | Status (end) | Closes | Closes-priority | Cost |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 139_lightning-layer-generator | draft | draft | D-137-LIGHTNING-PER-OBJECT-COLLAPSE | high (1) | M (1 M step bumped to L by IR-field addition) |
-| 2 | 140_lightning-module-rewrite | draft | draft | D-137-WIT-RUN-INFILL-NO-PAINT-VIEW | high (1) | M (1 M step bumped to L by WIT + trait + 4-module surface) |
+| 1 | 139_lightning-layer-generator | draft | draft | per-object lightning collapse | high (1) | M (1 M step bumped to L by IR-field addition) |
+| 2 | 140_lightning-module-rewrite | draft | draft | missing lightning paint view | high (1) | M (1 M step bumped to L by WIT + trait + 4-module surface) |
 
 ### Per-Packet Refinement Targets
 
@@ -123,7 +123,7 @@ against four alternatives. The blast radius is concrete and bounded:
     `lightning-tree-segments` method already accepts `region-id`; only the
     IR + dispatch + SDK projection change.
   - Acceptance Summary: add the deviation-closure language for
-    `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`.
+    the per-object lightning collapse.
 - `design.md`:
   - Code change surface: add `slice_ir.rs` `region_id` field; add
     `dispatch.rs` per-region HashMap keying; update `traits.rs` accessor to
@@ -189,7 +189,7 @@ against four alternatives. The blast radius is concrete and bounded:
     support-surface-ironing module (it implements `run_infill_postprocess`
     only, not `run_infill`).
   - Acceptance Summary: add the deviation-closure language for
-    `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`. The canonical-fix chosen
+    the missing lightning paint view. The canonical-fix chosen
     (extend `run-infill` + bump 2.3.0) is recorded with the rejected
     alternatives summary.
 - `design.md`:
@@ -220,7 +220,7 @@ against four alternatives. The blast radius is concrete and bounded:
     inextricably coupled — a partial state would break every infill
     guest's instantiation at runtime).
   - Subsequent steps (2-N) mirror the existing 140 plan (module rewrite,
-    test re-baseline, DEV-081 closure, bless, ceremony).
+    test re-baseline, lightning-gap closure, bless, ceremony).
 - `task-map.md`: not needed (single task ID TASK-265).
 
 ### Cross-Packet Sequencing

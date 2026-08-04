@@ -71,5 +71,5 @@ This amendment retires only the synthetic-diagram *mechanism*; the original
 principle — never fabricate geometry — is preserved, as are all other clauses
 (runtime-owned, request-gated taps reading committed IR with no new
 module/WIT/Blackboard API). Capture also spans three mechanisms (Blackboard-read,
-per-layer arena, PostPass whole-print) per ADR-0040. Recorded as
-`D-161-ADR-0037-AMENDED` in `docs/DEVIATION_LOG.md`.
+per-layer arena, PostPass whole-print) per ADR-0040. Recorded in
+`docs/DEVIATION_LOG.md`.

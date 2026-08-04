@@ -241,7 +241,7 @@ ADR-0052, not here.
   the behaviour being changed** — two assert the `SetSpeedFactor` mutation, two
   cover the `max(overhang_q, curl_q)` merge. They must be migrated, not deleted.
   If one is genuinely obsolete rather than changed, it is recorded as
-  deliberately retired in `DEV-009`'s progress paragraph, never silently dropped.
+  deliberately retired in the progress paragraph, never silently dropped.
 - **Amendment rows are owed.** The `D-<n>-ADR-<nnnn>-AMENDED` convention requires
   a row per amended ADR in `docs/DEVIATION_LOG.md`, quoting the contested
   clauses. The `D-` series has its own counter, separate from `DEV-###`;
@@ -304,4 +304,4 @@ Also considered and rejected earlier in the analysis:
   `BAND_BOUNDARY_MULTIPLIERS`, and the doc-comment that must be corrected.
 - `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit` —
   the world whose imports settle `[BLOCK-3]`.
-- `docs/DEVIATION_LOG.md` `DEV-009` — the parity item this work advances.
+- `docs/DEVIATION_LOG.md` — the parity item this work advances.

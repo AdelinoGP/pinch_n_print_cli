@@ -453,7 +453,7 @@ Selection rules, in order:
    resolves the `perimeter-generator` claim by this key instead of alphabetical
    order, falling back to `classic` if the preferred module is not among the
    loaded candidates or the value is unrecognised. This closes
-   `D-112-WALL-GENERATOR-SELECT` (before it, dedup silently kept the
+   the wall-generator selection record (before it, dedup silently kept the
    alphabetically-first candidate — `arachne-perimeters` — with no way for a
    user to express intent).
 
@@ -1315,7 +1315,7 @@ preserves ADR-0001's in-stage-commit pattern without introducing a
 
 - **PrePass::OverhangAnnotation** (Packet 106/107, ADR-0031) stamps
   `Point3WithWidth.overhang_quartile` per wall-family vertex. Since the
-  2026-07-10 inversion (see `D-106-OVERHANG-AFTER-SLICE-INVERSION`) the stage
+  2026-07-10 inversion (see the overhang-after-slice inversion record) the stage
   runs after `PrePass::Slice` and derives bands by diffing consecutive
   `SliceIR` footprints rather than computing mesh cross-sections.
 - **overhang-classifier-default** (Packet 88, ADR-0008), a `FinalizationModule`
