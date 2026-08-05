@@ -42,6 +42,14 @@ This clause is amended: `PrePass::OverhangAnnotation` now runs **strictly after 
 - **Retire `overhang-classifier-default` entirely**, moving speed-factor application to the host. Rejected: `EntityMutation::SetSpeedFactor` is a finalization-tier API; ADR-0008's reasoning that this application step belongs in a `FinalizationModule` is unaffected by the classification-algorithm change.
 - **Distance-field output shape** instead of quartile polygon partition. Rejected: polygon sets match the existing IR style elsewhere (e.g. `BridgeRegion`), and per-vertex quartile membership reduces to a cheap point-in-polygon test against 4 small polygon sets rather than sampling a field.
 
+## Amendment — 2026-08-05 (packets 190/191)
+
+> `overhang-classifier-default` is **kept**, not retired: it shrinks to a pure finalization-tier consumer that reads `Point3WithWidth.overhang_quartile` (now populated upstream) and applies `EntityMutation::SetSpeedFactor`.
+
+Retired. Since ADR-0053 and packets 190/191, the finalization overhang module is no longer a pure consumer: it may rewrite `path.points` through the `EntityMutation::SetPathPoints` geometry mutation (mid-segment intersection-vertex insertion, canonical's `ADD_INTERSECTIONS` branch of `estimate_points_properties`), and it emits per-point speed factors via `EntityMutation::SetPointSpeedFactors` rather than a whole-entity `SetSpeedFactor`. The superseding record is [`ADR-0053`](./0053-overhang-emission-time-speed-sections.md), whose §Amendments "ADR-0031 — retired Decision clause" retires this clause in both respects — `SetSpeedFactor` removal and the geometry-mutator turn. What survives, per ADR-0053: the module is still kept, still reads per-point data populated upstream, and still does not re-acquire wall-distance classification.
+
+A matching `D-<n>-ADR-0031-AMENDED` row is being filed in `docs/DEVIATION_LOG.md` (packet 190's `AC-19` files the row quoting this clause; packet 191's `AC-N5` appends the `path.points` geometry-mutation departure; `D-` numbers are re-derived at the moment of writing, never quoted from here).
+
 ## Cross-references
 
 - ADR-0008 (overhang annotation as a FinalizationModule) — speed-factor-application-at-finalization decision stands; only the "unnecessary scope" caveat is superseded.

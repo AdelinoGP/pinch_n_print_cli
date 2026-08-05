@@ -258,3 +258,34 @@ amendment to make, not this one's.
   `travel_moves_by_entity`, and the simplification `kept` remap.
 - `crates/slicer-ir/src/slice_ir.rs` — `Point3WithWidth`, `LayerCollectionIR`,
   `TravelMove`, `TravelRetract`.
+
+## Amendment — 2026-08-05 (packet 189)
+
+### Retired clause (verbatim, Consequences)
+
+> - **Stale rows are possible in principle and inert in practice.** No finalization
+>   primitive removes an entity today (`push_entity_to_layer`, `insert_entity_at`,
+>   `set_entity_order`, `sort_layer_by` only add or reorder), so a row for a
+>   vanished `entity_id` is unreachable; the emitter's lookup would simply miss.
+>   Pruning may be left unimplemented. If it is implemented, it must not change
+>   emission for any reachable input.
+
+That clause is retired in the quoted form and replaced with the exhaustive
+`MergeOp` basis below.
+
+### Replacement
+
+- **Stale rows are possible in principle and inert in practice.** The basis for
+  inertness is the exhaustive `MergeOp` set in `crates/slicer-sdk/src/traits.rs`:
+  `pub enum MergeOp` has exactly five variants — `ModifyEntity`, `SortLayer`,
+  `InsertSynthLayer`, `InsertEntityAt`, `SetEntityOrder` — and none removes an
+  entity; they modify, reorder, insert, or permute. Orphaned rows are therefore
+  unreachable under the current set, and the emitter's `entity_id`-keyed lookup
+  would simply miss if one arose, so it is inert. Pruning may be left
+  unimplemented. If it is implemented, it must not change emission for any
+  reachable input. Verify against the enum, not against a list of builder
+  methods: the retired clause's four-name enumeration was incomplete
+  (`push_entity_with_priority`, `insert_synthetic_layer`,
+  `insert_synthetic_layer_after`, `push_annotation` and `push_fan_speed` also
+  exist on `FinalizationOutputBuilder`) and would have rotted again with the
+  next added method; the enum is exhaustive by construction.

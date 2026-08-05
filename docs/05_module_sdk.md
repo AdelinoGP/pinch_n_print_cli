@@ -771,12 +771,15 @@ always use index-based lookup" guarantee).
 **Orca-parity note.** OrcaSlicer treats enforcer/blocker as a hard
 top-priority discriminator (`Enforced > Neutral > Blocked`, checked before
 all geometric scoring) with a `central_enforcer` anchor preference; there
-is no soft bias. This port keeps `seam_blocker` as a hard filter (matching
-Orca) but implements `seam_enforcer` as a `0.1x` soft score bias rather than
-a hard top-priority override — a deliberate, narrower deviation from Orca's
-"always wins" enforcer semantics, chosen so an enforcer region competes with
-(rather than unconditionally overrides) other geometric candidates on the
-same wall loop.
+is no soft bias. Packet 179 aligned this port with canonical semantics: the
+seam comparator implements the `EnforcedBlockedSeamPoint` priority ordering
+(`Blocked < Neutral < Enforced`, `comparator.rs`), so painted enforcers and
+blockers are prioritized before any geometric scoring, and `central_enforcer`
+vertices are preferred as anchors within an enforced span. Seam-planning
+consumes the per-segment paint annotations (`segment_annotations()`), so the
+enforcer/blocker distinction is honoured by the planner rather than by a
+`seam-placer`-side score bias; the retired `0.1x` soft-bias deviation no
+longer applies.
 
 ### Continuous wall projection and degraded fallback (packet 180)
 
@@ -801,9 +804,12 @@ entry matches an active region in aligned mode, the module returns
 `Err(ModuleError::non_fatal(6, "missing seam plan entry (layer, object,
 region_id, variant_chain=[])"))`, applies the canonical local-candidate
 selection as a fallback, preserves all wall loops, and the slice continues
-with degraded status. The `variant_chain=[]` literal is rendered as such
-because `PerimeterRegionView` does not currently expose the
-`SliceRegionView::variant_chain` accessor — packet 178 owns that surface.
+with degraded status. `PerimeterRegionView`/perimeter-region identity
+includes `variant_chain` (packet 178): the seam-planning input preserves the
+full `RegionKey` — `global_layer_index`, `object_id`, `region_id`, and
+`variant_chain` — and missing-plan diagnostics use the complete matching
+`RegionKey` (`resolve_seam_for_perimeter_region` in
+`crates/slicer-wasm-host/src/dispatch.rs`).
 A degenerate empty wall loop (no points) emits
 `Err(ModuleError::non_fatal(7, "degenerate empty wall loop (no points) at
 wall_index=N"))` without panicking, and the empty loop is preserved in the
@@ -844,7 +850,9 @@ fatal-on-empty behavior:** for a region with
 the region's walls pristine and leaves `resolved_seam` unset — rather than
 aborting the layer. This honours the wall-preservation invariant (dropping or
 failing a region's walls corrupts the `(object_id, region_id)` pairing in
-`commit_layer_outputs` for multi-region prints), matches OrcaSlicer's non-abort
+`layer_executor::apply` for multi-region prints; the legacy
+`commit_layer_outputs` name in earlier revisions of this text refers to the
+same commit path, renamed per ADR-0020), matches OrcaSlicer's non-abort
 behaviour, and is redundant-safe because the upstream sharpest-vertex fallback
 in `slicer_core` normally guarantees a candidate exists. The module-local
 `SeamPlacerError` type that carried the old fatal message was removed with the
@@ -860,7 +868,13 @@ does not read `PaintSemantic::Custom("seam_enforcer"/"seam_blocker")` and
 has no dependency on, or interaction with, the per-layer outer-wall
 candidate generation this section describes (`classic-perimeters` +
 `seam-placer`). The two seam mechanisms — PrePass planning and per-layer
-candidate/placement — operate independently.
+candidate/placement — operate independently. Since packet 179, the
+planner's independence is scoped to *placement mechanics*: seam-planning
+consumes the per-segment paint annotations (enforcer/blocker/central
+enforcer) carried on the region, and the per-layer candidate build applies
+them through the `EnforcedBlockedSeamPoint` priority ordering. Seam-planning
+overhang and embedding scores use the resolved outer-wall scoring width for
+the active region (packet 179); they must not assume a fixed 0.4 mm width.
 
 ### Module State Lifecycle (Normative)
 
@@ -1384,7 +1398,7 @@ Applies a serialisable `EntityMutation` to the entity identified by
 |---|---|
 | `SetSpeedFactor(f32)` | Override the entity's path-level speed factor. |
 | `SetFlowFactor(f32)`  | Scale the entity's extrusion flow. |
-| `SetPointSpeedFactors(Vec<f32>)` | Attach a per-point speed profile to the entity (packet 189). `factors.len()` MUST equal the entity's `path.points.len()`; on a length mismatch `apply_to` returns `Err` naming both lengths and the layer is left unmodified. Each factor REPLACES the whole-entity `speed_factor` for that point. The profile is stored as an `EntitySpeedProfile` row in `LayerCollectionIR::speed_profiles`, keyed by `entity_id`; writes upsert (a second write for the same `entity_id` replaces the row, never appends). An entity with no row keeps its uniform `ExtrusionPath3D::speed_factor` exactly as before. |
+| `SetPointSpeedFactors(Vec<f32>)` | Attach a per-point speed profile to the entity (packet 189). `factors.len()` MUST equal the entity's `path.points.len()`; on a length mismatch `apply_to` returns `Err` naming both lengths and the layer is left unmodified. At the WASM boundary, a length-mismatched mutation is logged and ignored by finalization dispatch rather than returned as `Err` (packet 189 error asymmetry); producers must submit a profile whose length exactly matches the entity's current path point count. Each factor REPLACES the whole-entity `speed_factor` for that point. The profile is stored as an `EntitySpeedProfile` row in `LayerCollectionIR::speed_profiles`, keyed by `entity_id`; writes upsert (a second write for the same `entity_id` replaces the row, never appends). An entity with no row keeps its uniform `ExtrusionPath3D::speed_factor` exactly as before. |
 | `SetPathPoints(Vec<Point3WithWidth>)` | Replace the entity's path points wholesale. The replacement MUST preserve a loop's closing repeat. For the same entity, submit `SetPointSpeedFactors` AFTER this mutation so the profile length matches the new point count. |
 
 Every variant is serialisable across the WIT boundary. This replaces the

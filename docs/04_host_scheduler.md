@@ -226,11 +226,26 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportGeometry`) — see `01_system_architecture.md`
-  §"PrePass Stage Order", which documents the executed chain and the known
-  divergence between the two.
+  `PaintSegmentation` → `SupportGeometry` → `LightningTreeGen`) — see
+  `01_system_architecture.md` §"PrePass Stage Order", which documents the
+  executed chain and the known divergence between the two.
 
-`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`).
+  `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
+  stages producing sparse-infill outlines and **before** `Layer::Infill`
+  dispatch. It consumes the committed sparse-infill outlines (via the committed
+  `SliceIR`) and is **skipped** (no commit — the blackboard `LightningTreeIR`
+  slot stays `None`) when no region's `sparse_fill_holder` resolves to
+  `lightning-infill`: the zero-cost promise from ADR-0029.
+
+`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Since packet 193 the same host built-in additionally writes
+`SurfaceClassificationIR.prev_layer_boundaries` — a `HashMap<u32, Vec<ExPolygon>>`
+keyed by global layer index exactly like `overhang_quartile_polygons`,
+populated by `commit_overhang_annotation_builtin` from the previous-layer
+contours `annotate_overhangs` already computes for the diff. This is the
+carrier that packet 193's `signed_distance_to_boundary` (stamped into
+`Point3WithWidth.overhang_distance_mm`) measures against; it is a host built-in
+addition with **no manifest `[ir-access]`, `[claims]` or `[stage]` change** — no
+DAG edge moves.
 
 ### Intra-Stage DAG (within one stage)
 
@@ -1042,7 +1057,7 @@ must not run their own ad-hoc presence checks for these slots.
 |------------------------------------|---------------------------------------------------------------------------|
 | `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
 | `PrePass::OverhangAnnotation`      | reads `SliceIR` (+ `LayerPlanIR`, `SurfaceClassificationIR`); writes `overhang_quartile_polygons` into `SurfaceClassificationIR`. Runs after `PrePass::Slice`. |
-| `PrePass::SeamPlanning`            | `LayerPlan`                                                               |
+| `PrePass::SeamPlanning`            | `LayerPlan`, `SliceIR`, `RegionMap` — reads the committed `LayerPlan` plus per-region `SliceIR` geometry and annotations (projected via `SeamPlanningView`, packet 178); writes `SeamPlanIR`. Dispatch occurs only after these products are committed. |
 | `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
 | `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry` (committed by the host built-in within this stage before the guest runs) |
@@ -1223,6 +1238,28 @@ fn execute_single_layer(
 }
 ```
 
+#### Cooperative Cancellation (packet 174)
+
+Cancellation is cooperative, not preemptive. The CLI owns a shared
+`AtomicBool` (`SliceRunOptions.cancel_flag` → `PipelineConfig.cancel_flag`,
+populated by signal handlers and an opt-in stdin watcher behind
+`--cancel-on-stdin-eof`); the runtime checks the flag at phase boundaries
+(before PrePass, PerLayer, and PostPass phase starts) and **before per-layer
+execution** (inside the per-layer rayon closure, where a set flag returns
+`LayerExecutionError::Cancelled` instead of dispatching the layer).
+
+- A WASM module already in dispatch is **not interrupted** — there is no
+  cancellation inside a running module call.
+- Already-scheduled layers (the in-flight rayon batch) **may finish**; cancel
+  latency is bounded by the in-flight layer batch.
+- Cancellation therefore takes effect at the next available checkpoint: a set
+  flag is only observed at the next phase boundary or the next layer dispatch.
+- The pipeline returns `LayerExecutionError::Cancelled` (mapping to
+  `PipelineError::LayerExecution`); the CLI records a `cancelled` progress
+  event, guarantees a absent output file, and exits with code 130.
+- `cancel_flag: None` (or a present-but-unset flag) reproduces today's
+  behaviour bit-for-bit — no change to layer ordering or module scheduling.
+
 ### Error Handling Policy
 
 ```rust
@@ -1267,6 +1304,25 @@ Normative behavior:
 - Every non-fatal or fatal module error must emit a structured progress event (`module_error`).
 - Slice result metadata must include `degraded=true` if any non-fatal error occurred.
 - An absent compiled component is always fatal: load rejects it via `LiveModuleLoadError::Component`, and dispatch rejects it via the phase-appropriate fatal error in `dispatch.rs`. The previous graceful-stage-skip behavior and the placeholder-skip affordance documented in `manifest.rs` are retired.
+
+#### Non-Fatal → FatalModule Host Limitation (Open — packet 180)
+
+The host **currently maps every module-returned `ModuleError` to a fatal
+error regardless of the `fatal` field**. In `crates/slicer-wasm-host/src/dispatch.rs`,
+`dispatch_layer_call` converts a module-returned `ModuleError` into a
+`DispatchError` whose `reason` records `code`/`fatal`/`message` but whose
+variant does not branch on `fatal`; the caller then escalates to
+`LayerStageError::FatalModule` unconditionally (likewise
+`PrepassRunnerError::FatalModule` / `FinalizationError::FatalModule` /
+`PostpassError::FatalModule` at the other three phase boundaries). This
+contradicts the documented degraded-success propagation contract above —
+`fatal=false` should `ContinueDegraded` with the pre-stage IR intact — and
+is a **known open host limitation** (tracked separately by packet 180;
+cross-reference a potential future `DEVIATION_LOG` row for
+`dispatch.rs::dispatch_layer_call`'s fatal-only mapping). The seam-placer's
+packet-180 degraded fallback (missing `SeamPlanIR` entry → `ModuleError`
+`fatal: false`) is verified at the module boundary (in-process tests), not
+through the WASM dispatch path.
 
 See progress event schema: `09_progress_events.md`.
 
@@ -1324,6 +1380,55 @@ preserves ADR-0001's in-stage-commit pattern without introducing a
   from the prepass-stamped `overhang_distance_mm`, emitting
   `EntityMutation::SetPointSpeedFactors`. Users opt out by curating their module dir without it; with all
   four keys zero the module short-circuits (byte-identical to pre-Packet-57).
+
+##### ADD_INTERSECTIONS Contract (Normative — Packet 191, ADR-0053)
+
+Since packet 191 the same module is also a **geometry mutator**: it ports
+canonical `estimate_points_properties` (`ExtrusionProcessor.hpp`) mid-segment
+vertex insertion via a new `EntityMutation::SetPathPoints(Vec<Point3WithWidth>)`
+channel. The contract (ADR-0053; distances are the packet-193 signed,
+`boundary_offset`-normalised `overhang_distance_mm` carrier):
+
+- **Strictly interior insertion.** Synthetic vertices lie on the original
+  polyline; the loop's closing repeat is preserved and the first/last points
+  stay bit-identical to the originals (post-finalization travel reconciliation
+  fails fatally with `RECONCILED_TRAVEL_INCONSISTENT` if an entity's endpoints
+  move). `SetPathPoints`' `apply_to` rejects an empty vector and any list that
+  breaks a loop's closing repeat (`ExtrusionRole::is_loop()`).
+- **Threshold-crossing branch.** XOR of the two endpoints' side tests against
+  `boundary_offset + EPSILON` (`boundary_offset = 0.5 × flow_width`); one
+  synthetic vertex per crossing of the segment with the previous-layer
+  boundary polyline, recorded distance **exactly `boundary_offset`** (assigned,
+  not re-measured); two-sided `min_spacing = flow_width × 0.25` filter.
+- **Segmentation branch.** Outer proximity test
+  (`> -boundary_offset && < boundary_offset + 2.0`), then
+  `min_distance > 0 && (|d_curr| > min_distance || |d_next| > min_distance) &&
+  line_len >= 2.0` **or** `min_distance <= 0 && line_len > 4.0`; interior
+  parameters `a0 = clamp((d_curr + 3×boundary_offset)/line_len, 0, 1)`,
+  `a1 = clamp(1.0 - (d_next + 3×boundary_offset)/line_len, 0, 1)` (the
+  `1.0 -` is load-bearing — do not "tidy" it into symmetry), `t0 = min(a0,a1)`,
+  `t1 = max(a0,a1)`. `min_distance` is canonical's
+  `smallest_distance_with_lower_speed` from packet 190's `speed_sections`,
+  `-1.0` when no section is slower than `original_speed`. Each segmentation
+  candidate's `overhang_distance_mm` is **linearly interpolated** between the
+  segment endpoints at its own `t` (option-C divergence from canonical's
+  re-measurement — DEV-123).
+- **Unmeasured distances rejected.** `overhang_distance_mm: Option<f32>` is
+  `None` when there is no previous layer or the previous layer's slice
+  boundary is empty (packet 193 AC-N1); a `None` endpoint takes the
+  no-insertion path in both branches and forbids `0.0` / `f32::MAX` / `-1.0`
+  substitutes.
+- **Canonical spacing/length gates.** `min_spacing = flow_width × 0.25`
+  (two-sided) and the `2.0`/`4.0` mm length gates are canonical constants, not
+  tunables.
+- **Emission order.** `SetPathPoints(new_points)` **then**
+  `SetPointSpeedFactors(new_factors)` with `new_factors.len() == new_points.len()`
+  for the same entity, same `merge_ops` sequence (the profile branch
+  length-checks against the entity's *current* point count).
+- **No mutations when** all `overhang_*_4_speed` keys are zero (default),
+  `enable_overhang_speed = false`, or distances are unavailable — `AC-N2`
+  (unchanged list) and `AC-N3` (`None` distances) emit no `SetPathPoints` at
+  all, and the all-zero config emits no mutations of any kind.
 
 ```
 ;LAYER_CHANGE

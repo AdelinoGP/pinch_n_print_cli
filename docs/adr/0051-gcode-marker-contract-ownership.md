@@ -33,7 +33,7 @@ These were written as output decoration. They are not decoration any more.
 | `crates/slicer-gcode/src/m73.rs` | producer's own crate | matches `GCodeCommand::Raw { text }` where `text == ";LAYER_CHANGE"` to place M73 progress |
 | `crates/pnp-cli/src/visual_debug_gcode.rs` | `pnp-cli` | `line.starts_with(";LAYER_CHANGE")` and `line.strip_prefix(";Z:")` to build a layer table and populate `layer_z` from standalone G-code |
 | `crates/slicer-runtime/src/run.rs` | `slicer-runtime` | `l.starts_with(";LAYER_CHANGE")` to derive `layer_count` as a best-effort proxy for the `slice_stats` event |
-| `modules/core-modules/machine-gcode-emit` (packet 187, not yet landed) | a WASM guest | on `Raw(";LAYER_CHANGE")`, looks ahead at most two commands for a `Raw` starting with `";Z:"`, to splice `before_layer_change_gcode` / `time_lapse_gcode` / `layer_change_gcode` |
+| `modules/core-modules/machine-gcode-emit` (packet 187, implemented) | a WASM guest | on `Raw(";LAYER_CHANGE")`, looks ahead at most two commands for a `Raw` starting with `";Z:"`, to splice `before_layer_change_gcode` / `time_lapse_gcode` / `layer_change_gcode` after the boundary's `;HEIGHT:` marker; a `;LAYER_CHANGE` not followed by a `;Z:` within two commands emits one `ERR_MALFORMED_LAYER_MARKER` warning and continues with the prior layer's Z (warn-and-pass, per the 2026-08-01 amendment) |
 
 So the marker set is already a three-crate interface today, and packet 187 makes
 it a **four**-party one whose newest consumer sits behind the WASM component
@@ -97,9 +97,10 @@ closest this gets today, and it is the boundary to watch.
 
 This amendment retires the obligation #3 clause below verbatim, in both of its
 prose forms, and replaces it with the warn-and-pass behaviour
-`.ralph/specs/187-custom-gcode-injection-registry` lands for
+`.ralph/specs/187-custom-gcode-injection-registry` landed for
 `machine-gcode-emit`. The amendment is recorded in
-`docs/DEVIATION_LOG.md` as `D-285-ADR-0051-AMENDED`.
+`docs/DEVIATION_LOG.md` as `D-285-ADR-0051-AMENDED`. (Wording updated 2026-08-05:
+"lands" → "landed" — packet 187 is implemented, not pending.)
 
 ### Retired clause (verbatim, lines 78–83 of the original)
 
@@ -138,6 +139,21 @@ specific to the postpass injection-point model, where the walk can fall back to
 a Z already in scope. Consumers that see the marker stream as their only
 source of Z do not have that fallback and remain on the original "fail loudly"
 rule.
+
+## Amendment — 2026-08-05 (packet 187 landed)
+
+`.ralph/specs/187-custom-gcode-injection-registry` is `status: implemented`.
+The consumer table entry above is updated from "(packet 187, not yet landed)"
+to implemented status, naming the five layer-scoped injection points
+(`machine_start_gcode`, `before_layer_change_gcode`, `time_lapse_gcode`,
+`layer_change_gcode`, `machine_end_gcode`) consumed at the layer boundary, the
+`;HEIGHT:`-after splice position, and the warn-and-pass handling of malformed
+markers ratified by the 2026-08-01 amendment: a `;LAYER_CHANGE` not followed by
+a `;Z:` within two commands emits one `ERR_MALFORMED_LAYER_MARKER` warning
+(`modules/core-modules/machine-gcode-emit/src/lib.rs`) and continues with the
+prior layer's Z. The 2026-08-01 amendment's future-tense "lands" wording was
+changed to "landed". The format and all four obligations are unchanged.
+
 - **Two consumers parse text; two match structured commands.** `m73.rs` and the
   187 module see `GCodeCommand::Raw` variants before serialization;
   `visual_debug_gcode.rs` and `run.rs` see serialized lines. A change that

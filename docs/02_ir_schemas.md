@@ -470,14 +470,24 @@ Parser plumbing: `parse_3mf_sidecar(&mut zip)` is invoked inside
 dropped. The resulting map is threaded through `parse_3mf_model_xml`
 to `resolve_object` for routing (packets 56b/56c).
 
-### `ModifierVolume.config_delta` Sources (Normative — Packets 56b, 67, 68)
+### `ModifierVolume.config_delta` Sources (Normative — Packets 56b, 67, 68, 185)
 
 `ModifierVolume.config_delta.fields` can be populated from two
 distinct sidecar sources in a single 3MF file:
 
 1. **Part-level `<metadata>`** inside a `<part>` element (Packet 56)
    — follows its separate part-level metadata rules and subtype routing; Packet
-   172 does not widen that allowlist.
+   172 does not widen that allowlist. The part-level allowlist additionally
+   preserves the three width keys `inner_wall_line_width`,
+   `outer_wall_line_width`, and `sparse_infill_line_width` (Packet 185,
+   TASK-212b): a 3MF modifier part carrying any of them ingests into
+   `config_delta.fields` with its exact numeric value via the production
+   loader path (`object_metadata_to_config_data` in
+   `crates/slicer-model-io/src/loader.rs`), rather than being dropped before
+   it can reach module config. These three preserved part-level fields remain
+   subject to the separate object-level allowlist above and to the unknown-key
+   filtering rules — they are admitted part-level keys, not a widening of the
+   object-level list.
 2. **Object-level `<metadata>`** at the `<object>` scope (Packet 67) —
    routed to every `modifier_volume` belonging to that object and governed by
    the complete object-level allowlist above. This object-level list is
@@ -1216,6 +1226,16 @@ pub struct Point3WithWidth {
     /// - Zero => the point lies exactly on the offset boundary.
     /// - Positive => the point overhangs beyond the offset boundary.
     /// - `None` => no distance was measured.
+    ///
+    /// `None` means no measurement because there is **no previous layer** (the
+    /// first layer) or the previous-layer boundary for this region is empty,
+    /// and must **never** be replaced by `0.0`, `-1.0`, or `f32::MAX` by any
+    /// producer or consumer. All three substitutes are live sentinels
+    /// downstream: `0.0` reads as "exactly on the offset boundary", `-1.0`
+    /// collides with packet 191's `min_distance` not-found sentinel, and
+    /// `f32::MAX` satisfies `|d| > min_distance` — each routes a consumer
+    /// into the wrong branch. `None` is the only value that means "no
+    /// boundary was measured" (packet 193).
     #[serde(default)]
     pub overhang_distance_mm: Option<f32>,
 }
@@ -1617,6 +1637,13 @@ pub struct ScoredSeamCandidate {
 `PerimeterRegionView.resolved_seam` so the apply-stage module (seam-placer)
 operates on a pre-resolved seam without rescoring.
 
+**Identity validation (Normative — packet 178):** seam-plan harvest validates
+every `RegionKey` component — `global_layer_index`, `object_id`, `region_id`,
+and `variant_chain`. Unsupported or malformed variant-chain values (including
+Custom paint values not representable at the WIT boundary) produce a fatal
+structured contract error and prevent `SeamPlanIR` commit; identity failure is
+a contract error, never a best-effort drop.
+
 ---
 
 ## IR 9d — LightningTreeIR
@@ -1665,13 +1692,20 @@ pub struct LightningTreeEntry {
 }
 ```
 
+**Supersession note (packet 137, C-class):** the packet 137 contract's
+`LightningTreeEntry` shape (which omitted `region_id`) is superseded by the
+implemented per-region contract shown in IR 9d above. The
+`(object_id, region_id, layer_index)` keying is authoritative — the entry
+carries `region_id` exactly as `SupportPlanEntry` and `SeamPlanEntry` do, and
+the view lookup below is region-scoped, not object-scoped.
+
 **Consumption pattern — read-view via `lightning-tree-segments`:**
 
 The host exposes the IR to a `Layer::Infill` guest via the
 `lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
-(`crates/slicer-schema/wit/deps/ir-types.wit:206`; canonical package
-`slicer:world-layer@2.3.0`). The `run-infill` export receives a
-`paint: paint-region-layer-view` argument, and the guest looks up the per-layer
+(`crates/slicer-schema/wit/deps/ir-types.wit:206`; the guest exports the
+`slicer:layer-infill@1.0.0` package's `infill` interface, whose `run` function
+receives the `paint: paint-region-layer-view` argument). The guest looks up the per-layer
 `tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
 `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
 accessor (`crates/slicer-sdk/src/traits.rs:196-212`). When no `LightningTreeIR` is
@@ -2025,6 +2059,17 @@ PNP's `ORCA_CONFIG_PADDING` table must never emit keys whose names match
 `*speed*`, `*acceleration*`, `*jerk*`, or `machine_max_*`. These keys are always
 fork-supplied and are never synthesized as padding.
 
+**Minimum-key gate (normative — packet 167):** PNP emits at least 80
+`; key = value` entries in `CONFIG_BLOCK` even when `raw_config` is minimal,
+keeping OrcaSlicer's viewer minimum-key gate (`ConfigBase::load_from_gcode_file`
+rejects blocks under ~80 pairs) satisfied. Cosmetic padding must not fabricate
+motion or machine-limit values — a padding key may only be a key the viewer's
+`GCodeProcessor` does not feed into motion/time computation (pattern/enum/
+toggle/count/geometry-cosmetic keys such as `wall_loops`, `top_shell_layers`,
+`infill_direction`, `wall_generator`, `support_type`), and any retained
+cosmetic padding key uses the corresponding OrcaSlicer upstream default value
+per `docs/ORCA_CONFIG_REFERENCE.md`.
+
 When `raw_config` lacks `printer_model`, PNP emits
 `; printer_model = Generic PNP Printer`. This synthesis uses the same
 deduplication path, `emit_config_kv` plus `BTreeSet<String>`, so a fork-supplied
@@ -2036,6 +2081,35 @@ values: `marlin` (default), `marlin2`, `klipper`, `reprapfirmware`, and
 (packet 171) and echoed in the `CONFIG_BLOCK` between `; CONFIG_BLOCK_START`
 and `; CONFIG_BLOCK_END`. Unknown values fall back to `marlin` with a
 `log::warn!`.
+
+##### G-code dialect variants (Normative — packet 171)
+
+The five `gcode_flavor` values select per-flavor command spellings in
+`crates/slicer-gcode/src/flavor.rs`, ported from canonical `GCodeWriter.cpp`
+(`set_temperature`, `set_acceleration_internal`, `set_jerk_xy`,
+`set_junction_deviation`, `set_pressure_advance`, and
+`supports_separate_travel_acceleration`). Divergent spellings:
+
+- **Temperature (`GCodeCommand::Temperature`):** RRF (`reprapfirmware`)
+  emits `G10 P<tool> S<celsius>`, appending `M116` on `wait: true` —
+  never `M104`/`M109`. The other four flavors emit `M104`/`M109` with
+  `T<tool> S<temp>`.
+- **Acceleration:** Marlin emits `M204 S<accel>`; Marlin2 and RRF emit
+  `M204 P<accel>`; Repetier emits `M201 X<accel> Y<accel>`. Separate
+  travel acceleration (`supports_separate_travel_acceleration`) is
+  supported by exactly Repetier, Marlin2, and RRF; Marlin and Klipper
+  have no separate form.
+- **Jerk and junction deviation:** jerk is `M205 X.. Y..` for Marlin,
+  Marlin2, and RRF, `M207 X..` for Repetier, and Klipper's
+  `SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=..`; junction deviation
+  (`M205 J..`) is Marlin2-only.
+- **Pressure advance:** Marlin/Marlin2 `M900 K..`, RRF `M572 D0 S..`,
+  Repetier `M233 X.. Y..`, Klipper `SET_PRESSURE_ADVANCE ADVANCE=..`.
+
+Uniform across all five flavors: fan (`M106 S`), tool-change (`T<n>`),
+extrusion-mode (`M82`/`M83`), firmware-retract (`G10`/`G11`), and
+bed-temperature (`M140`/`M190`) commands — divergences exist only in flavors
+outside the supported five.
 
 Packet 169-time-estimator-slice-stats depends on this contract when constructing
 fork-realistic machine-limit fixtures.
@@ -2156,6 +2230,33 @@ as the first command (packet 59) and resets the E-accumulator with `G92 E0` on
 mode change or layer reset. Mode is selected by the config key
 `use_relative_e_distances` (boolean; default `true` → M83). Carrier
 helper: `DefaultGCodeSerializer::with_extrusion_mode(mode)`.
+
+### M73 progress emission (Normative — packet 175)
+
+`inject_m73` (`crates/slicer-gcode/src/m73.rs`) runs inside
+`DefaultGCodeEmitter::emit_gcode` after the estimator fills
+`metadata.estimated_print_time_s`, operating on `GCodeIR.commands` as
+`GCodeCommand::Raw` entries so post-process modules and the serializer see the
+injected lines. Emission contract:
+
+- The emitter injects `M73 P<pct> R<remaining_min>` followed immediately by
+  an identical `M73 Q<pct> S<remaining_min>` line (same estimate for both
+  masks; OrcaSlicer `M73 P%s R%s` / `M73 Q%s S%s` reference masks) at three
+  points: **stream start** (`M73 P0 R<total_min>`), **changed-value layer
+  boundaries** (after each `;LAYER_CHANGE` `Raw` marker whose `(pct, min)`
+  differs from the last emitted pair — Orca's `process_line_move` dedup; `P`
+  values are monotonically non-decreasing), and **stream end**
+  (`M73 P100 R0`). Empty/zero-total streams are a no-op.
+- Filament-used and estimated-printing-time comments are appended as
+  `GCodeCommand::Raw` entries: `; filament used [mm] = …`,
+  `; filament used [cm3] = …`, the `; filament used [g] = …` line (only when
+  a filament density is configured — never `0.00`), and
+  `; estimated printing time (normal mode) = …` (`format_time_dhms`
+  formatting, zero-leading units omitted, seconds always present). These
+  comment lines are unconditional.
+- `disable_m73` (bool, default `false`) suppresses **only** the M73 lines —
+  neither the `P`/`R` nor the `Q`/`S` pairs — while the filament/time comment
+  block remains present.
 
 ### Polyline simplification and precision (Normative — packet 60)
 

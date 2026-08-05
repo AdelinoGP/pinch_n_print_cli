@@ -167,3 +167,13 @@ Negative / accepted costs:
    would re-open exactly the ambiguity ("which crate's helper did I call?") that
    deletion resolved. The new crate takes a distinct, narrower name and a
    host-side-only charter so the boundary against ADR-0004 stays legible.
+
+## Amendment — 2026-08-05 (archival cross-reference)
+
+Packet 162's three-site census (its AC-8 and `design.md`'s "spawn site N of 3",
+deliberately scoped to the sites that already had a freshness gate) is
+**historical scope**, not the current count. It was superseded by this ADR's
+seven-site record (above) and by packet 165's shared-crate extraction into
+`slicer-test-support`. When packet 162 is archived to `_OLD`, readers should
+treat ADR-0054 as authoritative for lookup-site counts; packet 162's
+`[FWD]` in `design.md` §Open Questions resolves here.

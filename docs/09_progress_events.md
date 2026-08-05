@@ -167,12 +167,23 @@ Cancellation (`--cancel-on-stdin-eof` or Ctrl+C/Ctrl+Break)
 `cancelled` { "schema_version": "1.5.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "..." }
 (stream ends; no `slice_complete`; process exits with code 130; `--output` path is absent)
 
+With `--no-progress-events` the `cancelled` event is not emitted (the stream
+is suppressed entirely); cancellation remains observable through exit code
+130 and the absent `--output` path.
+
 Note: under `--instrument-stderr` the failing module's `module_complete`
 timing event precedes its `module_error` (the runtime samples timing before
 matching on the dispatch result).
 
 ## Schema Version Cadence
 
+- **Supersession note:** packet 169 (`time-estimator-slice-stats`) decided the
+  instrumented stream would ship as version 1.2.0 with 1.3.0 reserved for a
+  future stage/module-event schema. That decision was superseded by later
+  schema packets: the stream has since advanced to 1.5.0, and the 1.3.0,
+  1.4.0, and 1.5.0 rows below were assigned to the `cancelled`, `module_log`,
+  and `profile_summary` events respectively. Recorded here for historical
+  traceability only — the rows below are authoritative.
 - `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`.
 - `1.4.0`: New `module_log` event, emitted only under `--instrument-stderr`, carrying the log records modules write through `slicer_sdk::host::log`. Adds the OPTIONAL `level` and `message` top-level fields, present only on `module_log`.
 - `1.5.0`: New `profile_summary` event, emitted once at slice end under `--profile`, carrying the per-(module, scope) fuel fold described in ADR-0055. Adds the OPTIONAL `profile` top-level field, present only on `profile_summary`, and the OPTIONAL `profile_scopes` field on `module_complete`, present only under `--profile-verbose`. Guest modules are reported in fuel (deterministic executed wasm instructions); native host built-ins are not fuel-metered and are reported in wall-clock, in a separate section with its own denominator — the two are never summed.

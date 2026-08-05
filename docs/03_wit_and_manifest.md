@@ -167,10 +167,12 @@ Startup checks:
 
 ### Why `wit-world` is now legacy
 
-The manifest `wit-world` key is no longer a compatibility input. The parser tolerates the
+The manifest `wit-world` key is legacy tolerated-and-ignored metadata. The parser tolerates the
 key in legacy manifests and ignores it; new manifests do not need it. The canonical stage
 ID selects the package, and typed instantiation checks the package identity against the
-guest component.
+guest component — compatibility is established by the qualified per-stage package export
+(`slicer:<package>/<interface>@<version>#run`) during typed instantiation, never by the
+manifest key.
 
 The old key could not enforce the version it appeared to describe. It was an exact-string
 allowlist claim, while the package version was not mechanically checked against a guest
@@ -280,7 +282,7 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   region.
 - `slice-region-view` and `perimeter-region-view` expose
   `config: func() -> config-view`, providing a per-region config accessor for
-  resolved settings inside each region loop. Packet 131 bumps `world-layer`
+  resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
   from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
@@ -441,10 +443,12 @@ resource paint-region-layer-view {
 **Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
 the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
 stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
-— the per-layer `Layer::Infill` module (packet 140) falls back to its
-non-lightning path. Non-lightning prints therefore see a zero-cost, no-op
-view; the wedge byte-identity canary (`wedge_per_region_config_delivery_byte_identical`)
-pins the default-config slice through the new stage.
+— the per-layer `Layer::Infill` module (packet 140) emits no paths for that
+layer; there is no stub fallback (matches `docs/02_ir_schemas.md`, and the
+packet-140 deletion of the old single-layer stub). Non-lightning prints
+therefore see a zero-cost, no-op view; the wedge byte-identity canary
+(`wedge_per_region_config_delivery_byte_identical`) pins the default-config
+slice through the new stage.
 
 **SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
 in `crates/slicer-sdk/src/traits.rs` returns the same
@@ -473,6 +477,20 @@ parameters, view records, and imported output resource.
 
 `PrePass::PaintSegmentation` is host-built-in (packet 97; see
 `01_system_architecture.md`) and has no module package or WIT export.
+
+**`PrePass::SeamPlanning` inputs (packets 168 + 178):** the seam-planning
+prepass export accepts a `layer-plan: layer-plan-view` parameter — added by
+packet 168 as a **required** parameter (a type change to an existing export,
+hence a major world-version bump of the then-monolithic `world-prepass`
+1.0.0 → 2.0.0) — and per packet 178 additionally consumes per-active-region
+`SliceIR` geometry via a `seam-planning-view` resource (`SeamPlanningView`),
+which carries per-region identity (`global-layer-index`, `object-id`,
+`region-id`, `variant-chain`), Z/height, ex-polygons, segment annotations,
+and scoring width. Packet 178's further type change major-bumped
+`world-prepass` to 3.0.0; since packet 164 the canonical contract is the
+per-stage package `slicer:prepass-seam-planning@1.0.0`, whose `run` takes
+`objects`, `layer-plan`, `output`, `config`, and `region-input` (see the
+on-disk WIT).
 
 ### Support-plan output seam (Normative — Packet 119)
 
@@ -668,8 +686,12 @@ The index-remap invariants are owned by the SDK's `apply_to` (`crates/slicer-sdk
 ## Module Manifest Schema (TOML)
 
 The manifest's `[stage].id` selects the canonical versioned stage package. Legacy manifests
-may still carry a `wit-world` key; the parser tolerates and ignores it. It is not part of
-the current schema or compatibility check.
+may still carry a `wit-world` key; the parser tolerates and ignores it — it is legacy
+tolerated-and-ignored metadata, not part of the current schema or compatibility check.
+Compatibility is established by the qualified per-stage package export during typed
+instantiation: the host resolves `[stage].id` to `slicer:<package>/<interface>@<version>#run`
+and wasmtime validates that export against the guest component (see "Why `wit-world` is
+now legacy" above).
 
 Full annotated example for a TPMS infill module:
 
@@ -1086,9 +1108,19 @@ group   = "Output"
 CLI flag:
 
 ```text
---thumbnail <PATH>      # PNG; Base64-encoded into THUMBNAIL_BLOCK_*
+--thumbnail <PATH>      # one source PNG; PNP decodes/rescales/encodes the
+                        # entries requested by the `thumbnails` raw-config key
                         # CLI flag wins over thumbnail_path config when both set.
 ```
+
+Thumbnail output is not generic base64: `--thumbnail` supplies **one** source
+PNG and PNP emits the configured thumbnail entries through the `thumbnails`
+raw-config key (an Orca-format `"WxH/EXT,WxH/EXT"` string, e.g.
+`"48x48/PNG,300x300/PNG"`) using the per-entry wire format documented in
+`docs/02_ir_schemas.md` (per-entry `; <tag> begin <W>x<H> <len>` /
+`; <tag> end` framing, 78-column wrap, outer sentinels retained). Without a
+`thumbnails` key, one `thumbnail` (PNG) entry is emitted at the source
+dimensions, source bytes passed through. Packet 173.
 
 #### Packet 31b — tree-support OrcaSlicer parity
 
@@ -1186,6 +1218,22 @@ display = "Tree support interface spacing"
 group   = "Support"
 ```
 
+#### Packet 185 — first-layer line width canonical key
+
+`initial_layer_line_width` is the **canonical key** for the first-layer
+extrusion-width override (declared on the width-consuming core modules:
+`classic-perimeters`, `arachne-perimeters`, `rectilinear-infill`,
+`gyroid-infill`, `lightning-infill`). `first_layer_line_width` is retained
+only as a **scheduler compatibility alias** for legacy profiles: the
+scheduler resolves it onto the canonical `ResolvedConfig` field
+(`initial_layer_line_width`) at config resolution. A profile specifying
+**both** keys is rejected with a named validation error (both key names
+appear in one error message — never silently deduplicated; packet 185
+AC-N1). This rename is not a WIT/schema-version change: the key string
+carries no WIT identifier, and `ResolvedConfig`'s serde shape is
+constructed in-process and marshalled over WIT, never persisted — no
+`CURRENT_*_SCHEMA_VERSION` bump.
+
 ### Per-paint-region config overrides (packet 51)
 
 The namespace `paint_config:<semantic>:<key>` is recognised at module-load time as a per-paint-region config override.
@@ -1208,7 +1256,7 @@ Per-object overrides use the namespace `object_config:<id>:<key>`. These flow th
 
 Module-owned machine start/end G-code is emitted by a designated module running at `PostPass::GCodePostProcess`. The bundled implementation is `machine-gcode-emit` (`modules/core-modules/machine-gcode-emit/`); the audit boundary is the contract, not the module ID. The stage is `GCodePostProcess` (not `LayerFinalization`) because the module operates on the typed `GCodeIR` command stream before serialization — it prepends a Raw start block before the first command and appends a Raw end block after the last, so ordering is natural and type-safe.
 
-The module reads four config keys:
+The module reads five config keys:
 
 ```toml
 [config.schema.machine_start_gcode]
@@ -1236,11 +1284,56 @@ type    = "int"
 default = 215
 display = "Nozzle Temperature (Initial Layer)"
 group   = "Machine G-code"
+
+[config.schema.nozzle_diameter]
+type    = "float"
+default = 0.4
+min     = 0.1
+max     = 2.0
+unit    = "mm"
+display = "Nozzle Diameter"
+group   = "Machine G-code"
 ```
 
 The defaults are Klipper-flavoured (`PRINT_START` / `PRINT_END` macros). Both G-code strings support `[key]` placeholder substitution: each `[snake_case_key]` is replaced with the effective value of that config key resolved from the `ConfigView` (e.g. the default `machine_start_gcode` references `[bed_temperature_initial_layer_single]` and `[nozzle_temperature_initial_layer]`). Substitution runs against the effective config before the Raw commands are emitted.
 
 The module emits the start block before the first `GCodeIR` command and the end block after the last.
+
+#### Placeholder engine (packet 186)
+
+The `[key]` substitution domain is exactly the module's manifest-declared
+config-key set plus the legacy alias table — a `ConfigView` is scoped to the
+module's own manifest, so a key `machine-gcode-emit` cannot resolve may be
+owned by a module that is not loaded. The resolvable domain is the five
+manifest keys above. Key behaviour:
+
+- **List-valued keys resolve from their first element, recursively.**
+  Real 3MF input supplies per-extruder settings as vectors, so
+  `nozzle_diameter` reaches the module as `ConfigValue::List(['0.4'])`
+  rather than a scalar; `format_placeholder_value` renders element 0
+  (canonical does the same `get_at(0)` read). An **empty** list is "no
+  value" — the key stays out of the lookup and its placeholder stays
+  unresolved rather than collapsing to an empty string (`M104 S` is a
+  worse printer command than `M104 S[nozzle_temperature]`).
+- **`first_layer_temperature` is an alias, not a manifest key.**
+  It resolves through the `PLACEHOLDER_ALIASES` table entry
+  `("first_layer_temperature", "nozzle_temperature_initial_layer")`,
+  applied after the config sweep so a real key of the same name would win.
+  Canonical's `GCode::update_placeholder_parser_with_variant_params` sets it
+  unconditionally (`first_layer_temperature is a legacy alias of
+  nozzle_temperature_initial_layer`); two config keys for one value could
+  disagree, so it must not become a sixth `[config.schema]` key.
+- **Unresolved placeholders pass through verbatim (brackets included) and
+  do not fail the slice.** `run_gcode_postprocess` unions the unresolved
+  keys from both templates into a `BTreeSet` and emits exactly **one**
+  `slicer_sdk::host::log_warn` naming every unresolved key (sorted,
+  deduplicated) and every injection point that contributed one, then
+  continues and returns `Ok`. A fatal-on-unresolved policy was built and
+  then **reverted before landing** (packet 186) after it broke three e2e
+  tests on real OrcaSlicer-authored 3MF fixtures — failing the slice breaks
+  composition because a template may legitimately reference keys owned by
+  modules that are not loaded. An unclosed `[` is literal text and never
+  enters the unresolved set.
 
 ## Path Optimization Output Contract (Normative)
 
@@ -1259,12 +1352,12 @@ emit through `gcode-output-builder` and how the host commits that output into
 - The host assembles `LayerCollectionIR.ordered_entities` deterministically
   from the committed per-layer arena (`PerimeterIR`, `InfillIR`, `SupportIR`)
   immediately *before* `Layer::PathOptimization` runs.
-- In the current `world-layer` contract, guests **cannot** reorder, append to, or remove
+- In the current `slicer:layer-path-optimization@1.0.0` contract (`path-optimization-module` world), guests **cannot** reorder, append to, or remove
   entries from `ordered_entities`. The pre-staged sequence is final for the
   lifetime of the layer. `topo_order` indices are stable and used as the
   `after_entity_index` keying domain for tool-changes and annotations.
 - Reordering of `ordered_entities` is performed via the `layer-collection-builder`
-  resource (packet 32; see `world-layer.wit` section above). Guests that need
+  resource (packet 32; see "Per-stage layer WIT packages" above). Guests that need
   deterministic reordering use `set-entity-order` on that resource; arbitrary
   mutation or append outside of that resource is still rejected at the host boundary.
 
@@ -1299,7 +1392,7 @@ within an anchor and across the layer.
 push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
 ```
 
-This is the single, minimal z-hop output channel. Entity-order rewriting uses the `layer-collection-builder` resource (packet 32; see `world-layer.wit` section above).
+This is the single, minimal z-hop output channel. Entity-order rewriting uses the `layer-collection-builder` resource (packet 32; see "Per-stage layer WIT packages" above).
 
 #### Commit destination
 
@@ -1584,10 +1677,10 @@ for type-identity, resource-handle, and dispatch correctness.
 
 | Guest                | World                       | Verifies                                                                  |
 |----------------------|-----------------------------|---------------------------------------------------------------------------|
-| `layer-infill-guest` | `slicer:world-layer`        | All Layer-stage exports, output builders, paint queries, region-key commit |
-| `prepass-guest`      | `slicer:world-prepass`      | PrePass exports (mesh analysis, paint, seam, support)                     |
-| `finalization-guest` | `slicer:world-finalization` | `LayerCollectionView` reads + `FinalizationOutputBuilder` writes          |
-| `postpass-guest`     | `slicer:world-postpass`     | `gcode-command` round-trip + text postprocess                             |
+| `layer-infill-guest` | `slicer:layer-infill/infill-module` | One-stage target: the `Layer::Infill` export, output builders, paint queries, region-key commit |
+| `prepass-guest`      | `slicer:prepass-mesh-analysis/mesh-analysis-module` | One-stage target: the `PrePass::MeshAnalysis` export (mesh analysis, paint) |
+| `finalization-guest` | `slicer:finalization-layer-finalization/layer-finalization-module` | One-stage target: the `PostPass::LayerFinalization` export — `LayerCollectionView` reads + `FinalizationOutputBuilder` writes |
+| `postpass-guest`     | `slicer:postpass-gcode-postprocess/gcode-postprocess-module` | One-stage target: the `PostPass::GCodePostProcess` export — `gcode-command` round-trip; gcode-only (text coverage is provided by `sdk-postpass-text-guest`) |
 
 **SDK round-trip witnesses** are authored *purely* through the
 `#[slicer_module]` proc-macro from `slicer-sdk`. They contain no inline

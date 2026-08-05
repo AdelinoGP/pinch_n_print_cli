@@ -263,12 +263,14 @@ packet 118) before the layer loop when the value is not `-1`. See
 
 ### `seam_mode` values
 
-Accepted on both `seam-placer` and `seam-planner-default` (default `"nearest"`):
+Accepted on both `seam-placer` and `seam-planner-default` (default `"aligned"` —
+packet 180 changed the default from `"nearest"` in both manifests together, matching
+OrcaSlicer's canonical `spAligned` default):
 
-- `nearest` — per-layer nearest-candidate seam placement (default; unchanged behaviour).
+- `nearest` — per-layer nearest-candidate seam placement.
 - `rear` — select the candidate with the highest Y coordinate (rear of the print bed).
 - `random` — pseudo-random candidate selection based on layer index.
-- `aligned` — cross-layer chained + spline-smoothed seam computed in the SeamPlanning prepass (`seam-planner-default`) and snapped to real wall candidates by `seam-placer` (see ADR-0046).
+- `aligned` — cross-layer chained + spline-smoothed seam computed in the SeamPlanning prepass (`seam-planner-default`) and snapped to real wall candidates by `seam-placer` (see ADR-0046). Default mode since packet 180.
 - `aligned_back` — same as `aligned` with a rear (max-Y) bias in candidate scoring.
 
 ## Host-registered config keys (generated)
@@ -442,10 +444,32 @@ table above.
 
 ## G-code preamble (packet 55)
 
-The one user config key here is `thumbnail_path` (default `""`), in the generated
-**Host-registered config keys** table above. An absent/empty value emits no
-`THUMBNAIL_BLOCK`; the `--thumbnail <PATH>` CLI flag overrides it (CLI wins). The
-PNG is encoded as `THUMBNAIL_BLOCK_*` Base64 chunks (76 chars/line, `; ` prefix).
+The user config keys here are `thumbnail_path` (default `""`) and `thumbnails`
+(packet 173; raw-config string, never a module-manifest key). Both are in the
+generated **Host-registered config keys** table above / the CONFIG_BLOCK:
+
+- An absent/empty `thumbnail_path` emits no thumbnail block; the `--thumbnail
+  <PATH>` CLI flag overrides it (CLI wins). `thumbnail_path` is invocation-time
+  only and is stripped before the CONFIG_BLOCK is written.
+- `thumbnails` (packet 173) is a case-insensitive comma-separated `WxH/EXT`
+  list selecting the entries the block contains. Accepted extensions: `PNG`,
+  `JPG`/`JPEG` (aliases of one format), `QOI`, `BTT_TFT`, and `COLPIC`; a
+  malformed entry (e.g. `48x/PNG`, `48x48`, or `48x48/BMP`) is rejected with an
+  error naming the offending entry verbatim, and the pipeline surfaces that
+  error instead of emitting a thumbnail block. When the key is absent, exactly
+  one PNG entry at the source PNG's own dimensions is emitted (source bytes
+  passed through). `thumbnails` **remains in the CONFIG_BLOCK** (unlike
+  `thumbnail_path`, which is stripped), and entry order in the block follows
+  the order of specs in the string, default entry first when the key is absent.
+  The `--thumbnail <PATH>` CLI flag supplies the single source PNG; all
+  requested sizes/formats travel in this key and are rendered PNP-side
+  (fork-facing deviation `D-173-THUMBNAIL-SINGLE-PNG`).
+
+Each entry is framed per the packet-173 wire format — `; <tag> begin <W>x<H>
+<len>` / `; <tag> end` with `; `-prefixed base64 lines wrapped at 78 columns —
+replacing the packet-55 bare-base64 `THUMBNAIL_BLOCK_*` chunks (76 chars/line);
+the outer `; THUMBNAIL_BLOCK_START` / `; THUMBNAIL_BLOCK_END` sentinels are
+retained. See `docs/02_ir_schemas.md` for the full per-entry envelope format.
 
 The G-code header also emits `; filament_diameter`, `; filament_density`, and
 `; max_z_height` comment lines, but **these are not user config keys** — there is
@@ -518,10 +542,24 @@ The `[filament_extruder_id]` at `filament_end_gcode` identifies the old tool;
 at `filament_start_gcode` it identifies the new tool. The role sites do not
 provide `[max_layer_z]`.
 
+Toolchange sites may run **before the first layer begins** (canonical
+`set_extruder` calls during start G-code observe no layer yet). In that case
+`[layer_num]` follows the canonical pre-layer value of **-1**; implementations
+must not assume a layer context exists during start-G-code toolchanges.
+
 When a per-site variable is unavailable, its placeholder remains verbatim, the
 run returns `Ok`, and exactly one warning names the config key and injection
 site. The unresolved bracketed text is therefore emitted unchanged rather than
-aborting the slice.
+aborting the slice (packet 186's warn-and-pass policy — an unresolved
+placeholder is not a slice error).
+
+For **list-valued configuration** (real 3MF input supplies per-extruder
+settings as vectors, e.g. `nozzle_diameter` arrives as `['0.4']`), the
+placeholder engine renders the **first element** of the list, recursively
+(packet 186). An **empty** list supplies no value: the key stays out of the
+lookup, the placeholder remains verbatim, and it is included in the aggregated
+warning — it is **not** replaced with an empty string (`M104 S[nozzle_temperature]`
+must never collapse to `M104 S`).
 
 ### Not implemented
 
@@ -624,7 +662,7 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 | `min_width_top_surface` | float_or_percent | `"0.0"` (gate off; upstream default `300%`) | base: `inner_wall_line_width` | `classic-perimeters` |
 | `min_width_top_surface` | float_or_percent | `"0.0"` (code fallback: filter disabled; upstream default `300%`) | base: `preferred_bead_width_outer` | `arachne-perimeters` |
 
-**`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
+**`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. **Packet 185 (AC-10)** redefined the topmost branch: `top_shell_index() == Some(0)` **unconditionally** forces exactly one wall on the topmost top sub-area (canonical `process_classic`'s topmost `loop_number = 0`), with no `min_width_top_surface` gate. Non-topmost top sub-areas (`top_shell_index() == Some(N>0)`) apply the `min_width_top_surface` threshold module-locally (following `emit_only_one_wall_top_second_pass` in `arachne-perimeters`); the generic `split_top_surfaces` in `crates/slicer-core/src/top_surface_split.rs` keeps its current signature and behavior. On non-top layers (`top_shell_index() == None`) the key is a no-op. Classic's infill-overlap selection (AC-11) is: `top_bottom_infill_wall_overlap` is selected on layer 0 or on topmost regions (`top_shell_index() == Some(0)`); for all other regions `infill_wall_overlap` is selected.
 
 **`only_one_wall_first_layer`** — when `true`, the perimeter generator emits a single outer wall on the first layer of the print (layer index 0).
 
@@ -632,17 +670,36 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 
 **`inner_wall_line_width`** — extrusion width for all inner wall loops. Overrides `line_width` for inner walls only.
 
-**Packet 184 (wall-width type parity, classic half).** Both keys on `classic-perimeters` are retyped `float_or_percent` with `unit = "mm"`, `ratio_over` the nozzle diameter, `max = 2.0`, and `min` lowered from `0.1` to `0.0` — the lowered floor exists so the canonical auto sentinel is accepted, because scalar range checks run against the raw *unresolved* magnitude. `ClassicPerimeters::run_perimeters` resolves each width via `ConfigView::get_abs_value(key, nozzle_diameter)` with three arms:
+**Serializer header width defaults (packet 182).** When the G-code serializer
+(`DefaultGCodeSerializer`) is built with no resolved width override, its
+header-comment fallback reports `; outer_wall_line_width = 0.4` and
+`; inner_wall_line_width = 0.4`, matching the pipeline's `legacy_line_width`
+(`0.4` mm) fallback. These are **serializer defaults, not per-slice
+resolved-width reporting** — the header stays config-blind and is not wired to
+the resolved widths; it simply reports the value the pipeline falls back to.
 
-- a resolved value `> 0.0` — used as-is (an explicit mm float, or a percent of nozzle diameter);
-- a resolved value of exactly `0` — OrcaSlicer's **auto sentinel**. Canonical `Flow.cpp::new_from_config_width` routes `0` to `Flow.cpp::auto_extrusion_width`, which returns `1.125 × nozzle_diameter` for both `frExternalPerimeter` and `frPerimeter`. PnP now honours that, so a profile ported from OrcaSlicer carrying `0` derives the same width;
-- key absent — falls back to PnP's `legacy_line_width` (`0.4` mm).
+**Packet 184 (wall-width type parity, classic half).** Both keys on `classic-perimeters` are retyped `float_or_percent` with `unit = "mm"`, `ratio_over` the nozzle diameter, `max = 2.0`, and `min` lowered from `0.1` to `0.0` — the lowered floor exists so the canonical auto sentinel is accepted, because scalar range checks run against the raw *unresolved* magnitude. Width resolution happens through the shared `resolve_role_width` resolver (packet 185, below); an explicit value `> 0.0` is used as-is (an explicit mm float, or a percent of nozzle diameter), and a resolved value of exactly `0` is OrcaSlicer's **auto sentinel** — canonical `Flow.cpp::new_from_config_width` routes `0` to `Flow.cpp::auto_extrusion_width`, which returns `1.125 × nozzle_diameter` for both `frExternalPerimeter` and `frPerimeter`.
 
 The `nozzle_diameter` read is hoisted **above** both width reads and its own fallback is `legacy_line_width` (previously `inner_wall_line_width`), breaking a read cycle between the nozzle key and the widths it now feeds.
 
+### Shared width resolver precedence (packet 185)
+
+`resolve_role_width` (`crates/slicer-core/src/flow.rs`) is the single context-aware
+resolver consumed by all five width-consuming core modules (`classic-perimeters`,
+`arachne-perimeters`, `rectilinear-infill`, `gyroid-infill`, `lightning-infill`).
+The normative precedence chain (locked):
+
+1. **`bridge_line_width`** first — a positive configured `bridge_line_width` wins on a bridge context, even on the first layer;
+2. else a positive **`initial_layer_line_width`** on the first layer;
+3. else the **role width** (the canonical role-keyed key — see the role map below);
+4. a role width of exactly **`0`** (the auto sentinel) falls back to **`line_width`**;
+5. a zero `line_width` falls back to **auto width** = `1.125 × nozzle_diameter`.
+
+Role-keyed mapping: `BottomSolidInfill` (and `InternalSolidInfill`) → `internal_solid_infill_line_width`; `SparseInfill` → `sparse_infill_line_width`; `TopSolidInfill` → `top_surface_line_width`; there is **no** bottom-specific width key. `BottomSolidInfill`'s canonical key resolution is therefore `internal_solid_infill_line_width` except for the first-layer/bridge overrides above. Resolution covers **geometric widths/spacing only** — canonical top/bottom/internal-solid flow-ratio controls are excluded (deferred as `DEV-102`). An explicit `0.4` remains exactly `0.4`; only absent/zero keys route through the auto sentinel. Defaults moved to the `0` auto sentinel (AC-5), including global `line_width`; the key rename `first_layer_line_width` → `initial_layer_line_width` (AC-4) keeps a scheduler-side legacy alias that rejects profiles specifying both names (AC-N1). Percent/`FloatOrPercent` values are transported through `ResolvedConfig.extensions` un-resolved (TASK-303).
+
 Two residuals were tracked as one shared wall-width/percent-transport residual in `docs/DEVIATION_LOG.md`:
 
-1. PnP keeps a manifest `default` of `0.4` and an **absent-key** fallback of `0.4` mm, where canonical's upstream default is `0` (i.e. auto → `1.125 × nozzle_diameter`). Changing PnP's default is a user-visible output change and was deliberately left out of packet 184 (`[FWD-1]`). **Closed (partial) by packet 185:** the arachne wall-width keys moved to `float_or_percent` with the `0` auto sentinel; the classic `0.4` default and absent-key fallback remain (see the ADR-0043 amendment).
+1. **Closed by packet 185 (AC-5 and closure-note items 3/5/6):** the `0.4` mm manifest/absent-key fallback is **gone** — Classic, Arachne, rectilinear, gyroid, and lightning absent width keys now use the canonical auto-`0` sentinel, resolving to `1.125 × nozzle_diameter` (0.675 mm at nozzle 0.6), identical to the explicit-zero case; the earlier `[FWD-1]` decision ("keep legacy 0.4 for absent keys") was superseded. An explicit `0.4` remains explicit. See the ADR-0043 amendment.
 2. **Ingestion residual:** no live slice could carry a `Percent` / `FloatOrPercent` value end-to-end because the config **parser** discarded what `parse_percent_default` parsed (`parse_config_field_entry` invoked it as a bare validation statement). **Closed by packet 185 (TASK-303):** `parse_config_field_entry` now retains the parsed `ConfigValue` on `ConfigFieldEntry::parsed_default`, and scheduler config resolution threads it into `ResolvedConfig.extensions`, so a percent-typed flow key with a schema default reaches a live slice unchanged. `ResolvedConfig::to_config_map`'s `extensions` pass-through was never the barrier — it is a transparent channel that already carries any variant.
 
 **`precise_outer_wall`** — when `true`, the perimeter generator compensates outer-wall width to hit the model boundary precisely. Gated on `wall_sequence == InnerOuter` because inner walls must be committed first for the compensation math to work.

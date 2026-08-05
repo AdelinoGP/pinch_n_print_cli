@@ -264,17 +264,18 @@ Orca 60.5×31.0mm) — same geometry scale.
   > indistinguishable**. The bug only exists where thickness *differs* across the propagation edge. A fixture
   > that cannot vary the quantity under test is not a test of it.
   >
-  > **Landed 2026-07-16 (separate, faithful sub-fix — does NOT resolve the above):** `max_bead_count` must be
-  > EVEN (OrcaSlicer `WallToolPaths.cpp:525` `= 2·inset_count`; its `LimitedBeadingStrategy` ctor warns on odd,
-  > and the odd-`max_bead_count` `compute` branch — a faithful port of `LimitedBeadingStrategy.cpp:73` — parks
-  > surplus in one wide centre bead). PnP used **odd 9** in the module manifest default (which ALSO shadowed
-  > `wall_count` entirely, making it non-functional), core `ArachneParams::default()`, and test `factory_params()`.
-  > Fixed the module: manifest `max_bead_count` `default 9→0` (sentinel), `min 1→0`; `arachne_params_from_config`
-  > now derives `2·wall_count` when absent/≤0 (even, and tracks `wall_count`). Unit-proven on the captured Z≈0.4
-  > cross-section: even caps (6/8/10) → max width ≤0.65mm; odd 9 → 14.75mm. But production benchy is byte-identical
-  > before/after this change because its giant beads come from stored bead_count 3/5 (< cap), so the cap never
-  > engages — confirming the two are distinct bugs. Core `ArachneParams::default()`/test `factory_params()` still
-  > carry odd 9 (faithfulness follow-up; tangled with the tapered-wedge self-captured baselines).
+> **Landed 2026-07-16 (separate, faithful sub-fix — does NOT resolve the above):** `max_bead_count` must be
+> EVEN (OrcaSlicer `WallToolPaths.cpp:525` `= 2·inset_count`; its `LimitedBeadingStrategy` ctor warns on odd).
+> PnP used **odd 9** in the module manifest default (which ALSO shadowed `wall_count` entirely, making it
+> non-functional), core `ArachneParams::default()`, and test `factory_params()`. Fixed the module: manifest
+> `max_bead_count` `default 9→0` (sentinel), `min 1→0`; `arachne_params_from_config` now derives `2·wall_count`
+> when absent/≤0 (even, and tracks `wall_count`). Unit-proven on the captured Z≈0.4 cross-section: even caps
+> (6/8/10) → max width ≤0.65mm; odd 9 → 14.75mm. But production benchy is byte-identical before/after this
+> change because its giant beads come from stored bead_count 3/5 (< cap), so the cap never engages — confirming
+> the two are distinct bugs. Core `ArachneParams::default()`/test `factory_params()` were corrected to the
+> canonical even **10** under packet 177. The correction rests on canonical even `max_bead_count` derivation
+> (`2·inset_count`), not on an odd-count giant-centre-bead compute branch: per packet 177,
+> `LimitedBeadingStrategy.cpp::compute` contains no such branch.
 
 **Scope map of benchy defects (decided 2026-07-15 — "skip only D2"):**
 - **D4** inner-wall self-overlap/double-extrusion — **RESOLVED 2026-07-16** (beading-propagation pass

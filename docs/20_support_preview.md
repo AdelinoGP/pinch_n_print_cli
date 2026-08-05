@@ -4,6 +4,17 @@ The `support-preview` verb runs the support-geometry prepass and writes a
 fork-facing JSON document for coarse support visualization. Its latency
 contract is **prepass only — no per-layer or G-code stages**.
 
+## CLI Usage
+
+```bash
+pnp_cli support-preview --input <3mf> --output <path>
+```
+
+`--config <path>` optionally supplies a config file. `--module-dir <path>` is
+repeatable and adds module search paths. `--no-default-module-paths` disables
+the default module directories. The verb writes the JSON document only to the
+requested output path and never emits G-code.
+
 ## Schema Version
 
 The document has `schema_version: "1.0.0"`. This is the document contract
@@ -108,6 +119,19 @@ length of `layers`.
 
 The `layer_index` value is a model-layer index from `plan.global_layers`, not
 a support-only layer index.
+
+## Absent Support
+
+When support is disabled or no `SupportGeometryIR` is committed to the
+blackboard, the command still exits successfully and emits `layers: []`.
+`layer_count` continues to report the total number of plan layers, so the fork
+can distinguish an empty overlay from a failed run.
+
+## Invalid Input
+
+A nonexistent or invalid input causes a nonzero exit with an error naming the
+input path. No output document is produced, and no partial output file is
+left behind.
 
 ## Determinism And Scope
 

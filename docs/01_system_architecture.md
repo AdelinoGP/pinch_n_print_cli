@@ -127,6 +127,13 @@ Stages 1–2 are the classic mesh-analysis and layer-planning pipeline.
 
 `PrePass::SeamPlanning` reads per-region `SliceIR` polygons via `SeamPlanningView` to compute the active-region `SeamPlanIR`.
 
+`SeamPlanningView` records are projected deterministically in ascending
+`(global_layer_index, object_id, region_id, variant_chain)` order — the full
+`RegionKey` order, `variant_chain` last — and map iteration must not determine
+seam-plan order: no map iteration may choose which record the planner sees
+first (packet 178). Exactly one `SeamPlanIR.entries` record is produced per
+active `(global_layer_index, object_id, region_id, variant_chain)` key.
+
 cross-product expansion: each `(layer, object, active_region)` is split into one
 `RegionPlan` per canonical **variant chain** (see §"Variant-Chain Region
 Splitting" below). `PrePass::Slice` (stage 5) then produces `SliceIR`.
@@ -173,6 +180,7 @@ PrePass::LayerPlanning
 PrePass::OverhangAnnotation  [introduced P106; host built-in host:overhang_annotation; runs AFTER PrePass::Slice]
   Input:  SliceIR (committed by PrePass::Slice) + LayerPlanIR + SurfaceClassificationIR
   Output: SurfaceClassificationIR.overhang_quartile_polygons (per-layer HashMap<u32, Vec<QuartileBand>>)
+          SurfaceClassificationIR.prev_layer_boundaries (per-layer HashMap<u32, Vec<ExPolygon>>)
   Purpose: For each object, take its per-layer footprints from the committed SliceIR and diff
            consecutive layers (current \ previous) — canonical detect_overhangs_for_lift
            (PrintObject.cpp), which diffs consecutive lslices; the object meshes are
@@ -182,6 +190,16 @@ PrePass::OverhangAnnotation  [introduced P106; host built-in host:overhang_annot
            Consumers (perimeter modules, infill modules, seam modules) read these polygons via
            point-in-polygon without cross-layer access — the classification is pre-computed at
            PrePass time. See ADR-0012.
+
+           Alongside overhang_quartile_polygons, the host built-in also populates
+           SurfaceClassificationIR.prev_layer_boundaries from the previous layer's committed
+           slice boundary (packet 193): for each layer, the previous layer's slice boundary
+           contours are carried end to end (SurfaceClassificationIR → slice-region-view →
+           perimeter stamping sites) so `expolygon_to_path3d` and the Arachne per-vertex
+           loop can stamp the continuous signed `overhang_distance_mm` beside
+           `overhang_quartile`. Both maps are keyed by GLOBAL layer index; the boundary is
+           canonical's `unscaled_prev_layer` input — built from the previous layer's slice
+           boundary, not its extrusion paths.
 
             `overhang-classifier-default` (PostPass::LayerFinalization) reads per-vertex `overhang_quartile` from LayerCollectionIR entities (propagated from these quartile bands) and emits `EntityMutation::SetPointSpeedFactors`: `overhang_quartile` is the gate for whether a point is an overhang at all, while the speed magnitude comes from in-module interpolation over the prepass-stamped distance to the previous layer's wall boundary (`overhang_distance_mm`). It no longer computes wall distances itself; that classification algorithm was superseded by this PrePass classifier (P106/P107, ADR-0031).
 
@@ -534,11 +552,25 @@ PostPass::GCodePostProcess
   Purpose: Structured mutation of G-code commands.
 
 PostPass::TextPostProcess  [last resort only]
-  Input:  serialized G-code string
-  Output: serialized G-code string (modified)
+  Input:   serialized G-code string
+  Output:  serialized G-code string (modified)
   Purpose: Raw text mutation for features that cannot be expressed in GCodeIR.
            Single-threaded. Use sparingly.
 ```
+
+#### G-code Flavor Resolution (packet 171)
+
+G-code flavor is resolved from configuration — the `gcode_flavor` config key
+(`marlin | marlin2 | klipper | reprapfirmware | repetier`; default `marlin`) —
+and applied by the slicer-gcode serializer only. The serializer is constructed
+with a `GcodeFlavor` parsed from the resolved config, and the flavor-divergent
+command arms (temperature, acceleration, jerk, pressure-advance) route through
+the dialect layer in `crates/slicer-gcode/src/flavor.rs`. `GCodeIR` and the WIT
+contracts remain flavor-independent — flavor is a serialization concern, never
+an IR or guest concern, so no guest rebuild is involved. Serialized output is
+deterministic from IR plus resolved configuration: the emitted bytes are a pure
+function of `(GCodeIR, resolved config)`, where the flavor comes from config
+only.
 
 #### Stable Entity-ID Invariant (packet 39)
 
@@ -600,7 +632,40 @@ Multi-tool toolchanges flow through `GCodeCommand::ToolChange { from, to }` in t
 
 #### Machine Start / End G-code Emission Boundary (packet 59)
 
-Machine-level start and end G-code (printer preamble / postamble) is module-owned. A designated finalization module reads `machine_start_gcode` and `machine_end_gcode` from `ResolvedConfig`, expands macros (`{first_layer_temperature}`, `{bed_temperature}`, `{filament_type}`, `{nozzle_diameter}`, `{tool_count}`, `{layer_count}`, `{print_time_estimate_s}`, `{x_max}`, `{y_max}`, `{z_max}`), and emits the resulting commands before the first layer (start) and after the last layer (end). Packet 59 moved this from a host built-in to a module-owned contract; see `docs/03_wit_and_manifest.md` "Machine start / end G-code emission" for the manifest surface.
+Machine-level start and end G-code (printer preamble / postamble) is module-owned. A designated finalization module reads `machine_start_gcode` and `machine_end_gcode` from `ResolvedConfig` and emits the resulting commands before the first layer (start) and after the last layer (end). Packet 59 moved this from a host built-in to a module-owned contract; see `docs/03_wit_and_manifest.md` "Machine start / end G-code emission" for the manifest surface.
+
+> **Retired description (packet 59, superseded by packet 186):** the original
+> contract described brace-delimited macro expansion — the module "expands
+> macros (`{first_layer_temperature}`, `{bed_temperature}`, `{filament_type}`,
+> `{nozzle_diameter}`, `{tool_count}`, `{layer_count}`,
+> `{print_time_estimate_s}`, `{x_max}`, `{y_max}`, `{z_max}`)". That shape is
+> obsolete: the placeholder engine was rewritten in packet 186 and the
+> resolvable domain is far narrower (see below). None of the ten listed names
+> except `first_layer_temperature` and `nozzle_diameter` resolves today, and
+> none of the remaining eight is a PnP config key (see
+> `docs/DEVIATION_LOG.md` for the residual row).
+
+#### Custom-G-code Placeholder Engine (packet 186)
+
+`machine-gcode-emit`'s placeholder engine performs **single-pass square-bracket
+substitution** over the start/end templates: `[key]` is replaced by the value
+of the key, resolved from the module's own manifest-scoped `ConfigView`. The
+placeholder domain is exactly the module's manifest-declared key set plus the
+alias table — five manifest keys:
+`machine_start_gcode`, `machine_end_gcode`,
+`bed_temperature_initial_layer_single`, `nozzle_temperature_initial_layer`,
+and `nozzle_diameter` — plus the `first_layer_temperature` alias of
+`nozzle_temperature_initial_layer` (canonical's legacy alias; not a sixth
+manifest key). No other names resolve.
+
+Unresolved placeholders pass through **verbatim** (brackets included) and do
+**not** fail the slice: the run returns `Ok` and the slice proceeds, with one
+**aggregated warning** naming every unresolved key (sorted, deduplicated) and
+every injection point that contributed one. The warn-and-pass policy is
+architectural — a module's `ConfigView` is scoped to its own manifest, so
+"unknown to `machine-gcode-emit`" is not "unknown to the slicer", and aborting
+the slice would break composition. See `docs/adr/0050-custom-gcode-architecture.md`
+for the aligned decision record.
 
 ---
 
@@ -615,7 +680,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 |------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                                                                |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                                                            |
-| `PrePass::OverhangAnnotation` (after Slice) | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`             | `SurfaceClassificationIR.overhang_quartile_polygons` (per-layer quartile bands from consecutive-slice diff; introduced P106)         |
+| `PrePass::OverhangAnnotation` (after Slice) | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`             | `SurfaceClassificationIR.overhang_quartile_polygons` (per-layer quartile bands from consecutive-slice diff; introduced P106) and `SurfaceClassificationIR.prev_layer_boundaries` (previous layer's committed slice boundary; introduced P193)         |
 | `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `SliceIR` (via `replace_slice_ir`; per-variant polygons)                                                 |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
@@ -737,6 +802,22 @@ module, per field — `{key, type, values, default, display, group}`). The CLI
 subcommand and JSON shape are implemented in `crates/pnp-cli/src/main.rs`
 (`ConfigSchema` subcommand) and documented in `03_wit_and_manifest.md`
 under "Manifest config schema query".
+
+#### CLI Output Lifecycle and Cancellation (packet 174)
+
+`pnp_cli slice` writes the output artifact only after a successful pipeline
+completion: the slice arm writes the file only when `run_slice` returns `Ok`,
+so a cancelled run must leave the output path absent. Cancellation is
+cooperative — a shared `AtomicBool` flag set by the OS signal handler
+(CTRL_C/CTRL_BREAK on Windows, SIGINT on unix) or, behind the opt-in
+`--cancel-on-stdin-eof` flag, by stdin EOF; the runtime checks it at phase
+boundaries and per layer and returns without completing the pipeline. A
+cancelled run emits a `cancelled` JSONL progress event (never followed by
+`slice_complete`) and exits with the distinct documented code 130. Because the
+output write happens only on `Ok`, no partial G-code file can exist on cancel;
+the CLI's `remove_file` of the output path in the cancel path is defensive
+only. Any future streaming writer must revisit this guarantee — it cannot rely
+on write-after-`Ok` to keep the output path absent on cancel.
 
 ---
 

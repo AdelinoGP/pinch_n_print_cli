@@ -312,3 +312,63 @@ one was real.
   Rejected: it assumed modules implement several stages, and `[stage] id` is
   singular in all 20 manifests. Tolerating a miss would recreate the silent-success
   failure mode this ADR exists to delete.
+
+## Amendment — 2026-08-05 (packets 163/164)
+
+Packets `163_per-stage-wit-packages-pilot` and `164_per-stage-wit-packages-bulk`
+delivered this decision, and the delivery corrects two numbers in the Decision
+and Consequences above. The per-stage-package decision itself is unchanged and
+governing; what follows retires only the stale arithmetic and the stale
+`wit-world` framing.
+
+**Retired — the 17-package end state.** The Decision said:
+
+> 17 packages: 10 layer + 4 prepass + 2 postpass + 1 finalization. All four
+> tiers, so exactly one mechanism exists.
+
+and the Consequences said:
+
+> Significant refactor of macro glue, host bindgen (4 `bindgen!` → 17), and
+> dispatch.
+
+Both counts are wrong against the delivered tree. `world-layer.wit` carries 8
+stage exports, not 10 — the "10" counted the two lifecycle exports packet 162
+deleted (see §"The lifecycle exports go with them"). `PrePass::PaintSegmentation`
+is host-built-in since packet 97 (`crates/slicer-runtime/src/prepass.rs`) and has
+no WIT export and no package. So "one package per STAGES row" (16) was never the
+shape either; the delivered contract is **15 versioned packages**:
+
+- 8 layer: `layer-slice-postprocess`, `layer-perimeters`,
+  `layer-perimeters-postprocess`, `layer-infill`, `layer-infill-postprocess`,
+  `layer-support`, `layer-support-postprocess`, `layer-path-optimization`
+- 4 prepass: `prepass-mesh-analysis`, `prepass-layer-planning`,
+  `prepass-seam-planning`, `prepass-support-geometry` — plus the unversioned
+  shared `slicer:prepass-types` dep package for the view records two of them
+  marshal
+- 2 postpass: `postpass-gcode-postprocess`, `postpass-text-postprocess`
+- 1 finalization: `finalization-layer-finalization`
+
+All at `@1.0.0`, each pairing an imported `<iface>-types` interface (where the
+stage carries host-owned resources) with an exported `run`-only interface, per
+§"The naive shape inverts resource ownership". `PrePass::PaintSegmentation` is
+the one deliberate non-package row in `STAGES` (all five WIT columns empty, with
+a source comment naming it host-built-in); no guard may assert "every stage has a
+package". The host carries 15 per-stage `bindgen!` mods, not 17. The tier
+survives as vocabulary (`TIER_*` consts, package-name prefix, SDK trait grouping)
+and dies as a contract, exactly as §"Versions reset to 1.0.0" promised.
+
+**Retired — `wit-world` as a live mechanism.** The Decision and Consequences
+above describe `wit-world`, `SUPPORTED_WIT_WORLDS` and `validate_wit_world` as
+standing mechanisms that "retire" with this work. They are gone: packets 163/164
+deleted `SUPPORTED_WIT_WORLDS` and `validate_wit_world`, dropped the `wit-world`
+key from all 20 core-module manifests and the `module_new` scaffold, and replaced
+the allowlist tests with `wit_world_key_is_ignored`. The manifest `wit-world` key
+is now **legacy tolerated-and-ignored metadata** — the parser accepts it in
+legacy manifests and never reads it (docs/03_wit_and_manifest.md §"Why `wit-world`
+is now legacy" and §Module Manifest Schema). Compatibility is established by the
+**qualified per-stage package export during typed instantiation**: `[stage] id`
+resolves through the canonical stage table to `slicer:<pkg>/<iface>@1.0.0#run`,
+and wasmtime checks that qualified export against the guest component at
+instantiate time — the exact mechanism §"Why this works" describes, with no
+manifest claim involved (docs/11_operational_governance_and_acceptance_gate.md
+compatibility dimension 2, docs/03 startup checks).

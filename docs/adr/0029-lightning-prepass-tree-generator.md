@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed (lands with the lightning-parity packets `137_lightning-prepass-contract` …
-`140_lightning-module-rewrite`; follows the 2026-07-01 infill-parity grilling).
+Accepted. Landed with the lightning-parity packets `137_lightning-prepass-contract` …
+`140_lightning-module-rewrite` (closed 2026-08-05; follows the 2026-07-01
+infill-parity grilling). The decision is implemented and this ADR is closed to
+further amendment except for recorded amendments.
 
 ## Context
 
@@ -91,3 +93,37 @@ parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` modul
 - `crates/slicer-core/src/algos/support_geometry.rs:93` — the host-producer pattern being copied.
 - `crates/slicer-ir/src/slice_ir.rs:1046` — `SupportPlanIR` (IR-shape precedent).
 - `modules/core-modules/lightning-infill/src/lib.rs:234,265` — current stub + self-link site.
+
+## Amendment — 2026-08-05 (packets 137–140)
+
+The lightning feature is fully implemented. Packet 137 landed the contract — the
+`PrePass::LightningTreeGen` stage, the schema-versioned `LightningTreeIR`
+(`tree_edge_segments: Vec<[Point2; 2]>` per object per layer), the host producer
+skeleton with the skip-when-unused promise, and the `lightning-tree-segments`
+WIT read-view on `paint-region-layer-view`. Packet 138 ported the
+`DistanceField` / `TreeNode` primitives; packet 139 ported the per-layer
+generator (`Lightning::Layer` + `Generator` orchestration, per-region `region_id`
+keying); packet 140 rewrote `lightning-infill` as a per-layer sampler emitting
+raw `SparseInfill` polylines and closed the infill paint-view contract by
+extending the WIT `run-infill` signature with `paint: paint-region-layer-view`
+(`slicer:world-layer@2.2.0` → `@2.3.0`).
+
+**The full grounding-location search contract (packet 140).** The host-side
+lightning layer performs the grounding search **before sampling**: it scans the
+outline candidates, locates nearby tree nodes through a grid index (the
+tree-node locator keyed by `to_grid_point` at `locator_cell_size` resolution),
+excludes candidates within the `wall_supporting_radius` threshold, and ranks the
+remaining candidates by weighted distance. This is producer-side;
+`Layer::Infill` remains a sampler only.
+
+**Decision-text completion.** Packet 140 closed the grounding-search portion of
+this decision. The decision text above is marked complete with the transition
+noted: the generator port is host-side Rust, and the grounding search now lives
+in the host producer, not in the module.
+
+**Transitional statements reconciled.** The ADR previously treated the
+grounding search as stubbed; it is now implemented. The pre-140
+`lightning-infill` module was a single-layer approximation with self-linking in
+violation of ADR-0025; packet 140 deleted the stub (`build_branches` and the
+inline grid-sampling machinery), so the module now samples the committed trees
+raw and the transitional gap is closed.

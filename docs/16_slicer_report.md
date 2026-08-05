@@ -16,6 +16,15 @@ thumbnail PNG block, config-dump block); those are emitted directly into the
 `.gcode` file by `PostPass::GCodeEmit`. Packet 55 standardised the preamble
 format. See `docs/01_system_architecture.md` GCodeEmit section for the contract.
 
+The `; outer_wall_line_width` / `; inner_wall_line_width` header comments
+expose `DefaultGCodeSerializer`'s hard-coded fallback defaults only (both
+`0.4` mm after packet 182 corrected them from `0.42` / `0.45`); the serializer
+has no config-driven setter for these fields, so the printed values are **not**
+wired to the slice's resolved outer and inner wall widths. The header is
+therefore a truthful *default* marker, not a per-slice resolved-width report.
+Config-aware header reporting (wiring these comments to the resolved widths
+via the serializer construction sites) is future work.
+
 Machine start / end G-code (`machine_start_gcode` / `machine_end_gcode` config
 keys) is emitted by a designated finalization module before the first layer and
 after the last layer. Macro expansion is documented in
