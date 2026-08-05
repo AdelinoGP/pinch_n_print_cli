@@ -731,6 +731,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
+| `claim:raft-fill`         | Held by the `Layer::Infill` module producing `RaftInfill` extrusions (added TASK-289 / packet 124; ADR-0009). |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 
 | Claim ID                 | Kind     | Dedup          | Owner                                                                    |

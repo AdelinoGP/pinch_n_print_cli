@@ -351,6 +351,18 @@ move from this packet are recorded in `docs/DEVIATION_LOG.md`:
   `PrePass::LightningTreeGen` product (ADR-0029), so its arm of those tests needs
   a `LightningTreeIR` in the paint view or it emits nothing and asserts vacuously.
 
+## Amendment 2026-08-05 — determinism is part of the contract (packet 133)
+
+The linker contract is deterministic by construction: candidate endpoints are
+ordered by boundary arc position and segment index rather than by `HashMap`
+iteration, and identical inputs must produce identical `InfillIR`. This is a
+hard requirement for the parity/self-capture suites — a linker whose output
+depended on hash-map ordering would fail the byte-comparison backstop of the
+cross-region and anchor-length fixtures. `contour_connector`'s ring walks
+(`BoundaryRing::directed_distance`) are themselves order-derived, so endpoint
+ordering is the root of determinism: same input, same arcs in the same order,
+same connectors.
+
 ## Future-Reviewer Notes
 
 - **Do not re-suggest putting `connect_infill` in `slicer-core::infill_ops`.**

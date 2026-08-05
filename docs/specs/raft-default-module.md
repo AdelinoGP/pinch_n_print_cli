@@ -34,7 +34,7 @@ See ADR-0009 for the architectural decision behind the role/claim direction.
 
 | IR | Source | Used For |
 |---|---|---|
-| `SupportPlanIR.raft_plan: Vec<RaftPlan>` | `support-planner` (PrePass::SupportGeometry) | Per-object raft footprint, layer specs, gap, density. |
+| `SupportPlanIR.raft_plan: Option<RaftPlan>` | `support-planner` (PrePass::SupportGeometry) | Single configuration-only plan (raft layers, gap, density); no footprint geometry crosses the seam. The `ExtrusionRole::RaftInfill` + `claim:raft-fill` mapping already landed (packet 124); this module consumes the plan and supplies the `raft_fill` carrier polygons. |
 | `LayerPlanIR` | host built-in | Reference for layer-height and Z conventions. |
 | Config: `raft_pattern`, `raft_z_gap_mm`, `raft_first_layer_density`, `raft_layer_height_mm`, `raft_expansion_mm` | module manifest | Raft-specific config namespace. |
 
@@ -205,7 +205,7 @@ different infill module.
 
 ## Synthesizer Behavior
 
-For each `RaftPlan` in `SupportPlanIR.raft_plan`:
+For each `RaftPlan` in `SupportPlanIR.raft_plan` (currently one configuration-only plan per slice):
 
 1. **Compute the expanded footprint.** Offset `plan.footprint` outward by `raft_expansion_mm` (default 2.0) so the raft extends slightly past the object base. Use `slicer_core::polygon_ops::offset`.
 2. **Per raft layer** (from `plan.layers`):

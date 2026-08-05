@@ -96,7 +96,7 @@ warrants its own design space. These constitute **Block C** (below).
 | `support-planner` is missing `smooth_nodes` (Orca runs 100-iter Laplacian smoothing on each branch chain — `TreeSupport.cpp:3153`). Output branches are jagged stairsteps. | Algorithmic change with no local oracle; needs the validation infrastructure that Block C sets up. |
 | Single-neighbour propagation in `support-planner`. Orca's `drop_nodes` uses multi-neighbour MST adjacency to synthesize move targets; the current planner picks the lowest-distance neighbour and moves toward it. Produces asymmetric branches for nodes with ≥3 MST neighbours. | Changes branch connectivity — algorithmic, needs the validation harness. |
 | `support-planner` has no `to_buildplate` notion, no unsupported-branch pruning. Orca tracks `to_buildplate` per node and prunes branches that can't reach the build plate (`TreeSupport.cpp:2752`). `support_on_build_plate_only` config is unhonored. | Conceptual extension beyond v1 surface; depends on validation. |
-| Raft geometry is not emitted by the current support planner. Packet 119 emits the optional configuration-only `SupportPlanIR.raft_plan` seam; no raft polygons or raft-layer geometry cross that seam. | Owned by the sibling `raft-default-module.md` spec. Packet 124 owns geometry generation and downstream rendering. |
+| Raft geometry is not emitted by the current support planner. Packet 119 emits the optional configuration-only `SupportPlanIR.raft_plan` seam; no raft polygons or raft-layer geometry cross that seam. | Owned by the sibling `raft-default-module.md` spec. Packet 124 owns the IR-side `RaftInfill` role/claim extension (implemented); raft geometry generation and downstream rendering are owned by `raft-default-module.md`. |
 | `support-planner` uses `f32` geometry throughout; Orca uses scaled `coord_t` (i64 at 1e-6 mm). | Large change, low immediate benefit, no failing test to chase. Documented as future work. |
 | `traditional-support` either consumes `SupportPlanIR` (post-P95, with `segment_annotations`-driven enforcer/blocker) or stays explicitly per-layer. Design decision. | Depends on post-paint IR shape and on a deliberate decision about whether the rectilinear scan-line filler is planner-aware. |
 
@@ -149,21 +149,30 @@ cargo build -p tree-support -p traditional-support -p support-planner
 cargo test -p tree-support -p traditional-support -p support-planner 2>&1 | tee target/test-output.log
 ```
 
-### B2 — `support_interface_bottom_layers` cleanup
+### B2 — `support_interface_bottom_layers` cleanup (implemented)
 
-**Goal**: remove dead state; preserve the user-facing config key with a `not_implemented` signal.
+**Goal**: remove dead state; preserve the user-facing config key with a typed `not_implemented` signal.
 
-**Scope**:
+**Status (packets 116/118, closed 2026-07-19)**: the dead Rust field and parse
+block were deleted by packet 116; the config key is preserved in
+`support-planner.toml [config.schema]`. `SupportPlanner::run_support_geometry`
+reads the preserved key at the start of the stage and emits **one typed warning
+diagnostic with code `1003`** through `SupportGeometryOutput::push_diagnostic`
+before the layer loop when the value is not `-1` (packet 118); no `host-services.log`
+string warning is emitted, and no log-prefix / `on_print_start` wording applies.
+
+**Scope (historical)**:
 - Delete the field from `SupportPlanner` struct (`support-planner/src/lib.rs:75`).
 - Delete the parse block (`:156-160`).
-- In `on_print_start`, when `config.get("support_interface_bottom_layers")` is `Some(v)` and `v != Int(-1)`, emit `log(LogLevel::Warn, "support-planner: support_interface_bottom_layers is not yet implemented; set to -1 (default) to suppress this warning")`. Once per `on_print_start`, not per layer.
 - Keep the config key in `support-planner.toml [config.schema]` so the user-facing surface is unchanged; add `# Not yet implemented — see docs/specs/support-modules-orca-port.md` comment in the toml.
 
-**Verification**:
+**Verification (historical)**:
 ```bash
 cargo test -p support-planner 2>&1 | tee target/test-output.log
 # Negative test: set support_interface_bottom_layers = 3; assert the warning was logged exactly once.
 ```
+The negative test lives today in `modules/core-modules/support-planner/tests/diagnostics_tdd.rs`
+(inspecting the typed code-`1003` record rather than the log).
 
 ### B3 — `BASE_SPEED` documented as convention
 
@@ -175,19 +184,30 @@ cargo test -p support-planner 2>&1 | tee target/test-output.log
 
 **Verification**: doc-only; `cargo doc --no-deps -p support-planner -p tree-support -p traditional-support` succeeds.
 
-### B4 — 1024-contact silent-truncation diagnostic
+### B4 — 1024-contact silent-truncation diagnostic (implemented)
 
-**Goal**: turn the silent data loss into a logged signal so users notice when the cap fires.
+**Goal**: turn the silent data loss into a typed signal so users notice when the cap fires.
 
-**Scope**:
+**Status (packet 118, closed 2026-07-19)**: cap enforcement counts drops at every
+`SupportPlanner::run_support_geometry` cap site and emits **one typed warning
+diagnostic per affected global layer with code `1001`** via
+`SupportGeometryOutput::push_diagnostic`. A multi-object cap hit on the same global
+layer produces **one merged diagnostic** (object_id `None`, summed `dropped_count`)
+instead of one per (object, layer) pair; the message contains
+`max_branches_per_layer cap exceeded`, `dropped_count=<n>`, and
+`kept_count=<configured cap>`. Regression coverage:
+`multi_object_cap_diagnostic_merges_per_layer` in
+`modules/core-modules/support-planner/tests/diagnostics_tdd.rs`.
+
+**Scope (historical)**:
 - At `support-planner/src/lib.rs:326`, `:341`, and `:434`, replace the `continue` / `truncate` with an accumulating per-layer counter.
-- At the end of each layer's contact-collection pass, if the counter is non-zero, emit `log(LogLevel::Warn, format!("support-planner: max_branches_per_layer cap exceeded at layer {layer_index}, object {object_id}: dropped {dropped_count}, kept {kept_count}"))`. Once per layer per object, not per drop.
+- At the end of each layer's contact-collection pass, if the counter is non-zero, emit the typed code-`1001` record.
 
-**Verification**:
+**Verification (historical)**:
 ```bash
 cargo test -p support-planner 2>&1 | tee target/test-output.log
 # Positive test: synthesize an overhang fixture that produces >1024 contacts at one layer;
-# assert the warning is logged exactly once for that layer.
+# assert the warning is emitted exactly once for that layer.
 ```
 
 ### B5 — Tip cone in `tapered_radius`
@@ -333,11 +353,20 @@ cargo test -p tree-support -p traditional-support -p support-planner -p slicer-r
   - L-shaped enforcer region over a flat overhang: support is generated for the full L, not just the centroid cell.
   - Enforcer region covering only one half of a region's polygon: support is generated for that half, not for the half that has no enforcement and a `needs_support=false` classification.
 
-### C3 — `smooth_nodes` port
+### C3 — `smooth_nodes` port (implemented — packet 121)
 
 **Goal**: replace stairstep branches with smoothed ones. Mirrors OrcaSlicer `TreeSupport.cpp:3153` (100-iteration Laplacian smoothing on each branch chain).
 
-**Scope**:
+**Delivered shape**: `support-planner::smooth_branches(entries, iterations)` operates
+on `SupportPlanEntry.branch_segments` rows (grouped into root-to-tip chains with
+5 mm sub-chain boundaries at inter-tree gaps), not on a `PlannedSupportNode`
+collection. Each chain runs the configured iteration count of three-point Laplacian
+smoothing (`p[i] = (p[i-1] + p[i] + p[i+1]) / 3`); radii are smoothed the same way;
+endpoints (root and tip) are held fixed; per-point widths are clamped after
+smoothing. Run as a final pass after the top-down MST propagation completes, before
+emitting `SupportPlanEntry.branch_segments`.
+
+**Scope (historical)**:
 - New function `support-planner::smooth_chains(nodes: &mut [PlannedSupportNode], iterations: usize)`.
 - For each branch chain (root-to-tip), 100 iterations of three-point Laplacian smoothing: `p[i] = (p[i-1] + p[i] + p[i+1]) / 3`.
 - Radii smoothed the same way: `r[i] = (r[i-1] + r[i] + r[i+1]) / 3`.
@@ -349,11 +378,17 @@ cargo test -p tree-support -p traditional-support -p support-planner -p slicer-r
 - New invariant: branch curvature ≤ a documented threshold per segment-pair. Added to the v1 invariant list.
 - Self-capture golden regression: branch endpoints shift (expected); golden is regenerated and the diff is reviewed for "smoother, not warped" before committing.
 
-### C4 — Multi-neighbour MST propagation
+### C4 — Multi-neighbour MST propagation (implemented — packet 122)
 
 **Goal**: replace single-neighbour move target with multi-neighbour move target per Orca's `drop_nodes` (`TreeSupport.cpp:2625`).
 
-**Scope**:
+**Resolved formula**: propagation aggregates **all** incident MST neighbours with
+**normalized reciprocal-distance-squared weights (`1/d²`)** — not unweighted
+reciprocal distance — short-circuiting to a neighbour at distance below `1e-6` mm
+(zero-distance guard). Movement caps and clamp order are preserved from the
+pre-packet behavior.
+
+**Scope (historical)**:
 - `support-planner/src/lib.rs:586-660` propagation block.
 - For each surviving node, walk all MST neighbours (not just the lowest-distance one) and synthesize a move target from their centroid (weighted by reciprocal distance, optionally — confirm the Orca formula).
 - Update the propagation to clamp against `avoidance_polys` after target synthesis.
@@ -363,11 +398,19 @@ cargo test -p tree-support -p traditional-support -p support-planner -p slicer-r
 - New invariant: branches with ≥3 incoming MST edges produce symmetric merge geometry. Added to the v1 invariant list.
 - Self-capture golden regression: branch connectivity shifts (expected); golden is regenerated and the diff is reviewed before committing.
 
-### C5 — `to_buildplate` tracking and unsupported-branch pruning
+### C5 — `to_buildplate` tracking and unsupported-branch pruning (implemented — packet 123)
 
 **Goal**: honor `support_on_build_plate_only` and prune branches that can't reach the build plate.
 
-**Scope**:
+**Pruning-chain semantics (as delivered)**: pruning stops propagation at the failed
+layer and does **not** retroactively remove already-emitted ancestor segments. The
+build-plate prune is the existing all-node collision prune applied to
+`to_buildplate = true` nodes at contact creation (the `to_buildplate` flag is
+aggregated over successors during propagation); `to_buildplate = false` nodes keep
+the pre-packet collision behavior. The config key `support_on_build_plate_only`
+(default `false`, `support-planner`) is documented in `docs/15_config_keys_reference.md`.
+
+**Scope (historical)**:
 - Add `to_buildplate: bool` to `PlannedSupportNode`.
 - At contact-point creation, set `to_buildplate = true` if the contact's XY lies outside the model's projected footprint at that layer (Orca's heuristic in `generate_contact_points`).
 - During propagation, when a node's move target lies inside `collision_polys` AND `to_buildplate` is true, prune the node and propagate the prune upward through the chain.
@@ -383,8 +426,9 @@ cargo test -p tree-support -p traditional-support -p support-planner -p slicer-r
 the support planner owns raft geometry.
 
 **Current contract**:
-- `SupportPlanIR` is schema version 1.2.0 and carries
-  `raft_plan: Option<RaftPlan>`.
+- `SupportPlanIR` is schema version 1.3.0 (bumped from 1.2.0 by packet 124 for
+  the additive `ExtrusionRole::RaftInfill` variant + `claim:raft-fill` mapping)
+  and carries `raft_plan: Option<RaftPlan>`.
 - `RaftPlan` is a configuration-only record with
   `raft_layers: u32`, `raft_first_layer_density: f32`,
   `base_raft_layers: u32`, and `interface_raft_layers: u32`.
@@ -396,8 +440,10 @@ the support planner owns raft geometry.
   `interface_raft_layers`; `support_raft_layers` controls whether the option is
   present.
 - No footprint, layer specification, Z gap, or raft polygon is carried in
-  `RaftPlan`. Raft geometry and rendering are deferred to packet 124 and the
-  sibling `raft-default-module.md` spec.
+  `RaftPlan`. Packet 124 owns the IR-side `RaftInfill` role/claim extension
+  (implemented); raft geometry generation, the `SliceRegionView.raft_fill`
+  carrier, and downstream `Layer::Infill` rendering are owned by the sibling
+  `raft-default-module.md` spec (ADR-0009).
 
 **Verification**:
 ```bash

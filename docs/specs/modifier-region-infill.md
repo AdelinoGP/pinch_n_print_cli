@@ -14,6 +14,26 @@ As of 2026-07-01 this is non-functional end-to-end in PnP (evidence in ADR-0030 
 modifier config stamped globally, no geometric split, first-match `ConfigView`). This spec is
 the phase plan; the architecture decision is ADR-0030.
 
+**Status: implemented.** M2 (per-region config delivery) landed with packet
+`131_per-region-config-delivery`; M1 (geometric split) landed with packet
+`132_modifier-region-split`; M3 completed inside packet `136_infill-parity-integration`.
+See `docs/07_implementation_status.md` TASK-256/TASK-257/TASK-261. Delivered refinements
+recorded below:
+
+- **Sub-region identity** (M1 delivery): sub-regions carry an **empty `variant_chain`**
+  and are identified by their modifier-namespace `region_id` alone
+  (`base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(object_id,
+  modifier_index, priority)`); the `wall_source_region_id` predicate inverts by
+  `sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE`. See `docs/02_ir_schemas.md`
+  IR 5 §"Sub-region `region_id` namespace".
+- **Prepass-cached slicing** (M1 delivery): modifier meshes are sliced once per layer
+  during prepass (`slice_modifier_volumes`, extended to material/config-delta subtypes);
+  the cached cross-sections are consumed at partition-time splitting, keeping
+  `region_partition.rs` mesh-free.
+- **Overlap precedence** (M1 delivery): for overlapping non-support modifier volumes,
+  priority is applied first and document order breaks ties — the first winning modifier
+  owns the footprint; later modifiers intersect only the remaining base area.
+
 Packet mapping: `131_per-region-config-delivery` (M2), `132_modifier-region-split` (M1),
 M3 folds into `136_infill-parity-integration`.
 

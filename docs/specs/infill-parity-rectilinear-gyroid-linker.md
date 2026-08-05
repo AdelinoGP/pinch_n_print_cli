@@ -425,7 +425,13 @@ affects `fill_multiline > 1`. Deferred.
   fix).
 - `no_emitted_point_outside_partitioned_polygon` — assert every emitted point
   is inside the source ExPolygon (the linker clips, but the module should emit
-  waves that are at least bounded by the expanded bbox).
+  waves that are at least bounded by the expanded bbox). **REPLACED 2026-08-05
+  (packet 135):** the raw-wave/no-clipping contract means raw points may extend
+  beyond the source polygon by design (gyroid raw waves start at x ≈ −8.6 mm on
+  a 0–5 mm polygon). The delivered test asserts raw points remain within the
+  expanded generation bbox (`expand_factor_is_10x_spacing` covers the 10×
+  expansion; the deleted point-in-polygon helpers were removed with the
+  ray-cast clipping).
 - `align_to_grid_snaps_bbox_min` — assert the bbox min is a multiple of
   `2 * PI * scale_factor`.
 - `expand_factor_is_10x_spacing` — assert the expand is 10× spacing.
@@ -610,6 +616,13 @@ Tests asserting on linked output move to assert on the linker's output (or
 the integration test asserts on the post-`Layer::InfillPostProcess` `InfillIR`).
 Tests asserting on raw segment count/length still pass (modules still emit,
 just raw).
+
+**Closure note (packet 136, 2026-07-20):** the Phase 5 integration acceptance
+criteria AC-2 and AC-3 were proven with **G-code proxies** — per-block
+`G1`-move and wall-loop `G1`-move assertions — rather than direct inspection of
+the committed `InfillIR`; the integration binaries do not inspect committed
+`InfillIR` points-per-path. Direct IR-level coverage lives in the linker's
+module unit tests (`modules/core-modules/infill-linker/tests/`).
 
 ---
 

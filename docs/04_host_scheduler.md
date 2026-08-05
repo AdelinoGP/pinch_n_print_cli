@@ -652,7 +652,7 @@ fn compute_reachability(
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 
-During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (canonical `PrintApply.cpp`). Scope is global per object — the only `ModifierScope` variant in use is `AllFeatures`; bbox / polygon-level overlap is a future refinement when partial-volume scopes are introduced.
+During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (canonical `PrintApply.cpp`). Implemented modifier-volume splits (packets 131/132) bind configuration to geometric sub-regions: modifier meshes are sliced per layer during prepass, the cross-sections are intersected with the owning region's partitioned fill polygons at partition time, and each resulting wall-less sub-region carries its own `region_id` + config binding (per-region delivery through the region-view config accessor). The support enforcer/blocker subtypes remain filtered and never produce sub-regions; paint variant-splits remain the other per-region producer.
 
 ### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
 

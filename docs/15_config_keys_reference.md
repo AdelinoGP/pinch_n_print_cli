@@ -255,6 +255,12 @@ is the authoritative catalog of their defaults and ranges.
 | `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
 
+**Note — `support_interface_bottom_layers`:** the key remains user-visible with
+default `-1`, but bottom interface layers are not yet implemented; `support-planner`
+emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic`,
+packet 118) before the layer loop when the value is not `-1`. See
+`docs/specs/support-modules-orca-port.md`.
+
 ### `seam_mode` values
 
 Accepted on both `seam-placer` and `seam-planner-default` (default `"nearest"`):

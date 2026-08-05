@@ -998,15 +998,28 @@ region ID with a dedicated coprime stride so they never collide with paint's
 `1_000_000`-stride namespace:
 
 ```
-sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(footprint_geo)
+sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(mi)
 ```
 
 where `MODIFIER_VARIANT_REGION_ID_STRIDE = 1_000_003` (the next prime above
 paint's `1_000_000`, hence coprime — see
-`crates/slicer-runtime/src/region_partition.rs:71`). `modifier_hash` folds the
-footprint geometry into a non-zero value `< stride` (so the low-order band is
-reserved for `base_region_id * stride` itself), giving a stable, collision-free
-sub-region id that round-trips through `RegionMapIR` and dispatch.
+`crates/slicer-runtime/src/region_partition.rs:71`). `modifier_hash(mi)` is a
+**stable hash of the modifier's identity** — `(object_id, modifier_index,
+priority)` in document order within `object.modifier_volumes` — folded into a
+non-zero value `< stride` (so the low-order band is reserved for
+`base_region_id * stride` itself). The hash is derived from identity, never
+from HashMap iteration or footprint geometry, giving a stable sub-region id
+that round-trips through `RegionMapIR` and dispatch. The sub-region carries an
+**empty `variant_chain`** and is identified by its modifier-namespace
+`region_id` alone; the `wall_source_region_id` predicate inverts
+`sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE` → `Some(base)`. The infill
+linker reads only `wall_source_region_id` + `tool_index` + the four fill
+polygons (packet 132/133). Modifier meshes are sliced once per layer during
+prepass (`slice_modifier_volumes`, extended to material/config-delta
+subtypes), and the cached cross-sections are consumed at partition-time
+splitting. For overlapping non-support modifier volumes, priority is applied
+first and document order breaks ties: the first winning modifier owns the
+footprint, and subsequent modifiers intersect only the remaining base area.
 
 /// Polygon with holes. Contour is CCW; holes are CW.
 pub struct ExPolygon {
@@ -1408,9 +1421,11 @@ pub struct SupportGeometryKey {
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Current schema_version: 1.2.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+**Current schema_version: 1.3.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
 `crates/slicer-ir/src/slice_ir.rs`). Packet 119 added the per-point
-`Point3WithWidth.dist_to_top_mm` field and the optional raft configuration seam.
+`Point3WithWidth.dist_to_top_mm` field and the optional raft configuration seam
+(1.1.0 → 1.2.0); packet 124 bumped 1.2.0 → 1.3.0 (semver-minor) for the additive
+`ExtrusionRole::RaftInfill` variant and its `claim:raft-fill` mapping.
 
 **Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
 guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
@@ -1820,6 +1835,7 @@ pub enum ExtrusionRole {
     WipeTower, PrimeTower,
     Skirt, Brim,
     Ironing, BridgeInfill,
+    RaftInfill,       // raft fill rendered by a Layer::Infill module holding claim:raft-fill (added TASK-289, schema 1.3.0)
     GapFill,           // thin-gap fill paths (added P105, schema 4.4.0)
     Custom(String),    // community modules may register new roles
 }
@@ -1843,6 +1859,7 @@ Values below are ordered as they print (lowest first) and mirror
 | `InnerWall`           | 1500 |
 | `ThinWall`            | 1700 |
 | `GapFill`             | 2000 |
+| `RaftInfill`          | 50   |
 | `SparseInfill`        | 3000 |
 | `BridgeInfill`        | 3500 |
 | `InternalSolidInfill` | 3800 |

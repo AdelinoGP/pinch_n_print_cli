@@ -168,3 +168,19 @@ host fan-out **or** internal threads, never both) stands pending that work.
 - Re-opening the threaded-guest track requires a change to how all 34 guests are
   built, not merely a wasmtime configuration change. The engine is already ready;
   do not re-probe that half.
+
+## Amendment 2026-08-05 — `offset_polygons` remains the sanctioned SDK seam; the host bridge is not yet wired
+
+`offset_polygons` (and the other geometry wrappers) remain the sanctioned,
+guest-compatible geometry seam per ADR-0033's three-part shape — a guest module
+must not add a direct `slicer-core` dependency to use them (packet
+`117_support-planner-geometric-correctness` adopted the SDK wrapper for exactly
+this reason). As of this amendment the wrappers still run clipper2 **inside the
+sandbox** on `wasm32`: only `log*` has gained its `wasm32` bridge arm since the
+2026-07-25 partial remediation (DEV-094); the three mesh queries, the three
+polygon ops, and `now_us` remain unbridged. "Delegates to host-side Clipper2" in
+`docs/05_module_sdk.md` §Host Service Wrappers describes the WIT-declared
+intent, not today's runtime path — re-derive the bridged/unbridged set by
+grepping `crates/slicer-sdk/src/host.rs` for `target_arch = "wasm32"` before
+quoting it. The batch forms in this ADR are the planned mechanism for moving
+those calls host-side.

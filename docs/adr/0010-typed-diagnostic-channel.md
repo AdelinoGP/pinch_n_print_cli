@@ -2,7 +2,15 @@
 
 ## Status
 
-Proposed (lands with B7 / `TASK-163b-diagnostic` from `docs/specs/support-modules-orca-port.md`).
+Accepted. Landed via packet `118_support-planner-typed-diagnostics` (closed 2026-07-19).
+The typed channel ships as `support-geometry-output.push-diagnostic` (a method on the
+scoped prepass output resource, not a standalone world import); the host drains it into
+`ModuleAccessAudit.diagnostics` via `PrepassStageRunner::last_diagnostics`. The three
+original call sites emit typed records: code `1001` (max-branches cap, one merged warning
+per affected global layer), code `1002` (`node-clamped-out`), and code `1003`
+(`support_interface_bottom_layers` not-implemented, planner-owned, read from the preserved
+config key and emitted once before the layer loop when the value is not `-1`). See
+`docs/07_implementation_status.md` TASK-163b-diagnostic.
 
 ## Context
 
@@ -29,6 +37,10 @@ typed channel:
 1. `node-clamped-out` (existing; migrated).
 2. `max_branches_per_layer` cap exceeded (B4 / TASK-253).
 3. `support_interface_bottom_layers` not implemented (B2 / TASK-251).
+
+All three shipped via packet 118 with the codes `1001` / `1002` / `1003` as
+described in Status above; packet 116 removed the dead `support_interface_bottom_layers`
+Rust state and emits no warning itself.
 
 A typed channel is the right place to land this for all three call sites at
 once, and to give future module-emitted diagnostics a structured home.

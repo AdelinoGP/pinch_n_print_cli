@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed (lands with packets `131_per-region-config-delivery` and `132_modifier-region-split`;
-follows the 2026-07-01 infill-parity grilling).
+Accepted. Landed with packets `131_per-region-config-delivery` (per-region config
+accessor, WIT bump) and `132_modifier-region-split` (partition-time splitting);
+the M3 roadmap phase (modifier-region + per-region config integration) completed
+with packet `136_infill-parity-integration`.
 
 ## Context
 

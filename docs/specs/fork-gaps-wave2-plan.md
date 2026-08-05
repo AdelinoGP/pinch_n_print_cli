@@ -8,7 +8,7 @@ Grilled decisions (2026-07-17) are recorded below; deliverable is **6 new spec p
 
 ## Grounding facts (verified this session)
 
-- `SupportPlanIR.raft_plan` does not exist in source; draft packet `124_support-plan-raft-plan-and-raftinfill-role` owns that seam and explicitly excludes the `raft-default` module.
+- `SupportPlanIR.raft_plan` exists as an **optional configuration-only seam** (`Option<RaftPlan>`) since packet 119 / ADR-0048; packet `124_support-plan-raft-plan-and-raftinfill-role` added the IR-side `ExtrusionRole::RaftInfill` + `claim:raft-fill` mapping (implemented 2026-07-21). Raft geometry generation and rendering remain owned by the `raft-default-module.md` spec (ADR-0009); `raft-default` itself is not yet implemented.
 - TASK-210/211/212 all open in `docs/07_implementation_status.md:137-139`; MM model is filament-index-based (wipe-tower keys off `ToolChange.to_tool`), matching the fork's 1-nozzle/N-filament population. No real-fixture T0/T1 E2E exists (synthetic only). User has manually verified painted-3MF → correct-color G-code in Orca's viewer.
 - Object-metadata allowlist = `object_metadata_to_config_data` (`crates/slicer-model-io/src/loader.rs:730-771`), exactly 3 keys; sidecar parser (`sidecar.rs`) captures all keys verbatim, filtering happens in the loader.
 - Emit is pure Marlin literals (M104/M109, M106, M82/M83, T\<n\>, G11); zero flavor abstraction; `gcode_flavor` appears only as cosmetic padding (`serialize.rs:403`). No bed-temp/accel/jerk emission exists.

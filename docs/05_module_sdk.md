@@ -352,7 +352,7 @@ impl PrepassModule for MySupportPlanner {
 
 The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
-"SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR",
+"SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR",
 "SupportGeometryIR"]`, `writes = ["SupportPlanIR"]`, and
 `[module] wit-world = "slicer:world-prepass"` (unversioned — a versioned
 `wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
@@ -578,7 +578,8 @@ host::log_warn(&format!("Density near limit: {density}"));
 let surface_z: Option<f32> = host::raycast_z_down(object_id, x, y, start_z);
 let normal: Option<Point3> = host::surface_normal_at(object_id, x, y, z);
 
-// Geometry (delegates to host-side Clipper2)
+// Geometry (delegates to host-side Clipper2; on wasm32 the polygon-op wrappers
+// currently run clipper2 in-guest — see ADR-0049 §Amendment 2026-08-05 and DEV-094)
 let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOperation::Intersection);
 let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter);
 let simple:  Polygon        = host::simplify_polygon(&poly, 0.05);

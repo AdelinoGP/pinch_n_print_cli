@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed (lands with the gyroid-infill parity rewrite).
+Accepted. Landed via packet `135_gyroid-raw-emit` (closed 2026-07-19): the
+manifest gains the three solid claims, defaults stay rectilinear, and the
+deliberate divergence is recorded in `docs/DEVIATION_LOG.md`.
 
 ## Context
 

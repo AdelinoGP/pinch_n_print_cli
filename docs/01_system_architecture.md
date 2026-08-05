@@ -383,6 +383,9 @@ Layer::Infill
              claim:top-fill    → SlicedRegion.top_solid_fill     → TopSolidInfill
              claim:bottom-fill → SlicedRegion.bottom_solid_fill  → BottomSolidInfill
              claim:bridge-fill → SlicedRegion.bridge_areas       → BridgeInfill
+             claim:raft-fill   → raft fill carrier (SlicedRegion.raft_fill)
+                                 → RaftInfill; raft polygons are supplied by
+                                 raft-default-module (ADR-0009; packet 124)
            No per-region role-pick; no polygon math in modules.
 
 Layer::InfillPostProcess

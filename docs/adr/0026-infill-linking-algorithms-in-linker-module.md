@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed (lands with the infill-parity effort; companion to ADR-0025).
+Accepted. Landed with the infill-parity effort (packets `133_infill-linker-module`,
+`134_rectilinear-raw-emit`); companion to ADR-0025. The `infill_direction` /
+`adjust_solid_spacing` placement is corrected by the 2026-08-05 amendment below.
 
 ## Context
 
@@ -72,10 +74,27 @@ existing `polygon_ops` precedent (generic geometry, no domain logic).
   this risk because Architecture A's whole point is that modules *don't*
   self-link. If a module wants to self-link, it is choosing Architecture B for
   itself, and the duplication is the cost of that choice.
-- `infill_direction` (angle resolution with π/2 offset + reference point) is
-  arguably generic, but it is infill-specific (the π/2 is because infill lines
-  are perpendicular to the angle). It stays in the linker. If a future non-fill
-  consumer needs angle resolution, it can be promoted then.
+
+## Amendment 2026-08-05 — geometry-generation helpers stay in the emitter; only linking algorithms live in the linker (packets 134 / 135)
+
+The original Decision listed `infill_direction` (angle resolution with π/2 offset
++ reference point) and `adjust_solid_spacing` alongside the linking algorithms
+as linker-owned. Implementation (packets 134/135) resolved the boundary
+differently, and the docs were wrong:
+
+- `infill_direction` and `adjust_solid_spacing` live in the **rectilinear
+  emitter** (`modules/core-modules/rectilinear-infill/src/lib.rs`), because they
+  are scan-line geometry generation: the π/2 offset is the direction the fill
+  LINES run, and solid-spacing adjustment is applied while generating the raw
+  segments the module emits.
+- The **linking** algorithms — `connect_infill`, `chain_or_connect_infill`,
+  `BoundaryInfillGraph`, `remove_short_polylines`, and the overlap application —
+  remain linker-owned exactly as the Decision states.
+
+The distinction is geometry-generation helpers (emitter-owned) versus
+path-connection algorithms (linker-owned). This amendment does not reopen the
+`slicer-core::infill_ops` question; it only corrects which module owns the two
+generation helpers.
 
 ## Future-Reviewer Notes
 
