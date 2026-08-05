@@ -1412,7 +1412,7 @@ channel. The contract (ADR-0053; distances are the packet-193 signed,
   `-1.0` when no section is slower than `original_speed`. Each segmentation
   candidate's `overhang_distance_mm` is **linearly interpolated** between the
   segment endpoints at its own `t` (option-C divergence from canonical's
-  re-measurement — DEV-123).
+  re-measurement — see `docs/adr/0053-overhang-emission-time-speed-sections.md`; the pre-purge closed record was DEV-108).
 - **Unmeasured distances rejected.** `overhang_distance_mm: Option<f32>` is
   `None` when there is no previous layer or the previous layer's slice
   boundary is empty (packet 193 AC-N1); a `None` endpoint takes the
