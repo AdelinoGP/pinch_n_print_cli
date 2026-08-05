@@ -32,8 +32,8 @@ This packet replaces 12-rev1's heuristic with the proper mesh-adjacency analysis
 - **WIT signature change requires WASM rebuild.** All infill-stage core modules MUST be rebuilt; verify `./modules/core-modules/build-core-modules.sh` succeeds before marking the packet implemented.
 - **Schema bumps:** `SurfaceClassificationIR` → `1.1.0` (additive minor on `BridgeRegion`); `SliceIR` → `1.2.0` (additive minor on `SlicedRegion`). Both are additive minors per `docs/02_ir_schemas.md` rules.
 - **Deviation closure**: This packet closes two deviations registered by packet `12-rev1_external-surface-classification-at-slice`:
-  - **DEV-035** (any-vertex-in-polygon approximation in `crates/slicer-host/src/layer_slice.rs::classify_region_surfaces`) — replaced by polygon-polygon intersection via `assemble_bridge_areas` (Minkowski offset + intersect).
-  - **DEV-036** (`crates/slicer-host/src/mesh_analysis.rs:213` `bridge_regions` initialized empty and never pushed) — closed by mesh-half-edge adjacency analysis in `execute_mesh_analysis_with`.
+  - **Bridge-area classification gap** (any-vertex-in-polygon approximation in `crates/slicer-host/src/layer_slice.rs::classify_region_surfaces`) — replaced by polygon-polygon intersection via `assemble_bridge_areas` (Minkowski offset + intersect).
+  - **Empty bridge regions initialization gap** (`crates/slicer-host/src/mesh_analysis.rs:213` `bridge_regions` initialized empty and never pushed) — closed by mesh-half-edge adjacency analysis in `execute_mesh_analysis_with`.
 
 ## Data and Contract Notes
 

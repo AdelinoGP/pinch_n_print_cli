@@ -19,7 +19,7 @@ Wire the remaining two downstream consumers for non-`NormalPart` subtypes alread
 
 This packet adds one new synthetic-fixture E2E suite (`threemf_subtypes_synthetic_e2e_tdd.rs`) that builds IR structs in-memory (IndexedTriangleSet meshes, ModifierVolume sidecars, and MeshIR directly) — no 3MF archive parsing. The synthetic fixtures exercise: a `negative_part` reducing layer polygon area; a `support_enforcer` emitting `PaintRegionIR` at every overlapping layer; a `support_blocker` emitting `PaintRegionIR` at every overlapping layer.
 
-No new deviations are registered by this packet. DEV-047, DEV-048, and DEV-049 are already closed by Packets 56 / 56b. The behavior added here is contract-conformant: it consumes existing `ObjectMesh.modifier_volumes` plumbing and Packet 51's paint-semantic overlay; no fallback paths.
+No new deviations are registered by this packet. Sidecar parsing and subtype routing deviations are already closed by Packets 56 / 56b. The behavior added here is contract-conformant: it consumes existing `ObjectMesh.modifier_volumes` plumbing and Packet 51's paint-semantic overlay; no fallback paths.
 
 ## Problem Statement
 
@@ -35,7 +35,7 @@ This packet (56c) closes that gap. It introduces:
 
 No new IR types are introduced. `SliceIR`, `PaintRegionIR`, `PaintSemantic::SupportEnforcer`, `PaintSemantic::SupportBlocker` already exist (Packets 50b / 51). This packet is consumer-side wiring on already-populated IR.
 
-No new deviations are registered. DEV-047, DEV-048, and DEV-049 were closed by Packets 56 and 56b. The behavior here is contract-conformant; the synthetic fixtures exercise positive paths only (plus two degenerate-case negative tests for completeness).
+No new deviations are registered. Sidecar parsing and subtype routing deviations were closed by Packets 56 and 56b. The behavior here is contract-conformant; the synthetic fixtures exercise positive paths only (plus two degenerate-case negative tests for completeness).
 
 This packet is the third and terminal packet in the three-way split. It runs `cargo test --workspace` exactly once at acceptance ceremony — the only packet in the split that does so. This workspace gate confirms that the full original `56_threemf-modifier-and-subtype-sidecar-ingestion` slice (sidecar parser → IR routing → all four consumer wirings) is operational without regressions.
 

@@ -1,4 +1,4 @@
-//! DEV-045 — `RegionMap` must honor per-paint-semantic `ResolvedConfig`
+//! `RegionMap` must honor per-paint-semantic `ResolvedConfig`
 //! overrides on the live path.
 //!
 //! Fixture: cube_4color.3mf stores its paint strokes under the

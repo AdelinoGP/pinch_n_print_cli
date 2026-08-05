@@ -489,7 +489,7 @@ impl LayerModule for ArachnePerimeters {
         };
 
         // only_one_wall_top (G3 part 1): the config key round-trips correctly
-        // and is now CONSUMED (D-104d deferred behavior begins here). When set
+        // and is now CONSUMED (deferred behavior begins here). When set
         // and the region is the topmost shell (top_shell_index == Some(0) in the
         // PnP IR — Orca's upper_slices == nullptr), the wall stack is collapsed
         // to a single wall (OrcaSlicer PerimeterGenerator.cpp:2140-2144 forces
@@ -510,7 +510,7 @@ impl LayerModule for ArachnePerimeters {
             .unwrap_or("counter_clockwise");
         let contour_should_be_ccw = wall_direction != "clockwise";
 
-        // alternate_extra_wall (T-149 AC-3, D-104e closed): OrcaSlicer adds
+        // alternate_extra_wall (T-149 AC-3): OrcaSlicer adds
         // one extra wall loop on every second (0-indexed-odd) layer by
         // incrementing `loop_number` before constructing `WallToolPaths`
         // (`PrintConfig.cpp:5059-5066`; `WallToolPaths(..., loop_number + 1,

@@ -1,4 +1,4 @@
-//! DEV-052 â€” Paint data on non-NormalPart objects must be dropped with a warning.
+//! Paint data on non-NormalPart objects must be dropped with a warning.
 
 #![allow(missing_docs)]
 
@@ -19,7 +19,7 @@ fn cube_cilindrical_modifier_3mf() -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// DEV-052: paint on modifier part must be dropped
+// Paint on modifier part must be dropped
 //
 // Fixture cube_cilindrical_modifier.3mf authors a cube body (normal_part) plus
 // a cylindrical modifier_part volume. The cube body has NO paint_color
@@ -56,7 +56,7 @@ fn paint_on_modifier_part_dropped_with_warning() {
             assert_eq!(
                 layer.facet_values.len(),
                 solid_tri_count,
-                "DEV-052: paint layer {:?} has {} facet_values but solid \
+                "paint layer {:?} has {} facet_values but solid \
                  mesh has {} triangles â€” modifier-part paint was not dropped",
                 layer.semantic,
                 layer.facet_values.len(),

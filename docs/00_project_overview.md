@@ -108,7 +108,6 @@ Paths below are relative to this file (`docs/`).
 | Slice timing, DAG, and manifest diagnosis                 | `17_agent_debugging.md`                                   |
 | Visual-debug bundles (stage/layer PNG evidence)           | `19_visual_debug.md`                                      |
 | Active architecture deviations                            | `DEVIATION_LOG.md`                                        |
-| Audit provenance and retired XML crosswalk                | `14_deviation_audit_history.md`                           |
 
 Operational agent orchestration and validation gates live in the repo skills under
 `.claude/skills/` (`spec-packet-generator` authors packets, `spec-review` gates them,
@@ -179,7 +178,7 @@ identity elsewhere. Renames change this table once, not every citing doc.
 > renamed to `slicer-runtime`, and the former `slicer-cli` crate was deleted with
 > its verbs absorbed into the `pnp_cli` binary. The names `slicer-host` /
 > `slicer-cli` survive only in historical records (`docs/DEVIATION_LOG.md`,
-> `docs/14_deviation_audit_history.md`, `docs/specs/`) and must not appear as
+> `docs/specs/`) and must not appear as
 > live paths in the numbered reference docs.
 
 ---

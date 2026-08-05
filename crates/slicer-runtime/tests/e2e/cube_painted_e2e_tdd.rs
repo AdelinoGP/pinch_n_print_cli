@@ -1,4 +1,4 @@
-//! DEV-044 — Paint data must reach `PaintSegmentation` on the live path.
+//! Paint data must reach `PaintSegmentation` on the live path.
 //!
 //! Fixtures: cube_4color.3mf (painted side) and 20mm_cube.obj (unpainted
 //! comparator — same 20 mm cube geometry as the 3MF interior, just without
@@ -117,8 +117,8 @@ fn painted_cube_3mf_reaches_paint_segmentation() {
     );
 
     // The load-bearing assertion: paint MUST have an effect. If
-    // paint_data is silently discarded by load_3mf (DEV-044, closed
-    // state), both slices produce byte-identical output.
+    // paint_data is silently discarded by load_3mf, both slices
+    // produce byte-identical output.
     assert_ne!(
         painted_gcode, unpainted_gcode,
         "Packet 89: painted-cube GCode is byte-identical to unpainted-cube \

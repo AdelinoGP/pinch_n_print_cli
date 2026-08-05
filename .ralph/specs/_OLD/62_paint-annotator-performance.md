@@ -26,7 +26,7 @@ Reduce `com.host.slice-postprocess-paint-annotator` wall-clock from ~188 s to si
 
 5. `point_in_paint_region` iterates all regions even after finding a definitive winner — no early break on descending `paint_order`.
 
-OrcaSlicer's MMU pipeline (`pseudocode_multimaterial_segmentation.md` Phase 1) unions per-facet projections into `ExPolygons` before any query — a documented porting gap (DEV-025, `docs/DEVIATION_LOG.md:33`). This packet closes that gap and adds the caching, spatial pre-filter, and parallelization that OrcaSlicer achieves via `EdgeGrid` and `tbb::parallel_for`.
+OrcaSlicer's MMU pipeline (`pseudocode_multimaterial_segmentation.md` Phase 1) unions per-facet projections into `ExPolygons` before any query — a documented porting gap (prepass segmentation shape alignment gap). This packet closes that gap and adds the caching, spatial pre-filter, and parallelization that OrcaSlicer achieves via `EdgeGrid` and `tbb::parallel_for`.
 
 ## Architecture Constraints
 

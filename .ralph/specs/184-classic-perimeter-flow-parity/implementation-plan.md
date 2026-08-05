@@ -270,7 +270,6 @@
   - `docs/07_implementation_status.md` (the `TASK-303` row by hand; the open-deviations block by `cargo xtask check-deviations`)
 - Files explicitly out of bounds:
   - `docs/specs/deviation-backlog-remediation-plan.md` — the batch orchestrator owns the Packet Queue.
-  - `docs/14_deviation_audit_history.md` — a generated, non-authoritative view.
   - All code and test files — frozen after Step 7.
   - Any region of `docs/15_config_keys_reference.md` or `docs/07_implementation_status.md` inside a `BEGIN GENERATED` marker.
 - Blast-radius discipline: not applicable — no struct field, no schema/version constant. The doc blast radius is enumerated above and enforced by the two `--check` gates.

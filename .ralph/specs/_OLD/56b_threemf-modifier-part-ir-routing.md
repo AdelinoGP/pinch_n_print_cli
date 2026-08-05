@@ -17,7 +17,7 @@ Branch `crates/slicer-host/src/model_loader.rs::resolve_object` on the sidecar c
 - `ConfigKey::from("extruder") -> ConfigValue::Int(...)` (when sidecar metadata contains the key; not consumed by any downstream packet yet)
 - `ConfigKey::from("matrix") -> ConfigValue::String(...)` (telemetry only)
 
-Drop `paint_data` carried on any non-`NormalPart` row with a single `log::warn!` per dropped part (DEV-052). Bump `MeshIR.schema_version` from `SemVer { 1, 0, 0 }` to `SemVer { 1, 1, 0 }` at `crates/slicer-host/src/model_loader.rs:194-199` (additive minor — producer contract widens to populate `modifier_volumes` from 3MF). Document the bump in `docs/02_ir_schemas.md`'s IR 0 section per the IR 2 / IR 5 precedent.
+Drop `paint_data` carried on any non-`NormalPart` row with a single `log::warn!` per dropped part (non-`NormalPart` paint data drop handling). Bump `MeshIR.schema_version` from `SemVer { 1, 0, 0 }` to `SemVer { 1, 1, 0 }` at `crates/slicer-host/src/model_loader.rs:194-199` (additive minor — producer contract widens to populate `modifier_volumes` from 3MF). Document the bump in `docs/02_ir_schemas.md`'s IR 0 section per the IR 2 / IR 5 precedent.
 
 Then wire the `modifier_part` consumer: extend `crates/slicer-host/src/region_mapping.rs::execute_region_mapping` to accept per-object modifier volumes (read from `ExecutionPlan` or threaded through the call site). For each `(layer, region)`, project each `modifier_part` volume to the layer's Z plane and run `slicer_core::polygon_ops::intersection` against the region polygon. On non-empty overlap, stamp `RegionPlan.config["fuzzy_skin.apply_to_all"] = ConfigValue::Bool(true)`. Preserve the no-modifier fast path (bit-identical output when `modifier_volumes.is_empty()`).
 
@@ -31,7 +31,7 @@ This packet closes the `modifier_part` half of the original packet's scope. The 
 
 Packet 56 (`56_threemf-sidecar-parser`) adds a sidecar parser that classifies each 3MF `<part>` by `subtype=` and surfaces typed per-part metadata as `HashMap<u32, ObjectSidecarInfo>`. The parser is plumbed into `load_3mf` and threaded through `parse_3mf_model_xml` → `resolve_object`, but `resolve_object` does not yet branch on the classification — its parameter is `_sidecar` (underscore-prefixed, unused).
 
-This packet (56b) is where `resolve_object` actually branches. It routes every part whose `PartSubtype != NormalPart` into `ObjectMesh.modifier_volumes` instead of merging triangles into the solid mesh. It bumps `MeshIR.schema_version` 1.0.0 → 1.1.0 (additive minor) to reflect the producer contract widening. It drops `paint_data` carried on non-`NormalPart` rows with a structured warning (DEV-052). It confirms the `fuzzy-skin` module manifest declares `apply_to_all` in its `[config.schema]` block. And it wires the `modifier_part` consumer: per-layer 2D overlap testing in `execute_region_mapping`, stamping `RegionPlan.config["fuzzy_skin.apply_to_all"] = ConfigValue::Bool(true)` on overlapping regions.
+This packet (56b) is where `resolve_object` actually branches. It routes every part whose `PartSubtype != NormalPart` into `ObjectMesh.modifier_volumes` instead of merging triangles into the solid mesh. It bumps `MeshIR.schema_version` 1.0.0 → 1.1.0 (additive minor) to reflect the producer contract widening. It drops `paint_data` carried on non-`NormalPart` rows with a structured warning (non-`NormalPart` paint data drop handling). It confirms the `fuzzy-skin` module manifest declares `apply_to_all` in its `[config.schema]` block. And it wires the `modifier_part` consumer: per-layer 2D overlap testing in `execute_region_mapping`, stamping `RegionPlan.config["fuzzy_skin.apply_to_all"] = ConfigValue::Bool(true)` on overlapping regions.
 
 This packet does NOT introduce the `negative_part` host stage and does NOT wire `support_enforcer`/`support_blocker` paint-segmentation piggyback — those are owned by Packet 56c. The IR routing in this packet does, however, populate `ObjectMesh.modifier_volumes` for ALL four non-`NormalPart` subtypes (because the routing is uniform — each non-`NormalPart` part becomes a `ModifierVolume` regardless of whether its downstream consumer is wired). The consumer wiring for `negative_part` and `support_*` lands in Packet 56c.
 
@@ -47,7 +47,7 @@ WIT scope is **clean** — confirmed at the original packet's Step 0. This packe
 
 One deviation is registered and closed by this packet:
 
-- **DEV-052** — Paint data on non-`NormalPart` rows (modifier, negative, support enforcer, support blocker) is dropped at load time with `log::warn!`. No consumer needs paint on a modifier; preserving it would waste IR memory and risk double-counting.
+- **Non-`NormalPart` paint data drop handling** — Paint data on non-`NormalPart` rows (modifier, negative, support enforcer, support blocker) is dropped at load time with `log::warn!`. No consumer needs paint on a modifier; preserving it would waste IR memory and risk double-counting.
 
 This packet does not modify Packet 56's directory. Packet 56's `status: implemented` is a precondition (verified at Step 0).
 

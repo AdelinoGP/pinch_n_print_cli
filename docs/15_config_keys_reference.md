@@ -681,7 +681,7 @@ Keys registered on both `classic-perimeters` and `arachne-perimeters` mirroring 
 
 ## Strength (packet 149)
 
-Keys registered on `arachne-perimeters` for the alternating-extra-wall strength feature, plus two pre-existing gate keys re-registered here for the D-104e gate condition.
+Keys registered on `arachne-perimeters` for the alternating-extra-wall strength feature, plus two pre-existing gate keys re-registered here for the alternating-extra-wall gate condition.
 
 | Key | Type | Default | Range | Module(s) |
 |---|---|---|---|---|
@@ -691,7 +691,7 @@ Keys registered on `arachne-perimeters` for the alternating-extra-wall strength 
 
 **`alternate_extra_wall`** — OrcaSlicer `alternate_extra_wall` (`coBool`, default `false`). When `true`, `arachne-perimeters` bumps `ArachneParams.max_bead_count` by `+2` on odd layers — this codebase's beading stack emits `max_bead_count / 2` walls, so a `+2` bump is the PnP-side equivalent of OrcaSlicer's `loop_number++` for this option. Gated on `!spiral_vase && sparse_infill_density > 0`, mirroring OrcaSlicer's own gate (alternating extra walls only make sense with solid infill present and outside spiral-vase mode).
 
-**`spiral_vase`** — registered on `arachne-perimeters` solely to provide the D-104e gate condition for `alternate_extra_wall` above; no spiral-vase toolpath behavior is implemented by this packet.
+**`spiral_vase`** — registered on `arachne-perimeters` solely to provide the gate condition for `alternate_extra_wall` above; no spiral-vase toolpath behavior is implemented by this packet.
 
 **`sparse_infill_density`** — registered on `arachne-perimeters` solely to provide the gate condition for `alternate_extra_wall` above (`> 0` means solid infill exists); does not change infill density behavior on the perimeter module itself (see `gyroid-infill`/`rectilinear-infill`/`lightning-infill`'s own `infill_density` keys in the generated **Module-owned config keys** table for the actual infill-density consumers).
 

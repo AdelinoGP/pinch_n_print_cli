@@ -9,7 +9,7 @@ task_ids:
 
 ## Goal
 
-Close DEV-045 by making `RegionMap` paint-semantic-aware. Today the host built-in `crates/slicer-host/src/region_mapping.rs:103-248` contains zero "paint*"/"semantic" tokens, `RegionPlan` (`crates/slicer-ir/src/slice_ir.rs:1028-1033`) has no paint-semantic dimension, and `crates/slicer-host/src/config_resolution.rs` recognises only `object_config:<id>:<key>` (line 84, 195). A user config containing `paint_config:fuzzy_skin:perimeter_count=5` is silently dropped into `cfg.extensions` (`:169-171`, `:280`) with no diagnostic. Consequently `PaintSemantic::Custom("fuzzy_skin")` crosses IR via `PaintRegionLayerView` but cannot bind to per-region `ResolvedConfig` overrides on the live host scheduler — violating the RegionMap responsibility stated at `docs/01_system_architecture.md:107-114` ("decides modules + pre-filtered config + active claims per (layer, object, region)").
+Make `RegionMap` paint-semantic-aware to resolve paint-semantic region override gaps. Today the host built-in `crates/slicer-host/src/region_mapping.rs:103-248` contains zero "paint*"/"semantic" tokens, `RegionPlan` (`crates/slicer-ir/src/slice_ir.rs:1028-1033`) has no paint-semantic dimension, and `crates/slicer-host/src/config_resolution.rs` recognises only `object_config:<id>:<key>` (line 84, 195). A user config containing `paint_config:fuzzy_skin:perimeter_count=5` is silently dropped into `cfg.extensions` (`:169-171`, `:280`) with no diagnostic. Consequently `PaintSemantic::Custom("fuzzy_skin")` crosses IR via `PaintRegionLayerView` but cannot bind to per-region `ResolvedConfig` overrides on the live host scheduler — violating the RegionMap responsibility stated at `docs/01_system_architecture.md:107-114` ("decides modules + pre-filtered config + active claims per (layer, object, region)").
 
 This packet wires three additive surfaces: (1) a new `paint_config:<semantic>:<key>` namespace in `config_resolution.rs` with a `resolve_per_paint_semantic_configs` function modelled on the existing `resolve_per_object_configs` (`:186-216`); (2) an additive `paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig>` field on `RegionPlan` (minor schema bump 1.0.0 → 1.1.0); (3) `region_mapping.rs` learns to read `PaintRegionIR` (already available because `PrePass::PaintSegmentation` runs before `PrePass::RegionMapping` per `docs/04_host_scheduler.md:461-509`), compute per-region overlaps with each paint semantic, and stamp the effective overlay (per-object → per-paint-semantic, in that order) into `RegionPlan.config` while preserving the audit trail in `paint_overrides`.
 
@@ -19,9 +19,9 @@ The failing TDD-RED test already committed at `crates/slicer-host/tests/benchy_p
 
 ## Problem Statement
 
-DEV-045 (registered 2026-05-10, see `docs/DEVIATION_LOG.md`) records that `RegionMap` is paint-blind on the live host scheduler. Three coupled gaps make `PaintSemantic::Custom(...)` values useless beyond tool/material differentiation:
+The paint-semantic region override tracking records that `RegionMap` is paint-blind on the live host scheduler. Three coupled gaps make `PaintSemantic::Custom(...)` values useless beyond tool/material differentiation:
 
-1. **Config namespace gap.** `crates/slicer-host/src/config_resolution.rs` (closed DEV-040 2026-05-04) recognises only `object_config:<id>:<key>` (line 84, 195). No `paint_config:<semantic>:<key>` namespace exists. Unknown keys silently fall into `cfg.extensions` (`:169-171`, `:280`) with no warning.
+1. **Config namespace gap.** `crates/slicer-host/src/config_resolution.rs` (closed object config resolution tracking 2026-05-04) recognises only `object_config:<id>:<key>` (line 84, 195). No `paint_config:<semantic>:<key>` namespace exists. Unknown keys silently fall into `cfg.extensions` (`:169-171`, `:280`) with no warning.
 
 2. **IR shape gap.** `crates/slicer-ir/src/slice_ir.rs:1028-1033` declares `RegionPlan { config: ResolvedConfig, stage_modules: HashMap<StageId, Vec<ModuleInvocation>> }` — no paint-semantic dimension. `RegionKey` (`:1006-1015`) keys on `(global_layer_index, object_id, region_id)` only.
 

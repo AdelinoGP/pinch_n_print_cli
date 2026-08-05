@@ -13,7 +13,7 @@ Widen the paint-region transport between the SDK builder, the WIT `paint-segment
 
 ## Problem Statement
 
-`DEV-025` ("Prepass segmentation SDK↔WIT shapes are still misaligned") originally enumerated three mismatches. While planning the close of mismatch 3 (the macro-arm drain, deferred from Packet 06), an architectural review surfaced **two additional mismatches** that the original DEV-025 audit did not catch:
+The prepass segmentation SDK↔WIT shape alignment audit ("Prepass segmentation SDK↔WIT shapes are still misaligned") originally enumerated three mismatches. While planning the close of mismatch 3 (the macro-arm drain, deferred from Packet 06), an architectural review surfaced **two additional mismatches** that the original prepass segmentation audit did not catch:
 
 - **Mismatch 4 — paint value channel string-coerced.** The WIT `paint-region-entry.value: string` is parsed by the host (`crates/slicer-host/src/dispatch.rs:1975-1985 parse_value`) using a four-grammar guesser: `"true"`/`"false"` → `PaintValue::Flag`, parsable `u32` → `ToolIndex`, parsable `f32` → `Scalar`, otherwise → `ToolIndex(0)`. The fallback is silent data loss. The feature purpose explicitly lists `Custom(id) → passed through for the registering module to consume` — a `Custom` semantic with a structured value (`"profile_high"`, `"color:#ff0000"`) currently degrades to `ToolIndex(0)`. Meanwhile the SDK already exposes a structured `PaintValueView { kind, flag, scalar, tool_index }` and the WIT *read* side already has a typed `paint-value` view (`wit_host.rs:2303-2308 ir_to_wit_paint_value`, `2413-2418 ir_to_wit_paint_value_view`, `5589-5594 convert_paint_value`). The string-coerced *write* side is asymmetric debt.
 
@@ -23,7 +23,7 @@ This packet closes mismatches 4 and 5. It does not close mismatch 3 — that is 
 
 This packet is the architectural prerequisite for Packet 43: the macro `PrePass::PaintSegmentation` arm cannot losslessly drain `PaintSegmentationOutput::regions()` through `push-paint-region` while the WIT carries `value: string` and the SDK carries `contour_points` instead of polygons. Plan A (split into Packet 42 + 43) was chosen over Plan B (single packet) because Plan B would push aggregate cost into L-territory and would mix transport-shape-refactor concerns with macro-arm drain concerns, complicating both review and acceptance.
 
-This packet does **not** reopen or supersede a prior packet. It extends DEV-025 with mismatches that a fresh audit identified.
+This packet does **not** reopen or supersede a prior packet. It extends prepass segmentation alignment tracking with mismatches that a fresh audit identified.
 
 ## Architecture Constraints
 
@@ -45,7 +45,7 @@ This packet does **not** reopen or supersede a prior packet. It extends DEV-025 
 
 ## Locked Assumptions and Invariants
 
-- **WIT world-prepass stays at `@1.0.0` despite a non-additive change.** Rationale: DEV-025 is openly registered as "Prepass segmentation SDK↔WIT shapes are still misaligned"; no prepass module ships externally; the entire prepass contract is under active remediation per `docs/07_implementation_status.md`. Strict-version-rule deviation is recorded here as the audit trail. Mitigation: when the Architecture Acceptance Gate closes (TASK-130c + 130/130a/130b + other blockers), DEV-025 will close; the next non-additive WIT change after gate closure MUST follow the documented version-bumping rule.
+- **WIT world-prepass stays at `@1.0.0` despite a non-additive change.** Rationale: prepass segmentation alignment is documented as "Prepass segmentation SDK↔WIT shapes are still misaligned"; no prepass module ships externally; the entire prepass contract is under active remediation per `docs/07_implementation_status.md`. Strict-version-rule deviation is recorded here as the audit trail. Mitigation: when the Architecture Acceptance Gate closes (TASK-130c + 130/130a/130b + other blockers), prepass segmentation alignment will complete; the next non-additive WIT change after gate closure MUST follow the documented version-bumping rule.
 - **`paint_order` is host-derived from enumeration index.** The SDK's `paint_order` field is redundant with the host's `idx as u64` derivation. Step 0 confirms no other reader exists; if true, the field is dropped. If a reader is found, Step 0 records it and the field stays.
 - **`PaintSemantic::Custom(String)` already round-trips.** The semantic side is correctly typed via `parse_semantic` (dispatch.rs:1961) and `paint_semantic_to_string` (wit_host.rs:2402). This packet does not alter the semantic channel.
 - **SDK `ExPolygonView` mirrors IR `ExPolygon` exactly.** Either `pub use slicer_ir::ExPolygon as ExPolygonView` or a 1:1 wrapper struct. Step 0 picks; the choice is recorded in dispatch.rs as a doc comment.
@@ -57,5 +57,5 @@ This packet does **not** reopen or supersede a prior packet. It extends DEV-025 
 - **Risk: WIT bindgen surfaces `paint-value-input` with a kebab-cased Rust name that conflicts with existing `PaintValueView`.** Mitigation: `PaintValueInput` is the conventional bindgen output and is distinct. Step 0 confirms no name collision via Grep.
 - **Risk: rebuilding `test-guests/prepass-guest.component.wasm` requires a wasm32 toolchain that isn't available on the implementer's Windows host.** Mitigation: Step 0 confirms toolchain availability; if not, the rebuild step is delegated to a sub-agent / CI; the implementer ships a "rebuild required" note and a CI handoff.
 - **Risk: the canonical paint-segmentation guest's existing test suite has assertions on the `value` string that need migration.** Mitigation: Step 6 runs the guest's tests after migration and migrates any assertions that referenced string values; AC-6 catches a regression.
-- **Tradeoff: keeping `world-prepass@1.0.0` violates the documented major-version rule.** Recorded as a Locked Assumption; the audit trail is the packet itself + DEV-025 mismatches 4 + 5.
+- **Tradeoff: keeping `world-prepass@1.0.0` violates the documented major-version rule.** Recorded as a Locked Assumption; the audit trail is the packet itself + prepass segmentation mismatches 4 + 5.
 - **Tradeoff: adding a `Custom(String)` variant to `PaintValue` (if Step 0 picks that path) is an IR shape change in a packet that otherwise is "out of scope of IR changes."** Justified because (a) it is additive (no consumer breaks); (b) it is the minimal IR change to faithfully represent the WIT `custom(string)` case; (c) without it, the harvest cannot uphold AC-5's typed round-trip for Custom values. The alternative (carry Custom only via `PaintSemantic::Custom`) is reasonable too but degrades the semantics: a `PaintSemantic::Material` paint with a non-numeric Custom value cannot be represented. Step 0 selects.

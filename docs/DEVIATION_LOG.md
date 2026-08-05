@@ -4,10 +4,10 @@ Use this registry for intentional deviations from architecture docs.
 
 > **Single source of truth.** This file is authoritative for deviation status. A
 > deviation is **open** unless its `Status` column begins with `Closed`. Status
-> summaries elsewhere (`docs/07_implementation_status.md` Open Deviation Map,
-> `docs/14_deviation_audit_history.md`) are non-authoritative views generated
-> from this table by `cargo xtask check-deviations`; when they disagree, this
-> file wins. Do not hand-edit those views.
+> summaries elsewhere (`docs/07_implementation_status.md` Open Deviation Map)
+> are non-authoritative views generated from this table by
+> `cargo xtask check-deviations`; when they disagree, this file wins. Do not hand-edit
+> those views.
 
 | ID | Date | Risk | Rationale | Status |
 | --- | --- | --- | --- | --- |

@@ -295,7 +295,7 @@ group   = "Seam"
 # Mixed: alternate_extra_wall, spiral_vase, sparse_infill_density, bridge_flow,
 # and thick_bridges ARE consumed by run_perimeters (D3 alternating-wall
 # max_bead_count gate / D4 bridge flow factor). The remaining keys are
-# registration only, behavior deferred per D-104c/D-104d.
+# registration only, behavior deferred.
 # Grepped modules/core-modules/*/*.toml first: none of these 11 keys were
 # already registered here, except extra_perimeters_on_overhangs and
 # only_one_wall_top, whose section shape is copied verbatim from

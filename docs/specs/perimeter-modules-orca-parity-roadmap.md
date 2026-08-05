@@ -226,7 +226,7 @@ Packet 107 (overhang-pipeline-consumers-and-refactor) delivered the consumer sta
 |---|---|---|---|
 | T-001 | Rewrite `classic-perimeters/src/lib.rs` doc-comment to match actual scope | `modules/core-modules/classic-perimeters/src/lib.rs` | Doc-comment removes "Per OrcaSlicer process_classic()" claim until parity is real; lists feature deltas with target task IDs. |
 | T-002 | Rewrite `arachne-perimeters/src/lib.rs` doc-comment to state "iterative-inset width approximation, BeadingStrategy stack not implemented" | `modules/core-modules/arachne-perimeters/src/lib.rs` | Doc-comment is honest about algorithm. |
-| T-003 | Register every audit-finding gap in `docs/DEVIATION_LOG.md` with target-task IDs | `docs/DEVIATION_LOG.md`, `docs/14_deviation_audit_history.md` | One entry per gap, linked to a T-NNN. |
+| T-003 | Register every audit-finding gap in `docs/DEVIATION_LOG.md` with target-task IDs | `docs/DEVIATION_LOG.md` | One entry per gap, linked to a T-NNN. |
 | T-004 | Add ADR `0009-perimeter-module-scope.md` defining the responsibility boundary between perimeter modules and downstream consumers | `docs/adr/0009-perimeter-module-scope.md` | Documents the table from "Architectural framing" above as binding. |
 | T-005 | Declare symmetric `incompatible-with` between classic and arachne manifests | `modules/core-modules/{classic,arachne}-perimeters/*.toml` | Each manifest references the other in `incompatible-with`. |
 

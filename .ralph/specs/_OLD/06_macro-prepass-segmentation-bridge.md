@@ -11,11 +11,11 @@ task_ids:
 
 ## Goal
 
-Resolve prepass segmentation input-shape gaps on the macro/WIT path so macro-authored `MeshSegmentation` and `PaintSegmentation` modules receive real geometry and paint data instead of hollow SDK inputs. Covers DEV-025.
+Resolve prepass segmentation input-shape gaps on the macro/WIT path so macro-authored `MeshSegmentation` and `PaintSegmentation` modules receive real geometry and paint data instead of hollow SDK inputs. Covers prepass segmentation input shape gaps.
 
 ## Problem Statement
 
-DEV-025 tracks that the prepass segmentation stages (`PrePass::MeshSegmentation` and `PrePass::PaintSegmentation`) receive hollow SDK inputs on the macro/WIT path. Concretely:
+This specification addresses how prepass segmentation stages (`PrePass::MeshSegmentation` and `PrePass::PaintSegmentation`) receive hollow SDK inputs on the macro/WIT path. Concretely:
 
 1. **MeshSegmentation**: Macro-authored modules that implement `PrepassModule::run_mesh_segmentation` receive `&[MeshObjectView]` but the current dispatch wiring (`dispatch_prepass_call`) passes only `object_ids: &[String]` — no geometry is attached. The SDK type `MeshObjectView` is defined in `crates/slicer-sdk/src/prepass_types.rs` with real fields (`vertices`, `triangles`, `paint_layers`), but the host dispatch path never populates them.
 
@@ -23,7 +23,7 @@ DEV-025 tracks that the prepass segmentation stages (`PrePass::MeshSegmentation`
 
 The result is that segmentation modules execute with empty geometry and paint data, making the prepass stages no-ops on the macro path even when the host IR contains valid mesh and paint data.
 
-If this packet reopens or supersedes a prior packet: N/A — no prior packet addressed DEV-025 for the macro/WIT path.
+If this packet reopens or supersedes a prior packet: N/A — no prior packet addressed prepass segmentation input shape gaps for the macro/WIT path.
 
 ## Architecture Constraints
 

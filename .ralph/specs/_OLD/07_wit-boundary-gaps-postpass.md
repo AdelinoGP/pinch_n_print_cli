@@ -12,11 +12,11 @@ task_ids:
 
 ## Goal
 
-Close the remaining non-segmentation WIT-boundary gaps on live execution paths. Covers DEV-006. Specifically: widen the postpass WIT surface so full `GCodeCommand` payloads and explicit `Unretract` writes cross the boundary, widen the finalization WIT surface so completed layers expose `ordered_entities` and `z_hops`, and add live-path regression coverage for the existing layer-world builder-to-commit path.
+Close the remaining non-segmentation WIT-boundary gaps on live execution paths. Covers postpass WIT boundary and executable surface gaps. Specifically: widen the postpass WIT surface so full `GCodeCommand` payloads and explicit `Unretract` writes cross the boundary, widen the finalization WIT surface so completed layers expose `ordered_entities` and `z_hops`, and add live-path regression coverage for the existing layer-world builder-to-commit path.
 
 ## Problem Statement
 
-DEV-006 identifies that postpass GCode command content and executable WIT-boundary coverage still have live gaps. The three sub-tasks target distinct boundary surfaces:
+Postpass GCode command content and executable WIT-boundary coverage still have live gaps. The three sub-tasks target distinct boundary surfaces:
 
 - TASK-129a: `dispatch_postpass_gcode_call` in `crates/slicer-host/src/dispatch.rs` currently passes an empty `&[]` slice into the WIT call instead of the real command list, and the postpass WIT surface does not currently expose payload-bearing command input or explicit `Unretract` write support. This task widens `world-postpass.wit`, the shared `gcode-output-builder`, and the host/macro/SDK mirrors so all eight `GCodeCommand` variants can cross the live boundary with exact payloads.
 

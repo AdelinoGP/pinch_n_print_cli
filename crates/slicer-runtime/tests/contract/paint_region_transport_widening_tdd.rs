@@ -44,15 +44,14 @@ mod doc_grep_tests {
         // (b) A line must reference TASK-130c's relationship to a blocker.
         // The task can be registered as either an open blocker
         // (`Blocking`/`blocker`) OR as the closure of a blocker
-        // (`Closed`/`closed`/`Covers DEV-025`). After packet 42 the task
+        // (`Closed`/`closed`). After packet 42 the task
         // was closed; either form still satisfies the registration contract.
         let has_blocker_or_closure = src.lines().any(|l| {
             l.contains("TASK-130c")
                 && (l.contains("Blocking")
                     || l.contains("blocker")
                     || l.contains("Closed")
-                    || l.contains("closed")
-                    || l.contains("DEV-025"))
+                    || l.contains("closed"))
         });
         assert!(
             has_blocker_or_closure,
@@ -60,7 +59,7 @@ mod doc_grep_tests {
         );
     }
 
-    // AC-host-8 (`dev_log_extends_dev025_with_4_and_5`) asserted DEVIATION_LOG.md's
-    // DEV-025 row content directly; removed 2026-07-02 when DEV-025 was deleted
-    // from the log as a closed entry (history preserved in git).
+    // AC-host-8 asserted DEVIATION_LOG.md's closed paint-region transport deviation
+    // row content directly; removed 2026-07-02 when the closed entry was archived
+    // from the log (history preserved in git).
 }

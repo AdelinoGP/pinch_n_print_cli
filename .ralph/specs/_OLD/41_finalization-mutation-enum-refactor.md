@@ -34,7 +34,7 @@ The fix is structural, not patchwork. Closures cannot cross WIT; the SDK API mus
 5. Migrates the 8 existing `crates/slicer-sdk/tests/finalization_builder_tdd.rs` tests from closure-form to enum-form.
 6. Extends the `slicer-macros` drain-back loop to forward `merge_ops` via WIT.
 7. Adds a tiny new test guest at `test-guests/finalization-mutation-roundtrip-guest/` and a host-side end-to-end test that proves a guest's `modify_entity` call actually mutates the host IR — the substantive validation absent today.
-8. Closes `DEV-041` in `docs/DEVIATION_LOG.md` (the live registry; the row currently sits at line 47). The legacy `docs/14_deviation_audit_history.md` is an archive and is not edited.
+8. Closes `DEV-041` in `docs/DEVIATION_LOG.md` (the live registry; the row currently sits at line 47).
 
 The result: WASM modules and native test fixtures share one API shape. The drain-back loop is straight-line forwarding, no impedance mismatch. The four future PostPass modules can be authored against a contract that actually delivers what it promises.
 

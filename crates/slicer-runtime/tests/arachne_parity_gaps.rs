@@ -430,7 +430,7 @@ fn arachne_parity_pipeline_percent_config_type_for_arachne_keys() {
 }
 
 // ===========================================================================
-// GAP_PIPELINE: overhang_reverse registered but behaviorally inert (D-104c)
+// GAP_PIPELINE: overhang_reverse registered but behaviorally inert
 // ===========================================================================
 
 /// GAP_PIPELINE: with `detect_overhang_wall` off and `overhang_reverse` on,
@@ -441,7 +441,7 @@ fn arachne_parity_pipeline_percent_config_type_for_arachne_keys() {
 /// (coFloatOrPercent) tunes detection. In PnP the keys `overhang_reverse` /
 /// `overhang_reverse_internal_only` / `detect_overhang_wall` are registered
 /// in `arachne-perimeters.toml` but have ZERO readers in
-/// `arachne-perimeters/src/lib.rs` (D-104c registration-only, behavior
+/// `arachne-perimeters/src/lib.rs` (registration-only, behavior
 /// deferred), and `overhang_reverse_threshold` is not registered at all —
 /// toggling `overhang_reverse` changes nothing.
 #[test]
@@ -476,7 +476,7 @@ fn arachne_parity_pipeline_overhang_reverse_flips_odd_layer_walls() {
          outer-wall signed area with overhang_reverse=true = \
          {reversed_area:.4} mm² vs false = {normal_area:.4} mm² (flipped: \
          {direction_flipped}) — the registered keys have zero readers in the \
-         module (D-104c registration-only) | ref: \
+         module (registration-only) | ref: \
          PerimeterGenerator.cpp:422-429"
     );
 }

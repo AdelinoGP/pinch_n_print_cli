@@ -20,7 +20,7 @@ Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glo
 - `docs/11_operational_governance_and_acceptance_gate.md` — Architecture Acceptance Gate criteria and release governance.
 - `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
 - `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.
-- `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
+- `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
 - `docs/16_slicer_report.md` — HTML slicer report format, allocator contract, known v1 limitations.
 - `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.
 - `docs/19_visual_debug.md` — agent-facing visual-debug bundle guide for stage/layer PNG evidence. Pairs independently with `debug-pipeline`; design: `docs/specs/visual-pipeline-debug.md`.

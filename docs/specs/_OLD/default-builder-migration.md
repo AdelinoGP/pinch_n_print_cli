@@ -1325,7 +1325,7 @@ cargo check --workspace
    audit per-IR; pin each new constant to the IR's actual current
    effective version, not a blanket `1.0.0`. Concretely: TASK-200b
    greps the codebase (`*_tdd.rs` fixtures, `docs/02_ir_schemas.md`,
-   `docs/14_deviation_audit_history.md`, `docs/DEVIATION_LOG.md`) for
+   `docs/DEVIATION_LOG.md`) for
    each IR's most recent version literal and pins the new `CURRENT_*_IR_SCHEMA_VERSION`
    to that value. Known non-`1.0.0` cases: `MeshIR` → `1.1.0` (per
    TASK-191 modifier-part routing), `RegionMapIR` → `1.1.0` (per

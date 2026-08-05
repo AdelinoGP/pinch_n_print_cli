@@ -12,12 +12,12 @@ supersedes: none
 
 Add a host-internal parser for the OrcaSlicer / Bambu Studio sidecar `Metadata/model_settings.config` to the 3MF loader. Surface typed per-part metadata (`subtype`, `fuzzy_skin`, optional `extruder`, optional `matrix` for telemetry) keyed by `(<object id>, <part id>)`. No IR mutation. No `resolve_object` branching. No downstream consumer wiring. The parser is a pure data producer; its output is consumed by Packet 56b (`resolve_object` branching into `ObjectMesh.modifier_volumes`) and Packet 56c (downstream subtype-specific consumers).
 
-This packet closes two deviations driven by parser-level behavior:
+This packet closes two architectural deviations driven by parser-level behavior:
 
-- **DEV-050** — Partial subtype coverage. The parser enumerates `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown subtype values silently downgrade to `normal_part` with a `log::warn!` naming the unrecognized string.
-- **DEV-051** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing entry → returns an empty map silently (no warning; absence is the default). Malformed XML (truncated, unclosed elements) → returns an empty map AND emits a `log::warn!` containing the substring "treating all parts as normal_part".
+- **Partial subtype coverage handling** — The parser enumerates `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown subtype values silently downgrade to `normal_part` with a `log::warn!` naming the unrecognized string.
+- **Missing or malformed sidecar handling** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing entry → returns an empty map silently (no warning; absence is the default). Malformed XML (truncated, unclosed elements) → returns an empty map AND emits a `log::warn!` containing the substring "treating all parts as normal_part".
 
-(Note: The paint-drop-on-non-`normal_part`-rows deviation — originally planned as DEV-048 — will be registered by Packet 56b under its own free DEV ID, as DEV-048 and DEV-049 were claimed by packet 53. Packet 56 cannot close that deviation because it does not modify `resolve_object`.)
+(Note: The paint-drop-on-non-`normal_part`-rows deviation will be registered by Packet 56b under its own free tracking ID. Packet 56 cannot close that deviation because it does not modify `resolve_object`.)
 
 ## Problem Statement
 
@@ -33,10 +33,10 @@ WIT scope is **clean** — confirmed in the original packet's Step-0 sub-agent g
 
 Two deviations are registered and closed by this packet:
 
-- **DEV-050** — Partial subtype coverage. The parser recognizes `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown values silently downgrade to `NormalPart` with a `log::warn!`. Recommended ID DEV-050 (verified by Step 6 against `docs/DEVIATION_LOG.md`).
-- **DEV-051** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing → empty map, no warning. Malformed → empty map + `log::warn!`.
+- **Partial subtype coverage handling** — The parser recognizes `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown values silently downgrade to `NormalPart` with a `log::warn!`.
+- **Missing or malformed sidecar handling** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing → empty map, no warning. Malformed → empty map + `log::warn!`.
 
-(DEV-048 — paint dropped on non-`normal_part` rows — is registered and closed by Packet 56b, which is where `resolve_object` branching introduces the drop logic.)
+(Paint dropped on non-`normal_part` rows handling is registered and closed by Packet 56b, which is where `resolve_object` branching introduces the drop logic.)
 
 This packet does not absorb any prior packet's directory. The Cross-Packet Mutation Rule does not apply to this packet's writes. The in-place refinement of `56_threemf-modifier-and-subtype-sidecar-ingestion` was performed by overwriting that draft's files (the directory was renamed to `56_threemf-sidecar-parser` via `git mv`); no prior packet's status changes.
 
