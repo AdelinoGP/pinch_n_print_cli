@@ -27,7 +27,7 @@ Touches the `infill-linker` module only: `src/connect.rs` (the gate, the candida
 
 - Depends on: none. infill-linker containment contract's containment fix is **landed** (`docs/DEVIATION_LOG.md` row infill-linker containment contract reads `Closed`, verified) and `contour_connector` / `BoundaryRing::directed_distance` (`modules/core-modules/infill-linker/src/graph.rs`) are the pieces this packet builds on.
 - Unblocks: nothing queued. Two residuals it *creates* are named in Doc Impact — the absent neighbour-trimming and the percent-base input. A percent-form `infill_anchor` is transportable since Packet 185: `parse_percent_default` in `crates/slicer-scheduler/src/manifest.rs` parses `"400%"` into `ConfigValue::FloatOrPercent`, retained on `ConfigFieldEntry.parsed_default` and threaded through scheduler schema-default injection into the runtime `ConfigView`. Packet 185 owns that transport evidence; this packet does not recreate its retired deviation-log label.
-- Activation blockers: none technical. Packet `140_lightning-module-rewrite` is the only `active` packet; this stays `draft` until that clears. Packets 181-185 are all `draft` — **do not cite any deviation row or artifact they file as landed.**
+- Activation blockers: none technical. Packet 192 is implemented.
 
 ## Acceptance Criteria
 

@@ -4,7 +4,7 @@
 //! AC6 — tower vertices are inside the bed polygon.
 //!
 //! Bed-containment only. The object-footprint non-intersection half of AC6 is
-//! deferred to a follow-up packet (DEV-054 follow-up (i)) — the test name now
+//! deferred to a follow-up packet (DEV-054, closed) — the test name now
 //! reflects this scope rather than over-claiming "outside_objects".
 
 #![allow(missing_docs)]
@@ -86,7 +86,7 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
 /// `WipeTower` entity must lie within `[0, 250] × [0, 250]`.
 ///
 /// The "outside object footprint" half of AC6 is deferred to a follow-up
-/// packet (DEV-054 follow-up (i)) and intentionally NOT asserted here. The
+/// packet (DEV-054, closed) and intentionally NOT asserted here. The
 /// test name reflects only the assertions that actually run.
 #[test]
 fn tower_geometry_within_config_bed_only() {
@@ -161,6 +161,6 @@ fn tower_geometry_within_config_bed_only() {
     }
 
     // Object-footprint non-intersection is deferred to a follow-up packet
-    // (DEV-054 follow-up (i)). When that lands, replace this comment with the
+    // (DEV-054, closed). When that lands, replace this comment with the
     // assertion and rename the test back to include "outside_objects".
 }

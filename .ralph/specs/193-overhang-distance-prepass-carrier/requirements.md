@@ -4,7 +4,7 @@
 
 - Grouped task IDs: see `packet.spec.md` frontmatter. **The id there is an allocation, not a measurement** — queue row 9a2 was added without one, unlike every other row in that plan's central-allocation paragraph. Re-derive before writing the `docs/07_implementation_status.md` row, and reconcile **two disagreeing sources**: `rg -o 'TASK-[0-9]{3}' docs/07_implementation_status.md | sort -u | tail -1` and `rg -o 'TASK-[0-9]{3}' .ralph/specs --no-filename | sort -u | tail -1`. The specs tree runs ahead of `docs/07` because several packets in this batch allocated ids they have not registered yet; take the next free number above the higher of the two.
 - Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` — §Packet Queue row **9a2**, created by that plan's `Queue amendment (2026-07-25d)` recording the maintainer's **option (C)** ruling on packet 190. **Do not quote the row's text or any hit count here or anywhere else.** Re-derive at the moment of use with `rg -n '^\| 9a2 ' docs/specs/deviation-backlog-remediation-plan.md`; the rows begin at column 1, so `^` must anchor directly on the leading `|` (a pattern written `^.\|` consumes that `|` and then demands a second one — measured elsewhere in this packet set at 0 hits and exit 1, a silently-empty re-derivation of exactly the kind this note exists to prevent).
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

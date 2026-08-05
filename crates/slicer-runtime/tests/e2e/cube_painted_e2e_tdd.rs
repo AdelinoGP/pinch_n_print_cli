@@ -117,7 +117,7 @@ fn painted_cube_3mf_reaches_paint_segmentation() {
     );
 
     // The load-bearing assertion: paint MUST have an effect. If
-    // paint_data is silently discarded by load_3mf (DEV-044 open
+    // paint_data is silently discarded by load_3mf (DEV-044, closed
     // state), both slices produce byte-identical output.
     assert_ne!(
         painted_gcode, unpainted_gcode,

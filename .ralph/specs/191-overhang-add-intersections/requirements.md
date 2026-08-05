@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-315`
 - Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` — the Packet Queue rows for overhang-speed parity in tranche T3, which the orchestrator split into 9a/9b/9c; this packet is row 9c. **Do not quote that row’s text or any TASK-ID hit count here or anywhere else.** The queue is mutable shared state amended while packets are in flight: this line previously froze a row rendering (`<tbd>-gcode-smoothed-speed-add-intersections`) that is now 0 hits in the plan file, and `packet.spec.md` was corrected a round before this file was — the fix landed in one file and not the other, which is the same propagation failure the drift checker now closes. Re-derive at the moment of use with `rg -n '^\| 9[abc] ' docs/specs/deviation-backlog-remediation-plan.md` (the rows begin at column 1, so `^` must anchor directly on the leading `|`; earlier revisions of this line wrote `^.\\|`, which both consumes that `|` and over-escapes the backslash — measured, 0 hits and exit 1, i.e. a silently-empty re-derivation of exactly the kind this paragraph exists to prevent).
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

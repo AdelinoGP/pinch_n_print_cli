@@ -67,6 +67,7 @@ fn split_row_cells(line: &str) -> Vec<String> {
 /// truncated row previously slipped in as DEV-054).
 fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
     let mut out = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
     for (lineno, line) in log.lines().enumerate() {
         if !is_deviation_row(line) {
             continue;
@@ -83,6 +84,13 @@ fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
             ));
         }
         let id = parts[1].trim().to_string();
+        if !seen_ids.insert(id.clone()) {
+            return Err(format!(
+                "docs/DEVIATION_LOG.md:{}: duplicate deviation ID '{}'",
+                lineno + 1,
+                id
+            ));
+        }
         let status = parts[8].trim().to_string();
         let rationale = parts[5].trim();
         out.push(Dev {

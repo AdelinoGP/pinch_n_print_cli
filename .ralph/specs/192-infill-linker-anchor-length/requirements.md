@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-311`
 - Backlog source: `docs/specs/deviation-backlog-remediation-plan.md` Packet Queue row 10 (infill-linker anchor residual, tranche T3, no dependency), added by that plan's "Queue amendment (2026-07-24, post-generation)" note. `TASK-311` is newly allocated and has **zero** hits in `docs/07_implementation_status.md` today; registering it there is packet work (AC-17).
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

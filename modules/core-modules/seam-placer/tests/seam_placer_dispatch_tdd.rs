@@ -226,7 +226,7 @@ fn seam_contract_is_deterministic_across_repeated_dispatch() {
 
 #[test]
 fn seam_candidate_missing_from_any_wall_is_non_fatal_and_preserves_walls() {
-    // Contract post-HIGH-2 / DEV-065: when the resolved seam's coordinates
+    // Contract post-HIGH-2 / DEV-065 (closed): when the resolved seam's coordinates
     // don't match any wall-loop vertex within tolerance (`seam-planner-default`
     // emits mesh-corner coords while walls live on the inset boundary — a
     // pre-existing coord-space gap), the module MUST NOT fail the layer and

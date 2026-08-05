@@ -73,7 +73,7 @@ Every `cargo test` command here selects exactly one test binary and therefore em
 
 - `docs/15_config_keys_reference.md` — long; **ranged reads only**. §"Machine start / end G-code" and the `<!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->` marker boundaries.
 - `docs/02_ir_schemas.md` — delegated SUMMARY only, for the `GCodeIR` command list and the fact that `PostPass::GCodePostProcess` receives `commands: &[GCodeCommand]` plus a `ConfigView` and nothing else.
-- `docs/DEVIATION_LOG.md` — long; delegate. The surviving `DEV-102` custom-G-code residual row only, plus a re-derivation of the highest `DEV-###`.
+- `docs/DEVIATION_LOG.md` — long; delegate. The surviving `DEV-108` custom-G-code residual row only, plus a re-derivation of the highest `DEV-###`.
 - `docs/07_implementation_status.md` — **always delegate.** Needed only to hand-add the `TASK-306` row outside the generated block.
 
 ## Doc Impact Statement (Required)

@@ -25,7 +25,7 @@ Classification stays upstream — that is the half of ADR-0031 option (C) exists
 
 - Depends on: none. It is independent of packet 189 (`189-per-point-speed-factor-carrier`, TASK-308) — 189 adds a per-point *speed* carrier on `LayerCollectionIR`, this adds a per-point *distance* carrier on `Point3WithWidth`; the two touch disjoint types and disjoint schema constants and may land in either order.
 - Unblocks: **packet 190 (`190-smoothed-overhang-speed`, TASK-309), hard.** Under the maintainer's option (C) ruling, 190 reads the prepass-stamped `overhang_distance_mm` instead of computing a cross-layer wall distance in-module; without this packet 190 has no continuous distance to interpolate over and its `[BLOCK-2]` re-add returns. Transitively unblocks packet 191 (`191-overhang-add-intersections`, TASK-310), every predicate of which reads the same field.
-- Activation blockers: none technical. Packet `140_lightning-module-rewrite` is the only `active` packet; this stays `draft` until that clears.
+- Activation blockers: none technical. Packet 193 is implemented.
 - **The carrier contract this packet owns for its two consumers.** `design.md` §Data and Contract Notes §"The signedness contract" is normative for packets 190 and 191. Both cite it; neither restates it. `AC-4` pins it.
 
 ## Acceptance Criteria

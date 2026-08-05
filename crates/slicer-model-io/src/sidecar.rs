@@ -78,7 +78,7 @@ pub fn parse_3mf_sidecar<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Parsed
             }
         }
         Err(_) => {
-            // Missing sidecar is the silent default per DEV-051.
+            // Missing sidecar is the silent default per DEV-051 (closed).
             return ParsedSidecar {
                 objects: HashMap::new(),
                 plate_metadata: BTreeMap::new(),

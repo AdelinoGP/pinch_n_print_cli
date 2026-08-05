@@ -258,7 +258,7 @@ impl WipeTower {
     /// emitter consults `resolved_config.retract_length` for the negative-E
     /// amount; this module's `retract_length` field is retained for future
     /// builder primitives that can place a real `TravelRetract` from the
-    /// module side (see DEV-054 follow-up (i)).
+    /// module side (see packet 58 tool-rotation scheduling contract follow-up (i), DEV-054 closed).
     ///
     /// The `tc` parameter is used to contextualise which tool change this purge serves.
     fn generate_purge_paths(

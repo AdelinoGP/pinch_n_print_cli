@@ -522,7 +522,7 @@ pub struct ObjectMesh {
     /// Not serialized — recomputed on every load so the field always reflects
     /// the current `transform` value. No schema version bump needed (v1.0.0
     /// not released). This makes world-space Z a first-class IR contract
-    /// surface, closing DEV-027.
+    /// surface, closing DEV-027 (closed).
     #[serde(skip_deserializing, default)]
     pub world_z_extent: Option<(f32, f32)>,
 }
