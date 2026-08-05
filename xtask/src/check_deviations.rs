@@ -72,12 +72,12 @@ fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
         if !is_deviation_row(line) {
             continue;
         }
-        // `| a | b | c | d | e | f | g | h |` -> 10 segments (leading + trailing empty).
+        // `| a | b | c | d | e |` -> 7 segments (leading + trailing empty).
         let parts: Vec<String> = split_row_cells(line);
-        if parts.len() != 10 {
+        if parts.len() != 7 {
             return Err(format!(
                 "docs/DEVIATION_LOG.md:{}: malformed deviation row \
-                 (expected 8 columns / 10 pipe-segments, found {}): {}",
+                 (expected 5 columns / 7 pipe-segments, found {}): {}",
                 lineno + 1,
                 parts.len(),
                 parts[1].trim()
@@ -91,8 +91,8 @@ fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
                 id
             ));
         }
-        let status = parts[8].trim().to_string();
-        let rationale = parts[5].trim();
+        let status = parts[5].trim().to_string();
+        let rationale = parts[4].trim();
         out.push(Dev {
             id,
             summary: summarize(rationale),
@@ -274,10 +274,10 @@ mod tests {
     #[test]
     fn parse_extracts_id_status_summary() {
         let log = "\
-| ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-026 | 2026-04-15 | x | High | **Benchy gap.** more text | owner | TBD | Open |
-| DEV-014 | 2026-04-16 | y | Med | plain rationale here | owner | 2026 | Closed 2026-04-24 |
+| ID | Date | Risk | Rationale | Status |
+| --- | --- | --- | --- | --- |
+| DEV-026 | 2026-04-15 | High | **Benchy gap.** more text | Open |
+| DEV-014 | 2026-04-16 | Med | plain rationale here | Closed 2026-04-24 |
 ";
         let devs = parse_devs(log).unwrap();
         assert_eq!(devs.len(), 2);
@@ -293,11 +293,11 @@ mod tests {
         // Regression: the parser matched only `| DEV-`, so every `D-###-SLUG`
         // row was dropped from the generated map while `--check` stayed green.
         let log = "\
-| ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-026 | 2026-04-15 | x | High | numeric-scheme row | owner | TBD | Open |
-| D-163-ARACHNE-BRIDGE-ROLE-CONVERSION-EXEMPTION | 2026-07-16 | y | High | slug-scheme row | owner | TBD | Open |
-| D-147-STITCH-GAP | 2026-07-16 | z | Med | closed slug row | owner | — | Closed — 2026-07-16 |
+| ID | Date | Risk | Rationale | Status |
+| --- | --- | --- | --- | --- |
+| DEV-026 | 2026-04-15 | High | numeric-scheme row | Open |
+| D-163-ARACHNE-BRIDGE-ROLE-CONVERSION-EXEMPTION | 2026-07-16 | High | slug-scheme row | Open |
+| D-147-STITCH-GAP | 2026-07-16 | Med | closed slug row | Closed — 2026-07-16 |
 ";
         let devs = parse_devs(log).unwrap();
         assert_eq!(devs.len(), 3, "both id schemes must parse");
@@ -327,10 +327,10 @@ mod tests {
         // inside code spans; a naive split('|') turned them into phantom
         // columns and the arity check rejected the whole row.
         let log = "\
-| ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| D-111-X | 2026-07-03 | f.rs | Low | requires `all(\\|&w\\| w > 0.0)` here | owner | TBD | Open |
-| D-154-Y | 2026-07-14 | g.rs | Low | branch `(!a && !b) \\|\\| c.is_secondary()` | owner | TBD | Open |
+| ID | Date | Risk | Rationale | Status |
+| --- | --- | --- | --- | --- |
+| D-111-X | 2026-07-03 | Low | requires `all(\\|&w\\| w > 0.0)` here | Open |
+| D-154-Y | 2026-07-14 | Low | branch `(!a && !b) \\|\\| c.is_secondary()` | Open |
 ";
         let devs = parse_devs(log).expect("escaped pipes must not break arity");
         assert_eq!(devs.len(), 2);
