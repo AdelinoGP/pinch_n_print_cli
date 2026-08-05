@@ -263,7 +263,7 @@ fn finalize_chain(
         // reintroduce a `/ UNITS_PER_MM` here: a previous revision did, which
         // silently shrank this threshold from 1.2mm to 0.00012mm so the rule
         // never fired and small fragments closed prematurely — then escaped
-        // `remove_small_lines`, which exempts `is_closed` lines. See
+        // `remove_small_lines`, which exempts `is_closed` lines.
         // See the unit contract documented above.
         if chain_length + closing_dist < 3.0 * max_gap || junctions.len() <= 2 {
             false

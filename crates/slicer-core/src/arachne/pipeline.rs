@@ -415,10 +415,8 @@ pub fn run_arachne_pipeline(
     // (re)computed at its OWN, much larger, thickness. On a benchy hull's thick
     // medial spine that turned a thin node's `bead_count = 3` into
     // `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]` — a ~19mm-wide extruded "wall"
-    // (43x the nozzle): the inner-wall over-extrusion defect. It also left both
-    // propagation passes' side-table reads dead (the table was still empty),
-    // despite `propagate_beadings_downward`'s own comments assuming this pass
-    // had already run. See the propagation side-table contract in the deviation log.
+    // (43x the nozzle): the inner-wall over-extrusion defect.
+    // Side-table reads in upward and downward propagation passes depend on this population pass running first.
     populate_beading_propagation(&mut graph, strategy.as_ref());
 
     propagate_beadings_upward(&mut graph);

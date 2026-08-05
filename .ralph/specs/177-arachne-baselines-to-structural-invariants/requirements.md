@@ -100,7 +100,7 @@ not a coverage subject.
 | `cargo test -p slicer-core --features host-algos --test generate_toolpaths` | In-memory toolpath structural cases. |
 | `cargo test -p slicer-runtime --test arachne_structural_invariants` | Paired source-geometry measurement and D5 discrimination. |
 | `cargo test -p slicer-runtime --test integration perimeter_parity` | Existing integration parity after snapshot deletion. |
-| `test -z "$(rg -l 'fixtures/arachne/.*\.json|expected_perimeter_ir\.json' crates/slicer-core/tests crates/slicer-runtime/tests 2>/dev/null)"` | No active JSON oracle loads. |
+| `test -z "$(rg -l 'fixtures/arachne/.*\.json\|expected_perimeter_ir\.json' crates/slicer-core/tests crates/slicer-runtime/tests 2>/dev/null)"` | No active JSON oracle loads. |
 | `cargo check --workspace --all-targets` | Workspace compile gate. |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Workspace lint gate. |
 

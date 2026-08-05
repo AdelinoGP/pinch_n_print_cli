@@ -29,11 +29,11 @@ jobs:
       # Numbered reference docs must not cite crate paths the project removed in
       # Packet 69 (slicer-host -> slicer-runtime, slicer-cli deleted) or the
       # top-level wit/ deleted in Packet 72. History/status docs are excluded:
-      # 07_*, 14_*, DEVIATION_LOG (legitimately describe the rename), and specs/.
+      # 07_*, DEVIATION_LOG (legitimately describe the rename), and specs/.
       - name: Ban stale crate/binary/WIT paths in reference docs
         run: |
           set -euo pipefail
-          files=$(ls docs/*.md | grep -Ev 'docs/(07_|14_|DEVIATION_LOG)')
+          files=$(ls docs/*.md | grep -Ev 'docs/(07_|DEVIATION_LOG)')
           # Dead paths: crates/slicer-host|cli/, slicer_host|cli::, bare `wit/<subdir>
           pattern='crates/slicer-(host|cli)/|slicer_(host|cli)::|`wit/(deps|world-|host-api|root)'
           if hits=$(grep -REn "$pattern" $files); then
