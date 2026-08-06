@@ -37,7 +37,7 @@ Buffering requirement:
 ```json
 {
   "schema_version": "1.5.0",
-  "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_stats|slice_complete",
+  "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|cancelled|slice_stats|slice_complete",
   "timestamp_ms": 1735843200123,
   "slice_id": "9f9075ad-2bd8-4e9a-a2f5-3b9055d2f239",
   "phase": "prepass|per_layer|postpass|validation",
@@ -77,6 +77,7 @@ Field semantics:
 | `layer_complete`   | `schema_version,event,timestamp_ms,slice_id,phase,layer_index,status,elapsed_ms,degraded`                       |
 | `module_error`     | `schema_version,event,timestamp_ms,slice_id,phase,stage,module_id,status,error` (`layer_index` required only when `phase=per_layer`) |
 | `validation_error` | `schema_version,event,timestamp_ms,slice_id,phase,status,error`                                                 |
+| `cancelled`        | `schema_version,event,timestamp_ms,slice_id,status` (`status` is always `fatal_error`, stamped by the `ProgressEvent::cancelled` constructor; no `phase`, `stage`, or `layer_index` — see Canonical Event Sequences below) |
 | `slice_complete`   | `schema_version,event,timestamp_ms,slice_id,status,degraded,elapsed_ms,fatal_error_count,non_fatal_error_count` |
 
 Rules:
@@ -101,7 +102,7 @@ The host must emit at minimum:
 
 ## Determinism Rules
 
-- Event order must be deterministic within a layer (`layer_start` before any module events for that layer, then `layer_complete`).
+- Event order must be deterministic within a layer.
 - For parallel layers, ordering across different `layer_index` values is not guaranteed.
 - `slice_complete` must include aggregate fields:
   - `degraded=true` if any non-fatal module error occurred.
@@ -164,7 +165,7 @@ Cancellation (`--cancel-on-stdin-eof` or Ctrl+C/Ctrl+Break)
 ──────────────────────────────────────────────────────────
 `layer_start` (Layer N)
   … layer in progress …
-`cancelled` { "schema_version": "1.5.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "..." }
+`cancelled` { "schema_version": "1.5.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "...", "status": "fatal_error" }
 (stream ends; no `slice_complete`; process exits with code 130; `--output` path is absent)
 
 With `--no-progress-events` the `cancelled` event is not emitted (the stream
@@ -184,7 +185,9 @@ matching on the dispatch result).
   1.4.0, and 1.5.0 rows below were assigned to the `cancelled`, `module_log`,
   and `profile_summary` events respectively. Recorded here for historical
   traceability only — the rows below are authoritative.
+  <!-- VERIFY: the packet-169 decision text ("ship 1.2.0, reserve 1.3.0") is not recoverable from current sources; the version rows themselves are pinned by `PROGRESS_EVENT_SCHEMA_VERSION`'s history comment and the unit tests in `crates/slicer-runtime/src/progress_events.rs`. -->
 - `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`.
+  <!-- VERIFY: the "packet 174" attribution is not recoverable from current sources; the 1.3.0 `cancelled` bump itself is confirmed by `PROGRESS_EVENT_SCHEMA_VERSION`'s history comment. -->
 - `1.4.0`: New `module_log` event, emitted only under `--instrument-stderr`, carrying the log records modules write through `slicer_sdk::host::log`. Adds the OPTIONAL `level` and `message` top-level fields, present only on `module_log`.
 - `1.5.0`: New `profile_summary` event, emitted once at slice end under `--profile`, carrying the per-(module, scope) fuel fold described in ADR-0055. Adds the OPTIONAL `profile` top-level field, present only on `profile_summary`, and the OPTIONAL `profile_scopes` field on `module_complete`, present only under `--profile-verbose`. Guest modules are reported in fuel (deterministic executed wasm instructions); native host built-ins are not fuel-metered and are reported in wall-clock, in a separate section with its own denominator — the two are never summed.
 - A stream carries exactly one `schema_version`. Every constructor stamps `PROGRESS_EVENT_SCHEMA_VERSION` (or `PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED`); no event hard-codes a version literal. `slice_stats` did until this was corrected, which put two versions in one stream.
@@ -193,8 +196,8 @@ The `schema_version` field follows additive minor bumps:
 
 | Version | Change | Owning packet / task |
 |---|---|---|
-| `1.0.0` | Baseline 7-event schema (`phase_start`, `phase_complete`, `layer_start`, `layer_complete`, `module_error`, `validation_error`, `slice_complete`). | Phase 0 (T-005) |
-| `1.1.0` | `error.reason: Option<String>` kebab-case classification tag added. The `--instrument-stderr` events (`stage_start`, `stage_complete`, `module_start`, `module_complete`, plus `wasm_peak_kb`) also ship at this version — the instrumented stream shares the baseline schema. (`slice_complete.output_path` was once claimed for this row but never shipped in the runtime — the G-code file is written by the CLI after the event fires.) | `pinch_n_print_studio` packet 49 (Phase 3b preview hand-off) |
+| `1.0.0` | Baseline 7-event schema (`phase_start`, `phase_complete`, `layer_start`, `layer_complete`, `module_error`, `validation_error`, `slice_complete`). | <!-- VERIFY: "Phase 0 (T-005)" attribution — no T-005 record ties to progress events in this repo; the schema itself is confirmed by the TDD file `crates/slicer-runtime/tests/integration/progress_events_tdd.rs` ("TDD red tests for TASK-036"). --> Phase 0 (T-005) |
+| `1.1.0` | `error.reason: Option<String>` kebab-case classification tag added. The `--instrument-stderr` events (`stage_start`, `stage_complete`, `module_start`, `module_complete`, plus `wasm_peak_kb`) also ship at this version — the instrumented stream shares the baseline schema. (`slice_complete.output_path` was once claimed for this row but never shipped in the runtime — the G-code file is written by the CLI after the event fires.) | <!-- VERIFY: "pinch_n_print_studio packet 49 (Phase 3b preview hand-off)" attribution — no packet-49 or studio-fork record exists in this repo; the 1.1.0 bump itself is confirmed by the `error.reason` field and `PROGRESS_EVENT_SCHEMA_VERSION`'s history comment. --> `pinch_n_print_studio` packet 49 (Phase 3b preview hand-off) |
 | `1.2.0` | New `slice_stats` event, emitted exactly once per successful slice (including degraded-but-successful runs that produced G-code), strictly before `slice_complete` (whose production emission now exists, built from `SliceEventCollector` counts). Fields: `gcode_prediction_seconds` (u64), `gcode_weight_grams` (f64, OPTIONAL — key omitted entirely when `filament_density` is absent from config; never `0`/`null`), `gcode_filament_length_mm` (f64), `layer_count` (u32), `first_layer_height_mm` (f32), `extruded_volume_mm3` (map keyed by extruder index, mm³), `toolchange_count` (u32). Deliberately NO cost field: the `pinch_n_print_studio` fork computes cost from its own filament preset, so the runtime never emits one. Also additive: OPTIONAL `layer_count` field on `phase_start`, present only when `phase == per_layer` (value = total planned layer count), omitted for all other phases. | Packet 169 (time-estimator-slice-stats) |
 
 Each row is additive and backward-compatible: a 1.0.0 consumer ignores

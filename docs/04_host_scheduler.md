@@ -73,20 +73,28 @@ pub struct LoadedModule {
     pub id:                    ModuleId,
     pub version:               SemVer,
     pub stage:                 StageId,
-    pub ir_reads:              Vec<IrAccessPath>, // from manifest [ir-access].reads
-    pub ir_writes:             Vec<IrAccessPath>, // from manifest [ir-access].writes
-    pub claims:                Vec<ClaimId>,
-    pub requires_claims:       Vec<ClaimId>,      // from manifest [claims].requires
-    pub incompatible_with:     Vec<ModuleGlob>,   // from manifest [compatibility].incompatible-with
-    pub requires_modules:      Vec<ModuleId>,     // from manifest [compatibility].requires
-    pub config_schema:         ModuleConfigSchema,
-    pub overridable_per_region:Vec<ConfigKey>,    // from manifest [config.overridable-per-region].keys
-    pub overridable_per_layer: Vec<ConfigKey>,    // from manifest [config.overridable-per-layer].keys
+    pub ir_reads:              Vec<String>, // from manifest [ir-access].reads
+    pub ir_writes:             Vec<String>, // from manifest [ir-access].writes
+    pub claims:                Vec<String>, // from manifest [claims].holds
+    pub requires_claims:       Vec<String>, // from manifest [claims].requires
+    pub incompatible_with:     Vec<String>, // from manifest [compatibility].incompatible-with
+    pub requires_modules:      Vec<ModuleId>, // from manifest [compatibility].requires
+    pub min_host_version:      SemVer,      // from manifest [compatibility].min-host-version
+    pub min_ir_schema:         SemVer,      // from manifest [compatibility].min-ir-schema
+    pub max_ir_schema:         SemVer,      // from manifest [compatibility].max-ir-schema
+    pub config_schema:         ConfigSchema,
+    pub overridable_per_region:Vec<String>, // from manifest [config.overridable-per-region].keys
+    pub overridable_per_layer: Vec<String>, // from manifest [config.overridable-per-layer].keys
     pub layer_parallel_safe:   bool,
     pub wasm_path:             PathBuf,
-    pub instance:              Option<WasmInstance>,  // populated in Phase 4
+    pub placeholder_wasm:     bool,        // ≤8-byte stub; inert for dispatch (packet 181)
 }
 ```
+
+The authoritative definition is `LoadedModule` in
+`crates/slicer-scheduler/src/manifest.rs`; the scheduler is wasmtime-free
+(packet 85), so no `WasmInstance` is stored here — instances live in the
+runtime's pools.
 
 ### Manifest ↔ Runtime Naming Map (Normative)
 
@@ -197,6 +205,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::OverhangAnnotation",   // host-built-in; derives overhang from the committed SliceIR
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
+    "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
     "Layer::SlicePostProcess",
     "Layer::Perimeters",
@@ -327,12 +336,13 @@ All validation errors are structured and collected before any are surfaced to th
 
 ```rust
 pub enum SchedulerError {
+    NotImplemented,
     UnknownStage {
         module: ModuleId,
         declared_stage: StageId,
     },
     ClaimConflict {
-        claim: ClaimId, module_a: ModuleId, module_b: ModuleId, scope: ConflictScope,
+        claim: String, module_a: ModuleId, module_b: ModuleId, scope: ConflictScope,
     },
     IncompatibleModules {
         declared_by: ModuleId, conflicting: ModuleId, reason: String,
@@ -344,25 +354,19 @@ pub enum SchedulerError {
         cycle: Vec<ModuleId>,
     },
     UnfulfilledRead {
-        module: ModuleId, field: IrAccessPath, suggestion: Option<String>,
+        module: ModuleId, field: String, suggestion: Option<String>,
     },
     IrVersionIncompatible {
-        module: ModuleId, ir_type: IrType, required: SemVer, available: SemVer,
+        module: ModuleId, ir_type: String, required: SemVer, available: SemVer,
+    },
+    HostVersionIncompatible {
+        module: ModuleId, required: SemVer, available: SemVer,
     },
     StageMismatch {
         module: ModuleId, declared_stage: StageId, exported_fn: String,
     },
-    /// Two modules in the same stage both write the same IR field with no
-    /// read-after-write dependency between them. The result would depend on
-    /// DAG traversal order, which is an implementation detail.
-    ///
-    /// Resolution options for module authors:
-    ///   A) Declare one module incompatible with the other in its manifest.
-    ///   B) Have module B declare it reads the field that module A writes,
-    ///      establishing an explicit ordering (B transforms A's output).
-    ///   C) Use a claim so only one can be active per region at a time.
     WriteConflict {
-        field:    IrAccessPath,
+        field:    String,
         module_a: ModuleId,
         module_b: ModuleId,
         stage:    StageId,
@@ -373,10 +377,26 @@ pub enum SchedulerError {
     },
     // Non-fatal — logged as warning, does not block slicing
     DeadWrite {
-        module: ModuleId, field: IrAccessPath,
+        module: ModuleId, field: String,
+    },
+    UndeclaredAccess {
+        module: ModuleId, access: AccessKind, path: String,
+    },
+    CrossStageDependency {
+        module: ModuleId, requires: ModuleId,
+    },
+    TransitiveStageDependency {
+        module: ModuleId, requires: ModuleId,
     },
 }
 ```
+
+The authoritative definition is `SchedulerError` in
+`crates/slicer-scheduler/src/validation.rs`; the `WriteConflict` resolution
+options for module authors are: (A) declare one module incompatible with the
+other, (B) have module B declare it reads the field that module A writes,
+establishing an explicit ordering, or (C) use a claim so only one can be
+active per region at a time.
 
 ### Validation Passes (in order)
 
@@ -897,30 +917,35 @@ Validation must happen before expensive stage work whenever possible:
 pub struct ExecutionPlan {
     pub prepass_stages:   Vec<CompiledStage>,
     pub per_layer_stages: Vec<CompiledStage>,
+    pub layer_finalization_stage: Option<CompiledStage>,
     pub postpass_stages:  Vec<CompiledStage>,
     pub global_layers:    Arc<Vec<GlobalLayer>>,
     pub region_plans:     Arc<HashMap<RegionKey, RegionPlan>>,
+    pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
+    // + aggregated region-split map (see Phase 1 §[[region_split]])
 }
 
 pub struct CompiledStage {
     pub stage_id: StageId,
-    pub modules:  Vec<CompiledModule>,  // topologically sorted, iterate directly
+    pub modules:  Vec<CompiledModuleStatic>,  // topologically sorted, iterate directly
 }
 
-pub struct CompiledModule {
+pub struct CompiledModuleStatic {
     pub module_id:     ModuleId,
-    pub instance_pool: Arc<WasmInstancePool>,
     pub ir_read_mask:  IrAccessMask,
     pub ir_write_mask: IrAccessMask,
     pub config_view:   Arc<ConfigView>,
-}
-
-// parallel-safe: N instances (N = rayon thread count)
-// sequential:    1 instance  (serializes access)
-pub struct WasmInstancePool {
-    pub instances: Vec<Mutex<WasmInstance>>,
+    pub claims:        Vec<String>,   // frozen [claims].holds; feeds resolve_held_claims
+    // + requires_modules, region_split_semantics, layer_parallel_safe
 }
 ```
+
+The authoritative definitions are `ExecutionPlan`, `CompiledStage`, and
+`CompiledModuleStatic` in `crates/slicer-scheduler/src/execution_plan.rs`.
+The scheduler is wasmtime-free (packet 85): no `WasmInstancePool` lives on
+the plan — WASM instance pools are owned by the runtime
+(`slicer-wasm-host`), keyed by module, sized by `layer_parallel_safe`
+(N instances for parallel-safe modules, 1 for sequential).
 
 ### Runner-Trait Input Borrow Structs (Normative — Packet 83)
 
@@ -1024,6 +1049,9 @@ contain `slice_ir.z` are skipped. The function has no global state.
 ### PrePass Execution (sequential)
 
 ```rust
+// Illustrative. The real entry points are the `execute_prepass` family in
+// `crates/slicer-runtime/src/prepass.rs`; instance acquisition goes through
+// the runtime's pools (`slicer-wasm-host`), not the plan.
 pub fn execute_prepass(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
@@ -1081,7 +1109,7 @@ is unnecessary.
 
 #### Layer::PaintRegionAnnotation Stage (packet 64)
 
-`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`) annotates slice-region entities with paint data carried on `SliceIR` (`segment_annotations`). Any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
+`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`) is a **no-op stub** since packet 95: `PrePass::PaintSegmentation` writes `segment_annotations` (and per-variant geometry) directly into the committed `SliceIR` during prepass. The stage boundary is retained for plan wiring; any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in (no-op) handles it.
 
 The annotation loop processes contour points in **parallel chunks of
 32** (`par_chunks(32)`, rayon). Results are byte-identical to serial
@@ -1091,6 +1119,11 @@ warnings and `DeterministicConflict` detection flags are merged at
 the end of the layer; cross-thread state contention is zero. Observed
 multi-thread utilisation is exposed via report wall-clock timing
 (non-gating).
+<!-- VERIFY: the par_chunks(32) annotation loop described here predates the
+     packet-95 move of paint annotation into PrePass::PaintSegmentation; the
+     per-layer host built-in is now a no-op (run_paint_annotation in
+     crates/slicer-runtime/src/layer_executor.rs), so this paragraph describes
+     retired behaviour unless a WASM module claims the stage. -->
 
 `DeterministicConflict` Timing (Normative — Packet 64): overlapping
 `Custom` paint regions with equal `paint_order` are detected at
@@ -1107,9 +1140,9 @@ correctness improvement over the pre-Packet-64 path where the same
 /// Ownership model:
 /// `layer_irs` is a plain `Vec` taken by mutable reference. By the time
 /// this function is called, the rayon join has completed and the
-/// `Arc<SlotVec<LayerCollectionIR>>` in the Blackboard has been drained
-/// into this Vec. The Blackboard no longer holds any reference to these
-/// values — there is no concurrent access, and no RwLock is needed.
+/// Blackboard's `layer_outputs: Vec<Option<LayerCollectionIR>>` has been
+/// drained into this Vec. The Blackboard no longer holds any reference to
+/// these values — there is no concurrent access, and no RwLock is needed.
 ///
 /// After this function returns, the Vec is passed as `&[LayerCollectionIR]`
 /// to `execute_postpass`. It is never re-entered into the Blackboard.
@@ -1120,9 +1153,7 @@ fn execute_layer_finalization(
 
 ) -> Result<(), SlicerError> {
     // Always sequential — pool size 1 for all finalization modules.
-    for module in &plan.finalization_stage.modules {
-        let instance = module.instance_pool.acquire();
-
+    for module in &plan.layer_finalization_stage.modules {
         let layer_views: Vec<LayerCollectionView> = layer_irs.iter()
             .map(|l| LayerCollectionView::from(l, &module.ir_read_mask))
             .collect();
@@ -1210,7 +1241,7 @@ fn execute_single_layer(
     stages: &[CompiledStage],
     blackboard: &Blackboard,
 ) -> Result<LayerCollectionIR, SlicerError> {
-    // Per-layer bump allocator — freed entirely when this function returns.
+    // Per-layer arena — freed entirely when this function returns.
     let mut arena = LayerArena::new();
     let mut layer_ir = LayerIrState::new(layer, &mut arena);
 
@@ -1534,9 +1565,14 @@ pub struct Blackboard {
     pub region_map:    Arc<RegionMapIR>,
 
     // Written by per-layer (one slot per layer, written once, read after join)
-    pub layer_outputs: Arc<SlotVec<LayerCollectionIR>>,
+    pub layer_outputs: Vec<Option<LayerCollectionIR>>,
 }
 ```
+
+The authoritative definition is `Blackboard` in
+`crates/slicer-runtime/src/blackboard.rs`; per-layer slots are
+`Vec<Option<LayerCollectionIR>>` (not a `SlotVec` type — that name does not
+exist in the codebase).
 
 ---
 
@@ -1565,6 +1601,7 @@ slice command
     │    ├─ PrePassShellClassification   → SliceIR (shell indices, solid fill) → Blackboard
     │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
     │    └─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
+  │    └─ PrePassLightningTreeGen      → LightningTreeIR                      → Blackboard  (only when sparse_fill_holder = lightning-infill)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerSlice              (host-built-in)
@@ -1576,10 +1613,10 @@ slice command
   │         ├─ LayerInfillPostProcess
   │         ├─ LayerSupport
   │         └─ LayerPathOptimization
-  │              └─ writes complete LayerCollectionIR into Blackboard SlotVec[layer_idx]
+  │              └─ writes complete LayerCollectionIR into Blackboard layer_outputs[layer_idx]
   │                 (written once per slot; no mutex required)
   ├─ rayon join
-  │    └─ drain Blackboard SlotVec → plain Vec<LayerCollectionIR>
+  │    └─ drain Blackboard layer_outputs → plain Vec<LayerCollectionIR>
   │       (Blackboard no longer holds these values after this point)
   ├─ execute_layer_finalization()    [single-threaded, owns Vec<LayerCollectionIR>]
   │    └─ PostPassLayerFinalization modules may append or insert synthetic layers

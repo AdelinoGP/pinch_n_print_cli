@@ -1,8 +1,8 @@
 # Pinch 'n Print — Project Overview
 
 **What this covers:** the project's goals, the four architectural decisions that
-shape everything else, the crate layout, pinned dependency versions, and the
-index of which doc answers which question.
+shape everything else, the crate layout, workspace dependency version
+requirements, and the index of which doc answers which question.
 
 **Who it's for:** anyone arriving at the project — contributors, module authors,
 and reviewers — plus agents needing a first-hop index into `docs/`.
@@ -12,9 +12,11 @@ and reviewers — plus agents needing a first-hop index into `docs/`.
 
 ## Vision
 
-Pinch 'n Print is a high-performance, modular FDM/SLA 3D printer slicing engine where every slicing feature is a first-class, independently compiled, community-extensible module. The core engine acts as a host/runner for these modules. It has zero UI concern.
+Pinch 'n Print is a modular FDM 3D printer slicing engine where pipeline features are independently compiled, community-extensible modules where the stage contract permits. The Rust runtime hosts these modules alongside host-built-in pipeline stages. It has zero UI concern.
 
 The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this project solves:
+
+<!-- VERIFY: These comparative claims are project motivation and are not verifiable from this workspace alone. -->
 
 - Features are tightly coupled to the core, making community contributions require full C++ builds
 - Post-processing workarounds (Python G-code scripts) exist because there are no proper pipeline hooks
@@ -27,13 +29,13 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 | Goal                        | Description                                                                               |
 |-----------------------------|-------------------------------------------------------------------------------------------|
-| **Modular pipeline**        | Every slicing feature is a separate compiled module assigned to a specific pipeline stage |
-| **Stable ABI**              | Modules compiled once run on any future host version within the same major version        |
-| **Safe parallelism**        | Per-layer processing parallelized via rayon; modules cannot cause data races              |
-| **Config robustness**       | Adding/removing a module never breaks existing configurations                             |
-| **Fast iteration**          | Modules compile independently; no full-project rebuild needed                             |
+| **Modular pipeline**        | Pipeline stages accept independently compiled modules; some stages remain host-built-in  |
+| **Stable ABI**              | Typed per-stage WIT packages and explicit host/IR compatibility checks define the boundary |
+| **Safe parallelism**        | Per-layer processing uses rayon; each layer has an isolated `LayerArena`                  |
+| **Config robustness**       | Module config is schema-driven and module access is scoped to declared keys               |
+| **Fast iteration**          | Modules and guest components build independently from the host pipeline                   |
 | **Community extensibility** | Modules ship as `.wasm` + `.toml` manifest; no host source access required                |
-| **Testability**             | Every module is unit-testable in isolation without a running host                         |
+| **Testability**             | Modules can use the `slicer-sdk` test feature without a running host                      |
 | **Clean separation**        | Core engine has zero GUI/frontend code; all UI is a separate process                      |
 
 ## Non-Goals
@@ -42,7 +44,7 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 |-------------------------|-----------------------------------------------------------------------------|
 | Hot reload of modules   | Modules are loaded at slice-command startup; iteration cycle is fast enough |
 | GUI / preview rendering | Separate frontend process communicates via CLI/socket API                   |
-| SLA resin printing      | Pipeline is FDM-first; SLA support is a future module set                   |
+| <!-- VERIFY: SLA/resin support remains a product non-goal; no SLA pipeline is present in the current workspace. --> SLA / resin printing | Pipeline is FDM-first; SLA support is a future module set                   |
 
 ---
 
@@ -50,30 +52,30 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 ### Language: Rust (core host)
 
-- Zero GC pauses — critical for predictable per-layer timing
+- Rust's ownership model avoids a tracing garbage collector in the host
 - `rayon` for data-parallel layer processing
-- `wasmtime` as the embedded WASM runtime
-- `nalgebra` / `geo` for geometry
+- `wasmtime` as the embedded WebAssembly Component Model runtime
+- `clipper2-rust` for integer polygon operations; geometry algorithms live in `slicer-core`
 - Compiles to native binary; no runtime dependency on Rust toolchain for users
 
 ### Module Format: WebAssembly (WASM) Component Model
 
-- Stable ABI across compiler versions, platforms, and languages
-- Modules can be written in Rust, C, C++, or any WASM-targeting language (including Python via CPython→WASM toolchains)
+- Typed, per-stage WIT packages define the host/module contract and are checked during component instantiation
+- <!-- VERIFY: Language/toolchain breadth beyond the in-tree Rust guests is a design intent; this repository does not verify C, C++, or Python component builds. --> Modules can be written in Rust, C, C++, or any WASM-targeting language (including Python via CPython→WASM toolchains)
 - Community modules ship as `.wasm` + `.toml` — no build toolchain required for users
 
-### State Model: ECS-inside-Blackboard
+### State Model: Host Blackboard + Per-Layer Arenas
 
-- Global state (mesh, layer plan, surface classification) lives in a host-owned Blackboard
-- Per-layer state is modeled as an ECS world (layer = entity, sliced data = components)
-- Modules never own geometry; they receive scoped borrow tokens from the host
-- All geometry allocated in per-layer arenas; freed after each layer completes
+- Whole-print and prepass IR (mesh, layer plan, surface classification, region map, and related products) lives in the host-owned `Blackboard` in `crates/slicer-runtime/src/blackboard.rs`.
+- Each layer gets its own `LayerArena` in `crates/slicer-runtime/src/blackboard.rs`; staged IR is committed as a `LayerCollectionIR` for later finalization and G-code emission.
+- Modules never own host geometry; they receive scoped IR/WIT views and the host enforces declared reads and writes.
+- Per-layer arena state is released when the layer completes; committed layer collections are retained for PostPass.
 
 ### Pipeline Shape: DAG of Stages
 
-- Fixed stage ordering (PrePass → Per-Layer → PostPass)
-- Within each stage, module execution order is a topologically-sorted DAG derived from IR read/write declarations
-- Full DAG validation at startup — zero runtime surprises mid-slice
+- The scheduler's declared `STAGE_ORDER` in `crates/slicer-scheduler/src/execution_plan.rs` fixes validation order across the PrePass, Per-Layer, and PostPass tiers; finalization is a separate sequential step inside PostPass execution.
+- Within each stage, module execution order is a topologically sorted DAG derived from manifest requirements and IR read/write declarations.
+- `validate_startup_dag` in `crates/slicer-scheduler/src/validation.rs` checks stage IDs, claims, compatibility, cycles, and access contracts before execution.
 
 ---
 
@@ -107,6 +109,7 @@ Paths below are relative to this file (`docs/`).
 | Slicer HTML debugging report (opt-in)                     | `16_slicer_report.md`                                     |
 | Slice timing, DAG, and manifest diagnosis                 | `17_agent_debugging.md`                                   |
 | Visual-debug bundles (stage/layer PNG evidence)           | `19_visual_debug.md`                                      |
+| Support-preview JSON contract                             | `20_support_preview.md`                                   |
 | Active architecture deviations                            | `DEVIATION_LOG.md`                                        |
 
 Operational agent orchestration and validation gates live in the repo skills under
@@ -131,19 +134,20 @@ pinch_n_print_cli/
 │   ├── slicer-runtime/       # Library: pipeline execution, blackboard, run_slice() API (no binary)
 │   ├── slicer-scheduler/     # Static planning: manifests, config resolution, DAG build + validate
 │   ├── slicer-wasm-host/     # wasmtime/WIT marshalling and dispatch
-│   ├── pnp-cli/              # Single binary `pnp_cli`: slice, visual-debug, module, mesh, dag verbs
+│   ├── pnp-cli/              # Single binary `pnp_cli`: slice, profile, support-preview, visual-debug, module, mesh, dag
+│   ├── pnp-cli-locator/      # Host-side test/bench helper for locating a fresh `pnp_cli`
 │   ├── slicer-core/          # Core algorithms (slicing, Clipper ops, geometry)
 │   ├── slicer-gcode/         # LayerCollectionIR → GCodeIR → G-code text
 │   ├── slicer-model-io/      # STL / OBJ / 3MF ingestion; geometry-only writers
 │   ├── slicer-ir/            # IR type definitions (shared between host and SDK)
 │   ├── slicer-sdk/           # Module authoring SDK (imported by module crates; test harness under `test` feature)
 │   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
-│   ├── slicer-schema/        # Shared config/manifest schema types + canonical WIT contract
-│   │   └── wit/              #   The single canonical WIT source (deps/, root.wit, world-*)
+│   ├── slicer-schema/        # Canonical stage/WIT mapping and WIT contract
+│   │   └── wit/              #   The single canonical WIT source (root.wit and deps/)
 │   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
 ├── modules/
-│   └── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
-├── xtask/                    # Dev tooling: build-guests, dist, test, gen-config-docs, check-deviations
+│   └── core-modules/         # Built-in module crates and guest components
+├── xtask/                    # Dev tooling: build-guests, dist, test, gen-config-docs, check-deviations, compact-specs
 ├── resources/                # STL / 3MF / OBJ test fixtures
 └── docs/                     # This documentation set
 ```
@@ -162,15 +166,16 @@ identity elsewhere. Renames change this table once, not every citing doc.
 |----------------|------|------|
 | `slicer-runtime` (lib) | `crates/slicer-runtime/` | Pipeline execution (prepass / per-layer / postpass), blackboard and layer arenas, host built-ins, `run_slice()` API. Re-exports the `slicer-scheduler` planning APIs. Rust module path `slicer_runtime::`. |
 | `slicer-scheduler` | `crates/slicer-scheduler/` | Static planning, wasmtime-free: manifest ingestion, config resolution, DAG construction + validation, execution-plan compilation, DAG-CLI introspection. |
-| `slicer-wasm-host` | `crates/slicer-wasm-host/` | WIT / wasmtime marshalling and dispatch. Holds all four `bindgen!` invocations (layer / prepass / finalization / postpass) so they share Rust type identity — see ADR-0002. |
-| `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `visual-debug`, `module`, `mesh`, `dag` verbs. Entry point `crates/pnp-cli/src/main.rs`. |
+| `slicer-wasm-host` | `crates/slicer-wasm-host/` | WIT / wasmtime marshalling and dispatch. Co-locates the per-stage `bindgen!` modules and shared host implementations so mapped WIT types retain Rust type identity — see ADR-0002 and ADR-0045. |
+| `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `profile`, `support-preview`, `visual-debug`, `module`, `mesh`, and `dag` verbs. Entry point `main` in `crates/pnp-cli/src/main.rs`. |
+| `pnp-cli-locator` | `crates/pnp-cli-locator/` | Host-side dev/test helper exposing `pnp_cli_bin` and workspace freshness helpers. |
 | `slicer-core` | `crates/slicer-core/` | Core algorithms (slicing, Clipper ops, geometry). |
 | `slicer-gcode` | `crates/slicer-gcode/` | Pure-IR G-code emission: `LayerCollectionIR` → `GCodeIR` → G-code text. No wasmtime, scheduler, or blackboard dependency. |
 | `slicer-model-io` | `crates/slicer-model-io/` | Host-side model ingestion (STL, OBJ, 3MF → `MeshIR`) and geometry-only 3MF/OBJ writers. |
 | `slicer-ir` | `crates/slicer-ir/` | IR type definitions shared between host and SDK. |
 | `slicer-sdk` | `crates/slicer-sdk/` | Module authoring SDK; module test harness under the `test` feature. |
 | `slicer-macros` | `crates/slicer-macros/` | Proc-macros (`#[slicer_module]`, `#[module_test]`). |
-| `slicer-schema` | `crates/slicer-schema/` | Config/manifest schema types **and** the canonical WIT under `crates/slicer-schema/wit/`. |
+| `slicer-schema` | `crates/slicer-schema/` | Canonical stage/WIT mapping and the WIT contract under `crates/slicer-schema/wit/`; scheduler owns manifest parsing. |
 | `slicer-helpers` | `crates/slicer-helpers/` | Pre-pipeline mesh ops (repair, decimate, STEP import). |
 | `xtask` | `xtask/` | Dev tooling (`build-guests`, `dist`, `test`, `gen-config-docs`, `check-deviations`, `compact-specs`). |
 
@@ -185,35 +190,39 @@ identity elsewhere. Renames change this table once, not every citing doc.
 
 ## Technology Stack
 
-Pinned versions live in the workspace `Cargo.toml`; the table below records the
-minimum/current pin for each component.
+Workspace version requirements live in the workspace `Cargo.toml`; resolved
+versions live in `Cargo.lock`. The table below records the relevant manifest
+requirements and notable lockfile resolutions.
 
-| Component     | Technology                              | Pinned version       |
-|---------------|-----------------------------------------|----------------------|
-| Host language | Rust                                    | 1.91.0 (edition 2021)|
-| WASM runtime  | wasmtime                                | 43.0.0               |
-| WIT tooling   | wit-bindgen                             | 0.57.1               |
-| Parallelism   | rayon                                   | 1.80                 |
-| Geometry      | geo, nalgebra                           | 0.28, 0.32           |
-| Polygon ops   | clipper2-rust                           | 1.0.3                |
-| Serialization | serde + postcard                        | 1.0.228, 1.1.3       |
-| Config format | TOML (manifests), JSON (runtime config) | —                    |
-| Testing       | cargo test                              | —                    |
-| CLI framework | clap                                    | 4.6.1                |
+| Component     | Technology                              | Manifest requirement / resolution                                      |
+|---------------|-----------------------------------------|-------------------------------------------------------------------------|
+| Host language | Rust                                    | 1.91.0 (edition 2021)                                                  |
+| WASM runtime  | wasmtime                                | 43.0.0 workspace requirement; 43.0.1 in `Cargo.lock`                   |
+| WIT tooling   | wit-bindgen                             | 0.57.1 workspace requirement and primary lockfile resolution           |
+| Parallelism   | rayon                                   | 1.80 workspace requirement; 1.10 in runtime/core/wasm-host; 1.11.0 lock |
+| Geometry      | clipper2-rust                           | 1.0.3                                                                    |
+| Serialization | serde + postcard                        | 1.0.228, 1.1.3                                                          |
+| Config format | TOML (manifests), JSON (runtime config) | —                                                                       |
+| Testing       | cargo test                              | —                                                                       |
+| CLI framework | clap                                    | 4.6.1                                                                    |
 
 ---
 
 ## Versioning Policy
 
-- **Host** follows semver. Major version bumps are rare and announced with migration guides.
-- **WIT interfaces** are versioned independently (`slicer:world-layer@2.0.0`). The version lives
-  solely in the `.wit` `package` line and is a changelog annotation: it is erased from guest
-  binaries at compile time and is not part of module identity (`docs/03`). Every world change is
-  currently breaking for every module bound to that world, because a guest must satisfy the
-  world's entire export surface (`docs/05` §SDK Versioning).
-- **IR schemas** carry a `schema_version: SemVer` field. Modules declare minimum required version.
+- <!-- VERIFY: The migration-guide policy is stated by project documentation but is not enforced by the current source tree. --> **Host** follows semver. Major version bumps are rare and announced with migration guides.
+- **WIT stage packages** are versioned independently (for example, `slicer:layer-perimeters@1.0.0`).
+  The package identity selects the stage contract; typed wasmtime instantiation checks the
+  qualified export, while IR schema ranges are checked separately. A change to one stage package
+  affects modules for that stage, not every module in its tier. The legacy manifest `wit-world`
+  key is tolerated and ignored (`docs/03_wit_and_manifest.md`).
+- **IR schemas** carry a `schema_version: SemVer` field. Modules declare minimum and maximum
+  compatible versions.
 - **Module manifests** declare `min-host-version`. The host rejects modules requiring a newer host.
-- **Config keys** contributed by modules are namespaced: `com.community.tpms-infill.density`. Core keys have no namespace prefix.
+- **Config keys** use structured runtime namespaces where scope requires them:
+  `object_config:<id>:<key>`, `paint_config:<semantic>:<key>`, and
+  `tool_config:<tool_index>:<key>`. Module config keys themselves use snake_case; manifest
+  metadata fields retain their documented TOML spellings. Core/global keys are bare names.
 
 Operational governance (rollout checklist, compatibility policy, release-blocking architecture gate):
 
@@ -225,12 +234,12 @@ Operational governance (rollout checklist, compatibility policy, release-blockin
 
 | Metric                                           | Target                        |
 |--------------------------------------------------|-------------------------------|
-| Slicing a 50-layer benchy (0.2mm layers)         | < 10 seconds                  |
-| Per-layer overhead (host scheduler, IR views)    | < 5ms per layer               |
-| WASM boundary crossing cost (warm instance, p50) | < 0.5ms per module invocation |
+| <!-- VERIFY: docs/12 defines this bound, but the named Benchy reference fixture is not materialized; current evidence uses `regression_wedge.stl`. --> Slicing a 50-layer benchy (0.2mm layers) | < 10 seconds                  |
+| <!-- VERIFY: No current source or gate document provides an evidence source for this per-layer target. --> Per-layer overhead (host scheduler, IR views) | < 5ms per layer               |
+| <!-- VERIFY: No current source or gate document provides an evidence source for these WASM boundary targets. --> WASM boundary crossing cost (warm instance, p50) | < 0.5ms per module invocation |
 | WASM boundary crossing cost (warm instance, p95) | < 1ms per module invocation   |
-| Peak memory for a 500-layer model                | < 512 MB                      |
-| Module load + validation at startup              | < 20s for 20 modules          |
+| <!-- VERIFY: docs/12 defines the RSS bound, but current instrumentation cannot measure WASM-inclusive peak RSS. --> Peak memory for a 500-layer model | < 512 MB                      |
+| <!-- VERIFY: No current source or gate document defines this 20-second / 20-module target. --> Module load + validation at startup | < 20s for 20 modules          |
 
 Operational budgeting note:
 

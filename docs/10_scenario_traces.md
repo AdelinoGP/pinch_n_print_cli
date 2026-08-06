@@ -1,5 +1,15 @@
 # Pinch 'n Print — Canonical Scenario Traces
 
+**What this covers:** the four canonical end-to-end scenario traces — mixed
+layer heights with catch-up, paint-heavy multi-material with overlaps,
+mid-layer module failure, and planner-consuming tree support.
+
+**Who it's for:** anyone implementing or validating host prepass, per-layer
+dispatch, claim resolution, catch-up, or support-planning behavior.
+
+**Prerequisites:** familiarity with the contract docs referenced below
+(`02_ir_schemas.md`, `03_wit_and_manifest.md`, `05_module_sdk.md`).
+
 This document is normative for the end-to-end behavior traces used in
 architecture reviews and implementation validation.
 
@@ -15,21 +25,21 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 - Object A layer height: `0.20 mm`
 - Object B layer height: `0.30 mm`
-- Shared claim: `infill-generator`
+- Shared claim: `claim:sparse-fill`
 - Region overrides: none
 
 ### Planned global layers
 
 - `Z = [0.20, 0.30, 0.40, 0.60, 0.80, 0.90, ...]`
-- Sync at `0.60 mm` and `1.20 mm`
+- Sync at `0.60 mm` and `1.20 mm` (both multiples of LCM(0.20, 0.30) = 0.60)
 
 ### Execution trace (first sync window)
 
 1. `PrePass::LayerPlanning` emits sync at `0.60`.
 2. At global layer `0.40`, Object A has normal local layer; Object B is inactive.
-3. At global layer `0.60`, Object A has normal local layer; Object B emits catch-up layer with `catchup_z_bottom=0.30`, `effective_layer_height=0.30`.
+3. At global layer `0.60`, Object A has normal local layer; Object B emits catch-up layer with `catchup_z_bottom=0.30`, `effective_layer_height=0.30` (B's first layer after skipping the non-multiple 0.40).
 4. `PrePass::PaintSegmentation` projects paint polygons using authoritative global Z list.
-5. `PrePass::RegionMapping` resolves one infill claim holder per active region.
+5. `PrePass::RegionMapping` resolves one claim holder per active region.
 
 ### Expected outcomes
 
@@ -50,8 +60,8 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 ### Execution trace
 
-1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes`), before PrePass.
-2. `PrePass::PaintSegmentation` writes per-variant polygons into `SliceIR` (via `replace_slice_ir`), carrying each semantic's `paint_order` for overlap resolution.
+1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes` in `crates/slicer-model-io/src/loader.rs`), before PrePass.
+2. `PrePass::PaintSegmentation` writes per-variant polygons into `SliceIR` (via `replace_slice_ir` on the blackboard), carrying each semantic's `paint_order` for overlap resolution.
 3. `Layer::SlicePostProcess` annotates `SlicedRegion.segment_annotations` after polygon edits.
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.
 5. `Layer::PerimetersPostProcess` applies perpendicular XY fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
@@ -69,7 +79,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 ### Inputs
 
-- `com.community.fuzzy-skin` in `Layer::PerimetersPostProcess`.
+- `com.community.fuzzy-skin` in `Layer::PerimetersPostProcess`. <!-- VERIFY: the in-tree fuzzy-skin module is `com.core.fuzzy-skin`; the `com.community.*` id matches the synthetic module id used in `scenario_traces_tdd.rs`. -->
 - Layer `42` contains malformed module output (`feature_flags` cardinality mismatch).
 
 ### Execution trace (non-fatal path)
@@ -109,7 +119,8 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 3. `PrePass::SupportGeometry` runs the `support-planner`; the host built-in commits `SupportGeometryIR` first, then guests emit `SupportPlanIR` via `run-support-geometry`:
    - `detect_overhangs` extracts contact points from overhang/bridge facets and
      `SupportEnforcer` paint regions (drops contacts inside `SupportBlocker`).
-   - Top-down propagation (per-layer Prim MST merge-then-move) produces
+   - Top-down propagation (per-layer Prim MST merge-then-move, in
+     `modules/core-modules/support-planner/src/lib.rs`) produces
      `SupportPlanIR.entries` keyed by `(global_layer_index, object_id, region_id)`.
 4. Per-layer rayon tier runs.
 5. `Layer::Support` for the `tree-support` module looks up
@@ -160,8 +171,9 @@ Each scenario should be mapped to a runnable validation artifact:
 - Scenario 4 → overhang fixture + `prepass_support_geometry_tdd` /
   `prepass_support_geometry_layer_plan_tdd` (positive, empty-overhang,
   missing-`LayerPlanIR`, dedup, determinism) and `live_layer_support_tdd`
-  (plan-driven emission, fallback, traditional-support no-op), under
-  `crates/slicer-runtime/tests/executor/`.
+  (plan-driven emission, fallback, traditional-support no-op), all under
+  `crates/slicer-runtime/tests/executor/`. The scenario assertions themselves
+  live in `crates/slicer-runtime/tests/e2e/scenario_traces_tdd.rs`.
 
 Evidence files should be stored under:
 

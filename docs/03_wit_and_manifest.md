@@ -44,7 +44,7 @@ crates/slicer-schema/wit/
     types.wit          # package slicer:types       — interface geometry
     config.wit         # package slicer:config      — interface config-types
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
-    common.wit         # package slicer:common      — interface module-errors
+    common.wit         # package slicer:common      — interfaces module-errors, host-services, profiling
     prepass-types.wit                     # package slicer:prepass-types (unversioned)
     layer-slice-postprocess/layer-slice-postprocess.wit                    # package slicer:layer-slice-postprocess@1.0.0
     layer-perimeters/layer-perimeters.wit                                  # package slicer:layer-perimeters@1.0.0
@@ -63,18 +63,11 @@ crates/slicer-schema/wit/
     finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
 ```
 
-**Host** consumption (`crates/slicer-wasm-host/src/host.rs`, which holds one
-`bindgen!` invocation per versioned stage package so they share Rust type identity — see
-ADR-0002):
-```rust
-wasmtime::component::bindgen!{
-    path: "../slicer-schema/wit",
-    world: "slicer:layer-perimeters/perimeters-module",
-    with: { "slicer:config/config-types.config-view" => crate::… }
-}
-```
-One call per stage package; no inline WIT. `PrePass::PaintSegmentation` is executed by the
-host and therefore has no bindgen module.
+**Host** consumption is defined in `crates/slicer-wasm-host/src/host.rs`. That file
+holds one `bindgen!` invocation per versioned stage package so the generated Rust
+types retain identity across dispatch (see ADR-0002); there is no inline WIT.
+`PrePass::PaintSegmentation` is executed by the host and therefore has no bindgen
+module.
 
 **Guest** consumption (`crates/slicer-macros/src/lib.rs`): the `#[slicer_module]` proc-macro
 reads dep files via `include_str!`, wraps each `package x;` in nested-package braces, concatenates
@@ -154,8 +147,8 @@ only when the canonical stage lookup and the IR compatibility check both pass.
 
 | Canonical stage package | Module declaration | Host IR schema | Module IR range | Load result |
 |-------------------------|--------------------|----------------|-----------------|-------------|
-| `slicer:layer-perimeters@1.0.0` | `[stage] id = "Layer::Perimeters"` | `1.4.0` | `>=1.2.0, <2.0.0` | Typed package instantiation, then allowed |
-| `slicer:prepass-mesh-analysis@1.0.0` | `[stage] id = "PrePass::MeshAnalysis"` | `1.4.0` | `>=1.2.0, <2.0.0` | Typed package instantiation, then allowed |
+| `slicer:layer-perimeters@1.0.0` | `[stage] id = "Layer::Perimeters"` | `4.7.0` | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
+| `slicer:prepass-mesh-analysis@1.0.0` | `[stage] id = "PrePass::MeshAnalysis"` | `4.7.0` | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
 
 Startup checks:
 
@@ -191,8 +184,8 @@ What actually enforces compatibility today:
 
 The package version is therefore load-bearing for `bindgen!`/`generate!` resolution and
 component export matching. That reasoning is recorded in
-`adr/0044-wit-world-version-is-not-an-identity-token.md`, and the decision to
-restructure is `adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`.
+`docs/adr/0044-wit-world-version-is-not-an-identity-token.md`, and the decision to
+restructure is `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`.
 
 ---
 
@@ -231,6 +224,7 @@ losslessly through reserved `custom(string)` tags:
 - `PrimeTower` maps to `custom("slicer.builtin/prime-tower@1")`
 - `Skirt` maps to `custom("slicer.builtin/skirt@1")`
 - `Brim` maps to `custom("slicer.builtin/brim@1")`
+- `InternalSolidInfill` maps to `custom("slicer.builtin/internal-solid-infill@1")`
 - Third-party modules must not mint any reserved `slicer.builtin/…` tag.
 
 The tag constants and marshalling live in `crates/slicer-macros/src/lib.rs` and
@@ -245,9 +239,9 @@ The tag constants and marshalling live in `crates/slicer-macros/src/lib.rs` and
 
 Two items:
 
-- `config-value` — the variant every config value marshals as (bool, int,
-  float, string, list, and percent forms). Read the file for the current case
-  set.
+- `config-value` — the variant every config value marshals as: bool, int, float,
+  string, float-list, string-list, percent, and float-or-percent forms. Read
+  the file for the exact case names and payload types.
 - `config-view` — a **read-only** resource, pre-filtered to the module's
   declared reads only. Its `get` / `get-bool` / `get-float` / `get-int` /
   `get-string` accessors each return `option<…>`, and `keys()` lists the
@@ -311,7 +305,7 @@ canonicalization rule and the wall-loop flag invariant below.
 
 There is **no `host-api.wit` file.** The host-service functions a module
 imports live in `crates/slicer-schema/wit/deps/common.wit`, package
-`slicer:common`, split across two interfaces:
+`slicer:common`, split across three interfaces:
 
 - `host-services` — logging (`log`), mesh queries that keep mesh data host-side
   (`raycast-z-down`, `surface-normal-at`, `object-bounds`), host-side Clipper2
@@ -320,6 +314,8 @@ imports live in `crates/slicer-schema/wit/deps/common.wit`, package
   `now-us`. Modules import it as `slicer:common/host-services`.
 - `module-errors` — the shared `module-error` record. Every world imports it as
   `slicer:common/module-errors.{module-error}` rather than redefining it.
+- `profiling` — the optional fuel-based profiling marks and scope registration
+  imported by the versioned worlds.
 
 The host-only-algorithm bridges exist because a guest cannot link `host-algos`
 code (rayon + boostvoronoi are `cfg(not(target_arch = "wasm32"))` only): the
@@ -386,18 +382,10 @@ Available to `Layer::PathOptimization` modules. Replaces the previous reserved-f
 **Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit`. The resource and the
 `ordered-entity-view` record are defined there.
 
-```wit
-resource layer-collection-builder {
-    // Returns `result<_, string>` so commit-time validation surfaces as an error.
-    set-entity-order:     func(items: list<tuple<u32, bool>>) -> result<_, string>;
-    get-ordered-entities: func() -> list<ordered-entity-view>;
-}
-
-// Confirm the exact field set against the on-disk WIT; the record currently
-// carries fields such as `original-index`, `tool-index`, `region-key`, `role`,
-// `start-point`, `end-point`, and `point-count` (the older `entity-index` field
-// was renamed to `original-index`).
-```
+The `layer-collection-builder` resource exposes `set-entity-order` and
+`get-ordered-entities`; `ordered-entity-view` carries the entity index, tool,
+region key, role, endpoints, and point count. Read the source for the exact
+field order and signatures.
 
 `ordered-entity-view.tool-index: u32` is the first-class tool selector from the
 region_id↔tool split. The `path-optimization` guest reads it (via SDK
@@ -431,14 +419,9 @@ signature.
 any change to the signature in 138/139 is a WIT version bump, not a
 silent change.
 
-```wit
-resource paint-region-layer-view {
-    // ... existing get-regions / get-custom-regions / layer-index /
-    //     support-plan-segments methods ...
-    lightning-tree-segments: func(object-id: object-id, region-id: region-id)
-        -> list<list<point3-with-width>>;
-}
-```
+The `paint-region-layer-view` resource adds the per-`(object-id, region-id)`
+`lightning-tree-segments` read alongside its existing semantic-region and
+support-plan reads.
 
 **Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
 the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
@@ -497,27 +480,9 @@ on-disk WIT).
 The support-geometry stage package carries branch entries and one optional
 configuration-only raft plan through the same output resource:
 
-```wit
-record support-plan-entry {
-    global-layer-index: s32,
-    object-id: object-id,
-    region-id: region-id,
-    branch-segments: list<list<point3-with-width>>,
-}
-
-record raft-plan {
-    raft-layers: u32,
-    raft-first-layer-density: f32,
-    base-raft-layers: u32,
-    interface-raft-layers: u32,
-}
-
-resource support-geometry-output {
-    push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
-    push-raft-plan: func(plan: raft-plan) -> result<_, string>;
-    push-diagnostic: func(d: diagnostic) -> result<_, string>;
-}
-```
+**Source of truth:** `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`.
+It declares `support-plan-entry`, `raft-plan`, and the
+`support-geometry-output` resource with the three push methods.
 
 `push-raft-plan` may be called at most once per support-geometry invocation.
 The host harvests it into `SupportPlanIR.raft_plan: Option<RaftPlan>`; no call
@@ -530,30 +495,11 @@ raft polygons or generated raft layers.
 `support-geometry-output` exposes a typed diagnostic method in addition to
 `push-support-plan-entry` and `push-raft-plan`:
 
-```wit
-push-diagnostic: func(d: diagnostic) -> result<_, string>;
-```
-
-The `diagnostic` record carries a typed severity, a module-allocated numeric
-code, optional layer/object scoping, and a free-form human-readable message:
-
-```wit
-record diagnostic {
-    severity: severity-level,
-    code: u32,
-    layer: option<s32>,
-    object-id: option<string>,
-    message: string,
-}
-
-enum severity-level {
-    trace,
-    debug,
-    info,
-    warn,
-    error,
-}
-```
+The source package
+`crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`
+defines `push-diagnostic`, the five-value `severity-level` enum, and the
+`diagnostic` record with severity, module code, optional layer/object scope, and
+message.
 
 Field and variant notes (match the on-disk file in
 `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`):
@@ -621,50 +567,19 @@ is the idiomatic component-model spelling (cf. `wasi:cli/run@0.2.0#run`).
 **Source of truth:** `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
 (package `slicer:finalization-layer-finalization@1.0.0`).
 
-The shape below summarises the package; for exact field order, parameter
-names, and return types, read the on-disk file.
+Read `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
+for the exact field order, parameter names, and return types. The imported
+`layer-finalization-types` interface owns the read-only layer views and the
+mutation resource; its local `region-key` has three fields (`layer-index`,
+`object-id`, and `region-id`). `print-entity-view` carries the stable entity ID,
+path, role, explicit tool index, region key, and topology order. The mutation
+variant currently includes speed-factor, flow-factor, point-speed-factor, and
+path-point replacement cases.
 
-- `interface layer-finalization-types` (imported) — local types
-  (`layer-idx = u32`, `object-id = string`, `region-id = string`,
-  `region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id, variant-chain: list<tuple<string,paint-value>> }`,
-  `paint-value = string`), records, and resources. Resources, records, and enums
-  (current at time of writing — confirm against
-  `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`):
-  - `layer-collection-view` — read-only view of one completed layer:
-    `layer-index() -> layer-idx`, `z() -> f32`, `entity-count() -> u32`,
-    `ordered-entities() -> list<print-entity-view>`,
-    `tool-changes() -> list<tool-change-view>`,
-    `z-hops() -> list<z-hop-view>`.
-  - `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path3d`,
-    `role: extrusion-role`, `tool-index: u32`, `region-key: region-key`,
-    `topo-order: u32`. The `entity-id` is the stable per-layer ID from packet 39
-    (see `docs/02_ir_schemas.md` IR 10). `tool-index` is the first-class tool
-    selector from the region_id↔tool split — the finalization input deep-copy
-    reconstructs `PrintEntity` from this view, so the view must carry it.
-  - `tool-change-view` (record): `after-entity-index: u32`, `from-tool: u32`,
-    `to-tool: u32`.
-  - `z-hop-view` (record): `after-entity-index: u32`, `hop-height: f32`.
-  - `finalization-output-builder` (resource) — the mutation API:
-    `push-entity-to-layer` / `push-entity-with-priority` /
-    `modify-entity` / `sort-layer-by` / `insert-synthetic-layer` /
-    `insert-synthetic-layer-after` / `insert-entity-at` / `set-entity-order` /
-    `get-ordered-entities`.
-  - `entity-mutation` (variant) — packet 41 enum-serialisable mutations:
-    `set-speed-factor(f32)`, `set-flow-factor(f32)`, and the additive
-    `set-point-speed-factors(list<f32>)` case (packet 189), which carries one
-    speed factor per path point (length must match `path.points`), and the
-    `set-path-points(list<point3-with-width>)` case (packet 191), which replaces
-    an entity's path points wholesale while preserving a loop's closing repeat.
-    The package
-    version was deliberately not bumped for this additive case — see ADR-0044
-    (WIT world versions are advisory and erased from guest binaries).
-  - `sort-key` (enum) — sort discriminators consumed by `sort-layer-by`.
-  - `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path3d>`.
-- `interface layer-finalization` (exported): `run: func(layers: list<layer-collection-view>,
-  output: finalization-output-builder, config: config-view) -> result<_, module-error>`.
-- `world layer-finalization-module`: imports `slicer:common/host-services`,
-  `slicer:common/profiling`, `slicer:config/config-types`, and the local
-  `layer-finalization-types`; exports `layer-finalization`.
+The exported `layer-finalization` interface has one `run` function receiving
+layer views, the output builder, and a config view; the
+`layer-finalization-module` world imports the shared host services, profiling,
+config, and local types.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
 resolves to a real entity within `layer`; unknown IDs are rejected with
@@ -685,13 +600,24 @@ The index-remap invariants are owned by the SDK's `apply_to` (`crates/slicer-sdk
 
 ## Module Manifest Schema (TOML)
 
-The manifest's `[stage].id` selects the canonical versioned stage package. Legacy manifests
+For package-backed module stages, the manifest's `[stage].id` selects the canonical
+versioned stage package. Host-built-in stage IDs such as
+`PrePass::PaintSegmentation` are valid scheduler stages but do not select a guest
+package. Legacy manifests
 may still carry a `wit-world` key; the parser tolerates and ignores it — it is legacy
 tolerated-and-ignored metadata, not part of the current schema or compatibility check.
 Compatibility is established by the qualified per-stage package export during typed
 instantiation: the host resolves `[stage].id` to `slicer:<package>/<interface>@<version>#run`
 and wasmtime validates that export against the guest component (see "Why `wit-world` is
 now legacy" above).
+
+At ingestion, `ingest_manifest` in `crates/slicer-scheduler/src/manifest.rs`
+requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
+`[claims].holds`/`requires`, all five `[compatibility]` fields,
+`config.overridable-per-region.keys`, `config.overridable-per-layer.keys`, and
+`hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
+optional; their field entries and declarations are parsed when present. Other
+TOML keys are tolerated but are not stored by the manifest loader.
 
 Full annotated example for a TPMS infill module:
 
@@ -738,22 +664,22 @@ requires = []                     # claim slots that MUST be held by another mod
 | Claim ID                  | Purpose                                                                   |
 |---------------------------|---------------------------------------------------------------------------|
 | `perimeter-generator`     | Held by the module producing wall loops on a given region.                |
-| `infill-generator`        | **Deprecated 2026-06-09 (DEV-065).** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. In-tree infill modules (rectilinear, gyroid, lightning) no longer declare it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
+| `infill-generator`        | **Deprecated 2026-06-09 (DEV-065).** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. No current core infill manifest declares it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
 | `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
 | `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
 | `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |
 | `seam-planner`            | Held by the PrePass module emitting `SeamPlanIR` (`seam-planner-default`). |
 | `layer-planner`           | Held by the module proposing layer Z heights and active-region lists.     |
 | `path-optimizer`          | Held by the module ordering entities and emitting travels/retracts at `Layer::PathOptimization` (`path-optimization-default`). |
-| `mesh-analyzer`           | Held by the module annotating facets and proposing surface groups.        |
-| `slice-postprocessor`     | Held by a module that mutates `SliceIR` polygons after initial slicing.   |
-| `gcode-postprocessor`     | Held by a PostPass module that processes the `GCodeCommand` stream.       |
-| `text-postprocessor`      | Held by a PostPass module that mutates the final G-code text string.      |
+| `mesh-analyzer`           | Recognized claim for a module annotating facets and proposing surface groups; no current core manifest holds it. |
+| `slice-postprocessor`     | Recognized claim for a module that mutates `SliceIR` polygons after initial slicing; no current core manifest holds it. |
+| `gcode-postprocessor`     | Recognized claim for a PostPass module that processes the `GCodeCommand` stream; no current core manifest holds it. |
+| `text-postprocessor`      | Recognized claim for a PostPass module that mutates the final G-code text string; no current core manifest holds it. |
 | `claim:top-fill`          | Held by the module producing `TopSolidInfill` extrusions on this layer.  |
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
-| `claim:raft-fill`         | Held by the `Layer::Infill` module producing `RaftInfill` extrusions (added TASK-289 / packet 124; ADR-0009). |
+| `claim:raft-fill`         | Reserved by the SDK's `RaftInfill` role mapping (packet 124; ADR-0009); no current core manifest declares it. |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 
 | Claim ID                 | Kind     | Dedup          | Owner                                                                    |
@@ -784,11 +710,10 @@ configured holders (see `slicer_runtime::resolve_held_claims`).
 
 The set is exposed across the WIT boundary via
 `slice-region-view.held-claims` and consumed by guest modules through
-`SliceRegionView::should_emit(role)`. Convention: an **empty held-claims
-list is treated as "holds all four"** so test fixtures and code paths that
-bypass `dispatch_layer_call` retain the pre-packet-37 default behavior.
-Production dispatch always populates the set authoritatively, so `should_emit`
-returns the configured truth in real runs.
+`SliceRegionView::should_emit(role)`. An **empty held-claims list suppresses all
+fill-role emission**; test fixtures that bypass `dispatch_layer_call` must set
+the claims they intend to exercise. Production dispatch populates the set
+authoritatively, so `should_emit` returns the configured truth in real runs.
 
 # ── Compatibility ─────────────────────────────────────────────────────────────
 [compatibility]
@@ -820,7 +745,7 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   group    = "Pattern"
   validate = "value > 0.0 && value < 1.0"
 
-  [config.schema.multiline-count]
+   [config.schema.multiline_count]
   type    = "int"
   default = 1
   min     = 1
@@ -828,7 +753,7 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   display = "Parallel Passes"
   group   = "Pattern"
 
-  [config.schema.marching-cell-size]
+   [config.schema.marching_cell_size]
   type     = "float"
   default  = 0.40
   min      = 0.10
@@ -838,7 +763,7 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   group    = "Advanced"
   advanced = true             # hidden unless user expands section
 
-  [config.schema.raster-precision]
+   [config.schema.raster_precision]
   type     = "float"
   default  = 0.004
   min      = 0.001
@@ -853,7 +778,7 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
 #      Treat this section as a forward-looking design item until the parser
 #      and validator catch up. -->
 [[config.cross-validate]]
-rule     = "marching-cell-size >= raster-precision * 10"
+rule     = "marching_cell_size >= raster_precision * 10"
 message  = "Marching cell size should be at least 10x the raster precision"
 severity = "warning"    # "error" blocks slicing; "warning" notifies only
 
@@ -897,14 +822,16 @@ layer-parallel-safe    = true
 
 ### Config-Key Wildcard Syntax (Normative — Packet 76)
 
-Config keys declared in `[config.schema]` and any `[config.overridable-per-*]`
-section may use the `<prefix>:*` wildcard form. A declared key of the form
+Config schema entries declared in `[config.schema]` may use the `<prefix>:*`
+wildcard form. A declared key of the form
 `<prefix>:*` matches all runtime keys whose name begins with `<prefix>:`,
 enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
 Static keys (without the `:*` suffix) continue to require exact-match.
 The matcher is `source_key_matches_declared` in
-`crates/slicer-scheduler/src/execution_plan.rs`.
+`crates/slicer-scheduler/src/execution_plan.rs`. The parser stores the
+`config.overridable-per-region` and `config.overridable-per-layer` key lists,
+but the current scheduler does not apply this wildcard matcher to those lists.
 
 ### `[[region_split]]` Validation Rules (Normative — Packet 92)
 
@@ -912,13 +839,13 @@ Per-manifest:
 
 1. **Duplicate semantic** within a single manifest →
    `LoadErrorKind::DuplicateRegionSplitSemantic`.
-2. **`value-type = "scalar"`** → rejected
+2. **`value_type = "scalar"`** → rejected
    (`LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`). See
    `docs/02_ir_schemas.md` for the routing rationale.
 3. **Community semantic with `priority < 1000`** → rejected
    (`LoadErrorKind::CommunityPriorityBelowFloor`). `COMMUNITY_PRIORITY_FLOOR = 1000`.
 4. **Core semantic (`material`, `fuzzy_skin`) with `priority` ≠ registry
-   value** → rejected (`LoadErrorKind::CoreSemanticPriorityMismatch`).
+   value** → rejected (`LoadErrorKind::CorePriorityMismatch`).
    `CORE_REGION_SPLIT_PRIORITIES = { "material" => 100, "fuzzy_skin" => 200 }`.
 
 Cross-manifest: distinct semantics from different manifests that share a
@@ -931,9 +858,9 @@ continues.
 The canonical order for `variant_chain` enumeration in
 `PrePass::RegionMapping` is deterministic and locked by test fixtures:
 
-- **Semantics** are ordered by `BTreeMap` iteration of the aggregated
-  `region_split` map (lexicographic on `semantic` name within priority
-  tiers).
+- **Semantics** are ordered by `canonical_variant_chain_order`, which sorts
+  the aggregated entries by `(priority, semantic name)`. Do not infer the
+  contract from raw `BTreeMap` iteration.
 - **PaintValue** instances within each semantic are ordered:
   `Flag(false) < Flag(true) < ToolIndex(0) < ToolIndex(1) < ... < Custom(s_lex)`.
 
@@ -1068,8 +995,9 @@ it per-module). Current host defaults:
 
 The four envelope blocks (`HEADER_BLOCK_*`, `THUMBNAIL_BLOCK_*`, per-role
 width comments, `CONFIG_BLOCK_*`) are documented under
-`docs/02_ir_schemas.md` "G-code envelope blocks". Four config keys feed
-the header block:
+`docs/02_ir_schemas.md` "G-code envelope blocks". Four host-side config keys
+feed the header/output path. They are shown in schema-like TOML below for
+illustration; they are not `[config.schema]` entries in a module manifest.
 
 ```toml
 [config.schema.filament_diameter]
@@ -1124,7 +1052,7 @@ dimensions, source bytes passed through. Packet 173.
 
 #### Packet 31b — tree-support OrcaSlicer parity
 
-The following nine keys map directly to OrcaSlicer keys of the same name.
+The following twelve keys map directly to OrcaSlicer keys of the same name.
 
 ```toml
 [config.schema.tree_support_branch_angle]
@@ -1256,7 +1184,9 @@ Per-object overrides use the namespace `object_config:<id>:<key>`. These flow th
 
 Module-owned machine start/end G-code is emitted by a designated module running at `PostPass::GCodePostProcess`. The bundled implementation is `machine-gcode-emit` (`modules/core-modules/machine-gcode-emit/`); the audit boundary is the contract, not the module ID. The stage is `GCodePostProcess` (not `LayerFinalization`) because the module operates on the typed `GCodeIR` command stream before serialization — it prepends a Raw start block before the first command and appends a Raw end block after the last, so ordering is natural and type-safe.
 
-The module reads five config keys:
+The module declares eleven registered G-code injection-point string keys and
+three additional value keys. The five keys below are the ones used by the
+default start/end templates:
 
 ```toml
 [config.schema.machine_start_gcode]
@@ -1295,17 +1225,24 @@ display = "Nozzle Diameter"
 group   = "Machine G-code"
 ```
 
-The defaults are Klipper-flavoured (`PRINT_START` / `PRINT_END` macros). Both G-code strings support `[key]` placeholder substitution: each `[snake_case_key]` is replaced with the effective value of that config key resolved from the `ConfigView` (e.g. the default `machine_start_gcode` references `[bed_temperature_initial_layer_single]` and `[nozzle_temperature_initial_layer]`). Substitution runs against the effective config before the Raw commands are emitted.
+The remaining injection-point declarations are in
+`modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`. The defaults
+are Klipper-flavoured (`PRINT_START` / `PRINT_END` macros). Every configured
+template supports `[key]` placeholder substitution: each `[snake_case_key]` is
+replaced with the effective value of that config key resolved from the
+`ConfigView` (for example, the default `machine_start_gcode` references
+`[bed_temperature_initial_layer_single]` and
+`[nozzle_temperature_initial_layer]`). Substitution runs against the effective
+config before the Raw commands are emitted.
 
 The module emits the start block before the first `GCodeIR` command and the end block after the last.
 
 #### Placeholder engine (packet 186)
 
-The `[key]` substitution domain is exactly the module's manifest-declared
-config-key set plus the legacy alias table — a `ConfigView` is scoped to the
-module's own manifest, so a key `machine-gcode-emit` cannot resolve may be
-owned by a module that is not loaded. The resolvable domain is the five
-manifest keys above. Key behaviour:
+The `[key]` substitution domain is exactly the module's full
+manifest-declared config-key set plus the legacy alias table. A `ConfigView` is
+scoped to the module's own manifest, so a key that `machine-gcode-emit` cannot
+resolve may be owned by a module that is not loaded. Key behaviour:
 
 - **List-valued keys resolve from their first element, recursively.**
   Real 3MF input supplies per-extruder settings as vectors, so
@@ -1325,7 +1262,7 @@ manifest keys above. Key behaviour:
   disagree, so it must not become a sixth `[config.schema]` key.
 - **Unresolved placeholders pass through verbatim (brackets included) and
   do not fail the slice.** `run_gcode_postprocess` unions the unresolved
-  keys from both templates into a `BTreeSet` and emits exactly **one**
+  keys from all configured templates into a `BTreeSet` and emits exactly **one**
   `slicer_sdk::host::log_warn` naming every unresolved key (sorted,
   deduplicated) and every injection point that contributed one, then
   continues and returns `Ok`. A fatal-on-unresolved policy was built and
@@ -1343,23 +1280,24 @@ emit through `gcode-output-builder` and how the host commits that output into
 
 ### Inputs
 
+- `layer-index: layer-idx` — the current layer.
 - `regions: list<perimeter-region-view>` — read-only view of the layer.
 - `output: gcode-output-builder` — same WIT resource used by post-pass, but
-  the accepted method set is restricted by stage as described below.
+   the accepted method set is restricted by stage as described below.
+- `collection: layer-collection-builder` — the staged entity-order view and
+  permutation builder.
+- `config: config-view` — the module's filtered configuration view.
 
 ### Pre-staged ordered_entities
 
 - The host assembles `LayerCollectionIR.ordered_entities` deterministically
   from the committed per-layer arena (`PerimeterIR`, `InfillIR`, `SupportIR`)
   immediately *before* `Layer::PathOptimization` runs.
-- In the current `slicer:layer-path-optimization@1.0.0` contract (`path-optimization-module` world), guests **cannot** reorder, append to, or remove
-  entries from `ordered_entities`. The pre-staged sequence is final for the
-  lifetime of the layer. `topo_order` indices are stable and used as the
-  `after_entity_index` keying domain for tool-changes and annotations.
-- Reordering of `ordered_entities` is performed via the `layer-collection-builder`
-  resource (packet 32; see "Per-stage layer WIT packages" above). Guests that need
-  deterministic reordering use `set-entity-order` on that resource; arbitrary
-  mutation or append outside of that resource is still rejected at the host boundary.
+- Guests cannot append to or remove entries directly. They may reorder and
+  reverse paths through the `layer-collection-builder` resource (packet 32;
+  see "Per-stage layer WIT packages" above). An accepted permutation reassigns
+  `topo_order`; arbitrary mutation outside that resource remains rejected at
+  the host boundary.
 
 ### Accepted `gcode-output-builder` methods at PathOptimization
 
@@ -1375,7 +1313,7 @@ emit through `gcode-output-builder` and how the host commits that output into
 | `push-temperature(...)`                | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
 
 The `LayerAnnotation { after_entity_index, kind: Comment(..)|Raw(..) }` IR
-record is the host-side carrier for guest comment/raw oustput. The default
+record is the host-side carrier for guest comment/raw output. The default
 `PostPass::GCodeEmit` emitter inserts each annotation as
 `GCodeCommand::Comment` or `GCodeCommand::Raw` immediately after the entity
 identified by its `after_entity_index`. Annotations whose anchor lies past
@@ -1388,9 +1326,9 @@ within an anchor and across the layer.
 `gcode-output-builder` exposes one z-hop method available *only* at
 `Layer::PathOptimization`:
 
-```wit
-push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-```
+The canonical declaration is `push-z-hop` in
+`crates/slicer-schema/wit/deps/ir-types.wit`; the host accepts it for the
+`Layer::PathOptimization` contract and commits it to `LayerCollectionIR.z_hops`.
 
 This is the single, minimal z-hop output channel. Entity-order rewriting uses the `layer-collection-builder` resource (packet 32; see "Per-stage layer WIT packages" above).
 
@@ -1477,10 +1415,10 @@ Attempting to reuse an invalidated builder is a fatal contract error.
 ### Paint reads
 
 Paint data reaches modules through `SliceIR`, not through a dedicated paint IR.
-Per-variant polygons are written into `SliceIR.regions` by
-`PrePass::PaintSegmentation`, and per-segment annotations are populated by the
-always-on `Layer::PaintRegionAnnotation` host built-in before any downstream
-per-layer stage runs. Declare the slice paths you need:
+Per-variant polygons and per-segment annotations are written into
+`SliceIR.regions` by `PrePass::PaintSegmentation`. The
+`Layer::PaintRegionAnnotation` stage remains a reserved no-op host boundary;
+declare the slice paths you need:
 
 ```toml
 reads = ["SliceIR.regions.segment_annotations"]
@@ -1524,8 +1462,8 @@ the perimeter / seam pipeline:
 
 IR path format:
 
-- Dot-separated, host-canonical (snake_case identifiers, hyphenated public
-  paint semantics like `paint_config:fuzzy-skin:line_width` use the wire form).
+- Dot-separated, host-canonical (snake_case identifiers; for example,
+  `paint_config:fuzzy_skin:line_width` uses the wire form).
 - The leading IR name (e.g. `PerimeterIR`, `SliceIR`) is required.
 - No wildcards — every write target must be explicit. Host emits a fatal
   diagnostic listing the actual write targets if a module's `writes`
@@ -1540,12 +1478,17 @@ IR path format:
 | `"bool"`        | Boolean checkbox           | —                            |
 | `"int"`         | Integer                    | `min`, `max`, `step`         |
 | `"float"`       | Floating point             | `min`, `max`, `step`, `unit` |
-| `"string"`      | Free text                  | `max-length`                 |
-| `"enum"`        | Fixed set of string values | `values` (required)          |
-| `"float-list"`  | List of floats             | `min`, `max`, `min-length`, `max-length` |
-| `"string-list"` | List of strings            | `min-length`, `max-length`   |
+| `"string"`      | Free text                  | `max_length`                 |
+| `"enum"`        | Fixed set of string values | `values` (expected for an enum) |
+| `"float-list"`  | List of floats             | `min`, `max`, `min_list_length`, `max_list_length` |
+| `"string-list"` | List of strings            | `min_list_length`, `max_list_length` |
 | `"percent"`     | Value expressed as a % of a caller-supplied base (resolved module-side via `ConfigView::get_abs_value(key, base)`) | `min`, `max`, `step` |
 | `"float_or_percent"` | Absolute float OR a percent literal, resolved at read time via `ConfigView::get_abs_value(key, base)` | `min`, `max`, `step`, `unit` |
+
+The supported type strings are `bool`, `int`, `float`, `string`, `enum`,
+`float-list`, `string-list`, `percent`, and `float_or_percent`. The scheduler
+parser stores the `type` string and the optional fields; the exact supported
+set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 
 ### Common per-field keys (apply to every type)
 
@@ -1575,7 +1518,8 @@ burden for no semantic gain.
 
 ### Numeric Bounds Enforcement
 
-`min` and `max` on numeric fields (`int`, `float`, `int-list`, `float-list`)
+`min` and `max` on numeric fields (`int`, `float`, `float-list`, `percent`,
+`float_or_percent`)
 are not UI hints — they are enforced by the host resolver. The host builds a
 `ConfigBoundsIndex` from every loaded module's `[config.schema]` at startup,
 and `resolve_global_config` / `resolve_per_object_configs` /
@@ -1583,9 +1527,9 @@ and `resolve_global_config` / `resolve_per_object_configs` /
 `ConfigResolutionError::OutOfRange` before the value is written into
 `ResolvedConfig`. Inclusive bounds on both ends: `min <= value <= max`.
 
-- **NaN and non-finite values** for `float` fields are treated as out-of-range
+- **NaN and non-finite values** for numeric fields are treated as out-of-range
   and rejected.
-- **List elements** (`float-list`, `int-list`) are validated element-wise
+- **List elements** (`float-list`, including integer-valued entries) are validated element-wise
   against the same `[min, max]`; the first offending element is reported
   with its `index`.
 - **Strictest wins on collision**: when several modules declare bounds for
@@ -1635,28 +1579,28 @@ rule     = "min(layer_height, 0.35) == layer_height"
 
 ## Test Guest Fixtures (Informative)
 
-`test-guests/` holds minimal WASM components used as fixtures by host
+`crates/slicer-wasm-host/test-guests/` holds minimal WASM components used as fixtures by host
 integration tests under `crates/slicer-runtime/tests/`. They exercise the
 WIT boundary with real `wasm32-unknown-unknown` artifacts, complementing
-the in-process mock host shipped to module authors via `slicer-test`
-(see `docs/05_module_sdk.md` § `slicer-test` Crate). The two paths
+the in-process mock host provided by `slicer-sdk`'s `test` feature
+(see `docs/05_module_sdk.md`'s test-support guidance). The two paths
 target different concerns and are not interchangeable:
 
 | Concern                                                  | Vehicle                          |
 |----------------------------------------------------------|----------------------------------|
-| Module author unit-tests their stage logic               | `slicer-test` mock host (no WASM) |
-| Host verifies dispatch, IR resources, ABI, surface drift | `test-guests/*.component.wasm`   |
+| Module author unit-tests their stage logic               | `slicer-sdk` test support (no WASM) |
+| Host verifies dispatch, IR resources, ABI, surface drift | `crates/slicer-wasm-host/test-guests/*.component.wasm` |
 
 ### Layout
 
-Each guest is a standalone Cargo crate with its own `[workspace]` (it
+Each guest under `crates/slicer-wasm-host/test-guests/` is a standalone Cargo crate with its own `[workspace]` (it
 targets `wasm32-unknown-unknown`, so it cannot live inside the host
 workspace) and `crate-type = ["cdylib"]`. The build pipeline produces
 `<guest>.component.wasm` next to the source directory; that file is the
 artifact host tests load via `include_bytes!` / `std::fs::read`.
 
 ```text
-test-guests/
+crates/slicer-wasm-host/test-guests/
 ├── layer-infill-guest/
 │   ├── Cargo.toml                      # standalone workspace, cdylib
 │   └── src/lib.rs
@@ -1670,8 +1614,8 @@ test-guests/
 
 **Hand-rolled WIT guests** spell the WIT inline via
 `wit_bindgen::generate!({ inline: r#"…"# })` rather than referencing
-the canonical `wit/`. They are deliberately decoupled from the canonical
-surface so host instantiation will fail loudly if `wit/` drifts in a way
+the canonical `crates/slicer-schema/wit/`. They are deliberately decoupled from the canonical
+surface so host instantiation will fail loudly if the canonical WIT drifts in a way
 that breaks ABI compatibility. They are the primary regression vehicle
 for type-identity, resource-handle, and dispatch correctness.
 
@@ -1686,7 +1630,7 @@ for type-identity, resource-handle, and dispatch correctness.
 `#[slicer_module]` proc-macro from `slicer-sdk`. They contain no inline
 WIT and no manual `wit_bindgen` glue; the macro must emit every binding
 for the binary to link. They prove the SDK codegen path produces valid
-guests against the canonical `wit/`.
+guests against `crates/slicer-schema/wit/`.
 
 | Guest                          | Stage                         | Notes                                                                                           |
 |--------------------------------|-------------------------------|-------------------------------------------------------------------------------------------------|
@@ -1694,7 +1638,7 @@ guests against the canonical `wit/`.
 | `sdk-layer-infill-guest`       | `Layer::Infill`               | Macro-only Layer round-trip witness                                                              |
 | `sdk-layer-pathopt-guest`      | `Layer::PathOptimization`     | Macro-only PathOptimization witness                                                              |
 | `sdk-finalization-guest`       | `PostPass::LayerFinalization` | Macro-only finalization witness                                                                  |
-| `sdk-postpass-text-guest`      | `PostPass::GCodeText`         | Macro-only text-postprocess witness                                                              |
+| `sdk-postpass-text-guest`      | `PostPass::TextPostProcess`   | Macro-only text-postprocess witness                                                              |
 | `path-optimization-multi-read` | `Layer::PathOptimization`     | Asserts the macro `get-ordered-entities`-call-once cache contract; counterpart to the host counter `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` |
 
 ### Build & Freshness Contract (Normative)
@@ -1717,7 +1661,7 @@ when:
 
 Prerequisites for rebuilding (`rustup target add wasm32-unknown-unknown`
 and `cargo install wasm-tools`) are required only when modifying a guest.
-Contributors who do not touch `test-guests/` can run
+Contributors who do not touch `crates/slicer-wasm-host/test-guests/` can run
 `cargo test --workspace` against an unmodified tree because the
 `.component.wasm` artifacts are committed.
 
@@ -1749,4 +1693,4 @@ walks subdivided children in **reverse index order**
 of 3MF paint hex sequences MUST iterate child slots in reverse before
 recursing, otherwise painted states land on the wrong sub-triangle
 positions. The canonical handling lives in
-`crates/slicer-model-io/src/loader.rs:2018-2030`.
+`decode_strokes_for_channel` (`crates/slicer-model-io/src/loader.rs`).

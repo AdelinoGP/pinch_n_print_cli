@@ -259,7 +259,7 @@ is the authoritative catalog of their defaults and ranges.
 default `-1`, but bottom interface layers are not yet implemented; `support-planner`
 emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic`,
 packet 118) before the layer loop when the value is not `-1`. See
-`docs/specs/support-modules-orca-port.md`.
+`docs/specs/_OLD/support-modules-orca-port.md` (archived spec).
 
 ### `seam_mode` values
 
@@ -652,11 +652,11 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 |---|---|---|---|---|
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
-| `inner_wall_line_width` | float_or_percent | `0.4` | [0.0, 2.0] | `classic-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` (auto sentinel → `1.125 × nozzle_diameter`) | [0.0, 2.0] | `classic-perimeters`, `arachne-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` (auto sentinel → `1.125 × nozzle_diameter`) | [0.0, 2.0] | `classic-perimeters`, `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
-| `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
+| `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
 | `min_width_top_surface` | float_or_percent | `"0.0"` (gate off; upstream default `300%`) | base: `inner_wall_line_width` | `classic-perimeters` |
@@ -820,8 +820,8 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 | `outer_wall_offset` | float | `0` | slicer units | `arachne-perimeters` |
 | `max_bead_count` | int | `0` | >= 0 | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | boolean | `arachne-perimeters` |
-| `inner_wall_line_width` | float | `0.4` | mm (canonical `bead_width_x` source) | `arachne-perimeters` |
-| `outer_wall_line_width` | float | `0.4` | mm (canonical `bead_width_0` source) | `arachne-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` (auto sentinel) | mm (canonical `bead_width_x` source) | `arachne-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` (auto sentinel) | mm (canonical `bead_width_0` source) | `arachne-perimeters` |
 
 **`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`). **Packet 150:** retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`), closing G6/D-104h. Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
 

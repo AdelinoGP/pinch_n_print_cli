@@ -7,7 +7,12 @@ serially and why.
 
 ## Build configuration
 
-The report subsystem is gated behind the default-enabled `report` Cargo feature on `slicer-runtime`. Build with `cargo build --no-default-features -p slicer-runtime` to omit it; the `--report` flag is then absent from `pnp_cli slice`.
+The report subsystem is gated behind the `report` Cargo feature, which is
+**default-enabled** on both `slicer-runtime` and `pnp-cli` (the CLI's
+`report = ["slicer-runtime/report"]` forwards it, and the `#[global_allocator]`
+wrapper in `crates/pnp-cli/src/main.rs` is `#[cfg(feature = "report")]`). Build
+with `cargo build --no-default-features -p pnp_cli` (or `-p slicer-runtime`)
+to omit it; the `--report` flag is then absent from `pnp_cli slice`.
 
 ## Related G-code artifacts
 
@@ -149,13 +154,18 @@ runs where arrays are empty and counts are zero.
     transitive types like `TierKind` / `SerialEdge`). The curation
     approach is deliberate; reviewers should not propose deriving
     `Serialize` on model.rs structs to "simplify" the JSON path.
+  - `model.rs` also defines `ReportDagSnapshot`, captured at slice start from
+    `slicer_scheduler::dag_cli` types so the HTML report's "Pipeline (DAG)"
+    section and `pnp_cli dag <subcommand>` JSON can never drift.
 
 Hook points (all in `crates/slicer-runtime/src/`):
 `run_pipeline_with_instrumentation` (`pipeline.rs`) brackets each phase;
-`execute_single_layer` (`layer_executor.rs`) brackets layer / stage / module
-boundaries for per-layer; `prepass.rs` and `postpass.rs` have
-`_with_instrumentation` variants that bracket per-stage and per-module for those
-tiers, including host built-ins.
+`execute_per_layer_with_instrumentation_and_support_tools` /
+`execute_single_layer_inner` (`layer_executor.rs`) bracket layer / stage /
+module boundaries for per-layer; `prepass.rs` and `postpass.rs` have
+`execute_prepass_with_instrumentation` / `execute_postpass_with_instrumentation`
+variants that bracket per-stage and per-module for those tiers, including host
+built-ins.
 
 ## Global allocator contract
 

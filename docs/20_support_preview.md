@@ -7,7 +7,7 @@ contract is **prepass only — no per-layer or G-code stages**.
 ## CLI Usage
 
 ```bash
-pnp_cli support-preview --input <3mf> --output <path>
+pnp_cli support-preview --input <model.stl|model.obj|model.3mf> --output <path>
 ```
 
 `--config <path>` optionally supplies a config file. `--module-dir <path>` is

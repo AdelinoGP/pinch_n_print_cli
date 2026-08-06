@@ -22,7 +22,9 @@ crates/
 ├── slicer-sdk/      # Core: re-exports WIT types, provides helpers, registers exports
 │                    # (test support lives inside slicer-sdk under the `test` feature)
 ├── slicer-macros/   # Proc-macros: #[slicer_module], #[module_test]
-└── pnp-cli/         # Single binary `pnp_cli`: includes `module new|diagnose|config-schema` verbs.
+├── pnp-cli/         # Single binary `pnp_cli`: includes `module new|diagnose|config-schema` verbs
+└── pnp-cli-locator/ # Host-side test support: locates the `pnp_cli` binary and asserts it
+                     # is fresh before tests spawn it (ADR-0054)
 ```
 
 > **Source of truth.** This document is the authoring guide. For the exact
@@ -73,9 +75,10 @@ isolation.
   in.** `slicer-core` exposes pure geometry primitives unconditionally
   (`polygon_ops` — including `clip_polylines`, a Clipper2 open-path
   intersection of polylines against an ExPolygon set —, `aabb_tree`,
-  `triangle-mesh-slicer`), but the
-  host-side algorithm kernels (`mesh_analysis`, `paint_segmentation`,
-  `support_geometry`, `region_mapping`, `overhang_classifier`) live
+  `triangle_mesh_slicer`), but the
+  host-side algorithm kernels (`algos::mesh_analysis`,
+  `algos::paint_segmentation`, `algos::support_geometry`,
+  `algos::region_mapping`, `algos::overhang_annotation`) live
   behind the `host-algos` feature, which is enabled by `slicer-runtime`
   and NOT by `slicer-sdk`. Depending on `slicer-core` from a guest
   would risk pulling `host-algos` into the guest's build graph, which
@@ -83,7 +86,7 @@ isolation.
 - **Native deps must be WASM-compatible.** Any third-party dep loaded
   via the SDK must compile to `wasm32-unknown-unknown` (or be gated
   off for that target). Example: `rstar` was confirmed WASM-compatible
-  in Packet 63 with `default-features = false`; check `cargo build
+  in Packet 63; check `cargo build
   --target wasm32-unknown-unknown` before adding new deps.
 - **Test-support APIs never leak into production.**
   `slicer_sdk::test_support` and `slicer_sdk::test_prelude` are gated
@@ -163,9 +166,9 @@ A future `GCodeEmitter` crate extraction (already prefigured by Packet 86's `sli
 
 If your module's output reaches G-code, the formatting layer is the
 `slicer-gcode` crate (extracted in Packet 86 from
-`slicer-runtime/src/gcode_emit.rs`). It owns `DefaultGCodeEmitter`,
+`slicer-runtime`'s `gcode_emit` path). It owns `DefaultGCodeEmitter`,
 `DefaultGCodeSerializer`, and the `GCodeEmitter` / `GCodeSerializer`
-traits. The crate is zero-dep on `slicer-runtime` / `slicer-wasm-host`
+traits. The crate has no dependency on `slicer-runtime` / `slicer-wasm-host`
 / `slicer-scheduler`, which means it can be exercised in unit tests
 without instantiating a full pipeline — useful when authoring
 `PostPass::GCodePostProcess` or `PostPass::TextPostProcess` modules
@@ -180,8 +183,8 @@ The `#[slicer_module]` macro generates the WIT export bindings, validates that t
 ```rust
 use slicer_sdk::prelude::*;
 
-// The struct name is arbitrary. The macro reads your manifest's stage field
-// to determine which WIT export to implement.
+// The struct name is arbitrary. The macro detects the stage from the
+// implemented trait method name (see `Single-Stage-Per-Impl Constraint`).
 pub struct MyInfillModule {
     // Configuration is validated for each stage call.
 }
@@ -198,7 +201,7 @@ impl LayerModule for MyInfillModule {
         Ok(Self {})
     }
 
-    // Implement the function matching your manifest's stage.
+    // Implement the function matching your stage.
     // The macro enforces at compile time that you implement exactly one.
     fn run_infill(
         &self,
@@ -243,29 +246,41 @@ fn generate_schwartz_d(
  }
  ```
 
-Inside the per-region loop, use the region-view accessor for per-region config:
+**Note on the illustrative `run_infill` above.** It omits the `paint`
+parameter and uses a hypothetical `region.config()`. The real signature, from
+`crates/slicer-sdk/src/traits.rs::LayerModule`:
 
 ```rust
-for region in regions {
-    let density = region.config().get_float("density").unwrap_or(0.15);
+fn run_infill(
+    &self,
+    layer_index: u32,
+    regions: &[SliceRegionView],
+    paint: &PaintRegionLayerView,
+    output: &mut InfillOutputBuilder,
+    config: &ConfigView,
+) -> Result<(), ModuleError>
+```
+
+There is no `region.config()` accessor; read per-region config via the
+region-view accessor `SliceRegionView::config()` (packet 131) when a
+per-region override applies, otherwise `config` once per invocation:
+
+```rust
+// `SliceRegionView::config()` (packet 131) returns the per-region override
+// view; it is `None` when no per-region overrides apply to this region.
+if let Some(region_config) = region.config() {
+    let density = region_config.get_float("density").unwrap_or(0.15);
     generate_for_region(region, density);
 }
 ```
 
 ### `run_infill_postprocess` (Layer::InfillPostProcess, packet 130)
 
-Modules whose manifest declares `Layer::InfillPostProcess` implement:
-
-```rust
-fn run_infill_postprocess(
-    &self,
-    layer_index: u32,
-    regions: &[PerimeterRegionView],
-    prior_infill: &[slicer_ir::InfillRegion],
-    output: &mut InfillOutputBuilder,
-    config: &ConfigView,
-) -> Result<(), ModuleError>;
-```
+Modules whose manifest declares `Layer::InfillPostProcess` implement
+`LayerModule::run_infill_postprocess`, defined in
+`crates/slicer-sdk/src/traits.rs` — it takes `layer_index`, `regions:
+&[PerimeterRegionView]`, `prior_infill: &[slicer_ir::InfillRegion]`, `output:
+&mut InfillOutputBuilder`, and `config: &ConfigView`.
 
 `prior_infill` is a **read-only** snapshot of the `InfillIR` committed by
 `Layer::Infill` — one `InfillRegion` per region bucket, carrying the
@@ -286,9 +301,16 @@ region's walls).
 ### PrePass Module Authoring Pattern
 
 PrePass modules implement the `PrepassModule` trait. The `#[slicer_module]`
-macro routes the module's manifest `stage.id` to the matching trait method.
-Existing prepass stages each have a default-no-op trait method so a module
-only needs to override the one for its own stage.
+macro routes the module's stage to the matching trait method. Existing prepass
+stages each have a default trait method so a module only needs to override the
+one for its own stage (`run_mesh_analysis`, `run_layer_planning`,
+`run_paint_segmentation`, and `run_seam_planning` default to `Ok(())`;
+`run_support_geometry` defaults to `Err(ModuleError::from_str(...))` — see
+`crates/slicer-sdk/src/traits.rs::PrepassModule`).
+
+Note `PrePass::PaintSegmentation` is a **host-built-in** stage: no per-stage
+WIT package or macro export module exists for it, and a WASM guest cannot
+claim it (the host runs its own implementation).
 
 | Manifest `stage.id`               | Trait method called                           | Output builder              |
 |-----------------------------------|-----------------------------------------------|-----------------------------|
@@ -353,10 +375,10 @@ impl PrepassModule for MySupportPlanner {
 The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
 "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR",
-"SupportGeometryIR"]`, `writes = ["SupportPlanIR"]`, and
-`[module] wit-world = "slicer:world-prepass"` (unversioned — a versioned
-`wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
-carries no version").
+"SupportGeometryIR"]`, and `writes = ["SupportPlanIR"]` (the bundled
+`support-planner.toml` is the reference). The legacy `[module] wit-world` key
+is tolerated-and-ignored metadata — see `03_wit_and_manifest.md` § "Why
+`wit-world` is now legacy".
 
 The bundled `support-planner` produces one `SupportPlanEntry` per active
 `(global_layer_index, object_id, region_id)` with branch paths carrying
@@ -375,32 +397,10 @@ downstream rendering contract.
 
 `SupportGeometryOutput` (`crates/slicer-sdk/src/prepass_builders.rs`) is the
 SDK builder that backs the WIT `support-geometry-output` resource. In addition
-to `push_support_plan_entry`, it exposes a typed diagnostic channel that
-mirrors the WIT `push-diagnostic` method:
-
-```rust
-pub struct SupportGeometryOutput {
-    entries: Vec<super::prepass_types::SupportPlanEntry>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl SupportGeometryOutput {
-    pub fn new() -> Self { /* entries: Vec::new(), diagnostics: Vec::new() */ }
-
-    /// Push a diagnostic record. Per docs/adr/0010-typed-diagnostic-channel.md:
-    /// ```wit
-    /// push-diagnostic: func(d: diagnostic) -> result<_, string>;
-    /// ```
-    pub fn push_diagnostic(&mut self, d: Diagnostic) -> Result<(), String> {
-        self.diagnostics.push(d);
-        Ok(())
-    }
-
-    /// Get all diagnostics in insertion order (for testing).
-    #[doc(hidden)]
-    pub fn diagnostics(&self) -> &[Diagnostic] { &self.diagnostics }
-}
-```
+to `push_support_plan_entry` and `push_raft_plan`, it exposes a typed
+diagnostic channel that mirrors the WIT `push-diagnostic` method — see the
+builder source for the exact field layout and `push_diagnostic` /
+`diagnostics` signatures.
 
 Contract (matches the WIT contract in `03_wit_and_manifest.md` §
 `support-geometry-output.push-diagnostic`):
@@ -449,13 +449,12 @@ final holdout) — two behavioural consequences for module authors:
 
 `#[slicer_module]` is single-stage per impl block. The macro in
 `crates/slicer-macros/src/lib.rs` raises a `compile_error!` when
-`detect_stage_methods` finds more than one stage method on the impl. There is no
-`#[slicer_module(stage = "...")]` attribute argument — the only stage selector is
+`detect_stage_methods` finds more than one stage method on the impl. There is
+no `#[slicer_module(stage = "...")]` attribute argument — the only stage selector is
 the method name lookup against the `STAGES` table in
 `crates/slicer-schema/src/lib.rs`. Additionally, the macro hardcodes the WIT
-export module name per world (`__slicer_prepass_world_export`,
-`__slicer_postpass_world_export`, `__slicer_finalization_world_export`,
-`__slicer_layer_world_export`, all in `crates/slicer-macros/src/lib.rs`). Two
+export module name per stage (`__slicer_<stage>_world_export`, e.g.
+`__slicer_layer_infill_world_export`, in `crates/slicer-macros/src/lib.rs`). Two
 `#[slicer_module]` impl
 blocks in the same crate that target the same world will fail to link with
 duplicate-symbol errors.
@@ -465,6 +464,20 @@ permits `run_mesh_analysis`, `run_paint_segmentation`, `run_layer_planning`, `ru
 sibling crate per stage. Each sibling overrides only the one stage method it
 implements and relies on the trait's default `Ok(())` bodies for the rest. The test guest `crates/slicer-wasm-host/test-guests/sdk-prepass-guest/` is a reference exemplar: a standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`, `slicer-schema`, `wit-bindgen` as deps) with a `#[slicer_module] impl PrepassModule for ...` block overriding `from_config` plus the prepass stage method(s) it implements.
 
+<!-- VERIFY: the `build_prepass_world_glue` / `segmentation_helpers` discussion
+     below refers to wit-bindgen 0.24-era inline WIT. The current macro
+     (wit-bindgen 0.57.1) has no `build_prepass_world_glue` symbol and no
+     `segmentation_helpers` quote block; the prepass glue is per-stage
+     (`__slicer_prepass_mesh_analysis_world_export`, etc.) and there is no
+     `paint_seg_arm`. The claim is plausible as history but unverifiable
+     against current source; retained pending archaeology. -->
+
+<!-- VERIFY: no `LinesDistancer2D` symbol was found anywhere in the current
+     tree (crates/ or modules/); the Packet 88 precedent referenced by the
+     self-contained-module rules cites it as the replicated primitive. The
+     overhang classifier now lives in
+     `modules/core-modules/overhang-classifier-default/` with a `slicer-core`-free
+     dep tree. -->
 Macro authors note (relevant when the prepass world inline WIT or the
 `segmentation_helpers` quote block in `build_prepass_world_glue` is touched):
 wit-bindgen 0.24 does not generate flat type re-exports for world-level `use`
@@ -531,7 +544,9 @@ declaration so the audit contract reflects that they ignore the plan.
 
 For native host-side tests, `SliceRegionView` also exposes paint annotation
 accessors so perimeter generators can consume contour-parallel segment
-annotations ergonomically via the WIT `boundary-paint` resource.
+annotations ergonomically (via `segment_annotations()` / the `variant_chain`
+per-vertex jitter path — the v1 `PaintRegionIR` / `boundary-paint` resource
+was deleted in packet 95).
 
 ### `LayerCollectionBuilder` — Path Optimization (packet 32)
 
@@ -560,8 +575,10 @@ fn run_path_optimization(
 ```
 
 The host validates `set_entity_order`: indices must be unique and in
-`0..ordered_entities().len()`. `get_ordered_entities()` returns the
-previously-set ordering as `Vec<OrderedEntityView>` for diagnostic use.
+`0..ordered_entities().len()`, and `set_entity_order` may be called at most
+once per layer per invocation (packet 58 invariant). `get_ordered_entities()`
+returns the previously-set ordering as `Vec<OrderedEntityView>` for diagnostic
+use.
 
 ### Host Service Wrappers
 
@@ -578,8 +595,9 @@ host::log_warn(&format!("Density near limit: {density}"));
 let surface_z: Option<f32> = host::raycast_z_down(object_id, x, y, start_z);
 let normal: Option<Point3> = host::surface_normal_at(object_id, x, y, z);
 
-// Geometry (delegates to host-side Clipper2; on wasm32 the polygon-op wrappers
-// currently run clipper2 in-guest — see ADR-0049 §Amendment 2026-08-05 and DEV-094)
+// Geometry (delegates to slicer_core::polygon_ops — clipper2 — in-guest on
+// wasm32; the host bridge is not wired: see ADR-0049 §Amendment 2026-08-05
+// and DEV-094)
 let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOperation::Intersection);
 let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter);
 let simple:  Polygon        = host::simplify_polygon(&poly, 0.05);
@@ -633,12 +651,11 @@ let len_3d: f32 = seg_len_3d(dx, dy, dz);
 // Extrusion volume correction factor for a segment with Z deviation.
 let flow: f32 = flow_correction(dx, dy, dz);
 ```
-
 ### `slicer_core::paint_policy::support_eligibility` (packet 120)
 
 Canonical support-eligibility entry point for the `Layer::Support` paint precedence rules (see `docs/01_system_architecture.md` §"Support Stage Paint Precedence"). It replaces the centroid-based paint-classification probe that previously lived in `slicer_sdk::traits::PaintRegionLayerView::paint_policy_for` (`crates/slicer-sdk/src/traits.rs`) — that function is now a thin wrapper that first filters `SliceIR.regions[*]` to the cells whose polygon contains at least one vertex of the caller's `expoly` (the *region-ownership* check, performed via the `region_covers_expoly` contour-vertex probe; a centroid probe is intentionally NOT used here either, because in the L-shape regression fixture the caller's `expoly` IS the L-shape and its vertex-mean centroid falls in the L's notch), then forwards each matching region to this helper for paint classification.
 
-The helper is a **presence check on `segment_annotations` with a region-area floor** — NOT a polygon-intersection between region and a separate annotation polygon. The `SlicedRegion` IR stores paint as per-polygon per-vertex `Some(_)` flags (see `docs/02_ir_schemas.md` §"SlicedRegion.segment_annotations"), not as separate annotation polygons, so the painted area is implicitly the region polygon itself; the area floor (`NON_TRIVIAL_AREA_UNITS_SQ = 200` workspace units², ≈ 2 µm²) is used only to suppress degenerate / empty regions from being classified as enforcer or blocker. Why this fixes the centroid bug: the pre-packet `paint_policy_for` used a centroid probe to *classify paint*, which failed for L-shaped regions whose vertex-mean centroid fell in the L's notch (outside the polygon) — see the `enforcer_works_for_l_shape_with_centroid_outside_polygon` regression test in `crates/slicer-core/tests/paint_policy.rs` (L-shape vertex-mean centroid (4.667, 4.667) mm lies in the notch, outside the polygon; the helper still returns `Enforced`). Signature:
+The helper is a **presence check on `segment_annotations` with a region-area floor** — NOT a polygon-intersection between region and a separate annotation polygon. The `SlicedRegion` IR stores paint as per-polygon per-vertex `Some(_)` flags (see `docs/02_ir_schemas.md` §"IR 6 — SliceIR"), not as separate annotation polygons, so the painted area is implicitly the region polygon itself; the area floor (`NON_TRIVIAL_AREA_UNITS_SQ = 200` workspace units², ≈ 2 µm²) is used only to suppress degenerate / empty regions from being classified as enforcer or blocker. Why this fixes the centroid bug: the pre-packet `paint_policy_for` used a centroid probe to *classify paint*, which failed for L-shaped regions whose vertex-mean centroid fell in the L's notch (outside the polygon) — see the `enforcer_works_for_l_shape_with_centroid_outside_polygon` regression test in `crates/slicer-core/tests/paint_policy.rs` (L-shape vertex-mean centroid (4.667, 4.667) mm lies in the notch, outside the polygon; the helper still returns `Enforced`). Signature:
 
 ```rust
 use slicer_core::paint_policy::{support_eligibility, SupportPaintPolicy};
@@ -676,10 +693,13 @@ incomplete perimeter IR that the host will reject at commit time.
 
 | Failure mode | Condition | Error |
 |---|---|---|
-| Wall-loop capacity exceeded | `push_wall_loop` called after the builder's internal wall-loop buffer is full | `"wall loop capacity exceeded"` |
-| Infill areas already set | `set_infill_areas` called more than once per builder instance | `"infill areas already set"` |
-| Seam candidate capacity exceeded | `push_seam_candidate` called after the builder's seam-candidate buffer is full | `"seam candidate capacity exceeded"` |
-| Wall-loop path empty | `push_wall_loop` called with a `WallLoop` whose `path.points` is empty | `"wall loop path is empty"` |
+| Collection at capacity | A push exceeds a per-collection limit set via `with_capacity` | `"builder at capacity: <collection> (limit=N)"` |
+
+`set_infill_areas` is per-call accumulation (append, not replace): a
+perimeters guest that calls it once per region keeps every region's infill
+areas. The builder performs no structural validation of empty wall loops or
+`set_infill_areas` call counts — those are host-side commit-time checks (see
+"Contract violation" below).
 
 ### Capacity limit
 
@@ -755,7 +775,7 @@ enforcer_polys, blocker_polys)`:
   score makes an enforced candidate strictly more likely to win, even against
   an unpainted candidate with a numerically higher geometric score.
 
-`slicer-core` cannot depend on `slicer-sdk` (where `PaintRegionLayerView`
+`slicer_core` cannot depend on `slicer-sdk` (where `PaintRegionLayerView`
 lives), so `apply_seam_paint_bias` is data-driven: it takes plain
 `&[ExPolygon]` slices. The caller (`classic-perimeters`) is responsible for
 extracting `enforcer_polys`/`blocker_polys` from `SliceRegionView::
@@ -779,7 +799,9 @@ vertices are preferred as anchors within an enforced span. Seam-planning
 consumes the per-segment paint annotations (`segment_annotations()`), so the
 enforcer/blocker distinction is honoured by the planner rather than by a
 `seam-placer`-side score bias; the retired `0.1x` soft-bias deviation no
-longer applies.
+longer applies. Note that `seam-placer`'s own candidate selection in
+`SeamMode::Nearest` still uses the minimum-`effective_score` rule
+(`Iterator::min_by`), and the `0.1x` factor documented in `slicer_core::perimeter_utils::apply_seam_paint_bias` is the perimeter-side *emission* bias — it is applied by `classic-perimeters` before the builder push, not by the placer.
 
 ### Continuous wall projection and degraded fallback (packet 180)
 
@@ -940,7 +962,7 @@ The installed `MockHost` automatically routes through `slicer_sdk::host::log_war
 once a capture sink is in place; check captured warnings with the static
 `MockHost::log_contains("density near limit")`. For independent
 "did this branch run?" assertions, use the `record_call` / `call_count`
-counter — e.g. `host.call_count("clip_polygons")`.
+counter on a `MockHost` value — e.g. `MockHost::new().call_count("clip_polygons")`.
 
 ### IR Fixture Builders
 
@@ -1059,20 +1081,20 @@ Two new read-only accessors are available on `SliceRegionView` from packet 104 o
 
 Applied to an `impl LayerModule for T` block. At compile time it:
 
-- Reads the module's `Cargo.toml` to find the manifest path
-- Parses the manifest's `[stage]` field
-- Verifies the impl contains exactly the function matching that stage
-- Emits a compile error if a mismatch is found
-- Generates the WIT WASM export bindings
+- Detects the stage method(s) present in the impl (`detect_stage_methods`)
+  against the canonical `STAGES` table in `crates/slicer-schema/src/lib.rs`
+- Emits a compile error if more than one stage method is present, or if the
+  method's tier disagrees with the declared SDK trait (e.g. a `run_perimeters`
+  under `impl PrepassModule`)
+- Generates the WIT WASM export bindings for the detected stage package
 
 ```rust
 // Compile error example:
-// manifest declares stage = "Layer::Infill"
-// but impl provides run_perimeters() instead of run_infill()
+// error: slicer_module: impl block contains multiple stage methods: ...
+//   A module must implement exactly one stage function.
 //
-// error[E0000]: stage mismatch
-//   manifest declares `Layer::Infill` but impl provides `run_perimeters`
-//   expected: fn run_infill(...)
+// error: slicer_module: stage method `run_infill` belongs to world `layer`
+//   (expected trait `LayerModule`) but the impl declares trait `PrepassModule`
 ```
 
 ### `#[module_test]`
@@ -1143,55 +1165,52 @@ wasm-tools component new \
 ### Other verbs
 
 ```
-pnp_cli module new <module-name> [--stage <stage>]
+pnp_cli module new <module-name> --stage <stage>
   Scaffold a new module with the correct directory structure,
   Cargo.toml, manifest template, and a passing test suite.
 
   Options:
-    --stage   Layer::Infill | Layer::Perimeters | Layer::PerimetersPostProcess |
-              Layer::InfillPostProcess | Layer::SlicePostProcess |
-              PrePass::MeshAnalysis | PrePass::LayerPlanning |
-              PostPass::GCodePostProcess | PostPass::TextPostProcess
-              (default: Layer::Infill)
+    --stage   any stage id from the canonical STAGES table, e.g.
+              Layer::Infill | Layer::Perimeters | PrePass::MeshAnalysis
+              (required; there is no default)
 
-pnp_cli module test [-- <cargo-test-args>]
-  Run the module's test suite via `cargo nextest run`.
-  Tests run natively (not in WASM) against the mock host.
-  Coverage report written to target/slicer/coverage/.
-
-pnp_cli module validate
-  Validate the module manifest without building.
+pnp_cli module diagnose [--module-dir <PATH>]
+  Validate the discovered module set and emit structured diagnostics.
   Checks:
     - TOML schema validity
     - Stage ID is a known stage
     - Config field types and ranges
     - Cross-validate expression syntax
     - Claim names are recognized
-    - wit-world version is supported by the current SDK
+
+pnp_cli module config-schema [--module-dir <PATH>]
+  Emit combined config schema JSON from loaded modules.
 
 pnp_cli slice --model <file.stl> [--config <config.json>] [--output <file.gcode>]
   Slice a model using the loaded module set.
   Output: writes G-code to --output (default: stdout)
-
-pnp_cli module benchmark --model <file.stl> [--layers <N>]
-  Run the module against N layers and report:
-    - median / p95 / p99 time per layer invocation
-    - WASM boundary crossing overhead
-    - Peak memory per layer
 ```
+
+Module tests run natively (`cargo test`) against the SDK's mock host; there
+is no separate `pnp_cli module test` or `pnp_cli module benchmark` verb —
+`cargo test` and `cargo bench` are the canonical tools, and per-module timing
+data comes from `slice --instrument-stderr` / `slice --profile`.
 
 ### Scaffolded Directory Structure (`pnp_cli module new my-infill --stage Layer::Infill`)
 
 ```
 my-infill/
-├── Cargo.toml
-├── my-infill.toml            # manifest (stage, claims, config schema)
+├── Cargo.toml               # includes a `build-wasm` alias via .cargo/config.toml
+├── .cargo/
+│   └── config.toml          # alias: build-wasm = build --target wasm32-unknown-unknown --release
+├── my-infill.toml           # manifest (stage, claims, config schema)
+├── README.md
 ├── src/
-│   └── lib.rs                # module impl with #[slicer_module]
+│   └── lib.rs               # module impl with #[slicer_module]
 └── tests/
-    ├── basic.rs              # basic correctness tests (auto-generated stubs)
+    ├── basic.rs             # basic correctness tests (auto-generated stubs)
     └── fixtures/
-        └── square_20mm.json  # pre-built SliceRegionView fixture
+        └── square_20mm.json # pre-built SliceRegionView fixture
 ```
 
 ---
@@ -1205,7 +1224,7 @@ my-infill/
 2. Edit my-infill.toml
    └─ Add config schema fields, set claims, set compatibility
 
-3. pnp_cli module validate
+3. pnp_cli module diagnose
    └─ Catches manifest errors before writing any Rust
 
 4. Write failing tests first (TDD)
@@ -1223,8 +1242,8 @@ my-infill/
 8. pnp_cli slice --model test_model.stl
    └─ Verify G-code output visually in slicer frontend
 
-9. pnp_cli module benchmark --model test_model.stl --layers 50
-   └─ Confirm performance within acceptable range
+9. pnp_cli slice --model test_model.stl --instrument-stderr
+   └─ Confirm per-stage/per-module timing within acceptable range
 ```
 
 ---
@@ -1232,12 +1251,11 @@ my-infill/
 ## Worked Example: Fuzzy Skin as a Native Module
 
 ```toml
-# fuzzy-skin.toml
+# fuzzy-skin.toml  (illustrative — keys below are the module's own)
 [module]
 id           = "com.core.fuzzy-skin"
 version      = "1.0.0"
 display-name = "Fuzzy Skin"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::PerimetersPostProcess"
@@ -1368,6 +1386,7 @@ Four mutation primitives are available on the finalization output builder
 output.push_entity_with_priority(
     layer_index: u32,
     path: ExtrusionPath3D,
+    tool_index: u32,
     region_key: RegionKey,
     priority: u32,
 ) -> Result<(), String>
@@ -1375,10 +1394,12 @@ output.push_entity_with_priority(
 
 Inserts a new `PrintEntity` into the layer at `layer_index`. The
 `ExtrusionRole` is carried inside `ExtrusionPath3D`, so there is no
-separate `role` parameter. The host stamps a fresh `entity_id` at insert
-time (packet 39 + packet 40). Use `ExtrusionRole::default_priority()` as
-`priority` if no override is needed — see `docs/02_ir_schemas.md` IR 10
-"Extrusion-role default priority" for the full priority table.
+separate `role` parameter; `tool_index` is the explicit tool selector
+(`RegionKey.region_id` stays pure region identity). The host stamps a fresh
+`entity_id` at insert time (packet 39 + packet 40). Use
+`ExtrusionRole::default_priority()` as `priority` if no override is needed —
+see `docs/02_ir_schemas.md` §"Extrusion-role default priority" for the full
+priority table.
 
 ### `modify_entity`
 
@@ -1430,14 +1451,8 @@ output.insert_synthetic_layer_after(
 
 Inserts a new `LayerCollectionIR` after the layer at index `idx`. Useful
 for wipe-tower or purge slices (packet 41). `SyntheticLayerData` carries
-the new layer's Z plus its extrusion paths:
-
-```rust
-pub struct SyntheticLayerData {
-    pub z: f32,
-    pub paths: Vec<ExtrusionPath3D>,
-}
-```
+the new layer's Z plus its extrusion paths — defined in
+`crates/slicer-sdk/src/traits.rs` (`pub z: f32`, `pub paths: Vec<ExtrusionPath3D>`).
 
 ### `push_entity_to_layer` (canonical finalization surface, packet 16)
 
@@ -1445,6 +1460,7 @@ pub struct SyntheticLayerData {
 output.push_entity_to_layer(
     layer_index: u32,
     path: ExtrusionPath3D,
+    tool_index: u32,
     region_key: RegionKey,
 ) -> Result<(), String>
 ```
@@ -1463,11 +1479,12 @@ Synthetic region-key convention for finalization-stage geometry:
 | Skirt         | `"__skirt__"`                 |
 | Brim          | role `ExtrusionRole::Brim` (object_id is a plain `"brim"`; the `__brim__` marker was retired — the role is the single source of truth) |
 | Wipe tower    | `"__wipe_tower__"`            |
-| Prime tower   | `"__prime_tower__"`           |
+| Prime tower   | role `ExtrusionRole::PrimeTower` (no dedicated `object_id` marker is defined) |
 
-The host emits `T{n}` tool changes only at transitions in `RegionKey.region_id`,
-not `object_id`; synthetic objects therefore never trigger spurious tool
-changes. `RegionKey.region_id` for synthetic finalization entities is `0`.
+Tool changes are emitted from `LayerCollectionIR.tool_changes`, which
+finalization records explicitly — synthetic objects do not introduce
+implicit tool changes. `RegionKey.region_id` for synthetic finalization
+entities is `0`.
 
 ## Layer Stage Module Surface Rejections
 
@@ -1503,20 +1520,29 @@ overrides **before** any geometric overhang test:
 3. Otherwise → run the module's algorithm (overhang threshold, planner
    consumption).
 
-SDK helpers `PaintRegionLayerView::support_enforcer_polygons_for(...)` and
-`support_blocker_polygons_for(...)` return the per-region polygons; modules
-should intersect / difference them against the layer's slice polygons before
-the geometric scan.
+SDK helper: `PaintRegionLayerView::paint_policy_for(&expoly)` (in
+`crates/slicer-sdk/src/traits.rs`) returns the region's
+`SupportPaintPolicy` (`Blocked` / `Enforced` / `DefaultEligible`); it filters
+`SliceIR.regions` to the cells covering `expoly` (the `region_covers_expoly`
+contour-vertex probe) and delegates per-region classification to
+`slicer_core::paint_policy::support_eligibility` (packet 120). The canonical
+`SupportPaintPolicy` enum is declared in `slicer_ir::paint_policy` and
+re-exported at both `slicer_core::paint_policy::SupportPaintPolicy` and
+`slicer_sdk::traits::SupportPaintPolicy`.
 
 ### G-code Serializer Helpers
 
 #### Relative vs. absolute extrusion (packet 54)
 
-`DefaultGCodeSerializer::with_extrusion_mode(mode: ExtrusionMode) -> Self`
-where `ExtrusionMode { Absolute, Relative }`.
+`DefaultGCodeSerializer::with_extrusion_mode(relative: bool) -> Self`
+(`crates/slicer-gcode/src/serialize.rs`) — the bool selects the mode; there
+is no separate `ExtrusionMode` enum on the serializer.
 
-- Default is `Relative` (M83). The serializer emits `M82` / `M83` **once**
-  in the preamble and inserts `G92 E0` on mode transitions.
+- `true` = relative-E (`M83`); `false` = absolute-E (`M82`). Default is
+  `relative = true`. The serializer emits `M82` / `M83` when it encounters
+  the `ExtrusionMode` command in the stream (the emitter opens the stream
+  with it, once); raw `G92 E0` lines in the input are detected to keep the
+  serializer's E-accumulator in sync.
 - The config key `use_relative_e_distances` selects the default mode
   (`true` → Relative / M83, `false` → Absolute / M82). Modules typically
   do not need to override this — it is a printer-level setting resolved
@@ -1526,38 +1552,20 @@ where `ExtrusionMode { Absolute, Relative }`.
 
 ## SDK Versioning
 
-The SDK crate version tracks the WIT world version it targets:
+There is no single "world version" to track: since packet 164 (ADR-0045) every
+stage owns its own versioned WIT package (e.g. `slicer:layer-infill@1.0.0`),
+selected by `[stage].id` through the canonical `STAGES` table in
+`crates/slicer-schema/src/lib.rs`. The old monolithic tier worlds
+(`slicer:world-layer`, `slicer:world-prepass`, ...) no longer exist on disk;
+the legacy manifest `[module] wit-world` key is tolerated-and-ignored
+metadata (see `03_wit_and_manifest.md` § "Why `wit-world` is now legacy").
+The SDK crate itself is versioned independently (`slicer-sdk 0.1.0`).
 
-- `slicer-sdk 1.x` → targets `slicer:world-layer@1.x`
-- `slicer-sdk 2.x` → targets `slicer:world-layer@2.x` (breaking change)
-
-This mapping is documentation only — the world version is not encoded in the
-guest binary and nothing checks it at load.
-
-**Additive compatibility is not achievable in the current world layout, and this
-section previously promised it in error.** A guest built against an older world
-does **not** load on a newer host, for a structural reason:
-
-`LayerModule` gives default no-op bodies for all stage methods, so a module
-overrides only its own stage — but `#[slicer_module]` still emits WIT glue for
-*every* export in the world (the unimplemented ones collapse to `Ok(())`). It must:
-wasmtime's generated `Indices::new` resolves and typechecks **every** export
-declared in the world at instantiate time, eagerly, before any call. There is no
-such thing as an optional export — component-model `WIT.md` is explicit that
-`@since`/`@unstable` gates "are not represented in the component binary".
-
-The world is therefore an all-or-nothing contract: **any** change to **any** of its
-exports invalidates **every** guest binding to it, including guests whose stage was
-untouched. A perimeters module's `.wasm` is invalidated by an infill-postprocess
-signature change it will never call. "Additive minor bump" cannot mean anything
-here while that holds.
-
-The version also cannot gate the load: it is erased from the guest binary at
-compile time (see `docs/03` §"Why `wit-world` carries no version"). What actually
-rejects an incompatible guest is wasmtime's structural typecheck at first dispatch.
-
-The only route to genuine additive compatibility is **granularity**: one versioned
-interface per stage, exported separately and probed individually, so the version
-lands in the component's export names and wasmtime's semver matching (which
-resolves `@1.0.0` against `@1.1.0` via a truncated `@1` alternate key) can act on
-it. Until that lands, treat every world change as breaking for every module.
+Compatibility is enforced structurally, not by a version string: wasmtime
+typed instantiation checks the qualified per-stage package export
+(`slicer:<package>/<interface>@<version>#run`) against the guest component at
+first dispatch. The stage packages are additive-safe per stage — a change to
+`layer-infill`'s package invalidates only guests bound to that package, not
+the perimeters module the monolithic-world era's all-or-nothing contract
+used to sweep in. See `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`
+for the reasoning.

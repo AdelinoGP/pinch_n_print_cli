@@ -16,13 +16,13 @@ the vocabulary. IR struct fields are in `02_ir_schemas.md`; scheduler mechanics
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FRONTEND (separate process)                  │
-│              Communicates via CLI args / Unix socket            │
-│         Reads config schema API  |  Displays progress events    │
+│                 FRONTEND / CLI CONSUMER                         │
+│        Invokes `pnp_cli` and consumes stdout/stderr              │
+│         Queries config schemas | Displays progress events        │
 └─────────────────────────┬───────────────────────────────────────┘
-                          │ stdin/stdout or socket
+                          │ CLI arguments; G-code stdout; JSONL stderr
 ┌─────────────────────────▼───────────────────────────────────────┐
-│                     SLICER HOST (Rust binary)                   │
+│                     `pnp_cli` (Rust binary)                    │
 │                                                                 │
 │  ┌─────────────────┐  ┌──────────────────────────────────────┐  │
 │  │ Module Registry │  │           Execution Scheduler        │  │
@@ -40,10 +40,9 @@ the vocabulary. IR struct fields are in `02_ir_schemas.md`; scheduler mechanics
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │               ECS LAYER WORLD (per-layer)               │    │
-│  │  Entity: GlobalLayer(z)                                 │    │
-│  │Components:SlicePolygons │ PerimeterLoops │ InfillPaths  │    │
-│  │           SupportPaths │ NonPlanarFlag │ RegionOverride │    │
+│  │              PER-LAYER EXECUTION                        │    │
+│  │  One `LayerArena` per layer; stages run sequentially    │    │
+│  │  within a layer, while layers fan out through rayon.    │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 │  ┌──────────────────┐  ┌──────────────────────────────────┐     │
@@ -85,7 +84,7 @@ the authoritative normalized form).
 
 #### PrePass Stage Order
 
-Nine `PrePass::*` stages execute, in this order. The retired
+Ten `PrePass::*` stages are declared in the following scheduler order. The retired
 `PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
 `crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
 strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
@@ -101,25 +100,21 @@ corresponding module is loaded; the rest always run.
 7. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
 8. PrePass::PaintSegmentation    (host-built-in; reads the annotated SliceIR, writes via replace_slice_ir)
 9. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
+10. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
 ```
 
-**Note (packet 178):** `PrePass::SeamPlanning` now requires `SliceIR` and
+**Operational order:** `STAGE_ORDER` is the scheduler's validation and
+plan-grouping order. The runtime splits prepass execution around host-built-in
+prerequisites: it runs stages that do not require `RegionMapIR`, commits region
+mapping, slices the whole print, runs the dependent host built-ins, and then
+dispatches late stages such as seam planning. This is why the declared list is
+not a literal call trace. `PrePass::LightningTreeGen` runs after
+`SupportGeometry` and is skipped without a commit unless the resolved
+`sparse_fill_holder` is `lightning-infill`.
+
+**Note (packet 178):** `PrePass::SeamPlanning` requires `SliceIR` and
 `RegionMap` as prerequisites; the scheduler still routes it before `Layer::*`
-dispatch but may execute it after `PrePass::RegionMapping` and `PrePass::Slice`.
-
-The executed sequence above is the `run_builtin_stage` call chain in
-`slicer_runtime::prepass`. The declared stage list — `STAGE_ORDER` in
-`slicer_scheduler::execution_plan`, which the scheduler's validation passes use
-for ordering comparisons — contains the same stage ids but **not** in this
-sequence.
-
-<!-- VERIFY: STAGE_ORDER (slicer_scheduler::execution_plan) lists SeamPlanning and
-     PaintSegmentation before RegionMapping/Slice, and SupportGeometry last, which
-     does not match the prepass.rs execution chain documented above. Confirmed with
-     the maintainer (2026-07-17) as unintended divergence, i.e. a code defect rather
-     than a documented invariant — so this doc describes execution order only and
-     does not treat the declared order as normative. Remove this marker once
-     STAGE_ORDER is reordered to match. -->
+dispatch but only after those products are committed.
 
 Stages 1–2 are the classic mesh-analysis and layer-planning pipeline.
 `PrePass::SeamPlanning` (stage 3) is a guest stage claimed by
@@ -254,11 +249,18 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
            multi-layer organic tree-support planning: walks layers top-to-bottom,
            extracts contact points from overhang/bridge facets and SupportEnforcer
            paint, and propagates them through a per-layer Prim minimum spanning
-           tree (simplified port of OrcaSlicer `TreeSupport::drop_nodes`). Emits
-           per-(layer, object, region) branch geometry as `SupportPlanIR` that
-           `Layer::Support` modules consume directly when present. When no
-           support-planner module is installed only Phase 1 runs and
-           tree-support falls back to its per-layer grid-MST filler.
+            tree (simplified port of OrcaSlicer `TreeSupport::drop_nodes`). Emits
+            per-(layer, object, region) branch geometry as `SupportPlanIR` that
+            `Layer::Support` modules consume directly when present. When no
+            support-planner module is installed only Phase 1 runs and
+            tree-support falls back to its per-layer grid-MST filler.
+
+PrePass::LightningTreeGen  [host built-in; conditional]
+  Input:  SliceIR + LayerPlanIR + RegionMapIR + SurfaceClassificationIR
+  Output: LightningTreeIR (only when sparse_fill_holder = "lightning-infill")
+  Purpose: Build the print-wide lightning tree consumed by the lightning infill
+           module. When the resolved sparse-fill holder is not lightning, the
+           stage is skipped and the Blackboard slot remains empty.
 ```
 
 #### Variant-Chain Region Splitting
@@ -303,29 +305,27 @@ Catch-up behavior is computed in `PrePass::LayerPlanning` and is never recompute
 
 ### Tier 2 — Per-Layer (Parallel via rayon)
 
-Each layer runs independently. Layers share no mutable state. The Blackboard is read-only during this tier.
+Each layer runs independently. Layers share no mutable state. PrePass outputs
+on the Blackboard are read-only during this tier; each worker owns its
+per-layer `LayerArena` and returns one `LayerCollectionIR`.
 
 ```text
-Layer::Slice
-  Input:  MeshIR (immutable), LayerPlanIR (immutable)
-  Output: SliceIR
-  Purpose: Triangle/plane intersection. Loop chaining. Clipper union.
+Layer::PaintRegionAnnotation  [host hook; currently a no-op after PrePass annotation]
+  Input:  SliceIR (current layer)
+  Output: none in the host path
+  Purpose: Reserved stage boundary retained in the plan for paint-annotation
+           compatibility. `PrePass::PaintSegmentation` is the active producer
+           of variant geometry and `segment_annotations`.
 
 Layer::SlicePostProcess
   Input:  SliceIR
-          PaintRegionLayerView (read-only, from Blackboard)
   Output: SliceIR (modified)
   Purpose: Non-planar surface projection onto layer polygons.
            Sub-layer anti-aliasing vertex Z deformation.
            Modifier region polygon subtraction/addition.
-           PaintRegionAnnotator — reads paint region polygons from
-           SliceIR / RegionMapIR, performs point-in-polygon tests, and
-           writes segment_annotations onto SlicedRegion polygon contour
-           points. Runs last within this stage so all polygon modifications
-           are complete before annotation occurs.
 
 Layer::Perimeters
-   Input:  SliceIR (including segment_annotations from SlicePostProcess)
+   Input:  SliceIR (including paint data from PrePass::PaintSegmentation)
           PaintRegionLayerView (read-only, for paint-driven boundary detection)
   Output: PerimeterIR
    Purpose: Wall generation — `classic-perimeters` (fixed-width polygon
@@ -347,14 +347,14 @@ Layer::Perimeters
             actually closes M2's structural-parity claim — see
             the faithful graph-construction correction in
             `docs/DEVIATION_LOG.md`. The `wall_generator` config key
-           (`classic` default | `arachne`) selects which module wins the
-           shared `perimeter-generator` claim at module-load dedup time
+            (`classic` default | `arachne`) selects which module wins the
+            shared `perimeter-generator` claim at module-load dedup time
             (packet 112; see the wall-generator selection record in
             docs/DEVIATION_LOG.md). `arachne-perimeters` itself runs as a
-           WASM guest and cannot link the host-algos-gated Voronoi/
-           SkeletalTrapezoidation/BeadingStrategy code directly, so it calls
-           the real pipeline through a WIT host-service bridge,
-           `generate-arachne-walls` (mirrors the existing `medial-axis`
+            WASM guest and cannot link the host-algos-gated Voronoi/
+            SkeletalTrapezoidation/BeadingStrategy code directly, so it calls
+            the real pipeline through a WIT host-service bridge,
+            `generate-arachne-walls` (mirrors the existing `medial-axis`
             bridge; see the host-service bridge record).
            The perimeter module owns wall sequencing: it resolves the
            three-state `wall_sequence`, applies it to the finalized Arachne
@@ -453,7 +453,7 @@ Layer::PathOptimization
 
 Paint-dependent behavior follows this strict sequence:
 
-1. `Layer::SlicePostProcess` writes `SlicedRegion.segment_annotations` (runs after all polygon edits).
+1. `PrePass::PaintSegmentation` writes `SlicedRegion.segment_annotations` (and per-variant geometry) directly into the committed `SliceIR` during prepass — see `run_paint_annotation` in `crates/slicer-runtime/src/layer_executor.rs`, which is a no-op stub retained for plan wiring (the per-layer `Layer::PaintRegionAnnotation` stage is a reserved boundary; a WASM module claiming it runs instead of the host built-in).
 2. `Layer::Perimeters` maps segment annotations into `WallLoop.feature_flags` and boundary metadata.
 3. `Layer::PerimetersPostProcess` consumes `feature_flags` (for example `fuzzy_skin`) for selective effects.
 
@@ -685,7 +685,8 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
-| `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionLayerView`                                  | `SliceIR` (polygon edits, `segment_annotations`)                    |
+| `Layer::PaintRegionAnnotation` (host no-op) | `SliceIR` (current layer)                                      | none (reserved boundary; a WASM module claiming the stage runs instead of the host built-in) |
+| `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionLayerView`                                  | `SliceIR` (polygon edits)                                           |
 | `Layer::Perimeters`                      | `SliceIR`, `PaintRegionLayerView`                                  | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
 | `Layer::PerimetersPostProcess`           | `PerimeterIR`                                                      | `PerimeterIR` (seam/geometry refinements)                           |
 | `Layer::Infill`                          | `SliceIR` (infill areas and context)                               | `InfillIR`                                                          |
@@ -767,7 +768,11 @@ Host process memory layout:
 
 Per rayon thread (N threads, N ≤ CPU cores):
 ┌─────────────────────────────────────┐  ← allocated per layer, freed after
-│ LayerArena (bump allocator)         │
+│ LayerArena (plain struct of        │
+│  Option<IR> slots; see             │
+│  `LayerArena` in                    │
+│  crates/slicer-runtime/src/        │
+│  blackboard.rs)                    │
 │  SliceIR, PerimeterIR, InfillIR,    │
 │  SupportIR (intermediate, discarded │
 │  once LayerCollectionIR is built)   │
@@ -834,32 +839,28 @@ on write-after-`Ok` to keep the output path absent on cancel.
 
 Claims are named exclusive resource slots. They prevent two modules from both trying to generate perimeters (or infill, or supports) for the same region simultaneously.
 
-```text
-Built-in claim names:
-  perimeter-generator     — generates wall loops for a region
-  infill-generator        — generates infill paths for a region
-  support-generator       — generates support structures (Layer::Support)
-  support-planner         — plans multi-layer support branches in PrePass
-                            (PrePass::SupportGeometry; orthogonal to
-                            support-generator)
-  seam-placer             — resolves seam position
-  layer-planner           — contributes to Z-plane sequence
-  mesh-analyzer           — contributes to surface classification
-  slice-postprocessor     — post-processes slice polygons / paint annotation
-  gcode-postprocessor     — post-processes structured GCode commands
-  text-postprocessor      — post-processes serialized GCode text
-  gcode-emitter           — serializes GCodeIR to text (host-built-in, non-claimable)
-```
+The full known-claim catalog — including the four fill-role claims
+(`claim:top-fill` … `claim:sparse-fill`), `claim:raft-fill`, `claim:ironing`,
+and `claim:infill-link` — lives in `docs/03_wit_and_manifest.md` § "Known claim
+IDs". The legacy blanket claim `infill-generator` is **deprecated since
+2026-06-09 (DEV-065)**; in-tree infill modules declare the per-role claims
+instead. The `perimeter-generator` claim is resolved by the `wall_generator`
+config key (`classic` or `arachne`) rather than by alphabetical first-winner
+dedup — see `docs/04_host_scheduler.md` § "Claim Resolution with Runtime
+Disable Rules".
 
-A module may declare `holds = ["infill-generator"]`. Only one module per region may hold a given claim. If two modules both hold the same claim globally and no region override resolves the conflict, the host rejects the configuration at startup with a precise error.
+A module may declare `holds = ["<claim-id>"]`. Only one module per region may
+hold a given claim. If two modules both hold the same claim globally and no
+region override resolves the conflict, the host rejects the configuration at
+startup with a precise error.
 
-Region overrides allow different infill generators per region:
+Region overrides allow different claim holders per region:
 
 ```toml
 # In print config:
 [[region_override]]
 modifier_mesh = "vase_top_modifier.stl"
-module_overrides = { "infill-generator" = "com.community.gyroid-infill" }
+module_overrides = { "claim:sparse-fill" = "com.community.gyroid-infill" }
 ```
 
 ### Claim Conflict Resolution (Normative)
@@ -879,13 +880,13 @@ Determinism constraints:
 
 Worked example — valid:
 
-- Object A uses `com.core.gyroid` for `infill-generator` globally.
+- Object A uses `com.core.gyroid-infill` for `claim:sparse-fill` globally.
 - Region override on object top selects `com.community.tpms`.
 - Result: deterministic because each region resolves to one holder and the holder does not change across layers.
 
 Worked example — invalid:
 
-- Layer-range override selects `com.core.gyroid` for layers `0..49` and `com.community.tpms` for `47..99` on same object claim.
+- Layer-range override selects `com.core.gyroid-infill` for layers `0..49` and `com.community.tpms` for `47..99` on same object claim.
 - Result: rejected unless stage contract explicitly allows per-layer claim transitions.
 
 #### Allowed Claim Transition Matrix
@@ -894,7 +895,7 @@ Unless explicitly listed as transition-capable below, the claim holder must rema
 
 | Claim                 | Allowed per-layer transition | Notes                                                                                   |
 |-----------------------|------------------------------|-----------------------------------------------------------------------------------------|
-| `infill-generator`    | Yes                          | Region-local transitions allowed when layer-range overrides do not overlap ambiguously. |
+| `claim:sparse-fill`   | Yes                          | Region-local transitions allowed when layer-range overrides do not overlap ambiguously. |
 | `support-generator`   | Yes                          | Allowed for planned support strategy shifts across geometry phases.                     |
 | `support-planner`     | No                           | PrePass global planner must be unique and stable; multi-layer propagation requires a single holder. |
 | `perimeter-generator` | No                           | Must remain stable to preserve wall continuity assumptions.                             |

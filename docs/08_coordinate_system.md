@@ -17,14 +17,16 @@ live in the IR types.
 
 ## The Rule
 
-```text
-1 scaled integer unit = 100 nanometers = 10⁻⁴ mm
-Scaling factor: multiply millimeters by 10_000 to get units
-```
+One scaled integer unit is 100 nanometers (`10⁻⁴ mm`). Multiply millimeters by
+`10_000` to obtain units.
 
-This applies to **every** `Point2`, `Polygon`, `ExPolygon`, and any other 2D integer coordinate in the codebase. No exceptions.
+This applies to `Point2`, `Polygon`, `ExPolygon`, `BoundingBox2`, and other 2D
+integer geometry. `Point3` and other floating-point position types remain in
+millimeters.
 
-`f32` / `f64` fields (speeds, densities, layer heights) are always in **millimeters** unless the field name or doc comment says otherwise.
+Floating-point position and layer-height fields are in millimeters, speeds use
+their documented rate unit, and densities/factors are unitless unless the field
+name or doc comment says otherwise.
 
 ## Conversion & Determinism (Normative)
 
@@ -33,94 +35,111 @@ Canonical conversion rules:
 - mm → units: `units = round(mm * 10_000.0)` (round half away from zero).
 - units → mm: `mm = units / 10_000.0`.
 
-Determinism bounds:
+`UNITS_PER_MM`, `mm_to_units`, and `units_to_mm` are defined in
+`crates/slicer-ir/src/slice_ir.rs`. The SDK re-exports equivalent helpers from
+`crates/slicer-sdk/src/coords.rs`.
 
-- One conversion round-trip (`units -> mm -> units`) must be identity.
-- One float round-trip (`mm -> units -> mm`) has bounded error `<= 0.00005 mm`.
-- Any pipeline step that accumulates more than `0.001 mm` absolute error in one axis across one layer is a contract violation.
+The current implementations use `f32` at both conversion boundaries:
+`mm_to_units` rounds the scaled value before casting to `i64`, while
+`units_to_mm` casts the integer to `f32` before division. The integer grid gives
+a nominal maximum quantization error of half a unit (`0.00005 mm`) when the
+floating-point operations do not add a larger error.
+
+Do not treat either conversion as a universal exact round trip. In particular,
+`units_to_mm` narrows arbitrary `i64` values to `f32`. Retain integer units for
+exact geometry identity and convert to millimeters only at a float boundary.
+The existing `test_point2_coordinate_system` test in
+`crates/slicer-ir/tests/ir_tests.rs` checks representative values, but it does
+not establish a full-domain error bound or an accumulated per-layer budget.
 
 ## Z-Axis Convention (Normative)
 
-- `z` and all layer-height values are stored and exchanged as millimeter floats (`f32`/`f64`) in IR and WIT.
+- `z` and all layer-height values are stored and exchanged as millimeter floats (`f32`/`f64`) in IR and WIT; the WIT geometry and prepass records are defined in `crates/slicer-schema/wit/deps/types.wit` and `crates/slicer-schema/wit/deps/prepass-types.wit`.
 - X/Y polygonal geometry uses scaled integers; Z does not.
 - Any module converting Z to scaled integer units for internal math must convert back to mm before writing IR.
-- `catchup_z_bottom` and `effective_layer_height` must remain finite, non-negative, and deterministic under the rounding policy in § "Conversion & Determinism (Normative)" above.
+- Layer-plan output validates `z` as finite and non-negative and
+  `effective_layer_height` as finite and positive at the host boundary. Z is
+  not rounded through `mm_to_units`; catch-up layers use the
+  `catchup_z_bottom`/`effective_layer_height` envelope defined by the layer
+  IR.
 
-## Transform Application (Normative — packet 10; load-time baking per packets 75 / 166)
+## Transform Application (Normative)
 
-The build-item/object transform **is** baked into mesh vertices at load time.
-Every loader path (STL, OBJ, 3MF) constructs `ObjectMesh` via
-`assemble_object` (`crates/slicer-model-io/src/loader.rs`), which leaves
-`ObjectMesh.transform` set to **identity** (see docs/02 § "`ObjectMesh` Assembly
-Contract"); the vertices it receives are already in baked space, so object-local
-and world coordinates coincide for loaded models.
+For loaded models, 3MF build-item and component transforms are baked into mesh
+vertices and paint-stroke vertices before `assemble_object` constructs the
+`ObjectMesh`. STL and OBJ geometry has no input object transform. All three
+loader paths use `assemble_object` in `crates/slicer-model-io/src/loader.rs`,
+which stores an identity `ObjectMesh.transform`; loaded vertices therefore
+already represent world-space coordinates. See the `ObjectMesh` Assembly
+Contract in `docs/02_ir_schemas.md`.
 
 The host-service transform machinery below still exists and **does** apply a
 non-identity `ObjectMesh.transform` when one is present (exercised directly by
-`object_bounds_transform_tdd` / `raycast_z_down_transformed_object_tdd`, which
-inject non-identity transforms). For models produced by the loaders it is a
-no-op because the stored transform is identity.
+`crates/slicer-wasm-host/tests/unit/object_bounds_transform_tdd.rs` and
+`crates/slicer-wasm-host/tests/unit/raycast_z_down_transformed_object_tdd.rs`).
+For models produced by the loaders it is a no-op because the stored transform
+is identity.
 
 Conventions:
 
-- **Layout:** column-major `f64[16]`. Translation occupies indices `12`, `13`,
-  `14` (column 3). The fourth row is `[0, 0, 0, 1]` (no projective component).
-- **World-space Z is canonical for layer planning.** Object-local Z is never
-  used by `PrePass::LayerPlanning` or the per-layer Z dispatch. Modules that
-  need world Z must query via `host_services::object_bounds(object_id)` or
-  `raycast_z_down`; the host applies the transform during the query.
-- **Z extents:** if a transformed object has `z_max <= z_min`
-  (degenerate / inside-out / non-finite), `object_world_z_extent(object_id)`
-  returns `None` and the object contributes zero layers. This is not an
-  error — it surfaces as a slicing warning in the per-object diagnostics.
-- **Scale constraints:** non-uniform scale is **supported** — it is baked
-  per-axis into the mesh vertices at load time. Packet 166 deleted the former
-  `validate_non_uniform_scale` guard and its `NON_UNIFORM_SCALE_UNSUPPORTED`
-  error; there is no scale-uniformity gate. Mirroring (negative scale) is
-  likewise baked into the vertices.
-- **Floor enforcement:** if the transformed object's `z_min < 0.0` after the
-  build-plate floor adjustment, the host emits fatal `WORLD_Z_BELOW_FLOOR
-  { object_id, z_min }` — slicing below the build plate is never permitted.
+- **Layout:** `Transform3d.matrix` is a column-major `f64[16]`. For the affine
+  3MF transforms parsed by the loader, translation occupies indices `12`, `13`,
+  and `14`. The host transform helper also handles a non-unit homogeneous `w`.
+- **World-space Z is canonical for planning and slicing.** Mesh analysis,
+  layer slicing, `object_bounds`, and `raycast_z_down` apply the object
+  transform. Modules that need world Z should use the host services rather
+  than reimplementing transform math.
+- **Z extents:** `object_world_z_extent` in
+  `crates/slicer-model-io/src/loader.rs` returns `None` for an empty,
+  non-finite, or degenerate extent (`z_max <= z_min`). The default layer
+  planner skips objects with no positive queried height and fails with
+  `no objects with positive height` if none remain; this is not a warning-only
+  path.
+- **Scale constraints:** non-uniform and negative scale are accepted by the
+  transform paths. 3MF transforms are baked per-axis into mesh and paint data;
+  host consumers apply the full transform for `ObjectMesh` values that retain
+  one.
+- **Floor validation:** when `validate_world_z_floor` in
+  `crates/slicer-model-io/src/loader.rs` returns
+  `ModelLoadError::WorldZBelowFloor` because the computed world-space `z_min`
+  is below `0.0 mm`, the validator rejects the object. It does not perform an
+  automatic floor adjustment.
 
-## F-Token Formatting Convention (Normative — packet 52)
+## F-Token Formatting Convention (Normative)
 
-G-code F tokens are emitted in **mm/min**, not mm/s, matching OrcaSlicer's
-wire format. Internally, every speed field in IR (`ExtrusionPath3D.speed`,
-`ConfigView`'s `*_speed` keys, `TravelMove.speed`) is stored in **mm/s**.
+G-code F tokens are emitted in **mm/min**, not mm/s, matching the configured
+wire format. Internally, documented base speeds and feed-rate overrides are in
+**mm/s**; `ExtrusionPath3D.speed_factor` is unitless. `TravelMove.f` and
+retraction speed fields carry the same mm/s convention.
 
 The conversion to mm/min happens inside `DefaultGCodeEmitter::resolve_feedrate`
-(`crates/slicer-gcode/src/emit.rs`) — that function returns a mm/min value ready
-for `F{:.0}` serialization. Modules must always work in mm/s; emitting mm/min
-internally is a contract violation that double-scales at the boundary.
+(`crates/slicer-gcode/src/emit.rs`). Modules must work in mm/s; emitting mm/min
+internally would double-scale at the boundary.
 
-### Speed-factor clamp (Normative — Packet 52)
+### Speed-factor clamp (Normative)
 
 `ExtrusionPath3D.speed_factor: f32` is a per-move multiplier applied at
 F-token emission. `resolve_feedrate` clamps it to **`[0.05, 5.0]`** before
-multiplying by the role-resolved base speed. The clamp rejects pathological
-values (0.0 would emit `F0`; negative or NaN values would silently produce
-wrong feedrates). OrcaSlicer parity confirmed against
-`GCodeWriter::set_speed`.
+multiplying by the role-resolved base speed.
 
 ---
 
-## PaintStroke Vertex Conversion (Normative — packet 50a)
+## PaintStroke Vertex Coordinates (Normative)
 
 `PaintLayer.strokes` is populated only for subdivided 3MF facets. The 3MF
-document supplies `<triangle>` vertices in **millimetres**, but
-`PaintStroke.triangles: Vec<[Point3; 3]>` carries vertices in
-**slicer units (1 unit = 100 nm)**. The 3MF loader applies `mm_to_units()`
-to every component before committing the stroke. Forgetting this conversion
-produces coordinates 10,000× too large — a silent contract violation that
-would propagate through every downstream stage that consumes
-`PaintLayer.strokes` (paint segmentation, region mapping).
+document supplies `<triangle>` vertices in **millimetres**. `Point3` in
+`crates/slicer-ir/src/slice_ir.rs` is the IR millimeter type, and
+`PaintStroke.triangles` carries those millimeter values;
+it does not carry scaled integer units. `decode_strokes_for_channel` in
+`crates/slicer-model-io/src/loader.rs` copies the decoded `Point3` vertices into
+the stroke, while `apply_transform_to_paint_data` applies any 3MF transform in
+the same millimeter representation.
 
-The `mm_to_units()` helper lives in `slicer-ir`
-(`crates/slicer-ir/src/slice_ir.rs`) and is re-exported through the SDK's
-`slicer_sdk::coords`. Tests covering the 3MF subdivision parser pin the
-conversion explicitly; any future format that surfaces strokes in millimetres
-must apply the same conversion at the loader boundary, never at consumption
-time.
+The previous documentation claim that the loader applied `mm_to_units()` to
+strokes was stale. No such conversion occurs in the current loader, and
+downstream paint consumers must therefore treat stroke vertices as world-space
+millimeter `Point3` values. The WIT `paint-stroke-view` uses the same `point3`
+contract in `crates/slicer-schema/wit/deps/prepass-types.wit`.
 
 ---
 
@@ -129,34 +148,33 @@ time.
 | Real-world value               | In Pinch 'n Print units |
 | ------------------------------ | ---------------------- |
 | 1 mm                           | 10_000                 |
-| 0.4 mm (nozzle diameter)       | 4_000                  |
-| 0.2 mm (layer height)          | 2_000                  |
-| 0.1 mm (min feature size)      | 1_000                  |
-| 0.01 mm (hardware step)        | 100                    |
-| 220 mm (typical build plate X) | 2_200_000              |
-| 1 nm (resolution floor)        | 0.01 → rounds to 0     |
+| 0.4 mm (example width)         | 4_000                  |
+| 0.2 mm (example layer height)  | 2_000                  |
+| 0.1 mm (example feature size)  | 1_000                  |
+| 0.01 mm (example increment)    | 100                    |
+| 220 mm (example build plate X) | 2_200_000              |
+| 1 nm (below one unit)          | 0.01 → rounds to 0     |
 
-The smallest representable move is 100 nm. No FDM printer can position a nozzle more precisely than ~10,000 nm (10 µm), so this gives 100× more precision than any hardware can use — intentionally.
+The smallest representable scaled-integer move is 100 nm.
 
 ---
 
 ## Why Not OrcaSlicer's Coordinate System?
 
-OrcaSlicer (and PrusaSlicer) use:
-
-```text
-1 unit = 1 nanometer = 10⁻⁶ mm
-Scaling factor: 1_000_000
-```
+OrcaSlicer uses 1 unit = 1 nanometer = `10⁻⁶ mm`, with a scaling factor of
+`1_000_000`. This distinction is also recorded in `docs/02_ir_schemas.md`.
 
 **We do not use this.** The reasons:
 
 1. A 20 mm square in OrcaSlicer has corners at `(20_000_000, 20_000_000)`.
    In Pinch 'n Print those corners are at `(200_000, 200_000)` — 100× smaller, readable at a glance in test output and debuggers.
 
-2. Nanometer precision serves no physical purpose in FDM. The bead width is ~400,000 nm. The hardware step ceiling is ~10,000 nm.
+2. A 100 nm grid avoids carrying two extra decimal places of integer magnitude
+   for this project's geometry contract.
 
-3. 100 nm is a clean decimal step between OrcaSlicer's 1 nm and micrometer (1,000 nm). The conversion factor between the two systems is exactly 100, which makes porting arithmetic trivial.
+3. 100 nm is a clean decimal step between OrcaSlicer's 1 nm and a micrometer
+   (1,000 nm). The conversion factor between the two systems is exactly 100,
+   which makes porting arithmetic straightforward.
 
 4. Range is not a concern. `Point2` stores `i64`, but even a hypothetical `i32`
    (max 2,147,483,647) would cover a build plate of 214,748 mm — about 214
@@ -167,119 +185,59 @@ Scaling factor: 1_000_000
 
 ## Conversion When Porting OrcaSlicer Code
 
-When you port an algorithm from `OrcaSlicer_Documented/` and it contains scaled-integer coordinates or constants, apply this conversion:
-
-```text
-Pinch 'n Print_units = OrcaSlicer_units / 100
-OrcaSlicer_units = Pinch 'n Print_units * 100
-```
+When you port an algorithm from an OrcaSlicer checkout and it contains
+scaled-integer coordinates or constants, divide linear OrcaSlicer units by
+`100` for Pinch 'n Print units. Convert in the other direction by multiplying
+by `100`.
 
 ### Common Constants
 
 | OrcaSlicer constant     | OrcaSlicer value | Pinch 'n Print value        |
 | ----------------------- | ---------------- | -------------------------- |
-| `SCALED_EPSILON`        | 1                | — (do not port; see below) |
 | `scale_(1.0)` (1mm)     | 1_000_000        | 10_000                     |
 | `scale_(0.4)` (0.4mm)   | 400_000          | 4_000                      |
 | `scale_(0.05)` (0.05mm) | 50_000           | 500                        |
 | `scale_(0.01)` (0.01mm) | 10_000           | 100                        |
-| `CLIPPER_OFFSET_SCALE`  | 100_000          | 1_000                      |
 
 ### `SCALED_EPSILON` Warning
 
-OrcaSlicer's `SCALED_EPSILON = 1` (1 nm) is used throughout its codebase as a near-zero tolerance for polygon operations. **Do not port this value.**
-
-In Pinch 'n Print, our unit is 100 nm, so a direct port would give `SCALED_EPSILON = 1` meaning 100 nm, which is 100× larger than intended.
-
-Use a Pinch 'n Print constant instead. The convention is:
-
-```rust
-// SCALED_EPSILON: i64 = 1;  // 1 unit = 100 nm
-// Equivalent to OrcaSlicer's SCALED_EPSILON of 1 (1 nm) divided by 100,
-// then rounded up to nearest integer = 1. Effectively the same tolerance
-// at our precision floor.
-```
-
-<!-- VERIFY: at the time of writing, there is no canonical `SCALED_EPSILON`
-     constant exported from `crates/slicer-core/src/`. Choose or introduce
-     the appropriate named constant in the consuming crate (see "Named
-     epsilon constants" below) rather than re-using a bare `SCALED_EPSILON`. -->
-
-If you find yourself tempted to use `100` as an epsilon "to match OrcaSlicer",
-you are off by a factor of 100. The correct epsilon is `1`.
+Do not port `SCALED_EPSILON` by name. This workspace has no single exported
+constant with that contract; current callers use algorithm-specific values,
+including `SCALED_EPSILON_SQ` in `crates/slicer-core/src/medial_axis.rs` and
+`MIN_SEGMENT_LENGTH` in
+`crates/slicer-core/src/algos/paint_segmentation/colorize.rs`.
+First identify whether an upstream value is a linear distance, a squared
+distance, an area, or a unitless tolerance. A 1 nm linear threshold is below
+the Pinch 'n Print resolution and cannot be represented exactly as an integer
+unit; it must not be silently relabeled as equivalent to one 100 nm unit.
 
 ---
 
 ## Constant Conversion Table
 
-Every OrcaSlicer constant divides by 100 when ported to Pinch 'n Print because
-1 Pinch 'n Print unit = 100 nm (10⁻⁴ mm), whereas OrcaSlicer uses 1 nm = 1 unit.
-The table below is sourced from `docs/specs/_OLD/orca-paint-segmentation-parity.md` §5 (superseded spec, retained for the constants table).
+The dimensional conversion rules are:
 
-| Constant | OrcaSlicer value (1 nm units) | Pinch 'n Print value (100 nm units) | Note |
-|----------|------------------------------|-------------------------------------|------|
-| `SCALED_EPSILON` | ~100 | 1 | Minimum representable offset |
-| EdgeGrid `cell_size` | `scale(10 mm)` ≈ 10,000,000 | 100,000 | 10 mm cell side |
-| `append_threshold` | `50 * SCALED_EPSILON` ≈ 5,000 | 50 | Max distance for line-to-contour projection |
-| Collinearity angle | 30° | 30° | Max deviation from parallel (unitless) |
-| Gap merge threshold | `scale(0.1 mm)` ≈ 100,000 | 1,000 | Merge same-color adjacent segments |
-| Color island filter | `scale(0.2 mm)` ≈ 200,000 | 2,000 | Absorb isolated short color islands |
-| Phase 1 expansion | `10 * SCALED_EPSILON` ≈ 1,000 | 10 | Offset before `union_ex` |
-| Phase 1 simplification | `5 * SCALED_EPSILON` ≈ 500 | 5 | Simplify after contraction |
-| Small polygon filter | `scale²(0.1 mm)` ≈ 10¹⁰ | 1,000,000 sq units | ~0.01 mm² |
-| Phase 2 bbox offset | `20 * SCALED_EPSILON` ≈ 2,000 | 20 | Enlarge bbox for adjacent layers |
-| Horizontal threshold | — | 0.001 mm | Z extent below this → horizontal face |
-| Z-filter epsilon | — | 0.001 mm | Tolerance for Z-range layer inclusion |
-| VD vertex merge | `SCALED_EPSILON` ≈ 100 | 1 | Near-duplicate Voronoi vertex merge radius |
-| `cos²(30°)` | ~0.75 | ~0.75 | Pre-filter for collinearity (unitless) |
+| Quantity | Conversion from OrcaSlicer units | Pinch 'n Print rule |
+|----------|----------------------------------|--------------------|
+| Linear length or distance | Divide by `100` | Round if an integer unit is required |
+| Squared length or area | Divide by `10_000` | Preserve the squared-unit meaning |
+| Angle or other unitless value | No scale conversion | Keep unchanged |
+| Z coordinate | Not a scaled integer in this workspace | Keep in millimeters |
 
 ---
 
 ## SDK Helpers
 
 Never write raw scaling arithmetic in module code. Use the SDK helpers:
-
-```rust
-use slicer_sdk::coords::{mm_to_units, units_to_mm, SCALING_FACTOR};
-
-// Convert mm → units
-let width_units: i64 = mm_to_units(0.4);    // = 4_000
-let height_units: i64 = mm_to_units(1.2);   // = 12_000
-
-// Convert units → mm
-let width_mm: f32 = units_to_mm(4_000);     // = 0.4
-
-// The scaling factor itself, if you need it
-assert_eq!(SCALING_FACTOR, 10_000_i64);
-```
-
-The implementations are trivial but centralizing them means a future
-precision change (if ever warranted) is a one-line fix in one file. The
-root constant is `slicer_ir::UNITS_PER_MM` (`crates/slicer-ir/src/slice_ir.rs`);
-the SDK's `SCALING_FACTOR` delegates to it, so slicer-ir is the single place
-to change:
-
-```rust
-// crates/slicer-ir/src/slice_ir.rs — the single authoritative source
-pub const UNITS_PER_MM: f64 = 10_000.0;
-
-// crates/slicer-sdk/src/coords.rs — delegates, never diverges
-pub const SCALING_FACTOR: i64 = slicer_ir::UNITS_PER_MM as i64;
-
-#[inline(always)]
-pub fn mm_to_units(mm: f32) -> i64 {
-    (mm * SCALING_FACTOR as f32).round() as i64
-}
-
-#[inline(always)]
-pub fn units_to_mm(units: i64) -> f32 {
-    units as f32 / SCALING_FACTOR as f32
-}
-```
+`mm_to_units`, `units_to_mm`, and `SCALING_FACTOR` are available from
+`slicer_sdk::coords`; their implementation is in
+`crates/slicer-sdk/src/coords.rs`. The authoritative root constant is
+`slicer_ir::UNITS_PER_MM` in `crates/slicer-ir/src/slice_ir.rs`, and the SDK
+factor delegates to it.
 
 ---
 
-## Newtype Wrapper
+## Point2 Wrapper
 
 `Point2` (`crates/slicer-ir/src/slice_ir.rs`) holds two `i64` scaled-integer
 fields (`x`, `y`), each `1 unit = 100 nm`. Its canonical constructors keep raw
@@ -296,61 +254,32 @@ replaced with `Point2::from_mm(20.0, 20.0)`.
 
 ## Clipper2 Integration
 
-Clipper2 accepts 64-bit integers natively. No intermediate scaling is needed when passing Pinch 'n Print coordinates to Clipper2.
-
-The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i64). At our scaling factor of 10_000, a 1-meter build plate is 10_000_000 units — well within safe range. No overflow guards are needed for realistic print geometries.
+`polygon_ops` in `crates/slicer-core/src/polygon_ops.rs` passes Pinch 'n Print
+`Point2` coordinates to `clipper2-rust` as native 64-bit integer paths. No
+additional scaling is needed at that boundary.
 
 ---
 
 ## Epsilon Multipliers — The Primary Porting Hazard
 
-`SCALED_EPSILON` itself ports correctly (OrcaSlicer value 1 → Pinch 'n Print value 1, meaning 1nm → 100nm, still well below hardware resolution). The danger is every place OrcaSlicer writes `SCALED_EPSILON * N`:
-
-| OrcaSlicer expression   | OrcaSlicer meaning | Naive Pinch 'n Print port           | Correct Pinch 'n Print value     |
-| ----------------------- | ------------------ | ---------------------------------- | ------------------------------- |
-| `SCALED_EPSILON * 1`    | 1nm                | 100nm ✓                            | `POINT_COINCIDENCE_EPSILON = 1` |
-| `SCALED_EPSILON * 10`   | 10nm               | 1µm ✓                              | `MIN_SEGMENT_LENGTH = 10`       |
-| `SCALED_EPSILON * 100`  | 100nm              | 10µm ⚠️ hardware boundary          | use named constant              |
-| `SCALED_EPSILON * 1000` | 1µm                | 100µm ✗ quarter nozzle width       | use named constant              |
-| `SCALED_EPSILON²`       | 1nm²               | 10,000nm² ✓ coincidentally correct | `MIN_POLYGON_AREA`              |
-
-**Rule: Never port `SCALED_EPSILON * N` directly.**
-
-Every multiplied epsilon usage must be replaced with a named constant in the consuming crate (typically `slicer-core` or `slicer-helpers`) that documents the physical meaning. If the right named constant does not exist, add it with a full comment before using it. A PR containing `SCALED_EPSILON * N` for any N > 1 should be rejected in code review.
-
-<!-- Geometry utilities live across `crates/slicer-core/src/`:
-     `geometry.rs` (ray-cast/closest-point API, added packet 103),
-     `aabb_tree.rs`, `polygon_ops.rs`, `polygon_tree.rs`, `medial_axis.rs`,
-     and `triangle_mesh_slicer.rs`. (`aabb_lines_2d.rs` was relocated into the
-     overhang-classifier-default guest in packet 88; `paint_region.rs` was
-     deleted in packet 95.) Place new named epsilons next to the code that
-     consumes them and re-export from `slicer_core::lib` if widely shared. -->
-
-Suggested named epsilons and their physical meanings (define when first needed):
-
-```rust
-pub const POINT_COINCIDENCE_EPSILON: i64 = 1;       // 100 nm  — coincident point merge threshold
-pub const MIN_SEGMENT_LENGTH:        i64 = 10;      // 1 µm    — degenerate edge collapse threshold
-pub const MIN_POLYGON_AREA:          i64 = 250_000; // 50 µm²  — degenerate polygon discard
-pub const MIN_PRINTABLE_WIDTH:       i64 = 100;     // 10 µm   — Arachne minimum bead width
-```
+Do not multiply or copy an upstream epsilon by name without checking its
+dimension. Convert linear distances by `100`, squared distances and areas by
+`10_000`, and leave unitless tolerances unchanged. Keep the resulting
+algorithm-specific constant next to the code that consumes it; do not invent a
+workspace-wide epsilon contract in this document.
 
 ---
 
 ## Porting Checklist
 
-When porting any file from `OrcaSlicer_Documented/`:
+When porting any file from an OrcaSlicer checkout:
 
 - [ ] Identify every integer coordinate constant in the file
-- [ ] Divide each by 100 to get the Pinch 'n Print equivalent
+- [ ] Divide linear constants by 100; divide squared lengths and areas by 10,000
 - [ ] Replace `scale_(x)` calls with `mm_to_units(x)`
 - [ ] Replace `unscale(x)` calls with `units_to_mm(x)`
-- [ ] Do NOT port `SCALED_EPSILON` directly — use Pinch 'n Print's constant
-- [ ] Do NOT port `SCALED_EPSILON * N` for any N > 1 — define or re-use a named constant in the consuming `slicer-core` / `slicer-helpers` module instead
+- [ ] Do NOT port `SCALED_EPSILON` by name; verify the consuming algorithm's dimensional meaning
 - [ ] If the ported logic uses Z, verify Z remains in millimeters and is not accidentally scaled like X/Y
-- [ ] Add a porting comment at the top of the new file:
-      `// Ported from OrcaSlicer_Documented/src/libslic3r/XYZ.cpp`
-      `// Coordinate constants divided by 100 (OrcaSlicer: 1nm, Pinch 'n Print: 100nm)`
+- [ ] Add the standard porting header from `docs/ORCASLICER_ATTRIBUTION.md` and identify the original source path
 - [ ] Write a unit test that cross-checks a known OrcaSlicer output value against the ported function with coordinates divided by 100
-- [ ] Add a round-trip assertion for representative values:
-      `units_to_mm(mm_to_units(v)) ~= v` for each critical constant `v`
+- [ ] Test representative conversion values with a tolerance appropriate to their float boundary; do not assume universal identity

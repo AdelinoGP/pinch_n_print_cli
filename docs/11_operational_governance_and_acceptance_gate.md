@@ -20,7 +20,7 @@ Use this checklist when introducing a new module, changing claim ownership, or c
 
 - Module manifest has unique reverse-domain ID.
 - `claims.holds`, `claims.requires`, `compatibility.incompatible-with`, and `compatibility.requires` are declared.
-- `wit-world`, `min-host-version`, `min-ir-schema`, and `max-ir-schema` are set.
+- `min-host-version`, `min-ir-schema`, and `max-ir-schema` are set (see §2 below for what each enforces).
 - Declared `ir-access.reads`/`writes` are least-privilege and validated.
 - New/changed config keys are namespaced and documented.
 
@@ -40,7 +40,7 @@ Use this checklist when introducing a new module, changing claim ownership, or c
 ### D. User-facing requirements
 
 - Migration notes include config changes and any claim conflicts users may encounter.
-- `slicer validate` reports actionable remediation for conflicts.
+- `pnp_cli module diagnose` reports actionable remediation for conflicts.
 - Frontend warning text exists for degraded success (`degraded=true`).
 
 ---
@@ -50,7 +50,7 @@ Use this checklist when introducing a new module, changing claim ownership, or c
 Compatibility decisions must use all four dimensions:
 
 1. Host semver (`min-host-version`)
-2. WIT world compatibility (package name; unversioned — see `docs/03` §"Why `wit-world` carries no version")
+2. WIT world compatibility (package name; unversioned — see `docs/03_wit_and_manifest.md` §"Why `wit-world` is now legacy")
 3. IR schema range (`min-ir-schema <= host < max-ir-schema`)
 4. Manifest schema compatibility
 
@@ -64,19 +64,26 @@ Compatibility decisions must use all four dimensions:
 - **WIT world versions are advisory.** They are erased from guest binaries at
   compile time, so no check anywhere compares them; they document intent in the
   `.wit` `package` line only. Do not treat a minor world bump as a compatibility
-  guarantee: every world change is currently breaking for every module bound to
-  that world (`docs/05` §SDK Versioning). IR schema versions (dimension 3) *are*
-  enforced, fatally, at startup.
+  guarantee: since packet 164 (ADR-0045) compatibility is enforced
+  *structurally* — wasmtime typed instantiation checks the qualified per-stage
+  package export against the guest component at first dispatch, so a change to
+  one stage's package invalidates only guests bound to that package (see
+  `docs/05_module_sdk.md` §SDK Versioning). IR schema versions (dimension 3)
+  *are* compared as versions, fatally, at startup.
 - Host must reject incompatible modules at startup with explicit diagnostics.
 - Compatibility shims are allowed only for one major host line and must be documented.
 - Host semver (dimension 1) is enforced: startup DAG validation pass 14 (`HostVersionCompatibility`, `crates/slicer-scheduler/src/validation.rs`) compares each loaded module's declared `min-host-version` against the running host version and fails fatally (`SchedulerError::HostVersionIncompatible`) if the host is older than required — see `docs/04_host_scheduler.md` §"Validation Passes (in order)" pass 14. Closes DEV-026 gap (1).
 
 ### Required startup diagnostics
 
-- Expected vs actual host version
-- Expected vs actual WIT world version
-- Expected IR range vs host IR version
+- Expected vs actual host version (dimension 1 — pass 14 `HostVersionCompatibility`)
+- Expected IR range vs host IR version (dimension 3 — pass 6 `IrVersionCompatibility`)
 - First blocking symbol/path causing incompatibility
+
+There is no expected-vs-actual *WIT world version* diagnostic: world versions
+are erased from guest binaries and no check compares them (see above).
+Incompatibilities at the WIT boundary surface instead as typed-instantiation
+failures at first dispatch, naming the mismatched package/export.
 
 ### CLI output wire contracts
 
@@ -177,7 +184,7 @@ No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critic
 
 - Architecture Acceptance Gate result recorded in implementation status.
 - No unresolved critical deviations.
-- **Packets that modify seam-candidate generation, perimeter emission, or wall-loop content MUST include the executor test bucket (`cargo test -p slicer-runtime --test executor`) in their closure §Verification commands**, in addition to the named integration/unit tests targeting the packet's own ACs. A narrow-scope closure gate can miss regressions in fixture-driven executor tests (e.g. `cube_4color`) that exercise the same emission path — this rule was added retroactively after packet 108's closure gate missed 13 broken `cube_4color` executor tests.
+- **Packets that modify seam-candidate generation, perimeter emission, or wall-loop content MUST include the executor test bucket (`cargo test -p slicer-runtime --test executor`) in their closure §Verification commands**, in addition to the named integration/unit tests targeting the packet's own ACs. A narrow-scope closure gate can miss regressions in fixture-driven executor tests (e.g. `cube_4color`) that exercise the same emission path. <!-- VERIFY: the specific historical attribution ("added retroactively after packet 108's closure gate missed 13 broken `cube_4color` executor tests") is not recoverable from current sources — packet 108's archived spec (`docs/spec_packets/_OLD/108_perimeter-special-modes-and-seam.md`) does not record executor-bucket failures, and no other doc names the count. The rule itself stands on the verified principle that executor-bucket tests exercise the same emission paths a narrow closure gate skips. -->
 - Scenario traces from `10_scenario_traces.md` validated against current implementation.
 - Compatibility matrix checks executed on representative module set.
 - Performance and memory targets re-verified on reference fixture set.

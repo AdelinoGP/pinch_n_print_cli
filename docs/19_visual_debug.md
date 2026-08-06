@@ -4,7 +4,8 @@
 a `manifest.json` index for selected pipeline stages and layers. It is intended
 for geometry-defect investigation, not timing or module-DAG analysis.
 
-The complete design contract is `docs/specs/visual-pipeline-debug.md`.
+The complete design contract is `docs/specs/_OLD/visual-pipeline-debug.md`
+(archived superseded spec, retained for the design write-up).
 
 ## When To Use It
 
@@ -36,7 +37,7 @@ is one of:
   `"layers": [0, { "start": 12, "end": 15 }]`; the range object rejects
   unknown fields rather than silently parsing as an empty detail;
 - a z-only detail selector that resolves to the layer at a printed Z (exact
-  shape in `docs/specs/visual-pipeline-debug.md` and the validator).
+  shape in `docs/specs/_OLD/visual-pipeline-debug.md` and the validator).
 
 Layers are anonymous — there is no name selector. Selection **fails closed**:
 an unknown visualization kind, a legacy composited `diagnostic_overlay` on a
@@ -170,7 +171,7 @@ extrusion-width sweeps; `diagnostic_overlay` adds stage-specific labels.
 ### Tap Classes And Execution Closure
 
 `visual-debug` supports the full "Stage Tap Inventory" of
-`docs/specs/visual-pipeline-debug.md`, not only the per-layer stages. The taps
+`docs/specs/_OLD/visual-pipeline-debug.md`, not only the per-layer stages. The taps
 fall into three capture classes with distinct execution closures; the
 manifest's `executed_stage_ids` and `executed_layer_indices` record exactly
 what ran for the selected taps:

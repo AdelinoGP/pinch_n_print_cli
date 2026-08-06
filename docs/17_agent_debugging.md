@@ -8,7 +8,7 @@ The mechanisms are zero-dependency CLI extensions to `pnp_cli`:
 
 | Capability                            | Command                             | Notes                                                  |
 |---------------------------------------|-------------------------------------|--------------------------------------------------------|
-| Live per-stage / per-module timing    | `pnp_cli slice --instrument-stderr` | Emits the instrumented event stream (schema `"1.2.0"`); composable with `--report`. |
+| Live per-stage / per-module timing    | `pnp_cli slice --instrument-stderr` | Emits the instrumented event stream (schema `"1.5.0"` — see `09_progress_events.md`); composable with `--report`. |
 | Sub-module cost attribution           | `pnp_cli slice --profile`           | Fuel per module *and per scope*; ranked table on stderr. |
 | Re-read a profile capture             | `pnp_cli profile --from <jsonl>`    | No re-slice. Same table, from an existing capture.     |
 | Stage / module / claim introspection  | `pnp_cli dag <subcommand>`          | Manifest TOML only — no WASM compilation.              |
@@ -24,7 +24,7 @@ remains the surface for timing, DAG, and manifest diagnosis.
 
 ```
 pnp_cli slice \
-    --model resources/benchy.stl \
+    --model resources/regression_wedge.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
     --instrument-stderr 2> /tmp/events.jsonl
@@ -54,7 +54,7 @@ pass both flags:
 
 ```
 pnp_cli slice \
-    --model resources/benchy.stl --module-dir modules/core-modules \
+    --model resources/regression_wedge.stl --module-dir modules/core-modules \
     --output /tmp/out.gcode --instrument-stderr --report /tmp/report.html
 ```
 
@@ -66,7 +66,7 @@ Design and rationale: `docs/adr/0055-fuel-based-module-profiling.md`.
 
 ```
 pnp_cli slice \
-    --model resources/benchy.stl \
+    --model resources/regression_wedge.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
     --profile 2> /tmp/profile.jsonl
@@ -138,13 +138,14 @@ Reading it:
 
 ### `--profile-verbose`
 
-Aggregation is the default: a 0.2 mm benchy emits thousands of
+Aggregation is the default: a 0.2 mm slice of a typical fixture emits thousands of
 `module_complete` events, and hanging a scope array off each of them would force
 every consumer to write a reducer before reading anything. `--profile-verbose`
 is the opt-in for the opposite question — *which single call* was pathological —
 and mirrors `--report-verbose`. It attaches one call's fold to each
-`module_complete` as `profile_scopes`, and requires `--instrument-stderr` to be
-visible (that is the tier which emits `module_complete` at all):
+`module_complete` as `profile_scopes`, and needs the instrumented tier
+(`--instrument-stderr`) to be the visible stream — the Core tier emits no
+`module_complete`, so the parked detail would never be claimed:
 
 ```
 pnp_cli slice … --profile --profile-verbose --instrument-stderr 2> /tmp/p.jsonl
@@ -156,7 +157,9 @@ jq -c 'select(.profile_scopes.scopes | length > 0)
 ### JSONL surface (schema `1.5.0`)
 
 Additive on top of `1.4.0`; a consumer that ignores unknown event types and
-unknown keys is unaffected.
+unknown keys is unaffected. `PROGRESS_EVENT_SCHEMA_VERSION` (see
+`crates/slicer-runtime/src/progress_events.rs` and `09_progress_events.md`)
+is the single source for the current value.
 
 - `profile_summary` — exactly one per profiled slice, emitted at slice end and
   strictly **before** `slice_stats` / `slice_complete`, so a consumer that stops
@@ -248,10 +251,11 @@ stdout. Exit codes:
 - `1` — at least one `error`-level diagnostic. This includes an unreadable
   `--module-dir` root (nonexistent, permission denied, not a directory):
   that root is skipped and reported as an `error`-level diagnostic naming
-  it, not a hard failure — other roots are still scanned.
-- `2` — a malformed manifest **file** inside an otherwise-readable root
-  (bad TOML, schema violation, missing companion `.wasm`); `load_modules_from_roots`
-  returned `LoadError`.
+  it, not a hard failure — other roots are still scanned (`discover_manifest_paths`
+  failure is pushed into the report's diagnostics and scanning continues).
+- `2` — the module loader itself failed at a hard boundary (`load_modules_from_roots`
+  returned `LoadError` — e.g. a malformed manifest **file** with bad TOML or a
+  missing companion `.wasm`); the command prints the error to stderr and exits.
 
 ```
 pnp_cli module diagnose --module-dir modules/core-modules

@@ -161,7 +161,13 @@ Fixes non-manifold geometry in imported meshes so the slicer pipeline always rec
 
 **Phase 1 — Degenerate triangle removal**
 
-A triangle is degenerate if its area is below `1e-8` square internal units (approximately 1 nm² in real space). Degenerate triangles are removed before any other operation because they poison normal computation.
+A triangle is degenerate if the squared magnitude of its edge-vector cross
+product is below `2e-16` (the code's `is_degenerate` predicate in
+`crates/slicer-helpers/src/repair.rs`). This is a near-zero-area test on the
+mesh's native `f32` mm coordinates; it is not tied to the 100 nm integer-unit
+system described in `docs/08_coordinate_system.md`, which does not apply to
+`MeshIR` storage. Degenerate triangles are removed before any other operation
+because they poison normal computation.
 
 Criterion: `||(v1 - v0).cross(v2 - v0)||² < 2e-16`
 
@@ -242,7 +248,7 @@ Reduces triangle count via quadric error metric (QEM) edge collapse. Used to red
 
 ### Library: `meshopt`
 
-Decimation is implemented via the `meshopt` crate (Rust bindings to meshoptimizer), which provides `simplify` (quality-preserving) and `simplify_sloppy` (faster, aggressive) functions. `meshopt` was chosen over a custom QEM implementation because:
+Decimation is implemented via the `meshopt` crate (Rust bindings to meshoptimizer), which provides `simplify_decoder` (quality-preserving) and `simplify_sloppy_decoder` (faster, aggressive) functions. `meshopt` was chosen over a custom QEM implementation because:
 
 - Battle-tested in game engine production use cases
 - The `simplify` function implements the same Garland-Heckbert QEM algorithm used in OrcaSlicer's `QuadricEdgeCollapse.cpp`
@@ -252,7 +258,7 @@ Decimation is implemented via the `meshopt` crate (Rust bindings to meshoptimize
 ### Algorithm
 
 1. Convert `MeshIR` vertices and indices into `meshopt`'s flat `f32` vertex buffer and `u32` index buffer.
-2. Call `meshopt::simplify` with `target_count` and `target_error` derived from CLI arguments.
+2. Call `meshopt::simplify_decoder` (or `simplify_sloppy_decoder` with `aggressive`) with `target_count` and `target_error` derived from CLI arguments. Note that meshopt's target count is in *indices*, so the CLI's triangle target is multiplied by 3 before the call.
 3. Reconstruct a `MeshIR` from the simplified buffers.
 4. Run a single pass of Phase 2 (orientation normalization) from the repair module to correct any winding inconsistencies introduced by edge collapse.
 
@@ -269,7 +275,7 @@ normalised before downstream consumers see the result.
 | `target_count` | `usize` | —       | Absolute target triangle count. Mutually exclusive with `target_ratio`.                                    |
 | `target_ratio` | `f32`   | —       | Fraction of original count to retain (0.0–1.0). Mutually exclusive with `target_count`.                    |
 | `max_error`    | `f32`   | `0.01`  | Maximum allowed quadric error in internal units. Decimation stops early if this would be exceeded.         |
-| `aggressive`   | `bool`  | `false` | Use `simplify_sloppy` instead of `simplify`. Faster but may produce lower-quality results near boundaries. |
+| `aggressive`   | `bool`  | `false` | Use `simplify_sloppy_decoder` instead of `simplify_decoder`. Faster but may produce lower-quality results near boundaries. |
 
 Exactly one of `target_count` or `target_ratio` must be specified. Construct
 `DecimateConfig` via [`DecimateConfigBuilder`]; `build()` validates the
@@ -375,22 +381,30 @@ unit normalization             — read LENGTH_UNIT from STEP header,
        │                         apply conversion factor to all vertices
        ▼
 robust_triangulation()        — tessellate each B-Rep shell into
-       │                         indexed triangle mesh; tolerance = 100 nm
+        │                         indexed triangle mesh; two-pass tolerance
+        │                         (see "Tessellation Tolerance" below)
        ▼
 component merging              — if STEP file contains multiple solids,
        │                         each becomes a separate MeshIR (array output)
        ▼
-repair pass                    — Phase 1 + Phase 2 of mesh repair applied
-       │                         to each component automatically
-       ▼
+repair pass                    — the full `repair()` pipeline (all three
+        │                         phases: degenerate removal, orientation,
+        │                         open-edge closure) applied per component
+        ▼
 Vec<MeshIR>                   — one MeshIR per solid in the STEP file
 ```
 
 ### Tessellation Tolerance
 
-The triangulation tolerance passed to `robust_triangulation` (truck-meshalgo) is fixed at **100 nm** (1 internal unit). This matches the coordinate system resolution and ensures no geometric detail finer than 1 internal unit is lost during tessellation.
+Tessellation uses a two-pass tolerance scheme in `crates/slicer-helpers/src/import/step.rs`:
 
-Finer tolerances produce more triangles without slicing benefit. Coarser tolerances may lose sharp edges on small features. The value is not user-configurable at the CLI level; use `pnp_cli mesh decimate` afterward to reduce triangle count if needed.
+1. A coarse pass with `INITIAL_TESSELLATION_TOL = 0.01` (in the STEP file's native
+   units) to measure the shell's bounding-box diagonal.
+2. A refined pass with tolerance `diag * RELATIVE_TOL` where `RELATIVE_TOL = 0.001`
+   (bounded below by `1e-9`), so the mesh resolution scales with part size.
+
+The tolerance is not user-configurable at the CLI level; use
+`pnp_cli mesh decimate` afterward to reduce triangle count if needed.
 
 ### Output
 
@@ -402,7 +416,7 @@ pub struct StepImportResult {
 }
 
 pub struct NamedMesh {
-    pub name: Option<String>,   // STEP entity label if present
+    pub name: Option<String>,   // STEP entity label if present; always `None` today (verified: every construction site sets `name: None`)
     pub mesh: MeshIR,
 }
 
@@ -433,7 +447,7 @@ See rustdoc for exact signatures. The surface (re-exported from
   **Contract:** `import_step(path)` is exactly
   `import_step_with_options(path, StepImportOptions::default())`; the only option
   today is `skip_repair` (backs the CLI `--no-repair` flag), which suppresses the
-  automatic Phase 1+2 repair pass applied to each tessellated component.
+  automatic full `repair()` pass applied to each tessellated component.
 
 ### CLI Subcommand: `pnp_cli mesh import`
 
@@ -451,6 +465,8 @@ Options:
                       solids and --merge-components is not set, output path is
                       used as a stem: <stem>_0.<ext>, <stem>_1.<ext>, etc.,
                       where <ext> is taken from the supplied --output extension.
+                      Exception: with `--output-format 3mf`, all solids are
+                      combined into ONE package containing N `<object>` entries.
   --output-format     Output format (default: stl; obj and 3mf are fully
                       operational — see §Mesh output writers)
   --merge-components  Merge all solids into a single MeshIR before output
@@ -502,15 +518,17 @@ Warnings are **not** errors. Operations that produce warnings still return `Ok(r
 
 ## Mesh output writers (OBJ / 3MF)
 
-Both writers live in `crates/slicer-model-io/src/writer.rs` and serialize `MeshIR` to geometry-only wire formats. They do not touch the WASM runtime or the slicing pipeline.
+Both writers live in `crates/slicer-model-io/src/writer.rs` (re-exported from
+the `slicer-model-io` crate root) and serialize `MeshIR` to geometry-only wire
+formats. They do not touch the WASM runtime or the slicing pipeline.
 
 ### Public API
 
-See rustdoc (`cargo doc -p slicer-runtime`) for exact signatures:
+See rustdoc (`cargo doc -p slicer-model-io`) for exact signatures:
 
-- `slicer_runtime::model_writer::write_obj(mesh, writer)` — serialize a `MeshIR`
+- `slicer_model_io::write_obj(mesh, writer)` — serialize a `MeshIR`
   as a Wavefront OBJ (`writer: &mut impl Write`).
-- `slicer_runtime::model_writer::write_3mf(mesh, writer)` — serialize a `MeshIR`
+- `slicer_model_io::write_3mf(mesh, writer)` — serialize a `MeshIR`
   as an OrcaSlicer-shaped OPC 3MF package (`writer: impl Write + Seek`).
 
 Both return `std::io::Result<()>`. They do not touch the WASM runtime or the
@@ -518,7 +536,10 @@ slicing pipeline.
 
 ### OBJ format
 
-`write_obj` emits a minimal Wavefront OBJ: one `v x y z` line per vertex (millimetres, shortest round-trip f32 representation) and one `f i j k` line per triangle (1-based). No material, texture, or normal lines are emitted.
+`write_obj` emits a minimal Wavefront OBJ: one `o <object-id>` group line per
+`MeshIR` object, one `v x y z` line per vertex (millimetres, shortest round-trip
+f32 representation) and one `f i j k` line per triangle (1-based, global across
+the file per OBJ convention). No material, texture, or normal lines are emitted.
 
 ### 3MF format
 
@@ -533,7 +554,7 @@ slicing pipeline.
 
 One `<object type="model">` element is emitted per `MeshIR` object, followed by a `<build><item>` entry using the identity transform `1 0 0 0 1 0 0 0 1 0 0 0`. Vertices are emitted in millimetres as-is — no unit conversion is applied, consistent with how `MeshIR` stores coordinates.
 
-**Round-trip guarantee.** Vertex coordinates are serialized using shortest-round-trip f32 formatting so that `load_3mf → write_3mf → load_3mf` produces bit-exact vertex values.
+**Round-trip guarantee.** Vertex coordinates are serialized using shortest-round-trip f32 formatting (Rust's default float `Display`) so that `load_3mf → write_3mf → load_3mf` produces bit-exact vertex values.
 
 **Paint and region data** (OrcaSlicer face-paint layers, support-enforcer volumes) are GUI-authored and are intentionally out of scope. The sidecar skeleton is included for OrcaSlicer compatibility but carries no annotations.
 
@@ -557,13 +578,12 @@ pnp_cli mesh convert --input <path>
 
 Options:
   --input            Input mesh file (STL, OBJ, or 3MF)
-  --output           Output path; used as a stem when multiple components are
-                     written (<stem>_0.<ext>, <stem>_1.<ext>, …)
+  --output           Output path. When splitting, components are written as
+                     objects into ONE output file (see "Splitting behaviour")
   --output-format    Output format; default inferred from --output extension
   --format           Alias for --output-format
-  --merge-components Write all components as a single output object instead of
-                     splitting into N files
-  --repair           Run the standard repair pass on each component before writing
+  --merge-components Keep each input object's mesh whole (no splitting)
+  --repair           Run the standard repair pass before splitting/writing
 ```
 
 (`mesh convert` does not emit `--stats` events; that flag exists on `mesh
@@ -573,25 +593,37 @@ repair`, `mesh decimate`, and `mesh import` only.)
 
 Connected-component detection uses OrcaSlicer's `its_split` adjacency model: two triangles belong to the same component if they share an edge **and** their shared-edge windings are opposite (i.e. normal manifold adjacency). No area or volume threshold is applied — a single isolated triangle becomes its own component.
 
-Unless `--merge-components` is passed, each component is written to a separate file. With `--merge-components` all components are merged into one `MeshIR` before the write step.
+Each input `ObjectMesh`'s triangle set is split into connected components,
+and each component becomes one output `ObjectMesh` (named `<stem>_<i>` for
+multi-component inputs, `<stem>` for single-component ones) inside a single
+`MeshIR` written to `--output`. With `--merge-components`, the input objects
+are written as-is (no splitting).
 
 ### `.step` / `.stp` inputs are rejected
 
-`mesh convert` does not accept STEP inputs. Passing a `.step` or `.stp` file exits with code `UNREADABLE` and a message directing the user to `pnp_cli mesh import`, which handles STEP tessellation.
+`mesh convert` does not accept STEP inputs. Passing a `.step` or `.stp` file exits with code 2 and a message directing the user to `pnp_cli mesh import`, which handles STEP tessellation.
 
 ### Relationship to `mesh import`
 
-`pnp_cli mesh import --output-format 3mf` (without `--merge-components`) now combines all STEP solids from the source file into a **single** `.3mf` package containing N `<object>` entries — one per solid. STL and OBJ inputs routed through `mesh convert` keep the per-file `_i` split behaviour described above.
+`pnp_cli mesh import --output-format 3mf` (without `--merge-components`)
+combines all STEP solids from the source file into a **single** `.3mf`
+package containing N `<object>` entries — one per solid. STEP inputs routed
+through `mesh import` with other output formats instead follow the per-file
+`_i` split behaviour (`<stem>_0.<ext>`, `<stem>_1.<ext>`, …), matching the
+`derive_indexed_output` naming in `crates/pnp-cli/src/helpers_cmd.rs`. STL/OBJ
+inputs have no `mesh import` path (it accepts only `.step`/`.stp`) and go
+through `mesh convert`.
 
 Exit codes:
 
 | Code         | Meaning                                               |
 |--------------|-------------------------------------------------------|
 | 0            | All components written successfully                   |
-| 1            | Partial success; some components produced warnings    |
-| `UNREADABLE` | Input format not supported (e.g. `.step`/`.stp`)      |
-| 2            | Input file not found or unreadable                    |
-| 3            | Input contains no geometry                            |
+| 2            | Input format not supported (e.g. `.step`/`.stp`) or input unreadable |
+| 3            | Input contains no geometry / zero triangles           |
+
+(`mesh convert` has no warning/partial-success path: it does not accept
+`--stats`, so its only outcomes are success or an error code.)
 
 ---
 
@@ -645,7 +677,7 @@ Tests must be written and confirmed failing before any implementation begins. Ea
 | `repair_normalizes_flipped_face`      | Cube with one face winding reversed | `stats.faces_reoriented >= 1`, output is manifold                       |
 | `repair_closes_open_edge`             | Cube with one face removed          | `stats.open_edges_closed > 0`, output is closed                         |
 | `repair_noop_on_clean_mesh`           | Valid cube mesh                     | All stats == 0, output identical to input                               |
-| `repair_large_cap_loop_warning`       | Mesh with 300-vertex open boundary  | `RepairWarning::LargeCapLoop` present, `repaired == false` on component |
+| `repair_large_cap_loop_warning`       | Mesh with 300-vertex open boundary  | `RepairWarning::LargeCapLoop` present in `stats.warnings` (the warning vector is the sole indicator of an incompletely-repaired mesh; there is no per-component boolean) |
 
 ### `tests/decimate_tdd.rs`
 
