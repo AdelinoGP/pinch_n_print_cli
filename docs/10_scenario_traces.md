@@ -62,7 +62,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes` in `crates/slicer-model-io/src/loader.rs`), before PrePass.
 2. `PrePass::PaintSegmentation` writes per-variant polygons into `SliceIR` (via `replace_slice_ir` on the blackboard), carrying each semantic's `paint_order` for overlap resolution.
-3. `Layer::SlicePostProcess` annotates `SlicedRegion.segment_annotations` after polygon edits.
+3. `PrePass::PaintSegmentation` writes `SlicedRegion.segment_annotations` (and per-variant geometry) directly into the committed `SliceIR` during prepass; the per-layer `Layer::PaintRegionAnnotation` stage is a reserved boundary whose host built-in is a no-op stub (`run_paint_annotation` in `crates/slicer-runtime/src/layer_executor.rs`).
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.
 5. `Layer::PerimetersPostProcess` applies perpendicular XY fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
 6. `Layer::Support` applies support precedence: blocker over enforcer.
