@@ -1,6 +1,12 @@
 //! Host-side test support: locating the `pnp_cli` binary and asserting it is
 //! not stale before a test, bench, or integration harness spawns it.
 //!
+//! **This crate's name says what it does: it is the `pnp_cli` locator.** It is
+//! *not* general test support — that lives guest-side in
+//! `slicer_sdk::test_support` (ADR-0004). The former name `slicer-test-support`
+//! was deliberately retired because it read as a sibling of the guest-side
+//! surface.
+//!
 //! **Home decision: see `docs/adr/0054-host-side-test-support-crate.md`
 //! (ADR-0054).** That ADR fixes three rules this crate must keep:
 //!
@@ -25,7 +31,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Canonicalized workspace root (the parent of `crates/`).
 ///
 /// Derived from this crate's own `CARGO_MANIFEST_DIR`
-/// (`<root>/crates/slicer-test-support`), so two `parent()` levels reach the
+/// (`<root>/crates/pnp-cli-locator`), so two `parent()` levels reach the
 /// workspace root regardless of which crate's test is calling.
 pub fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -26,10 +26,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use slicer_test_support::pnp_cli_bin;
+use pnp_cli_locator::pnp_cli_bin;
 
 /// Workspace root, uncanonicalized (unlike
-/// `slicer_test_support::workspace_root`), because the paths derived from it
+/// `pnp_cli_locator::workspace_root`), because the paths derived from it
 /// are passed straight to the `pnp_cli` subprocess as arguments.
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

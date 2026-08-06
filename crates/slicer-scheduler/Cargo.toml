@@ -16,7 +16,7 @@ directories = "6"
 [dev-dependencies]
 tempfile = "3"
 serde_json = "1.0"
-slicer-test-support = { path = "../slicer-test-support" }
+pnp-cli-locator = { path = "../pnp-cli-locator" }
 
 # Unique test binary names so they don't collide with slicer-runtime's
 # `contract`/`integration`/`unit` buckets in target/debug/deps/ during a

@@ -10,19 +10,19 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use pnp_cli_locator::pnp_cli_bin;
 use serde_json::Value;
-use slicer_test_support::pnp_cli_bin;
 
 // The pnp_cli locator, its staleness scan, and the panic wording all live in
-// the shared `slicer-test-support` crate now (ADR-0054); see
-// `slicer_test_support::pnp_cli_bin`. It panics loudly when the binary is
+// the shared `pnp-cli-locator` crate now (ADR-0054); see
+// `pnp_cli_locator::pnp_cli_bin`. It panics loudly when the binary is
 // absent or older than `crates/*/src/**` - there is no release/debug fallback
 // probe - and the panic names the remedy `cargo build -p pnp-cli`, because a
 // narrow `cargo test -p slicer-scheduler` does not rebuild another package's
 // binary.
 
 /// Repo root, deliberately **not** canonicalized — do not replace this with the
-/// shared `slicer_test_support::workspace_root`, which does canonicalize.
+/// shared `pnp_cli_locator::workspace_root`, which does canonicalize.
 ///
 /// This value flows through [`core_modules_path`] into the `--module-dir`
 /// argv of a spawned `pnp_cli`. On Windows `std::fs::canonicalize` returns a

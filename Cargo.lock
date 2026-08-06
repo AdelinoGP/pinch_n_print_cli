@@ -2364,6 +2364,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pnp-cli-locator"
+version = "0.1.0"
+
+[[package]]
 name = "portable-atomic"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3206,6 +3210,7 @@ dependencies = [
  "lightning-infill",
  "log",
  "png",
+ "pnp-cli-locator",
  "postcard",
  "predicates",
  "rayon",
@@ -3222,7 +3227,6 @@ dependencies = [
  "slicer-scheduler",
  "slicer-schema",
  "slicer-sdk",
- "slicer-test-support",
  "slicer-wasm-host",
  "stl_io",
  "tempfile",
@@ -3240,11 +3244,11 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "log",
+ "pnp-cli-locator",
  "serde",
  "serde_json",
  "slicer-ir",
  "slicer-schema",
- "slicer-test-support",
  "tempfile",
  "toml 0.8.23",
 ]
@@ -3265,10 +3269,6 @@ dependencies = [
  "slicer-sdk",
  "wit-bindgen 0.57.1",
 ]
-
-[[package]]
-name = "slicer-test-support"
-version = "0.1.0"
 
 [[package]]
 name = "slicer-wasm-host"

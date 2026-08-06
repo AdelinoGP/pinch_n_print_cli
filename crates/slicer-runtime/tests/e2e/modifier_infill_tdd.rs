@@ -34,7 +34,7 @@
 //!   `cargo test -p slicer-runtime --test e2e -- modifier_infill_two_densities`
 //!   `cargo test -p slicer-runtime --test e2e -- modifier_infill_boundary_anchoring`
 
-use slicer_test_support::pnp_cli_bin;
+use pnp_cli_locator::pnp_cli_bin;
 use std::path::PathBuf;
 use std::process::Command;
 

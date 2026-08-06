@@ -10,7 +10,7 @@
 //! Authoritative pipe command:
 //!   `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report`
 
-use slicer_test_support::pnp_cli_bin;
+use pnp_cli_locator::pnp_cli_bin;
 use std::path::PathBuf;
 use std::process::Command;
 

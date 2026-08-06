@@ -32,14 +32,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// The `pnp_cli` locator and its staleness gate live in `slicer-test-support`
+/// The `pnp_cli` locator and its staleness gate live in `pnp-cli-locator`
 /// (ADR-0054), not here. Re-exported so every existing
 /// `common::slicer_cache::{pnp_cli_bin, staleness_reason}` import keeps
 /// resolving through this module unchanged. `pnp_cli_bin` is used below by
 /// [`run_pnp_cli_uncached`]; `staleness_reason` is re-exported for
 /// `tests/integration/pnp_cli_freshness_tdd.rs`. `newest_source_mtime` is not
 /// re-exported — nothing consumes it through this module; import it from
-/// `slicer_test_support` directly if a future caller needs it.
+/// `pnp_cli_locator` directly if a future caller needs it.
 ///
 /// `allow(unused_imports)` is load-bearing, not decorative: this module is
 /// `#[path]`-included into several test binaries, and most of them
@@ -48,7 +48,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// re-export is genuinely unused there and `-D warnings` rejects the build
 /// without this. Same reason the module carries a blanket `allow(dead_code)`.
 #[allow(unused_imports)]
-pub use slicer_test_support::{pnp_cli_bin, staleness_reason};
+pub use pnp_cli_locator::{pnp_cli_bin, staleness_reason};
 
 /// Discriminator for `--module-dir` scenarios. Each variant maps to a
 /// stable list of paths the cache feeds the binary as repeated
@@ -115,10 +115,10 @@ static MODULE_DIR_PATHS: OnceLock<Mutex<HashMap<ModuleDirKind, Vec<PathBuf>>>> =
 
 /// Canonicalized repo root (parent of `crates/`).
 ///
-/// Thin wrapper over `slicer_test_support::workspace_root`, which canonicalizes
+/// Thin wrapper over `pnp_cli_locator::workspace_root`, which canonicalizes
 /// the same way the previous local copy did.
 pub fn repo_root() -> PathBuf {
-    slicer_test_support::workspace_root()
+    pnp_cli_locator::workspace_root()
 }
 
 pub fn fixture_stl() -> PathBuf {

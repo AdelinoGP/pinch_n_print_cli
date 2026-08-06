@@ -1,4 +1,4 @@
-# ADR-0054 — Host-side test support lives in a std-only `slicer-test-support` crate
+# ADR-0054 — Host-side test support lives in a std-only `pnp-cli-locator` crate
 
 <!-- filename: 0054-host-side-test-support-crate -->
 
@@ -6,6 +6,13 @@
 
 Accepted (2026-07-31). Resolves the `[FWD]` open question packet 162 left open
 when it fixed the `pnp_cli` staleness trap in place rather than extracting it.
+
+> **Rename note (2026-08-05):** the crate was created as `slicer-test-support`
+> and renamed to **`pnp-cli-locator`** in the same session it shipped. The
+> old name read as a sibling of `slicer_sdk::test_support` (ADR-0004), which
+> it is not: it does one job, freshness-gated location of the `pnp_cli`
+> binary. References below use the current name. The rename is cosmetic —
+> the crate, its four functions, and this ADR's constraints are unchanged.
 
 ## Context
 
@@ -48,7 +55,7 @@ These were **strictly worse than group A**, in two independent ways:
 Both groups also shared a third latent bug that the extraction fixes: the
 per-site form hardcoded `<root>/target/`, so any build honouring
 `CARGO_TARGET_DIR` put the binary somewhere these helpers would never look.
-`pnp_cli_bin` in `crates/slicer-test-support` derives the profile directory from
+`pnp_cli_bin` in `crates/pnp-cli-locator` derives the profile directory from
 `std::env::current_exe()` instead, which is correct under any target directory
 and any profile.
 
@@ -81,7 +88,7 @@ there is nothing for a test target to `use`.
 ## Decision
 
 Host-side test support lives in a new workspace member,
-**`crates/slicer-test-support`**, with these constraints:
+**`crates/pnp-cli-locator`**, with these constraints:
 
 1. **std-only.** The crate declares no `[dependencies]` at all. Everything it
    needs (`std::fs`, `std::path`, `std::time`, `std::env`) is in the standard
@@ -174,6 +181,6 @@ Packet 162's three-site census (its AC-8 and `design.md`'s "spawn site N of 3",
 deliberately scoped to the sites that already had a freshness gate) is
 **historical scope**, not the current count. It was superseded by this ADR's
 seven-site record (above) and by packet 165's shared-crate extraction into
-`slicer-test-support`. When packet 162 is archived to `_OLD`, readers should
+`pnp-cli-locator`. When packet 162 is archived to `_OLD`, readers should
 treat ADR-0054 as authoritative for lookup-site counts; packet 162's
 `[FWD]` in `design.md` §Open Questions resolves here.

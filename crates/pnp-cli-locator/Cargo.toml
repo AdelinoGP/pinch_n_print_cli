@@ -1,5 +1,5 @@
 [package]
-name = "slicer-test-support"
+name = "pnp-cli-locator"
 version = "0.1.0"
 edition = "2021"
 authors = ["Pinch 'n Print Team"]
