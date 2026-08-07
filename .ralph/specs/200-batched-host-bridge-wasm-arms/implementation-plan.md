@@ -65,7 +65,7 @@
 - Postcondition: AC-2 grep passes; all SDK native suites green with updated call arity; `cargo xtask build-guests` rebuilds all guests and `--check` reports clean.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-sdk/src/host.rs` — wrapper bodies and mini-world templates only (≈ 120–500 and 850–899)
-  - `crates/slicer-sdk/src/host_batch.rs` — whole file (469 lines; marshal-helper template)
+  - `crates/slicer-sdk/src/host_batch.rs` — whole file (marshal-helper template)
   - `crates/slicer-schema/wit/deps/common.wit` — whole file (copy source for the inline world)
   - `crates/slicer-sdk/tests/host_wrappers_tdd.rs`, `crates/slicer-sdk/tests/smoke.rs` — whole files (arity fallout)
 - Files allowed to edit (at most 3):
@@ -94,7 +94,7 @@
 - Precondition: Step 3 exit met; guests fresh.
 - Postcondition: `host_bridge_roundtrip` and `host_bridge_unknown_object_errs` tests pass under the real WASM dispatch path.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — whole file (harness to mirror: `cube_mesh` builds object id `"cube"` with a top plate; `blackboard_with_layer_plan`)
+  - `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — whole file (harness *shape* to mirror: `cube_mesh`, `blackboard_with_layer_plan`). **Do not reuse `cube_mesh`'s geometry.** Despite its name it builds a degenerate flat quad — four `Point3` vertices all at z = 0, x/y ∈ {0, 10}, `indices: vec![0, 1, 2, 0, 2, 3]` — so a downward raycast finds no top face. (The `10.0` in that fixture is the x/y extent, not a height.) AC-3 needs a **solid** mesh whose top face sits at world z = 10.0 for object id `"cube"`; build one in the new test. If the assertion comes back `None` or `0.0`, the mesh is wrong — never relax the AC-3 tolerance to accommodate it.
   - `crates/slicer-wasm-host/test-guests/sdk-support-diagnostic-guest/` — both files (guest scaffolding template incl. `[workspace]` sentinel)
   - `xtask/src/build_guests.rs` — `discover_guests` only (≈ lines 108–290)
 - Files allowed to edit (at most 3):

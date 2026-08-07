@@ -43,7 +43,7 @@ The invariant that makes editions meaningful is ADR-0056's consequence: *an edit
 ## Authoritative Docs
 
 - `docs/adr/0057-three-editions-and-integrated-tier.md` — short; direct read.
-- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read; §2 and §Consequences.
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read; Decision item 2 and §Consequences.
 - `docs/adr/0014-xtask-guest-discovery-via-validated-filesystem-walk.md` — short; direct read.
 - `docs/01_system_architecture.md` — large; ranged read of §"Producing the tier-4 layout: `cargo xtask dist`" only, located by heading text. Delegate anything else.
 - `CONTEXT.md` — delegate a `FACT` lookup of the terms **Edition**, **Integrated module**, **External module**; never load the file.

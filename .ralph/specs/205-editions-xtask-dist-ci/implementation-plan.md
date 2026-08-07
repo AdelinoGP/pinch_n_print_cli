@@ -80,7 +80,7 @@
 - Files allowed to read, with ranges when over 300 lines:
   - `xtask/src/dist.rs` — whole file
   - `crates/pnp-cli/Cargo.toml` — whole file, for the `[features]` table shape `pnp_cli_integrated_features` parses
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` — §2 and §Consequences only
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` — Decision item 2 and §Consequences only
 - Files allowed to edit (at most 3):
   - `xtask/src/dist.rs`
 - Files explicitly out of bounds:
@@ -90,7 +90,7 @@
   - Question: does `cargo test -p xtask dist_` pass, and if not what is the assertion? scope: repo root; return: `FACT` pass/fail with ≤20 lines on failure
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` — §Consequences' "an edition must never stage an external copy of a module it integrates"; §2 for why (tier 5 + first-root-wins)
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` — §Consequences' "an edition must never stage an external copy of a module it integrates"; Decision item 2 for why (tier 5 + first-root-wins)
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo test -p xtask dist_disjointness_rejects_integrated_module_in_staged_set` — FACT pass/fail
@@ -123,7 +123,7 @@
 - Verification:
   - `sh -c 'set -e; for m in $(rg -o "\"[a-z0-9-]+\"" dist/editions.toml | tr -d "\"" | sort -u); do rg -q "^integrated-$m *=" crates/pnp-cli/Cargo.toml || echo "absent: $m"; done; echo DONE'` — FACT: the only `absent:` lines may be names that are not in `hybrid.integrated_modules` (the grep is deliberately over-broad; reconcile against the Step-4 dispatch `FACT`)
   - `cargo check -p pnp-cli --all-targets` — FACT pass/fail
-- Exit condition: every Hybrid module has a passthrough feature whose body names the `slicer-integrated-modules` feature of the identical name, and `cargo check -p pnp-cli --all-targets` passes with and without those features. If any Hybrid name has no matching `slicer-integrated-modules` feature, STOP — packet 204's registry and `dist/editions.toml` disagree, which is a 204 defect, not something to paper over here.
+- Exit condition: every Hybrid module has a passthrough feature whose body names the `slicer-integrated-modules` feature of the identical name, and `cargo check -p pnp-cli --all-targets` passes with and without those features. If any Hybrid name has no matching `slicer-integrated-modules` feature, STOP. Attribute correctly: the registry crate's per-module cargo features are **packet 201's** surface (its `design.md` §Code Change Surface item 4, locked to the bare module-directory name); `dist/editions.toml` and its `hybrid.integrated_modules` list are **packet 204's**. A mismatch is a defect in whichever of the two disagrees with the other — never something to paper over here by renaming this packet's passthrough.
 
 ### Step 5: Rewrite `dist_command`, wire the subcommand, add `--plan`
 
@@ -240,7 +240,7 @@ Split before activation if aggregate cost exceeds M or any step is L. Aggregate:
 - Re-dispatch every pipe-suffixed AC (AC-1 … AC-9, AC-N1 … AC-N4) and the three packet-level gate commands. AC-9 returning `SKIP` is acceptable only if AC-3 passes and `preflight_edition` reports full coverage; a `SKIP` alongside an incomplete registry means the gate is not firing.
 - Run `cargo xtask build-guests --check` immediately before the AC-5 re-run; a `STALE:` report invalidates the artifact proof.
 - This packet closes the plan's final queue row. Report the exports listed in `packet.spec.md` §Prerequisites so a future phase-4 platform-build packet can consume the plan-resolution surface without re-deriving it.
-- Record remaining packet-local risk: `--edition integrated` remains unbuildable until every core module is registry-available with an ADR-0056 §4 parity gate; that is designed behaviour asserted by AC-N2, not an open defect.
+- Record remaining packet-local risk: `--edition integrated` remains unbuildable until every core module is registry-available with an ADR-0056 Decision item 4 parity gate; that is designed behaviour asserted by AC-N2, not an open defect.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.

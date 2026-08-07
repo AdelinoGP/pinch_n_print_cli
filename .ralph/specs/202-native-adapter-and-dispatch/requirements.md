@@ -2,14 +2,14 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `ADR-0056` (§3–5). No `docs/07_implementation_status.md` TASK rows exist for this program — see `docs/specs/multi-edition-distribution-plan.md` §"Backlog anchoring [FWD]"; do not add rows to docs/07 in this packet.
+- Grouped task IDs: `ADR-0056` (Decision items 3–5). No `docs/07_implementation_status.md` TASK rows exist for this program — see `docs/specs/multi-edition-distribution-plan.md` §"Backlog anchoring [FWD]"; do not add rows to docs/07 in this packet.
 - Backlog source: `docs/specs/multi-edition-distribution-plan.md`, Packet Queue row 3 (depends on row 2 / packet 201).
 - Packet status: `draft`
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-After packet 201, an integrated module loads, claims, and schedules like any module but cannot execute: its `LiveModuleBinding` carries `wasm_component: None` and dispatch dies at `DispatchPhase::MissingComponent`. Production dispatch today is solely `WasmRuntimeDispatcher` (`crates/slicer-wasm-host/src/dispatch.rs`) implementing the four runner traits in `crates/slicer-wasm-host/src/traits.rs` (`LayerStageRunner`, `PrepassStageRunner`, `PostpassStageRunner`, `FinalizationStageRunner`); per dispatch it resolves the stage export, leases a pool slot, builds a per-call `HostExecutionContext`, instantiates typed bindings, calls, and releases. ADR-0056 §3 requires provenance to decide dispatch — direct native call vs WASM instantiation — behind that same seam, with `#[slicer_module]` (`crates/slicer-macros/src/lib.rs`) emitting the native adapter from the same single-source module crate. Module bodies are already written against SDK traits (`LayerModule` etc., `crates/slicer-sdk/src/traits.rs`) with plain-Rust SDK views/builders (`crates/slicer-sdk/src/views.rs`, `builders.rs`), which is what makes a native adapter feasible without touching any module body.
+After packet 201, an integrated module loads, claims, and schedules like any module but cannot execute: its `LiveModuleBinding` carries `wasm_component: None` and dispatch dies at `DispatchPhase::MissingComponent`. Production dispatch today is solely `WasmRuntimeDispatcher` (`crates/slicer-wasm-host/src/dispatch.rs`) implementing the four runner traits in `crates/slicer-wasm-host/src/traits.rs` (`LayerStageRunner`, `PrepassStageRunner`, `PostpassStageRunner`, `FinalizationStageRunner`); per dispatch it resolves the stage export, leases a pool slot, builds a per-call `HostExecutionContext`, instantiates typed bindings, calls, and releases. ADR-0056 Decision item 3 requires provenance to decide dispatch — direct native call vs WASM instantiation — behind that same seam, with `#[slicer_module]` (`crates/slicer-macros/src/lib.rs`) emitting the native adapter from the same single-source module crate. Module bodies are already written against SDK traits (`LayerModule` etc., `crates/slicer-sdk/src/traits.rs`) with plain-Rust SDK views/builders (`crates/slicer-sdk/src/views.rs`, `builders.rs`), which is what makes a native adapter feasible without touching any module body.
 
 ## In Scope
 
@@ -25,14 +25,14 @@ After packet 201, an integrated module loads, claims, and schedules like any mod
 ## Out of Scope
 
 - Pilot integration of `classic-perimeters`/`arachne-perimeters`/`support-planner`, tolerance-based IR comparison gates, ADR-0042 structural-invariant assertions beyond AC-2's counts, deviation filing for residual divergence (packet 204).
-- `--no-integrated-modules`, provenance in `pnp_cli module` output (203); editions/xtask/CI (205); wasm-less builds where wasmtime is compiled out (ADR-0056 §6 — deferred phase 4).
+- `--no-integrated-modules`, provenance in `pnp_cli module` output (203); editions/xtask/CI (205); wasm-less builds where wasmtime is compiled out (ADR-0056 Decision item 6 — deferred phase 4).
 - Native capture parity for the runner traits' `last_*`/`take_*` instrumentation accessors (profiling marks, fuel, batch calls): the native branch returns empty captures in this packet; see design.md [FWD].
 - Any change to module crate bodies (`modules/core-modules/*/src/**` stage logic), to WIT files, to the wasm32 glue's behavior, or to `slicer-sdk/src/host.rs` wrappers (the cfg-split native arms already exist per ADR-0033; wasm32 bridge arms are packet 200 / DEV-094).
-- Internal parallelism in module logic — forbidden on both paths (ADR-0056 §5); no rayon in adapters.
+- Internal parallelism in module logic — forbidden on both paths (ADR-0056 Decision item 5); no rayon in adapters.
 
 ## Authoritative Docs
 
-- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read (§3–5).
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read (Decision items 3–5).
 - `docs/adr/0005-runner-traits-in-slicer-wasm-host.md` — direct read; IR-typed seam invariants that the native branch must respect (no `HostExecutionContext` across the trait boundary — trivially satisfied: the native path never builds one).
 - `docs/adr/0033-host-service-bridge-for-host-only-algorithms.md` — direct read; layer-3 cfg-split SDK wrappers.
 - `docs/03_wit_and_manifest.md` — delegate; WIT untouched, consult only if glue questions arise.

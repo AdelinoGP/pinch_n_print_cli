@@ -56,7 +56,7 @@ State ACs only here; `requirements.md` references their IDs.
 ## Authoritative Docs
 
 - `docs/adr/0057-three-editions-and-integrated-tier.md` — short; direct read; its edition table (Developer/Hybrid/Integrated × integrated set × external staged) IS this packet's contract, together with the "dist-configuration list, not a hardcoded constant" clause.
-- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read; §Consequences' "an edition must never stage an external copy of a module it integrates" is the invariant AC-N1 enforces, and §2 explains why (first-root-wins dedup at a higher tier).
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; direct read; §Consequences' "an edition must never stage an external copy of a module it integrates" is the invariant AC-N1 enforces, and Decision item 2 explains why (first-root-wins dedup at a higher tier).
 - `docs/adr/0014-xtask-guest-discovery-via-validated-filesystem-walk.md` — short; direct read; why `discover_guests` is the only permitted source of the core module set.
 - `docs/01_system_architecture.md` — large; ranged read of §"Producing the tier-4 layout: `cargo xtask dist`" only (re-locate by heading text; packet 204 edits the same section first).
 - `CONTEXT.md` — terms **Edition**, **Integrated module**, **External module**; delegate a `FACT` lookup rather than reading the file.
@@ -68,7 +68,7 @@ Specific same-packet doc edits:
 - `docs/01_system_architecture.md` §"Producing the tier-4 layout: `cargo xtask dist`": add the edition dimension — the `--edition <developer|hybrid|integrated>` flag (default `developer`), the per-edition output root `target/dist/<edition>/`, that the staged external set is the exact complement of the edition's integrated set, and that a violation of that disjointness is a hard `dist` failure rather than a warning. — `rg -q -- '--edition' docs/01_system_architecture.md` and `rg -q 'target/dist/<edition>/' docs/01_system_architecture.md`
 - `README.md` §"Building and Running": update the `cargo xtask dist` line in the fenced block to show `--edition` and the new `target/dist/<edition>/` destination. — `rg -q -- '--edition' README.md`
 - `xtask/src/main.rs` `USAGE`: add the `dist --edition <NAME>` and `dist --plan` lines, and correct the existing `dist` line, which today reads "stage them under target/dist/." — `rg -q -- '--edition' xtask/src/main.rs`
-- `CLAUDE.md` §"Build & Test Commands": the `cargo xtask dist` comment reads "stage into target/dist/ (add --debug for debug binary)" — update to the per-edition root and mention `--edition`. This is the fourth surface naming the output path; measured at authoring, the complete set is exactly these four files. — covered by AC-8's negative grep.
+- `CLAUDE.md` §"Build & Test Commands": the `cargo xtask dist` comment reads "stage into target/dist/ (add --debug for debug binary)" — update to the per-edition root and mention `--edition`. This is the fourth *editable* surface naming the output path. Measured at authoring (`rg -l 'target/dist' --glob '!target/**' --glob '!.git/**' .`), five files name it: these four plus `docs/specs/multi-edition-distribution-plan.md`, which already describes the per-edition layout and is deliberately out of this packet's edit set. Re-derive the list before relying on it. — covered by AC-8's negative grep.
 
 Doc greps are appended to the ACs as AC-8, which carries both a positive half (the new flag and path are documented) and a negative half (no surface still names the pre-edition root).
 

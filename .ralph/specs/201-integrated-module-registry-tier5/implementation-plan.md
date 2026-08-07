@@ -10,7 +10,7 @@
 
 ### Step 1: Red tests for tier-5 ingestion, dedup, and shadow diagnostic
 
-- Task IDs: `ADR-0056` (§1–2)
+- Task IDs: `ADR-0056` (Decision items 1–2)
 - Objective: author failing integration tests for AC-1, AC-2, AC-N1, AC-N2 in a new scheduler test file.
 - Precondition: clean tree; `cargo test -p slicer-scheduler --test scheduler_integration` green.
 - Postcondition: new file compiles against the *planned* API (`ModuleProvenance`, `IntegratedModuleRegistration`, `load_modules_from_roots_with_integrated`) and fails to compile or fails assertions — red state recorded.
@@ -34,7 +34,7 @@
 
 ### Step 2: Green — provenance, text-source ingestion, tier-5 loop in manifest.rs
 
-- Task IDs: `ADR-0056` (§1–2)
+- Task IDs: `ADR-0056` (Decision items 1–2)
 - Objective: implement `ModuleProvenance`, `IntegratedModuleRegistration`, `ingest_manifest_text`, `load_modules_from_roots_with_integrated`, and the provenance-aware shadow diagnostic; re-export from `slicer_scheduler`.
 - Precondition: Step 1 red state.
 - Postcondition: Step 1 tests green; existing `manifest_ingestion_tdd.rs` suite untouched and green.
@@ -47,13 +47,13 @@
 - Files explicitly out of bounds:
   - `crates/slicer-scheduler/src/module_search_path.rs`, `execution_plan.rs`, `validation.rs`
 - Blast-radius discipline (mandatory when adding a new struct field or schema constant):
-  - `LoadedModule.provenance` is added behind `LoadedModuleBuilder` with default `External`; the only struct-literal site is inside `LoadedModuleBuilder::build` (fields are `pub(crate)`; verified at authoring via tree grep — external constructions all go through the builder). Confirm with the dispatched LOCATIONS sweep before editing; if any in-crate literal exists outside `build()`, add it to this step's edits (still ≤3 files).
+  - `LoadedModule.provenance` is added behind `LoadedModuleBuilder` with default `External`; the only struct-literal site is inside `LoadedModuleBuilder::build` (verified at authoring via tree grep: most fields are `pub(crate)` — `region_splits` and `region_split_semantics` are `pub` — but a literal needs every field visible, so external constructions all go through the builder). Confirm with the dispatched LOCATIONS sweep before editing; if any in-crate literal exists outside `build()`, add it to this step's edits (still ≤3 files).
   - Dispatch a `LOCATIONS` worker for full-struct `LoadedModule` PartialEq assertions in tests; cite the result inline in the commit message.
 - Expected sub-agent dispatches:
   - Question: list construction sites `LoadedModule {` and full-struct equality assertions on `LoadedModule`; scope: `crates/`; return: LOCATIONS ≤20
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 1–2
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision items 1–2
   - `docs/03_wit_and_manifest.md` - delegate a FACT on required manifest fields if uncertainty arises
 - OrcaSlicer refs: none
 - Verification:
@@ -62,7 +62,7 @@
 
 ### Step 3: Registry crate `slicer-integrated-modules`
 
-- Task IDs: `ADR-0056` (§1)
+- Task IDs: `ADR-0056` (Decision item 1)
 - Objective: create the workspace crate with per-module features, `include_str!` manifest embedding, `integrated_registrations()`, and the feature-gated proving test for `classic-perimeters`.
 - Precondition: Step 2 merged (registration type exists).
 - Postcondition: AC-4 command passes; default build of the crate exports an empty registration set.
@@ -87,12 +87,12 @@
 
 ### Step 4: Integrated-aware live-plan entry point in slicer-wasm-host
 
-- Task IDs: `ADR-0056` (§1–2)
+- Task IDs: `ADR-0056` (Decision items 1–2)
 - Objective: add `load_live_modules_for_plan_with_integrated` with the provenance compile-skip guard (`wasm_component: None`, no `compile_module_component` call for Integrated provenance); make `load_live_modules_for_plan_profiled` delegate with `&[]`; add the AC-5 test.
 - Precondition: Steps 1–2 green.
 - Postcondition: AC-5 command passes; existing live-loading tests green.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-wasm-host/src/execution_plan_live.rs` - lines 30–345
+  - `crates/slicer-wasm-host/src/execution_plan_live.rs` - short (353 lines at authoring); read whole or locate by symbol, never by a pinned range
   - `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs` - test-setup region only
 - Files allowed to edit (at most 3):
   - `crates/slicer-wasm-host/src/execution_plan_live.rs`
@@ -113,8 +113,8 @@
 
 ### Step 5: Production wiring in run.rs + runtime re-export
 
-- Task IDs: `ADR-0056` (§1)
-- Objective: switch both live-loader call sites in `crates/slicer-runtime/src/run.rs` to `load_live_modules_for_plan_with_integrated`, sourcing `slicer_integrated_modules::integrated_registrations()`; add the Cargo dep; re-export `ModuleProvenance` from `crates/slicer-runtime/src/lib.rs`.
+- Task IDs: `ADR-0056` (Decision item 1)
+- Objective: switch both live-loader call sites in `crates/slicer-runtime/src/run.rs` to `load_live_modules_for_plan_with_integrated`, sourcing `slicer_integrated_modules::integrated_registrations()`; add the Cargo dep; re-export `ModuleProvenance` from `crates/slicer-runtime/src/lib.rs`. **Also re-export `load_live_modules_for_plan_with_integrated` in the same `pub use slicer_wasm_host::{…}` block.** Verified at authoring: that block already re-exports `load_live_modules_for_plan` and `load_live_modules_for_plan_with_config`, so omitting the new entry point leaves the runtime's re-export set inconsistent — and packet 203 reaches the disable seam through `slicer_runtime::`. Cheaper to settle here than to discover it in 203. The two call sites use *different* entry points (`run_slice_with_collector` → `..._profiled`; `prepare_prepass_context` → `..._with_config`), so the second must pass `profile: false`.
 - Precondition: Steps 3–4 green.
 - Postcondition: AC-3 greps pass; default behavior unchanged (empty registry).
 - Files allowed to read, with ranges when over 300 lines:
@@ -139,7 +139,7 @@
 
 ### Step 6: Docs + closure gates
 
-- Task IDs: `ADR-0056` (§1–2)
+- Task IDs: `ADR-0056` (Decision items 1–2)
 - Objective: land the two doc edits (docs/01 §Module Search Path tier 5 + shadow diagnostic; docs/04 §Phase 1 provenance paragraph) and run the packet gates.
 - Precondition: Steps 1–5 complete.
 - Postcondition: AC-N3 greps pass; gates green.

@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `ADR-0056` (§1–2). No `docs/07_implementation_status.md` TASK rows exist for this program — see `docs/specs/multi-edition-distribution-plan.md` §"Backlog anchoring [FWD]"; do not add rows to docs/07 in this packet.
+- Grouped task IDs: `ADR-0056` (Decision items 1–2). No `docs/07_implementation_status.md` TASK rows exist for this program — see `docs/specs/multi-edition-distribution-plan.md` §"Backlog anchoring [FWD]"; do not add rows to docs/07 in this packet.
 - Backlog source: `docs/specs/multi-edition-distribution-plan.md`, Packet Queue row 2.
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -14,7 +14,7 @@ ADR-0056 decides that a module compiled into the host binary (an *integrated mod
 ## In Scope
 
 - `ModuleProvenance` enum (`External | Integrated`) on `LoadedModule`, defaulting to `External`, set via `LoadedModuleBuilder`; accessor `LoadedModule::provenance()`; re-exported from `slicer_scheduler` and from `slicer_runtime` alongside the existing loader re-exports.
-- `IntegratedModuleRegistration { manifest_toml: &'static str, origin_label: &'static str }` in `crates/slicer-scheduler/src/manifest.rs` (registration carries no dispatch information — scheduling never learns "native", ADR-0056 §1).
+- `IntegratedModuleRegistration { manifest_toml: &'static str, origin_label: &'static str }` in `crates/slicer-scheduler/src/manifest.rs` (registration carries no dispatch information — scheduling never learns "native", ADR-0056 Decision item 1).
 - Refactor `ingest_manifest` into a text-source core (`ingest_manifest_text`) so disk and embedded manifests share one parser/validator; integrated entries skip `ensure_same_stem_wasm_exists` and `is_placeholder_wasm` (`placeholder_wasm = false`).
 - `load_modules_from_roots_with_integrated(search_roots, integrated)` — disk roots first (tiers 1–4), integrated registrations last (tier 5), one shared `seen_ids` dedup; existing `load_modules_from_roots` delegates with an empty slice.
 - Provenance-aware duplicate-id diagnostic: when the dedup loser is integrated and the winner external, the warning message becomes `external module 'X' shadows integrated module 'X'`; all other pairings keep the existing generic text.
@@ -75,6 +75,6 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 ## Context Discipline Notes
 
 - `crates/slicer-scheduler/src/manifest.rs` is long (several times the 600-line direct-read cap) — ranged reads only: the loader region (`load_modules_from_roots` through `ensure_same_stem_wasm_exists`, roughly lines 566–860 at authoring time) and the `LoadedModule`/builder region (roughly lines 28–400). Never load the whole file.
-- `crates/slicer-wasm-host/src/execution_plan_live.rs` — read lines 180–340 only (entry points + compile loop).
+- `crates/slicer-wasm-host/src/execution_plan_live.rs` — short (353 lines at authoring); locate the entry points and compile loop by symbol (`rg -n '^pub fn|compile_module_component'`), not by a pinned range.
 - `docs/01_system_architecture.md` / `docs/04_host_scheduler.md` — edit by heading anchor; do not read either file end-to-end.
 - Feature-gated test hazard: the `slicer-integrated-modules` test compiles to zero tests without `--features classic-perimeters` (same silent-green class as `CLAUDE.md` §"Feature-gated test files report green"); the AC command pins the feature explicitly — never drop it.

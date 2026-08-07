@@ -44,12 +44,12 @@ No prior packet is reopened or superseded.
 - `--no-integrated-modules` and `pnp_cli module` provenance output — packet 203.
 - `cargo xtask dist`'s edition dimension, the staging/disjointness enforcement, and CI edition artifacts — packet 205. This packet only creates and validates the config list 205 consumes; `xtask/src/dist.rs` is not edited.
 - Integrating any of the other 18 core modules; the Integrated edition's full set is expressed as `integrate_all = true`, not enumerated here.
-- Per-module internal parallelism (ADR-0056 §5 defers it), wasm-less builds (ADR-0056 §6), and platform build matrices (ADR-0057 phase 4).
+- Per-module internal parallelism (ADR-0056 Decision item 5 defers it), wasm-less builds (ADR-0056 Decision item 6), and platform build matrices (ADR-0057 phase 4).
 - Re-recording or weakening any existing arachne or perimeter fixture. Canonical parity correctness outranks a green board (`CLAUDE.md` §Test Discipline).
 
 ## Authoritative Docs
 
-- `docs/adr/0056-integrated-modules-native-dispatch.md` — 122 lines; direct read. §4 (parity gate, byte-equality explicitly not the gate) and §5 (single-threaded module logic) are the normative contract.
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — 122 lines; direct read. Decision item 4 (parity gate, byte-equality explicitly not the gate) and Decision item 5 (single-threaded module logic) are the normative contract.
 - `docs/adr/0057-three-editions-and-integrated-tier.md` — 55 lines; direct read. The edition table and the "dist-configuration list, not a hardcoded constant" clause.
 - `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` — long; direct read of §Decision only, delegate anything else. Supplies the invariant class and the D5 non-vacuity discriminator.
 - `docs/adr/0055-fuel-based-module-profiling.md` — 127 lines; direct read. Fuel primary, wall-clock secondary, profiling-off absolute timings, explicit run-to-run spread.
@@ -63,10 +63,10 @@ No prior packet is reopened or superseded.
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` through `AC-9`.
-  - `AC-3`/`AC-4`/`AC-5` are the ADR-0056 §4 parity gate, one per pilot module; each must construct its two `CompiledModuleLive` values from the **same** fixture bytes so the only variable is the dispatch path.
+  - `AC-3`/`AC-4`/`AC-5` are the ADR-0056 Decision item 4 parity gate, one per pilot module; each must construct its two `CompiledModuleLive` values from the **same** fixture bytes so the only variable is the dispatch path.
   - `AC-5` keys on the full `(global_layer_index, object_id, region_id)` triple. `global_layer_index` is not optional: `SupportPlanIR.entries`' doc comment states multiple entries may share `(layer, object)`, so a two-field key collapses layers and a dropped layer would pass silently.
   - `AC-8` requires **both** ADR-0055 signals — guest fuel (primary) and profiling-off wall-clock (secondary) — plus an explicit run-to-run spread. The spread requirement is stricter than ADR-0055 and is retained deliberately (`CLAUDE.md` §"No Unverified Metrics"). An unmeasured or unlabelled figure fails the AC even if the grep passes.
-  - `AC-9` is the ADR-0056 §5 invariant expressed as a cheap static negative check; it is a floor, not a proof of single-threadedness.
+  - `AC-9` is the ADR-0056 Decision item 5 invariant expressed as a cheap static negative check; it is a floor, not a proof of single-threadedness.
 - Negative: `AC-N1` (unknown module name rejected by the config reader), `AC-N2` (layer comparator accepts ULP-scale drift), `AC-N3` (layer comparator rejects dropped loops and point-count changes), `AC-N4` (external override still wins), `AC-N6` (prepass comparator rejects a dropped entry, a shifted `global_layer_index`, a dropped `branch_segment`, and a dropped point), `AC-N5` (doc greps).
 - Cross-packet impact: `dist/editions.toml` + `xtask::editions::load_editions` are packet 205's sole input for the edition dimension. `integrated_registrations()` and `native_entries()` stop returning empty, which activates packet 201's tier-5 path and packet 202's native branch for the first time in a shipped build — every existing test that loads modules from `modules/core-modules/` now has a tier-5 duplicate available, so packet 201's first-root-wins dedup and shadow diagnostic get their first real exercise here (AC-N4).
 

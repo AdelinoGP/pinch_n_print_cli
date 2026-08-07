@@ -51,10 +51,10 @@ Secondary (same-step fallout, ≤3 lines each): `modules/core-modules/support-pl
 
 - `crates/slicer-wasm-host/src/host.rs` — the `impl hs::Host for HostExecutionContext` block (≈ lines 2425–2735) and `ir_offset_polygons` (≈ 2903) only — purpose: impl shapes; `ir_offset_polygons` keeps its hardcoded `0.0` (test helper, not a WIT surface).
 - `crates/slicer-sdk/src/host.rs` — wrapper bodies: `log` wasm32 arm (≈ 137–195, the mini-world template), mesh queries (≈ 222–280), polygon ops (≈ 282–366), `medial_axis` wasm32 marshal (≈ 388–495, the ExPolygon marshal template), `now_us` (≈ 856–869).
-- `crates/slicer-sdk/src/host_batch.rs` — whole file is 469 lines; the inline `mod wit` (≈ 289–394) is the record-marshal template.
-- `modules/core-modules/classic-perimeters/src/lib.rs` — windows only: imports (25–45), config (95–115), top-surface split (475–505), inset+gap loop (676–795), thin-wall (960–990), gap-fill filter (1040–1065), infill inset (1140–1155), second inset loop (1200–1215).
+- `crates/slicer-sdk/src/host_batch.rs` — short enough to read whole; its inline `mod wit` is the record-marshal template.
+- `modules/core-modules/classic-perimeters/src/lib.rs` — windows only; locate each by symbol, not by the line hints (they rot): the `slicer_core::polygon_ops` import block, the config block, both `split_top_surfaces` call sites (there are two), the inset+gap loop (~676–795), the thin-wall branch (~960–990), the gap-fill filter (~1040–1065), the infill inset (~1140–1155), and the second inset loop (~1200–1215). Find them with `rg -n 'split_top_surfaces|difference_ex\(|offset\(' modules/core-modules/classic-perimeters/src/lib.rs` and read ±40 lines around each hit.
 - `modules/core-modules/support-planner/src/lib.rs` — `batch_offset` window (≈ 268–320) and the three test literals (≈ 1928, 1991, 2035).
-- `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — harness/mesh-builder pattern (`cube_mesh`, `blackboard_with_layer_plan`).
+- `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — harness/mesh-builder *pattern* only (`cube_mesh`, `blackboard_with_layer_plan`). `cube_mesh` is not a cube: all four of its vertices lie at z = 0, so it has no top face to raycast against. AC-3 requires a solid mesh with a top face at world z = 10.0, built fresh in the new test.
 - `xtask/src/build_guests.rs` — `discover_guests` only (confirm auto-discovery contract for the new guest).
 
 ## Out-of-Bounds Files

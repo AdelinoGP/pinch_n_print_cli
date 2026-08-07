@@ -11,7 +11,7 @@ context_cost_estimate: M
 
 ## Goal
 
-Register integrated modules (embedded manifest TOML, no on-disk `.wasm`) as search tier 5 beneath the four existing search-path tiers, flowing through the one existing ingestion/claims/DAG pipeline with a `ModuleProvenance` marker and a provenance-aware shadow diagnostic, per ADR-0056 §1–2.
+Register integrated modules (embedded manifest TOML, no on-disk `.wasm`) as search tier 5 beneath the four existing search-path tiers, flowing through the one existing ingestion/claims/DAG pipeline with a `ModuleProvenance` marker and a provenance-aware shadow diagnostic, per ADR-0056 Decision items 1–2.
 
 ## Scope Boundaries
 
@@ -47,7 +47,7 @@ State ACs only here; `requirements.md` references their IDs.
 
 ## Authoritative Docs
 
-- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; read directly; §1–2 are this packet's contract.
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — short; read directly; Decision items 1–2 are this packet's contract.
 - `docs/adr/0057-three-editions-and-integrated-tier.md` — short; read directly; flag/edition split confirms what stays out of scope.
 - `docs/01_system_architecture.md` — §Module Search Path only (lines 912–1015 as of authoring; re-locate by heading); delegate anything else.
 - `docs/04_host_scheduler.md` — §Phase 1 Manifest Ingestion heading only; delegate.

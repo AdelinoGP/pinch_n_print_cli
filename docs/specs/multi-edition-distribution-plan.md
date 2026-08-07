@@ -70,8 +70,18 @@ active.
 | 5 | 204-hybrid-pilot-parity | Pilot integration of classic-perimeters, arachne-perimeters, support-planner with dual-dispatch parity contract tests and profiling-finalized Hybrid set | ADR-0056/0057 | #2, #3 | generated | .ralph/specs/204-hybrid-pilot-parity |
 | 6 | 205-editions-xtask-dist-ci | Edition dimension in `cargo xtask dist` with the disjointness invariant and CI edition artifacts | ADR-0057 | #4, #5 | generated | .ralph/specs/205-editions-xtask-dist-ci |
 
-All six rows are `generated` (each independently preflight-reviewed to PASS). The
-plan file and all six packet directories should be **committed together**.
+All six rows are `generated` — i.e. the spec directory exists and is authored.
+That is a *queue* status and is distinct from each packet's own frontmatter,
+where all six read `status: draft`; none is activated.
+
+Each was independently run through the preflight symbol-existence gate (S0–S8)
+on 2026-08-07. The first pass returned four BLOCKED (200, 201, 202, 203) and two
+PASS; every finding was fixed and the four were re-gated to PASS. Treat "the gate
+passed" as a fact with a date, not a permanent property — re-run `--preflight`
+before activating any packet, since the tree these packets are pinned against
+keeps moving.
+
+The plan file and all six packet directories should be **committed together**.
 
 **Phase 4 (deferred, no packet):** platform builds — aarch64 matrix, iOS AOT
 (`cwasm` precompilation or Pulley, since iOS forbids JIT), browser/library

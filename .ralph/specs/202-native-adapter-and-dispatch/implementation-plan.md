@@ -11,7 +11,7 @@
 
 ### Step 1: SDK native seam types (`slicer_sdk::native`)
 
-- Task IDs: `ADR-0056` (§3)
+- Task IDs: `ADR-0056` (Decision item 3)
 - Objective: create `crates/slicer-sdk/src/native.rs` with `NativeStageEntry` and the four per-family request/response envelopes, fields enumerated from the wasm32 glue survey.
 - Precondition: packet 201 implemented (`ModuleProvenance` etc. in tree).
 - Postcondition: `cargo check -p slicer-sdk --all-targets` green; envelopes cover every SDK value each glue family passes/drains.
@@ -28,7 +28,7 @@
   - Question: per glue family, which SDK values are handed to the trait method and drained from the builder; scope: `crates/slicer-macros/src/lib.rs`; return: SNIPPETS ≤30 lines per family
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 3
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision item 3
 - OrcaSlicer refs: none
 - Verification:
   - `cargo check -p slicer-sdk --all-targets 2>&1 | tee target/test-output.log` - FACT pass/fail
@@ -37,7 +37,7 @@
 
 ### Step 2: Macro native adapter — Layer family + AC-1 red/green
 
-- Task IDs: `ADR-0056` (§3)
+- Task IDs: `ADR-0056` (Decision item 3)
 - Objective: emit `__slicer_native_entry()` for layer-family stages in `generate_slicer_module_impl`; author `native_adapter_tdd.rs` asserting `SdkLayerInfillModule::__slicer_native_entry()` is `NativeStageEntry::Layer(..)` (AC-1); add the `sdk-layer-infill-guest` dev-dep.
 - Precondition: Step 1 complete.
 - Postcondition: AC-1 green; all 21 workspace module crates still compile natively; guests rebuilt.
@@ -64,7 +64,7 @@
 
 ### Step 3: Macro native adapter — Prepass, Postpass, Finalization families
 
-- Task IDs: `ADR-0056` (§3)
+- Task IDs: `ADR-0056` (Decision item 3)
 - Objective: extend the emitter to the remaining three families (same table-driven pattern from `slicer_schema::STAGES`).
 - Precondition: Step 2 green.
 - Postcondition: every `#[slicer_module]` type in the workspace exposes a family-correct `__slicer_native_entry()`; guests fresh.
@@ -80,7 +80,7 @@
   - Question: which sdk-* test-guest crates cover prepass/postpass/finalization (`sdk-prepass-guest`, `sdk-postpass-text-guest`, `sdk-finalization-guest`) and their module type names; scope: `crates/slicer-wasm-host/test-guests/*/src/lib.rs`; return: LOCATIONS ≤10
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 3
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision item 3
 - OrcaSlicer refs: none
 - Verification:
   - `cargo check --workspace --all-targets 2>&1 | tee target/test-output.log`
@@ -90,7 +90,7 @@
 
 ### Step 4: Native transport in the marshalling boundary (`marshal/native.rs`)
 
-- Task IDs: `ADR-0056` (§3)
+- Task IDs: `ADR-0056` (Decision item 3)
 - Objective: implement request builders (IR/`*StageInput` → SDK views) and response committers (SDK output → `*OutputCollected` → existing `out.rs` + `OriginBucket`) for all four families.
 - Precondition: Step 1 complete (envelopes exist).
 - Postcondition: `cargo check -p slicer-wasm-host --all-targets` green; layer request field list mirrors, one-for-one, the field list `adapt_slice_regions_completeness_tdd.rs` pins for the wasm leg.
@@ -117,7 +117,7 @@
 
 ### Step 5: Dispatch routing branch in the four runner impls
 
-- Task IDs: `ADR-0056` (§3)
+- Task IDs: `ADR-0056` (Decision item 3)
 - Objective: add `native_entry: Option<NativeStageEntry>` to `CompiledModuleLive` (default `None` in `new`, add `with_native_entry`); add the native branch at the entry of the four `impl *StageRunner for WasmRuntimeDispatcher` blocks calling `marshal/native.rs`.
 - Precondition: Step 4 complete.
 - Postcondition: wasm-path behavior bit-identical when `native_entry` is `None` (full contract regression green).
@@ -144,7 +144,7 @@
 
 ### Step 6: Parity seam contract tests (AC-2, AC-3)
 
-- Task IDs: `ADR-0056` (§3–4)
+- Task IDs: `ADR-0056` (Decision items 3–4)
 - Objective: author `native_dispatch_parity_seam_tdd.rs` — identical `LayerStageInput` through wasm and native paths of one `WasmRuntimeDispatcher` using `sdk-layer-infill-guest` (native type + `.component.wasm` twin); structural-equality assertions per AC-2; component-free native dispatch per AC-3.
 - Precondition: Steps 2, 5 complete; guests fresh (`cargo xtask build-guests --check` clean).
 - Postcondition: AC-2 and AC-3 green.
@@ -161,7 +161,7 @@
   - Question: run the two AC commands; scope: repo root; return: FACT pass/fail + failing-assert SNIPPET ≤20 lines
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 4 (no byte-equality)
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision item 4 (no byte-equality)
 - OrcaSlicer refs: none
 - Verification:
   - `cargo test -p slicer-runtime --test contract native_dispatch_parity_seam 2>&1 | tee target/test-output.log` - AC-2
@@ -170,7 +170,7 @@
 
 ### Step 7: Plumbing — binding attachment, run.rs, registry table (AC-4, AC-N1, AC-N2)
 
-- Task IDs: `ADR-0056` (§2–3)
+- Task IDs: `ADR-0056` (Decision items 2–3)
 - Objective: add `native_entry` to `LiveModuleBinding`; extend `load_live_modules_for_plan_with_integrated` with `native_entries` + the attachment rule; thread `binding.native_entry` through the four executor projection sites via `with_native_entry`; add `slicer_integrated_modules::native_entries()` and pass it in `run.rs`; author the three integration tests.
 - Precondition: Steps 5–6 complete.
 - Postcondition: AC-4, AC-N1, AC-N2 green.
@@ -189,7 +189,7 @@
   - Question: re-verify `LiveModuleBinding {` literal sites; scope: `crates/`; return: LOCATIONS ≤10
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 2 (override falls out of first-root-wins)
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision item 2 (override falls out of first-root-wins)
 - OrcaSlicer refs: none
 - Verification:
   - `cargo test -p slicer-runtime --test integration integrated_binding_attaches_native_entry 2>&1 | tee target/test-output.log` - AC-4
@@ -199,7 +199,7 @@
 
 ### Step 8: Docs + closure gates
 
-- Task IDs: `ADR-0056` (§3–5)
+- Task IDs: `ADR-0056` (Decision items 3–5)
 - Objective: land the two doc edits and run every gate.
 - Precondition: Steps 1–7 complete.
 - Postcondition: AC-N3 greps pass; gates green; guests fresh.
@@ -215,7 +215,7 @@
   - Question: run all pipe-suffixed AC commands + the three gates + `cargo xtask build-guests --check`; scope: repo root; return: FACT pass/fail each
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` - §Decision 5 wording for the single-threaded note
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` - Decision item 5 wording for the single-threaded note
 - OrcaSlicer refs: none
 - Verification:
   - `rg -q 'native_entry' docs/04_host_scheduler.md && rg -q '__slicer_native_entry' docs/05_module_sdk.md` - AC-N3

@@ -28,7 +28,7 @@
   - Question: how does `native_dispatch_parity_seam_tdd.rs` build its `WasmRuntimeDispatcher` and its two `CompiledModuleLive` values?; scope: `crates/slicer-runtime/tests/contract/native_dispatch_parity_seam_tdd.rs`; return: `SNIPPETS` (1, ≤30 lines)
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` — §1–5, direct read (122 lines)
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` — Decision items 1–5, direct read (122 lines)
 - OrcaSlicer refs:
   - none — this packet has no canonical C++ counterpart
 - Verification:
@@ -56,7 +56,7 @@
   - Question: what are the `#[slicer_module]`-annotated type names and the SDK trait each implements in the three pilot crates?; scope: `modules/core-modules/{classic-perimeters,arachne-perimeters,support-planner}/src/lib.rs`; return: `LOCATIONS` (≤6 entries)
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` §1–2 — direct read
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` Decision items 1–2 — direct read
   - `docs/adr/0033-host-service-bridge-for-host-only-algorithms.md` — direct read (short); the `cfg`-split that makes the arachne native arm compile
 - OrcaSlicer refs:
   - none
@@ -94,7 +94,7 @@
 - Context cost: `M`
 - Authoritative docs:
   - `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` — §Decision, direct read; delegate the rest
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` §4 — direct read
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` Decision item 4 — direct read
 - OrcaSlicer refs:
   - none
 - Verification:
@@ -126,7 +126,7 @@
   - Question: which `perimeter_harness` fixture subject yields ≥2 loops and ≥1 nesting level with the classic wall generator?; scope: `crates/slicer-runtime/tests/common/perimeter_harness.rs` and `crates/slicer-runtime/tests/fixtures/`; return: `FACT` (≤5 lines)
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` §4 — direct read
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` Decision item 4 — direct read
 - OrcaSlicer refs:
   - none
 - Verification:
@@ -191,7 +191,7 @@
   - Question: does `cargo xtask build-guests --check` report clean?; scope: repo root; return: `FACT` clean / `STALE:` list
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` §4–5 — direct read
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` Decision items 4–5 — direct read
 - OrcaSlicer refs:
   - none
 - Verification:
@@ -199,7 +199,7 @@
   - `mkdir -p target && cargo test -p slicer-runtime --test contract -- integrated_parity_support_planner 2>&1 | tee target/test-output.log && rg -q "^test result: ok" target/test-output.log` — FACT pass/fail (AC-5)
 - Exit condition: AC-5 passes, and any tolerance change made here re-runs AC-N6 to confirm the four discriminator cases still report `Err`. Step 5's absolute `coord_mm` ceiling of `1e-2` mm binds here too. A module whose parity test cannot be made green without weakening an assertion or exceeding the ceiling is dropped from `hybrid.integrated_modules` in Step 8 and recorded as such — its feature and test still ship.
 
-### Step 7: External-override negative gate and the ADR-0056 §5 single-threaded check
+### Step 7: External-override negative gate and the ADR-0056 Decision item 5 single-threaded check
 
 - Task IDs: `ADR-0056`
 - Objective: prove AC-N4 (a disk-root `com.core.classic-perimeters` still forces WASM dispatch even with the integrated registration and native entry present) and AC-9 (no internal parallelism in the three pilot crates).
@@ -219,12 +219,12 @@
   - Question: how does an existing integration test construct a temporary disk search root containing one module's `.wasm` + `.toml`?; scope: `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs`; return: `SNIPPETS` (1, ≤30 lines)
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0056-integrated-modules-native-dispatch.md` §2 and §5, plus its "an edition must never stage an external copy" consequence — direct read
+  - `docs/adr/0056-integrated-modules-native-dispatch.md` Decision item 2 and Decision item 5, plus its "an edition must never stage an external copy" consequence — direct read
 - OrcaSlicer refs:
   - none
 - Verification:
   - `cargo test -p slicer-runtime --test integration hybrid_pilot_external_override_forces_wasm` — FACT pass/fail (AC-N4)
-  - `sh -c 'for m in classic-perimeters arachne-perimeters support-planner; do rg -q "^rayon" modules/core-modules/$m/Cargo.toml && { echo "FAIL rayon dep: $m"; exit 1; }; rg -q "par_iter|par_bridge|par_chunks|rayon::" modules/core-modules/$m/src/ && { echo "FAIL rayon use: $m"; exit 1; }; done; echo PASS'` — FACT PASS (AC-9)
+  - `sh -c 'for m in classic-perimeters arachne-perimeters support-planner; do rg -q "^(rayon|\[dependencies\.rayon\]|\[target\..*dependencies\.rayon\])" modules/core-modules/$m/Cargo.toml && { echo "FAIL rayon dep: $m"; exit 1; }; rg -q "par_iter|par_bridge|par_chunks|rayon::" modules/core-modules/$m/src/ && { echo "FAIL rayon use: $m"; exit 1; }; done; echo PASS'` — FACT PASS (AC-9). **Use this exact form, identical to `packet.spec.md` AC-9** — a bare `^rayon` alternation misses the `[dependencies.rayon]` and `[target.'cfg(...)'.dependencies.rayon]` table forms, so a dependency added that way would slip the gate.
   - `sh -c 'rg -q "mod hybrid_pilot_external_override_tdd" crates/slicer-runtime/tests/integration/main.rs && echo PASS'` — FACT PASS; aggregator registration guard
 - Exit condition: AC-N4 and AC-9 both PASS. A green AC-N4 that ran zero tests (unregistered `mod`) is a false pass — the registration guard command must PASS in the same step.
 
@@ -247,7 +247,7 @@
   - `xtask/src/dist.rs` — packet 205's surface; this packet creates the config, not its consumer
   - `xtask/Cargo.toml` — no new dependency is needed; `toml = "0.8"` is already declared. If a step believes it needs one, stop and re-check.
 - Expected sub-agent dispatches:
-  - Question: for a release `--profile` capture, what is each pilot module's **guest fuel** and its wall-clock share, and what is the run-to-run spread over 3 runs?; scope: the step's own `target/p204-*.jsonl` captures, `target/p204-summary.json`, and the three `target/p204-noprof-{1,2,3}.log` instrumented runs; return: `FACT` (≤8 lines). Note fuel is a *guest* counter: ADR-0055 states "native code is not metered" and "host calls consume no fuel", so a natively-dispatched module reports zero and the fuel figure must come from the external/wasm build. (That is an inference from the ADR's fuel definition — the ADR predates integrated modules and does not discuss them.) ADR-0055 also records that wall-clock under `--profile` is inflated by mark host calls, so the wall-clock figure comes from the profiling-off `--instrument-stderr` runs above.
+  - Question: for a release `--profile` capture, what is each pilot module's **guest fuel** and its wall-clock share, and what is the run-to-run spread over 3 runs?; scope: the step's own `target/p204-*.jsonl` captures, `target/p204-summary.json`, and the three `target/p204-noprof-{1,2,3}.log` instrumented runs; return: `FACT` (≤8 lines). Note fuel is a *guest* counter: ADR-0055 states verbatim that "native code is not metered", so a natively-dispatched module reports zero and the fuel figure must come from the external/wasm build. (The ADR's "burns no fuel" clause is scoped to the profile *mark* host call, not host calls in general; generalizing it is an inference. The ADR predates integrated modules and does not discuss them.) ADR-0055 also records that wall-clock under `--profile` is inflated by mark host calls, so the wall-clock figure comes from the profiling-off `--instrument-stderr` runs above.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/adr/0057-three-editions-and-integrated-tier.md` — direct read (55 lines); the edition table and the dist-config-list clause
