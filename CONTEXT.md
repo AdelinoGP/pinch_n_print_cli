@@ -107,6 +107,32 @@ to a package and an interface cannot carry one; interfaces sharing a package sha
 its version and so bump together. Distinct from **module tier** — a tier groups
 stage interfaces rather than fusing them. Decided in ADR-0045.
 
+### Integrated module
+A core module compiled natively into the slicer binary itself. It carries the
+same manifest, claims, and configuration surface as any other module and sits
+at the lowest module-search priority, so an **external module** with the same
+module id always overrides it; only dispatch differs — a native call instead of
+a WASM instantiation. Distinct from the host's built-in producers, which occupy
+host-only stages and are not modules. Decided in ADR-0056.
+_Avoid_: native module, built-in module, embedded module
+
+### External module
+A module shipped as a loose `.wasm` component plus `.toml` manifest and
+discovered on the module search path — regardless of who authored it. Every
+module before ADR-0056 was external, and community/user extension always takes
+this form; in an edition without a WASM runtime, external modules are skipped
+loudly rather than loaded.
+_Avoid_: loose module, user module (when provenance rather than authorship is meant)
+
+### Edition
+The identity of a shipped artifact set, naming which core modules are
+**integrated** and which ship **external**: Developer (all external — today's
+layout), Hybrid (an evidence-driven hot set integrated, the rest external), and
+Integrated (every core module integrated). Every edition keeps external-module
+loading as the extension mechanism wherever a WASM runtime can ship. Decided in
+ADR-0057.
+_Avoid_: distribution profile, build flavor, distributable
+
 ### Per-region output origin
 The explicit identity tag a guest attaches to perimeter and infill output pushes
 so the **marshalling boundary** can route each push back to the source **region**.
@@ -660,3 +686,10 @@ object_id, region_id, variant_chain }`) to the `SliceIR` region carrying the sam
 four identifiers, so RegionMapping can be rendered as real region geometry tinted
 by its `RegionPlan` dispatch/config instead of a fabricated diagram (ADR-0037
 Amendment, packet 161).
+
+### Carrier
+A field or side table added to an IR so per-point or per-entity data can travel
+between pipeline stages — e.g. a per-point overhang distance or speed factor
+stamped by a producer stage and consumed by a later one. A packet may ship a
+carrier alone (no live producer or consumer yet) to unblock later packets;
+until a producer commits values, a carrier changes no output.
