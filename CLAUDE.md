@@ -47,7 +47,7 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 
 Two mechanisms do this, and `slicer-core` uses both: 11 test targets carry `required-features = ["host-algos"]` in `Cargo.toml` (Cargo skips building them outright), and most of `crates/slicer-core/tests/arachne_*.rs` additionally open with `#![cfg(feature = "host-algos")]` (the file compiles to an empty binary). With `default = []`, a bare `-p slicer-core` run gets neither.
 
-Under `--workspace` the feature is unified on, because `slicer-gcode`, `slicer-runtime`, `slicer-sdk` and `slicer-wasm-host` each depend on `slicer-core` with `features = ["host-algos"]`. That is why the broad run sees tests the narrow run cannot.
+Under `--workspace` the feature is unified on, because `slicer-runtime`, `slicer-sdk` and `slicer-wasm-host` each depend on `slicer-core` with `features = ["host-algos"]`. That is why the broad run sees tests the narrow run cannot.
 
 ```bash
 cargo test -p slicer-core --features host-algos --no-fail-fast   # correct

@@ -3134,7 +3134,6 @@ version = "0.1.0"
 dependencies = [
  "image",
  "log",
- "slicer-core",
  "slicer-helpers",
  "slicer-ir",
  "thiserror 1.0.69",

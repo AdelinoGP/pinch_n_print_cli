@@ -47,7 +47,7 @@ Pinch 'n Print utilizes the WASM Component Model to guarantee a stable ABI and f
 
 ## Building and Running
 
-You'll need the standard Rust toolchain installed, including the `wasm32-wasip1` target for building guest modules.
+You'll need the standard Rust toolchain installed, including the `wasm32-unknown-unknown` target for building guest modules (`rustup target add wasm32-unknown-unknown`).
 
 ```bash
 # Compile all host components and libraries

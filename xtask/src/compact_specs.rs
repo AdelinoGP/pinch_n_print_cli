@@ -1,7 +1,7 @@
 //! `cargo xtask compact-specs`
 //!
-//! Collapses each archived spec packet under `.ralph/specs/_OLD/<NN_slug>/` into a
-//! single **design-only** digest `.ralph/specs/_OLD/<NN_slug>.md`, then deletes the
+//! Collapses each archived spec packet under `docs/spec_packets/_OLD/<NN_slug>/` into a
+//! single **design-only** digest `docs/spec_packets/_OLD/<NN_slug>.md`, then deletes the
 //! source directory (unless `--dry-run`).
 //!
 //! The packets are fully git-tracked, so the originals live in history forever; the
@@ -245,7 +245,7 @@ fn disp(p: &Path) -> String {
 }
 
 pub fn run(ws: &Path, dry_run: bool) -> i32 {
-    let old = ws.join(".ralph/specs/_OLD");
+    let old = ws.join("docs/spec_packets/_OLD");
     let dirs = match packet_dirs(&old) {
         Ok(d) => d,
         Err(e) => {
