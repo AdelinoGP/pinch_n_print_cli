@@ -190,14 +190,50 @@ fn paint_variant_region_id(
 /// or a non-empty support-semantic modifier-volume.  Modifier volumes (D14) are
 /// paint sources for the BASE-chain `segment_annotations`, so the short-circuit
 /// MUST NOT skip them when the mesh has no facet/stroke paint.
+/// True for the seam-painting semantics, which must NOT drive region splitting.
+///
+/// DEV-123: canonical keeps the two channels strictly apart —
+/// `multi_material_segmentation_by_painting` (`MultiMaterialSegmentation.cpp`)
+/// partitions regions from `mmu_segmentation_facets` only, while seam paint is
+/// consumed by `gather_enforcers_blockers` (`SeamPlacer.cpp`) as a per-candidate
+/// Enforced/Blocked score that never partitions anything. PnP's 3MF loader
+/// decodes `paint_seam` into `PaintSemantic::Custom("seam_enforcer" /
+/// "seam_blocker")`, so without this filter every seam-painted mesh minted a
+/// spurious variant region with its own walls and notched the matching geometry
+/// out of BASE.
+///
+/// This predicate governs *region splitting only*. Seam paint still reaches the
+/// seam placer through `SlicedRegion.segment_annotations` (consumed by
+/// `apply_seam_paint_bias` and by `seam-planner-default`'s
+/// `paint_annotation_type`); this function does not touch that path.
+fn is_seam_paint_semantic(semantic: &slicer_ir::PaintSemantic) -> bool {
+    matches!(
+        semantic,
+        slicer_ir::PaintSemantic::Custom(name)
+            if name == "seam_enforcer" || name == "seam_blocker"
+    )
+}
+
 fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
     for obj in &mesh.objects {
         if let Some(pd) = &obj.paint_data {
             for layer in &pd.layers {
+                // DEV-123: seam paint must not admit a mesh into the MMU cell
+                // decomposition. Admitting one was a shipped defect — for
+                // `resources/cube_cilindrical_modifier.3mf` the lowest painted
+                // seam facet sits at z in (0.4, 0.5], so the kernel ran on every
+                // layer and the layers below it were emitted geometry-less.
+                if is_seam_paint_semantic(&layer.semantic) {
+                    continue;
+                }
                 if layer.facet_values.iter().any(|v| v.is_some()) {
                     return true;
                 }
-                if !layer.strokes.is_empty() {
+                if layer
+                    .strokes
+                    .iter()
+                    .any(|s| !is_seam_paint_semantic(&s.semantic))
+                {
                     return true;
                 }
             }
@@ -555,6 +591,12 @@ pub fn execute_paint_segmentation(
             'outer: for obj in &mesh.objects {
                 let Some(pd) = &obj.paint_data else { continue };
                 for layer in &pd.layers {
+                    // DEV-123: a seam-painted layer must not become the dominant
+                    // semantic — on a seam-only mesh that labelled the entire
+                    // cell decomposition `seam_enforcer`.
+                    if is_seam_paint_semantic(&layer.semantic) {
+                        continue;
+                    }
                     if layer.facet_values.iter().any(|v| v.is_some()) || !layer.strokes.is_empty() {
                         sem = layer.semantic.clone();
                         break 'outer;
@@ -1158,6 +1200,10 @@ pub fn execute_paint_segmentation(
                             continue;
                         }
                     }
+                    // DEV-123: seam paint never partitions regions.
+                    if is_seam_paint_semantic(&layer.semantic) {
+                        continue;
+                    }
                     let key = (sem_name(&layer.semantic), value.clone());
                     let entry = painted_subsets
                         .entry(key)
@@ -1174,6 +1220,10 @@ pub fn execute_paint_segmentation(
                 // their own semantic/value (overriding the layer semantic when they
                 // differ, matching `extract_stroke_data` in painted_line_collection prep).
                 for stroke in &layer.strokes {
+                    // DEV-123: seam paint never partitions regions.
+                    if is_seam_paint_semantic(&stroke.semantic) {
+                        continue;
+                    }
                     let key = (sem_name(&stroke.semantic), stroke.value.clone());
                     let entry = painted_subsets
                         .entry(key)

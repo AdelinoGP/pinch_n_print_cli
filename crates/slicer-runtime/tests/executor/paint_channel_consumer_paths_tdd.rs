@@ -659,14 +659,19 @@ fn paint_channel_supports_strokes_reach_consumer() {
 /// cube_cilindrical_modifier.3mf has 1 object (12 tris) with
 /// PaintLayer Custom("seam_enforcer"): 3 facet_values + 2706 sub-facet strokes.
 ///
-/// # Seam consumer gap
+/// # Seam paint must NOT partition regions (DEV-123)
 ///
-/// Data reaches SlicedRegion.variant_chain as ("seam_enforcer", _) — the routing works.
-/// HOWEVER, NO live downstream module reads variant_chain("seam_enforcer").
-/// The seam-placer uses geometric SeamCandidate scores only (not paint annotations).
-/// This gap is documented as a seam consumer gap.
+/// Canonical keeps the channels apart: `multi_material_segmentation_by_painting`
+/// (`MultiMaterialSegmentation.cpp`) partitions regions from
+/// `mmu_segmentation_facets` only, while seam paint is scored per seam candidate
+/// by `gather_enforcers_blockers` (`SeamPlacer.cpp`) and never partitions
+/// anything. This test previously asserted the opposite — that seam paint
+/// reaches `SlicedRegion.variant_chain` — recording the defect as if it were the
+/// contract. It now pins the canonical-correct behaviour: the fixture's
+/// `Custom("seam_enforcer")` data must still reach the loader (unchanged) and
+/// must NOT mint a variant region.
 #[test]
-fn paint_channel_seam_strokes_have_no_live_consumer() {
+fn paint_channel_seam_strokes_do_not_partition_regions() {
     let path = cube_cilindrical_modifier_path();
     assert!(path.exists(), "fixture missing: {}", path.display());
     let mesh =
@@ -726,17 +731,15 @@ fn paint_channel_seam_strokes_have_no_live_consumer() {
          Seam-placer uses geometric SeamCandidate scores only."
     );
 
-    // Assert the data-reaches-SliceIR fact for the seam channel.
-    // The seam paint enters SlicedRegion.variant_chain as ("seam_enforcer", _).
+    // DEV-123: seam paint must NOT mint a variant region. Canonical routes it to
+    // `gather_enforcers_blockers` (`SeamPlacer.cpp`) as a per-candidate score;
+    // partitioning on it minted a spurious `seam_enforcer` region with its own
+    // walls and notched the matching geometry out of BASE.
     assert!(
-        has_seam_variant_chain,
-        "AC-7 / seam-consumer-gap: Custom(\"seam_enforcer\") PaintLayer from \
-         cube_cilindrical_modifier.3mf must reach at least one SlicedRegion.variant_chain \
-         as (\"seam_enforcer\", _).\n\
-         facet_value_count={facet_value_count}, stroke_count={stroke_count}.\n\
-         ROUTING: painted_subsets path -> variant_chain.\n\
-         CONSUMER GAP: No live downstream module reads variant_chain(\"seam_enforcer\"). \
-         The seam-placer uses geometric SeamCandidate scores, not paint. \
-          Recorded as a seam consumer gap."
+        !has_seam_variant_chain,
+        "DEV-123: Custom(\"seam_enforcer\") paint from cube_cilindrical_modifier.3mf \
+         must NOT reach any SlicedRegion.variant_chain — seam painting is a \
+         seam-placer hint and never partitions regions.\n\
+         facet_value_count={facet_value_count}, stroke_count={stroke_count}."
     );
 }

@@ -254,6 +254,29 @@ impl LayerModule for ClassicPerimeters {
         // `wall_count + extra_perimeters`.
         let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
         let base_wall_count = base_wall_count + extra_perimeters;
+        // alternate_extra_wall (DEV-125): canonical `process_classic` and
+        // `process_arachne` (`PerimeterGenerator.cpp`) carry a byte-identical
+        // guard `alternate_extra_wall && layer_id % 2 == 1 && !m_spiral_vase &&
+        // sparse_infill_density > 0` that does `loop_number++`. `loop_number`
+        // is 0-indexed, so the wall count is `loop_number + 1` — the bump is
+        // exactly one extra wall. Applied AFTER the `extra_perimeters` addition
+        // (canonical folds both into the same `loop_number`) and BEFORE the
+        // `only_one_wall_first_layer` clamp below, so the clamp still wins on
+        // the first layer, matching canonical's ordering. The arachne module
+        // expresses the same +1 wall as `max_bead_count += 2`, per canonical's
+        // `max_bead_count = 2 * inset_count` in `WallToolPaths::generate`.
+        let alternate_extra_wall = _config.get_bool("alternate_extra_wall").unwrap_or(false);
+        let spiral_vase = _config.get_bool("spiral_vase").unwrap_or(false);
+        let sparse_infill_density = _config.get_float("sparse_infill_density").unwrap_or(20.0);
+        let base_wall_count = if alternate_extra_wall
+            && layer_index % 2 == 1
+            && !spiral_vase
+            && sparse_infill_density > 0.0
+        {
+            base_wall_count + 1
+        } else {
+            base_wall_count
+        };
         // extra_perimeters_on_overhangs (T-077, P108): add ONE extra wall loop
         // inside the region's overhang footprint (region.overhang_areas()),
         // leaving the rest of the region at the base wall count. Additive
@@ -298,7 +321,21 @@ impl LayerModule for ClassicPerimeters {
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
-        let layer_wall_count = if only_one_wall_first_layer && layer_index == 0 {
+        // DEV-124: canonical `process_classic` (`PerimeterGenerator.cpp`) gates
+        // the single-wall clamp on `this->layer_id == object_config->raft_layers`
+        // — the first *printed* layer, which is 0 only when no raft is
+        // configured. PnP's equivalent of canonical `raft_layers` is
+        // `support_raft_layers` (same semantics, same default 0); it is declared
+        // in this manifest so the read is live rather than dropped by
+        // `ConfigView::from_declared`.
+        //
+        // Canonical additionally AND-gates on `has_bottom_shell_layers`
+        // (`bottom_shell_layers > 0`). That conjunct is deliberately NOT ported:
+        // PnP's `bottom_shell_layers` is a host `ResolvedConfig` field
+        // constrained to [1, 10], so the predicate is unconditionally true here
+        // and porting it would be dead code. Revisit if that range ever admits 0.
+        let raft_layers = _config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let layer_wall_count = if only_one_wall_first_layer && layer_index == raft_layers {
             1
         } else {
             base_wall_count

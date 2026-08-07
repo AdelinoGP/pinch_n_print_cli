@@ -40,7 +40,7 @@
 #![allow(dead_code)]
 
 use slicer_ir::{
-    ExPolygon, PerimeterIR, PerimeterRegion, Point2, Polygon, SliceIR, SlicedRegion,
+    ExPolygon, PaintValue, PerimeterIR, PerimeterRegion, Point2, Polygon, SliceIR, SlicedRegion,
     CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::blackboard::LayerArena;
@@ -361,6 +361,81 @@ fn modifier_split_degenerate_no_split() {
         1,
         "AC-N2: degenerate modifier must leave the region set identical to the \
          no-modifier case (single base region)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DEV-130 — the footprint binds to BASE, never to a painted variant that
+// happens to be emitted first
+// ---------------------------------------------------------------------------
+
+/// `split_modifier_footprints` locates the parent region with a `position(...)`
+/// scan over the already-emitted prefix. Before DEV-130 that scan matched on
+/// `object_id` and "not a footprint" only, so on an object carrying BOTH paint
+/// variants and a modifier volume it bound to whichever region was emitted
+/// first — which can be a painted variant. The minted sub-region id encodes its
+/// parent (`base_region_id * STRIDE + hash`, invertible by integer division),
+/// so the parent choice is directly observable.
+#[test]
+fn modifier_split_binds_to_base_not_painted_variant() {
+    let footprint = square(0.0, 0.0, 10.0, 10.0);
+    let modifier = square(3.0, 3.0, 7.0, 7.0);
+
+    // A painted variant region, emitted BEFORE the base region. Non-empty
+    // `variant_chain` is what distinguishes it from BASE.
+    let mut variant = base_region("obj1", footprint.clone());
+    variant.region_id = 7;
+    variant.variant_chain = vec![("material".to_string(), PaintValue::ToolIndex(1))];
+    let variant_area_before = poly_area(&variant.polygons);
+
+    let regions = vec![
+        variant,
+        base_region("obj1", footprint.clone()),
+        modifier_footprint_region("obj1", modifier),
+    ];
+
+    let mut arena = LayerArena::new();
+    arena
+        .set_slice(SliceIR {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 1.0,
+            regions,
+        })
+        .expect("stage slice must succeed");
+    arena
+        .set_perimeter(base_perimeter("obj1", footprint))
+        .expect("stage perimeter must succeed");
+
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0)
+        .expect("sync_perimeter_infill_areas_into_slice must succeed");
+    let slice = arena.slice().expect("slice must be restaged").clone();
+
+    let sub = slice
+        .regions
+        .iter()
+        .find(|r| {
+            r.region_id != 0 && r.region_id != 7 && r.region_id != MODIFIER_FOOTPRINT_REGION_ID
+        })
+        .expect("DEV-130: a modifier sub-region must still be minted");
+
+    assert_eq!(
+        sub.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE,
+        0,
+        "DEV-130: minted sub-region must encode BASE (region_id 0) as its parent, \
+         not the painted variant (region_id 7) that precedes it in emission order"
+    );
+
+    // The painted variant must not have been notched — only BASE gives up area.
+    let variant_after = slice
+        .regions
+        .iter()
+        .find(|r| r.region_id == 7)
+        .expect("the painted variant region must survive the split");
+    assert!(
+        (poly_area(&variant_after.polygons) - variant_area_before).abs() < 1e-6,
+        "DEV-130: the painted variant must keep its full area; only BASE is \
+         reduced by the footprint difference"
     );
 }
 

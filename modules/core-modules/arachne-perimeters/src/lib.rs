@@ -469,7 +469,14 @@ impl LayerModule for ArachnePerimeters {
         // is_initial_layer; both flags are kept distinct so downstream flag
         // derivation (is_top_or_bottom_layer = is_bottom_layer ||
         // is_topmost_layer, G10) can be wired later — and both fire on layer 0.
-        let is_bottom_layer = layer_index == 0;
+        // DEV-124: canonical `process_arachne` (`PerimeterGenerator.cpp`) sets
+        // `is_bottom_layer = (this->layer_id == object_config->raft_layers)` —
+        // the first *printed* layer, which is 0 only when no raft is configured.
+        // PnP's equivalent of canonical `raft_layers` is `support_raft_layers`
+        // (same semantics, same default 0), declared in this manifest so the
+        // read is live rather than dropped by `ConfigView::from_declared`.
+        let raft_layers = config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let is_bottom_layer = layer_index == raft_layers;
         params.is_initial_layer = layer_index == 0;
         params.is_bottom_layer = is_bottom_layer;
         let wall_sequence = config.get_string("wall_sequence").unwrap_or("InnerOuter");
@@ -550,14 +557,18 @@ impl LayerModule for ArachnePerimeters {
         // `WallToolPaths` (PerimeterGenerator.cpp:2137-2139). We achieve the
         // same effect by clamping `max_bead_count` to 2 (one wall == two beads
         // in the OverhangRestricted / LimitedBeadingStrategy logic). Placed
-        // after the `alternate_extra_wall` block above so the clamp wins —
-        // though the two conditions never co-fire (`is_initial_layer` is only
-        // true for layer_index == 0, while `alternate_extra_wall` only fires on
-        // odd layers).
+        // after the `alternate_extra_wall` block above so the clamp wins.
+        //
+        // DEV-124: the gate is `is_bottom_layer` alone, matching canonical's
+        // `if (is_bottom_layer && only_one_wall_first_layer) loop_number = 0;`.
+        // The former `params.is_initial_layer ||` disjunct was a PnP addition:
+        // with no raft the two flags are identical (both `layer_index == 0`), so
+        // dropping it is a no-op there, but with a raft it would have re-fired
+        // the clamp on the raft's own first layer instead of the object's.
         let only_one_wall_first_layer = config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
-        if only_one_wall_first_layer && (params.is_initial_layer || is_bottom_layer) {
+        if only_one_wall_first_layer && is_bottom_layer {
             params.max_bead_count = 2;
         }
 

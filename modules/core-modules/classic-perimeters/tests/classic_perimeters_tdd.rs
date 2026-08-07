@@ -290,6 +290,84 @@ fn wall_count_zero() {
     );
 }
 
+/// DEV-125 — `alternate_extra_wall` adds exactly one wall on odd layers.
+///
+/// Canonical `process_classic` (`PerimeterGenerator.cpp`) does `loop_number++`
+/// under `alternate_extra_wall && layer_id % 2 == 1 && !m_spiral_vase &&
+/// sparse_infill_density > 0`; `loop_number` is 0-indexed so the wall count is
+/// `loop_number + 1`. Before this fix the key was declared in the classic
+/// manifest but read nowhere, so every layer emitted the base count.
+#[test]
+fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
+    let config = ConfigViewBuilder::new()
+        .int("wall_count", 2)
+        .float("line_width", 0.4)
+        .bool("alternate_extra_wall", true)
+        .float("sparse_infill_density", 20.0)
+        .build();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
+    let paint = PaintRegionLayerView::new(0);
+
+    let run = |layer_index: u32| {
+        let regions = vec![make_region(10.0, 0.2)];
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(layer_index, &regions, &paint, &mut output, &config)
+            .unwrap();
+        output.wall_loops().len()
+    };
+
+    // Layer 2 (even) is the baseline; layer 3 (odd) must carry one more loop.
+    let even = run(2);
+    let odd = run(3);
+    assert_eq!(
+        odd,
+        even + 1,
+        "alternate_extra_wall must add exactly one wall loop on odd layers \
+         (even layer 2 emitted {even}, odd layer 3 emitted {odd})"
+    );
+}
+
+/// DEV-125 — the two safety conjuncts must actually gate the bump. They are
+/// only live because `spiral_vase` / `sparse_infill_density` are declared in
+/// `classic-perimeters.toml`; an undeclared key is dropped by
+/// `ConfigView::from_declared` and would silently read its fallback.
+#[test]
+fn alternate_extra_wall_suppressed_by_spiral_vase_and_zero_density() {
+    let base = |spiral: bool, density: f64| {
+        ConfigViewBuilder::new()
+            .int("wall_count", 2)
+            .float("line_width", 0.4)
+            .bool("alternate_extra_wall", true)
+            .bool("spiral_vase", spiral)
+            .float("sparse_infill_density", density)
+            .build()
+    };
+
+    let run = |config: &ConfigView| {
+        let module = ClassicPerimeters::from_config(config).unwrap();
+        let regions = vec![make_region(10.0, 0.2)];
+        let paint = PaintRegionLayerView::new(0);
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(3, &regions, &paint, &mut output, config)
+            .unwrap();
+        output.wall_loops().len()
+    };
+
+    let enabled = run(&base(false, 20.0));
+    assert_eq!(
+        run(&base(true, 20.0)),
+        enabled - 1,
+        "spiral_vase must suppress the alternate_extra_wall bump"
+    );
+    assert_eq!(
+        run(&base(false, 0.0)),
+        enabled - 1,
+        "sparse_infill_density == 0 must suppress the alternate_extra_wall bump"
+    );
+}
+
 #[test]
 fn seam_candidates_generated() {
     let config = make_config(2, 0.4);

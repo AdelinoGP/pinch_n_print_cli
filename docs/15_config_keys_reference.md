@@ -83,6 +83,7 @@ is the authoritative catalog of their defaults and ranges.
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `arachne-perimeters` |
 | `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | `arachne-perimeters` |
 | `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
 | `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
 | `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
@@ -124,6 +125,9 @@ is the authoritative catalog of their defaults and ranges.
 | `slice_has_paint` | bool | `false` | — | `classic-perimeters` |
 | `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
 | `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
+| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `classic-perimeters` |
+| `spiral_vase` | bool | `false` | — | `classic-perimeters` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | `classic-perimeters` |
 | `thick_bridges` | bool | `false` | — | `classic-perimeters` |
 | `top_bottom_infill_wall_overlap` | percent | `"25%"` | — | `classic-perimeters` |
 | `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |

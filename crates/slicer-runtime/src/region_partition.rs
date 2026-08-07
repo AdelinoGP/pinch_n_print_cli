@@ -305,11 +305,18 @@ fn split_modifier_footprints(slice: &mut slicer_ir::SliceIR) {
     for r in regions {
         if r.region_id == MODIFIER_FOOTPRINT_REGION_ID {
             let obj = r.object_id.clone();
-            // Locate the matching base region (same object_id, not a footprint).
-            if let Some(bi) = out
-                .iter()
-                .position(|x| x.object_id == obj && x.region_id != MODIFIER_FOOTPRINT_REGION_ID)
-            {
+            // Locate the matching BASE region: same object_id, not a footprint,
+            // and not a painted variant. `variant_chain.is_empty()` is what
+            // distinguishes BASE from a painted variant region (DEV-130) —
+            // without it this picks the first same-object region in emission
+            // order, which on a paint+modifier stack can be a painted variant,
+            // binding the footprint to the wrong parent and inheriting that
+            // variant's geometry and shell-classification fields.
+            if let Some(bi) = out.iter().position(|x| {
+                x.object_id == obj
+                    && x.region_id != MODIFIER_FOOTPRINT_REGION_ID
+                    && x.variant_chain.is_empty()
+            }) {
                 let base_region_id = out[bi].region_id;
                 let eff = out[bi].effective_layer_height;
                 let fp_geo = r.polygons.clone();

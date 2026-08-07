@@ -195,6 +195,15 @@ default = false
 display = "Only one wall on first layer"
 group   = "Walls"
 
+[config.schema.support_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Support Raft Layers"
+description = "PnP's name for OrcaSlicer coInt key raft_layers (same semantics, same default 0); owned by support-planner and re-declared here so run_perimeters can resolve the first PRINTED layer. Consumed by run_perimeters: only_one_wall_first_layer fires on layer_index == support_raft_layers, mirroring canonical process_classic's `layer_id == object_config->raft_layers` (DEV-124)."
+group   = "Support"
+
 [config.schema.smaller_perimeter_line_width]
 type    = "float"
 default = 0.25
@@ -258,8 +267,25 @@ group       = "Walls"
 type        = "bool"
 default     = false
 display     = "Alternate extra wall"
-description = "OrcaSlicer coBool key alternate_extra_wall; adds an extra perimeter wall on alternating layers to correct over-extrusion patterns. Not yet consumed by run_perimeters in this packet."
+description = "OrcaSlicer coBool key alternate_extra_wall; adds an extra perimeter wall on alternating layers to correct over-extrusion patterns. Consumed by run_perimeters: bumps base_wall_count by +1 on odd layers when !spiral_vase && sparse_infill_density > 0, mirroring canonical process_classic's loop_number++ (DEV-125)."
 group       = "Walls"
+
+[config.schema.spiral_vase]
+type        = "bool"
+default     = false
+display     = "Spiral vase mode"
+description = "OrcaSlicer coBool key spiral_vase; enables spiral/vase mode (continuous single-wall Z-ramp, no top layers, only one wall). Consumed by run_perimeters: part of the odd-layer alternate_extra_wall gate (the bump applies only when !spiral_vase). Mirrors the arachne-perimeters registration."
+group       = "Walls"
+
+[config.schema.sparse_infill_density]
+type        = "float"
+default     = 20.0
+min         = 0.0
+max         = 100.0
+unit        = "%"
+display     = "Sparse infill density"
+description = "OrcaSlicer coPercent key sparse_infill_density, default 20%; represented here as a plain percent float. Consumed by run_perimeters: part of the odd-layer alternate_extra_wall gate (the bump applies only when sparse_infill_density > 0). Mirrors the arachne-perimeters registration."
+group       = "Infill"
 
 [config.schema.bridge_flow]
 type        = "float"

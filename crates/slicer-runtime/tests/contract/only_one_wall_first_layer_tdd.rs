@@ -95,3 +95,71 @@ fn non_first_layer_respects_wall_count() {
         walls.len()
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEV-124 — the clamp follows the raft, not layer zero
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Same as `config_4_walls` but with a raft configured.
+///
+/// PnP's `support_raft_layers` is its name for canonical `raft_layers` (same
+/// semantics, same default 0). Canonical gates the single-wall clamp on
+/// `layer_id == object_config->raft_layers` in `process_classic` and, via
+/// `is_bottom_layer`, in `process_arachne` — i.e. the first *printed* layer.
+fn config_4_walls_with_raft(raft_layers: i64) -> ConfigView {
+    ConfigViewBuilder::new()
+        .int("wall_count", 4)
+        .float("line_width", 0.4)
+        .bool("only_one_wall_first_layer", true)
+        .int("support_raft_layers", raft_layers)
+        .build()
+}
+
+fn classic_wall_count_at(layer_index: u32, config: &ConfigView) -> usize {
+    let module = ClassicPerimeters::from_config(config).unwrap();
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(layer_index, &[make_region()], &paint, &mut output, config)
+        .expect("run_perimeters must not panic");
+    output.wall_loops().len()
+}
+
+/// DEV-124: with `support_raft_layers = 3`, layer 0 is raft — it must keep the
+/// full wall count — and layer 3 is the first printed object layer, which is
+/// where the clamp belongs. Before the fix this was exactly inverted.
+#[test]
+fn classic_clamp_follows_raft_layers_not_layer_zero() {
+    let config = config_4_walls_with_raft(3);
+
+    assert_eq!(
+        classic_wall_count_at(0, &config),
+        4,
+        "DEV-124: layer 0 under a 3-layer raft is not the first printed layer \
+         and must keep the configured wall count"
+    );
+    assert_eq!(
+        classic_wall_count_at(3, &config),
+        1,
+        "DEV-124: layer 3 == support_raft_layers is the first printed layer and \
+         must be clamped to one wall"
+    );
+}
+
+/// DEV-124 regression guard: with no raft (the default), the clamp must still
+/// fire on layer 0 exactly as before. This pins that the fix is a no-op for
+/// every existing no-raft profile.
+#[test]
+fn classic_clamp_unchanged_when_no_raft_configured() {
+    let config = config_4_walls_with_raft(0);
+    assert_eq!(
+        classic_wall_count_at(0, &config),
+        1,
+        "DEV-124: with raft_layers = 0 the clamp must still fire on layer 0"
+    );
+    assert_eq!(
+        classic_wall_count_at(1, &config),
+        4,
+        "DEV-124: with raft_layers = 0 layer 1 must keep the configured count"
+    );
+}

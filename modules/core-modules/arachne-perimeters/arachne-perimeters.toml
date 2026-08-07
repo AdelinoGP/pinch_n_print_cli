@@ -396,8 +396,17 @@ group   = "Walls"
 type        = "bool"
 default     = false
 display     = "Only one wall on first layer"
-description = "OrcaSlicer coBool key only_one_wall_first_layer; on layer 0, forces a single wall (max_bead_count=2) instead of wall_count (Orca PerimeterGenerator.cpp:2137-2139: loop_number = 0)."
+description = "OrcaSlicer coBool key only_one_wall_first_layer; on the first PRINTED layer, forces a single wall (max_bead_count=2) instead of wall_count (canonical process_arachne sets loop_number = 0 when is_bottom_layer)."
 group       = "Walls"
+
+[config.schema.support_raft_layers]
+type        = "int"
+default     = 0
+min         = 0
+max         = 20
+display     = "Support Raft Layers"
+description = "PnP's name for OrcaSlicer coInt key raft_layers (same semantics, same default 0); owned by support-planner and re-declared here so run_perimeters can resolve the first PRINTED layer. Consumed by run_perimeters: is_bottom_layer is layer_index == support_raft_layers, mirroring canonical process_arachne's `is_bottom_layer = (layer_id == object_config->raft_layers)` (DEV-124)."
+group       = "Support"
 
   # ── Arachne wall simplification tolerances (packet 151, Step 5 / G9) ──────
   # OrcaSlicer coFloat keys wall_maximum_resolution /
