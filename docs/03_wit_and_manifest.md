@@ -14,10 +14,10 @@ to describe what a module imports and exports.
 
 > **Source of truth.** `crates/slicer-schema/wit/` is the **single canonical WIT contract**.
 > It is consumed directly by both the host (`wasmtime::component::bindgen!{ path: … }`) and the
-> guest proc-macro (`crates/slicer-macros` via `include_str!` + nested-package inline). The WIT
-> code blocks reproduced in this document are derived for reading convenience and may drift behind
-> the on-disk schema (e.g. new record fields, additional resource methods, renamed enum variants).
-> When the doc and `crates/slicer-schema/wit/` disagree, the on-disk files win; treat the doc
+> guest proc-macro (`crates/slicer-macros` via `include_str!` + nested-package inline). WIT
+> surface is described in this document in prose and tables (there are no
+> verbatim `.wit` blocks to drift) — where prose here and the on-disk schema
+> disagree, the on-disk files win; treat the doc
 > divergence as a bug to be filed against this document. The phantom top-level `wit/` directory
 > was deleted in packet 72; do not recreate it.
 >

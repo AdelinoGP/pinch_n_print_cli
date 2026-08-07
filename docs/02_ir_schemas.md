@@ -1063,115 +1063,12 @@ current layer and cannot see or modify any other layer's `LayerCollectionIR`.
      aspirational) or the u32 is a defect that makes raft layers unrepresentable
      in the layer collection. Resolve before relying on either type here. -->
 
-```rust
-pub struct LayerCollectionIR {
-    pub schema_version: SemVer,
-    /// Unsigned in code today; see the VERIFY note preceding this block
-    /// regarding raft prefix layers and negative indices.
-    pub global_layer_index: u32,
-    pub z: f32,
-    /// Ordered, ready-to-emit extrusion entities.
-    /// Produced by travel minimization + DAG topo sort.
-    pub ordered_entities: Vec<PrintEntity>,
-    pub tool_changes: Vec<ToolChange>,
-    pub z_hops: Vec<ZHop>,
-    /// Guest-emitted per-layer annotations (comments / raw G-code lines).
-    pub annotations: Vec<LayerAnnotation>,
-    /// Retract/unretract decisions from `Layer::PathOptimization`.
-    pub retracts: Vec<TravelRetract>,
-    /// Travels between entities. Anchors are by `entity_id`, not positional index
-    /// (packet 39), so finalization mutations cannot dangle anchors.
-    pub travel_moves: Vec<TravelMove>,
-    /// Optional per-point speed-factor overrides, keyed by `entity_id`
-    /// (packet 189). `#[serde(default)]`; an entity with no row here keeps
-    /// its uniform `ExtrusionPath3D::speed_factor` exactly as before.
-    pub speed_profiles: Vec<EntitySpeedProfile>,
-}
-
-pub struct PrintEntity {
-    pub path: ExtrusionPath3D,
-    pub role: ExtrusionRole,
-    pub region_key: RegionKey,
-    pub topo_order: u32,       // guaranteed predecessors appear earlier in ordered_entities
-    /// Stable per-layer entity identifier. Assigned at construction by
-    /// `LayerEntityIdGen::next()`; never reused within a single
-    /// `LayerCollectionIR`. Reserved value `0` means "uninitialized" /
-    /// sentinel; the generator starts at `1`. Travel anchors and
-    /// finalization mutations reference entities by this id, not by
-    /// positional index, so inserting or sorting entities cannot
-    /// invalidate anchors. Added in packet 39.
-    pub entity_id: u64,
-    /// Resolved tool/extruder index — a pure SELECTOR (which extruder/filament
-    /// prints this entity). Separated from `region_key.region_id` (a pure region
-    /// IDENTITY) by the region_id↔tool split so a painted-variant identity hash
-    /// can never leak into the tool slot (the packet-125 9.9 GiB OOM). Set at
-    /// assembly from `dominant_tool_index`/spatial/variant/modifier resolution,
-    /// falling back to `0` (T0). Read by the emitter and `path-optimization`.
-    /// `#[serde(default)]`; no `Default` on the struct (construction sites are
-    /// compiler-forced to set it). Added with LayerCollectionIR schema 1.0.0 →
-    /// 1.1.0 (additive).
-    pub tool_index: u32,
-}
-
-pub struct TravelMove {
-    /// Travel anchor: the entity in `ordered_entities` after which this travel
-    /// is emitted. Replaces the previous `entity_idx: u32` positional anchor;
-    /// the emitter resolves it via an `entity_id -> index` map
-    /// built per-layer. Added in packet 39.
-    pub entity_id: u64,
-    /// Destination, in millimeters. Each axis is independently optional; `None`
-    /// leaves that axis unchanged. The travel carries a destination only — the
-    /// start point is wherever the previous move ended.
-    pub x: Option<f32>,
-    pub y: Option<f32>,
-    pub z: Option<f32>,
-    /// Feed-rate override in mm/s. `None` keeps the current speed.
-    pub f: Option<f32>,
-}
-
-pub struct EntitySpeedProfile {
-    /// Which entity in `ordered_entities` this profile applies to. Same
-    /// `entity_id` key as `TravelMove` — both are `entity_id`-keyed side
-    /// tables, so inserting or sorting entities cannot invalidate them.
-    pub entity_id: u64,
-    /// One factor per point of that entity's `path.points`; `factors.len()`
-    /// always equals `path.points.len()`. Each factor REPLACES the
-    /// whole-entity `ExtrusionPath3D::speed_factor` for that point.
-    /// An ABSENT profile row means the entity uses the uniform
-    /// `speed_factor` unchanged. At most one row per `entity_id` — the
-    /// finalization applier upserts (a second write for the same
-    /// `entity_id` replaces the row, never appends).
-    /// A geometry mutation that changes this entity's point count, including
-    /// `EntityMutation::SetPathPoints`, invalidates any earlier profile row
-    /// for that entity. The producer MUST resubmit the profile after the
-    /// geometry mutation in the same `merge_ops` sequence.
-    pub factors: Vec<f32>,
-}
-
-pub struct ToolChange {
-    pub after_entity_index: u32,
-    pub from_tool: u32,
-    pub to_tool: u32,
-}
-
-pub struct ZHop {
-    pub after_entity_index: u32,
-    pub hop_height: f32,
-}
-
-pub enum ExtrusionRole {
-    OuterWall, InnerWall, ThinWall,
-    TopSolidInfill, BottomSolidInfill, SparseInfill,
-    InternalSolidInfill,
-    SupportMaterial, SupportInterface,
-    WipeTower, PrimeTower,
-    Skirt, Brim,
-    Ironing, BridgeInfill,
-    RaftInfill,       // raft fill rendered by a Layer::Infill module holding claim:raft-fill (added TASK-289, schema 1.3.0)
-    GapFill,           // thin-gap fill paths (added P105, schema 4.4.0)
-    Custom(String),    // community modules may register new roles
-}
-```
+The canonical definitions of `LayerCollectionIR`, `PrintEntity`,
+`TravelMove`, `EntitySpeedProfile`, `ToolChange`, `ZHop`, and
+`ExtrusionRole` live in `crates/slicer-ir/src/slice_ir.rs`. The structs'
+doc comments there carry the packet-39 /
+packet-125 / packet-189 contracts summarized in the ownership lifecycle
+above; read them from source rather than from a copy here.
 
 ### Extrusion-role default priority (Normative)
 
@@ -1275,72 +1172,11 @@ import it (it is `#[cfg(any(test, feature = "test"))]`-gated under
 
 **Stage:** Output of `PostPass::GCodeEmit`, mutated by `PostPass::GCodePostProcess`
 
-```rust
-pub struct GCodeIR {
-    pub schema_version: SemVer,
-    pub commands: Vec<GCodeCommand>,
-    pub metadata: PrintMetadata,
-}
-
-pub enum GCodeCommand {
-    Move {
-        x: Option<f32>, y: Option<f32>, z: Option<f32>,
-        e: Option<f32>,
-        /// Feedrate (mm/min). When `Some(_)`, the emitter writes this
-        /// value verbatim and DOES NOT substitute the role-default
-        /// (Packet 52 contract). When `None`, `resolve_feedrate(&role,
-        /// speed_factor)` is applied at the print-move and z-hop
-        /// builders to dispatch one of 26 per-role `*_speed` config
-        /// keys; travel moves fall back to `travel_speed` when `f` is
-        /// `None`. This `Some` override is how upstream modules (e.g.
-        /// retract speed) keep their feedrates intact end-to-end.
-        f: Option<f32>,
-        role: ExtrusionRole,
-    },
-    /// Retract.
-    /// `mode` selects whether the emitter writes a parameterised
-    /// `G1 E-<length> F<speed>` (Gcode mode) or a parameterless `G10`
-    /// (Firmware mode). Length / speed are still carried in firmware
-    /// mode for diagnostics but are not serialized. Added in packet 34.
-    Retract    { length: f32, speed: f32, mode: RetractMode },
-    /// Unretract — symmetric inverse of Retract.
-    /// `mode = Gcode` emits `G1 E<length> F<speed>`; `mode = Firmware`
-    /// emits `G11`. M207/M208 are intentionally never emitted —
-    /// firmware-side retract tuning is the printer's start G-code's job
-    /// (OrcaSlicer parity).
-    Unretract  { length: f32, speed: f32, mode: RetractMode },
-    FanSpeed   { value: u8 },
-    Temperature { tool: u32, celsius: f32, wait: bool },
-    ToolChange  { after_entity_index: u32, from: u32, to: u32 },
-    Comment     { text: String },
-    Raw         { text: String },       // escape hatch for printer-specific codes
-    /// Extrusion mode selector (M82 = absolute, M83 = relative).
-    /// Pushed by `DefaultGCodeEmitter::emit_gcode` as the first command
-    /// so that `PostPass::GCodePostProcess` modules can prepend
-    /// `machine_start_gcode` before it. Added in packet 59.
-    ExtrusionMode { absolute: bool },
-}
-
-/// Per-command retract / unretract emission mode. Added in packet 34.
-/// Default is `Gcode` (preserves packet-15 emission bit-for-bit).
-/// Every `Retract` / `Unretract` in a single print carries the same
-/// value — the field is per-command for matcher-exhaustiveness rather
-/// than for per-command variation.
-pub enum RetractMode {
-    /// `G1 E-<length> F<speed>` / `G1 E<length> F<speed>`.
-    Gcode,
-    /// Parameterless `G10` / `G11`. Length / speed in the IR are
-    /// carried but not serialized.
-    Firmware,
-}
-
-pub struct PrintMetadata {
-    pub estimated_print_time_s: u32,
-    pub filament_used_mm: Vec<f32>,     // one per tool
-    pub layer_count: u32,
-    pub slicer_version: String,
-}
-```
+The canonical definitions of `GCodeIR`, `GCodeCommand`, `RetractMode`,
+and `PrintMetadata` live in `crates/slicer-ir/src/slice_ir.rs`. The
+variant doc comments there carry the packet-34 / packet-54 /
+packet-59 contracts summarized in the subsections below; read them from
+source rather than from a copy here.
 
 ### G-code envelope blocks (Normative — packet 55)
 

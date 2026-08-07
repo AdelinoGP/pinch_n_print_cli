@@ -54,7 +54,11 @@ inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
 ### Parent-directory creation and error semantics (Normative — Packet 65)
 
 Parent directories for both `--output` and `--report` paths are created
-automatically when missing, via `pnp_cli::io::write_with_parents`. The
+automatically when missing: `--output` via
+`pnp_cli::io::write_with_parents` (`crates/pnp-cli/src/io.rs`), and
+`--report` via `std::fs::create_dir_all` at the report sink
+(`crates/slicer-runtime/src/run.rs`) plus `Collector::finish_and_render_to`
+(`crates/slicer-runtime/src/report/collector.rs`). The
 two flags differ on what happens when directory creation fails:
 
 - **`--output`** — a failure to create the parent directory causes the
@@ -188,8 +192,11 @@ static ALLOC: AccountingAllocator<MimallocOrWhatever> =
 ```
 
 Adding a second `#[global_allocator]` anywhere in the workspace will
-cause a link-time conflict. There is currently no other global allocator
-declared anywhere in this workspace.
+cause a link-time conflict within that link unit. No other global
+allocator is declared in production code; the only second declaration
+in the tree is the `OomGuard` in the executor test-harness binary
+(`crates/slicer-runtime/tests/executor/main.rs`), which links
+separately and cannot conflict with the CLI.
 
 ## v1 limitations
 

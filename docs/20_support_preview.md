@@ -28,7 +28,7 @@ Internally, 1 scaled integer unit is 100 nm (`10^-4 mm`); see
 `mm = units / 10_000`.
 
 For example, the internal point `(1234567, -89012)` becomes
-`(0.1234567, -0.0089012)` in JSON.
+`(123.4567, -8.9012)` in JSON.
 
 ## Document Shape
 
@@ -72,10 +72,10 @@ A complete example document is:
       "support": [
         {
           "contour": [
-            [0.1234567, -0.0089012],
-            [1.0, -0.0089012],
+            [123.4567, -8.9012],
+            [1.0, -8.9012],
             [1.0, 0.5],
-            [0.1234567, 0.5]
+            [123.4567, 0.5]
           ],
           "holes": []
         }

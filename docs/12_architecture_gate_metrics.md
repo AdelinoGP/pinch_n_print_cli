@@ -26,6 +26,14 @@ Canonical hash method (normative):
 - Hash algorithm: `SHA-256` over serialized bytes.
 - Exclude telemetry/runtime-only fields (`elapsed_ms`, timestamps, UUID run ids).
 
+<!-- VERIFY: the SHA-256 canonical hash described above has no in-tree
+     implementation. Grepping `crates/` finds no `sha2`/`Sha256`/
+     `canonical_hash` hasher; the only nearby symbol is an unrelated
+     FNV-64 digest in `crates/slicer-core/src/algos/paint_segmentation/`
+     and a stored (non-computing) digest in a JSON fixture. The method
+     above is therefore governance specification, not implemented
+     behavior. -->
+
 ## Recoverability
 
 - Failure-injection tests must cover at least:

@@ -43,16 +43,17 @@ anyone debugging why a module was rejected or ordered a certain way.
 >
 > WASM hosting (`slicer-wasm-host` crate — extracted in packet 83):
 >
-> - `crates/slicer-wasm-host/src/traits.rs` — runner traits (`PrepassRunner`,
->   `LayerRunner`, `FinalizationRunner`, `PostpassRunner`) and their
->   `*StageInput<'a>` borrow-struct inputs.
-> - `crates/slicer-wasm-host/src/host.rs` — four co-located `bindgen!`
->   invocations (per-world WIT remap onto the canonical layer world per ADR-0002).
+> - `crates/slicer-wasm-host/src/traits.rs` — runner traits
+>   (`PrepassStageRunner`, `LayerStageRunner`, `FinalizationStageRunner`,
+>   `PostpassStageRunner`) and their `*StageInput<'a>` borrow-struct inputs.
+> - `crates/slicer-wasm-host/src/host.rs` — the per-stage `bindgen!`
+>   invocations (one per versioned stage package, remapped onto the
+>   canonical shared type set per ADR-0002 and ADR-0045).
 >
 > Scheduler-no-wasmtime invariant (Packet 85): `slicer-scheduler` declares
 > no dep on `slicer-wasm-host`, `slicer-runtime`, or `wasmtime`. Verify
 > with `cargo tree -p slicer-scheduler --edges normal | grep wasmtime`
-> (must be empty). This is what enables the ~5500 LOC of planning logic
+> (must be empty). This is what enables the ~6.8k LOC of planning logic
 > to be unit-tested without instantiating any WASM component.
 
 The scheduler has four phases, all completing before a single layer is sliced. Phases 1–3 are pure data transformation — no WASM executes until Phase 4.
@@ -949,9 +950,10 @@ the plan — WASM instance pools are owned by the runtime
 
 ### Runner-Trait Input Borrow Structs (Normative — Packet 83)
 
-Runner trait signatures (`PrepassRunner::run_prepass`,
-`LayerRunner::run_layer`, `FinalizationRunner::run_finalization`,
-`PostpassRunner::run_postpass`) accept IR-typed `*StageInput<'a>`
+Runner trait signatures (`PrepassStageRunner::run_prepass`,
+`LayerStageRunner::run_layer`,
+`FinalizationStageRunner::run_finalization`,
+`PostpassStageRunner::run_postpass`) accept IR-typed `*StageInput<'a>`
 borrow structs rather than raw `&Blackboard` or `&LayerArena`. This
 decouples the dispatcher (which lives in `slicer-wasm-host`) from
 runtime-owned aggregates (which stay in `slicer-runtime`):

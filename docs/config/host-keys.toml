@@ -8,7 +8,7 @@
 #     docs/15_config_keys_reference.md from a single source (no hand-copied
 #     defaults — doc 15's hand-maintained speed table had drifted 15 of 26
 #     values away from the code), and
-#   * a slicer-runtime test (config_keys_host_lock_tdd.rs) asserts these values
+#   * a slicer-runtime test (host_keys_doc_lock_tdd.rs) asserts these values
 #     equal the live `FeedrateConfig::default()`, so this file cannot drift from
 #     the code it mirrors.
 #

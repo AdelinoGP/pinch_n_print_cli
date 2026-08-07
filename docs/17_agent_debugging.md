@@ -192,8 +192,11 @@ rendering an empty table that would read as "nothing was slow".
 
 All `dag` subcommands take `--module-dir <PATH>` (repeatable),
 `--no-default-module-paths`, and optionally `--model <PATH>` (for
-attaching per-object context to the output). They never compile WASM and
-respond in well under 100 ms regardless of module count.
+attaching per-object context to the output). They never compile WASM:
+the loader reads TOML manifests and checks same-stem `.wasm` existence
+only. Response latency is not measured; the design intent is
+sub-100 ms regardless of module count (`run_dag_*` in
+`crates/slicer-scheduler/src/dag_cli.rs`).
 
 ### `dag stages`
 
@@ -206,8 +209,13 @@ pnp_cli dag stages --module-dir modules/core-modules --no-default-module-paths
 ### `dag stage <id>`
 
 Full detail for one stage — every module's claims, IR access masks,
-`requires_modules`, and config keys, plus the intra-stage serial edges
-with flattened reasons (`"ir_write_read: <path>"` or `"explicit_requires"`).
+`requires_modules`, and the intra-stage serial edges with flattened
+reasons (`"ir_write_read: <path>"` or `"explicit_requires"`).
+
+<!-- VERIFY: the stage-detail output also carries a `config_keys` field,
+     but `run_dag_stage` (`crates/slicer-scheduler/src/dag_cli.rs`)
+     hardcodes it to an empty vec — the Producer abstraction does not
+     surface config schemas, so this field is always empty today. -->
 
 ```
 pnp_cli dag stage "Layer::Infill" --module-dir modules/core-modules

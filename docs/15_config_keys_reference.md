@@ -282,9 +282,18 @@ fill-role keys; named `DEFAULT_*` constants in `run.rs` / `pipeline.rs` for keys
 read directly from the config source) via `docs/config/host-keys.toml`, which the
 `host_keys_doc_lock_tdd` slicer-runtime test (`crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs`) holds equal to those defaults
 (the speed check is exhaustive — adding a `FeedrateConfig` field fails the build
-until it is documented). Per-role speeds feed
+until it is documented). In CI this staleness check runs through the
+`check-deviations --check` step (`.github/workflows/ci.yml`), which invokes the
+same `gen-config-docs --check` code path. Per-role speeds feed
 `DefaultGCodeEmitter::resolve_feedrate(role, paint_layer, …)`, which emits F-tokens
 in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
+
+<!-- VERIFY: the generated table below labels every speed row's Source as
+     `gcode_emit.rs::FeedrateConfig`, but the struct lives at
+     `crates/slicer-ir/src/feedrate.rs`. The stale label is written by the
+     generator itself (`host_table_rows(..., "gcode_emit.rs::FeedrateConfig")`
+     in `xtask/src/gen_config_docs.rs`); fix it there, not in this file — the
+     region is machine-owned. -->
 
 <!-- BEGIN GENERATED: host-speeds (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Source |

@@ -32,6 +32,14 @@ Buffering requirement:
 - Event emission must be non-blocking to per-layer compute threads.
 - Implementations should queue events to a dedicated emitter thread/process.
 
+<!-- VERIFY: the current `JsonLinesEmitter`
+     (`crates/slicer-runtime/src/progress_events.rs`) does NOT queue to a
+     dedicated thread. It writes synchronously on the calling thread via
+     `writeln!` under a `Mutex<W>` (stderr is unbuffered, so each line
+     reaches the fd immediately; `emit_event` ignores write errors). The
+     dedicated-emitter-thread requirement above is a design intent the
+     implementation has not yet met. -->
+
 ## Event Schema (v1)
 
 ```json
@@ -120,6 +128,13 @@ Backpressure behavior:
 
 - If event sink is slower than producer, host must prefer bounded queue + lossless flush-at-end behavior.
 - Dropping `module_error` and `slice_complete` events is never allowed.
+
+<!-- VERIFY: no bounded queue exists today — `JsonLinesEmitter`
+     (`crates/slicer-runtime/src/progress_events.rs`) writes each line
+     synchronously under a `Mutex` and `emit_event` ignores write errors,
+     so a slow sink blocks the calling thread and a failed write is
+     dropped silently. See the buffering-requirement note at the top of
+     this document; the two requirements share one unbuilt mechanism. -->
 
 ## Error Visibility Contract
 

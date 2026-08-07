@@ -324,7 +324,7 @@ pnp_cli mesh decimate --input <path> --output <path>
 
 Options:
   --input          Input mesh file (STL, OBJ, or 3MF)
-  --output         Output mesh file path (STL, OBJ, or 3MF — inferred from extension or set via --format)
+  --output         Output mesh file path (STL, OBJ, or 3MF — format inferred from the output extension)
   --target-count   Absolute target triangle count
   --target-ratio   Fraction of triangles to retain (e.g. 0.25 = keep 25%)
   --max-error      Maximum quadric error budget (default: 0.01)
