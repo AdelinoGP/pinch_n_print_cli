@@ -1,0 +1,114 @@
+# Design: 211-support-interface-bottom-layers
+
+## Controlling Code Paths
+
+- Primary code path: `modules/core-modules/support-planner/src/lib.rs` — `SupportPlanner` (new `support_interface_bottom_layers` field), `PrepassModule::from_config` (parse), `PrepassModule::run_support_geometry` (delete the code-1003 block), `SupportPlanner::plan_for_object` (call the new post-pass after `smooth_branches`), `smooth_branches` (extract the sub-chain walk), and `push_interface_scan_lines` (reused unchanged).
+- Neighbouring tests/fixtures: `modules/core-modules/support-planner/tests/diagnostics_tdd.rs` (two cases rewritten), the net-new `modules/core-modules/support-planner/tests/interface_bottom_layers_tdd.rs`, and — read-only — `tests/to_buildplate_tdd.rs` (`unreachable_buildplate_node_pruned` is the fixture template), `tests/smooth_nodes_tdd.rs` (guards the chain-split extraction), `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs`.
+- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+
+## Architecture Constraints
+
+- **The blocker and its resolution.** `PlannedSupportNode` cannot carry `dist_to_bottom`. `plan_for_object` walks layers top→bottom once, nodes hold no parent pointers, and a chain's landing layer is only known after the chain terminates — by which time every node in it has already been emitted into `entries_in_order`. Any `dist_to_bottom` field would be `None` at emission time for every node that matters. The computation therefore moves out of node space into a post-pass over the emitted `SupportPlanEntry` rows, where the chain is fully materialised and the per-layer `LayerCollisionCache` is still in scope. **This packet adds no field to `PlannedSupportNode`**; that is a deliberate design outcome, not an omission.
+- **The landing test, and its one accepted approximation.** Canonical `TreeSupport::draw_circles` searches *every* object layer below a support component for `stTop`/`stBottom` surfaces intersecting it, and treats the lowest such intersection as the true support-to-model contact. PnP's prepass has no surface classification — `SupportGeometryView.entries[..].outlines` is the coarse per-layer model footprint and nothing more. PnP therefore asks the reduced question: *does the chain's lowest emitted layer `L_end` have model footprint directly beneath it at `L_end - 1`?* This is correct whenever a chain stops because it hit the model (the code-1002 drop condition is literally "the moved target is inside `collision_polys`"), and it correctly answers "no" for a chain that reaches layer 0 on open build plate. It differs from canonical for a chain that stops for a different reason — the per-layer branch cap — directly above model geometry; such a chain gets a band canonical would not draw. Record this on the `DEV-129` closure row; do not silently ship it as parity.
+- **Ordering is load-bearing.** `densify_bottom_interface` runs **after** `smooth_branches`, so the band is centred on the position that will actually be printed. The pre-existing top-interface densification runs *before* smoothing, inside the layer loop; that asymmetry is real and is left alone here (`[FWD-2]`).
+- **Chains, not columns.** `group_branches_into_columns` groups by `(object_id, region_id)`; one region routinely contains several independent trees, which is exactly why `smooth_branches` already splits a column into sub-chains at XY gaps above `CHAIN_BREAK_THRESHOLD`. The bottom pass must use the same decomposition or it will attach one floor band to whichever tree happens to reach lowest. The split is therefore extracted into a shared helper rather than duplicated — duplicating it would recreate `DEV-127`'s "two drifted copies" failure mode inside a single file.
+- <!-- snippet: wasm-staleness -->
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
+- <!-- snippet: coord-system -->
+- Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
+- Concretely: no canonical constant is transcribed by this packet — `support_interface_bottom_layers` is a layer **count**, dimensionless. The band's spatial extent reuses the top band's own `radius + tree_support_branch_distance * 0.5` half-extent and `tree_support_interface_spacing_mm`, both already-resolved PnP config values. If the implementer is ever tempted to lift a `scale_(...)` literal from `TreeSupportCommon.hpp` for the band geometry, it is 100× too large.
+- No schema or public version constant is bumped. `support-planner.toml` loses a comment only; every `[config.schema.*]` value is byte-identical, so the generated key table in `docs/15_config_keys_reference.md` does not move and no regeneration step is required.
+- ADR conformance: `docs/adr/0010-typed-diagnostic-channel.md`'s normative Decision is "add a typed `Diagnostic` record to the prepass world". Retiring one of its three example call sites does not contradict that decision, so this packet **conforms** rather than amends: no `D-211-ADR-0010-AMENDED` deviation is needed. Only the ADR's descriptive §Status paragraph gains a retirement sentence.
+
+## Code Change Surface
+
+- Selected approach: **resolve the count canonically, detect the landing from the emitted plan plus the collision cache, densify upward, retire the stub.**
+- Exact functions, traits, manifests, tests, and fixtures:
+  - `SupportPlanner` — new field `support_interface_bottom_layers: i32`. **Struct-literal blast radius (grep-verified, complete): two sites** — `Ok(Self { … })` in `from_config` and `default_planner()` in the in-file `#[cfg(test)] mod tests`. Both are in `modules/core-modules/support-planner/src/lib.rs`; the struct is `pub` but is only ever constructed through `from_config` outside that file (every external test calls `SupportPlanner::from_config(&config)`, never a literal — checked across all six `tests/*.rs`).
+  - `from_config` — parse `support_interface_bottom_layers` with the same `Int`/`Float`/default arm shape as the adjacent `support_interface_top_layers`, defaulting to `-1`.
+  - `run_support_geometry` — delete the `interface_bottom_layers` local and the whole code-1003 `push_diagnostic` block, including its `// ── Packet 118 D11 …` comment banner. The `_config` parameter stays (it is the trait signature) and may become fully unused; keep the leading underscore.
+  - `resolve_interface_bottom_layers(bottom_layers: i32, top_layers: i32) -> u32` — **net-new, `pub`.** Body: `let n = if bottom_layers < 0 { top_layers } else { bottom_layers }; n.max(0) as u32`. Doc comment cites canonical `number_of_support_interface_bottom_layers` (`SupportParameters.hpp`) by function + file, never by line.
+  - `split_column_into_chains(entries: &[SupportPlanEntry], column: &[usize]) -> Vec<(usize, usize)>` — **net-new, private.** Lifted verbatim from `smooth_branches`' `sub_starts` walk; returns half-open `(start, end)` ranges into `column`. `smooth_branches` is rewritten to consume it, with no behavioural change (`smooth_nodes_tdd` is the guard).
+  - `densify_bottom_interface(entries: &mut [SupportPlanEntry], collision_cache: &[LayerCollisionCache], bottom_n: u32, branch_distance: f32, interface_spacing: f32, branch_radius: f32, tan_diameter_angle: f32, effective_heights: &[f32]) -> ()` — **net-new, private.** For each `(object_id, region_id)` column and each sub-chain within it: entries are already sorted descending by `global_layer_index`, so the chain's last index is its lowest layer `L_end`. Read that entry's first point (`x`, `y`, `width`); if `L_end == 0`, skip. Look up `collision_cache[L_end - 1].collision_polys`; if the point is not inside it, skip (build-plate landing → no band, canonical's `found_contact == false` path). Otherwise walk the chain upward for `bottom_n` entries and call `push_interface_scan_lines` on each with the same `bbox_half = radius + branch_distance * 0.5`, `width = radius * 2.0`, `spacing`, `parity = global_layer_index.rem_euclid(2)`, `avoidance_polys` / `collision_polys` arguments the top band uses. The radius comes from the entry's own emitted `width / 2.0`, not from a recomputed `tapered_radius` — the emitted width is post-smoothing and is what the band should match.
+  - `plan_for_object` — after `smooth_branches(&mut entries_in_order, 100);`, add the guarded call: skip entirely when `self.support_on_build_plate_only`, when `resolve_interface_bottom_layers(self.support_interface_bottom_layers, self.support_interface_top_layers) == 0`, or when `self.tree_support_interface_spacing_mm <= 0.0`.
+  - `modules/core-modules/support-planner/support-planner.toml` — delete the `# Not yet implemented — see docs/specs/support-modules-orca-port.md` line above `[config.schema.support_interface_bottom_layers]`. Nothing else in that section changes.
+  - `modules/core-modules/support-planner/tests/diagnostics_tdd.rs` — rewrite `interface_bottom_layers_emits_one_typed_diagnostic` (value 3 ⇒ **zero** code-1003 records; keep the `assert_eq!(ibl_diags.len(), …)` shape with the expected count at 0 and keep the diagnostic-code dump in the failure message) and `interface_bottom_layers_default_emits_no_typed_diagnostic` (both `-1` and absent ⇒ zero, unchanged in outcome but re-commented to say the code is retired rather than unreached). Update the file's `//!` header lines that describe AC-6 / AC-N3.
+  - `modules/core-modules/support-planner/tests/interface_bottom_layers_tdd.rs` — **net-new**, six cases: `bottom_band_densifies_three_layers_above_model_landing`, `buildplate_landing_gets_no_bottom_band`, `buildplate_only_disables_bottom_band`, `default_minus_one_resolves_to_top_layer_count`, `zero_bottom_layers_emits_no_band`, `bottom_band_never_extends_below_landing_layer`. Each runs the same fixture twice at different settings and compares per-layer `branch_segments.len()`.
+  - In-file `#[cfg(test)]`: `resolve_interface_bottom_layers_applies_canonical_fallback` covering `(-1, 2) → 2`, `(-5, 2) → 2`, `(3, 2) → 3`, `(0, 2) → 0`.
+- Rejected alternatives and reasons:
+  - **Add `dist_to_bottom: Option<u32>` to `PlannedSupportNode` and fill it in a second bottom-up pass over the nodes.** The node sets are consumed layer by layer (`active_nodes = next_nodes`) and never retained, so there is nothing left to walk bottom-up. Retaining them would mean keeping every layer's node vector alive for the whole object — a real memory change inside a WASM guest — to recompute information the emitted entries already contain.
+  - **Record a landing event at the code-1002 drop site into a side table, then match chains against it.** More faithful to *why* a chain stopped, but matching a recorded pre-smoothing position against a post-smoothing chain endpoint needs a distance tolerance, and a tolerance is exactly the kind of fuzzy join that rots. The direct collision test is exact, deterministic, and asks canonical's own question.
+  - **Emit the band inside the layer loop using a look-ahead of the collision cache.** Would require knowing, at layer L, that the chain will terminate at L — i.e. simulating the remaining descent. That is the whole propagation loop run twice.
+  - **Mark band segments with a new `SupportPlanEntry` field or an `ExtrusionRole`.** Would make the ACs absolute instead of differential, but it is an IR/WIT change with cross-crate blast radius, for a packet whose entire behaviour is observable differentially. Out of scope; revisit only if a downstream consumer needs to distinguish floor from base.
+  - **Keep code 1003 as an informational note.** Rejected: `DEV-129`'s stated failure mode is "a warning and unchanged geometry". Once the geometry exists the warning is false, and a false warning is worse than none.
+
+## Files in Scope (read + edit)
+
+- `modules/core-modules/support-planner/src/lib.rs` — role: the field, the fallback, the chain-split extraction, the post-pass, the stub deletion, and the in-file fallback test; expected change: one new `pub fn`, two new private fns, one new struct field (two literal sites), one deleted diagnostic block.
+- `modules/core-modules/support-planner/tests/interface_bottom_layers_tdd.rs` — role: net-new band-behaviour suite; expected change: created with six differential cases.
+- `modules/core-modules/support-planner/tests/diagnostics_tdd.rs` — role: the two tests that pin the warn-only contract; expected change: rewritten to the retired-code contract, never weakened or deleted.
+- `modules/core-modules/support-planner/support-planner.toml` — role: the stale "Not yet implemented" comment; expected change: one deleted line.
+
+Four code/test/manifest files plus four doc files (`docs/15_config_keys_reference.md`, `docs/adr/0010-typed-diagnostic-channel.md`, `docs/DEVIATION_LOG.md`, `docs/07_implementation_status.md`), all confined to the ledger step. The per-step cap of 3 edits is respected by the step decomposition in `implementation-plan.md`, not by this list.
+
+## Read-Only Context
+
+- `modules/core-modules/support-planner/tests/to_buildplate_tdd.rs` — lines `[136-236]` and the helper block `[482-570]` only — purpose: the per-layer `SupportGeometryViewEntry.outlines` fixture shape (small footprint at the contact layer, large box below) that makes a chain land on model. Copy the shape; do not edit the file.
+- `modules/core-modules/support-planner/tests/smooth_nodes_tdd.rs` — lines `[39-90]` only — purpose: confirm the chain-split extraction is guarded by existing assertions before the band code lands.
+- `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` — delegated FACT only, no direct read — purpose: AC-8 pass/fail.
+- `docs/adr/0010-typed-diagnostic-channel.md` — §Status only — purpose: the exact sentence to append.
+
+## Out-of-Bounds Files
+
+- `OrcaSlicerDocumented/...` — delegate; never load.
+- `target/`, `Cargo.lock`, `modules/core-modules/support-planner/support-planner.wasm`, `modules/core-modules/support-planner/wit-guest/target/` — never load.
+- `crates/slicer-ir/**`, `crates/slicer-sdk/**`, `crates/slicer-schema/**`, `crates/slicer-wasm-host/**` — no cross-crate type changes; editing any of them stales all 34 guests.
+- `crates/slicer-runtime/tests/**` — the invariant suite is this packet's oracle; editing it to accommodate new band geometry is prohibited.
+- `.ralph/specs/210-support-planner-coord-t/` — a sibling packet's directory; never edited from here, even to reconcile a signature. If a reconciliation is needed, report it.
+- `modules/core-modules/traditional-support/`, `modules/core-modules/tree-support/` and every other core module — unrelated; the bottom band is `support-planner`'s alone.
+- The code-1001 and code-1002 cases in `diagnostics_tdd.rs` — read and edit only the two bottom-layers cases.
+
+## Expected Sub-Agent Dispatches
+
+- Question: what exactly does `number_of_support_interface_bottom_layers` return for a negative input, and where is the `std::max(0, …)` clamp applied?; scope: `OrcaSlicerDocumented/src/libslic3r/Support/SupportParameters.hpp`; return: `FACT` (≤5 lines); purpose: Step 1's fallback semantics.
+- Question: in `TreeSupport::draw_circles`' floor-area block, (a) what condition triggers a floor band, (b) what happens when no model contact is found below a component, and (c) what disables the block entirely?; scope: `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`; return: `SUMMARY` (≤200 words, no code); purpose: Step 3's landing rule and guards.
+- Question: does `support_bottom_enable` / `support_floor_layers` derive from the same `number_of_support_interface_bottom_layers` call, i.e. are "bottom interface" and "floor" one band?; scope: `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupportCommon.hpp`; return: `FACT` (≤5 lines); purpose: naming in the doc comments and the `DEV-129` closure text.
+- Question: do the four named tests in `support_invariants_wedge_tdd` pass after the band lands?; scope: `cargo test -p slicer-runtime --test integration support_invariants_wedge_tdd`; return: `FACT` pass/fail + ≤20 lines of the first failure; purpose: AC-8.
+- Question: what is the current status cell of `DEV-129`, and is `TASK-327` still absent from `docs/07_implementation_status.md`?; scope: both files; return: `FACT` (≤5 lines); purpose: Step 5, re-derived at point of use.
+
+## Data and Contract Notes
+
+- IR/manifest contracts: `SupportPlanEntry`, `RaftPlan` and `Diagnostic` are unchanged. `support-planner.toml`'s `[config.schema.support_interface_bottom_layers]` keeps `type = "int"`, `default = -1`, `min = -1`, `max = 10`, `display`, `group`; only a preceding comment line is deleted. No config key is added or retyped.
+- WIT boundary: unchanged. Bottom-band geometry travels as ordinary `branch_segments` in the existing `SupportPlanEntry`, exactly as the top band does. No WIT file is edited, so the `CLAUDE.md` WIT/Type-Changes checklist does not fire — but the guest-staleness rule does, for both `src/**` and the manifest.
+- Determinism/scheduler constraints: the post-pass is a deterministic walk over `group_branches_into_columns`' `BTreeMap`-ordered output and appends to `branch_segments` in a fixed order. No claim, stage, or dependency edge changes. One diagnostic code (1003) stops being emitted; `ModuleAccessAudit.diagnostics` is a `Vec` with no expected length, so no host-side assertion moves.
+
+## Locked Assumptions and Invariants
+
+- **Locked (behaviour change):** `support_interface_bottom_layers = -1` — the shipped default — now resolves to `support_interface_top_layers` (default 2) and therefore produces bottom bands on every default slice with model-landing supports. This is canonical (`number_of_support_interface_bottom_layers`) and `CLAUDE.md` puts canonical parity above baseline stability. Reversible only by changing the manifest default, which would itself be a divergence.
+- **Locked:** `0` means "no floor band" and never falls back to the top count. Only `< 0` triggers the fallback.
+- **Locked:** bands attach only where a chain lands on model geometry, and never when `support_on_build_plate_only` is true.
+- **Locked:** the band extends **upward** from the landing layer, occupying `[L_end, L_end + bottom_n)`. It never reaches below `L_end`.
+- **Invariant:** the bottom band uses the same scan-line emitter, half-extent formula, parity rule and avoidance/collision clipping as the top band. If the two ever diverge, that is a defect, not a feature.
+- **Not locked:** the exact `densify_bottom_interface` parameter list. It is private; the implementer may pass a small context struct instead of eight scalars if clippy's `too_many_arguments` fires (the existing `push_interface_scan_lines` carries an `#[allow]` for precisely this).
+
+## Risks and Tradeoffs
+
+- **Default output moves.** Every default slice with model-landing supports gains two densified layers. `cargo test -p slicer-runtime --test integration support_invariants_wedge_tdd` and any G-code baseline that includes tree supports may shift. Baselines must be re-recorded to the canonical-correct output, never the behaviour reverted to keep them green (`CLAUDE.md` §Test Discipline).
+- **The cap-truncation false positive.** A chain truncated by `max_branches_per_layer` directly above model geometry gets a band canonical would not draw. Bounded and documented; it produces slightly more interface, never less, and never places geometry inside the model.
+- **The chain-split extraction is the sneaky risk.** It touches `smooth_branches`, which is shipped and tested. Landing it as its own step with `smooth_nodes_tdd` as the gate (Step 2) is what keeps a later band failure attributable.
+- **Segment-count assertions are coarse.** The ACs compare `branch_segments.len()` between two runs of one fixture. This proves a band appeared where expected and nowhere else, but not its exact line placement. That is the honest limit of an IR with no interface/base marker; strengthening it means the IR change rejected above.
+- **Clippy `too_many_arguments`.** `push_interface_scan_lines` already carries `#[allow(clippy::too_many_arguments)]`; `densify_bottom_interface` will likely need the same or a context struct. Budgeted in Step 4.
+
+## Context Cost Estimate
+
+- Aggregate: `M`
+- Largest step: `M` (Step 3 — the landing detection and band emission)
+- Highest-risk dispatch and required return format: the `TreeSupport::draw_circles` floor-area SUMMARY. That block is long and dense; request ≤200 words answering only the three enumerated questions and refuse a code dump. Second-highest is the AC-8 invariant run — `FACT` pass/fail plus at most 20 lines of the first failure, never the full `--test integration` output.
+
+## Open Questions
+
+- `[FWD-1]` The shipped default `-1` now produces geometry where it previously produced a warning. `design.md` locks this on canonical-parity grounds and no user decision is needed to proceed. If the user later prefers a conservative default, the change is one manifest line (`default = 0`) plus the `docs/15` note — but that would be a deliberate divergence from `number_of_support_interface_bottom_layers` and would need its own `DEV-###` row. Implementer: proceed with `-1`; do not change the default.
+- `[FWD-2]` The top-interface band is emitted inside the layer loop, *before* `smooth_branches`; the bottom band is emitted *after*. The top band is therefore centred on pre-smoothing positions while its own structural point moves. This is a pre-existing defect, not one this packet introduces, and fixing it here would confound AC-2's differential assertions. If the implementer confirms it, file a new `DEV-###` row (re-derive the next free ID at that moment; do not reserve one now) and leave the top band alone.
+- `[FWD-3]` `densify_bottom_interface` takes the band radius from the emitted `width / 2.0` rather than recomputing `tapered_radius`. At the landing layer `dist_to_top` is large, so the tapered radius is at or near `MAX_BRANCH_RADIUS_MM` and the two agree closely; using the emitted width additionally picks up `smooth_branches`' width averaging. If a test shows the band visibly wider than its branch, switch to `tapered_radius` and record which was chosen in the function's doc comment.
+
+No `[BLOCK]` items. The design blocker `DEV-129` records is resolved above — the packet is activation-ready once preflight passes and packet 210's forward dependency is acknowledged.
