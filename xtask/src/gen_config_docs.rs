@@ -210,7 +210,7 @@ fn host_rows(ws: &Path) -> Result<Vec<KeyRow>, String> {
         fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let val: toml::Value =
         toml::from_str(&text).map_err(|e| format!("parse error in {}: {e}", path.display()))?;
-    let mut rows = host_table_rows(&val, "speeds", "gcode_emit.rs::FeedrateConfig")?;
+    let mut rows = host_table_rows(&val, "speeds", "feedrate.rs::FeedrateConfig")?;
     rows.extend(host_table_rows(
         &val,
         "resolved_config",
