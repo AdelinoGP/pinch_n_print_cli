@@ -17,7 +17,7 @@ One skill, three scopes. Core rules below apply to **every** scope; per-scope wo
 
 | Scope | Reviewing what vs. what | Verdict | Workflow file |
 |---|---|---|---|
-| **packet** | `.ralph/specs/<NN>_<slug>/` impl vs. its 5 packet docs | APPROVED / APPROVED WITH NOTES / CHANGES REQUESTED / BLOCKED / DEFERRED | `references/packet-review.md` |
+| **packet** | `docs/spec_packets/<NN>_<slug>/` impl vs. its 5 packet docs | APPROVED / APPROVED WITH NOTES / CHANGES REQUESTED / BLOCKED / DEFERRED | `references/packet-review.md` |
 | **session** | This session's git diff + working tree vs. the packet being implemented | SHIP / DO NOT SHIP | `references/session-audit.md` |
 | **code** | Uncommitted changes, named files, or diff since a fixed point — vs. architecture contract (no packet) | APPROVED / APPROVED WITH NOTES / CHANGES REQUESTED | `references/code-review.md` |
 

@@ -96,7 +96,7 @@ impl From<voronoi_graph::MmuGraphError> for PaintSegmentationError {
 /// well above that floor while leaving room for the per-variant hash.
 ///
 /// Wired into `paint_variant_region_id`. See Fix 1 in
-/// `.ralph/specs/95_paint-segmentation-orca-port/implementation-plan.md`
+/// `docs/spec_packets/_OLD/95_paint-segmentation-orca-port.md`
 /// (Step 19 dispatch wiring).
 pub const PAINT_VARIANT_REGION_ID_STRIDE: u64 = 1_000_000;
 

@@ -147,7 +147,7 @@ When modifying WIT types or interface definitions:
 
 ## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
+Implementation work is organized into spec packets under `docs/spec_packets/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
 
 ## In-Tree Citation Style (MUST follow)
 
@@ -156,7 +156,7 @@ Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slu
 - Correct: ``` `WORLD_LIFECYCLE_EXPORTS` (`crates/slicer-schema/src/lib.rs`) ```, ``` `is_stale`'s `newest_src > art` comparison ```, ``` the `#[export_name]` shim in `lifecycle_shim_tokens` ```
 - Wrong: ``` `crates/slicer-schema/src/lib.rs:230` ``` as the sole identifier of a thing.
 
-This applies to spec packets (`.ralph/specs/**`), ADRs, `docs/`, and code comments — the same rule the section below imposes on OrcaSlicer citations, and for the same reason.
+This applies to spec packets (`docs/spec_packets/**`), ADRs, `docs/`, and code comments — the same rule the section below imposes on OrcaSlicer citations, and for the same reason.
 
 **Why:** measured, in this repo. A packet-162 preflight found **11+ of ~34 line ranges wrong while every symbol name resolved cleanly**. The pins had rotted *within a single session*, because they were captured from editor buffers of files that were dirty at the time. One (`delete lines 159-170`) named a closure that actually ends at `:171`; following it literally would have left a dangling `});` and a non-compiling file. An off-by-one pin looks exactly like a correct one, which is what makes this class dangerous rather than merely untidy.
 

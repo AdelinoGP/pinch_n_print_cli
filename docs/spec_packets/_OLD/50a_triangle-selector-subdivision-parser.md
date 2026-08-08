@@ -14,7 +14,7 @@ real-world painted 3MF files (including `benchy_4color.3mf`) load without error.
 **Phase 1** extracts a per-facet dominant state from the tree and unblocks packet 50b.  
 **Phase 2** reconstructs sub-triangle 3D geometry and populates `PaintLayer.strokes`.
 
-Resolves the blocker documented in `.ralph/specs/50b_paint-input-3mf-mmu-supports/packet.spec.md`:
+Resolves the blocker documented in `docs/spec_packets/_OLD/50b_paint-input-3mf-mmu-supports.md`:
 `benchy_4color.3mf` could not be loaded because long paint hex strings were rejected.
 
 ## Problem Statement

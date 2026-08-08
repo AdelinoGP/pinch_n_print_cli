@@ -5,7 +5,7 @@
 //! intended red state â€” tests graduate to green as Steps 2â€“5 implement the
 //! sentinels and block content.
 //!
-//! Acceptance criteria sourced from `.ralph/specs/55_gcode-header-thumbnail-config-blocks/packet.spec.md`.
+//! Acceptance criteria sourced from `docs/spec_packets/_OLD/55_gcode-header-thumbnail-config-blocks.md`.
 
 #![allow(missing_docs)]
 #![allow(dead_code)]

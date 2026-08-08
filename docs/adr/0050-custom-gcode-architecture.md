@@ -5,9 +5,9 @@
 ## Status
 
 Accepted (2026-07-25). Authored ahead of the custom-G-code trilogy —
-`.ralph/specs/186-custom-gcode-placeholder-engine`,
-`.ralph/specs/187-custom-gcode-injection-registry`,
-`.ralph/specs/188-custom-gcode-conditional-points` — to record four decisions
+`docs/spec_packets/_OLD/186-custom-gcode-placeholder-engine.md`,
+`docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md`,
+`docs/spec_packets/_OLD/188-custom-gcode-conditional-points.md` — to record four decisions
 those packets take that no existing ADR governs.
 
 ## Context
@@ -267,8 +267,8 @@ residual, this clause states the constraint.
   ADR's decision 4.
 - ADR-0051 (G-code marker contract ownership) — the `;LAYER_CHANGE` / `;Z:` /
   `;HEIGHT:` contract packet 187's splice depends on.
-- `.ralph/specs/186-custom-gcode-placeholder-engine`,
-  `.ralph/specs/187-custom-gcode-injection-registry`,
-  `.ralph/specs/188-custom-gcode-conditional-points` — the implementing packets.
+- `docs/spec_packets/_OLD/186-custom-gcode-placeholder-engine.md`,
+  `docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md`,
+  `docs/spec_packets/_OLD/188-custom-gcode-conditional-points.md` — the implementing packets.
 - `docs/15_config_keys_reference.md` §"Machine start / end G-code" — the
   user-facing macro contract for the manifest domain and warn-and-pass policy.

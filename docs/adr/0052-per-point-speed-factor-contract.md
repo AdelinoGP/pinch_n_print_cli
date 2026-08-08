@@ -5,7 +5,7 @@
 ## Status
 
 Accepted (2026-07-25). Authored for
-`.ralph/specs/189-per-point-speed-factor-carrier`, which takes two contract
+`docs/spec_packets/_OLD/189-per-point-speed-factor-carrier.md`, which takes two contract
 decisions and stands in unacknowledged tension with three accepted ADRs. The
 packet mentions none of the three; reconciling them is the substance of this
 record.
@@ -253,7 +253,7 @@ amendment to make, not this one's.
   consequence is addressed above and should be read as historical.
 - ADR-0053 (overhang emission-time speed sections) — the consumer of this
   contract, and the ADR that retires ADR-0008's `set-speed-factor` decision.
-- `.ralph/specs/189-per-point-speed-factor-carrier` — the implementing packet.
+- `docs/spec_packets/_OLD/189-per-point-speed-factor-carrier.md` — the implementing packet.
 - `crates/slicer-gcode/src/emit.rs` — `DefaultGCodeEmitter::resolve_feedrate`,
   `travel_moves_by_entity`, and the simplification `kept` remap.
 - `crates/slicer-ir/src/slice_ir.rs` — `Point3WithWidth`, `LayerCollectionIR`,

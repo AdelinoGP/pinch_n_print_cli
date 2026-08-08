@@ -26,7 +26,7 @@ Dispatch built ONE global `ConfigView` from the FIRST `RegionKey` matching the l
 - Dispatch derivation replaced by full `RegionKey` match (object + region + variant chain); the looser substring `global_layer_index == layer` also matches two unrelated sites (`push_perimeter_regions`'s seam-plan lookup, a separate `held_claims_map` resolution) — out of scope; AC-2 greps the exact `.find(...)` expression.
 - Module consumption: per-region values (e.g. `infill_density`, `line_width`, speed keys) readable inside the module's per-region loop via the region-view config accessor, retaining the module-level `ConfigView`.
 - Behavior guards: single-region layers read exactly the config they read before (AC-N1); `regression_wedge.stl` default-config g-code SHA-256 byte-identical (AC-N2, digest `8a3b645e…` — later re-blessed by packet 136).
-- Golden carve: `.ralph/specs/131_per-region-config-delivery/carve-list.md` with one `### <test path>` heading + `Reason:` + `Baseline:` per carved test (heading count == baseline count).
+- Golden carve: `docs/spec_packets/_OLD/131_per-region-config-delivery.md` with one `### <test path>` heading + `Reason:` + `Baseline:` per carved test (heading count == baseline count).
 - Multi-region golden survey + carve window per roadmap D6; packet 136 restores.
 
 ## Locked Assumptions and Invariants

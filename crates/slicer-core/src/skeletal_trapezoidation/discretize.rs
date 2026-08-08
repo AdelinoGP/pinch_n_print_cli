@@ -28,7 +28,7 @@
 //! `start`, `end`, `line_a`, `line_b`, `transitioning_angle` — `start`/`end`
 //! bound the arc along the parabola independently from the two points that
 //! merely define the directrix line. This packet's contract
-//! (`.ralph/specs/110_arachne-voronoi-skt-foundations/`) specifies a
+//! (`docs/spec_packets/_OLD/110_arachne-voronoi-skt-foundations.md`) specifies a
 //! 4-parameter signature with no separate arc-bound parameters. To resolve
 //! that gap, `line_a`/`line_b` here serve **double duty**:
 //!

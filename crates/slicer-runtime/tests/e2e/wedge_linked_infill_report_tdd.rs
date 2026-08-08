@@ -148,7 +148,7 @@ fn wedge_linked_infill_report() {
     // block whose boundary arc exceeds `anchor_length_max` keeps its
     // two-point paths and gains only short anchor stubs, so a single
     // 2-point path legitimately emits exactly 1 G1 move — see
-    // `.ralph/specs/192-infill-linker-anchor-length/design.md`
+    // `docs/spec_packets/_OLD/192-infill-linker-anchor-length.md`
     // §Risks and Tradeoffs ("expect many more, much shorter
     // polylines"). A mean above the baseline still proves the linker is
     // wired in the real pipeline: raw unlinked 2-point output would give

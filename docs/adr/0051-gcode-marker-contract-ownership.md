@@ -5,7 +5,7 @@
 ## Status
 
 Accepted (2026-07-25). Authored because
-`.ralph/specs/187-custom-gcode-injection-registry` makes a WASM guest module a
+`docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md` makes a WASM guest module a
 consumer of comment text emitted by the host serializer, turning an incidental
 output detail into a real cross-crate interface that nothing currently governs.
 
@@ -97,7 +97,7 @@ closest this gets today, and it is the boundary to watch.
 
 This amendment retires the obligation #3 clause below verbatim, in both of its
 prose forms, and replaces it with the warn-and-pass behaviour
-`.ralph/specs/187-custom-gcode-injection-registry` landed for
+`docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md` landed for
 `machine-gcode-emit`. The amendment is recorded in
 `docs/DEVIATION_LOG.md` as `D-285-ADR-0051-AMENDED`. (Wording updated 2026-08-05:
 "lands" → "landed" — packet 187 is implemented, not pending.)
@@ -142,7 +142,7 @@ rule.
 
 ## Amendment — 2026-08-05 (packet 187 landed)
 
-`.ralph/specs/187-custom-gcode-injection-registry` is `status: implemented`.
+`docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md` is `status: implemented`.
 The consumer table entry above is updated from "(packet 187, not yet landed)"
 to implemented status, naming the five layer-scoped injection points
 (`machine_start_gcode`, `before_layer_change_gcode`, `time_lapse_gcode`,
@@ -207,7 +207,7 @@ changed to "landed". The format and all four obligations are unchanged.
 - ADR-0050 (custom G-code architecture) — the trilogy that adds the fourth
   consumer; its `;Z:`-only scoping consequence is the same fact seen from the
   module side.
-- `.ralph/specs/187-custom-gcode-injection-registry` — the packet that splices
+- `docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md` — the packet that splices
   at the marker triple and introduces `ERR_MALFORMED_LAYER_MARKER`.
 - `crates/slicer-gcode/tests/golden_emit_tdd.rs` — the producer-side pin.
 - Canonical OrcaSlicer `GCode::process_layer` — origin of the tag spellings and

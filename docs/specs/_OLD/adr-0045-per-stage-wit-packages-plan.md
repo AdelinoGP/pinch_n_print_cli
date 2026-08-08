@@ -205,7 +205,7 @@ stage→export lookup) — extend it, don't add a parallel table.
 
 ### Execution
 
-Author as a spec packet via `/spec-packet-generator` under `.ralph/specs/`, gate
+Author as a spec packet via `/spec-packet-generator` under `docs/spec_packets/`, gate
 with `/spec-review <packet> --preflight`, execute with `/swarm`.
 
 Sequencing: amend ADR-0045 → per-stage WIT → macro → host bindgen → dispatch →
@@ -357,10 +357,10 @@ convention (`TASK-119a/b/c`, `TASK-120a-d`, `TASK-194a/b`).
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/03`/`docs/04`/`docs/05`, and make CLI-binary staleness fail loudly at all three spawn sites. | TASK-146a | - | generated | `.ralph/specs/162_wit-lifecycle-export-removal/` |
-| 2 | 163_per-stage-wit-packages-pilot | Build the per-stage versioned-package machinery and prove it on the two cheapest tiers — postpass (2 stages) and finalization (1) — at `@1.0.0` with fatal-on-miss load, incl. the `compute_shared_mtime` per-stage fix without which the isolation benefit cannot be demonstrated. | TASK-146b | #1 | generated | `.ralph/specs/163_per-stage-wit-packages-pilot/` |
-| 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | generated | `.ralph/specs/164_per-stage-wit-packages-bulk/` |
-| 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | generated | `.ralph/specs/165_cli-binary-locator-extraction/` |
+| 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/03`/`docs/04`/`docs/05`, and make CLI-binary staleness fail loudly at all three spawn sites. | TASK-146a | - | generated | `docs/spec_packets/_OLD/162_wit-lifecycle-export-removal.md` |
+| 2 | 163_per-stage-wit-packages-pilot | Build the per-stage versioned-package machinery and prove it on the two cheapest tiers — postpass (2 stages) and finalization (1) — at `@1.0.0` with fatal-on-miss load, incl. the `compute_shared_mtime` per-stage fix without which the isolation benefit cannot be demonstrated. | TASK-146b | #1 | generated | `docs/spec_packets/_OLD/163_per-stage-wit-packages-pilot.md` |
+| 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | generated | `docs/spec_packets/_OLD/164_per-stage-wit-packages-bulk.md` |
+| 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | generated | `docs/spec_packets/_OLD/165_cli-binary-locator-extraction.md` |
 
 Dependency note: #2 must land the machinery before #3 migrates the remaining 14
 stages. Between #2 and #3 two contract mechanisms are live in-tree — an accepted

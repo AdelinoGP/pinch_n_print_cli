@@ -13,7 +13,7 @@ numerical output. Packet 31b documented this explicitly:
 > *"The goldens are deterministic Pinch 'n Print self-captures; the test serves
 > as a regression anchor against drift in `support-planner`'s own output, not
 > as an external OrcaSlicer parity check. External OrcaSlicer numerical
-> parity is not in scope of this packet."* — `.ralph/specs/_OLD/31b_support-planner-algorithmic-parity/packet.spec.md`
+> parity is not in scope of this packet."* — `docs/spec_packets/_OLD/31b_support-planner-algorithmic-parity.md`
 
 OrcaSlicer numerical parity was not deliverable then because the codebase did
 not yet have the infrastructure (paint kernel parity, region-splitting model,
@@ -46,7 +46,7 @@ there.
 - **Paint pipeline dependency**:
   - `docs/specs/paint-pipeline-orca-parity-roadmap.md` — D8 (delete `PaintRegionIR`), D14 (modifier-volume support → `segment_annotations`).
   - the packet-95 spec — P95 scope and deletion sweep.
-- **Predecessor packets (closed; in `.ralph/specs/_OLD/`)**:
+- **Predecessor packets (closed; in `docs/spec_packets/_OLD/`)**:
   - `28_tree-support-multi-layer-propagation`, `30_support-planner-prepass-wit-plumbing`, `31a_support-geometry-prepass-and-layer-height`, `31b_support-planner-algorithmic-parity`.
 
 ## Audit Findings

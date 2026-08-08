@@ -62,7 +62,7 @@ This protocol is what turns the gate from "a checklist a confident agent can rat
 
 **Asserts:** no packet is described as a satisfied (`implemented`/`shipped`) dependency unless its own `packet.spec.md` frontmatter is `status: implemented`.
 
-**Dispatch:** for each PREREQ-PACKET the packet calls implemented → `FACT: grep '^status:' in .ralph/specs/<dep>/packet.spec.md — is it 'implemented'?`
+**Dispatch:** for each PREREQ-PACKET the packet calls implemented → `FACT: grep '^status:' in docs/spec_packets/<dep>/packet.spec.md — is it 'implemented'?`
 
 **FAIL (HIGH)** if any dep claimed implemented is `draft`. **Fix:** replace the "implemented" claim with an explicit `FORWARD-DEP on draft <dep>` blocker, and move any AC that consumes that dep's output behind the blocker.
 

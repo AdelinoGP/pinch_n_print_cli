@@ -54,12 +54,12 @@ Item 3 = run existing draft packet **124** as-is. The raft-default synthesizer m
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 171-gcode-flavor-writer | Port Orca GCodeWriter per-flavor logic (5 flavors) into slicer-gcode with a GcodeFlavor enum honored from config and echoed in CONFIG_BLOCK. | TASK-276 (new) | - | generated | `.ralph/specs/171-gcode-flavor-writer/` |
-| 2 | 172-mm-e2e-and-object-keys | Close TASK-210/211/212 + item 9: support-filament routing, real-fixture T0/T1 E2E, extended Orca per-object key allowlist. | TASK-210, TASK-211, TASK-212 (item 9 folded into TASK-212) | - | generated | `.ralph/specs/172-mm-e2e-and-object-keys/` |
-| 3 | 173-thumbnails-multiformat | Orca-parseable thumbnail wire format + config-driven multi-entry generation (PNG/JPG/QOI/ColPic/BTT) from one CLI PNG via PNP-side resize (fork-contract deviation flagged). | TASK-277 (new) | - | generated | `.ralph/specs/173-thumbnails-multiformat/` |
-| 4 | 174-graceful-cancel | CTRL_BREAK/SIGINT + stdin-EOF graceful cancel with cancelled JSONL event, partial-output cleanup, distinct exit code. | TASK-278 (new) | - | generated | `.ralph/specs/174-graceful-cancel/` |
-| 5 | 175-m73-progress | Emit M73 P/R + Q/S progress and filament-used/estimated-time comment blocks off packet 169's estimator; honor disable_m73. | TASK-279 (new) | 169 (wave 1, draft — hard prerequisite) | generated | `.ralph/specs/175-m73-progress/` |
-| 6 | 176-support-preview-verb | New pnp_cli support-preview verb running the pipeline through the support stage and emitting per-layer support polygons as JSON (fork-facing contract). | TASK-280 (new) | - | generated | `.ralph/specs/176-support-preview-verb/` |
+| 1 | 171-gcode-flavor-writer | Port Orca GCodeWriter per-flavor logic (5 flavors) into slicer-gcode with a GcodeFlavor enum honored from config and echoed in CONFIG_BLOCK. | TASK-276 (new) | - | generated | `docs/spec_packets/_OLD/171-gcode-flavor-writer.md` |
+| 2 | 172-mm-e2e-and-object-keys | Close TASK-210/211/212 + item 9: support-filament routing, real-fixture T0/T1 E2E, extended Orca per-object key allowlist. | TASK-210, TASK-211, TASK-212 (item 9 folded into TASK-212) | - | generated | `docs/spec_packets/_OLD/172-mm-e2e-and-object-keys.md` |
+| 3 | 173-thumbnails-multiformat | Orca-parseable thumbnail wire format + config-driven multi-entry generation (PNG/JPG/QOI/ColPic/BTT) from one CLI PNG via PNP-side resize (fork-contract deviation flagged). | TASK-277 (new) | - | generated | `docs/spec_packets/_OLD/173-thumbnails-multiformat.md` |
+| 4 | 174-graceful-cancel | CTRL_BREAK/SIGINT + stdin-EOF graceful cancel with cancelled JSONL event, partial-output cleanup, distinct exit code. | TASK-278 (new) | - | generated | `docs/spec_packets/_OLD/174-graceful-cancel.md` |
+| 5 | 175-m73-progress | Emit M73 P/R + Q/S progress and filament-used/estimated-time comment blocks off packet 169's estimator; honor disable_m73. | TASK-279 (new) | 169 (wave 1, draft — hard prerequisite) | generated | `docs/spec_packets/_OLD/175-m73-progress.md` |
+| 6 | 176-support-preview-verb | New pnp_cli support-preview verb running the pipeline through the support stage and emitting per-layer support polygons as JSON (fork-facing contract). | TASK-280 (new) | - | generated | `docs/spec_packets/_OLD/176-support-preview-verb.md` |
 
 ## Domain model / glossary (CONTEXT.md, at packet acceptance — not now)
 

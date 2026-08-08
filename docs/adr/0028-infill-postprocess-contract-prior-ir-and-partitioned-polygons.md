@@ -132,7 +132,7 @@ merge semantics depend on Option 1a vs 1b and are decided at implementation.
 
 ## Amendment 2026-07-01 — options resolved, field list extended (grilling session)
 
-The 2026-07-01 grilling session (recorded in the packet roadmap under `.ralph/specs/129…140`)
+The 2026-07-01 grilling session (recorded in the packet roadmap under `docs/spec_packets/_OLD/`, packets 129–140)
 resolved every open choice in this ADR and extended the field list. These resolutions are
 binding for the implementing packets:
 

@@ -1,7 +1,7 @@
 //! AC-4: `runtime_builtins()` enumerates exactly 8 host built-in producers
 //! with the canonical `(id, stage, ir_writes)` triples.
 //!
-//! Reference: `.ralph/specs/69_pnp-cli-unification/packet.spec.md` AC-4.
+//! Reference: `docs/spec_packets/_OLD/69_pnp-cli-unification.md` AC-4.
 
 #![allow(missing_docs)]
 

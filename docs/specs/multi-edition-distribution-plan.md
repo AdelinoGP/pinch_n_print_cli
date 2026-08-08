@@ -63,12 +63,12 @@ active.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 200-batched-host-bridge-wasm-arms | Close DEV-094: wasm32 arms for the seven still-unbridged singular SDK wrappers, classic-perimeters call-site migration, verification of the already-landed support-planner batch migration (`088a7a74`), fuel A/B evidence per ADR-0055 | DEV-094 | - | generated | .ralph/specs/200-batched-host-bridge-wasm-arms |
-| 2 | 201-integrated-module-registry-tier5 | Integrated-module registration as search tier 5 through the existing ingestion/claims/DAG pipeline, with provenance and shadow diagnostics | ADR-0056 | - | generated | .ralph/specs/201-integrated-module-registry-tier5 |
-| 3 | 202-native-adapter-and-dispatch | `#[slicer_module]` native adapter emission and dispatch routing behind the ADR-0005 runner-trait seam | ADR-0056 | #2 | generated | .ralph/specs/202-native-adapter-and-dispatch |
-| 4 | 203-integrated-cli-provenance | `--no-integrated-modules` flag and provenance in `pnp_cli module` listing/diagnose | ADR-0056/0057 | #2, #3 | generated | .ralph/specs/203-integrated-cli-provenance |
-| 5 | 204-hybrid-pilot-parity | Pilot integration of classic-perimeters, arachne-perimeters, support-planner with dual-dispatch parity contract tests and profiling-finalized Hybrid set | ADR-0056/0057 | #2, #3 | generated | .ralph/specs/204-hybrid-pilot-parity |
-| 6 | 205-editions-xtask-dist-ci | Edition dimension in `cargo xtask dist` with the disjointness invariant and CI edition artifacts | ADR-0057 | #4, #5 | generated | .ralph/specs/205-editions-xtask-dist-ci |
+| 1 | 200-batched-host-bridge-wasm-arms | Close DEV-094: wasm32 arms for the seven still-unbridged singular SDK wrappers, classic-perimeters call-site migration, verification of the already-landed support-planner batch migration (`088a7a74`), fuel A/B evidence per ADR-0055 | DEV-094 | - | generated | docs/spec_packets/200-batched-host-bridge-wasm-arms |
+| 2 | 201-integrated-module-registry-tier5 | Integrated-module registration as search tier 5 through the existing ingestion/claims/DAG pipeline, with provenance and shadow diagnostics | ADR-0056 | - | generated | docs/spec_packets/201-integrated-module-registry-tier5 |
+| 3 | 202-native-adapter-and-dispatch | `#[slicer_module]` native adapter emission and dispatch routing behind the ADR-0005 runner-trait seam | ADR-0056 | #2 | generated | docs/spec_packets/202-native-adapter-and-dispatch |
+| 4 | 203-integrated-cli-provenance | `--no-integrated-modules` flag and provenance in `pnp_cli module` listing/diagnose | ADR-0056/0057 | #2, #3 | generated | docs/spec_packets/203-integrated-cli-provenance |
+| 5 | 204-hybrid-pilot-parity | Pilot integration of classic-perimeters, arachne-perimeters, support-planner with dual-dispatch parity contract tests and profiling-finalized Hybrid set | ADR-0056/0057 | #2, #3 | generated | docs/spec_packets/204-hybrid-pilot-parity |
+| 6 | 205-editions-xtask-dist-ci | Edition dimension in `cargo xtask dist` with the disjointness invariant and CI edition artifacts | ADR-0057 | #4, #5 | generated | docs/spec_packets/205-editions-xtask-dist-ci |
 
 All six rows are `generated` — i.e. the spec directory exists and is authored.
 That is a *queue* status and is distinct from each packet's own frontmatter,

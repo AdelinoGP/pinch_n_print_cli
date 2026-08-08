@@ -6,7 +6,7 @@ This directory holds per-run execution packets for the spec-packet workflow.
 
 ## Runtime Rules
 
-- Packet folders live at `./.ralph/specs/<spec-slug>/`.
+- Packet folders live at `./docs/spec_packets/<spec-slug>/`.
 - Exactly one packet may be active at a time.
 - The active packet is the folder whose `packet.spec.md` front matter sets `status: active`.
 - `packet.spec.md` is the preflight-visible contract and must carry real Given/When/Then acceptance criteria.
@@ -24,7 +24,7 @@ Each packet should contain:
 
 ## Authoring Workflow
 
-The supported authoring path is the `spec-packet-generator` skill. Invoke `/spec-packet-generator` with a prompt, file, or URL describing the slice; the skill takes care of templates, snippet inclusion, the file-purpose hierarchy, and the self-review checklist before emitting the packet files into `./.ralph/specs/<spec-slug>/`.
+The supported authoring path is the `spec-packet-generator` skill. Invoke `/spec-packet-generator` with a prompt, file, or URL describing the slice; the skill takes care of templates, snippet inclusion, the file-purpose hierarchy, and the self-review checklist before emitting the packet files into `./docs/spec_packets/<spec-slug>/`.
 
 Manual copy-paste from a template directory is no longer supported — templates and boilerplate snippets live in the skill at `.claude/skills/spec-packet-generator/references/{templates,snippets}/` and the skill is the single source of truth for packet shape and anti-repetition rules.
 

@@ -24,7 +24,7 @@
 //! has T1 sparse_infill = 30 (just unretract priming lines) and T3 = 2425
 //! on a 4-color cube where OrcaSlicer's golden tmp/orca_cube_4color.gcode
 //! has T1 = 1243, T3 = 992 — internal painted regions lose their infill
-//! entirely. See .ralph/specs/126_mmu-painted-cube-parity/ for context
+//! entirely. See docs/spec_packets/_OLD/126_mmu-painted-cube-parity.md for context
 //! (the bug is still latent: SDK→WIT origin propagation needs an
 //! immediate-forward SDK builder to be fixed at root).
 //!

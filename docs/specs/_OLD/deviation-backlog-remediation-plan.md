@@ -9,7 +9,7 @@
 `docs/DEVIATION_LOG.md` is the single source of truth for registered divergences from
 OrcaSlicer canonical / the architecture docs. Its own rule: a row is **open** unless its
 `Status` begins with "Closed." 91 rows → **21 open**. Cross-referencing every open row
-against active/draft/implemented spec packets under `.ralph/specs/` shows most open rows
+against active/draft/implemented spec packets under `docs/spec_packets/` shows most open rows
 have **no packet that fixes them** — they were filed by now-archived packets or explicitly
 marked "file, don't fix." This plan proposes a small set of themed spec packets to close the
 genuinely-actionable, uncovered ones, sequenced by dependency and impact.
@@ -200,24 +200,24 @@ need it; never read one out of this table.
 
 | # | Packet dir | Deviations | Tranche | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | `.ralph/specs/181-dispatch-missing-component-handling` | dispatch missing-component handling | T1 | — | generated · draft · TASK-297 |
-| 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 |
-| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | robust-fpt diagnosis spike, workspace remediation | T1 | — | generated · active · TASK-296 (reopened) |
-| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | classic wall-width, flow-spacing, and top-surface width | T2 | — | generated · draft · TASK-303 |
-| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | arachne wall-width, simplification fallback, and bridge-role work | T2 | — | generated · draft · TASK-304 |
+| 1 | `docs/spec_packets/_OLD/181-dispatch-missing-component-handling.md` | dispatch missing-component handling | T1 | — | generated · draft · TASK-297 |
+| 2 | `docs/spec_packets/_OLD/182-gcode-header-width-defaults.md` | D-165 | T1 | — | generated · draft · TASK-295 |
+| 3 | `docs/spec_packets/_OLD/183-arachne-voronoi-panic-diagnosis.md` | robust-fpt diagnosis spike, workspace remediation | T1 | — | generated · active · TASK-296 (reopened) |
+| 4 | `docs/spec_packets/_OLD/184-classic-perimeter-flow-parity.md` | classic wall-width, flow-spacing, and top-surface width | T2 | — | generated · draft · TASK-303 |
+| 5 | `docs/spec_packets/_OLD/185-arachne-width-bridge-parity.md` | arachne wall-width, simplification fallback, and bridge-role work | T2 | — | generated · draft · TASK-304 |
 | 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
 | 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | **pending — dependency-blocked** (see amendment 2026-07-25a) |
-| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | custom-G-code engine half | T3 | — | generated · implemented · TASK-305 |
-| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | layer-scoped injection points | T3 | #8a | generated · draft · TASK-306 |
-| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | tool/role-scoped points + residuals | T3 | #8b | generated · draft · TASK-307 |
-| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | speed-factor carrier prerequisite | T3 | — | generated · draft · TASK-308 |
-| 9a2 | `.ralph/specs/193-overhang-distance-prepass-carrier` | overhang-distance carrier prerequisite | T3 | — | generated · draft (see amendment 2026-07-25d) |
-| 9b | `.ralph/specs/190-smoothed-overhang-speed` | smoothed-speed half | T3 | #9a, #9a2 | generated · draft · TASK-309 · **maintainer ruled option (C)** (see amendment 2026-07-25d) |
-| 9c | `.ralph/specs/191-overhang-add-intersections` | ADD_INTERSECTIONS half | T3 | #9a2, #9b | generated · draft · TASK-310 (not schedulable until #9b resolves) |
-| 10 | `.ralph/specs/192-infill-linker-anchor-length` | anchor-length work | T3 | — | generated · draft · TASK-311 |
+| 8a | `docs/spec_packets/_OLD/186-custom-gcode-placeholder-engine.md` | custom-G-code engine half | T3 | — | generated · implemented · TASK-305 |
+| 8b | `docs/spec_packets/_OLD/187-custom-gcode-injection-registry.md` | layer-scoped injection points | T3 | #8a | generated · draft · TASK-306 |
+| 8c | `docs/spec_packets/_OLD/188-custom-gcode-conditional-points.md` | tool/role-scoped points + residuals | T3 | #8b | generated · draft · TASK-307 |
+| 9a | `docs/spec_packets/_OLD/189-per-point-speed-factor-carrier.md` | speed-factor carrier prerequisite | T3 | — | generated · draft · TASK-308 |
+| 9a2 | `docs/spec_packets/_OLD/193-overhang-distance-prepass-carrier.md` | overhang-distance carrier prerequisite | T3 | — | generated · draft (see amendment 2026-07-25d) |
+| 9b | `docs/spec_packets/_OLD/190-smoothed-overhang-speed.md` | smoothed-speed half | T3 | #9a, #9a2 | generated · draft · TASK-309 · **maintainer ruled option (C)** (see amendment 2026-07-25d) |
+| 9c | `docs/spec_packets/_OLD/191-overhang-add-intersections.md` | ADD_INTERSECTIONS half | T3 | #9a2, #9b | generated · draft · TASK-310 (not schedulable until #9b resolves) |
+| 10 | `docs/spec_packets/_OLD/192-infill-linker-anchor-length.md` | anchor-length work | T3 | — | generated · draft · TASK-311 |
 
 **Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
-`.ralph/specs/183-arachne-voronoi-panic-diagnosis` was `draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
+`docs/spec_packets/_OLD/183-arachne-voronoi-panic-diagnosis.md` was `draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
 all of which were also `draft`. Packet 183 has since been implemented and is now **reopened** for the workspace-test remediation while
 retaining its D-167 verdict. Row 6 remains dependent on packet 183's recorded verdict; the remediation does not reopen that dependency or change
 the D-154 design gate. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`.**

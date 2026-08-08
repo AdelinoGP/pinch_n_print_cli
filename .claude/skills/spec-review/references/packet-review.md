@@ -1,11 +1,11 @@
 ---
-when: Read this when running the packet scope of `spec-review` — reviewing a `.ralph/specs/` packet against its docs and implementation, or before packet closure. The mindset, evidence, context-discipline, trap, and verdict-floor rules in SKILL.md apply throughout and are not repeated here.
+when: Read this when running the packet scope of `spec-review` — reviewing a `docs/spec_packets/` packet against its docs and implementation, or before packet closure. The mindset, evidence, context-discipline, trap, and verdict-floor rules in SKILL.md apply throughout and are not repeated here.
 keywords: packet review, acceptance criteria, requirements traceability, design fidelity, closure, full, delta, preflight, delegated
 ---
 
 # Packet Review (packet scope)
 
-Review a spec packet under `.ralph/specs/<NN>_<slug>/` against its 5 packet docs and the implementation.
+Review a spec packet under `docs/spec_packets/<NN>_<slug>/` against its 5 packet docs and the implementation.
 
 ## Review modes
 
@@ -72,7 +72,7 @@ A missing or non-conformant Doc Impact Statement is a packet-authoring defect of
 
 ### Step 2 — Identify the packet
 
-Given a name, list `.ralph/specs/` (small, OK to read directly). Given a path, validate it contains all 5 packet files.
+Given a name, list `docs/spec_packets/` (small, OK to read directly). Given a path, validate it contains all 5 packet files.
 
 ### Step 3 — Read the packet, and ONLY the packet
 

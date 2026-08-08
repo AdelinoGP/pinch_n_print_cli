@@ -1,6 +1,6 @@
 ---
 name: swarm
-description: Planner-Worker orchestration to implement or refine an active spec packet under .ralph/specs/, including OrcaSlicer parity checks.
+description: Planner-Worker orchestration to implement or refine an active spec packet under docs/spec_packets/, including OrcaSlicer parity checks.
 type: anthropic-skill
 version: "1.6"
 metadata:
@@ -38,7 +38,7 @@ Nearly every packet should finish in standard band. Extended exists for the genu
 
 The planner reads directly only:
 - the 5 packet files (`packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md`)
-- `.ralph/specs/README.md`
+- `docs/spec_packets/README.md`
 - relevant rows of `docs/07_implementation_status.md` (delegate the survey if > 300 lines)
 - the predecessor packet's `packet.spec.md` if `supersedes:` is set
 
@@ -149,7 +149,7 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 
 ## Parameters
 
-- `packet` (optional): packet slug or path. If omitted, resolve the single active packet from `.ralph/specs/**/packet.spec.md`.
+- `packet` (optional): packet slug or path. If omitted, resolve the single active packet from `docs/spec_packets/**/packet.spec.md`.
 - `workers` (optional, default `2`): max concurrent workers. Ceiling `4`; raise only after file-surface and command-independence checks pass.
 - `max_iterations` (optional, default `4`): max review/fix loops after the first implementation pass.
 - `scope` (optional): restrict to specific `implementation-plan.md` steps.
@@ -188,7 +188,7 @@ Before reading any packet file:
 ```
 PLAN
 - Goal: <implement | refine-draft | review-only> packet <slug>
-- Files in scope (planner reads): the 5 packet files + .ralph/specs/README.md
+- Files in scope (planner reads): the 5 packet files + docs/spec_packets/README.md
 - Files explicitly out of scope (planner): all code, all docs > 300 lines, all OrcaSlicer source, all cargo output
 - Worker dispatches planned: <Step N → worker M with files X,Y; ...>
 - Estimated planner context cost: <S/M/L/XL>
@@ -200,7 +200,7 @@ If honest cost is L: first try to split the packet, reduce `max_iterations`, or 
 
 ### Phase 1 — Resolve the packet & preflight
 
-**1.1 Direct planner reads:** `.ralph/specs/README.md`, `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md` (when present). Delegate the `docs/07_implementation_status.md` survey (return: LOCATIONS of this packet's task IDs plus their status column). For `supersedes`, read the predecessor `packet.spec.md` directly; SUMMARY-dispatch any other predecessor files.
+**1.1 Direct planner reads:** `docs/spec_packets/README.md`, `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md` (when present). Delegate the `docs/07_implementation_status.md` survey (return: LOCATIONS of this packet's task IDs plus their status column). For `supersedes`, read the predecessor `packet.spec.md` directly; SUMMARY-dispatch any other predecessor files.
 
 **1.2 Infer mode:** `implement` for `active` (or `draft` + explicit user ask for code changes). `refine-draft` when the packet itself needs authoring fixes, tighter acceptance criteria, or updated step/task mapping. `review-only` for audit without code changes.
 
@@ -327,7 +327,7 @@ Do not auto-rewrite packet status just because code compiled. If packet status o
 
 ## Dependencies
 
-- `.ralph/specs/README.md`
+- `docs/spec_packets/README.md`
 - `docs/07_implementation_status.md` (read via worker dispatch)
 - the packet's `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md`
 - `.claude/skills/spec-review/SKILL.md`

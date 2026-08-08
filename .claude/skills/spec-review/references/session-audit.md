@@ -9,7 +9,7 @@ Critical senior-engineer review of **this session's work** against the spec pack
 
 ## Inputs
 
-- **Target packet**: the packet you have been implementing this session. If unclear, list `.ralph/specs/*/packet.spec.md` `status:` lines and cross-check against files in `git status` / `git diff`. If still ambiguous, ask the user to name the packet — do not guess.
+- **Target packet**: the packet you have been implementing this session. If unclear, list `docs/spec_packets/*/packet.spec.md` `status:` lines and cross-check against files in `git status` / `git diff`. If still ambiguous, ask the user to name the packet — do not guess.
 - **Session changes**: union of `git status` (untracked + modified), `git diff <main-branch>...HEAD`, and your recollection of files edited this session **cross-checked against the diff**. A file you remember editing but cannot find in the diff is `[unverified]` — possibly reverted or never written.
 
 ## Workflow

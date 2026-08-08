@@ -50,7 +50,7 @@ These corrections were ground-truthed against the actual codebase. All `file:lin
 | `apply_slice_closing_radius` integrated | NO. Only called from tests. New prepass must wire it. | See Commit 2. |
 | `support_layer_height_mm` validation exists | NO. None present in support_geometry.rs. | Add at config_schema.rs (Commit 4). |
 | `StageInstrumentationGuard` exists | NO. Must be created in Commit 2. | Implement as RAII guard. |
-| Files with `is_top_surface:` literal | **16** live files (v3 said 17). Includes `docs/specs/default-builder-migration.md`. `.ralph/specs/_OLD/12*/...` IGNORED (frozen). | Update all 16. |
+| Files with `is_top_surface:` literal | **16** live files (v3 said 17). Includes `docs/specs/default-builder-migration.md`. `docs/spec_packets/_OLD/12*/...` IGNORED (frozen). | Update all 16. |
 | Packets 59 + 60 status | CONFIRMED `implemented` and committed. | No blocker. |
 | OrcaSlicer line 4001 "goto EXTERNAL" | WRONG. Line 4001 is a comment inside `discover_horizontal_shells`; no goto. The break-on-empty semantic is still in that function, just at a different line. | Re-derive break point on read. |
 | `OrcaSlicerDocumented/` vendored tree | CONFIRMED in-repo at the cited paths. | OK. |
@@ -238,7 +238,7 @@ Single coherent change. Build must compile and all tests pass at HEAD. Pipeline 
 - `docs/specs/default-builder-migration.md` (doc reference)
 - `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs`
 - (struct-def site within slice_ir.rs counted once)
-- `.ralph/specs/_OLD/12*/...` — **IGNORE** (historical packets, frozen).
+- `docs/spec_packets/_OLD/12*/...` — **IGNORE** (historical packets, frozen).
 
 **Scheduler contract test** (`crates/slicer-host/tests/core_module_ir_access_contract_tdd.rs:39-73`): add
 ```rust

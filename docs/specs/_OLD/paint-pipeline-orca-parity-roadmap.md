@@ -188,7 +188,7 @@ benchy 3MFs.
 2. If `cube_with_modifier_part.3mf` and `cube_rotated_component.3mf` don't exist as
    sub-fixtures, author them as small derivatives of the cube_4color fixture.
 3. Delete `resources/benchy_4color.3mf`, `resources/benchy_painted.3mf`, `resources/benchy_painted.README.md`.
-4. Verify zero remaining references: `rg -nl 'benchy_4color\.3mf|benchy_painted\.3mf' crates/ modules/ docs/ .ralph/` returns no matches.
+4. Verify zero remaining references: `rg -nl 'benchy_4color\.3mf|benchy_painted\.3mf' crates/ modules/ docs/` returns no matches.
 
 **Verification**:
 
@@ -196,7 +196,7 @@ benchy 3MFs.
 cargo test -p slicer-model-io --test model_loader_tdd 2>&1 | tee target/test-output.log
 cargo test -p slicer-runtime --test e2e 2>&1 | tee target/test-output.log
 cargo clippy --workspace --all-targets -- -D warnings
-rg -nl 'benchy_4color\.3mf|benchy_painted\.3mf' crates/ modules/ docs/ .ralph/  # expect: 0
+rg -nl 'benchy_4color\.3mf|benchy_painted\.3mf' crates/ modules/ docs/  # expect: 0
 ```
 
 ---
@@ -236,7 +236,7 @@ elsewhere.
 
 ```bash
 cargo test -p slicer-runtime --test e2e slice_end_to_end 2>&1 | tee target/test-output.log
-rg -nl 'benchy\.stl' crates/ modules/ docs/ .ralph/  # expect: 0
+rg -nl 'benchy\.stl' crates/ modules/ docs/  # expect: 0
 # Wall-clock comparison (run before and after):
 cargo clean -p slicer-runtime
 time cargo test -p slicer-runtime 2>&1 | tee target/test-output.log
@@ -578,7 +578,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ---
 
-**SUPERSEDED 2026-06-10 — TASK-250 architectural finding.** P2 as scoped above was implemented under TASK-244 (commits `3113083` + `89b3517`), then **retired in packet P94r (`.ralph/specs/94_host-mesh-segmentation-wiring/` rewritten in place)**. The retirement decision was driven by three structural findings from the post-implementation investigation:
+**SUPERSEDED 2026-06-10 — TASK-250 architectural finding.** P2 as scoped above was implemented under TASK-244 (commits `3113083` + `89b3517`), then **retired in packet P94r (`docs/spec_packets/_OLD/94_host-mesh-segmentation-wiring.md` rewritten in place)**. The retirement decision was driven by three structural findings from the post-implementation investigation:
 
 1. **The loader already does this work.** `crates/slicer-model-io/src/loader.rs:1900-1961` (`split_triangle_strokes` + `walk_triangle_selector_strokes`) reproduces OrcaSlicer's `TriangleSelector` recursive subdivision exactly. `PaintLayer.strokes` arrives at the prepass blackboard in OrcaSlicer's flat-leaf form. A second normalization stage duplicates the loader's output.
 2. **OrcaSlicer has no `stroke` abstraction.** `FacetsAnnotation::get_facets()` (Model.cpp:3806) reconstructs a transient per-extruder flat list from the hex bitstream on demand. Our `PaintLayer.strokes` is the IR-resident equivalent — keeping it is the parity-honoring choice; flattening it into the mesh IR would diverge from OrcaSlicer's actual operational shape.
@@ -922,7 +922,7 @@ cargo test --workspace 2>&1 | tee target/test-output.log
 grep "^test result" target/test-output.log
 
 # 11. No surviving benchy references
-rg -n 'benchy_4color\.3mf|benchy_painted\.3mf|benchy\.stl' crates/ modules/ docs/ .ralph/  # expect: 0
+rg -n 'benchy_4color\.3mf|benchy_painted\.3mf|benchy\.stl' crates/ modules/ docs/  # expect: 0
 
 # 12. No surviving WASM mesh-segmentation surface
 rg -n 'mark_triangle_paint|MeshSegmentationIR|FacetPaintMark|run-mesh-segmentation' crates/ modules/  # expect: 0

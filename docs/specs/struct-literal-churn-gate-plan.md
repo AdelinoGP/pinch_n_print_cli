@@ -2,7 +2,7 @@
 
 Status: approved (user, 2026-08-07, grilling session)
 Generator: spec-packet-generator Batch Protocol
-Commit rule: this plan file and the `.ralph/specs/` packet directories it queues
+Commit rule: this plan file and the `docs/spec_packets/` packet directories it queues
 must be committed together.
 
 ## Problem (measured)
@@ -74,12 +74,12 @@ feature, not churn.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 194-check-literals-gate | Implement syn-based `cargo xtask check-literals` (report mode + path filter, exit 1 on violations), author `docs/21_data_defaults_and_fixtures.md`, add CLAUDE.md rule text marked gate-off. | TASK-316 | - | generated | .ralph/specs/194-check-literals-gate |
-| 2 | 195-defaults-and-fixture-bases | Add safe `Default` impls to Default-able no-Default watched types; add `PrintEntity`/`WallLoop` fixture bases to `slicer_sdk::test_support` + ADR-0054/0004 addendum; per-crate helpers for trait-object holders; rebuild guests. | TASK-317 | #1 | generated | .ralph/specs/195-defaults-and-fixture-bases |
-| 3 | 196-literal-sweep-core-ir-gcode | Convert exhaustive watched-type literals to FRU in slicer-ir, slicer-core, slicer-gcode test code until `check-literals` reports 0 violations for the area. | TASK-318 | #1, #2 | generated | .ralph/specs/196-literal-sweep-core-ir-gcode |
-| 4 | 197-literal-sweep-host-runtime | Same sweep for slicer-runtime, slicer-scheduler, slicer-wasm-host, pnp-cli test code. | TASK-319 | #1, #2 | generated | .ralph/specs/197-literal-sweep-host-runtime |
-| 5 | 198-literal-sweep-sdk-modules | Same sweep for slicer-sdk and modules/core-modules test code. | TASK-320 | #1, #2 | generated | .ralph/specs/198-literal-sweep-sdk-modules |
-| 6 | 199-literal-gate-enforcement | Flip enforcement on: wire `check-literals` into `cargo xtask test` preflight, CI (`docs-guard` job), and CLAUDE.md required-before-commit; sweep residue crates; repair CLAUDE.md stale facts; workspace-wide green. | TASK-321 | #1–#5 | generated | .ralph/specs/199-literal-gate-enforcement |
+| 1 | 194-check-literals-gate | Implement syn-based `cargo xtask check-literals` (report mode + path filter, exit 1 on violations), author `docs/21_data_defaults_and_fixtures.md`, add CLAUDE.md rule text marked gate-off. | TASK-316 | - | generated | docs/spec_packets/194-check-literals-gate |
+| 2 | 195-defaults-and-fixture-bases | Add safe `Default` impls to Default-able no-Default watched types; add `PrintEntity`/`WallLoop` fixture bases to `slicer_sdk::test_support` + ADR-0054/0004 addendum; per-crate helpers for trait-object holders; rebuild guests. | TASK-317 | #1 | generated | docs/spec_packets/195-defaults-and-fixture-bases |
+| 3 | 196-literal-sweep-core-ir-gcode | Convert exhaustive watched-type literals to FRU in slicer-ir, slicer-core, slicer-gcode test code until `check-literals` reports 0 violations for the area. | TASK-318 | #1, #2 | generated | docs/spec_packets/196-literal-sweep-core-ir-gcode |
+| 4 | 197-literal-sweep-host-runtime | Same sweep for slicer-runtime, slicer-scheduler, slicer-wasm-host, pnp-cli test code. | TASK-319 | #1, #2 | generated | docs/spec_packets/197-literal-sweep-host-runtime |
+| 5 | 198-literal-sweep-sdk-modules | Same sweep for slicer-sdk and modules/core-modules test code. | TASK-320 | #1, #2 | generated | docs/spec_packets/198-literal-sweep-sdk-modules |
+| 6 | 199-literal-gate-enforcement | Flip enforcement on: wire `check-literals` into `cargo xtask test` preflight, CI (`docs-guard` job), and CLAUDE.md required-before-commit; sweep residue crates; repair CLAUDE.md stale facts; workspace-wide green. | TASK-321 | #1–#5 | generated | docs/spec_packets/199-literal-gate-enforcement |
 
 ## Decisions added after the plan was approved
 
@@ -100,6 +100,6 @@ feature, not churn.
 
 Numbering note (ledger facts): packet numbers 194–199, TASK-316–321, and docs
 page number 21 were derived 2026-08-07. Authoring agents MUST re-derive all
-three at write time (highest existing `.ralph/specs/` number in git history,
+three at write time (highest existing `docs/spec_packets/` number in git history,
 `rg -o 'TASK-[0-9]{3}' docs/07_implementation_status.md | sort -u | tail -1`,
 highest `docs/NN_*.md`) and renumber on collision.

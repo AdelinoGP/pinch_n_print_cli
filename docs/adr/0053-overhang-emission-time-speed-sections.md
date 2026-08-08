@@ -5,12 +5,12 @@
 ## Status
 
 Accepted (2026-07-25). **Records a maintainer ruling**, not a proposal:
-`.ralph/specs/190-smoothed-overhang-speed` §Open Questions put three ways
+`docs/spec_packets/_OLD/190-smoothed-overhang-speed.md` §Open Questions put three ways
 forward to the maintainer — (A) conform, (B) supersede, (C) prepass carrier —
 and the maintainer selected **option (C)**. This ADR is the amendment that
 ruling requires.
 
-Scope covers packets 190 *and* 191. `.ralph/specs/191-overhang-add-intersections`
+Scope covers packets 190 *and* 191. `docs/spec_packets/_OLD/191-overhang-add-intersections.md`
 carries an explicit §Option-(C) Contingency warning that an ADR scoped to 190
 alone will not cover 191's geometry mutation; both are therefore in scope here.
 
@@ -296,9 +296,9 @@ Also considered and rejected earlier in the analysis:
   change" clause.
 - ADR-0049 (batched host services) — source of the five `*-batch` functions in
   the `host-services` count above.
-- `.ralph/specs/190-smoothed-overhang-speed` §Open Questions — where the three
+- `docs/spec_packets/_OLD/190-smoothed-overhang-speed.md` §Open Questions — where the three
   options were put to the maintainer; `[BLOCK-1]`, `[BLOCK-2]`, `[BLOCK-3]`.
-- `.ralph/specs/191-overhang-add-intersections` §Option-(C) Contingency — the
+- `docs/spec_packets/_OLD/191-overhang-add-intersections.md` §Option-(C) Contingency — the
   three places 191 changes shape under this ruling.
 - `crates/slicer-core/src/algos/overhang_annotation.rs` — `annotate_overhangs`,
   `BAND_BOUNDARY_MULTIPLIERS`, and the doc-comment that must be corrected.

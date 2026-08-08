@@ -1,6 +1,6 @@
 ---
 name: spec-packet-generator
-description: Generate a Pinch 'n Print spec packet under .ralph/specs/ from a prompt, file, URL, or approved plan; use Batch Protocol for multi-packet plans and to resume a queued plan.
+description: Generate a Pinch 'n Print spec packet under docs/spec_packets/ from a prompt, file, URL, or approved plan; use Batch Protocol for multi-packet plans and to resume a queued plan.
 type: anthropic-skill
 version: "1.4"
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Spec Packet Generator
 
-Generate packet artifacts only; never implement them. One packet owns one coherent remediation slice under `./.ralph/specs/<spec-slug>/`.
+Generate packet artifacts only; never implement them. One packet owns one coherent remediation slice under `./docs/spec_packets/<spec-slug>/`.
 
 ## Context Contract
 
@@ -47,7 +47,7 @@ Parameters:
 - `input` (required): rough text, Markdown path, URL, approved plan, or `docs/specs/` plan containing `## Packet Queue`.
 - `task_ids` (optional): `TASK-###` IDs from `docs/07`; infer and confirm when absent.
 - `spec_slug` (optional): kebab-case; derive from approved scope when absent.
-- `output_dir` (optional): defaults to `./.ralph/specs/<spec_slug>/`.
+- `output_dir` (optional): defaults to `./docs/spec_packets/<spec_slug>/`.
 - `status` (optional): defaults to `draft`.
 
 Use `AskUserQuestion` for every unresolved parameter, mapping, scope, status, overwrite, design, or activation decision; batch related questions. Never overwrite an existing packet directory without explicit approval.

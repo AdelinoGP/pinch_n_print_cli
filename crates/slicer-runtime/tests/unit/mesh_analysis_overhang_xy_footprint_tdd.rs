@@ -9,7 +9,7 @@
 //! - a flat-top cube (no overhang facets) produces no overhang regions and
 //!   does not panic.
 //!
-//! Reference: `.ralph/specs/106_overhang-pipeline-prepass-foundation/` Step 2.
+//! Reference: `docs/spec_packets/_OLD/106_overhang-pipeline-prepass-foundation.md` Step 2.
 
 use std::collections::HashMap;
 

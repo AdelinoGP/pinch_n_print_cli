@@ -4,7 +4,7 @@ Label: `wayfinder:map`
 
 ## Destination
 
-A queue of **fully authored, preflighted spec packets** under `.ralph/specs/` that
+A queue of **fully authored, preflighted spec packets** under `docs/spec_packets/` that
 together cover every FFF (non-SLA) OrcaSlicer config feature Pinch 'n Print is
 still missing — each packet complete with `packet.spec.md`, `requirements.md`,
 `design.md`, `implementation-plan.md`, and passing `/spec-review --preflight`.

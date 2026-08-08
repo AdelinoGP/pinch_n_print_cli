@@ -4,7 +4,7 @@
 //! registered injection points: `machine_start_gcode`, `before_layer_change_gcode`,
 //! `time_lapse_gcode`, `layer_change_gcode`, and `machine_end_gcode`.
 //!
-//! Acceptance criteria sourced from `.ralph/specs/59_machine-start-end-gcode-emission/packet.spec.md`.
+//! Acceptance criteria sourced from `docs/spec_packets/_OLD/59_machine-start-end-gcode-emission.md`.
 
 #![allow(missing_docs)]
 #![allow(dead_code)]

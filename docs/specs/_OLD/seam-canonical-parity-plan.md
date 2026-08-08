@@ -33,9 +33,9 @@ Decisions locked during the grilling session:
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | `178-seam-region-aware-planning` | Replace contour-ordinal seam identity with active-region `RegionKey` planning over per-region `SliceIR` geometry, annotations, and scoring width. | `TASK-294` | - | generated | `.ralph/specs/178-seam-region-aware-planning/` |
-| 2 | `179-seam-canonical-algorithm-fidelity` | Restore canonical Orca comparator, seeded visibility, seam-string retry/gap-anchor behavior, and full-pivot B-spline fitting, preferring `faer` with a local exact fallback. | `TASK-277` | #1 | generated | `.ralph/specs/179-seam-canonical-algorithm-fidelity/` |
-| 3 | `180-seam-final-placement-default` | Project aligned seams onto final wall geometry continuously, preserve wall metadata, report degraded fallback, and make aligned the default. | `TASK-283` | #2 | generated | `.ralph/specs/180-seam-final-placement-default/` |
+| 1 | `178-seam-region-aware-planning` | Replace contour-ordinal seam identity with active-region `RegionKey` planning over per-region `SliceIR` geometry, annotations, and scoring width. | `TASK-294` | - | generated | `docs/spec_packets/_OLD/178-seam-region-aware-planning.md` |
+| 2 | `179-seam-canonical-algorithm-fidelity` | Restore canonical Orca comparator, seeded visibility, seam-string retry/gap-anchor behavior, and full-pivot B-spline fitting, preferring `faer` with a local exact fallback. | `TASK-277` | #1 | generated | `docs/spec_packets/_OLD/179-seam-canonical-algorithm-fidelity.md` |
+| 3 | `180-seam-final-placement-default` | Project aligned seams onto final wall geometry continuously, preserve wall metadata, report degraded fallback, and make aligned the default. | `TASK-283` | #2 | generated | `docs/spec_packets/_OLD/180-seam-final-placement-default.md` |
 
 Packets 178, 179, 180 and this plan must be committed together. Packet 179
 must consume the identity and input-view exports from packet 178; packet 180

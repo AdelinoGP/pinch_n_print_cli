@@ -94,12 +94,12 @@ test("hook leaves other tools untouched", async () => {
 
 test("does not block an in-repo hidden path when root collides with the sibling-root name", () => {
   const result = correctToolPath(
-    "F:/slicerProject/pinch_n_print_cli/.ralph/specs/119_support-validation-wedge-harness/packet.spec.md",
+    "F:/slicerProject/pinch_n_print_cli/docs/spec_packets/_OLD/119_support-validation-wedge-harness.md",
     "F:/slicerProject/pinch_n_print_cli",
     "read",
   )
   expect(result).toEqual({
-    corrected: "F:/slicerProject/pinch_n_print_cli/.ralph/specs/119_support-validation-wedge-harness/packet.spec.md",
+    corrected: "F:/slicerProject/pinch_n_print_cli/docs/spec_packets/_OLD/119_support-validation-wedge-harness.md",
   })
 })
 

@@ -60,7 +60,7 @@ per-site form hardcoded `<root>/target/`, so any build honouring
 and any profile.
 
 **On the "three" figure.** Packet 162
-(`.ralph/specs/162_wit-lifecycle-export-removal`) deliberately fixed the three
+(`docs/spec_packets/_OLD/162_wit-lifecycle-export-removal.md`) deliberately fixed the three
 group-A sites **in place** and filed a `[FWD]` in its §Open Questions: "A
 reviewer who DRYs these three copies inside this packet is making that decision
 silently — the exact failure mode this packet exists to correct." That packet's
