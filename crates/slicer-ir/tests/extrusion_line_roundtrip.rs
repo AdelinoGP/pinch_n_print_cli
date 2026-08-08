@@ -15,15 +15,18 @@ use slicer_ir::Point3WithWidth;
 
 fn sample_junction(x: f32, width: f32, perimeter_index: u32) -> ExtrusionJunction {
     ExtrusionJunction {
-        p: Point3WithWidth {
-            x,
-            y: 1.0,
-            z: 0.2,
-            width,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+        p: {
+            // exhaustive: carrier/roundtrip test asserts every field travels
+            Point3WithWidth {
+                x,
+                y: 1.0,
+                z: 0.2,
+                width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }
         },
         perimeter_index,
     }

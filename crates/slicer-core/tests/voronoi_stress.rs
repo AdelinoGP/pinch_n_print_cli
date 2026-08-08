@@ -20,6 +20,7 @@ fn p(x: i64, y: i64) -> Point2 {
 }
 
 fn seg(a: Point2, b: Point2) -> Segment {
+    // exhaustive: no Default impl for Segment; every field is a fixture input (packet 196)
     Segment { a, b }
 }
 

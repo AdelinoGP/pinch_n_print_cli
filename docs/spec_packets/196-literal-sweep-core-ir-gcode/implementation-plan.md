@@ -22,7 +22,7 @@
   - everything; this is a read/record step.
 - Blast-radius discipline: not applicable — no struct field or schema constant changes in this packet.
 - Expected sub-agent dispatches:
-  - Question: run, in order: `mkdir -p target`, `cargo xtask check-literals --report crates/slicer-ir crates/slicer-core crates/slicer-gcode | tee target/sweep-196-report.txt | tail -1`, then for each crate the baseline pipeline `cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort > target/sweep-196-slicer-ir-baseline.txt` (repeat for `slicer-core` with `--features host-algos --no-fail-fast`, and `slicer-gcode`), then `rg -o 'assert(_eq|_ne)?!' crates/slicer-ir crates/slicer-core crates/slicer-gcode | wc -l > target/sweep-196-assert-baseline.txt` and `rg -o '#\[test\]' crates/slicer-ir crates/slicer-core crates/slicer-gcode | wc -l > target/sweep-196-testattr-baseline.txt`. Report the report's summary line, the violating-file list grouped per crate (path + violation count), and whether any baseline `test result` line lacks ` 0 failed`; scope: workspace; return: `LOCATIONS` ≤20 entries per crate + `FACT` for baselines.
+  - Question: run, in order: `mkdir -p target`, `cargo xtask check-literals --report crates/slicer-ir crates/slicer-core crates/slicer-gcode | tee target/sweep-196-report.txt | tail -1`, then for each crate the baseline pipeline `cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort > target/sweep-196-slicer-ir-baseline.txt` (repeat for `slicer-core` with `--features host-algos --no-fail-fast`, and `slicer-gcode`), then `rg -o 'assert(_eq|_ne)?!' crates/slicer-ir crates/slicer-core crates/slicer-gcode | wc -l > target/sweep-196-assert-baseline.txt` and `rg -o '#\[test\]' crates/slicer-ir crates/slicer-core crates/slicer-gcode | wc -l > target/sweep-196-testattr-baseline.txt`. Report the report's summary line, the violating-file list grouped per crate (path + violation count), and whether any baseline `test result` line lacks ` 0 failed`; scope: workspace; return: `LOCATIONS` ≤20 entries per crate + `FACT` for baselines.
 - Context cost: `M` (three suite runs; slicer-core is slow)
 - Authoritative docs:
   - `docs/21_data_defaults_and_fixtures.md` - delegated SUMMARY of the conversion rule + waiver format sections.
@@ -49,14 +49,14 @@
   - `crates/slicer-ir/src/**` outside `#[cfg(test)]` mods; `crates/slicer-ir/Cargo.toml` (no sdk dev-dep — design decision)
 - Blast-radius discipline: not applicable — no struct field or schema constant changes.
 - Expected sub-agent dispatches:
-  - Question: after edits, does `cargo xtask check-literals crates/slicer-ir` exit 0, and does `mkdir -p target && cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-ir-baseline.txt` report no difference?; scope: `crates/slicer-ir`; return: `FACT` PASS/FAIL + ≤5 lines on failure.
+  - Question: after edits, does `cargo xtask check-literals crates/slicer-ir` exit 0, and does `mkdir -p target && cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-ir-baseline.txt` report no difference?; scope: `crates/slicer-ir`; return: `FACT` PASS/FAIL + ≤5 lines on failure.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/21_data_defaults_and_fixtures.md` - waiver format section (carrier-test and file-local-base reasons).
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo xtask check-literals crates/slicer-ir; test $? -eq 0 && echo PASS` - FACT PASS/FAIL
-  - `mkdir -p target && cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-ir-baseline.txt && echo PASS` - FACT PASS/FAIL
+  - `mkdir -p target && cargo test -p slicer-ir 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-ir-baseline.txt && echo PASS` - FACT PASS/FAIL
 - Exit condition: both commands PASS. Falsified if any test count changes or any waiver lacks a reason (`rg -n '// exhaustive:[[:space:]]*$' crates/slicer-ir` non-empty).
 
 ### Step 3: slicer-gcode sweep (dev-dep + fixtures)
@@ -84,7 +84,7 @@
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo xtask check-literals crates/slicer-gcode; test $? -eq 0 && echo PASS` - FACT PASS/FAIL
-  - `mkdir -p target && cargo test -p slicer-gcode 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-gcode-baseline.txt && echo PASS` - FACT PASS/FAIL
+  - `mkdir -p target && cargo test -p slicer-gcode 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-gcode-baseline.txt && echo PASS` - FACT PASS/FAIL
   - `rg -q 'slicer.sdk.*features\s*=\s*\[\s*"test"' crates/slicer-gcode/Cargo.toml && rg -q 'print_entity_base' crates/slicer-gcode/tests && echo PASS` - FACT PASS/FAIL
 - Exit condition: all three commands PASS. Falsified if a `PrintEntity` site remains exhaustive without a reasoned waiver, or the dev-dep breaks `cargo check -p slicer-gcode --tests`.
 
@@ -105,14 +105,14 @@
   - `crates/slicer-core/src/**` outside `#[cfg(test)]` mods; `crates/slicer-core/Cargo.toml` (no sdk dev-dep — design decision; no feature changes)
 - Blast-radius discipline: not applicable — no struct field or schema constant changes.
 - Expected sub-agent dispatches:
-  - Question: after edits, does `cargo xtask check-literals crates/slicer-core` exit 0 and does `mkdir -p target && cargo test -p slicer-core --features host-algos --no-fail-fast 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-core-baseline.txt` report no difference?; scope: `crates/slicer-core`; return: `FACT` PASS/FAIL + ≤5 lines on failure.
+  - Question: after edits, does `cargo xtask check-literals crates/slicer-core` exit 0 and does `mkdir -p target && cargo test -p slicer-core --features host-algos --no-fail-fast 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-core-baseline.txt` report no difference?; scope: `crates/slicer-core`; return: `FACT` PASS/FAIL + ≤5 lines on failure.
 - Context cost: `M` (largest file set; slow suite)
 - Authoritative docs:
   - `CLAUDE.md` §Feature-gated test files - the mandatory `--features host-algos` invocation and binary-count reconciliation rule.
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo xtask check-literals crates/slicer-core; test $? -eq 0 && echo PASS` - FACT PASS/FAIL
-  - `mkdir -p target && cargo test -p slicer-core --features host-algos --no-fail-fast 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-core-baseline.txt && echo PASS` - FACT PASS/FAIL
+  - `mkdir -p target && cargo test -p slicer-core --features host-algos --no-fail-fast 2>&1 | tee target/test-output.log >/dev/null; grep -E '^test result: ' target/test-output.log | sed 's/; finished in .*//' | sort | diff - target/sweep-196-slicer-core-baseline.txt && echo PASS` - FACT PASS/FAIL
 - Exit condition: both commands PASS. Falsified if the post run's binary count is lower than the baseline's (blind run — wrong flags), or any arachne file edit stops compiling under `host-algos`.
 
 ### Step 5: Area gate, invariance guards, freshness, workspace gates

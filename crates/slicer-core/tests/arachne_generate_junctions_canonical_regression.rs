@@ -33,8 +33,7 @@
 use slicer_core::arachne::generate_toolpaths::generate_junctions;
 use slicer_core::beading::{Beading, BeadingStrategy};
 use slicer_core::skeletal_trapezoidation::{
-    populate_beading_propagation, EdgeType, RibData, STHalfEdge, STVertex,
-    SkeletalTrapezoidationGraph,
+    populate_beading_propagation, EdgeType, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::UNITS_PER_MM;
@@ -133,8 +132,8 @@ fn peak_vs_boundary_fixture() -> SkeletalTrapezoidationGraph {
         vertices: vec![v0, v1],
         edges: vec![edge_up, edge_down],
         centrality_filtered: true,
-        rib: RibData::default(),
         beading_propagation: vec![None, None],
+        ..SkeletalTrapezoidationGraph::default()
     }
 }
 
@@ -267,8 +266,8 @@ fn generate_junctions_reads_width_from_beadings_own_array_per_bead_index() {
         vertices: vec![v0, v1],
         edges: vec![edge_up, edge_down],
         centrality_filtered: true,
-        rib: RibData::default(),
         beading_propagation: vec![None, None],
+        ..SkeletalTrapezoidationGraph::default()
     };
 
     // Peak (v1)'s resolved beading: 3 beads with genuinely distinct widths,
@@ -386,8 +385,8 @@ fn generate_junctions_does_not_exclude_ribs() {
         vertices: vec![boundary, spine],
         edges: vec![rib_back, rib_forth],
         centrality_filtered: true,
-        rib: RibData::default(),
         beading_propagation: vec![None, None],
+        ..SkeletalTrapezoidationGraph::default()
     };
 
     let strategy = FixedBeadingStrategy;

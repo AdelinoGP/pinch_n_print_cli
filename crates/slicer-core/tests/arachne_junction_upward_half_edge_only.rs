@@ -35,7 +35,7 @@ use slicer_core::arachne::generate_toolpaths::generate_junctions;
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
     assign_bead_counts, filter_central, populate_beading_propagation, CentralityParams, EdgeType,
-    RibData, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
+    STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::UNITS_PER_MM;
@@ -85,8 +85,8 @@ fn single_central_twin_pair() -> SkeletalTrapezoidationGraph {
         vertices: vec![v0, v1],
         edges: vec![edge_up, edge_down],
         centrality_filtered: true,
-        rib: RibData::default(),
         beading_propagation: vec![None, None],
+        ..SkeletalTrapezoidationGraph::default()
     }
 }
 

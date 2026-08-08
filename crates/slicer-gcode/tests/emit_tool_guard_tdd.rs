@@ -26,6 +26,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, ObjectId, Point3WithWidth,
     PrintEntity, RegionKey,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,9 +44,7 @@ fn point3(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -57,7 +56,6 @@ fn entity_with_region_id(region_id: u64) -> PrintEntity {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
         tool_index: region_id as u32,
         region_key: RegionKey {
             global_layer_index: 0,
@@ -65,7 +63,7 @@ fn entity_with_region_id(region_id: u64) -> PrintEntity {
             region_id,
             variant_chain: vec![],
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 
@@ -150,7 +148,6 @@ fn entity_with_tool(tool: u32, role: ExtrusionRole) -> PrintEntity {
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
         tool_index: tool,
         region_key: RegionKey {
             global_layer_index: 0,
@@ -158,7 +155,7 @@ fn entity_with_tool(tool: u32, role: ExtrusionRole) -> PrintEntity {
             region_id: 0,
             variant_chain: vec![],
         },
-        topo_order: 0,
+        ..print_entity_base(role.clone())
     }
 }
 

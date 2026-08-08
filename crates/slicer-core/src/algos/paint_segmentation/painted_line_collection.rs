@@ -482,7 +482,7 @@ mod tests {
                 },
                 modifier_volumes: Vec::new(),
                 paint_data,
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: BoundingBox3 {
                 min: Point3 {
@@ -607,7 +607,7 @@ mod tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: BoundingBox3 {
                 min: Point3 {
@@ -725,7 +725,7 @@ mod tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: BoundingBox3 {
                 min: Point3 {
@@ -958,7 +958,7 @@ mod tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: BoundingBox3 {
                 min: Point3 {

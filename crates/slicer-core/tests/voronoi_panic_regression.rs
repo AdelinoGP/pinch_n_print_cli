@@ -16,7 +16,19 @@ fn p(x: i64, y: i64) -> Point2 {
 }
 
 fn seg(a: Point2, b: Point2) -> Segment {
-    Segment { a, b }
+    Segment {
+        a,
+        b,
+        ..segment_base()
+    }
+}
+
+fn segment_base() -> Segment {
+    // exhaustive: file-local base; no Default impl for Segment (packet 196)
+    Segment {
+        a: Point2::default(),
+        b: Point2::default(),
+    }
 }
 
 /// The synthetic input must trip boostvoronoi's guarded assertion. If the

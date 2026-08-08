@@ -18,6 +18,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, SemVer, TravelMove,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ============================================================================
 // Helper fixtures (same style as gcode_emit_tdd.rs)
@@ -47,9 +48,7 @@ fn point(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -62,10 +61,9 @@ fn make_entity(entity_id: u64, x_start: f32, x_end: f32, y: f32, z: f32) -> Prin
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
         tool_index: 1,
         region_key: region_key(),
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 
@@ -78,9 +76,9 @@ fn make_layer(entities: Vec<PrintEntity>, travel_moves: Vec<TravelMove>) -> Laye
         ordered_entities: entities,
         tool_changes: vec![],
         z_hops: vec![],
-        annotations: vec![],
         retracts: vec![],
         travel_moves,
+        ..Default::default()
     }
 }
 
@@ -117,7 +115,7 @@ fn travel_emitted_at_entity_id_endpoints() {
         x: Some(20.0),
         y: Some(5.0),
         z: None,
-        f: None,
+        ..Default::default()
     };
 
     let layer = make_layer(vec![entity_a, entity_b], vec![travel]);
@@ -196,7 +194,7 @@ fn travel_survives_entity_reorder() {
         x: Some(0.0),
         y: Some(0.0),
         z: None,
-        f: None,
+        ..Default::default()
     };
 
     // Start with [A, B, C], then rotate_left(2) â†’ [C, A, B]

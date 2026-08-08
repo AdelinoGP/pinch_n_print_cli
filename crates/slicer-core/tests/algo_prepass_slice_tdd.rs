@@ -74,7 +74,7 @@ fn cube_mesh() -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: build_volume(),
     }
@@ -89,13 +89,9 @@ fn make_global_layer(index: u32, z: f32, object_id: &str) -> GlobalLayer {
             region_id: RegionId::default(),
             resolved_config: slicer_ir::ResolvedConfig::default(),
             effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
+            ..Default::default()
         }],
-        has_nonplanar: false,
-        is_sync_layer: false,
+        ..Default::default()
     }
 }
 
@@ -202,7 +198,7 @@ fn mesh_with_bottom_facets(facet_count: usize) -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: build_volume(),
     }

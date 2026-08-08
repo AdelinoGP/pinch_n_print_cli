@@ -187,17 +187,10 @@ fn thickness_gradient_gap_graph() -> SkeletalTrapezoidationGraph {
         STHalfEdge {
             start_vertex,
             twin,
-            next: NO_INDEX,
-            prev: NO_INDEX,
             r_min,
             r_max,
             central: true,
-            is_curved: false,
-            rib_twin: None,
-            quad_cell: None,
-            edge_type: EdgeType::NORMAL,
-            transition_mids: Vec::new(),
-            transition_ends: Vec::new(),
+            ..STHalfEdge::default()
         }
     }
 
@@ -305,17 +298,10 @@ fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
         STHalfEdge {
             start_vertex,
             twin,
-            next: NO_INDEX,
-            prev: NO_INDEX,
             r_min,
             r_max,
             central: true,
-            is_curved: false,
-            rib_twin: None,
-            quad_cell: None,
-            edge_type: EdgeType::NORMAL,
-            transition_mids: Vec::new(),
-            transition_ends: Vec::new(),
+            ..STHalfEdge::default()
         }
     }
 
@@ -524,15 +510,11 @@ fn rib_adjacent_two_split_graph() -> SkeletalTrapezoidationGraph {
             twin,
             next,
             prev,
-            r_min: 0.0,
             r_max: 10.0,
             central,
-            is_curved: false,
-            rib_twin: None,
-            quad_cell: None,
             edge_type,
             transition_mids,
-            transition_ends: Vec::new(),
+            ..STHalfEdge::default()
         }
     }
 

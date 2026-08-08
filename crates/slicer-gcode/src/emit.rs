@@ -1019,6 +1019,7 @@ fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slicer_sdk::test_support::fixtures::print_entity_base;
 
     #[test]
     fn default_gcode_emitter_stores_slicer_version() {
@@ -1043,14 +1044,11 @@ mod tests {
                     z: 0.2 * layer as f32,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 }],
                 role: slicer_ir::ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
-            role: slicer_ir::ExtrusionRole::OuterWall,
             tool_index: tool,
             region_key: slicer_ir::RegionKey {
                 global_layer_index: layer,
@@ -1058,7 +1056,7 @@ mod tests {
                 region_id: tool as u64,
                 variant_chain: Vec::new(),
             },
-            topo_order: 0,
+            ..print_entity_base(slicer_ir::ExtrusionRole::OuterWall)
         }
     }
 

@@ -410,6 +410,7 @@ mod tests {
 
     #[test]
     fn single_segment_builds_without_panic() {
+        // exhaustive: no Default impl for Segment; every field is a fixture input (packet 196)
         let segments = [Segment {
             a: p(0, 0),
             b: p(1000, 0),

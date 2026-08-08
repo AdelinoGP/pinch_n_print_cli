@@ -42,13 +42,12 @@ fn point(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
 fn make_entity(entity_id: u64, x: f32, y: f32, z: f32) -> PrintEntity {
+    // exhaustive: file-local base; sdk fixture home would pull host-algos into this crate's dev graph (packet 196 [FWD])
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {
@@ -65,16 +64,11 @@ fn make_entity(entity_id: u64, x: f32, y: f32, z: f32) -> PrintEntity {
 
 fn make_layer(entities: Vec<PrintEntity>, travel_moves: Vec<TravelMove>) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: entities,
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
         travel_moves,
+        ..Default::default()
     }
 }
 
@@ -93,8 +87,7 @@ fn dangling_travel_anchor_rejected() {
         entity_id: 99, // not present in ordered_entities
         x: Some(50.0),
         y: Some(50.0),
-        z: None,
-        f: None,
+        ..Default::default()
     };
 
     let layer = make_layer(vec![entity_a, entity_b], vec![dangling_travel]);

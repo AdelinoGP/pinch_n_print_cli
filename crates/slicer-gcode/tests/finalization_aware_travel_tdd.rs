@@ -16,6 +16,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, SemVer, ToolChange, TravelRetract,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ============================================================================
 // Test fixtures
@@ -36,9 +37,7 @@ fn point3(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -64,16 +63,14 @@ fn make_entity(
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
         tool_index: 1,
         region_key: region_key(layer_index, object_id),
-        topo_order: 0,
+        ..print_entity_base(role.clone())
     }
 }
 
 fn empty_layer(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,
@@ -83,6 +80,7 @@ fn empty_layer(index: u32, z: f32) -> LayerCollectionIR {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     }
 }
 
@@ -235,14 +233,14 @@ fn wipe_tower_geometry_is_included_in_travel_reconciliation() {
             length: 1.0,
             speed: 30.0,
             is_unretract: false, // retract
-            mode: slicer_ir::RetractMode::Gcode,
+            ..Default::default()
         },
         TravelRetract {
             after_entity_index: 0,
             length: 1.0,
             speed: 30.0,
             is_unretract: true, // unretract
-            mode: slicer_ir::RetractMode::Gcode,
+            ..Default::default()
         },
     ];
 

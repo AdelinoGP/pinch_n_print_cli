@@ -12,8 +12,9 @@
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
-    RegionKey, ResolvedConfig, RetractMode, SemVer, ToolChange, TravelRetract,
+    RegionKey, ResolvedConfig, SemVer, ToolChange, TravelRetract,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -24,9 +25,7 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        overhang_distance_mm: None,
-        dist_to_top_mm: 0.0,
+        ..Default::default()
     }
 }
 
@@ -39,7 +38,6 @@ fn make_entity(id: u64, x: f32, y: f32, role: ExtrusionRole, tool: u32) -> Print
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
         tool_index: tool,
         region_key: RegionKey {
             global_layer_index: 0,
@@ -47,7 +45,7 @@ fn make_entity(id: u64, x: f32, y: f32, role: ExtrusionRole, tool: u32) -> Print
             region_id: tool as u64,
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(role.clone())
     }
 }
 
@@ -70,7 +68,6 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
             role: ExtrusionRole::WipeTower,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::WipeTower,
         tool_index: tool,
         region_key: RegionKey {
             global_layer_index: 0,
@@ -78,7 +75,7 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
             region_id: tool as u64,
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::WipeTower)
     }
 }
 
@@ -141,7 +138,6 @@ fn toolchange_emits_retract_prime_wipe() {
     let layer = LayerCollectionIR {
         speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity0, wipe_entity],
         tool_changes: vec![ToolChange {
@@ -149,16 +145,12 @@ fn toolchange_emits_retract_prime_wipe() {
             from_tool: 0,
             to_tool: 1,
         }],
-        z_hops: vec![],
-        annotations: vec![],
         retracts: vec![TravelRetract {
-            after_entity_index: 0,
             length: 0.8,
             speed: 45.0,
-            is_unretract: false,
-            mode: RetractMode::Gcode,
+            ..Default::default()
         }],
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     let gcode =
@@ -273,9 +265,7 @@ fn purge_volume_within_tolerance() {
     let wipe_entity = make_wipe_entity(2, path_len_mm, 1);
 
     let layer = LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity0, wipe_entity],
         tool_changes: vec![ToolChange {
@@ -283,16 +273,12 @@ fn purge_volume_within_tolerance() {
             from_tool: 0,
             to_tool: 1,
         }],
-        z_hops: vec![],
-        annotations: vec![],
         retracts: vec![TravelRetract {
-            after_entity_index: 0,
             length: 0.8,
             speed: 45.0,
-            is_unretract: false,
-            mode: RetractMode::Gcode,
+            ..Default::default()
         }],
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     let gcode = emit_and_serialize(layer).expect("emit_and_serialize must not error");
@@ -356,9 +342,7 @@ fn bare_toolchange_rejected() {
     let entity1 = make_entity(2, 6.0, 5.0, ExtrusionRole::OuterWall, 1);
 
     let layer = LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: SemVer::default(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity0, entity1],
         tool_changes: vec![ToolChange {
@@ -366,10 +350,7 @@ fn bare_toolchange_rejected() {
             from_tool: 0,
             to_tool: 1,
         }],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![], // no retract
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     // Emitter must be configured with wipe_tower_enabled=true so the guard runs.

@@ -13,6 +13,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
+slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
 
 [lints]
 workspace = true

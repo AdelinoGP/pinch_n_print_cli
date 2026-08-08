@@ -4,6 +4,7 @@
 
 use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 #[test]
 fn per_role_speed_resolves_to_f_token() {
@@ -37,9 +38,7 @@ fn per_role_speed_resolves_to_f_token() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -47,9 +46,7 @@ fn per_role_speed_resolves_to_f_token() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
             ],
             role: role.clone(),
@@ -58,7 +55,6 @@ fn per_role_speed_resolves_to_f_token() {
         layer.ordered_entities.push(PrintEntity {
             entity_id: *entity_id,
             path,
-            role: role.clone(),
             tool_index: *entity_id as u32,
             region_key: RegionKey {
                 region_id: *entity_id,
@@ -67,6 +63,7 @@ fn per_role_speed_resolves_to_f_token() {
                 variant_chain: Vec::new(),
             },
             topo_order: *entity_id as u32,
+            ..print_entity_base(role.clone())
         });
     }
 
@@ -138,9 +135,7 @@ fn speed_factor_modulates_role_speed() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: 10.0,
@@ -148,9 +143,7 @@ fn speed_factor_modulates_role_speed() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::OuterWall,
@@ -159,15 +152,13 @@ fn speed_factor_modulates_role_speed() {
     layer.ordered_entities.push(PrintEntity {
         entity_id: 1,
         path,
-        role: ExtrusionRole::OuterWall,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
@@ -206,29 +197,25 @@ fn module_supplied_f_wins() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             }],
             role: ExtrusionRole::InnerWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::InnerWall,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::InnerWall)
     });
     layer.travel_moves.push(TravelMove {
         entity_id: 1,
         x: Some(10.0),
         y: Some(10.0),
-        z: None,
         f: Some(7200.0),
+        ..Default::default()
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
@@ -275,9 +262,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -285,23 +270,19 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     });
 
     layer.ordered_entities.push(PrintEntity {
@@ -314,9 +295,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -324,16 +303,12 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::SparseInfill,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
@@ -341,6 +316,7 @@ fn distinct_feedrates_present() {
             variant_chain: Vec::new(),
         },
         topo_order: 1,
+        ..print_entity_base(ExtrusionRole::SparseInfill)
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
@@ -390,9 +366,7 @@ fn f_token_within_200_lines() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -400,23 +374,19 @@ fn f_token_within_200_lines() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
@@ -543,9 +513,7 @@ fn p189_point(x: f32, y: f32) -> Point3WithWidth {
         z: 0.2,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -558,15 +526,13 @@ fn p189_entity(entity_id: u64, role: ExtrusionRole, points: Vec<Point3WithWidth>
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
-        tool_index: 0,
         region_key: RegionKey {
             region_id: entity_id,
             global_layer_index: 0,
             object_id: "obj".to_string(),
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(role.clone())
     }
 }
 

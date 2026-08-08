@@ -146,6 +146,7 @@ fn flow_to_width_result_is_at_least_spacing() {
 }
 
 fn role_width_context() -> RoleWidthContext {
+    // exhaustive: every role-width precedence input is intentionally explicit
     RoleWidthContext {
         line_width: 0.4,
         nozzle_diameter: 0.4,

@@ -161,7 +161,7 @@ fn centrality_flags_are_structurally_consistent() {
 #[test]
 fn centrality_stage_two_whisker_dissolve_is_exercised() {
     use slicer_core::skeletal_trapezoidation::{STHalfEdge, STVertex};
-    use slicer_core::voronoi::{Vertex, NO_INDEX};
+    use slicer_core::voronoi::Vertex;
 
     fn vertex(x: f64, y: f64, distance_to_boundary: f64) -> STVertex {
         STVertex {
@@ -176,17 +176,9 @@ fn centrality_stage_two_whisker_dissolve_is_exercised() {
         STHalfEdge {
             start_vertex,
             twin,
-            next: NO_INDEX,
-            prev: NO_INDEX,
             r_min,
             r_max,
-            central: false,
-            is_curved: false,
-            rib_twin: None,
-            quad_cell: None,
-            edge_type: EdgeType::NORMAL,
-            transition_mids: Vec::new(),
-            transition_ends: Vec::new(),
+            ..Default::default()
         }
     }
 

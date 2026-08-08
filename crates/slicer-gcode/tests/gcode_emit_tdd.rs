@@ -27,6 +27,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, ObjectId,
     Point3WithWidth, PrintEntity, PrintMetadata, RegionKey, RetractMode, ToolChange, ZHop,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ============================================================================
 // Test fixtures
@@ -39,9 +40,7 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -78,10 +77,8 @@ fn print_entity_fixture_with_id(
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
-        tool_index: 0,
         region_key: region_key_fixture(),
-        topo_order: 0,
+        ..print_entity_base(role.clone())
     }
 }
 
@@ -1656,7 +1653,7 @@ fn entity_with_region_id(id: u64) -> PrintEntity {
             region_id: id,
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 
@@ -1765,9 +1762,7 @@ fn emit_e_uses_volumetric_flow_formula() {
         z: 0.2,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let p1 = Point3WithWidth {
         x: 10.0,
@@ -1775,9 +1770,7 @@ fn emit_e_uses_volumetric_flow_formula() {
         z: 0.2,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let entity = print_entity_fixture(vec![p0, p1], ExtrusionRole::OuterWall);
     let layer = layer_with_entity(0, 0.2, entity);

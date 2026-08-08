@@ -13,6 +13,7 @@ use slicer_core::voronoi::{voronoi_from_segments, Segment, NO_INDEX};
 use slicer_ir::Point2;
 
 fn seg(a: Point2, b: Point2) -> Segment {
+    // exhaustive: no Default impl for Segment; every field is a fixture input (packet 196)
     Segment { a, b }
 }
 

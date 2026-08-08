@@ -384,6 +384,8 @@ mod tests {
         }
     }
 
+    use crate::algos::paint_segmentation::painted_line::PaintedLine;
+
     fn make_painted(
         line: Line,
         projected: Line,
@@ -392,6 +394,7 @@ mod tests {
         value: PaintValue,
     ) -> PaintedLine {
         use crate::algos::paint_segmentation::painted_line::PaintedLine;
+        // exhaustive: no Default impl for PaintedLine; every field is a fixture input (packet 196)
         PaintedLine {
             line,
             semantic: PaintSemantic::Material,

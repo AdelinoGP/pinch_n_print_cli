@@ -3136,6 +3136,7 @@ dependencies = [
  "log",
  "slicer-helpers",
  "slicer-ir",
+ "slicer-sdk",
  "thiserror 1.0.69",
 ]
 

@@ -279,6 +279,7 @@ mod tests {
 
         // arc0: hub(0) -> interior leaf(2), NonBorder, len=100
         let ai0 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 2,
@@ -293,6 +294,7 @@ mod tests {
 
         // arc1: hub(0) -> interior leaf(3), NonBorder, len=200
         let ai1 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 3,
@@ -307,6 +309,7 @@ mod tests {
 
         // arc2: hub(0) -> interior leaf(4), NonBorder, len=300
         let ai2 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 4,
@@ -321,6 +324,7 @@ mod tests {
 
         // arc3: hub(0) -> peer(1), Border arc
         let ai3 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 1,
@@ -390,6 +394,7 @@ mod tests {
         macro_rules! add_arc {
             ($from:expr, $to:expr, $kind:expr, $ax:expr, $bx:expr) => {{
                 let ai = arcs.len();
+                // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
                 arcs.push(MmuArc {
                     from_node: $from,
                     to_node: $to,
@@ -445,6 +450,7 @@ mod tests {
         let mut arcs: Vec<MmuArc> = Vec::new();
 
         let ai0 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 1,
@@ -458,6 +464,7 @@ mod tests {
         nodes[1].arc_indices.push(ai0);
 
         let ai1 = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 2,
@@ -502,6 +509,7 @@ mod tests {
         ];
         for (from, to, ax, bx, kind) in segments {
             let ai = arcs.len();
+            // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
             arcs.push(MmuArc {
                 from_node: from,
                 to_node: to,
@@ -535,6 +543,7 @@ mod tests {
         let mut arcs: Vec<MmuArc> = Vec::new();
 
         let ai = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 1,

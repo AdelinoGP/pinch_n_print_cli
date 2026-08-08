@@ -17,12 +17,9 @@ fn j(x: i64, y: i64) -> ExtrusionJunction {
         p: Point3WithWidth {
             x: x as f32,
             y: y as f32,
-            z: 0.0,
             width: 20.0,
             flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         perimeter_index: 0,
     }

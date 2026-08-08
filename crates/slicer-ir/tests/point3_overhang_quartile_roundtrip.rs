@@ -12,6 +12,7 @@ use slicer_ir::Point3WithWidth;
 /// deserialize and confirm the field survives the roundtrip.
 #[test]
 fn overhang_quartile_roundtrip_some() {
+    // exhaustive: carrier/roundtrip test asserts every field travels
     let original = Point3WithWidth {
         x: 1.0,
         y: 2.0,

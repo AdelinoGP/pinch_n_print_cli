@@ -8,6 +8,20 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    fn modifier_volume_base() -> ModifierVolume {
+        // exhaustive: file-local base; no Default impl for ModifierVolume (packet 196)
+        ModifierVolume {
+            id: String::new(),
+            mesh: IndexedTriangleSet {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            },
+            config_delta: ConfigDelta::default(),
+            priority: 0,
+            applies_to: ModifierScope::AllFeatures,
+        }
+    }
+
     // Helper macro to test serde round-trip
     macro_rules! test_serde_roundtrip {
         ($value:expr) => {
@@ -158,9 +172,7 @@ mod tests {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         };
 
         test_serde_roundtrip!(obj_mesh);
@@ -240,11 +252,9 @@ mod tests {
                 vertices: vec![],
                 indices: vec![],
             },
-            config_delta: ConfigDelta {
-                fields: std::collections::HashMap::new(),
-            },
             priority: 10,
             applies_to: ModifierScope::Perimeters,
+            ..modifier_volume_base()
         };
 
         test_serde_roundtrip!(modifier);
@@ -289,6 +299,7 @@ mod tests {
 
     #[test]
     fn test_surface_group() {
+        // exhaustive: carrier/roundtrip test asserts every field travels
         let group = SurfaceGroup {
             id: 42,
             facet_indices: vec![0, 1, 2],
@@ -308,11 +319,7 @@ mod tests {
             id: 100,
             facet_indices: vec![0, 1, 2],
             bridge_direction_deg: 90.0,
-            anchor_width_mm: 0.0,
-            bridge_length_mm: 0.0,
-            expansion_margin_mm: 0.0,
-            is_valid: false,
-            xy_footprint: vec![],
+            ..Default::default()
         };
 
         test_serde_roundtrip!(region);
@@ -325,7 +332,7 @@ mod tests {
             facet_indices: vec![0, 1, 2],
             max_angle_deg: 60.0,
             needs_support: true,
-            xy_footprint: vec![],
+            ..Default::default()
         };
 
         test_serde_roundtrip!(region);
@@ -351,9 +358,7 @@ mod tests {
         let layer = GlobalLayer {
             index: 0,
             z: 0.2,
-            active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         };
 
         test_serde_roundtrip!(layer);
@@ -366,10 +371,7 @@ mod tests {
             region_id: 1,
             resolved_config: ResolvedConfig::default(),
             effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
+            ..Default::default()
         };
 
         test_serde_roundtrip!(region);
@@ -430,18 +432,8 @@ mod tests {
             region_id: 1,
             polygons: vec![],
             infill_areas: vec![],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: std::collections::HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
+            ..Default::default()
         };
 
         test_serde_roundtrip!(region);
@@ -468,18 +460,12 @@ mod tests {
             region_id: 2,
             polygons: vec![square.clone()],
             infill_areas: vec![square.clone()],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: std::collections::HashMap::new(),
-            variant_chain: Vec::new(),
             top_shell_index: Some(0),
             bottom_shell_index: Some(2),
             top_solid_fill: vec![square.clone()],
             bottom_solid_fill: vec![square],
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
+            ..Default::default()
         };
 
         test_serde_roundtrip!(region);
@@ -562,10 +548,7 @@ mod tests {
         let flags = WallFeatureFlags {
             tool_index: Some(1),
             fuzzy_skin: true,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: std::collections::HashMap::new(),
+            ..Default::default()
         };
 
         test_serde_roundtrip!(flags);

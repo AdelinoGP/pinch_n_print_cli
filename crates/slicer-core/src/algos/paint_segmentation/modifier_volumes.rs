@@ -245,6 +245,7 @@ mod tests {
             "subtype".to_string(),
             ConfigValue::String(subtype.to_string()),
         );
+        // exhaustive: no Default impl for ModifierVolume; every field is a fixture input (packet 196)
         ModifierVolume {
             id: "mv1".to_string(),
             mesh,
@@ -266,7 +267,7 @@ mod tests {
                 },
                 modifier_volumes: vec![make_modifier_volume(subtype, mv_mesh)],
                 paint_data: None,
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         }

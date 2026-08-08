@@ -11,6 +11,7 @@ use slicer_core::perimeter_utils::{wall_sequence_reorder, WallSequence};
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, LoopType, WallBoundaryType, WallLoop};
 
 fn make_wall(perimeter_index: u32, loop_type: LoopType, role: ExtrusionRole) -> WallLoop {
+    // exhaustive: file-local base; sdk fixture home would pull host-algos into this crate's dev graph (packet 196 [FWD])
     WallLoop {
         perimeter_index,
         loop_type,

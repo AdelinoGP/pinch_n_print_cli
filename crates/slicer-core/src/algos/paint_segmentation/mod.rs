@@ -1739,7 +1739,7 @@ mod driver_v2_tests {
                 },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         }
@@ -1782,7 +1782,7 @@ mod driver_v2_tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         }
@@ -2042,6 +2042,7 @@ mod driver_v2_tests {
             "subtype".to_string(),
             ConfigValue::String("support_enforcer".to_string()),
         );
+        // exhaustive: no Default impl for ModifierVolume; every field is a fixture input (packet 196)
         let mv = ModifierVolume {
             id: "mv1".to_string(),
             mesh: mv_mesh,
@@ -2092,7 +2093,7 @@ mod driver_v2_tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: BoundingBox3 {
                 min: Point3 {
@@ -2389,7 +2390,7 @@ mod driver_v2_tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         });
@@ -2489,7 +2490,7 @@ mod driver_v2_tests {
                         }],
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         });
@@ -2648,7 +2649,7 @@ mod driver_v2_tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         });
@@ -2917,7 +2918,7 @@ mod driver_v2_tests {
                             strokes: Vec::new(),
                         }],
                     }),
-                    world_z_extent: None,
+                    ..Default::default()
                 },
                 ObjectMesh {
                     id: "objB".to_string(),
@@ -2935,7 +2936,7 @@ mod driver_v2_tests {
                             strokes: Vec::new(),
                         }],
                     }),
-                    world_z_extent: None,
+                    ..Default::default()
                 },
             ],
             build_volume: default_build_volume(),
@@ -3103,7 +3104,7 @@ mod driver_v2_tests {
                         strokes: Vec::new(),
                     }],
                 }),
-                world_z_extent: None,
+                ..Default::default()
             }],
             build_volume: default_build_volume(),
         });
@@ -3509,7 +3510,7 @@ mod driver_v2_tests {
                             strokes: Vec::new(),
                         }],
                     }),
-                    world_z_extent: None,
+                    ..Default::default()
                 },
                 ObjectMesh {
                     id: "objB".to_string(),
@@ -3527,7 +3528,7 @@ mod driver_v2_tests {
                             strokes: Vec::new(),
                         }],
                     }),
-                    world_z_extent: None,
+                    ..Default::default()
                 },
             ],
             build_volume: default_build_volume(),

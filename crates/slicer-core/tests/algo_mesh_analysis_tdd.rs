@@ -52,7 +52,7 @@ fn triangle_mesh(id: &str) -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: build_volume(),
     }
@@ -80,7 +80,7 @@ fn cube_like_mesh() -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: build_volume(),
     }
@@ -115,7 +115,7 @@ fn classifies_known_facets_and_emits_overhang_region() {
             },
             modifier_volumes: vec![],
             paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: build_volume(),
     };

@@ -848,6 +848,21 @@ mod wall_sequence_reorder_tests {
     use slicer_ir::{ExtrusionPath3D, ExtrusionRole, LoopType, WallLoop};
 
     fn make_wall(perimeter_index: u32, loop_type: LoopType, role: ExtrusionRole) -> WallLoop {
+        fn wall_loop_base() -> WallLoop {
+            // exhaustive: file-local base; no Default impl for WallLoop (packet 196)
+            WallLoop {
+                perimeter_index: 0,
+                loop_type: LoopType::Outer,
+                path: ExtrusionPath3D {
+                    points: vec![],
+                    role: ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                },
+                width_profile: Default::default(),
+                feature_flags: Default::default(),
+                boundary_type: WallBoundaryType::ExteriorSurface,
+            }
+        }
         WallLoop {
             perimeter_index,
             loop_type,
@@ -856,9 +871,7 @@ mod wall_sequence_reorder_tests {
                 role,
                 speed_factor: 1.0,
             },
-            width_profile: Default::default(),
-            feature_flags: Default::default(),
-            boundary_type: WallBoundaryType::ExteriorSurface,
+            ..wall_loop_base()
         }
     }
 

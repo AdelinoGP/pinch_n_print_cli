@@ -18,6 +18,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, ObjectId, Point3WithWidth,
     PrintEntity, RegionKey, ResolvedConfig,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ============================================================================
 // Fixtures
@@ -39,9 +40,7 @@ fn p3w(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        overhang_distance_mm: None,
-        dist_to_top_mm: 0.0,
+        ..Default::default()
     }
 }
 
@@ -75,10 +74,9 @@ fn make_entity(id: u64, points: Vec<Point3WithWidth>, role: ExtrusionRole) -> Pr
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
         tool_index: 0,
         region_key: region_key(),
-        topo_order: id as u32,
+        ..print_entity_base(role.clone())
     }
 }
 

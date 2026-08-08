@@ -19,6 +19,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, ResolvedConfig,
 };
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 fn mv(x: f32, y: f32, e: Option<f32>, f: Option<f32>) -> GCodeCommand {
     GCodeCommand::Move {
@@ -139,9 +140,7 @@ fn point3(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -153,7 +152,6 @@ fn entity_fixture(points: Vec<Point3WithWidth>) -> PrintEntity {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role: ExtrusionRole::OuterWall,
         tool_index: 0,
         region_key: RegionKey {
             global_layer_index: 0,
@@ -161,7 +159,7 @@ fn entity_fixture(points: Vec<Point3WithWidth>) -> PrintEntity {
             region_id: 0u64,
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 

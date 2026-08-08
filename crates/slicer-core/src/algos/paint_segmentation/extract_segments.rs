@@ -422,6 +422,7 @@ mod tests {
             let (ax, ay) = corners[i];
             let (bx, by) = corners[(i + 1) % n];
             let ai = arcs.len();
+            // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
             arcs.push(MmuArc {
                 from_node: i,
                 to_node: (i + 1) % n,
@@ -452,6 +453,7 @@ mod tests {
             let (ax, ay) = corners[i];
             let (bx, by) = corners[(i + 1) % 4];
             let ai = arcs.len();
+            // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
             arcs.push(MmuArc {
                 from_node: i,
                 to_node: (i + 1) % 4,
@@ -468,6 +470,7 @@ mod tests {
             let (cx, cy) = center;
             let (bx, by) = corners[i];
             let ai = arcs.len();
+            // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
             arcs.push(MmuArc {
                 from_node: 4,
                 to_node: i,
@@ -553,6 +556,7 @@ mod tests {
         let mut nodes: Vec<MmuNode> = (0..2).map(|_| MmuNode::default()).collect();
         let mut arcs: Vec<MmuArc> = Vec::new();
         let ai = arcs.len();
+        // exhaustive: no Default impl for MmuArc; every field is a fixture input (packet 196)
         arcs.push(MmuArc {
             from_node: 0,
             to_node: 1,

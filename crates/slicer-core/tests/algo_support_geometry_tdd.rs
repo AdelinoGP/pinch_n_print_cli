@@ -14,10 +14,7 @@ fn make_active_region(object_id: &str, layer_height: f32, support_lh: f32) -> Ac
             ..ResolvedConfig::default()
         },
         effective_layer_height: layer_height,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
+        ..Default::default()
     }
 }
 
@@ -28,15 +25,13 @@ fn make_2_layer_plan() -> LayerPlanIR {
                 index: 0,
                 z: 0.0,
                 active_regions: vec![make_active_region("test-object", 0.2, 0.0)],
-                has_nonplanar: false,
-                is_sync_layer: false,
+                ..Default::default()
             },
             GlobalLayer {
                 index: 1,
                 z: 0.2,
                 active_regions: vec![make_active_region("test-object", 0.2, 0.0)],
-                has_nonplanar: false,
-                is_sync_layer: false,
+                ..Default::default()
             },
         ],
         object_participation: HashMap::new(),
@@ -54,8 +49,7 @@ fn make_two_object_plan() -> LayerPlanIR {
                 make_active_region("obj-A", 0.2, 0.4),
                 make_active_region("obj-B", 0.2, 0.0),
             ],
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         });
     }
     LayerPlanIR {

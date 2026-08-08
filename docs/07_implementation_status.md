@@ -307,6 +307,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] TASK-317 — safe `Default` impls + `sdk::test_support` fixture bases + per-crate `PipelineConfig` helpers for the struct-literal churn gate — packet 195.
 
+- [x] TASK-318 — FRU sweep of slicer-ir/slicer-core/slicer-gcode test literals for the struct-literal churn gate — packet 196.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a
