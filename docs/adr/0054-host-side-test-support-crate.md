@@ -184,3 +184,21 @@ seven-site record (above) and by packet 165's shared-crate extraction into
 `pnp-cli-locator`. When packet 162 is archived to `_OLD`, readers should
 treat ADR-0054 as authoritative for lookup-site counts; packet 162's
 `[FWD]` in `design.md` §Open Questions resolves here.
+
+## Amendment — 2026-08-08 (packet 195)
+
+`slicer_sdk::test_support` is the **single IR-fixture home** for host- and
+guest-side tests. Host crates consume it via a `slicer-sdk` **dev-dependency with
+`feature = "test"`** (the dev-dep and feature wiring are added by the sweep
+packets 196–198, not here). Decision item 3's "guest-side surface" wording is
+**superseded** accordingly: `slicer_sdk::test_support` is no longer guest-only —
+it also hosts the IR fixtures that host-side tests import. The locator /
+`test_support` **disjointness still stands**: `pnp-cli-locator` remains
+binary-location-only (std-only, dev-dep-only, its four functions), never
+re-exporting `slicer_sdk::test_support` and never being re-exported by it.
+
+The host-side `WallLoopBuilder` currently living in
+`crates/slicer-runtime/tests/common/ir_builders.rs` is recorded here as a
+**consolidation target** for the sweep packets: it should be folded into
+`slicer_sdk::test_support` so host and guest share one IR-fixture builder. It is
+**not migrated in this packet**.

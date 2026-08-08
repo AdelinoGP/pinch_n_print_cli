@@ -122,6 +122,30 @@ pub struct SliceRunOptions {
     pub config_overrides: std::collections::HashMap<String, ConfigValue>,
 }
 
+/// Quiet test baseline - `progress_events: false` deliberately differs from
+/// `pnp_cli slice`'s CLI default (`true`); production callers set every field explicitly.
+impl Default for SliceRunOptions {
+    fn default() -> Self {
+        Self {
+            mesh: Arc::new(MeshIR::default()),
+            model_label: String::new(),
+            config_path: None,
+            output_path: None,
+            module_dirs: Vec::new(),
+            no_default_module_paths: false,
+            thumbnail: None,
+            report: None,
+            report_verbose: false,
+            instrument_stderr: false,
+            profile: false,
+            profile_verbose: false,
+            progress_events: false,
+            cancel_flag: None,
+            config_overrides: std::collections::HashMap::new(),
+        }
+    }
+}
+
 /// Output produced by a successful `run_slice` call.
 #[derive(Debug, Clone)]
 pub struct SliceOutcome {

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 195-defaults-and-fixture-bases
 task_ids:
   - TASK-317

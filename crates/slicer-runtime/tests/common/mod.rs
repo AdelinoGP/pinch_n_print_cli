@@ -16,18 +16,38 @@ pub mod slicer_cache;
 pub mod support_wedge;
 pub mod wasm_cache;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
+use slicer_runtime::pipeline::{PipelineConfig, PipelineStageRunners};
 use slicer_runtime::wit_host::{HostExecutionContext, HostExecutionContextBuilder};
 use slicer_runtime::{
-    Blackboard, FinalizationStageInput, LayerArena, LayerStageInput, PostpassStageInput,
-    PrepassStageInput,
+    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationStageInput, LayerArena,
+    LayerStageInput, PostpassStageInput, PrepassStageInput,
 };
+
+pub fn pipeline_config_base(
+    mesh_ir: Arc<MeshIR>,
+    plan: ExecutionPlan,
+    runners: PipelineStageRunners,
+) -> PipelineConfig {
+    PipelineConfig {
+        // exhaustive: single per-crate construction point for trait-object holder PipelineConfig
+        cancel_flag: None,
+        mesh_ir,
+        plan,
+        runners,
+        support_tools: Default::default(),
+        resolved_configs: Arc::new(BTreeMap::new()),
+        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(ConfigBoundsIndex::empty()),
+        wasm_handles: HashMap::new(),
+    }
+}
 
 pub fn ctx_with_mesh(module_id: &str, mesh: Arc<MeshIR>) -> HostExecutionContext {
     HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)

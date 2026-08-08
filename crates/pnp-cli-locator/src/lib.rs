@@ -2,10 +2,10 @@
 //! not stale before a test, bench, or integration harness spawns it.
 //!
 //! **This crate's name says what it does: it is the `pnp_cli` locator.** It is
-//! *not* general test support — that lives guest-side in
-//! `slicer_sdk::test_support` (ADR-0004). The former name `slicer-test-support`
-//! was deliberately retired because it read as a sibling of the guest-side
-//! surface.
+//! *not* general test support — IR fixtures and mock-host seams live in
+//! `slicer_sdk::test_support` (ADR-0004), the **single IR-fixture home** for host
+//! and guest tests. The former name `slicer-test-support`
+//! was deliberately retired because it read as a sibling of that surface.
 //!
 //! **Home decision: see `docs/adr/0054-host-side-test-support-crate.md`
 //! (ADR-0054).** That ADR fixes three rules this crate must keep:
@@ -15,9 +15,10 @@
 //!    dependency added here is taxed onto every narrow
 //!    `cargo test -p slicer-runtime` / `cargo test -p slicer-scheduler` build.
 //! 2. **dev-dependency only** — no production crate may depend on it.
-//! 3. **host-side only** — it never compiles into guest WASM. Guest-side test
-//!    support is `slicer_sdk::test_support`, governed by **ADR-0004**; the two
-//!    surfaces are disjoint and neither re-exports the other.
+//! 3. **host-side only** — it never compiles into guest WASM. Test support —
+//!    including IR fixtures for host tests — lives in
+//!    `slicer_sdk::test_support`, governed by **ADR-0004**; the two surfaces are
+//!    disjoint and neither re-exports the other.
 //!
 //! Before ADR-0054 this logic was copy-pasted across seven host-side sites.
 //! Packet 162 fixed three of them in place and deferred the extraction; the

@@ -70,3 +70,14 @@ Negative:
    `slicer-sdk`; routing the macro through `slicer-test` would force a
    `slicer-sdk → slicer-test → slicer-sdk` dep chain (or make `slicer-test` a
    mandatory dep of every module crate), neither of which is acceptable.
+
+## Amendment — 2026-08-08 (packet 195)
+
+Scope extension: `slicer_sdk::test_support` is the **single IR-fixture home**
+for host- and guest-side tests, so it now also hosts the IR fixtures that
+host-side tests import (consumed via a `slicer-sdk` dev-dependency with
+`feature = "test"`, added by the sweep packets 196–198). The **guest-build
+negative consequence is unchanged**: guests must never enable
+`feature = "test"` — `cargo xtask build-guests` and every
+`modules/core-modules/*/Cargo.toml` continue to depend on `slicer-sdk` with
+`default-features = false` and without `features = ["test"]`.

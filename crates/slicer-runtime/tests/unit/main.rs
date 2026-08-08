@@ -24,6 +24,7 @@ mod path_ordering_tdd;
 mod profile_flag_tdd;
 mod region_mapping_resolved_config_tdd;
 mod rotated_object_world_extent_tdd;
+mod slice_run_options_default_tdd;
 mod tool_ordering_tdd;
 mod transformed_model_world_z_tdd;
 mod translated_object_z_floor_tdd;

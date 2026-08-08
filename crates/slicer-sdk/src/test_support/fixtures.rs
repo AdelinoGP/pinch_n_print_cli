@@ -929,6 +929,110 @@ pub fn print_entity(
     }
 }
 
+/// Build a [`PrintEntity`] base suitable for struct-update fixture syntax.
+///
+/// The base supplies deterministic defaults for fields that are not relevant to
+/// a test. Override only the fields under test with a struct-update literal.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::{ExtrusionRole, PrintEntity};
+/// use slicer_sdk::test_support::fixtures::print_entity_base;
+///
+/// let entity = PrintEntity {
+///     topo_order: 7,
+///     ..print_entity_base(ExtrusionRole::OuterWall)
+/// };
+/// assert_eq!(entity.topo_order, 7);
+/// ```
+#[must_use]
+pub fn print_entity_base(role: ExtrusionRole) -> PrintEntity {
+    PrintEntity {
+        entity_id: 0,
+        path: ExtrusionPath3D {
+            points: vec![Point3WithWidth::default()],
+            role: role.clone(),
+            speed_factor: 1.0,
+        },
+        role,
+        region_key: RegionKey::default(),
+        topo_order: 0,
+        tool_index: 0,
+    }
+}
+
+/// Build a [`WallLoop`] base suitable for struct-update fixture syntax.
+///
+/// The `path.role` mapping (`Outer` -> `OuterWall`, `ThinWall` -> `ThinWall`,
+/// all other variants -> `InnerWall`) is a fixture convention, not an IR
+/// invariant; tests that care about `path.role` must override it via FRU.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::{LoopType, WallBoundaryType, WallLoop};
+/// use slicer_sdk::test_support::fixtures::wall_loop_base;
+///
+/// let wall_loop = WallLoop {
+///     perimeter_index: 2,
+///     ..wall_loop_base(LoopType::Outer, WallBoundaryType::default())
+/// };
+/// assert_eq!(wall_loop.perimeter_index, 2);
+/// ```
+#[must_use]
+pub fn wall_loop_base(loop_type: LoopType, boundary_type: WallBoundaryType) -> WallLoop {
+    let role = match loop_type {
+        LoopType::Outer => ExtrusionRole::OuterWall,
+        LoopType::ThinWall => ExtrusionRole::ThinWall,
+        _ => ExtrusionRole::InnerWall,
+    };
+
+    WallLoop {
+        perimeter_index: 0,
+        loop_type,
+        path: ExtrusionPath3D {
+            points: vec![Point3WithWidth::default()],
+            role,
+            speed_factor: 1.0,
+        },
+        width_profile: WidthProfile { widths: vec![0.0] },
+        feature_flags: Vec::new(),
+        boundary_type,
+    }
+}
+
+/// Build an [`OrderedEntityView`] base suitable for struct-update fixture syntax.
+///
+/// The base keeps view fields internally consistent while allowing a test to
+/// override the field relevant to its assertion.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::ExtrusionRole;
+/// use slicer_sdk::test_support::fixtures::ordered_entity_view_base;
+/// use slicer_sdk::views::OrderedEntityView;
+///
+/// let view = OrderedEntityView {
+///     original_index: 4,
+///     ..ordered_entity_view_base(ExtrusionRole::OuterWall)
+/// };
+/// assert_eq!(view.original_index, 4);
+/// ```
+#[must_use]
+pub fn ordered_entity_view_base(role: ExtrusionRole) -> crate::views::OrderedEntityView {
+    crate::views::OrderedEntityView {
+        original_index: 0,
+        tool_index: 0,
+        region_key: RegionKey::default(),
+        role,
+        start_point: Point3WithWidth::default(),
+        end_point: Point3WithWidth::default(),
+        point_count: 2,
+    }
+}
+
 /// Build a [`ToolChange`] anchored after the entity at `after_entity_index`
 /// targeting `tool_index`.
 ///

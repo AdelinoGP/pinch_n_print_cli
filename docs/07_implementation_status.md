@@ -305,6 +305,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] TASK-316 — `cargo xtask check-literals` struct-literal churn gate (report mode, path filter, docs/21) — packet 194.
 
+- [x] TASK-317 — safe `Default` impls + `sdk::test_support` fixture bases + per-crate `PipelineConfig` helpers for the struct-literal churn gate — packet 195.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a

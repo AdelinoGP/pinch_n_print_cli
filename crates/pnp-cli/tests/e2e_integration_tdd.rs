@@ -8,17 +8,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerStageError, PrintMetadata, SemVer,
-    StageId,
+    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerStageError, MeshIR, PrintMetadata,
+    SemVer, StageId,
 };
 use slicer_model_io::{load_model, ModelLoadError};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
-    CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
-    FinalizationError, FinalizationOutput, FinalizationStageInput, FinalizationStageRunner,
-    GCodeEmitError, GCodeEmitter, GCodeSerializer, LayerStageInput, LayerStageRunner,
-    PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
-    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    CompiledModuleLive, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageInput,
+    FinalizationStageRunner, GCodeEmitError, GCodeEmitter, GCodeSerializer, LayerStageInput,
+    LayerStageRunner, PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,27 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    }
+}
+
+// Sweep packet 197 removes this allow when it converts the six call sites.
+#[allow(dead_code)]
+fn pipeline_config_base(
+    mesh_ir: Arc<MeshIR>,
+    plan: ExecutionPlan,
+    runners: PipelineStageRunners,
+) -> PipelineConfig {
+    PipelineConfig {
+        // exhaustive: single per-crate construction point for trait-object holder PipelineConfig
+        cancel_flag: None,
+        mesh_ir,
+        plan,
+        runners,
+        support_tools: Default::default(),
+        resolved_configs: Arc::new(BTreeMap::new()),
+        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(ConfigBoundsIndex::empty()),
+        wasm_handles: HashMap::new(),
     }
 }
 

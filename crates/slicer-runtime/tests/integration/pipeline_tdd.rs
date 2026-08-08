@@ -202,6 +202,26 @@ fn noop_runners() -> PipelineStageRunners {
     }
 }
 
+#[test]
+fn pipeline_config_base_smoke() {
+    let mesh_ir = empty_mesh_ir();
+    let plan = empty_execution_plan();
+    let runners = noop_runners();
+    let prepass_runner = (&*runners.prepass) as *const dyn PrepassStageRunner;
+    let config = crate::common::pipeline_config_base(mesh_ir.clone(), plan, runners);
+
+    assert!(config.cancel_flag.is_none());
+    assert!(config.wasm_handles.is_empty());
+    assert!(config.resolved_configs.is_empty());
+    assert!(Arc::ptr_eq(&config.mesh_ir, &mesh_ir));
+    assert!(config.plan.prepass_stages.is_empty());
+    assert!(config.plan.per_layer_stages.is_empty());
+    assert!(std::ptr::addr_eq(
+        prepass_runner,
+        (&*config.runners.prepass) as *const dyn PrepassStageRunner,
+    ));
+}
+
 fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = LoadedModuleBuilder::new(
         module_id,
