@@ -303,6 +303,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] TASK-315 — Packet 191-overhang-add-intersections: adds the `EntityMutation::SetPathPoints` geometry mutation channel and ports canonical mid-segment vertex insertion (`ADD_INTERSECTIONS`), including the threshold-crossing and segmentation branches (reading the packet 193 / TASK-314 `overhang_distance_mm` carrier and reusing the packet 190 / TASK-313 `speed_sections` table, per ADR-0053). Closes the Benchy parity work.
 
+- [x] TASK-316 — `cargo xtask check-literals` struct-literal churn gate (report mode, path filter, docs/21) — packet 194.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a

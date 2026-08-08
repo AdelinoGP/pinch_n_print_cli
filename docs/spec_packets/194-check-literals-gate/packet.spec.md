@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 194-check-literals-gate
 task_ids:
   - TASK-316

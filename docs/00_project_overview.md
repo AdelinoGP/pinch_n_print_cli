@@ -110,6 +110,7 @@ Paths below are relative to this file (`docs/`).
 | Slice timing, DAG, and manifest diagnosis                 | `17_agent_debugging.md`                                   |
 | Visual-debug bundles (stage/layer PNG evidence)           | `19_visual_debug.md`                                      |
 | Support-preview JSON contract                             | `20_support_preview.md`                                   |
+| Test-code struct-literal conventions (`check-literals`)   | `21_data_defaults_and_fixtures.md`                        |
 | Active architecture deviations                            | `DEVIATION_LOG.md`                                        |
 
 Operational agent orchestration and validation gates live in the repo skills under

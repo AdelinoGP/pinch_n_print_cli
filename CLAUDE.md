@@ -96,6 +96,12 @@ When inspecting results, you MUST read the file — never re-run the tests to se
 
 **Prohibited:** re-invoking `cargo test` because the previous run's stdout was truncated, claimed to "only show doc-tests", or "needs the full picture". The full picture is already on disk — read it. Capture findings before launching the next run (the log is overwritten each run).
 
+### Struct-literal churn gate (MUST follow)
+
+In test code, a struct literal of a watched type (a `pub` struct with ≥5 named fields defined under `crates/*/src`) must use a `..` rest (FRU) or an `// exhaustive: <reason>` waiver. Production `src/` literals stay exhaustive. Full rule, watchlist derivation, and waiver format: `docs/21_data_defaults_and_fixtures.md`.
+
+`cargo xtask check-literals` enforces this (exit 1 on violations); `--report` mode lists violations and exits 0. This is **not yet a required gate — enforcement flips on in packet 199**; do not add it to the required-before-commit list or the `cargo xtask test` preflight until then.
+
 ## Coordinate System Hazard
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.

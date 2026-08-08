@@ -1,5 +1,6 @@
 mod build_guests;
 mod check_deviations;
+mod check_literals;
 mod compact_specs;
 mod dist;
 mod gen_config_docs;
@@ -21,6 +22,9 @@ SUBCOMMANDS:
     build-guests --list   Print every discovered guest (crate name, manifest, expected artifact path).
     check-deviations          Regenerate doc 07 Open Deviation Map + doc 15 config tables.
     check-deviations --check  Exit 1 if doc 07 or doc 15 generated sections are stale.
+    check-literals          Enforce exhaustive watched-type literal policy.
+    check-literals --report Report watched-type literal violations without failing.
+    check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
@@ -96,6 +100,23 @@ fn main() -> ExitCode {
                 code = gen_config_docs::run(&ws, check_only);
             }
             ExitCode::from(code as u8)
+        }
+        Some("check-literals") => {
+            let mut report = false;
+            let mut filters = Vec::new();
+            for arg in &args[1..] {
+                if arg == "--report" {
+                    report = true;
+                } else if arg.starts_with("--") {
+                    eprintln!("xtask: unknown flag '{arg}' for check-literals\n");
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                } else {
+                    filters.push(arg.clone());
+                }
+            }
+            let ws = build_guests::workspace_root();
+            ExitCode::from(check_literals::run(&ws, report, &filters) as u8)
         }
         Some("dist") => {
             let flag = args.get(1).map(String::as_str);

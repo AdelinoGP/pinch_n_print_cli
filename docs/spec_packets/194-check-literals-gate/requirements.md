@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-316` (new row; registered in `docs/07_implementation_status.md` by the implementing swarm — see `task-map.md`)
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
