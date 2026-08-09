@@ -976,7 +976,7 @@ pub fn print_entity_base(role: ExtrusionRole) -> PrintEntity {
 ///
 /// let wall_loop = WallLoop {
 ///     perimeter_index: 2,
-///     ..wall_loop_base(LoopType::Outer, WallBoundaryType::default())
+///     ..wall_loop_base(LoopType::Outer, WallBoundaryType::Interior)
 /// };
 /// assert_eq!(wall_loop.perimeter_index, 2);
 /// ```

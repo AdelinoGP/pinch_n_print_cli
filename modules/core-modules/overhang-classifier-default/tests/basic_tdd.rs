@@ -36,10 +36,9 @@ fn point_with_width(
         y,
         z,
         width,
-        flow_factor: 1.0,
         overhang_quartile,
-        dist_to_top_mm: 0.0,
         overhang_distance_mm,
+        ..Default::default()
     }
 }
 
@@ -94,10 +93,9 @@ fn wall_square_with_quartile(
         y,
         z,
         width: w,
-        flow_factor: 1.0,
         overhang_quartile: quartile,
-        dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+        ..Default::default()
     };
     print_entity(
         entity_id,

@@ -4,6 +4,7 @@
 //! Tests lock down trait signatures, ModuleError type, view types, and output builders.
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::test_support::fixtures::wall_loop_base;
 use std::collections::HashMap;
 
 // =============================================================================
@@ -514,16 +515,16 @@ fn test_20_perimeter_region_view_region_id() {
 #[test]
 fn test_21_perimeter_region_view_wall_loops() {
     let wall = WallLoop {
-        perimeter_index: 0,
-        loop_type: slicer_ir::LoopType::Outer,
         path: ExtrusionPath3D {
             points: vec![],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         width_profile: slicer_ir::WidthProfile { widths: vec![] },
-        feature_flags: vec![],
-        boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+        ..wall_loop_base(
+            slicer_ir::LoopType::Outer,
+            slicer_ir::WallBoundaryType::ExteriorSurface,
+        )
     };
     let mut view = PerimeterRegionView::default();
     view.set_object_id("obj-2".to_string());
@@ -602,16 +603,16 @@ fn test_25_infill_output_builder_push_ironing_path() {
 fn test_26_perimeter_output_builder_push_wall_loop() {
     let mut builder = PerimeterOutputBuilder::new();
     let wall = WallLoop {
-        perimeter_index: 0,
-        loop_type: slicer_ir::LoopType::Outer,
         path: ExtrusionPath3D {
             points: vec![],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         width_profile: slicer_ir::WidthProfile { widths: vec![] },
-        feature_flags: vec![],
-        boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+        ..wall_loop_base(
+            slicer_ir::LoopType::Outer,
+            slicer_ir::WallBoundaryType::ExteriorSurface,
+        )
     };
     let result = builder.push_wall_loop(wall);
     assert!(result.is_ok());
@@ -939,6 +940,7 @@ fn test_32_multiple_implementations_coexist() {
 fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
     let mut builder = slicer_sdk::LayerCollectionBuilder::new();
     let snapshot = vec![
+        // exhaustive: cache round-trip pins every view field
         OrderedEntityView {
             original_index: 0,
             tool_index: 1,
@@ -955,9 +957,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             end_point: Point3WithWidth {
                 x: 1.0,
@@ -965,12 +965,11 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             point_count: 4,
         },
+        // exhaustive: cache round-trip pins every view field
         OrderedEntityView {
             original_index: 1,
             tool_index: 1,
@@ -987,9 +986,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             end_point: Point3WithWidth {
                 x: 2.0,
@@ -997,12 +994,11 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             point_count: 6,
         },
+        // exhaustive: cache round-trip pins every view field
         OrderedEntityView {
             original_index: 2,
             tool_index: 2,
@@ -1019,9 +1015,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             end_point: Point3WithWidth {
                 x: 3.0,
@@ -1029,9 +1023,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             point_count: 8,
         },

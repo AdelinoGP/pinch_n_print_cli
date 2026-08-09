@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-320`
 - Backlog source: `docs/07_implementation_status.md` (new row added at completion; TASK-320 allocated by `docs/specs/struct-literal-churn-gate-plan.md` — re-derive the highest existing TASK id before writing the row)
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

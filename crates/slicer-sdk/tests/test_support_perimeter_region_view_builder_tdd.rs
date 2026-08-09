@@ -70,6 +70,7 @@ fn inner_walls_auto_increment_perimeter_index() {
 
 #[test]
 fn add_wall_loop_preserves_custom_wall() {
+    // exhaustive: custom wall-loop carrier test pins every field intentionally
     let custom_loop = WallLoop {
         perimeter_index: 5,
         loop_type: LoopType::ThinWall,

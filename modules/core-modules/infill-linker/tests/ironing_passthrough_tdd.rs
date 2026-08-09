@@ -13,10 +13,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 y: 0.0,
                 z: 0.2,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: x_offset + 2.0,
@@ -24,9 +21,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 z: 0.2,
                 width: 0.35,
                 flow_factor: 0.8,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: x_offset + 4.0,
@@ -34,9 +29,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 z: 0.2,
                 width: 0.45,
                 flow_factor: 1.2,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role,
@@ -46,6 +39,7 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
 
 fn prior_infill() -> Vec<InfillRegion> {
     vec![
+        // exhaustive: this carrier fixture explicitly sets every InfillRegion field used by the roundtrip assertion.
         InfillRegion {
             object_id: "object-a".to_string(),
             region_id: 7,
@@ -56,6 +50,7 @@ fn prior_infill() -> Vec<InfillRegion> {
                 path(ExtrusionRole::Ironing, 1.25, 3.0),
             ],
         },
+        // exhaustive: this carrier fixture explicitly sets every InfillRegion field used by the roundtrip assertion.
         InfillRegion {
             object_id: "object-b".to_string(),
             region_id: 11,

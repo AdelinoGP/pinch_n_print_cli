@@ -32,20 +32,14 @@ fn path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPa
                 y: y_mm,
                 z: 0.2,
                 width: width_mm,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: x_end_mm,
                 y: y_mm,
                 z: 0.2,
                 width: width_mm,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -61,20 +55,14 @@ fn vertical_path(x_mm: f32, width_mm: f32) -> ExtrusionPath3D {
                 y: 0.0,
                 z: 0.2,
                 width: width_mm,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: x_mm,
                 y: 10.0,
                 z: 0.2,
                 width: width_mm,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -224,6 +212,7 @@ fn run_with_config(
 }
 
 fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
+    // exhaustive: this fixture explicitly sets every InfillRegion field used by orchestration.
     InfillRegion {
         object_id: "object".to_string(),
         region_id,
@@ -353,13 +342,16 @@ fn solid_bucket_forces_unlimited_anchor_while_sparse_obeys_the_key() {
     let mut solid_b = path(0.0, 10.0, 8.0, 0.4);
     solid_b.role = ExtrusionRole::TopSolidInfill;
 
-    let prior = vec![InfillRegion {
-        object_id: "object".to_string(),
-        region_id: 1,
-        sparse_infill: sparse,
-        solid_infill: vec![solid_a, solid_b],
-        ironing: vec![],
-    }];
+    let prior = vec![
+        // exhaustive: this fixture explicitly sets every InfillRegion field used by orchestration.
+        InfillRegion {
+            object_id: "object".to_string(),
+            region_id: 1,
+            sparse_infill: sparse,
+            solid_infill: vec![solid_a, solid_b],
+            ironing: vec![],
+        },
+    ];
     let views = vec![solid_view_with_anchor(
         1,
         square(0.0, 10.0),

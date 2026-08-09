@@ -97,6 +97,18 @@ required-features = ["test"]
 name = "test_support_wall_loop_with_flags_tdd"
 required-features = ["test"]
 
+[[test]]
+name = "finalization_builder_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "host_wrappers_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "layer_module_tdd"
+required-features = ["test"]
+
 # Enable the `test` feature for the library when `cargo test` runs against
 # this crate's own integration tests. Without this, the gated modules
 # (test_prelude, test_support) are invisible to the `tests/*.rs`

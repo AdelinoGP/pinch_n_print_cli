@@ -11,6 +11,7 @@
 
 use slicer_ir::{LayerCollectionIR, PrintEntity, TravelMove};
 use slicer_sdk::prelude::*;
+use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
 
 // =============================================================================
@@ -36,9 +37,7 @@ fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D
                 z: 0.2,
                 width: 0.4,
                 flow_factor,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             slicer_ir::Point3WithWidth {
                 x: 1.0,
@@ -46,9 +45,7 @@ fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D
                 z: 0.2,
                 width: 0.4,
                 flow_factor,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role,
@@ -71,10 +68,8 @@ fn make_entity(entity_id: u64, role: ExtrusionRole) -> PrintEntity {
     PrintEntity {
         entity_id,
         path: make_path(role.clone()),
-        role,
-        tool_index: 0,
         region_key: make_region_key(),
-        topo_order: 0,
+        ..print_entity_base(role)
     }
 }
 
@@ -204,6 +199,7 @@ fn sort_layer_by_priority_and_entity_id() {
     //                  so it is a backward ref from id=3 and forward from id=5)
     // Using entity_ids that exist in the layer; mixed so both orphan directions are caught.
     let travel_moves = vec![
+        // exhaustive: anchor test pins every travel-move transport field
         TravelMove {
             entity_id: 1,
             x: Some(100.0),
@@ -211,6 +207,7 @@ fn sort_layer_by_priority_and_entity_id() {
             z: None,
             f: None,
         },
+        // exhaustive: anchor test pins every travel-move transport field
         TravelMove {
             entity_id: 4,
             x: None,
@@ -218,6 +215,7 @@ fn sort_layer_by_priority_and_entity_id() {
             z: None,
             f: None,
         },
+        // exhaustive: anchor test pins every travel-move transport field
         TravelMove {
             entity_id: 2,
             x: Some(50.0),
@@ -623,26 +621,22 @@ fn modify_entity_set_flow_factor_applies() {
     let entity1 = PrintEntity {
         entity_id: 1,
         path: make_path_with_flow(ExtrusionRole::OuterWall, 1.0),
-        role: ExtrusionRole::OuterWall,
-        tool_index: 0,
         region_key: make_region_key(),
-        topo_order: 0,
+        ..print_entity_base(ExtrusionRole::OuterWall)
     };
     let entity2 = PrintEntity {
         entity_id: 2,
         path: make_path_with_flow(ExtrusionRole::InnerWall, 1.0),
-        role: ExtrusionRole::InnerWall,
-        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 1,
+        ..print_entity_base(ExtrusionRole::InnerWall)
     };
     let entity3 = PrintEntity {
         entity_id: 3,
         path: make_path_with_flow(ExtrusionRole::SparseInfill, 1.0),
-        role: ExtrusionRole::SparseInfill,
-        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 2,
+        ..print_entity_base(ExtrusionRole::SparseInfill)
     };
 
     let mut layers = vec![make_layer(0, 0.2, vec![entity1, entity2, entity3])];
@@ -725,9 +719,7 @@ fn make_path_with_n_points(role: ExtrusionRole, n: usize) -> ExtrusionPath3D {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             })
             .collect(),
         role,
@@ -740,10 +732,8 @@ fn make_entity_with_n_points(entity_id: u64, role: ExtrusionRole, n: usize) -> P
     PrintEntity {
         entity_id,
         path: make_path_with_n_points(role.clone(), n),
-        role,
-        tool_index: 0,
         region_key: make_region_key(),
-        topo_order: 0,
+        ..print_entity_base(role)
     }
 }
 
@@ -856,9 +846,7 @@ fn set_path_points_rejects_empty_or_unclosed_loop() {
         z: 0.2,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let original_points = vec![
         make_point(0.0, 0.0),

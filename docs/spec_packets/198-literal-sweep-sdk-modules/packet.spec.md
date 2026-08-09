@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 198-literal-sweep-sdk-modules
 task_ids:
   - TASK-320

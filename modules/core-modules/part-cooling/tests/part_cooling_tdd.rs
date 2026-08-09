@@ -14,6 +14,7 @@ use slicer_ir::{
     Point3WithWidth, PrintEntity, RegionKey, SemVer,
 };
 use slicer_sdk::test_prelude::config_with;
+use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
 
 // ---------------------------------------------------------------------------
@@ -21,37 +22,38 @@ use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCol
 // ---------------------------------------------------------------------------
 
 fn entity(role: ExtrusionRole) -> PrintEntity {
+    let base = print_entity_base(role.clone());
     PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth {
-                x: 0.0,
-                y: 0.0,
                 z: 0.2,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             }],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path_base(role.clone())
         },
-        role,
-        tool_index: 0,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: "obj".to_string(),
             region_id: 0,
             variant_chain: Vec::new(),
         },
-        topo_order: 0,
+        ..base
+    }
+}
+
+// exhaustive: ExtrusionPath3D has no Default or shared fixture; this base preserves its required fields.
+fn extrusion_path_base(role: ExtrusionRole) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: vec![Point3WithWidth::default()],
+        role,
+        speed_factor: 1.0,
     }
 }
 
 fn layer_view(index: u32, roles: &[ExtrusionRole]) -> LayerCollectionView {
     let ir = LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: SemVer {
             major: 1,
             minor: 0,
@@ -60,11 +62,7 @@ fn layer_view(index: u32, roles: &[ExtrusionRole]) -> LayerCollectionView {
         global_layer_index: index,
         z: 0.2 * (index + 1) as f32,
         ordered_entities: roles.iter().cloned().map(entity).collect(),
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
     LayerCollectionView::new(ir)
 }

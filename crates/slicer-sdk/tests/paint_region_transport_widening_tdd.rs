@@ -60,6 +60,7 @@ mod transport_round_trip_tests {
             contour: vec![[0.0_f64, 0.0_f64]],
             holes: vec![],
         };
+        // exhaustive: transport round-trip pins every PaintRegionEntry field
         let entry = PaintRegionEntry {
             layer_index: 0,
             semantic: "material".to_string(),

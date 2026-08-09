@@ -13,12 +13,14 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::ConfigViewBuilder;
+use slicer_sdk::test_support::fixtures::wall_loop_base;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 use fuzzy_skin::FuzzySkinModule;
 
 fn fuzzy_flag(on: bool) -> WallFeatureFlags {
+    // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
     WallFeatureFlags {
         tool_index: None,
         fuzzy_skin: on,
@@ -35,10 +37,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         y,
         z: 0.2,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -47,7 +46,6 @@ fn closed_square_outer_wall(fuzzy: bool) -> WallLoop {
     let first = pt(0.0, 0.0);
     let points = vec![first, pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0), first];
     WallLoop {
-        perimeter_index: 0,
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points: points.clone(),
@@ -59,6 +57,7 @@ fn closed_square_outer_wall(fuzzy: bool) -> WallLoop {
         },
         feature_flags: vec![fuzzy_flag(fuzzy); points.len()],
         boundary_type: WallBoundaryType::ExteriorSurface,
+        ..wall_loop_base(LoopType::Outer, WallBoundaryType::ExteriorSurface)
     }
 }
 

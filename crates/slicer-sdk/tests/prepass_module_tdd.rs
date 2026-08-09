@@ -181,6 +181,7 @@ fn test_07_region_layer_proposal_has_required_fields() {
     //     is-catchup: bool, catchup-z-bottom: f32,
     // }
 
+    // exhaustive: WIT record test pins every RegionLayerProposal field
     let proposal = RegionLayerProposal {
         object_id: "obj-1".to_string(),
         region_id: "region-42".to_string(),
@@ -198,6 +199,7 @@ fn test_07_region_layer_proposal_has_required_fields() {
 
 #[test]
 fn test_07b_region_layer_proposal_catchup() {
+    // exhaustive: catchup record test pins every RegionLayerProposal field
     let proposal = RegionLayerProposal {
         object_id: "obj-2".to_string(),
         region_id: "region-99".to_string(),
@@ -222,6 +224,7 @@ fn test_08_layer_proposal_has_required_fields() {
     // Per docs/03_wit_and_manifest.md (world-prepass.wit):
     // record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
 
+    // exhaustive: nested WIT record test pins every RegionLayerProposal field
     let region = RegionLayerProposal {
         object_id: "obj-1".to_string(),
         region_id: "region-1".to_string(),
@@ -242,6 +245,7 @@ fn test_08_layer_proposal_has_required_fields() {
 #[test]
 fn test_08b_layer_proposal_constructor() {
     let regions = vec![
+        // exhaustive: constructor test pins every RegionLayerProposal field
         RegionLayerProposal {
             object_id: "obj-1".to_string(),
             region_id: "r1".to_string(),
@@ -249,6 +253,7 @@ fn test_08b_layer_proposal_constructor() {
             is_catchup: false,
             catchup_z_bottom: 0.0,
         },
+        // exhaustive: constructor test pins every RegionLayerProposal field
         RegionLayerProposal {
             object_id: "obj-2".to_string(),
             region_id: "r2".to_string(),
@@ -473,6 +478,7 @@ fn test_14b_prelude_types_are_constructible() {
         z_max: 0.0,
         shell_count: 0,
     };
+    // exhaustive: prelude construction test pins every RegionLayerProposal field
     let _region = RegionLayerProposal {
         object_id: "".to_string(),
         region_id: "".to_string(),

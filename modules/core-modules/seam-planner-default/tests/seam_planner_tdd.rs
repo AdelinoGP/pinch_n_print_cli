@@ -47,26 +47,29 @@ fn unit_cube() -> MeshObjectView {
 
 fn cube_region_input() -> SeamPlanningView {
     SeamPlanningView {
-        regions: vec![SeamPlanningRegionInput {
-            global_layer_index: 0,
-            object_id: "cube".to_string(),
-            region_id: "0".to_string(),
-            variant_chain: Vec::new(),
-            z: 0.2,
-            height: 0.2,
-            ex_polygons: vec![ExPolygon {
-                contour: Polygon {
-                    points: vec![
-                        Point2::from_mm(0.0, 0.0),
-                        Point2::from_mm(1.0, 0.0),
-                        Point2::from_mm(1.0, 1.0),
-                        Point2::from_mm(0.0, 1.0),
-                    ],
-                },
-                holes: Vec::new(),
-            }],
-            segment_annotations: Vec::new(),
-            scoring_width: 0.4,
+        regions: vec![{
+            // exhaustive: this setup pins every region-input field used by the planner
+            SeamPlanningRegionInput {
+                global_layer_index: 0,
+                object_id: "cube".to_string(),
+                region_id: "0".to_string(),
+                variant_chain: Vec::new(),
+                z: 0.2,
+                height: 0.2,
+                ex_polygons: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2::from_mm(0.0, 0.0),
+                            Point2::from_mm(1.0, 0.0),
+                            Point2::from_mm(1.0, 1.0),
+                            Point2::from_mm(0.0, 1.0),
+                        ],
+                    },
+                    holes: Vec::new(),
+                }],
+                segment_annotations: Vec::new(),
+                scoring_width: 0.4,
+            }
         }],
     }
 }

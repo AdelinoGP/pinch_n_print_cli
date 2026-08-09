@@ -23,9 +23,7 @@ fn dummy_path(role: ExtrusionRole) -> ExtrusionPath3D {
             z: 0.0,
             width: 0.4,
             flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         }],
         role,
         speed_factor: 1.0,
@@ -34,12 +32,12 @@ fn dummy_path(role: ExtrusionRole) -> ExtrusionPath3D {
 
 fn dummy_wall_loop(loop_type: LoopType) -> WallLoop {
     WallLoop {
-        perimeter_index: 0,
-        loop_type,
         path: dummy_path(ExtrusionRole::OuterWall),
         width_profile: WidthProfile { widths: vec![0.4] },
-        feature_flags: vec![],
-        boundary_type: WallBoundaryType::ExteriorSurface,
+        ..slicer_sdk::test_support::fixtures::wall_loop_base(
+            loop_type,
+            WallBoundaryType::ExteriorSurface,
+        )
     }
 }
 

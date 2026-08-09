@@ -41,6 +41,7 @@ fn region(
     x: f32,
     variant_chain: Vec<(String, PaintValue)>,
 ) -> SeamPlanningRegionInput {
+    // exhaustive: this helper pins every region-input field for variant-aware planning
     SeamPlanningRegionInput {
         global_layer_index: layer,
         object_id: "object".to_string(),

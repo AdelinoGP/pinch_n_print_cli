@@ -132,6 +132,7 @@ fn test_04_gcode_move_cmd_has_required_fields() {
     //     role: extrusion-role,
     // }
 
+    // exhaustive: WIT record test pins every GcodeMoveCmd field
     let cmd = GcodeMoveCmd {
         x: Some(10.0),
         y: Some(20.0),

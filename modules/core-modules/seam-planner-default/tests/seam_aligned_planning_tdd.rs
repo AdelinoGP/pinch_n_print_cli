@@ -67,26 +67,29 @@ fn layer_plan() -> LayerPlanView {
 fn region_input() -> SeamPlanningView {
     SeamPlanningView {
         regions: (0..20)
-            .map(|i| SeamPlanningRegionInput {
-                global_layer_index: i,
-                object_id: "prism".to_string(),
-                region_id: "0".to_string(),
-                variant_chain: Vec::new(),
-                z: (i + 1) as f32 * 0.2,
-                height: 0.2,
-                ex_polygons: vec![ExPolygon {
-                    contour: Polygon {
-                        points: vec![
-                            Point2::from_mm(0.0, 0.0),
-                            Point2::from_mm(10.0, 0.0),
-                            Point2::from_mm(10.0, 10.0),
-                            Point2::from_mm(0.0, 10.0),
-                        ],
-                    },
-                    holes: Vec::new(),
-                }],
-                segment_annotations: Vec::new(),
-                scoring_width: 0.4,
+            .map(|i| {
+                // exhaustive: this setup pins every region-input field used by the planning pipeline
+                SeamPlanningRegionInput {
+                    global_layer_index: i,
+                    object_id: "prism".to_string(),
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                    z: (i + 1) as f32 * 0.2,
+                    height: 0.2,
+                    ex_polygons: vec![ExPolygon {
+                        contour: Polygon {
+                            points: vec![
+                                Point2::from_mm(0.0, 0.0),
+                                Point2::from_mm(10.0, 0.0),
+                                Point2::from_mm(10.0, 10.0),
+                                Point2::from_mm(0.0, 10.0),
+                            ],
+                        },
+                        holes: Vec::new(),
+                    }],
+                    segment_annotations: Vec::new(),
+                    scoring_width: 0.4,
+                }
             })
             .collect(),
     }

@@ -24,10 +24,7 @@ fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCand
             y,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         score,
         reason,
@@ -41,10 +38,7 @@ fn wall_at_z(z: f32) -> WallLoop {
         y: 0.0,
         z,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let path = ExtrusionPath3D {
         points: vec![p(0.0), p(1.0), p(2.0)],
@@ -52,6 +46,7 @@ fn wall_at_z(z: f32) -> WallLoop {
         speed_factor: 1.0,
     };
     let flags = vec![
+        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
         WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,
@@ -75,18 +70,22 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
     }
     let points: Vec<_> = candidates
         .iter()
-        .map(|c| Point3WithWidth {
-            x: c.position.x,
-            y: c.position.y,
-            z,
-            width: c.position.width,
-            flow_factor: c.position.flow_factor,
-            overhang_quartile: c.position.overhang_quartile,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+        .map(|c| {
+            // exhaustive: this fixture maps every Point3WithWidth field from the seam candidate.
+            Point3WithWidth {
+                x: c.position.x,
+                y: c.position.y,
+                z,
+                width: c.position.width,
+                flow_factor: c.position.flow_factor,
+                overhang_quartile: c.position.overhang_quartile,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }
         })
         .collect();
     let flags = vec![
+        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
         WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,
@@ -455,10 +454,7 @@ fn multi_region_mixed_seam_match_preserves_all_walls() {
         y: 0.0,
         z: 0.2,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let mut region_a = PerimeterRegionView::default();
     region_a.set_object_id("obj-a".to_string());
@@ -480,10 +476,7 @@ fn multi_region_mixed_seam_match_preserves_all_walls() {
         y: 99.0,
         z: 0.2,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     };
     let mut region_b = PerimeterRegionView::default();
     region_b.set_object_id("obj-b".to_string());
@@ -562,13 +555,11 @@ fn make_wall(z: f32, points: &[(f32, f32)]) -> WallLoop {
             y: *y,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         })
         .collect();
     let flags = vec![
+        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
         WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,

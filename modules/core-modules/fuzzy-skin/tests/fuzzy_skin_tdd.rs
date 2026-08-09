@@ -11,6 +11,7 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::ConfigViewBuilder;
+use slicer_sdk::test_support::fixtures::wall_loop_base;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -18,6 +19,7 @@ use fuzzy_skin::FuzzySkinModule;
 
 /// Helper: create default WallFeatureFlags with fuzzy_skin set to the given value.
 fn flags(fuzzy: bool) -> WallFeatureFlags {
+    // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
     WallFeatureFlags {
         tool_index: None,
         fuzzy_skin: fuzzy,
@@ -36,47 +38,33 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             y: 0.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 10.0,
             y: 0.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 10.0,
             y: 10.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 0.0,
             y: 10.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
     ];
     let feature_flags: Vec<WallFeatureFlags> = fuzzy_flags.iter().map(|f| flags(*f)).collect();
     let widths = vec![0.4; points.len()];
     WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points,
             role: ExtrusionRole::OuterWall,
@@ -84,7 +72,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
         },
         width_profile: WidthProfile { widths },
         feature_flags,
-        boundary_type: WallBoundaryType::ExteriorSurface,
+        ..wall_loop_base(LoopType::Outer, WallBoundaryType::ExteriorSurface)
     }
 }
 
@@ -96,45 +84,32 @@ fn inner_wall(z: f32) -> WallLoop {
             y: 1.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 9.0,
             y: 1.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 9.0,
             y: 9.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         Point3WithWidth {
             x: 1.0,
             y: 9.0,
             z,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
     ];
     WallLoop {
         perimeter_index: 1,
-        loop_type: LoopType::Inner,
         path: ExtrusionPath3D {
             points: points.clone(),
             role: ExtrusionRole::InnerWall,
@@ -144,7 +119,7 @@ fn inner_wall(z: f32) -> WallLoop {
             widths: vec![0.4; points.len()],
         },
         feature_flags: vec![flags(false); 4],
-        boundary_type: WallBoundaryType::ExteriorSurface,
+        ..wall_loop_base(LoopType::Inner, WallBoundaryType::ExteriorSurface)
     }
 }
 

@@ -24,10 +24,7 @@ fn candidate(x: f32, score: f32, reason: SeamReason) -> SeamCandidate {
             y: 0.0,
             z: 1.0,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         score,
         reason,
@@ -37,18 +34,22 @@ fn candidate(x: f32, score: f32, reason: SeamReason) -> SeamCandidate {
 fn wall_from_candidates(candidates: &[SeamCandidate]) -> WallLoop {
     let points: Vec<_> = candidates
         .iter()
-        .map(|c| Point3WithWidth {
-            x: c.position.x,
-            y: c.position.y,
-            z: 1.0,
-            width: c.position.width,
-            flow_factor: c.position.flow_factor,
-            overhang_quartile: c.position.overhang_quartile,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+        .map(|c| {
+            // exhaustive: this fixture maps every Point3WithWidth field from the seam candidate.
+            Point3WithWidth {
+                x: c.position.x,
+                y: c.position.y,
+                z: 1.0,
+                width: c.position.width,
+                flow_factor: c.position.flow_factor,
+                overhang_quartile: c.position.overhang_quartile,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }
         })
         .collect();
     let flags = vec![
+        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
         WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,

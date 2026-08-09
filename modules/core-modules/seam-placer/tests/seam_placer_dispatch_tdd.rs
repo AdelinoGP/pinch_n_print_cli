@@ -42,15 +42,13 @@ fn ir_point(x: f32, y: f32, z: f32) -> Point3WithWidth {
         y,
         z,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
 fn ir_flags(count: usize) -> Vec<WallFeatureFlags> {
     vec![
+        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
         WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,
