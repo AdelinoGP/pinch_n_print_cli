@@ -1653,7 +1653,7 @@ pub(crate) fn assemble_ordered_entities(
     // the given (x, y) point (mm). Returns the painted variant's ToolIndex
     // if a containing region exists. Walls and infill paths emit in mm-space
     // (`ExtrusionPath3D.points: Point3WithWidth { x: f32, y: f32, z: f32,
-    //  dist_to_top_mm: 0.0, overhang_distance_mm: None }).
+    //  dist_to_top_mm: 0.0, overhang_distance_mm: None }`).
     let lookup_tool_by_point_mm = |px_mm: f32, py_mm: f32| -> Option<u64> {
         if painted_regions.is_empty() {
             return None;
