@@ -8,6 +8,37 @@
 
 ## Steps
 
+### Step 0: Packet-197 handoff remarks (audit and carry-over)
+
+- Task IDs: `TASK-321`
+- Objective: resolve or explicitly defer the four close remarks packet 197 left for the enforcement packet, and embed 197's operational lessons into this packet's execution rules. Remarks carried over verbatim from the 197 swarm close report:
+  1. **Run-shape lesson.** 197 consumed ~50 dispatches and two stash-and-redo cycles. Root causes: (a) a first-attempt clippy worker's generated patch corrupted ~70 files; (b) workers repeatedly "fixed" `needless_update` by dropping `..` rests (creating check-literals violations) — resolved only after dual-gate per-file verification (clippy + check-literals) was enforced; (c) two sweeps (pnp-cli/scheduler/wasm-host) were lost between checkpoints when a full `git stash` swept up uncommitted work — recovered by redo. Execution rules for THIS packet: after every per-file literal/clippy edit, verify BOTH `cargo clippy --workspace --all-targets -- -D warnings` and `cargo xtask check-literals crates/<affected>; test $? -eq 0`; commit checkpoints after each verified step so a `git stash` recovery never discards completed sweeps.
+  2. **Waiver inventory baseline.** 197's waiver inventory (~436, re-derived at its close; count is not frozen — re-derive in this packet's Step 6) feeds 199's enforcement audit; all reviewed as justified by the 197 closure review.
+  3. **Unverified waiver claim.** The wasm-host `Point3WithWidth` "no Default" claim in several 197 waivers is [unverified] against the generated/WIT-side type — the closure review accepted it; confirm the actual imported type during this packet's audit (see dispatches below). If the imported type derives `Default`, the waivers are 197 implementation defects and become deviations to report (packet 199 does not re-sweep 197's crates).
+  4. **Stash disposition.** The worker-created stashes remain in the stash list, preserved per the global rule (never drop a stash without an explicit ask): `packet-197-broken-state-2026-08-09`, 18× `clippy-worker-damage-2026-08-09`, `packet-197-clippy-damage-2026-08-09`. They hold failed attempts only. This step records the disposition (drop once confirmed unneeded) — it does NOT drop them.
+- Precondition: packet 197 `implemented` (its `packet.spec.md` status flipped; TASK-319 row present in `docs/07_implementation_status.md`); swarm ledger close notes for 197 available.
+- Postcondition: each remark is resolved or explicitly deferred with a reason, recorded in this packet's close notes; the operational lessons above are active execution rules for Steps 2-3 sweeps; nothing edited, no stash dropped.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-wasm-host/tests/**/*.rs`, `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-wasm-host/src/profiling.rs` - `Point3WithWidth` import lines only (locate via `rg -n 'use .*Point3WithWidth'` then ranged reads at the imports)
+  - `crates/slicer-ir/src/slice_ir.rs` - `Point3WithWidth` definition + `impl Default` region only (compare against the wasm-host import)
+- Files allowed to edit (at most 3):
+  - none — verification/record step; findings feed Step 6's waiver audit and the close notes.
+- Files explicitly out of bounds:
+  - everything else; no code edits anywhere; no `git stash drop` (the drop decision is recorded here and executed only on an explicit user ask).
+- Expected sub-agent dispatches:
+  - Question: which `Point3WithWidth` does the wasm-host host-side test code import — the `slicer_ir` one (derives `Default`) or another (schema/generated)? Grep the import paths in `crates/slicer-wasm-host/tests/**`, `src/host.rs`, `src/profiling.rs` and report the type path + has-Default verdict per file; scope: those import regions; return: `FACT`
+  - Question: `git stash list` — identify which entries hold packet-197 failed-attempt states and confirm none is referenced by open work; scope: git only; return: `FACT`
+- Context cost: `S`
+- Authoritative docs:
+  - `docs/spec_packets/197-literal-sweep-host-runtime/packet.spec.md` - `implemented` status + waiver-inventory contract (short, direct read)
+  - the carry-over remarks above (verbatim from the 197 swarm close report)
+- OrcaSlicer refs:
+  - none.
+- Verification:
+  - `git stash list | wc -l` unchanged after this step (no stash dropped) - FACT
+  - the two dispatch FACTs recorded in the step ledger - FACT
+- Exit condition: all four remarks resolved-or-deferred; no file edited; no stash dropped. Falsified if the step edits any file or the stash count changes.
+
 ### Step 1: Re-derive residue and capture baselines
 
 - Task IDs: `TASK-321`
@@ -212,6 +243,7 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
+| Step 0 | S | 197 handoff remarks: audit + carry-over, no edits |
 | Step 1 | S | dispatch-only re-derivation + baselines |
 | Step 2 | M | 6-file model-io conversion |
 | Step 3 | S | 4 waiver lines across 3 files |

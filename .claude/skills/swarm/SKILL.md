@@ -73,6 +73,8 @@ ESCALATION
 
 One escalation per run. No band above extended: at 300k the only moves are finalize or `Status: PARTIAL` handoff.
 
+**L/XL packets must use partial WIP commits.** For any packet rated L (or a run that escalates via criterion 1 or 3), the planner MUST commit partial work-in-progress after each verified step or milestone — a small checkpoint commit with an honest message naming the verified steps and any known-open items. This is the exception to the general no-commit rule below, and it is mandatory, not optional: it exists because a single recovery action (a `git stash` to escape a broken worker state, a `git checkout`, or a session loss) can otherwise discard an entire completed sweep. Never `git stash drop` those checkpoints' antecedents, and never commit a step whose verification is still red without saying so in the message. The user asking for a mid-term checkpoint also satisfies this rule.
+
 ## Subagent contract
 
 Each worker dispatch must specify:
@@ -177,7 +179,7 @@ If no packet is supplied and there is not exactly one `active` packet, stop and 
 - The planner MUST compile packet docs once into a compact execution manifest and use that manifest plus rolling deltas thereafter.
 - Worker outputs MUST be structured and bounded.
 - Intermediate review may be delta-scoped; packet-close decisions always need a final full review — if the run cannot fit one even after a justified escalation, closure defers to a fresh session (see Phase 5.1).
-- Do not commit, create branches, or require per-worker commits unless the user explicitly asks.
+- Do not commit, create branches, or require per-worker commits unless the user explicitly asks — EXCEPT the mandatory partial WIP commits for L/XL packets (see the escalation protocol). Workers never commit; the planner makes the checkpoint commits.
 
 ## Workflow
 
