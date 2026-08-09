@@ -146,6 +146,7 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+            ..Default::default()
             }],
             ..Default::default()
         })
@@ -159,6 +160,7 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     let result = crate::common::run_layer_and_commit_with_bundle(

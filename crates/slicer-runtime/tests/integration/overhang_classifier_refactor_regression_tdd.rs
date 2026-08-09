@@ -274,7 +274,9 @@ fn mirrored_insert_extended_points(
             },
             dist_to_top_mm: curr.dist_to_top_mm + t * (next.dist_to_top_mm - curr.dist_to_top_mm),
             overhang_distance_mm: Some(distance),
-        }
+
+        ..Default::default()
+    }
     };
 
     let mut crossing_points = Vec::with_capacity(points.len() + boundary.len());
@@ -612,6 +614,8 @@ fn wall_entity_with_quartile(layer_index: u32, quartile: u8) -> slicer_ir::Print
         overhang_quartile: Some(quartile),
         dist_to_top_mm: 0.0,
         overhang_distance_mm: distance,
+
+        ..Default::default()
     };
     print_entity(
         1,
@@ -714,7 +718,9 @@ fn crossing_mirror_layers() -> Vec<LayerCollectionView> {
             overhang_quartile: quartile,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: distance,
-        };
+
+        ..Default::default()
+    };
     let entity = |entity_id: u64, layer_index: u32, points: Vec<Point3WithWidth>| {
         print_entity(
             entity_id,

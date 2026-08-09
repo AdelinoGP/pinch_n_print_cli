@@ -200,6 +200,7 @@ fn active_region(object_id: &str) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+    ..Default::default()
     }
 }
 
@@ -210,6 +211,7 @@ fn global_layer(index: u32, z: f32, object_ids: &[&str]) -> GlobalLayer {
         active_regions: object_ids.iter().map(|id| active_region(id)).collect(),
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     }
 }
 
@@ -221,6 +223,7 @@ fn empty_raw_config() -> HashMap<ConfigKey, ConfigValue> {
 /// blackboard with `SliceIR` committed — the prerequisite state
 /// `PrePass::OverhangAnnotation` now consumes. `commit_slice_builtin` needs no
 /// `RegionMapIR` (it falls back to per-region defaults when none is present).
+// exhaustive: Blackboard explicit test fixture preserves boundary data
 fn seed_and_slice(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> Blackboard {
     let sc = execute_mesh_analysis(&mesh).expect("mesh analysis must succeed");
     let n_layers = global_layers.len();
@@ -234,6 +237,7 @@ fn seed_and_slice(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> Blackboard {
         .expect("commit surface classification");
     commit_slice_builtin(&mut bb).expect("PrePass::Slice must succeed");
     bb
+// exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 /// Ordering guard: `commit_overhang_annotation_builtin` must refuse to run

@@ -71,6 +71,7 @@ fn slice_cube(name: &str, config_json: Option<&str>) -> String {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed: {e}"))

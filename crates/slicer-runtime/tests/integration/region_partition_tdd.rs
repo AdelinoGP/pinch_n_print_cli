@@ -86,6 +86,8 @@ fn perimeter_region(
         infill_areas,
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     }
 }
 

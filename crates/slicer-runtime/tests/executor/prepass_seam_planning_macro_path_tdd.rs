@@ -125,6 +125,7 @@ fn cube_mesh() -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -222,6 +223,7 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     };
 
     let mesh = Arc::new(cube_mesh());
@@ -242,6 +244,7 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+            ..Default::default()
             }],
             object_participation: HashMap::new(),
         }))

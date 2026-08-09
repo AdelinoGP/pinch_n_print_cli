@@ -5,6 +5,7 @@
 
 #![allow(missing_docs)]
 
+use crate::common;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -393,7 +394,9 @@ fn manifest_driven_pipeline_runs_to_completion() {
                     active_regions: Vec::new(),
                     has_nonplanar: false,
                     is_sync_layer: false,
-                }],
+
+        ..Default::default()
+    }],
                 ..Default::default()
             })))
         }
@@ -417,25 +420,20 @@ fn manifest_driven_pipeline_runs_to_completion() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
+// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+        ..common::pipeline_config_base(empty_mesh_ir(), plan, PipelineStageRunners {
             prepass: Box::new(OneLayerPrepass),
             layer: Box::new(NoopLayerRunner),
             finalization: Box::new(NoopFinalizationRunner),
             postpass: Box::new(NoopPostpassRunner),
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        })
     };
 
     let result = run_pipeline(config);

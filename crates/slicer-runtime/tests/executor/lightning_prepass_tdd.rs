@@ -68,6 +68,7 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
             active_regions: vec![],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         })
         .collect();
 
@@ -148,6 +149,7 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     }
 }
 

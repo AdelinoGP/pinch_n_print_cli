@@ -112,6 +112,7 @@ fn active_region(object_id: &str) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+    ..Default::default()
     }
 }
 
@@ -135,6 +136,7 @@ fn layer_plan() -> LayerPlanIR {
                 active_regions: vec![active_region(object_id)],
                 has_nonplanar: false,
                 is_sync_layer: false,
+            ..Default::default()
             }
         })
         .collect();

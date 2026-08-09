@@ -95,6 +95,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
             "ironing_enabled".to_string(),
             ConfigValue::Bool(true),
         )]),
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))

@@ -262,10 +262,12 @@ fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: true,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     }
 }
 
@@ -403,6 +405,7 @@ fn layer_plan_fixture() -> LayerPlanIR {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: true,
+            ..Default::default()
         }],
         object_participation: HashMap::from([(
             String::from("cube"),

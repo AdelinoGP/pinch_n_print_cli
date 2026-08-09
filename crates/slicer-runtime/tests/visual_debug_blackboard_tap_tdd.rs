@@ -81,12 +81,14 @@ fn seeded_slice_ir() -> SliceIR {
 /// mirroring the shape `Blackboard::slice_ir()` has after prepass
 /// (`crate::run::prepare_prepass_context`) commits `PrePass::Slice`'s output —
 /// without running any prepass, module, or arena machinery at all.
+// exhaustive: Blackboard explicit test fixture preserves boundary data
 fn blackboard_with_committed_slice(slice_ir: SliceIR) -> Blackboard {
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     blackboard
         .commit_slice_ir(Arc::new(vec![slice_ir]))
         .expect("commit_slice_ir on a fresh Blackboard must succeed");
     blackboard
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 /// A `SurfaceClassificationIR` with every field the `PrePass::MeshAnalysis`/

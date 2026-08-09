@@ -122,19 +122,24 @@ fn slice_ir_with_polygon(z_mm: f32, polygon: ExPolygon) -> SliceIR {
 }
 
 /// Build a ModifierVolume with a given subtype string and mesh.
+// exhaustive: ModifierVolume explicit test fixture preserves boundary data
 fn modifier_volume_with_subtype(subtype: &str, mesh: IndexedTriangleSet) -> ModifierVolume {
     let mut fields = HashMap::new();
     fields.insert(
         String::from("subtype"),
         ConfigValue::String(subtype.to_string()),
     );
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     ModifierVolume {
         id: String::from("mv-1"),
         mesh,
         config_delta: ConfigDelta { fields },
         priority: 0,
         applies_to: ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     }
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
 }
 
 fn mesh_ir_with_modifier(object_id: &str, mv: ModifierVolume) -> Arc<MeshIR> {

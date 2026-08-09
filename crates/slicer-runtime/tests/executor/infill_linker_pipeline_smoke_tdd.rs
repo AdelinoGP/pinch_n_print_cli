@@ -34,6 +34,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+            ..Default::default()
             },
             Point3WithWidth {
                 x: x_end,
@@ -44,6 +45,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+            ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -79,6 +81,7 @@ fn infill_ir() -> InfillIR {
             ],
             solid_infill: Vec::new(),
             ironing: Vec::new(),
+        ..Default::default()
         }],
     }
 }
@@ -104,6 +107,7 @@ fn slice_ir() -> SliceIR {
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: vec![square()],
+        ..Default::default()
         }],
         ..Default::default()
     }
@@ -121,6 +125,7 @@ fn perimeter_ir() -> PerimeterIR {
             seam_candidates: Vec::new(),
             resolved_seam: None,
             variant_chain: Vec::new(),
+        ..Default::default()
         }],
     }
 }
@@ -192,6 +197,7 @@ fn infill_linker_pipeline_smoke() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     let mut arena = LayerArena::new();

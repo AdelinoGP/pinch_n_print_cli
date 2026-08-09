@@ -95,9 +95,11 @@ fn make_layer(index: u32, z: f32, object_id: &str) -> GlobalLayer {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+        ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     }
 }
 
@@ -136,6 +138,7 @@ fn make_region_map(plan: &LayerPlanIR, top_layers: u32, bottom_layers: u32) -> R
     region_map
 }
 
+// exhaustive: Blackboard explicit test fixture preserves boundary data
 fn seeded_blackboard(mesh: MeshIR, plan: LayerPlanIR, region_map: RegionMapIR) -> Blackboard {
     let n_layers = plan.global_layers.len();
     let mut bb = Blackboard::new(Arc::new(mesh), n_layers);
@@ -144,6 +147,7 @@ fn seeded_blackboard(mesh: MeshIR, plan: LayerPlanIR, region_map: RegionMapIR) -
     bb.commit_region_map(Arc::new(region_map))
         .expect("commit_region_map");
     bb
+// exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 // ============================================================================

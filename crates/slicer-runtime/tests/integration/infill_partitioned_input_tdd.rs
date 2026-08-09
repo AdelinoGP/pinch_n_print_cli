@@ -332,6 +332,8 @@ fn run_and_link(
         sparse_infill: raw.sparse_paths().to_vec(),
         solid_infill: raw.solid_paths().to_vec(),
         ironing: raw.ironing_paths().to_vec(),
+
+        ..Default::default()
     }];
     let views = vec![perimeter_view_of(region)];
 

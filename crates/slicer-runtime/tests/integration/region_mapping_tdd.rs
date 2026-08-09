@@ -161,7 +161,9 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
             ],
             has_nonplanar: false,
             is_sync_layer: false,
-        }],
+
+        ..Default::default()
+    }],
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
@@ -204,7 +206,9 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
                 active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
             GlobalLayer {
                 index: 1,
                 z: 0.4,
@@ -216,7 +220,9 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
                 ],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
         ],
         object_participation: HashMap::new(),
     };
@@ -273,14 +279,18 @@ fn region_mapping_at_cap_is_accepted() {
                 active_regions: vec![active_region("cube", 1)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
             GlobalLayer {
                 index: 1,
                 z: 0.4,
                 active_regions: vec![active_region("cube", 1)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
         ],
         object_participation: HashMap::new(),
     };
@@ -316,7 +326,9 @@ fn region_mapping_duplicate_region_key_is_structured_fatal() {
             active_regions: vec![active_region("a", 42), active_region("a", 42)],
             has_nonplanar: false,
             is_sync_layer: false,
-        }],
+
+        ..Default::default()
+    }],
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
@@ -507,7 +519,9 @@ fn single_object_mesh(id: &str) -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+
+        ..Default::default()
+    }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -533,6 +547,8 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+
+        ..Default::default()
     }
 }
 
@@ -546,14 +562,18 @@ fn plan_two_layers_two_regions() -> LayerPlanIR {
                 active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
             GlobalLayer {
                 index: 1,
                 z: 0.4,
                 active_regions: vec![active_region("cube", 1)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
         ],
         object_participation: HashMap::new(),
     }

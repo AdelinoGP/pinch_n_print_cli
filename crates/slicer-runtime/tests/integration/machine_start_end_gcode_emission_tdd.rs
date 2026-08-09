@@ -9,6 +9,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use crate::common;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -223,27 +224,28 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
         })
         .collect();
 
-    let config = PipelineConfig {
-        mesh_ir,
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
-            layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
-            finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
-            postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
-            emitter: Box::new(
-                DefaultGCodeEmitter::new("pnp_cli-test 0.1.0".into())
-                    .with_resolved_config(default_resolved.clone()),
-            ),
-            serializer: Box::new(DefaultGCodeSerializer::new()),
-        },
-        resolved_configs: Arc::new(resolved_configs_map),
-        default_resolved_config: Arc::new(default_resolved),
-        bounds: Arc::new(config_bounds),
-        wasm_handles,
-        cancel_flag: None,
-        support_tools: Default::default(),
+    let mut config = PipelineConfig {
+        ..common::pipeline_config_base(
+            mesh_ir,
+            plan,
+            // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+            PipelineStageRunners {
+                prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                emitter: Box::new(
+                    DefaultGCodeEmitter::new("pnp_cli-test 0.1.0".into())
+                        .with_resolved_config(default_resolved.clone()),
+                ),
+                serializer: Box::new(DefaultGCodeSerializer::new()),
+            },
+        )
     };
+    config.resolved_configs = Arc::new(resolved_configs_map);
+    config.default_resolved_config = Arc::new(default_resolved);
+    config.bounds = Arc::new(config_bounds);
+    config.wasm_handles = wasm_handles;
 
     // 8. Run the pipeline. pipeline_source drives CONFIG_BLOCK generation.
     run_pipeline_with_raw_config(config, &pipeline_source, &NoopLayerProgressSink)

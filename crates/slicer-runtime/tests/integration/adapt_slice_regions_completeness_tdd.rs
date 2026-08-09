@@ -125,6 +125,8 @@ fn build_fixture_slice_ir(layer_index: u32, region_z: f32) -> SliceIR {
         bridge_orientation_deg: 42.0,
         // 6 polygons — distinct from every other vec length above.
         sparse_infill_area: (0..6).map(|_| square(0.5, 0.5, 9.5, 9.5)).collect(),
+
+        ..Default::default()
     };
 
     SliceIR {
@@ -230,6 +232,8 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
         active_regions: Vec::new(),
         has_nonplanar: true,
         is_sync_layer: false,
+
+        ..Default::default()
     };
 
     let mut arena = LayerArena::new();

@@ -269,6 +269,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
         bridge_areas: Vec::new(),
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
+    ..Default::default()
     };
     let mut arena = LayerArena::new();
     arena
@@ -286,6 +287,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,

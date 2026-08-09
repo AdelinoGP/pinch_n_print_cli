@@ -79,6 +79,7 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
 /// `slicer_gcode::reconcile_finalization_travel` is a no-op on it — the
 /// captured `finalized_layers` is byte-identical to what is seeded here.
 fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
     let entity = PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
@@ -92,6 +93,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -102,6 +104,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -114,6 +117,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
         },
         topo_order: 0,
         tool_index: 0,
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     };
     LayerCollectionIR {
         speed_profiles: Vec::new(),
@@ -131,7 +135,9 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
             y: Some(0.0),
             z: Some(z),
             f: Some(1200.0),
+        ..Default::default()
         }],
+    ..Default::default()
     }
 }
 
@@ -338,6 +344,7 @@ fn two_layer_plan() -> ExecutionPlan {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: true,
+            ..Default::default()
             },
             GlobalLayer {
                 index: 1,
@@ -345,11 +352,13 @@ fn two_layer_plan() -> ExecutionPlan {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+            ..Default::default()
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     }
 }
 

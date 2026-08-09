@@ -70,7 +70,9 @@ fn minimal_mesh(object_id: &str) -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+
+        ..Default::default()
+    }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -96,6 +98,8 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+
+        ..Default::default()
     }
 }
 
@@ -129,7 +133,9 @@ fn region_overlap_applies_override() {
             active_regions: vec![active_region("obj-a", 0)],
             has_nonplanar: false,
             is_sync_layer: false,
-        }],
+
+        ..Default::default()
+    }],
         object_participation: HashMap::new(),
     });
 
@@ -230,7 +236,9 @@ fn no_overlap_keeps_object_config() {
             active_regions: vec![active_region("obj-b", 0)],
             has_nonplanar: false,
             is_sync_layer: false,
-        }],
+
+        ..Default::default()
+    }],
         object_participation: HashMap::new(),
     });
 
@@ -286,7 +294,9 @@ fn overlap_precedence_is_deterministic() {
             active_regions: vec![active_region("obj-c", 0)],
             has_nonplanar: false,
             is_sync_layer: false,
-        }],
+
+        ..Default::default()
+    }],
         object_participation: HashMap::new(),
     });
 

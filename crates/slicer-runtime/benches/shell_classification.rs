@@ -123,6 +123,7 @@ fn build_fixture(n_objects: usize, n_layers: usize) -> Blackboard {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             })
             .collect();
         global_layers.push(GlobalLayer {
@@ -131,6 +132,7 @@ fn build_fixture(n_objects: usize, n_layers: usize) -> Blackboard {
             active_regions,
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         });
     }
 

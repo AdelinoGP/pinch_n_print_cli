@@ -1311,6 +1311,7 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
         "subtype".to_string(),
         ConfigValue::String("support_enforcer".to_string()),
     );
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     let mv = ModifierVolume {
         id: "mv-enforcer".to_string(),
         mesh: IndexedTriangleSet {
@@ -1320,6 +1321,8 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
         config_delta: ConfigDelta { fields: mv_fields },
         priority: 0,
         applies_to: ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     };
 
     let parent_mesh = IndexedTriangleSet {
@@ -1535,14 +1538,19 @@ fn synthetic_modifier_volume(
     id: &str,
     priority: u32,
     fields: HashMap<String, ConfigValue>,
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
 ) -> ModifierVolume {
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     ModifierVolume {
         id: id.into(),
         mesh: synthetic_triangle_mesh(),
         config_delta: ConfigDelta { fields },
         priority,
         applies_to: ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     }
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
 }
 
 fn synthetic_object_with_modifiers(object_id: &str, mods: Vec<ModifierVolume>) -> ObjectMesh {
@@ -1850,6 +1858,7 @@ fn negative_part_extruder_does_not_affect_subtract() {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            ..Default::default()
         }],
     };
 

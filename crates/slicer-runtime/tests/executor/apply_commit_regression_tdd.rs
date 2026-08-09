@@ -31,6 +31,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+    ..Default::default()
     }
 }
 
@@ -84,7 +85,9 @@ fn sliced_region(object_id: &str, region_id: RegionId, polys: Vec<ExPolygon>) ->
     }
 }
 
+// exhaustive: WallLoop explicit test fixture preserves boundary data
 fn synthetic_wall() -> WallLoop {
+// exhaustive: WallLoop explicit test fixture preserves boundary data
     WallLoop {
         perimeter_index: 0,
         loop_type: LoopType::Outer,
@@ -96,12 +99,16 @@ fn synthetic_wall() -> WallLoop {
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),
         boundary_type: WallBoundaryType::Interior,
+    // exhaustive: WallLoop fixture preserves the exact path/role test data
+    // exhaustive: WallLoop explicit test fixture preserves boundary data
     }
+// exhaustive: WallLoop explicit test fixture preserves boundary data
 }
 
 /// A `LayerCollectionIR` with `n` entities, `entity_id` 1..=n at topo 0..n.
 fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
     let ordered_entities = (0..n)
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
         .map(|i| PrintEntity {
             entity_id: (i as u64) + 1,
             path: ExtrusionPath3D {
@@ -118,6 +125,8 @@ fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
                 variant_chain: Vec::new(),
             },
             topo_order: i,
+        // exhaustive: PrintEntity fixture preserves the exact path/role test data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
         })
         .collect();
     LayerCollectionIR {
@@ -160,6 +169,7 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
         infill_areas: vec![wall_inset],
         seam_candidates: Vec::new(),
         resolved_seam: None,
+    ..Default::default()
     });
 
     let chosen = SeamPosition {
@@ -176,6 +186,7 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
         },
         chosen_candidate: chosen.clone(),
         scored_candidates: Vec::new(),
+    ..Default::default()
     });
 
     apply_for_test(

@@ -53,10 +53,12 @@ fn loaded_module_for_compat(id: &str, min_ir: SemVer, max_ir: SemVer) -> LoadedM
     .build()
 }
 
+// exhaustive: DagValidationRequest explicit test fixture preserves boundary data
 fn dag_request_for(host_ir: SemVer, modules: Vec<LoadedModule>) -> DagValidationRequest {
     let stage = "Layer::Support".to_string();
     let producers: Vec<&dyn Producer> = modules.iter().map(|m| m as &dyn Producer).collect();
     let nodes = build_intra_stage_dag(stage.clone(), &producers).expect("DAG should build");
+    // exhaustive: DagValidationRequest explicit test fixture preserves boundary data
     DagValidationRequest {
         modules,
         stage_dags: vec![StageDag { stage, nodes }],
@@ -64,7 +66,10 @@ fn dag_request_for(host_ir: SemVer, modules: Vec<LoadedModule>) -> DagValidation
         host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
+        // exhaustive: DagValidationRequest boundary/test fixture requires explicit field construction
+        // exhaustive: DagValidationRequest explicit test fixture preserves boundary data
     }
+    // exhaustive: DagValidationRequest explicit test fixture preserves boundary data
 }
 
 fn count_ir_version_errors(report: &slicer_runtime::DagValidationReport) -> usize {
@@ -322,6 +327,7 @@ fn make_module_error(slice: &str, code: u32, fatal: bool) -> ProgressEvent {
         Some(42),
         "com.community.fuzzy-skin".to_string(),
         1_000,
+        // exhaustive: ProgressError scenario fixture explicitly sets the failure payload
         ProgressError {
             code,
             message: "feature_flags cardinality mismatch".to_string(),
@@ -413,6 +419,7 @@ fn seam_aligned_default_e2e() {
         let mut region = slicer_sdk::views::PerimeterRegionView::default();
         region.set_object_id(object_id);
         region.set_region_id(region_id);
+        // exhaustive: WallLoop explicit test fixture preserves boundary data
         region.set_wall_loops(vec![slicer_ir::WallLoop {
             perimeter_index: 0,
             loop_type: slicer_ir::LoopType::Outer,
@@ -429,6 +436,8 @@ fn seam_aligned_default_e2e() {
             width_profile: slicer_ir::WidthProfile { widths: vec![] },
             feature_flags: Default::default(),
             boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+            // exhaustive: WallLoop fixture preserves the exact path/role test data
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
         }]);
         if let Some(x) = seam_x {
             region.set_resolved_seam(Some(slicer_ir::SeamPosition {

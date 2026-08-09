@@ -90,6 +90,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -120,9 +121,11 @@ fn layer_at(index: u32, z: f32, object_id: &str) -> GlobalLayer {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+        ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     }
 }
 
@@ -194,6 +197,7 @@ fn plan_with_one_layer(layer: GlobalLayer) -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     }
 }
 
@@ -315,9 +319,11 @@ fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         };
         let slice =
             execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
@@ -366,9 +372,11 @@ fn layer_slice_builtin_is_deterministic_for_wedge_mesh() {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+        ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
     let a = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice a");
     let b = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice b");
@@ -439,9 +447,11 @@ fn layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions() {
             is_catchup_layer: true,
             catchup_z_bottom: 0.3,
             tool_index: 0,
+        ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     let slice = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");

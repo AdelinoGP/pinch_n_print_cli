@@ -64,9 +64,11 @@ fn build_50_layer_plan(object_id: &str) -> Arc<LayerPlanIR> {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         })
         .collect();
     Arc::new(LayerPlanIR {

@@ -67,6 +67,7 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -134,7 +135,9 @@ fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestM
     }
 }
 
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
 fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
@@ -148,6 +151,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -158,6 +162,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -172,7 +177,9 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
             variant_chain: Vec::new(),
         },
         topo_order: 0,
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
@@ -187,6 +194,7 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+    ..Default::default()
     }
 }
 
@@ -249,6 +257,7 @@ fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+    ..Default::default()
     }
 }
 

@@ -90,9 +90,11 @@ fn build_layer_plan(object_id: &str, layer_count: u32) -> Arc<LayerPlanIR> {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         })
         .collect();
     Arc::new(LayerPlanIR {
@@ -233,6 +235,7 @@ fn make_single_object_mesh_ir(object_id: &str, paint_layers: Vec<PaintLayer>) ->
                 layers: paint_layers,
             }),
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: default_build_volume(),
     })
@@ -570,9 +573,11 @@ fn paint_channel_supports_strokes_reach_consumer() {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         })
         .collect();
     let lp = Arc::new(slicer_ir::LayerPlanIR {

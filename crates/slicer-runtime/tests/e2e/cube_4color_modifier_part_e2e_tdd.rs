@@ -241,12 +241,15 @@ fn modifier_projections_annotate_contour_points() {
         "subtype".to_string(),
         ConfigValue::String("support_enforcer".to_string()),
     );
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     let mv = ModifierVolume {
         id: "mv-1".to_string(),
         mesh: mv_mesh,
         config_delta: ConfigDelta { fields: mv_fields },
         priority: 0,
         applies_to: ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     };
     let mesh = Arc::new(MeshIR {
         schema_version: SemVer {
@@ -366,12 +369,15 @@ fn modifier_projection_z_band_restriction() {
         "subtype".to_string(),
         ConfigValue::String("support_blocker".to_string()),
     );
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     let mv = ModifierVolume {
         id: "mv-band".to_string(),
         mesh: mv_mesh,
         config_delta: ConfigDelta { fields: mv_fields },
         priority: 0,
         applies_to: ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     };
     let mesh = Arc::new(MeshIR {
         schema_version: SemVer {

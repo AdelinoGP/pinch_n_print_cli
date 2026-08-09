@@ -36,6 +36,7 @@ fn timestamp_ms() -> u64 {
 }
 
 fn error_fixture(fatal: bool) -> ProgressError {
+// exhaustive: ProgressError explicit boundary fixture for this integration test
     ProgressError {
         code: 12014,
         message: "feature_flags length mismatch".to_string(),
@@ -543,6 +544,7 @@ fn stats_inputs_fixture(weight: Option<f64>) -> slicer_runtime::run::SliceStatsI
     let mut volumes = std::collections::BTreeMap::new();
     volumes.insert(0u32, 1234.5);
     volumes.insert(1u32, 67.8);
+// exhaustive: SliceStatsInputs explicit boundary fixture for this integration test
     slicer_runtime::run::SliceStatsInputs {
         gcode_prediction_seconds: 4321,
         gcode_weight_grams: weight,

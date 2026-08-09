@@ -89,6 +89,8 @@ fn perimeter_region(
         infill_areas,
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     }
 }
 
@@ -148,7 +150,9 @@ fn synthetic_wall() -> WallLoop {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                },
+
+        ..Default::default()
+    },
                 Point3WithWidth {
                     x: 1.0,
                     y: 0.0,
@@ -158,7 +162,9 @@ fn synthetic_wall() -> WallLoop {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                },
+
+        ..Default::default()
+    },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -166,6 +172,8 @@ fn synthetic_wall() -> WallLoop {
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),
         boundary_type: WallBoundaryType::Interior,
+
+        ..slicer_sdk::test_support::fixtures::wall_loop_base(LoopType::Outer, WallBoundaryType::Interior)
     }
 }
 
@@ -180,7 +188,9 @@ fn synthetic_seam_candidate() -> SeamCandidate {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
-        },
+
+        ..Default::default()
+    },
         score: 0.5,
         reason: SeamReason::Aligned,
     }
@@ -222,6 +232,8 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     });
 
     apply_for_test(
@@ -313,6 +325,8 @@ fn pairs_regions_by_object_id_not_by_position() {
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     });
     ir_owned.regions.push(PerimeterRegion {
         variant_chain: Vec::new(),
@@ -322,6 +336,8 @@ fn pairs_regions_by_object_id_not_by_position() {
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     });
 
     apply_for_test(
@@ -423,6 +439,8 @@ fn partition_re_fires_under_post_process_only_path() {
         infill_areas: vec![wall_inset.clone()],
         seam_candidates: Vec::new(),
         resolved_seam: None,
+
+        ..Default::default()
     });
 
     apply_for_test(

@@ -3,6 +3,7 @@
 //! These tests verify the `run_pipeline` orchestration function that ties together
 //! all host scheduler stages (prepass â†’ per-layer â†’ finalization â†’ postpass).
 
+use crate::common;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -51,13 +52,7 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
 fn empty_execution_plan() -> ExecutionPlan {
     ExecutionPlan {
         prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     }
 }
 
@@ -81,6 +76,8 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+
+        ..Default::default()
     }
 }
 
@@ -192,14 +189,14 @@ impl GCodeSerializer for MinimalSerializer {
 }
 
 fn noop_runners() -> PipelineStageRunners {
-    PipelineStageRunners {
-        prepass: Box::new(NoopPrepassRunner),
-        layer: Box::new(NoopLayerRunner),
-        finalization: Box::new(NoopFinalizationRunner),
-        postpass: Box::new(NoopPostpassRunner),
-        emitter: Box::new(MinimalEmitter),
-        serializer: Box::new(MinimalSerializer),
-    }
+    common::pipeline_stage_runners_base(
+        Box::new(NoopPrepassRunner),
+        Box::new(NoopLayerRunner),
+        Box::new(NoopFinalizationRunner),
+        Box::new(NoopPostpassRunner),
+        Box::new(MinimalEmitter),
+        Box::new(MinimalSerializer),
+    )
 }
 
 #[test]
@@ -253,15 +250,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
 #[test]
 fn run_pipeline_empty_modules() {
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan: empty_execution_plan(),
-        runners: noop_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(empty_mesh_ir(), empty_execution_plan(), noop_runners())
     };
 
     let result = run_pipeline(config);
@@ -285,22 +274,18 @@ fn run_pipeline_returns_gcode_string() {
     }
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan: empty_execution_plan(),
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MarkerSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            empty_execution_plan(),
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MarkerSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).unwrap();
@@ -315,13 +300,7 @@ fn run_pipeline_propagates_prepass_error() {
             stage_id: "PrePass::MeshAnalysis".into(),
             modules: vec![make_dummy_module("PrePass::MeshAnalysis", "test-mod")],
         }],
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     };
 
     struct FailingPrepass;
@@ -341,22 +320,18 @@ fn run_pipeline_propagates_prepass_error() {
     }
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(FailingPrepass),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(FailingPrepass),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -382,6 +357,8 @@ fn run_pipeline_propagates_layer_error() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     struct FailingLayerRunner;
@@ -402,22 +379,18 @@ fn run_pipeline_propagates_layer_error() {
     }
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(FailingLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(FailingLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -439,22 +412,18 @@ fn run_pipeline_propagates_postpass_error() {
     }
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan: empty_execution_plan(),
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(FailingEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            empty_execution_plan(),
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(FailingEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -545,25 +514,23 @@ fn run_pipeline_calls_stages_in_order() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(OrderTrackingPrepass(call_log.clone())),
-            layer: Box::new(OrderTrackingLayer(call_log.clone())),
-            finalization: Box::new(OrderTrackingFinalization(call_log.clone())),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(OrderTrackingEmitter(call_log.clone())),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(OrderTrackingPrepass(call_log.clone())),
+                Box::new(OrderTrackingLayer(call_log.clone())),
+                Box::new(OrderTrackingFinalization(call_log.clone())),
+                Box::new(NoopPostpassRunner),
+                Box::new(OrderTrackingEmitter(call_log.clone())),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -595,6 +562,8 @@ fn run_pipeline_propagates_finalization_error() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     struct FailingFinalization;
@@ -615,22 +584,18 @@ fn run_pipeline_propagates_finalization_error() {
     }
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(FailingFinalization),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(FailingFinalization),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -693,25 +658,23 @@ fn run_pipeline_with_layers_produces_output() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(ThreeLayerPrepass),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(LayerCountEmitter),
-            serializer: Box::new(CountingSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(ThreeLayerPrepass),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(LayerCountEmitter),
+                Box::new(CountingSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).unwrap();
@@ -774,25 +737,23 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(LayerPlanPrepass),
-            layer: Box::new(CountingLayerRunner(layer_call_count.clone())),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(LayerPlanPrepass),
+                Box::new(CountingLayerRunner(layer_call_count.clone())),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let result = run_pipeline(config);
@@ -852,25 +813,23 @@ fn prepass_audits_live_path() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(MeshReadingPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(MeshReadingPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -950,25 +909,23 @@ fn prepass_audits_carry_batch_calls() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(BatchingPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(BatchingPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1055,25 +1012,22 @@ fn layer_audits_live_path() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(LayerPlanPrepass),
-            layer: Box::new(SliceReadingLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(LayerPlanPrepass),
+                Box::new(SliceReadingLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1156,25 +1110,23 @@ fn access_audits_live_path() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1320,25 +1272,23 @@ fn access_audits_live_path_read_performing() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(PostpassModuleReadingPostpassRunner), // Returns LayerCollectionIR reads
-            emitter: Box::new(MinimalEmitter),
-            serializer: Box::new(MinimalSerializer),
-        },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(NoopPrepassRunner),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(PostpassModuleReadingPostpassRunner), // Returns LayerCollectionIR reads
+                Box::new(MinimalEmitter),
+                Box::new(MinimalSerializer),
+            ),
+        )
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1378,7 +1328,7 @@ fn access_audits_live_path_read_performing() {
 use layer::slicer::types::geometry::ExtrusionPath3d as WitExtrusionPath3d;
 use slicer_runtime::wit_host::{
     layer, HostExecutionContextBuilder, HostPerimeterOutputBuilder, Point3 as WitPoint3,
-    Point3WithWidth, WallFeatureFlag, WallLoopView, WitWallBoundaryType,
+    WallFeatureFlag, WallLoopView, WitWallBoundaryType,
 };
 
 fn make_wall_loop_view() -> WallLoopView {
@@ -1387,26 +1337,8 @@ fn make_wall_loop_view() -> WallLoopView {
         loop_type: layer::slicer::ir_handles::ir_handles::WallLoopType::Outer,
         path: WitExtrusionPath3d {
             points: vec![
-                Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.1,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                },
-                Point3WithWidth {
-                    x: 10.0,
-                    y: 0.0,
-                    z: 0.1,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                },
+                common::point3_with_width(0.0, 0.0, 0.1, 0.4),
+                common::point3_with_width(10.0, 0.0, 0.1, 0.4),
             ],
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -1465,26 +1397,8 @@ fn push_reordered_wall_loop_records_runtime_write() {
         loop_type: layer::slicer::ir_handles::ir_handles::WallLoopType::Outer,
         path: WitExtrusionPath3d {
             points: vec![
-                Point3WithWidth {
-                    x: 5.0,
-                    y: 0.0,
-                    z: 0.1,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                },
-                Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.1,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                },
+                common::point3_with_width(5.0, 0.0, 0.1, 0.4),
+                common::point3_with_width(0.0, 0.0, 0.1, 0.4),
             ],
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -1509,16 +1423,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
         ],
         boundary_type: WitWallBoundaryType::ExteriorSurface,
     };
-    let pos = Point3WithWidth {
-        x: 5.0,
-        y: 0.0,
-        z: 0.1,
-        width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
-    };
+    let pos = common::point3_with_width(5.0, 0.0, 0.1, 0.4);
     let result = ctx.push_reordered_wall_loop(builder_handle, pos, 0, reordered_wall);
     if result.is_err() {
         eprintln!(

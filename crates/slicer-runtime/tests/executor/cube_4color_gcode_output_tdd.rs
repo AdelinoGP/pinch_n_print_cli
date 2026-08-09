@@ -145,6 +145,7 @@ fn unpainted_25mm_cube() -> Arc<MeshIR> {
         // Seed the planner-visible world height (run.rs reads this and injects
         // `object_height:<id>` into the config map before module dispatch).
         world_z_extent: Some((z_min, z_max)),
+    ..Default::default()
     };
 
     Arc::new(MeshIR {
@@ -196,6 +197,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -235,6 +237,7 @@ fn slice_fixture_file_with_overrides(overrides: HashMap<String, ConfigValue>) ->
         progress_events: false,
         cancel_flag: None,
         config_overrides: overrides,
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -260,6 +263,7 @@ fn slice_synthetic_mesh(label: &str, mesh: Arc<MeshIR>) -> SliceOutcome {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against synthetic mesh {label}: {e}"))

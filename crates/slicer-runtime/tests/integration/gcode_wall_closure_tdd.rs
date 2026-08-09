@@ -26,6 +26,8 @@ fn point(x: f32, y: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+
+        ..Default::default()
     }
 }
 
@@ -53,6 +55,8 @@ fn closed_square_outer_wall() -> PrintEntity {
             variant_chain: Vec::new(),
         },
         topo_order: 0,
+
+        ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 

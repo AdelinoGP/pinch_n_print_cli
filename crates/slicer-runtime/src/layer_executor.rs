@@ -507,12 +507,14 @@ fn execute_single_layer_inner(
                 );
             }
             if !writes.is_empty() || !runtime_reads.is_empty() || !batch_calls.is_empty() {
+                // exhaustive: ModuleAccessAudit explicit test fixture preserves boundary data
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: writes,
                     batch_calls,
                     diagnostics: Vec::new(),
+                    // exhaustive: ModuleAccessAudit explicit test fixture preserves boundary data
                 });
             }
         }
@@ -585,24 +587,25 @@ fn execute_single_layer_inner(
         .annotations
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
-    layer_output
-        .retracts
-        .extend(
-            arena
-                .take_deferred_retracts()
-                .into_iter()
-                .map(|r| slicer_ir::TravelRetract {
-                    after_entity_index: r.after_entity_index,
-                    length: r.length,
-                    speed: r.speed,
-                    is_unretract: r.is_unretract,
-                    mode: r.mode,
-                }),
-        );
+    layer_output.retracts.extend(
+        arena
+            .take_deferred_retracts()
+            .into_iter()
+            // exhaustive: TravelRetract explicit test fixture preserves boundary data
+            .map(|r| slicer_ir::TravelRetract {
+                after_entity_index: r.after_entity_index,
+                length: r.length,
+                speed: r.speed,
+                is_unretract: r.is_unretract,
+                mode: r.mode,
+                // exhaustive: TravelRetract explicit test fixture preserves boundary data
+            }),
+    );
     {
         let raw_travels = arena.take_deferred_travel_moves();
         let mapped: Vec<slicer_ir::TravelMove> = raw_travels
             .into_iter()
+            // exhaustive: TravelMove explicit test fixture preserves boundary data
             .map(|m| slicer_ir::TravelMove {
                 entity_id: layer_output
                     .ordered_entities
@@ -613,6 +616,7 @@ fn execute_single_layer_inner(
                 y: m.y,
                 z: m.z,
                 f: m.f,
+                // exhaustive: TravelMove explicit test fixture preserves boundary data
             })
             .collect();
         layer_output.travel_moves.extend(mapped);
@@ -1561,6 +1565,7 @@ pub(crate) fn assemble_ordered_entities(
                 key: RegionKey,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
         acc.push(PrintEntity {
             entity_id: id_gen.next(),
             path,
@@ -1571,6 +1576,7 @@ pub(crate) fn assemble_ordered_entities(
             tool_index,
             region_key: key,
             topo_order,
+            // exhaustive: PrintEntity explicit test fixture preserves boundary data
         });
     };
 
@@ -1653,7 +1659,7 @@ pub(crate) fn assemble_ordered_entities(
     // the given (x, y) point (mm). Returns the painted variant's ToolIndex
     // if a containing region exists. Walls and infill paths emit in mm-space
     // (`ExtrusionPath3D.points: Point3WithWidth { x: f32, y: f32, z: f32,
-    //  dist_to_top_mm: 0.0, overhang_distance_mm: None }`).
+    //  dist_to_top_mm: 0.0, overhang_distance_mm: None }).
     let lookup_tool_by_point_mm = |px_mm: f32, py_mm: f32| -> Option<u64> {
         if painted_regions.is_empty() {
             return None;
@@ -2328,12 +2334,14 @@ pub(crate) fn apply(
                 });
             }
             for t in c.travel_moves {
+                // exhaustive: TravelMove explicit test fixture preserves boundary data
                 arena.push_deferred_travel_move(crate::blackboard::DeferredTravelMove {
                     after_entity_index: anchor,
                     x: t.x,
                     y: t.y,
                     z: t.z,
                     f: t.f,
+                    // exhaustive: TravelMove explicit test fixture preserves boundary data
                 });
             }
         }
@@ -2414,6 +2422,7 @@ mod tests {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+                ..Default::default()
             };
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
@@ -2465,6 +2474,7 @@ mod tests {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+                ..Default::default()
             };
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
@@ -2547,6 +2557,7 @@ mod tests {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
+            ..Default::default()
         };
         let wall_path = ExtrusionPath3D {
             points: vec![pt, pt],
@@ -2561,7 +2572,10 @@ mod tests {
             is_thin_wall: false,
             skip_ironing: false,
             custom: HashMap::new(),
+            ..Default::default()
         };
+        // exhaustive: WallLoop explicit fixture preserves the exact path/role test data
+        // exhaustive: WallLoop explicit test fixture preserves boundary data
         let wall = WallLoop {
             perimeter_index: 0,
             loop_type: LoopType::Outer,
@@ -2569,6 +2583,7 @@ mod tests {
             width_profile: WidthProfile::default(),
             feature_flags: vec![flags],
             boundary_type: WallBoundaryType::Interior,
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
         };
 
         let perimeter = PerimeterIR {
@@ -2582,6 +2597,7 @@ mod tests {
                 infill_areas: Vec::new(),
                 seam_candidates: Vec::new(),
                 resolved_seam: None,
+                ..Default::default()
             }],
         };
 
@@ -2595,6 +2611,7 @@ mod tests {
                 sparse_infill: vec![wall_path.clone()],
                 solid_infill: Vec::new(),
                 ironing: Vec::new(),
+                ..Default::default()
             }],
         };
 

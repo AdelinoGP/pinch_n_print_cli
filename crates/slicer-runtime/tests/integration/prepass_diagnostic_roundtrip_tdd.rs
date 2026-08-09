@@ -97,7 +97,9 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                     is_catchup_layer: false,
                     catchup_z_bottom: 0.0,
                     tool_index: 0,
-                })
+
+        ..Default::default()
+    })
                 .collect();
             GlobalLayer {
                 index: i,
@@ -105,7 +107,9 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                 active_regions: regions,
                 has_nonplanar: false,
                 is_sync_layer: false,
-            }
+
+        ..Default::default()
+    }
         })
         .collect();
     let mut object_participation = HashMap::new();
@@ -209,6 +213,8 @@ fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     }
 }
 

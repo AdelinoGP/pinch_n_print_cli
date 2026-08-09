@@ -110,6 +110,7 @@ fn make_module(
     }
 }
 
+// exhaustive: WallLoop explicit test fixture preserves boundary data
 fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
     let points = vec![
         Point3WithWidth {
@@ -121,6 +122,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
+        ..Default::default()
         },
         Point3WithWidth {
             x: perimeter_index as f32 + 0.5,
@@ -131,8 +133,10 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
+        ..Default::default()
         },
     ];
+// exhaustive: WallLoop explicit test fixture preserves boundary data
     WallLoop {
         perimeter_index,
         loop_type: LoopType::Outer,
@@ -153,10 +157,13 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
                 is_thin_wall: false,
                 skip_ironing: false,
                 custom: HashMap::new(),
+            ..Default::default()
             })
             .collect(),
         boundary_type: WallBoundaryType::Interior,
+    // exhaustive: WallLoop explicit test fixture preserves boundary data
     }
+// exhaustive: WallLoop explicit test fixture preserves boundary data
 }
 
 fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)]) -> PerimeterIR {
@@ -184,6 +191,7 @@ fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)]) -> Perimete
             }],
             seam_candidates: Vec::new(),
             resolved_seam: None,
+        ..Default::default()
         })
         .collect();
     PerimeterIR {
@@ -266,10 +274,12 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);

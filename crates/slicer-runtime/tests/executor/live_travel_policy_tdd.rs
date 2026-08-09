@@ -59,6 +59,7 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
                     speed: r.speed,
                     is_unretract: r.is_unretract,
                     mode: r.mode,
+                ..Default::default()
                 }),
         );
     layer_collection
@@ -73,9 +74,11 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
                 y: m.y,
                 z: m.z,
                 f: m.f,
+            ..Default::default()
             }
         }));
     layer_collection
+
 }
 
 /// AC positive: retracting travel populates a matching ZHop and retract pair.
@@ -102,6 +105,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
         });
     ctx.gcode_output_mut()
         .commands
+// exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
         .push(GcodeCommandCollected::Move(GcodeMoveCmd {
             x: Some(50.0),
             y: Some(50.0),
@@ -109,6 +113,8 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
             e: None,
             f: None,
             role: ExtrusionRole::Custom("travel".to_string()),
+        // exhaustive: GcodeMoveCmd boundary/test fixture requires explicit field construction
+        // exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
         }));
     ctx.gcode_output_mut()
         .commands
@@ -249,6 +255,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
             });
         ctx.gcode_output_mut()
             .commands
+// exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
             .push(GcodeCommandCollected::Move(GcodeMoveCmd {
                 x: Some(50.0),
                 y: Some(50.0),
@@ -256,6 +263,8 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
                 e: None,
                 f: None,
                 role: ExtrusionRole::Custom("travel".to_string()),
+            // exhaustive: GcodeMoveCmd boundary/test fixture requires explicit field construction
+            // exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
             }));
         ctx.gcode_output_mut()
             .commands
@@ -335,6 +344,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         });
     ctx.gcode_output_mut()
         .commands
+// exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
         .push(GcodeCommandCollected::Move(GcodeMoveCmd {
             x: Some(50.0),
             y: Some(50.0),
@@ -342,6 +352,8 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
             e: None,
             f: None,
             role: ExtrusionRole::Custom("travel".to_string()),
+        // exhaustive: GcodeMoveCmd boundary/test fixture requires explicit field construction
+        // exhaustive: GcodeMoveCmd explicit test fixture preserves boundary data
         }));
     ctx.gcode_output_mut()
         .commands
@@ -352,6 +364,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         });
 
     // Pre-stage 3 entities â†’ entity_count=3, anchor=2 (last entity index, entity_id=3).
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
     let make_entity = |id: u64| slicer_ir::PrintEntity {
         entity_id: id,
         path: slicer_ir::ExtrusionPath3D {
@@ -364,6 +377,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+            ..Default::default()
             }],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -377,6 +391,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
             variant_chain: Vec::new(),
         },
         topo_order: 0,
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     };
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {

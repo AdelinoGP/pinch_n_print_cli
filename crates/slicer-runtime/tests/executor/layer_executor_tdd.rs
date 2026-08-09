@@ -520,15 +520,18 @@ fn execution_plan_fixture(
                         is_catchup_layer: false,
                         catchup_z_bottom: 0.0,
                         tool_index: 0,
+                        ..Default::default()
                     }],
                     has_nonplanar: false,
                     is_sync_layer: i == 0,
+                    ..Default::default()
                 })
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     }
 }
 
@@ -638,6 +641,7 @@ fn mesh_fixture() -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -753,6 +757,7 @@ fn mk_path(x: f32) -> slicer_ir::ExtrusionPath3D {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
+            ..Default::default()
         }],
         role: slicer_ir::ExtrusionRole::OuterWall,
         speed_factor: 1.0,
@@ -770,6 +775,7 @@ fn mk_path_role(x: f32, role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionP
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
+            ..Default::default()
         }],
         role,
         speed_factor: 1.0,
@@ -785,6 +791,7 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
                 variant_chain: Vec::new(),
                 object_id: "obj-A".into(),
                 region_id: 1,
+                // exhaustive: WallLoop explicit test fixture preserves boundary data
                 walls: vec![slicer_ir::WallLoop {
                     perimeter_index: 0,
                     loop_type: slicer_ir::LoopType::Outer,
@@ -792,15 +799,19 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
                     width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
                     feature_flags: Vec::new(),
                     boundary_type: slicer_ir::WallBoundaryType::Interior,
+                    // exhaustive: WallLoop fixture preserves the exact path/role test data
+                    // exhaustive: WallLoop explicit test fixture preserves boundary data
                 }],
                 infill_areas: Vec::new(),
                 seam_candidates: Vec::new(),
                 resolved_seam: None,
+                ..Default::default()
             },
             slicer_ir::PerimeterRegion {
                 variant_chain: Vec::new(),
                 object_id: "obj-B".into(),
                 region_id: 2,
+                // exhaustive: WallLoop explicit test fixture preserves boundary data
                 walls: vec![slicer_ir::WallLoop {
                     perimeter_index: 0,
                     loop_type: slicer_ir::LoopType::Inner,
@@ -808,10 +819,13 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
                     width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
                     feature_flags: Vec::new(),
                     boundary_type: slicer_ir::WallBoundaryType::Interior,
+                    // exhaustive: WallLoop fixture preserves the exact path/role test data
+                    // exhaustive: WallLoop explicit test fixture preserves boundary data
                 }],
                 infill_areas: Vec::new(),
                 seam_candidates: Vec::new(),
                 resolved_seam: None,
+                ..Default::default()
             },
         ],
     }
@@ -828,6 +842,7 @@ fn infill_ir_two_regions() -> slicer_ir::InfillIR {
                 sparse_infill: vec![mk_path_role(10.0, slicer_ir::ExtrusionRole::SparseInfill)],
                 solid_infill: vec![mk_path_role(11.0, slicer_ir::ExtrusionRole::TopSolidInfill)],
                 ironing: Vec::new(),
+                ..Default::default()
             },
             slicer_ir::InfillRegion {
                 object_id: "obj-B".into(),
@@ -835,11 +850,13 @@ fn infill_ir_two_regions() -> slicer_ir::InfillIR {
                 sparse_infill: vec![mk_path_role(20.0, slicer_ir::ExtrusionRole::SparseInfill)],
                 solid_infill: Vec::new(),
                 ironing: Vec::new(),
+                ..Default::default()
             },
         ],
     }
 }
 
+// exhaustive: SupportIR explicit test fixture preserves boundary data
 fn support_ir_simple() -> slicer_ir::SupportIR {
     slicer_ir::SupportIR {
         schema_version: semver(1, 0, 0),
@@ -854,7 +871,9 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
         )],
         raft_paths: Vec::new(),
         ironing_paths: Vec::new(),
+        ..Default::default()
     }
+    // exhaustive: SupportIR explicit test fixture preserves boundary data
 }
 
 #[test]
@@ -991,9 +1010,11 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
             is_catchup_layer: true,
             catchup_z_bottom,
             tool_index: 0,
+            ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+        ..Default::default()
     };
 
     // Use execution_plan_fixture but with a custom global_layers that has the
@@ -1039,6 +1060,7 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     };
 
     let mesh = Arc::new(mesh_fixture());
@@ -1206,9 +1228,11 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+                ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -1270,6 +1294,7 @@ fn perim_ir_single_region(object_id: &str, region_id: u64) -> slicer_ir::Perimet
             variant_chain: Vec::new(),
             object_id: object_id.into(),
             region_id,
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
             walls: vec![slicer_ir::WallLoop {
                 perimeter_index: 0,
                 loop_type: slicer_ir::LoopType::Outer,
@@ -1277,10 +1302,13 @@ fn perim_ir_single_region(object_id: &str, region_id: u64) -> slicer_ir::Perimet
                 width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
                 feature_flags: Vec::new(),
                 boundary_type: slicer_ir::WallBoundaryType::Interior,
+                // exhaustive: WallLoop fixture preserves the exact path/role test data
+                // exhaustive: WallLoop explicit test fixture preserves boundary data
             }],
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
             resolved_seam: None,
+            ..Default::default()
         }],
     }
 }
@@ -1336,9 +1364,11 @@ fn extruder_synthetic_t0_t1_emission() {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+            ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+        ..Default::default()
     };
 
     let plan = ExecutionPlan {
@@ -1353,6 +1383,7 @@ fn extruder_synthetic_t0_t1_emission() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+        ..Default::default()
     };
 
     // Build a RegionMapIR keyed on the same (layer, object, region) tuples and

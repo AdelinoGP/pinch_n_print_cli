@@ -9,6 +9,7 @@
 //! - `layer_executor.rs::execute_single_layer` (layer / stage / module
 //!   brackets inside the rayon parallel iterator)
 
+use crate::common;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -81,6 +82,8 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+
+        ..Default::default()
     }
 }
 
@@ -204,6 +207,7 @@ impl GCodeSerializer for MinimalSerializer {
 }
 
 fn noop_runners() -> PipelineStageRunners {
+// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),
@@ -225,8 +229,7 @@ fn empty_raw_config() -> HashMap<slicer_ir::ConfigKey, slicer_ir::ConfigValue> {
 #[test]
 fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan: ExecutionPlan {
+        ..common::pipeline_config_base(empty_mesh_ir(), ExecutionPlan {
             prepass_stages: Vec::new(),
             per_layer_stages: Vec::new(),
             layer_finalization_stage: None,
@@ -235,14 +238,9 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
             region_plans: Arc::new(HashMap::new()),
             module_region_index: HashMap::new(),
             aggregated_region_split: BTreeMap::new(),
-        },
-        runners: noop_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+
+        ..Default::default()
+    }, noop_runners())
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -302,6 +300,8 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let collector = Arc::new(Collector::new("test-model.stl"));
@@ -310,15 +310,7 @@ fn run_with_collector_records_phase_and_layer_brackets() {
     runners.prepass = Box::new(TwoLayerPrepass);
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners,
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(empty_mesh_ir(), plan, runners)
     };
 
     // `Arc<Collector>` implements `PipelineInstrumentation` via the inner
@@ -485,6 +477,8 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let capture = EdgeCapture::new();
@@ -493,15 +487,7 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
     runners.prepass = Box::new(TwoLayerPrepass2);
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners,
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(empty_mesh_ir(), plan, runners)
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -641,21 +627,15 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let mut runners = noop_runners();
     runners.prepass = Box::new(TwoLayerPrepass);
 
     let config = PipelineConfig {
-        mesh_ir: empty_mesh_ir(),
-        plan,
-        runners,
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(empty_mesh_ir(), plan, runners)
     };
 
     let recorder = StageEndRecorder::new();

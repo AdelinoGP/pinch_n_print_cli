@@ -194,6 +194,7 @@ fn ordinary_slice_has_no_visual_debug_overhead() {
             progress_events: false,
             cancel_flag: None,
             config_overrides: std::collections::HashMap::new(),
+        ..Default::default()
         };
 
         let outcome = run_slice(opts).unwrap_or_else(|e| {

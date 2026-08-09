@@ -314,6 +314,7 @@ fn execution_plan_fixture(layer_finalization_stage: Option<CompiledStage>) -> Ex
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+    ..Default::default()
     }
 }
 
@@ -384,6 +385,7 @@ fn mesh_fixture() -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -412,6 +414,7 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
+    ..Default::default()
     }
 }
 

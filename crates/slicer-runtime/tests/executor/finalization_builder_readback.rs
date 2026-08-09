@@ -25,6 +25,7 @@ fn pt() -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+    ..Default::default()
     }
 }
 
@@ -45,7 +46,9 @@ fn region_key(layer: u32) -> RegionKey {
     }
 }
 
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
 fn make_entity(entity_id: u64, layer: u32) -> PrintEntity {
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
         entity_id,
         path: path(),
@@ -53,7 +56,10 @@ fn make_entity(entity_id: u64, layer: u32) -> PrintEntity {
         tool_index: 1,
         region_key: region_key(layer),
         topo_order: (entity_id - 1) as u32,
+    // exhaustive: PrintEntity fixture preserves the exact path/role test data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
+// exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn layer_with_2_entities() -> LayerCollectionIR {

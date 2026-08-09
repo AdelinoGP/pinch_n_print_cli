@@ -46,6 +46,7 @@ fn make_support_path(
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+            ..Default::default()
             },
             Point3WithWidth {
                 x: x2,
@@ -56,6 +57,7 @@ fn make_support_path(
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+            ..Default::default()
             },
         ],
         role: IrExtrusionRole::SupportMaterial,
@@ -80,6 +82,7 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
         interface_paths: vec![],
         raft_paths: vec![],
         ironing_paths: vec![],
+    ..Default::default()
     }))
 }
 
@@ -510,6 +513,7 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+        ..Default::default()
         })
         .collect();
 
@@ -588,6 +592,7 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
         active_regions: vec![],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     let mut arena = LayerArena::new();
@@ -692,6 +697,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
         active_regions: vec![],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     let mut arena = LayerArena::new();
@@ -798,6 +804,7 @@ fn support_deterministic_across_repeated_runs() {
         active_regions: vec![],
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     let run_dispatch = |bb: &Blackboard, layer: &GlobalLayer| {
@@ -1019,6 +1026,7 @@ mod planner_consuming_tier {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+        ..Default::default()
         };
         slicer_ir::SliceIR {
             global_layer_index: layer_index,
@@ -1028,6 +1036,7 @@ mod planner_consuming_tier {
         }
     }
 
+// exhaustive: Blackboard explicit test fixture preserves boundary data
     fn empty_blackboard_with_support_plan(plan: Option<Arc<SupportPlanIR>>) -> Blackboard {
         let mesh = Arc::new(MeshIR {
             build_volume: BoundingBox3 {
@@ -1046,6 +1055,7 @@ mod planner_consuming_tier {
                 .expect("commit_support_plan must succeed");
         }
         bb
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
     }
 
     fn dispatch_support(
@@ -1053,6 +1063,7 @@ mod planner_consuming_tier {
         manifest_id: &str,
         manifest_reads: Vec<&str>,
         plan: Option<Arc<SupportPlanIR>>,
+// exhaustive: SupportIR explicit test fixture preserves boundary data
     ) -> slicer_ir::SupportIR {
         let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -1069,6 +1080,7 @@ mod planner_consuming_tier {
             active_regions: vec![],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         };
 
         let mut arena = LayerArena::new();
@@ -1086,6 +1098,7 @@ mod planner_consuming_tier {
         .expect("Layer::Support dispatch must succeed");
 
         arena.take_support().expect("SupportIR must be committed")
+    // exhaustive: SupportIR explicit test fixture preserves boundary data
     }
 
     fn make_planned_segment(layer_z: f32) -> ExtrusionPath3D {
@@ -1100,6 +1113,7 @@ mod planner_consuming_tier {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
                 Point3WithWidth {
                     x: 7.0,
@@ -1110,6 +1124,7 @@ mod planner_consuming_tier {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
+                ..Default::default()
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -1283,6 +1298,7 @@ mod planner_consuming_tier {
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
                         overhang_distance_mm: None,
+                    ..Default::default()
                     },
                     Point3WithWidth {
                         x: 7.0,
@@ -1293,6 +1309,7 @@ mod planner_consuming_tier {
                         overhang_quartile: None,
                         dist_to_top_mm: 0.0,
                         overhang_distance_mm: None,
+                    ..Default::default()
                     },
                 ],
                 role: IrExtrusionRole::SupportMaterial,
@@ -1353,6 +1370,7 @@ mod planner_consuming_tier {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+            ..Default::default()
             }],
             ..Default::default()
         };
@@ -1381,6 +1399,7 @@ mod planner_consuming_tier {
             active_regions: vec![],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         };
 
         let mut arena = LayerArena::new();

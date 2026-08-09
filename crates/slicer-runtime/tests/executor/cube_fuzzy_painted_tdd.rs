@@ -66,9 +66,11 @@ fn build_50_layer_plan(object_id: &str) -> Arc<LayerPlanIR> {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+            ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+        ..Default::default()
         })
         .collect();
     Arc::new(LayerPlanIR {
@@ -572,12 +574,15 @@ fn cube_fuzzy_painted_modifier_overlay_on_unpainted_face() {
         "subtype".to_string(),
         ConfigValue::String("support_enforcer".to_string()),
     );
+// exhaustive: ModifierVolume explicit test fixture preserves boundary data
     let mv = ModifierVolume {
         id: "mv_enforcer".to_string(),
         mesh: mv_mesh,
         config_delta: ConfigDelta { fields: mv_fields },
         priority: 0,
         applies_to: ModifierScope::AllFeatures,
+    // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
+    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     };
 
     // FuzzySkin PaintLayer: one facet painted Flag(true) so mesh_has_any_paint passes.
@@ -611,6 +616,7 @@ fn cube_fuzzy_painted_modifier_overlay_on_unpainted_face() {
                 layers: vec![paint_layer],
             }),
             world_z_extent: None,
+        ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {

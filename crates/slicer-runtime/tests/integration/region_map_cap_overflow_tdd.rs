@@ -106,14 +106,18 @@ fn layer_plan_alpha_beta() -> LayerPlanIR {
                 ],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
             GlobalLayer {
                 index: 1,
                 z: 0.4,
                 active_regions: vec![active_region("obj_alpha", 1)],
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+
+        ..Default::default()
+    },
         ],
         object_participation: HashMap::new(),
     }
@@ -129,6 +133,8 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+
+        ..Default::default()
     }
 }
 
@@ -170,5 +176,7 @@ fn object_with_paint(id: &str, tool_indices: &[u32]) -> ObjectMesh {
             }],
         }),
         world_z_extent: None,
+
+        ..Default::default()
     }
 }

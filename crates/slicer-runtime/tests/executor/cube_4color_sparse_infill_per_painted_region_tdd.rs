@@ -72,6 +72,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+    ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))

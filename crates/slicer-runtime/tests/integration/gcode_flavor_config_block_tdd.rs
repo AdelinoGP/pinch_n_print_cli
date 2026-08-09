@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use crate::common;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -29,6 +30,8 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     }
 }
 
@@ -114,22 +117,15 @@ fn gcode_with_optional_flavor(flavor: Option<&str>) -> String {
     }
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: PipelineStageRunners {
+// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
             layer: Box::new(NoopLayerRunner),
             finalization: Box::new(NoopFinalizationRunner),
             postpass: Box::new(NoopPostpassRunner),
             emitter: Box::new(DefaultGCodeEmitter::new("pnp_cli-test 0.1.0".into())),
             serializer: Box::new(DefaultGCodeSerializer::new()),
-        },
-        resolved_configs: Arc::new(BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        })
     };
 
     run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

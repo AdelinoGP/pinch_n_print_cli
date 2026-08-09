@@ -39,6 +39,7 @@ fn make_path(
 ) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![
+// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
             Point3WithWidth {
                 x: x1,
                 y: y1,
@@ -48,7 +49,9 @@ fn make_path(
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+
             },
+// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
             Point3WithWidth {
                 x: x2,
                 y: y2,
@@ -58,6 +61,7 @@ fn make_path(
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
+
             },
         ],
         role,

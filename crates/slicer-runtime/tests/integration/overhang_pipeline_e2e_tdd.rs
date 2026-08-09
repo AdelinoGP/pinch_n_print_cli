@@ -178,6 +178,8 @@ fn active_region(object_id: &str) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+
+        ..Default::default()
     }
 }
 
@@ -192,14 +194,18 @@ fn two_global_layers(object_id: &str) -> Vec<GlobalLayer> {
             active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
             is_sync_layer: false,
-        },
+
+        ..Default::default()
+    },
         GlobalLayer {
             index: 1,
             z: 1.5,
             active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
             is_sync_layer: false,
-        },
+
+        ..Default::default()
+    },
     ]
 }
 
@@ -320,6 +326,8 @@ fn run_real_overhang_prepass(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> B
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     };
 
     let runner = LayerPlanningStubRunner {
@@ -394,6 +402,8 @@ fn real_wall_entity(
         region_key: RegionKey::default(),
         topo_order: 0,
         tool_index: 0,
+
+        ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 

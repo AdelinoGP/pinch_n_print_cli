@@ -474,13 +474,16 @@ fn pipeline_dag_section_is_rendered_before_per_stage_aggregate() {
         stages: vec![StageOut {
             id: "Layer::Perimeters".to_string(),
             tier: "per_layer".to_string(),
-            modules: vec![ModuleOut {
-                id: "com.example.classic-perimeters".to_string(),
-                claims: vec!["perimeter-generator".to_string()],
-                ir_reads: vec!["SliceIR.contours".to_string()],
-                ir_writes: vec!["PerimeterIR.regions.walls".to_string()],
-                requires_modules: vec![],
-                config_keys: vec![],
+            modules: vec![{
+                // exhaustive: ModuleOut report fixture explicitly defines the synthetic module boundary
+                ModuleOut {
+                    id: "com.example.classic-perimeters".to_string(),
+                    claims: vec!["perimeter-generator".to_string()],
+                    ir_reads: vec!["SliceIR.contours".to_string()],
+                    ir_writes: vec!["PerimeterIR.regions.walls".to_string()],
+                    requires_modules: vec![],
+                    config_keys: vec![],
+                }
             }],
             serial_edges: vec![StageEdgeOut {
                 from: "com.example.a".to_string(),

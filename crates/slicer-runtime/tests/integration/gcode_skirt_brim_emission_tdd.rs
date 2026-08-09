@@ -56,6 +56,8 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+
+        ..Default::default()
     }
 }
 
@@ -85,10 +87,12 @@ fn loop_entity(entity_id: u64, role: ExtrusionRole) -> PrintEntity {
             role: role.clone(),
             speed_factor: 1.0,
         },
-        role,
+        role: role.clone(),
         tool_index: 1,
         region_key: region_key(),
         topo_order: 0,
+
+        ..slicer_sdk::test_support::fixtures::print_entity_base(role.clone())
     }
 }
 
@@ -105,6 +109,8 @@ fn outer_wall_entity() -> PrintEntity {
         tool_index: 1,
         region_key: region_key(),
         topo_order: 0,
+
+        ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
     }
 }
 
@@ -120,6 +126,8 @@ fn make_layer(entities: Vec<PrintEntity>) -> LayerCollectionIR {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+
+        ..Default::default()
     }
 }
 

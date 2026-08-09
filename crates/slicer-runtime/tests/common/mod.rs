@@ -29,6 +29,10 @@ use slicer_runtime::{
     Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationStageInput, LayerArena,
     LayerStageInput, PostpassStageInput, PrepassStageInput,
 };
+use slicer_runtime::{
+    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerStageRunner, PostpassStageRunner,
+    PrepassStageRunner,
+};
 
 pub fn pipeline_config_base(
     mesh_ir: Arc<MeshIR>,
@@ -46,6 +50,44 @@ pub fn pipeline_config_base(
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+    }
+}
+
+pub fn pipeline_stage_runners_base(
+    prepass: Box<dyn PrepassStageRunner>,
+    layer: Box<dyn LayerStageRunner + Sync>,
+    finalization: Box<dyn FinalizationStageRunner>,
+    postpass: Box<dyn PostpassStageRunner>,
+    emitter: Box<dyn GCodeEmitter>,
+    serializer: Box<dyn GCodeSerializer>,
+) -> PipelineStageRunners {
+    // exhaustive: PipelineStageRunners is a trait-object holder; this helper centralizes its test construction.
+    PipelineStageRunners {
+        prepass,
+        layer,
+        finalization,
+        postpass,
+        emitter,
+        serializer,
+    }
+}
+
+pub fn point3_with_width(
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+) -> slicer_runtime::wit_host::Point3WithWidth {
+    // exhaustive: Point3WithWidth has no Default; this helper centralizes its fixture defaults.
+    slicer_runtime::wit_host::Point3WithWidth {
+        x,
+        y,
+        z,
+        width,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        dist_to_top_mm: 0.0,
+        overhang_distance_mm: None,
     }
 }
 

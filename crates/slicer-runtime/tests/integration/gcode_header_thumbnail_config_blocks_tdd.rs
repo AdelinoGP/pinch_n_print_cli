@@ -10,6 +10,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use crate::common;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -66,6 +67,8 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
+
+        ..Default::default()
     }
 }
 
@@ -135,6 +138,7 @@ impl PostpassStageRunner for NoopPostpassRunner {
 }
 
 fn default_runners() -> PipelineStageRunners {
+// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),
@@ -175,15 +179,7 @@ fn slice_to_gcode_with_key(
     }
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -526,15 +522,7 @@ fn config_block_includes_user_passed() {
     );
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -636,15 +624,7 @@ fn config_block_fork_keys_never_shadowed() {
     );
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
         .expect("pipeline should succeed");
@@ -946,15 +926,7 @@ fn rejects_missing_thumbnail_file() {
     );
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -982,15 +954,7 @@ fn rejects_non_png_thumbnail() {
     raw.insert("thumbnail_path".to_string(), ConfigValue::String(tmp_path));
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -1019,15 +983,7 @@ fn empty_config_view_still_emits_sentinels() {
     let raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
 
     let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: Default::default(),
-        cancel_flag: None,
-        support_tools: Default::default(),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

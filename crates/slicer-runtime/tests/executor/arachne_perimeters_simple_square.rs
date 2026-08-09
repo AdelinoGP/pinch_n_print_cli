@@ -170,6 +170,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+            ..Default::default()
             }],
             ..Default::default()
         })
@@ -183,6 +184,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+    ..Default::default()
     };
 
     crate::common::run_layer_and_commit_with_bundle(
