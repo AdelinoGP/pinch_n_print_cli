@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh,
-    Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, Transform3d,
+    Point3, RegionKey, RegionMapIR, RegionPlan, Transform3d,
 };
 use slicer_runtime::{commit_shell_classification_builtin, commit_slice_builtin, Blackboard};
 
@@ -106,13 +106,8 @@ fn active_region(object_id: &str) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id: 0,
-        resolved_config: ResolvedConfig::default(),
         effective_layer_height: 0.2,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -134,9 +129,7 @@ fn layer_plan() -> LayerPlanIR {
                 index: i,
                 z,
                 active_regions: vec![active_region(object_id)],
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             }
         })
         .collect();

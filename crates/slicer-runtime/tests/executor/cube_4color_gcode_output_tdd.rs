@@ -140,12 +140,10 @@ fn unpainted_25mm_cube() -> Arc<MeshIR> {
         config: ObjectConfig {
             data: Default::default(),
         },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
         // Seed the planner-visible world height (run.rs reads this and injects
         // `object_height:<id>` into the config map before module dispatch).
         world_z_extent: Some((z_min, z_max)),
-    ..Default::default()
+        ..Default::default()
     };
 
     Arc::new(MeshIR {
@@ -184,20 +182,10 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
     let opts = SliceRunOptions {
         mesh,
         model_label: model_path.to_string_lossy().into_owned(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
-    ..Default::default()
+        ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -224,20 +212,10 @@ fn slice_fixture_file_with_overrides(overrides: HashMap<String, ConfigValue>) ->
     let opts = SliceRunOptions {
         mesh,
         model_label: model_path.to_string_lossy().into_owned(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         config_overrides: overrides,
-    ..Default::default()
+        ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -250,20 +228,10 @@ fn slice_synthetic_mesh(label: &str, mesh: Arc<MeshIR>) -> SliceOutcome {
     let opts = SliceRunOptions {
         mesh,
         model_label: label.to_string(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
-    ..Default::default()
+        ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against synthetic mesh {label}: {e}"))

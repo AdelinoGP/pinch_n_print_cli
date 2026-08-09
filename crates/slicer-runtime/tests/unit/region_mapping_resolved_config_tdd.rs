@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectConfig, ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
+    ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_execution_plan, commit_region_mapping_builtin, Blackboard, ExecutionPlanRequest,
@@ -55,14 +55,8 @@ fn minimal_mesh() -> MeshIR {
                     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -82,14 +76,9 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id,
-        resolved_config: ResolvedConfig::default(),
         effective_layer_height: 0.2,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
@@ -115,10 +104,8 @@ fn commit_stamps_per_object_resolved_config() {
             index: 0,
             z: 0.2,
             active_regions: vec![active_region("obj-A", 1), active_region("obj-B", 1)],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         object_participation: HashMap::new(),
     });
 

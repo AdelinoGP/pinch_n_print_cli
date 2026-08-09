@@ -130,7 +130,7 @@ fn layer_ir(
 ) -> LayerCollectionIR {
     let mut ordered_entities = Vec::with_capacity(entity_count);
     for i in 0..entity_count {
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
         ordered_entities.push(PrintEntity {
             entity_id: (i as u64) + 1,
             path: slicer_ir::ExtrusionPath3D {
@@ -147,8 +147,8 @@ fn layer_ir(
                 variant_chain: Vec::new(),
             },
             topo_order: i as u32,
-        // exhaustive: PrintEntity fixture preserves the exact path/role test data
-        // exhaustive: PrintEntity explicit test fixture preserves boundary data
+            // exhaustive: PrintEntity fixture preserves the exact path/role test data
+            // exhaustive: PrintEntity explicit test fixture preserves boundary data
         });
     }
     LayerCollectionIR {
@@ -165,11 +165,7 @@ fn layer_ir(
                 to_tool: *to,
             })
             .collect(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 

@@ -68,6 +68,7 @@ fn write_bounded_config(dir: &Path) -> PathBuf {
 /// `Point3WithWidth.width`, and the renderer refuses to infer a bead width
 /// for it (`RenderFailed`) — `filament_lines` has no such requirement.
 fn model_request_with_postpass_tap(config: PathBuf) -> VisualDebugRequest {
+    // exhaustive: model-source request boundary fixture with explicit selectors
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {
@@ -104,6 +105,7 @@ fn write_gcode(dir: &Path, file_name: &str, contents: &str) -> PathBuf {
 }
 
 fn gcode_request(gcode_path: PathBuf) -> VisualDebugRequest {
+    // exhaustive: standalone gcode request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Gcode {

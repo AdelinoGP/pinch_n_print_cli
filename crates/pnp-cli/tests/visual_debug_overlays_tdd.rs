@@ -245,7 +245,7 @@ fn gcode_overlay_bundle_mirrors_events_into_the_manifest() {
 
 mod typed_ir {
     use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity, RegionKey,
+        ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity,
         ToolChange, TravelMove, TravelRetract, ZHop,
     };
     use slicer_runtime::layer_executor::{CapturedIr, StageCapture};
@@ -260,10 +260,7 @@ mod typed_ir {
             y,
             z: 0.2,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         };
         PrintEntity {
             entity_id,
@@ -272,10 +269,8 @@ mod typed_ir {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
-            role: ExtrusionRole::OuterWall,
-            region_key: RegionKey::default(),
-            topo_order: 0,
             tool_index,
+            ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
         }
     }
 
@@ -317,7 +312,7 @@ mod typed_ir {
                 x: Some(10.0),
                 y: Some(10.0),
                 z: Some(0.2),
-                f: None,
+                ..Default::default()
             }],
             ..Default::default()
         };

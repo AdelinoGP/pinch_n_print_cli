@@ -40,7 +40,6 @@ fn stage_minimal_slice_ir(
     region_keys: &[(&str, u64)],
 ) {
     use slicer_ir::{ExPolygon, Point2, Polygon, SliceIR, SlicedRegion};
-    use std::collections::HashMap;
 
     let regions = region_keys
         .iter()
@@ -61,19 +60,7 @@ fn stage_minimal_slice_ir(
                 },
                 holes: Vec::new(),
             }],
-            infill_areas: Vec::new(),
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
             ..Default::default()
         })
         .collect();
@@ -463,7 +450,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             minor: 0,
             patch: 0,
         },
-        global_layer_index: 0,
         regions: vec![slicer_ir::PerimeterRegion {
             variant_chain: Vec::new(),
             object_id: "test-object".to_string(),
@@ -480,9 +466,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         slicer_ir::Point3WithWidth {
@@ -491,9 +474,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         slicer_ir::Point3WithWidth {
@@ -502,9 +482,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         slicer_ir::Point3WithWidth {
@@ -513,9 +490,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                     ],
@@ -529,8 +503,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                 boundary_type: slicer_ir::WallBoundaryType::Interior,
                 // exhaustive: WallLoop explicit test fixture preserves boundary data
             }],
-            infill_areas: vec![],
-            seam_candidates: vec![],
             resolved_seam: Some(slicer_ir::SeamPosition {
                 point: slicer_ir::Point3WithWidth {
                     x: 5.0,
@@ -538,9 +510,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                     z: layer_z,
                     width: 0.0,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
                     ..Default::default()
                 },
                 wall_index: 0,
@@ -554,7 +523,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(perimeter_ir).unwrap();
     arena.set_layer_collection(LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: slicer_ir::SemVer {
             major: 1,
             minor: 0,
@@ -562,12 +530,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         },
         global_layer_index: 0,
         z: layer_z,
-        ordered_entities: vec![],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
         ..Default::default()
     });
 
@@ -578,7 +540,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                 minor: 0,
                 patch: 0,
             },
-            objects: vec![],
             build_volume: BoundingBox3 {
                 min: Point3 {
                     x: 0.0,
@@ -598,9 +559,6 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     let layer = GlobalLayer {
         index: 0,
         z: layer_z,
-        active_regions: vec![],
-        has_nonplanar: false,
-        is_sync_layer: false,
         ..Default::default()
     };
 
@@ -1009,7 +967,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     let perimeter_ir = PerimeterIR {
         global_layer_index: layer_index,
         regions: vec![PerimeterRegion {
-            variant_chain: Vec::new(),
             object_id: object_id.clone(),
             region_id,
             // exhaustive: WallLoop explicit test fixture preserves boundary data
@@ -1024,9 +981,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         Point3WithWidth {
@@ -1035,9 +989,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         Point3WithWidth {
@@ -1046,9 +997,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                         Point3WithWidth {
@@ -1057,9 +1005,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
                             ..Default::default()
                         },
                     ],
@@ -1071,12 +1016,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                 },
                 feature_flags: vec![
                     WallFeatureFlags {
-                        tool_index: None,
-                        fuzzy_skin: false,
-                        is_bridge: false,
-                        is_thin_wall: false,
-                        skip_ironing: false,
-                        custom: std::collections::HashMap::new(),
                         ..Default::default()
                     };
                     4
@@ -1084,8 +1023,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                 boundary_type: WallBoundaryType::ExteriorSurface,
                 // exhaustive: WallLoop explicit test fixture preserves boundary data
             }],
-            infill_areas: vec![],
-            seam_candidates: vec![],
             resolved_seam: None, // Not set â€” should be injected from SeamPlanIR
             ..Default::default()
         }],
@@ -1117,14 +1054,10 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                     z: chosen_z,
                     width: 0.0,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
                     ..Default::default()
                 },
                 wall_index: chosen_wall_index,
             },
-            scored_candidates: vec![],
             ..Default::default()
         }],
 
@@ -1163,9 +1096,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     let layer = GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: vec![],
-        has_nonplanar: false,
-        is_sync_layer: false,
         ..Default::default()
     };
 
@@ -1419,19 +1349,7 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
                     },
                     holes: Vec::new(),
                 }],
-                infill_areas: Vec::new(),
-                nonplanar_surface: None,
                 effective_layer_height: 0.2,
-                segment_annotations: std::collections::HashMap::new(),
-                variant_chain: Vec::new(),
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: vec![],
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
                 ..Default::default()
             }],
 
@@ -1444,9 +1362,6 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
         ..Default::default()
     };
 

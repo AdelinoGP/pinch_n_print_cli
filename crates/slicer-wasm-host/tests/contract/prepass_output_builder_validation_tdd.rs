@@ -40,6 +40,7 @@ fn make_point3_with_width(x: f32, y: f32, z: f32) -> SeamPoint3WithWidth {
 }
 
 fn valid_seam_entry() -> SeamPlanEntry {
+    // exhaustive: SeamPlanEntry has no Default; valid seam fixture supplies the complete entry
     SeamPlanEntry {
         variant_chain: Vec::new(),
         global_layer_index: 0,
@@ -87,12 +88,20 @@ fn valid_layer_proposal() -> LayerProposal {
     LayerProposal {
         z: 0.2,
         active_regions: vec![RegionLayerProposal {
-            object_id: "obj-a".to_string(),
-            region_id: "region-1".to_string(),
             effective_layer_height: 0.2,
-            is_catchup: false,
-            catchup_z_bottom: 0.0,
+            ..region_layer_proposal_base()
         }],
+    }
+}
+
+fn region_layer_proposal_base() -> RegionLayerProposal {
+    // exhaustive: RegionLayerProposal has no Default; shared base for repeated validation fixtures
+    RegionLayerProposal {
+        object_id: "obj-a".to_string(),
+        region_id: "region-1".to_string(),
+        effective_layer_height: 0.2,
+        is_catchup: false,
+        catchup_z_bottom: 0.0,
     }
 }
 
@@ -324,11 +333,8 @@ fn layer_plan_push_layer_region_effective_layer_height_nan() {
     let bad = LayerProposal {
         z: 0.2,
         active_regions: vec![RegionLayerProposal {
-            object_id: "obj-a".to_string(),
-            region_id: "region-1".to_string(),
             effective_layer_height: f32::NAN,
-            is_catchup: false,
-            catchup_z_bottom: 0.0,
+            ..region_layer_proposal_base()
         }],
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);
@@ -351,11 +357,8 @@ fn layer_plan_push_layer_region_effective_layer_height_zero() {
     let bad = LayerProposal {
         z: 0.2,
         active_regions: vec![RegionLayerProposal {
-            object_id: "obj-a".to_string(),
-            region_id: "region-1".to_string(),
             effective_layer_height: 0.0,
-            is_catchup: false,
-            catchup_z_bottom: 0.0,
+            ..region_layer_proposal_base()
         }],
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);

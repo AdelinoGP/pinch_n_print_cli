@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use slicer_ir::{ActiveRegion, ConfigValue, GlobalLayer, LayerPlanIR, ResolvedConfig, SemVer};
+use slicer_ir::{ActiveRegion, ConfigValue, GlobalLayer, LayerPlanIR, SemVer};
 use slicer_runtime::{execute_region_mapping, ExecutionPlan};
 
 use crate::common::model_cache::cached_load_model;
@@ -41,17 +41,9 @@ fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
             z: z_mm,
             active_regions: vec![ActiveRegion {
                 object_id: "obj_0".to_string(),
-                region_id: 0,
-                resolved_config: ResolvedConfig::default(),
                 effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
                 ..Default::default()
             }],
-            has_nonplanar: false,
-            is_sync_layer: false,
             ..Default::default()
         }],
         object_participation: Default::default(),
@@ -267,8 +259,6 @@ fn modifier_projections_annotate_contour_points() {
                 data: HashMap::new(),
             },
             modifier_volumes: vec![mv],
-            paint_data: None,
-            world_z_extent: None,
             ..Default::default()
         }],
         build_volume: slicer_ir::BoundingBox3 {
@@ -396,8 +386,6 @@ fn modifier_projection_z_band_restriction() {
                 data: HashMap::new(),
             },
             modifier_volumes: vec![mv],
-            paint_data: None,
-            world_z_extent: None,
             ..Default::default()
         }],
         build_volume: slicer_ir::BoundingBox3 {

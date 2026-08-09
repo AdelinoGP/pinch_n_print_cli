@@ -152,20 +152,10 @@ fn slice_cube_4color_with_arachne_options(
     SliceRunOptions {
         mesh,
         model_label: model_path.to_string_lossy().into_owned(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         config_overrides,
-    ..Default::default()
+        ..Default::default()
     }
 }
 

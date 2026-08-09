@@ -35,8 +35,8 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
-    SliceIR, SlicedRegion, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, SliceIR, SlicedRegion,
+    Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
 

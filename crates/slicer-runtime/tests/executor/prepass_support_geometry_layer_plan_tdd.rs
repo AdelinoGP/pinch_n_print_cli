@@ -10,7 +10,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -105,34 +105,22 @@ fn variable_height_layer_plan() -> LayerPlanIR {
             GlobalLayer {
                 index: 0,
                 z: 0.4,
-                active_regions: vec![],
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             },
             GlobalLayer {
                 index: 1,
                 z: 0.8,
-                active_regions: vec![],
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             },
             GlobalLayer {
                 index: 2,
                 z: 1.2,
-                active_regions: vec![],
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             },
             GlobalLayer {
                 index: 3,
                 z: 2.0,
-                active_regions: vec![],
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             },
         ],
         object_participation: {
@@ -175,10 +163,7 @@ fn multi_region_layer_plan() -> LayerPlanIR {
         global_layers: vec![GlobalLayer {
             index: 5,
             z: 2.0,
-            active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         }],
         object_participation: {
             let mut m = HashMap::new();
@@ -328,14 +313,7 @@ fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan
             stage_id: "PrePass::SupportGeometry".to_string(),
             modules: vec![module],
         }],
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::<GlobalLayer>::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -344,7 +322,7 @@ fn blackboard_with_layer_plan_and_region_map(
     mesh: MeshIR,
     layer_plan: LayerPlanIR,
     region_map: RegionMapIR,
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 ) -> Blackboard {
     let mesh_arc = Arc::new(mesh);
     let mut bb = Blackboard::new(mesh_arc, 0);
@@ -353,7 +331,7 @@ fn blackboard_with_layer_plan_and_region_map(
     bb.commit_region_map(Arc::new(region_map))
         .expect("commit_region_map must succeed");
     bb
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 /// Build a Blackboard with mesh and LayerPlanIR only (no RegionMapIR).
@@ -364,7 +342,7 @@ fn blackboard_with_layer_plan_no_region_map(mesh: MeshIR, layer_plan: LayerPlanI
     bb.commit_layer_plan(Arc::new(layer_plan))
         .expect("commit_layer_plan must succeed");
     bb
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 /// Run the full prepass pipeline and return the committed SupportPlanIR.

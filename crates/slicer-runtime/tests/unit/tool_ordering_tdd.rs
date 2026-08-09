@@ -42,12 +42,8 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         y,
         z: 0.2,
         width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 /// Build a PrintEntity with SparseInfill role and the given tool_index
@@ -62,7 +58,9 @@ fn entity_with_tool(
     object_id: &str,
     original_idx: u32,
 ) -> PrintEntity {
-    PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: PrintEntity fixture intentionally specifies every field for tool-ordering assertions
+    PrintEntity {
+        // exhaustive: PrintEntity fixture intentionally specifies every field for tool-ordering assertions
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points: vec![pt(x, y)],
@@ -122,18 +120,10 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
     // The executor will find this pre-staged IR before Layer::PathOptimization
     // and the module's set_entity_order will be validated against it.
     let layer_collection = LayerCollectionIR {
-        speed_profiles: Vec::new(),
-        schema_version: semver(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities,
-        tool_changes: Vec::new(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     let plan = plan_with_stages(
         vec![
@@ -244,18 +234,10 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
-        speed_profiles: Vec::new(),
-        schema_version: semver(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities,
-        tool_changes: Vec::new(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     let plan = plan_with_stages(
         vec![
@@ -338,18 +320,10 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
-        speed_profiles: Vec::new(),
-        schema_version: semver(),
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities,
-        tool_changes: Vec::new(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     let plan = plan_with_stages(
         vec![
@@ -521,41 +495,44 @@ fn path_optimization_loaded_module() -> LoadedModule {
 
 fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
     Arc::new(MeshIR {
-        objects: vec![ObjectMesh {
-            id: object_id.to_string(),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.1,
-                    },
-                    Point3 {
-                        x: 10.0,
-                        y: 0.0,
-                        z: 0.1,
-                    },
-                    Point3 {
-                        x: 0.0,
-                        y: 10.0,
-                        z: 0.1,
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: Transform3d {
-                matrix: [
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                ],
-            },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+        objects: vec![{
+            // exhaustive: ObjectMesh ordering fixture specifies the complete mesh object.
+            ObjectMesh {
+                id: object_id.to_string(),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.1,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.1,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 10.0,
+                            z: 0.1,
+                        },
+                    ],
+                    indices: vec![0, 1, 2],
+                },
+                transform: Transform3d {
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                        1.0,
+                    ],
+                },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: vec![],
+                paint_data: None,
+                world_z_extent: None,
+            }
+        }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -573,6 +550,7 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
 }
 
 fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) -> ExecutionPlan {
+    // exhaustive: ExecutionPlan fixture explicitly defines all stage-ordering inputs.
     ExecutionPlan {
         prepass_stages: vec![],
         per_layer_stages,
@@ -580,30 +558,37 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
         postpass_stages: vec![],
         global_layers: Arc::new(
             (0..layer_count)
-                .map(|i| GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
-                    index: i as u32,
-                    z: 0.2 * (i as f32 + 1.0),
-                    active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                        object_id: "test-object".to_string(),
-                        region_id: 0,
-                        resolved_config: ResolvedConfig::default(),
-                        effective_layer_height: 0.2,
-                        nonplanar_shell: None,
-                        is_catchup_layer: false,
-                        catchup_z_bottom: 0.0,
-                        tool_index: 0,
-                    }],
-                    has_nonplanar: false,
-                   
-    is_sync_layer: i == 0,
+                .map(|i| {
+                    // exhaustive: GlobalLayer fixture intentionally specifies every field for stage ordering
+                    GlobalLayer {
+                        // exhaustive: GlobalLayer fixture intentionally specifies every field for stage ordering
+                        index: i as u32,
+                        z: 0.2 * (i as f32 + 1.0),
+                        active_regions: vec![{
+                            // exhaustive: ActiveRegion fixture intentionally specifies every field for stage ordering
+                            ActiveRegion {
+                                // exhaustive: ActiveRegion fixture intentionally specifies every field for stage ordering
+                                object_id: "test-object".to_string(),
+                                region_id: 0,
+                                resolved_config: ResolvedConfig::default(),
+                                effective_layer_height: 0.2,
+                                nonplanar_shell: None,
+                                is_catchup_layer: false,
+                                catchup_z_bottom: 0.0,
+                                tool_index: 0,
+                            }
+                        }],
+                        has_nonplanar: false,
+
+                        is_sync_layer: i == 0,
+                    }
                 })
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+    }
 }
 
 fn stage(stage_id: &str, module_id: &str) -> CompiledStage {

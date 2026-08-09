@@ -881,8 +881,6 @@ mod tests {
             &[ScopeTotals {
                 scope: CLIP,
                 calls: 4,
-                total_fuel: 0,
-                self_fuel: 0,
                 total_wall_ns: 7_000,
                 self_wall_ns: 7_000,
                 ..Default::default()
@@ -956,8 +954,6 @@ mod tests {
             &[ScopeTotals {
                 scope: OFFSET2,
                 calls: 12,
-                total_fuel: 0,
-                self_fuel: 0,
                 total_wall_ns: 4_000,
                 self_wall_ns: 4_000,
                 ..Default::default()
@@ -993,8 +989,6 @@ mod tests {
             &[ScopeTotals {
                 scope: CLIP,
                 calls: 3,
-                total_fuel: 0,
-                self_fuel: 0,
                 total_wall_ns: 2_500_000_000,
                 self_wall_ns: 2_500_000_000,
                 ..Default::default()

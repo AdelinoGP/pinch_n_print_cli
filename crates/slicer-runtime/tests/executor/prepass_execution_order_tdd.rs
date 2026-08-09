@@ -4,7 +4,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -74,9 +74,7 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
             index: i,
             z: (i + 1) as f32 * layer_height,
             active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
 
@@ -225,14 +223,7 @@ fn tree_support_plan_succeeds_without_layer_planning_stage() {
                 "com.test.tree-support-stub",
             )],
         }],
-        per_layer_stages: vec![],
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     };
 
     let runner = TreeSupportStubRunner;

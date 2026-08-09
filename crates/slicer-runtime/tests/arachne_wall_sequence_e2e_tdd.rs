@@ -6,7 +6,6 @@ mod common;
 #[path = "unit/path_ordering_tdd.rs"]
 mod path_ordering;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -289,13 +288,10 @@ fn plan() -> ExecutionPlan {
         modules: vec![CompiledModuleBuilder::new(module_id.to_string()).build()],
     };
     ExecutionPlan {
-        prepass_stages: Vec::new(),
         per_layer_stages: vec![
             stages(("Layer::Perimeters", ARACHNE_ID)),
             stages(("Layer::PathOptimization", PATH_OPT_ID)),
         ],
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
         global_layers: Arc::new(
             (0..2)
                 .map(|index| slicer_ir::GlobalLayer {
@@ -304,23 +300,14 @@ fn plan() -> ExecutionPlan {
                     active_regions: vec![ActiveRegion {
                         object_id: "arachne-fixture".to_string(),
                         region_id: 0,
-                        resolved_config: slicer_ir::ResolvedConfig::default(),
                         effective_layer_height: 0.2,
-                        nonplanar_shell: None,
-                        is_catchup_layer: false,
-                        catchup_z_bottom: 0.0,
-                        tool_index: 0,
                         ..Default::default()
                     }],
-                    has_nonplanar: false,
                     is_sync_layer: index == 0,
                     ..Default::default()
                 })
                 .collect(),
         ),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: std::collections::BTreeMap::new(),
         ..Default::default()
     }
 }

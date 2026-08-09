@@ -66,9 +66,7 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
             index: i,
             z: (i + 1) as f32 * layer_height,
             active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
 
@@ -140,6 +138,7 @@ impl PrepassStageRunner for NoopRunner {
 }
 
 fn empty_plan() -> ExecutionPlan {
+    // exhaustive: ExecutionPlan fixture intentionally defines every empty execution stage.
     ExecutionPlan {
         prepass_stages: vec![],
         per_layer_stages: vec![],
@@ -149,7 +148,6 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
     }
 }
 

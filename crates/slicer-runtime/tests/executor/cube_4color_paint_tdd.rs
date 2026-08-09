@@ -58,17 +58,10 @@ fn build_50_layer_plan(object_id: &str) -> Arc<LayerPlanIR> {
             active_regions: vec![ActiveRegion {
                 object_id: object_id.to_string(),
                 region_id: 0,
-                resolved_config: ResolvedConfig::default(),
                 effective_layer_height: LAYER_HEIGHT_MM,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            ..Default::default()
+                ..Default::default()
             }],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
     Arc::new(LayerPlanIR {

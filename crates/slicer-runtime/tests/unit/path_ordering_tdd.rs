@@ -6,7 +6,7 @@
 
 use crate::common::seed::seed_slice_ir;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -26,7 +26,7 @@ const PATH_OPT_WASM: &str = concat!(
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer,
     IndexedTriangleSet, InfillIR, InfillRegion, MeshIR, ObjectConfig, ObjectMesh, Point3,
-    Point3WithWidth, ResolvedConfig, SemVer, StageId, Transform3d,
+    Point3WithWidth, SemVer, StageId, Transform3d,
 };
 
 // â"€â"€ Fixtures â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -36,6 +36,7 @@ fn semver() -> SemVer {
 }
 
 fn pt(x: f32, y: f32) -> Point3WithWidth {
+    // exhaustive: path-ordering fixture explicitly defines every point field
     Point3WithWidth {
         x,
         y,
@@ -45,8 +46,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-    
-        ..Default::default()}
+    }
 }
 
 // â"€â"€ AC-1: same-object nearest-neighbor ordering â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -70,14 +70,14 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
-        regions: vec![InfillRegion {
-            object_id: "test-object".to_string(),
-            region_id: 0,
-            sparse_infill: vec![path_at(30.0, 0.0), path_at(10.0, 0.0), path_at(0.0, 0.0)],
-            solid_infill: vec![],
-            ironing: vec![],
-        
-            ..Default::default()}],
+        regions: vec![
+            // exhaustive: fixture defines the complete ordering region.
+            InfillRegion {
+                object_id: "test-object".to_string(),
+                sparse_infill: vec![path_at(30.0, 0.0), path_at(10.0, 0.0), path_at(0.0, 0.0)],
+                ..Default::default()
+            },
+        ],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -275,22 +275,22 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         schema_version: semver(),
         global_layer_index: 0,
         regions: vec![
+            // exhaustive: fixture defines the complete first region used by ordering.
             InfillRegion {
                 object_id: "test-object".to_string(),
                 region_id: 0,
                 sparse_infill: vec![path_at(0.0, 0.0), path_at(0.0, 100.0)],
                 solid_infill: vec![],
                 ironing: vec![],
-            
-                ..Default::default()},
+            },
+            // exhaustive: fixture defines the complete second region used by ordering.
             InfillRegion {
                 object_id: "test-object".to_string(),
                 region_id: 1,
                 sparse_infill: vec![path_at(1.0, 0.0), path_at(1.0, 1.0)],
                 solid_infill: vec![],
                 ironing: vec![],
-            
-                ..Default::default()},
+            },
         ],
     };
 
@@ -390,17 +390,19 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
-        regions: vec![InfillRegion {
-            object_id: "obj".to_string(),
-            region_id: 0,
-            sparse_infill: vec![
-                path_at_explicit(5.0, 0.0, ExtrusionRole::SparseInfill),
-                path_at_explicit(5.0, 0.0, ExtrusionRole::BridgeInfill),
-            ],
-            solid_infill: vec![],
-            ironing: vec![],
-        
-            ..Default::default()}],
+        regions: vec![
+            // exhaustive: fixture defines the complete ordering region.
+            InfillRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                sparse_infill: vec![
+                    path_at_explicit(5.0, 0.0, ExtrusionRole::SparseInfill),
+                    path_at_explicit(5.0, 0.0, ExtrusionRole::BridgeInfill),
+                ],
+                solid_infill: vec![],
+                ironing: vec![],
+            },
+        ],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -505,12 +507,9 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             global_layer_index: 0,
             regions: vec![InfillRegion {
                 object_id: "test-object".to_string(),
-                region_id: 0,
                 sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(15.0, 0.0)],
-                solid_infill: vec![],
-                ironing: vec![],
-            
-                ..Default::default()}],
+                ..Default::default()
+            }],
         }
     }
 
@@ -611,12 +610,9 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         global_layer_index: 0,
         regions: vec![InfillRegion {
             object_id: "test-object".to_string(),
-            region_id: 0,
             sparse_infill: vec![path_at(0.0, 0.0), path_at(10.0, 0.0), path_at(30.0, 0.0)],
-            solid_infill: vec![],
-            ironing: vec![],
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -718,12 +714,9 @@ fn no_module_proposal_leaves_raw_assembled_order() {
         global_layer_index: 0,
         regions: vec![InfillRegion {
             object_id: "test-object".to_string(),
-            region_id: 0,
             sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(10.0, 0.0)],
-            solid_infill: vec![],
-            ironing: vec![],
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -857,11 +850,8 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -880,36 +870,27 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
 
 fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) -> ExecutionPlan {
     ExecutionPlan {
-        prepass_stages: vec![],
         per_layer_stages,
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
         global_layers: Arc::new(
             (0..layer_count)
-                .map(|i| GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+                .map(|i| GlobalLayer {
+                    // exhaustive: test fixture intentionally specifies the  boundary
                     index: i as u32,
                     z: 0.2 * (i as f32 + 1.0),
-                    active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
+                    active_regions: vec![ActiveRegion {
+                        // exhaustive: test fixture intentionally specifies the  boundary
                         object_id: "test-object".to_string(),
                         region_id: 0,
-                        resolved_config: ResolvedConfig::default(),
                         effective_layer_height: 0.2,
-                        nonplanar_shell: None,
-                        is_catchup_layer: false,
-                        catchup_z_bottom: 0.0,
-                        tool_index: 0,
+                        ..Default::default()
                     }],
-                    has_nonplanar: false,
-                   
-    is_sync_layer: i == 0,
+                    is_sync_layer: i == 0,
+                    ..Default::default()
                 })
                 .collect(),
         ),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 fn stage(stage_id: &str, module_id: &str) -> CompiledStage {

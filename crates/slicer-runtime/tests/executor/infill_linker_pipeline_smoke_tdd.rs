@@ -31,10 +31,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            ..Default::default()
+                ..Default::default()
             },
             Point3WithWidth {
                 x: x_end,
@@ -42,10 +39,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            ..Default::default()
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -79,9 +73,7 @@ fn infill_ir() -> InfillIR {
                 sparse_segment(3.0, 5.0),
                 sparse_segment(5.0, 7.0),
             ],
-            solid_infill: Vec::new(),
-            ironing: Vec::new(),
-        ..Default::default()
+            ..Default::default()
         }],
     }
 }
@@ -95,19 +87,9 @@ fn slice_ir() -> SliceIR {
             region_id: 7,
             polygons: vec![square()],
             infill_areas: vec![square()],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: Vec::new(),
-            bridge_orientation_deg: 0.0,
             sparse_infill_area: vec![square()],
-        ..Default::default()
+            ..Default::default()
         }],
         ..Default::default()
     }
@@ -120,12 +102,8 @@ fn perimeter_ir() -> PerimeterIR {
         regions: vec![PerimeterRegion {
             object_id: "object-a".to_string(),
             region_id: 7,
-            walls: Vec::new(),
             infill_areas: vec![square()],
-            seam_candidates: Vec::new(),
-            resolved_seam: None,
-            variant_chain: Vec::new(),
-        ..Default::default()
+            ..Default::default()
         }],
     }
 }
@@ -195,9 +173,7 @@ fn infill_linker_pipeline_smoke() {
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     let mut arena = LayerArena::new();

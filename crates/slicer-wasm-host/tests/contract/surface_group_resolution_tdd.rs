@@ -37,15 +37,18 @@ fn make_classification(
     per_object.insert(
         object_id.to_string(),
         ObjectSurfaceData {
-            surface_groups: vec![SurfaceGroup {
-                id: group_id,
-                facet_indices: vec![0, 1, 2],
-                z_min,
-                z_max,
-                area_mm2,
-                printable,
-                shell_count,
-            }],
+            surface_groups: vec![
+                // exhaustive: surface-group fixture parameterizes every stored field
+                SurfaceGroup {
+                    id: group_id,
+                    facet_indices: vec![0, 1, 2],
+                    z_min,
+                    z_max,
+                    area_mm2,
+                    printable,
+                    shell_count,
+                },
+            ],
             ..Default::default()
         },
     );

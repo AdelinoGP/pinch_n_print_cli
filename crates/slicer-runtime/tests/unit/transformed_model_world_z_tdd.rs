@@ -227,6 +227,7 @@ impl PrepassStageRunner for ScriptedLayerPlanningRunner {
 // ============================================================================
 
 fn execution_plan_fixture() -> ExecutionPlan {
+    // exhaustive: ExecutionPlan transform fixture defines all execution-plan fields.
     ExecutionPlan {
         prepass_stages: vec![CompiledStage {
             stage_id: String::from("PrePass::LayerPlanning"),
@@ -239,8 +240,7 @@ fn execution_plan_fixture() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+    }
 }
 
 fn compiled_layer_planning_module() -> CompiledModule {
@@ -318,18 +318,20 @@ fn mesh_with_90deg_x_rotation() -> MeshIR {
 
     MeshIR {
         schema_version: semver(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: String::from("rotated-cube"),
-            mesh: unit_cube_its(),
-            transform: Transform3d { matrix: rot90_x },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: Some((-1.0, 0.0)),
-        
-            ..Default::default()}],
+        objects: vec![{
+            // exhaustive: ObjectMesh transform fixture defines all mesh fields.
+            ObjectMesh {
+                id: String::from("rotated-cube"),
+                mesh: unit_cube_its(),
+                transform: Transform3d { matrix: rot90_x },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent: Some((-1.0, 0.0)),
+            }
+        }],
         build_volume: BoundingBox3 {
             // After 90Â° X rotation: world X=[0,1], Y=[0,1], Z=[-1,0]
             min: Point3 {
@@ -349,18 +351,20 @@ fn mesh_with_90deg_x_rotation() -> MeshIR {
 fn mesh_with_identity_transform() -> MeshIR {
     MeshIR {
         schema_version: semver(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: String::from("identity-cube"),
-            mesh: unit_cube_its(),
-            transform: identity_transform(),
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: Some((0.0, 1.0)),
-        
-            ..Default::default()}],
+        objects: vec![{
+            // exhaustive: ObjectMesh transform fixture defines all mesh fields.
+            ObjectMesh {
+                id: String::from("identity-cube"),
+                mesh: unit_cube_its(),
+                transform: identity_transform(),
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent: Some((0.0, 1.0)),
+            }
+        }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -381,18 +385,20 @@ fn mesh_with_z_translation(tz: f64) -> MeshIR {
     matrix[14] = tz;
     MeshIR {
         schema_version: semver(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: String::from("translated-cube"),
-            mesh: unit_cube_its(),
-            transform: Transform3d { matrix },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: Some((tz as f32, (tz + 1.0) as f32)),
-        
-            ..Default::default()}],
+        objects: vec![{
+            // exhaustive: ObjectMesh transform fixture defines all mesh fields.
+            ObjectMesh {
+                id: String::from("translated-cube"),
+                mesh: unit_cube_its(),
+                transform: Transform3d { matrix },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent: Some((tz as f32, (tz + 1.0) as f32)),
+            }
+        }],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -480,24 +486,26 @@ fn layer_plan_in_world_space() -> LayerPlanIR {
     let mut global_layers = Vec::new();
     let mut idx = 0u32;
     while z <= world_z_max + 1e-6 {
+        // exhaustive: GlobalLayer transform fixture explicitly defines every field.
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("rotated-cube"),
-                region_id: 0,
-                resolved_config: default_resolved(layer_height),
-                effective_layer_height: layer_height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - layer_height,
-                tool_index: 0,
+            active_regions: vec![{
+                // exhaustive: ActiveRegion transform fixture explicitly defines every field.
+                ActiveRegion {
+                    object_id: String::from("rotated-cube"),
+                    region_id: 0,
+                    resolved_config: default_resolved(layer_height),
+                    effective_layer_height: layer_height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - layer_height,
+                    tool_index: 0,
+                }
             }],
             has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            is_sync_layer: true,
+        });
         z += layer_height;
         idx += 1;
     }
@@ -530,24 +538,26 @@ fn layer_plan_identity_world_z() -> LayerPlanIR {
     let mut global_layers = Vec::new();
     let mut idx = 0u32;
     while z <= world_z_max + 1e-6 {
+        // exhaustive: GlobalLayer transform fixture explicitly defines every field.
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("identity-cube"),
-                region_id: 0,
-                resolved_config: default_resolved(layer_height),
-                effective_layer_height: layer_height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - layer_height,
-                tool_index: 0,
+            active_regions: vec![{
+                // exhaustive: ActiveRegion transform fixture explicitly defines every field.
+                ActiveRegion {
+                    object_id: String::from("identity-cube"),
+                    region_id: 0,
+                    resolved_config: default_resolved(layer_height),
+                    effective_layer_height: layer_height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - layer_height,
+                    tool_index: 0,
+                }
             }],
             has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            is_sync_layer: true,
+        });
         z += layer_height;
         idx += 1;
     }
@@ -581,24 +591,26 @@ fn layer_plan_for_translated_mesh(tz: f64) -> LayerPlanIR {
     let mut global_layers = Vec::new();
     let mut idx = 0u32;
     while z <= world_z_max + 1e-6 {
+        // exhaustive: GlobalLayer transform fixture explicitly defines every field.
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("translated-cube"),
-                region_id: 0,
-                resolved_config: default_resolved(layer_height),
-                effective_layer_height: layer_height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - layer_height,
-                tool_index: 0,
+            active_regions: vec![{
+                // exhaustive: ActiveRegion transform fixture explicitly defines every field.
+                ActiveRegion {
+                    object_id: String::from("translated-cube"),
+                    region_id: 0,
+                    resolved_config: default_resolved(layer_height),
+                    effective_layer_height: layer_height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - layer_height,
+                    tool_index: 0,
+                }
             }],
             has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            is_sync_layer: true,
+        });
         z += layer_height;
         idx += 1;
     }

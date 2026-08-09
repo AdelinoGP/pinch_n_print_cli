@@ -106,7 +106,7 @@ fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {
         .ordered_entities
         .first()
         .expect("witness entity prepended")
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_entity(
@@ -114,9 +114,9 @@ fn make_entity(
     topo_order: u32,
     point_count: usize,
     speed_factor: f32,
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 ) -> PrintEntity {
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
         entity_id: (topo_order as u64) + 1,
         path: ExtrusionPath3D {
@@ -127,10 +127,7 @@ fn make_entity(
                     z: layer_index as f32,
                     width: 0.4 + index as f32,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 })
                 .collect(),
             role: ExtrusionRole::OuterWall,
@@ -145,9 +142,9 @@ fn make_entity(
             variant_chain: Vec::new(),
         },
         topo_order,
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_layer(
@@ -158,17 +155,13 @@ fn make_layer(
     z_hops: Vec<ZHop>,
 ) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index,
         z,
         ordered_entities,
         tool_changes,
         z_hops,
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 

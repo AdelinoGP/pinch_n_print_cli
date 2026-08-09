@@ -296,11 +296,8 @@ fn one_layer_arena() -> (slicer_runtime::LayerArena, GlobalLayer) {
     let layer = GlobalLayer {
         index: 5,
         z: 1.0,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     (slicer_runtime::LayerArena::new(), layer)
 }
 
@@ -453,20 +450,9 @@ fn slice_ir_with_regions(
                     holes: Vec::new(),
                 })
                 .collect(),
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        
-            ..Default::default()})
+            ..Default::default()
+        })
         .collect();
     SliceIR {
         schema_version: semver(1, 0, 0),
@@ -498,11 +484,8 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
     let layer = GlobalLayer {
         index: 7,
         z: 1.4,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     let mut arena = LayerArena::new();
     let slice = slice_ir_with_regions(7, 1.4, 2, 3);
     arena.set_slice(slice).expect("commit slice ir");
@@ -550,11 +533,8 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     let layer = GlobalLayer {
         index: 9,
         z: 1.8,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     let mut arena = LayerArena::new();
     // 3 regions, 4 polygons each â†’ total 12 polygons.
     let slice = slice_ir_with_regions(9, 1.8, 3, 4);
@@ -651,11 +631,8 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
         let layer = GlobalLayer {
             index: 2,
             z: 0.4,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
-        
-            ..Default::default()};
+            ..Default::default()
+        };
         let mut arena = LayerArena::new();
         arena
             .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
@@ -886,17 +863,13 @@ fn paint_semantic_custom_payload_roundtrip() {
 fn wall_feature_flags_custom_payload_roundtrip() {
     // Create IR WallFeatureFlags with one custom entry
     let ir_flags = slicer_ir::WallFeatureFlags {
-        tool_index: None,
-        fuzzy_skin: false,
-        is_bridge: false,
-        is_thin_wall: false,
-        skip_ironing: false,
         custom: std::collections::HashMap::from_iter([(
             "key".to_string(),
             slicer_ir::PaintValue::Scalar(0.5),
         )]),
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     // Convert IR â†’ WIT using inline logic (mirrors macro's __slicer_ir_feature_to_wit)
     let wit_flags = WitWallFeatureFlag {
@@ -955,15 +928,15 @@ fn wall_feature_flags_custom_multiple_entries_roundtrip() {
         tool_index: Some(1),
         fuzzy_skin: true,
         is_bridge: true,
-        is_thin_wall: false,
         skip_ironing: true,
         custom: std::collections::HashMap::from_iter([
             ("a".to_string(), slicer_ir::PaintValue::Scalar(0.1)),
             ("b".to_string(), slicer_ir::PaintValue::Flag(true)),
             ("c".to_string(), slicer_ir::PaintValue::ToolIndex(2)),
         ]),
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     // Convert IR â†’ WIT using inline logic
     let wit_flags = WitWallFeatureFlag {

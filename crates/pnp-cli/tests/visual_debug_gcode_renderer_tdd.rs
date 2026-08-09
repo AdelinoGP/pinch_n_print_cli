@@ -53,6 +53,7 @@ fn gcode_request(
     resolution_scale: u32,
     gcode_line_width_mm: Option<f64>,
 ) -> VisualDebugRequest {
+    // exhaustive: standalone gcode request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Gcode {
@@ -624,6 +625,7 @@ fn ac_gap1_gcode_rejects_named_layer_selector() {
     let gcode_path = write_gcode(tmp.path(), "final.gcode", SUPPORTED_SINGLE_LAYER_GCODE);
     let output = tmp.path().join("bundle");
 
+    // exhaustive: validation regression request with a named layer selector
     let req = VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Gcode {

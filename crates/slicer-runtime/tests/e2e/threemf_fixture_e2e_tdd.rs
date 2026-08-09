@@ -110,12 +110,7 @@ fn layer_plan_for_mesh(mesh_ir: &MeshIR, layer_count: u32, layer_height_mm: f32)
                 ActiveRegion {
                     object_id: obj.id.clone(),
                     region_id: ri as u64,
-                    resolved_config: ResolvedConfig::default(),
                     effective_layer_height: layer_height_mm,
-                    nonplanar_shell: None,
-                    is_catchup_layer: false,
-                    catchup_z_bottom: 0.0,
-                    tool_index: 0,
                     ..Default::default()
                 }
             })
@@ -124,8 +119,6 @@ fn layer_plan_for_mesh(mesh_ir: &MeshIR, layer_count: u32, layer_height_mm: f32)
             index: i,
             z,
             active_regions,
-            has_nonplanar: false,
-            is_sync_layer: false,
             ..Default::default()
         });
     }
@@ -264,21 +257,8 @@ fn negative_part_subtracts_via_full_pipeline() {
         z: z_test,
         regions: vec![SlicedRegion {
             object_id: parent_obj.id.clone(),
-            region_id: 0,
             polygons: polygons.clone(),
-            infill_areas: vec![],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
             ..Default::default()
         }],
     };
@@ -822,21 +802,8 @@ fn model_without_negative_skips_subtract() {
         z: 5.0,
         regions: vec![SlicedRegion {
             object_id: obj.id.clone(),
-            region_id: 0,
             polygons: polygons_before.clone(),
-            infill_areas: vec![],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
             ..Default::default()
         }],
     };
@@ -1395,8 +1362,6 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
                 data: HashMap::new(),
             },
             modifier_volumes: vec![mv],
-            paint_data: None,
-            world_z_extent: None,
             ..Default::default()
         }],
         build_volume: BoundingBox3 {
@@ -1569,8 +1534,6 @@ fn synthetic_object_with_modifiers(object_id: &str, mods: Vec<ModifierVolume>) -
             data: HashMap::new(),
         },
         modifier_volumes: mods,
-        paint_data: None,
-        world_z_extent: None,
         ..Default::default()
     }
 }
@@ -1591,16 +1554,9 @@ fn synthetic_layer_plan_single_region(object_id: &str) -> LayerPlanIR {
             z: 0.1,
             active_regions: vec![ActiveRegion {
                 object_id: object_id.into(),
-                region_id: 0,
-                resolved_config: ResolvedConfig::default(),
                 effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
                 ..Default::default()
             }],
-            has_nonplanar: false,
             is_sync_layer: true,
             ..Default::default()
         }],
@@ -1851,21 +1807,8 @@ fn negative_part_extruder_does_not_affect_subtract() {
         z: z_test,
         regions: vec![SlicedRegion {
             object_id: parent_obj.id.clone(),
-            region_id: 0,
             polygons: polygons.clone(),
-            infill_areas: vec![],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
             ..Default::default()
         }],
     };

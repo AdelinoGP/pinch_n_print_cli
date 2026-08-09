@@ -181,20 +181,10 @@ fn ordinary_slice_has_no_visual_debug_overhead() {
         let opts = SliceRunOptions {
             mesh: std::sync::Arc::clone(&mesh),
             model_label: model.to_string_lossy().into_owned(),
-            config_path: None,
             output_path: Some(gcode_path.clone()),
             module_dirs: vec![modules.clone()],
             no_default_module_paths: true,
-            thumbnail: None,
-            report: None,
-            report_verbose: false,
-            instrument_stderr: false,
-            profile: false,
-            profile_verbose: false,
-            progress_events: false,
-            cancel_flag: None,
-            config_overrides: std::collections::HashMap::new(),
-        ..Default::default()
+            ..Default::default()
         };
 
         let outcome = run_slice(opts).unwrap_or_else(|e| {

@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ConfigId, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan,
-    ResolvedConfig, SemVer,
+    ActiveRegion, ConfigId, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, SemVer,
 };
 use slicer_scheduler::{
     build_execution_plan, CompiledModuleStatic, ConfigFieldEntry, ExecutionModuleBinding,
@@ -18,9 +17,8 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
     let global_layers = Arc::new(vec![GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
         is_sync_layer: true,
+        ..Default::default()
     }]);
     let region_plans = Arc::new(HashMap::from([(
         RegionKey {
@@ -271,9 +269,8 @@ fn layer_index_at_budget_boundary_is_rejected() {
         global_layers: Arc::new(vec![GlobalLayer {
             index: MAX_LAYER_INDEX, // exactly at boundary
             z: 20_000.0,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
             is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -302,9 +299,8 @@ fn layer_index_just_below_budget_is_accepted() {
         global_layers: Arc::new(vec![GlobalLayer {
             index: MAX_LAYER_INDEX - 1,
             z: 19_999.8,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
             is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -321,9 +317,7 @@ fn layer_index_zero_is_accepted() {
         global_layers: Arc::new(vec![GlobalLayer {
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -456,16 +450,12 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
                 GlobalLayer {
                     index: 0,
                     z: 0.2,
-                    active_regions: Vec::new(),
-                    has_nonplanar: false,
-                    is_sync_layer: false,
+                    ..Default::default()
                 },
                 GlobalLayer {
                     index: 1,
                     z: 0.4,
-                    active_regions: Vec::new(),
-                    has_nonplanar: false,
-                    is_sync_layer: false,
+                    ..Default::default()
                 },
             ]),
             region_plans: Arc::new(HashMap::new()),
@@ -505,9 +495,7 @@ fn layer_index_u32_max_is_rejected_with_budget_error() {
         global_layers: Arc::new(vec![GlobalLayer {
             index: u32::MAX,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -539,9 +527,7 @@ fn layer_budget_check_preempts_module_binding_errors() {
         global_layers: Arc::new(vec![GlobalLayer {
             index: MAX_LAYER_INDEX,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -565,23 +551,17 @@ fn layer_budget_reports_first_offending_layer_deterministically() {
             GlobalLayer {
                 index: MAX_LAYER_INDEX,
                 z: 0.0,
-                active_regions: Vec::new(),
-                has_nonplanar: false,
-                is_sync_layer: false,
+                ..Default::default()
             },
             GlobalLayer {
                 index: MAX_LAYER_INDEX + 1,
                 z: 0.2,
-                active_regions: Vec::new(),
-                has_nonplanar: false,
-                is_sync_layer: false,
+                ..Default::default()
             },
             GlobalLayer {
                 index: u32::MAX,
                 z: 0.4,
-                active_regions: Vec::new(),
-                has_nonplanar: false,
-                is_sync_layer: false,
+                ..Default::default()
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
@@ -681,15 +661,13 @@ fn resolve_active_regions_uses_precomputed_index() {
             index: 0,
             z: 0.2,
             active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         },
         GlobalLayer {
             index: 1,
             z: 0.4,
             active_regions: vec![active_region("cube", 1)],
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         },
     ]);
 
@@ -799,8 +777,7 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
         index: 0,
         z: 0.2,
         active_regions: vec![], // no active regions
-        has_nonplanar: false,
-        is_sync_layer: false,
+        ..Default::default()
     }]);
 
     let region_plans = Arc::new(HashMap::new()); // no region plans
@@ -837,12 +814,8 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id,
-        resolved_config: ResolvedConfig::default(),
         effective_layer_height: 0.2,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
+        ..Default::default()
     }
 }
 

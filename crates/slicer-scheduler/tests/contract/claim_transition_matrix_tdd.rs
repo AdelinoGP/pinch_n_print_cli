@@ -110,6 +110,7 @@ fn request_with_per_layer_transition(
             scope: ConflictScope::Global,
         });
     }
+    // exhaustive: boundary request helper must preserve every validation carrier.
     DagValidationRequest {
         modules: vec![module_a.clone(), module_b.clone()],
         stage_dags: vec![stage_dag_for(stage, &[module_a.clone(), module_b.clone()])],
@@ -251,6 +252,7 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
         "Layer::Perimeters",
         "perimeter-generator",
     );
+    // exhaustive: this contract specifies the complete cross-layer request payload.
     let request = DagValidationRequest {
         modules: vec![alpha.clone()],
         stage_dags: vec![stage_dag_for("Layer::Perimeters", &[alpha.clone()])],

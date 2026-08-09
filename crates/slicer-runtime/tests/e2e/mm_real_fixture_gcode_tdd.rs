@@ -74,14 +74,6 @@ fn slice_fixture(model: PathBuf, config_overrides: HashMap<String, ConfigValue>)
         output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         config_overrides,
         ..Default::default()
     })

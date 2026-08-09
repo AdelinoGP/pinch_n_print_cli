@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigKey, ConfigValue, GlobalLayer, IndexedTriangleSet,
-    LayerPlanIR, MeshIR, ObjectMesh, Point3, ResolvedConfig, Transform3d,
+    LayerPlanIR, MeshIR, ObjectMesh, Point3, Transform3d,
 };
 use slicer_runtime::{
     commit_overhang_annotation_builtin, commit_slice_builtin, execute_mesh_analysis, Blackboard,
@@ -194,13 +194,8 @@ fn active_region(object_id: &str) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id: 0,
-        resolved_config: ResolvedConfig::default(),
         effective_layer_height: 1.0,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -209,9 +204,7 @@ fn global_layer(index: u32, z: f32, object_ids: &[&str]) -> GlobalLayer {
         index,
         z,
         active_regions: object_ids.iter().map(|id| active_region(id)).collect(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -237,7 +230,7 @@ fn seed_and_slice(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> Blackboard {
         .expect("commit surface classification");
     commit_slice_builtin(&mut bb).expect("PrePass::Slice must succeed");
     bb
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 /// Ordering guard: `commit_overhang_annotation_builtin` must refuse to run

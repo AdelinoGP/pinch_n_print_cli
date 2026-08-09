@@ -38,27 +38,16 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 }
 
 fn empty_plan() -> ExecutionPlan {
-    ExecutionPlan {
-        prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    }
+    ExecutionPlan::default()
 }
 
-// Sweep packet 197 removes this allow when it converts the six call sites.
-#[allow(dead_code)]
 fn pipeline_config_base(
     mesh_ir: Arc<MeshIR>,
     plan: ExecutionPlan,
     runners: PipelineStageRunners,
 ) -> PipelineConfig {
+    // exhaustive: single per-crate construction point for trait-object holder PipelineConfig
     PipelineConfig {
-        // exhaustive: single per-crate construction point for trait-object holder PipelineConfig
         cancel_flag: None,
         mesh_ir,
         plan,
@@ -76,9 +65,7 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
     GlobalLayer {
         index,
         z,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
+        ..Default::default()
     }
 }
 
@@ -172,6 +159,7 @@ impl GCodeSerializer for MinimalSerializer {
 }
 
 fn noop_runners() -> PipelineStageRunners {
+    // exhaustive: test-only no-op runner bundle for pipeline execution
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),
@@ -183,6 +171,7 @@ fn noop_runners() -> PipelineStageRunners {
 }
 
 fn default_runners() -> PipelineStageRunners {
+    // exhaustive: test-only runner bundle using the real emitter and serializer
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),
@@ -204,17 +193,7 @@ fn e2e_load_stl_empty_plan() {
         "loaded mesh should have objects"
     );
 
-    let config = PipelineConfig {
-        mesh_ir: Arc::new(mesh_ir),
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    };
+    let config = pipeline_config_base(Arc::new(mesh_ir), empty_plan(), default_runners());
 
     let result = run_pipeline(config);
     assert!(
@@ -231,31 +210,9 @@ fn e2e_deterministic_output() {
     let mesh1 = Arc::new(load_model(&stl_fixture_path()).unwrap());
     let mesh2 = mesh1.clone();
 
-    let out1 = run_pipeline(PipelineConfig {
-        mesh_ir: mesh1,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    })
-    .unwrap();
+    let out1 = run_pipeline(pipeline_config_base(mesh1, empty_plan(), default_runners())).unwrap();
 
-    let out2 = run_pipeline(PipelineConfig {
-        mesh_ir: mesh2,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    })
-    .unwrap();
+    let out2 = run_pipeline(pipeline_config_base(mesh2, empty_plan(), default_runners())).unwrap();
 
     assert_eq!(
         out1.gcode_text, out2.gcode_text,
@@ -307,23 +264,13 @@ fn e2e_with_layers() {
         }
     }
 
-    let plan = ExecutionPlan {
-        prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        // No per-layer stages, so global_layers is empty: slice_ir not needed.
-        // The postpass/gcode serialization path is still exercised.
-        global_layers: Arc::new(Vec::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    };
+    let plan = ExecutionPlan::default();
 
-    let config = PipelineConfig {
+    let config = pipeline_config_base(
         mesh_ir,
         plan,
-        runners: PipelineStageRunners {
+        // exhaustive: inline runner bundle for the layer-count emitter test
+        PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
             layer: Box::new(NoopLayerRunner),
             finalization: Box::new(NoopFinalizationRunner),
@@ -331,13 +278,7 @@ fn e2e_with_layers() {
             emitter: Box::new(LayerCountEmitter),
             serializer: Box::new(DefaultGCodeSerializer::new()),
         },
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    };
+    );
 
     let output = run_pipeline(config).unwrap();
     // Pipeline ran without error — the gcode path was exercised
@@ -369,17 +310,7 @@ fn e2e_pipeline_uses_real_mesh() {
         "20mm box should have 36 indices (12 triangles × 3)"
     );
 
-    let config = PipelineConfig {
-        mesh_ir: mesh_clone,
-        plan: empty_plan(),
-        runners: noop_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    };
+    let config = pipeline_config_base(mesh_clone, empty_plan(), noop_runners());
 
     let result = run_pipeline(config);
     assert!(result.is_ok(), "pipeline with real mesh should succeed");
@@ -394,17 +325,7 @@ fn e2e_output_to_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let output_path = tmp_dir.path().join("test_output.gcode");
 
-    let config = PipelineConfig {
-        mesh_ir,
-        plan: empty_plan(),
-        runners: default_runners(),
-        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
-        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
-        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
-        wasm_handles: HashMap::new(),
-        cancel_flag: None,
-        support_tools: Default::default(),
-    };
+    let config = pipeline_config_base(mesh_ir, empty_plan(), default_runners());
 
     let output = run_pipeline(config).unwrap();
 

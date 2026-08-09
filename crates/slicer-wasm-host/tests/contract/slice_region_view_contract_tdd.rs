@@ -45,31 +45,34 @@ fn slice_region_view_contract() {
 
     let polygon = square();
     let region = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: Vec::new(),
-            object_id: "object-172".into(),
-            region_id: "7".into(),
-            polygons: vec![polygon.clone()],
-            infill_areas: vec![polygon],
-            effective_layer_height: 0.18,
-            z: 1.32,
-            has_nonplanar: true,
-            segment_annotations: Vec::new(),
-            variant_chain: Vec::new(),
-            needs_support: true,
-            top_shell_index: Some(2),
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: Vec::new(),
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: slice-region view fixture supplies every stored field
+            SliceRegionData {
+                prev_layer_boundary: Vec::new(),
+                object_id: "object-172".into(),
+                region_id: "7".into(),
+                polygons: vec![polygon.clone()],
+                infill_areas: vec![polygon],
+                effective_layer_height: 0.18,
+                z: 1.32,
+                has_nonplanar: true,
+                segment_annotations: Vec::new(),
+                variant_chain: Vec::new(),
+                needs_support: true,
+                top_shell_index: Some(2),
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: Vec::new(),
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .unwrap();
     let rep = region.rep();
 
@@ -124,31 +127,34 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         .push_config_view(ConfigViewData { fields })
         .expect("config resource");
     let region_handle = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: vec![boundary.clone()],
-            object_id: "object-live".into(),
-            region_id: "7".into(),
-            polygons: vec![square_with_bounds(0, 100_000)],
-            infill_areas: Vec::new(),
-            effective_layer_height: 0.2,
-            z: 0.4,
-            has_nonplanar: false,
-            segment_annotations: Vec::new(),
-            variant_chain: Vec::new(),
-            needs_support: true,
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: Vec::new(),
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: live-perimeter fixture supplies every stored field
+            SliceRegionData {
+                prev_layer_boundary: vec![boundary.clone()],
+                object_id: "object-live".into(),
+                region_id: "7".into(),
+                polygons: vec![square_with_bounds(0, 100_000)],
+                infill_areas: Vec::new(),
+                effective_layer_height: 0.2,
+                z: 0.4,
+                has_nonplanar: false,
+                segment_annotations: Vec::new(),
+                variant_chain: Vec::new(),
+                needs_support: true,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: Vec::new(),
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .expect("slice-region resource");
     let rep = region_handle.rep();
     let returned_boundary = HostSliceRegionView::prev_layer_boundary(&mut ctx, own(rep)).unwrap();
@@ -168,13 +174,16 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         assert_eq!(actual.y, expected.y);
     }
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 0,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: paint-region view fixture supplies every stored field
+            PaintRegionLayerData {
+                layer_index: 0,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .expect("paint resource");
     let output_handle = ctx
         .push_perimeter_output_builder()

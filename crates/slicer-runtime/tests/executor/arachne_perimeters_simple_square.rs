@@ -157,20 +157,8 @@ fn arachne_perimeters_simple_square_produces_walls() {
                     },
                     holes: Vec::new(),
                 }],
-                infill_areas: Vec::new(),
-                nonplanar_surface: None,
                 effective_layer_height: 0.2,
-                segment_annotations: std::collections::HashMap::new(),
-                variant_chain: Vec::new(),
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: vec![],
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
-            ..Default::default()
+                ..Default::default()
             }],
             ..Default::default()
         })
@@ -181,10 +169,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
 
     crate::common::run_layer_and_commit_with_bundle(

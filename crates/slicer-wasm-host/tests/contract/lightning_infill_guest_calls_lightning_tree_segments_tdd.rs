@@ -87,6 +87,7 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         z: 0.2,
         ..GlobalLayer::default()
     };
+    // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
         paint_regions: None,

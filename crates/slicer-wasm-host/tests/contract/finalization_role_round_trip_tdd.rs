@@ -22,16 +22,19 @@ use slicer_wasm_host::host::{
 
 fn make_finalization_path(role_tag: &str) -> ExtrusionPath3d {
     ExtrusionPath3d {
-        points: vec![Point3WithWidth {
-            overhang_distance_mm: None,
-            x: 0.0,
-            y: 0.0,
-            z: 0.2,
-            width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-        }],
+        points: vec![
+            // exhaustive: Point3WithWidth has no Default; finalization fixture specifies all fields
+            Point3WithWidth {
+                overhang_distance_mm: None,
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+            },
+        ],
         role: ExtrusionRole::Custom(role_tag.to_string()),
         speed_factor: 1.0,
     }

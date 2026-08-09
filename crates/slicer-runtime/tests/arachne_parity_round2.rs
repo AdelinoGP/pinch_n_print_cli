@@ -244,7 +244,6 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
     let side = slicer_ir::mm_to_units(10.0);
     let region = SlicedRegion {
         object_id: "obj-a".to_string(),
-        region_id: 0,
         polygons: vec![ExPolygon {
             contour: Polygon {
                 points: vec![
@@ -256,20 +255,8 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
             },
             holes: Vec::new(),
         }],
-        infill_areas: Vec::new(),
-        nonplanar_surface: None,
         effective_layer_height: 0.2,
-        segment_annotations: HashMap::new(),
-        variant_chain: Vec::new(),
-        top_shell_index: None,
-        bottom_shell_index: None,
-        top_solid_fill: Vec::new(),
-        bottom_solid_fill: Vec::new(),
-        is_bridge: false,
-        bridge_areas: Vec::new(),
-        bridge_orientation_deg: 0.0,
-        sparse_infill_area: Vec::new(),
-    ..Default::default()
+        ..Default::default()
     };
     let mut arena = LayerArena::new();
     arena
@@ -284,10 +271,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,

@@ -63,41 +63,47 @@ fn guest_reads_config_value_and_uses_it_in_output() {
 
     // Provide one slice region at z=1.0
     let region_handle = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: Vec::new(),
-            object_id: "obj-1".into(),
-            region_id: "1".into(),
-            polygons: vec![],
-            infill_areas: vec![],
-            effective_layer_height: 0.2,
-            z: 1.0,
-            has_nonplanar: false,
-            segment_annotations: vec![],
-            variant_chain: vec![],
-            needs_support: true,
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            SliceRegionData {
+                prev_layer_boundary: Vec::new(),
+                object_id: "obj-1".into(),
+                region_id: "1".into(),
+                polygons: vec![],
+                infill_areas: vec![],
+                effective_layer_height: 0.2,
+                z: 1.0,
+                has_nonplanar: false,
+                segment_annotations: vec![],
+                variant_chain: vec![],
+                needs_support: true,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 0,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            PaintRegionLayerData {
+                layer_index: 0,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -176,41 +182,47 @@ fn guest_reads_region_z_from_ir_view() {
         })
         .unwrap();
     let region_handle = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: Vec::new(),
-            object_id: "obj-z-test".into(),
-            region_id: "2".into(),
-            polygons: vec![],
-            infill_areas: vec![],
-            effective_layer_height: 0.3,
-            z: 5.5, // distinctive z value
-            has_nonplanar: false,
-            segment_annotations: vec![],
-            variant_chain: vec![],
-            needs_support: true,
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            SliceRegionData {
+                prev_layer_boundary: Vec::new(),
+                object_id: "obj-z-test".into(),
+                region_id: "2".into(),
+                polygons: vec![],
+                infill_areas: vec![],
+                effective_layer_height: 0.3,
+                z: 5.5, // distinctive z value
+                has_nonplanar: false,
+                segment_annotations: vec![],
+                variant_chain: vec![],
+                needs_support: true,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 42,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            PaintRegionLayerData {
+                layer_index: 42,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -267,41 +279,47 @@ fn guest_emits_output_via_infill_builder() {
         })
         .unwrap();
     let region_handle = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: Vec::new(),
-            object_id: "obj-out".into(),
-            region_id: "3".into(),
-            polygons: vec![],
-            infill_areas: vec![],
-            effective_layer_height: 0.2,
-            z: 2.0,
-            has_nonplanar: false,
-            segment_annotations: vec![],
-            variant_chain: vec![],
-            needs_support: true,
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            SliceRegionData {
+                prev_layer_boundary: Vec::new(),
+                object_id: "obj-out".into(),
+                region_id: "3".into(),
+                polygons: vec![],
+                infill_areas: vec![],
+                effective_layer_height: 0.2,
+                z: 2.0,
+                has_nonplanar: false,
+                segment_annotations: vec![],
+                variant_chain: vec![],
+                needs_support: true,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 0,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            PaintRegionLayerData {
+                layer_index: 0,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -366,41 +384,47 @@ fn guest_logs_via_host_services() {
         })
         .unwrap();
     let region_handle = ctx
-        .push_slice_region(SliceRegionData {
-            prev_layer_boundary: Vec::new(),
-            object_id: "obj-log".into(),
-            region_id: "4".into(),
-            polygons: vec![],
-            infill_areas: vec![],
-            effective_layer_height: 0.2,
-            z: 0.2,
-            has_nonplanar: false,
-            segment_annotations: vec![],
-            variant_chain: vec![],
-            needs_support: true,
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-            held_claims: Vec::new(),
-            overhang_areas: Vec::new(),
-            overhang_quartile_polygons: Vec::new(),
-            surface_group: None,
-        })
+        .push_slice_region(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            SliceRegionData {
+                prev_layer_boundary: Vec::new(),
+                object_id: "obj-log".into(),
+                region_id: "4".into(),
+                polygons: vec![],
+                infill_areas: vec![],
+                effective_layer_height: 0.2,
+                z: 0.2,
+                has_nonplanar: false,
+                segment_annotations: vec![],
+                variant_chain: vec![],
+                needs_support: true,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                held_claims: Vec::new(),
+                overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
+                surface_group: None,
+            },
+        )
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 7,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            PaintRegionLayerData {
+                layer_index: 7,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -462,41 +486,47 @@ fn repeated_calls_produce_independent_outputs() {
             })
             .unwrap();
         let region_handle = ctx
-            .push_slice_region(SliceRegionData {
-                prev_layer_boundary: Vec::new(),
-                object_id: format!("obj-{i}"),
-                region_id: (i + 1).to_string(),
-                polygons: vec![],
-                infill_areas: vec![],
-                effective_layer_height: 0.2,
-                z,
-                has_nonplanar: false,
-                segment_annotations: vec![],
-                variant_chain: vec![],
-                needs_support: true,
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: vec![],
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
-                held_claims: Vec::new(),
-                overhang_areas: Vec::new(),
-                overhang_quartile_polygons: Vec::new(),
-                surface_group: None,
-            })
+            .push_slice_region(
+                // exhaustive: WIT-boundary carrier test asserts every field crosses
+                SliceRegionData {
+                    prev_layer_boundary: Vec::new(),
+                    object_id: format!("obj-{i}"),
+                    region_id: (i + 1).to_string(),
+                    polygons: vec![],
+                    infill_areas: vec![],
+                    effective_layer_height: 0.2,
+                    z,
+                    has_nonplanar: false,
+                    segment_annotations: vec![],
+                    variant_chain: vec![],
+                    needs_support: true,
+                    top_shell_index: None,
+                    bottom_shell_index: None,
+                    top_solid_fill: Vec::new(),
+                    bottom_solid_fill: Vec::new(),
+                    is_bridge: false,
+                    bridge_areas: vec![],
+                    bridge_orientation_deg: 0.0,
+                    sparse_infill_area: Vec::new(),
+                    held_claims: Vec::new(),
+                    overhang_areas: Vec::new(),
+                    overhang_quartile_polygons: Vec::new(),
+                    surface_group: None,
+                },
+            )
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
         let paint_handle = ctx
-            .push_paint_region_layer_view(PaintRegionLayerData {
-                layer_index: i,
-                regions_by_semantic: HashMap::new(),
-                custom_regions: HashMap::new(),
-                support_plan_segments: HashMap::new(),
-                lightning_tree_segments: HashMap::new(),
-            })
+            .push_paint_region_layer_view(
+                // exhaustive: WIT-boundary carrier test asserts every field crosses
+                PaintRegionLayerData {
+                    layer_index: i,
+                    regions_by_semantic: HashMap::new(),
+                    custom_regions: HashMap::new(),
+                    support_plan_segments: HashMap::new(),
+                    lightning_tree_segments: HashMap::new(),
+                },
+            )
             .unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
@@ -568,13 +598,16 @@ fn empty_region_list_handled_gracefully() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(PaintRegionLayerData {
-            layer_index: 0,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-            lightning_tree_segments: HashMap::new(),
-        })
+        .push_paint_region_layer_view(
+            // exhaustive: WIT-boundary carrier test asserts every field crosses
+            PaintRegionLayerData {
+                layer_index: 0,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            },
+        )
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);

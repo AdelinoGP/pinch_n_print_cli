@@ -77,25 +77,15 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
     let opts = SliceRunOptions {
         mesh,
         model_label: model_path.to_string_lossy().into_owned(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
         // Ironing defaults to OFF (OrcaSlicer parity, commit d11f9ff8), so this
         // per-painted-color ironing regression must enable it explicitly.
         config_overrides: std::collections::HashMap::from([(
             "ironing_enabled".to_string(),
             ConfigValue::Bool(true),
         )]),
-    ..Default::default()
+        ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))

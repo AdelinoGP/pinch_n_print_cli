@@ -35,6 +35,7 @@ use slicer_wasm_host::host::{
 fn make_path(z: f32) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![
+            // exhaustive: Point3WithWidth has no Default; envelope fixture specifies all geometry fields
             Point3WithWidth {
                 overhang_distance_mm: None,
                 x: 0.0,
@@ -45,6 +46,7 @@ fn make_path(z: f32) -> ExtrusionPath3d {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
             },
+            // exhaustive: Point3WithWidth has no Default; envelope fixture specifies all geometry fields
             Point3WithWidth {
                 overhang_distance_mm: None,
                 x: 10.0,
@@ -67,6 +69,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
         loop_type: WallLoopType::Outer,
         path: ExtrusionPath3d {
             points: vec![
+                // exhaustive: Point3WithWidth has no Default; wall-loop fixture specifies all geometry fields
                 Point3WithWidth {
                     overhang_distance_mm: None,
                     x: 0.0,
@@ -77,6 +80,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                 },
+                // exhaustive: Point3WithWidth has no Default; wall-loop fixture specifies all geometry fields
                 Point3WithWidth {
                     overhang_distance_mm: None,
                     x: 10.0,

@@ -80,6 +80,7 @@ fn gcode_request(
     layers: Vec<LayerSelector>,
     visualizations: Vec<VisualizationSpec>,
 ) -> VisualDebugRequest {
+    // exhaustive: standalone gcode request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Gcode {
@@ -101,6 +102,7 @@ fn gcode_request(
 /// `validate_request` (Phase 1), before the model/config/modules are ever
 /// touched.
 fn unreachable_model_request(layers: Vec<LayerSelector>) -> VisualDebugRequest {
+    // exhaustive: deliberately unreachable model request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {

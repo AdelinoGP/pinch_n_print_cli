@@ -63,10 +63,8 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
             config: slicer_ir::ObjectConfig {
                 data: std::collections::HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
             world_z_extent: None,
-        ..Default::default()
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -147,7 +145,7 @@ fn load_guest(engine: &WasmEngine) -> Arc<slicer_runtime::WasmComponent> {
 /// One entity with entity_id = 1 and speed_factor = 1.0.
 // exhaustive: PrintEntity explicit test fixture preserves boundary data
 fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -> PrintEntity {
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {
@@ -158,10 +156,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -169,10 +164,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -187,24 +179,18 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
             variant_chain: Vec::new(),
         },
         topo_order: 0,
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,
         ordered_entities: entities,
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    ..Default::default()
+        ..Default::default()
     }
 }
 

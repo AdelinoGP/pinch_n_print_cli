@@ -78,23 +78,27 @@ fn build_layer_plan(object_id: &str, layer_count: u32) -> Arc<LayerPlanIR> {
     let global_layer_indices: Vec<u32> = (0..layer_count).collect();
     let layers: Vec<GlobalLayer> = global_layer_indices
         .iter()
-        .map(|idx| GlobalLayer {
-            index: *idx,
-            z: LAYER_HEIGHT_MM * (*idx as f32 + 0.5),
-            active_regions: vec![ActiveRegion {
-                object_id: object_id.to_string(),
-                region_id: 0,
-                resolved_config: ResolvedConfig::default(),
-                effective_layer_height: LAYER_HEIGHT_MM,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            ..Default::default()
-            }],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+        .map(|idx| {
+            // exhaustive: GlobalLayer fixture specifies layer participation explicitly
+            GlobalLayer {
+                index: *idx,
+                z: LAYER_HEIGHT_MM * (*idx as f32 + 0.5),
+                active_regions: vec![{
+                    // exhaustive: ActiveRegion fixture specifies paint-layer state explicitly
+                    ActiveRegion {
+                        object_id: object_id.to_string(),
+                        region_id: 0,
+                        resolved_config: ResolvedConfig::default(),
+                        effective_layer_height: LAYER_HEIGHT_MM,
+                        nonplanar_shell: None,
+                        is_catchup_layer: false,
+                        catchup_z_bottom: 0.0,
+                        tool_index: 0,
+                    }
+                }],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            }
         })
         .collect();
     Arc::new(LayerPlanIR {
@@ -230,12 +234,10 @@ fn make_single_object_mesh_ir(object_id: &str, paint_layers: Vec<PaintLayer>) ->
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
             paint_data: Some(FacetPaintData {
                 layers: paint_layers,
             }),
-            world_z_extent: None,
-        ..Default::default()
+            ..Default::default()
         }],
         build_volume: default_build_volume(),
     })
@@ -566,18 +568,10 @@ fn paint_channel_supports_strokes_reach_consumer() {
             z: obj_z_min + layer_height * (*idx as f32 + 0.5),
             active_regions: vec![slicer_ir::ActiveRegion {
                 object_id: object_id.to_string(),
-                region_id: 0,
-                resolved_config: slicer_ir::ResolvedConfig::default(),
                 effective_layer_height: layer_height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            ..Default::default()
+                ..Default::default()
             }],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
     let lp = Arc::new(slicer_ir::LayerPlanIR {

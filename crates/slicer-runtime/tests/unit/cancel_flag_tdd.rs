@@ -28,6 +28,7 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
     let model = root.join("resources").join("regression_wedge.stl");
     let module_dir = root.join("modules").join("core-modules");
     let mesh = Arc::new(slicer_model_io::load_model(&model).map_err(|e| e.to_string())?);
+    // exhaustive: cancellation fixture explicitly defines every SliceRunOptions field
     let opts = slicer_runtime::SliceRunOptions {
         mesh,
         model_label: model.to_string_lossy().into_owned(),
@@ -44,8 +45,7 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
         progress_events: false,
         cancel_flag: Some(cancel_flag),
         config_overrides: HashMap::new(),
-    
-        ..Default::default()};
+    };
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
     match run_slice_with_collector(opts, Some(Arc::clone(&collector))) {
         Ok(outcome) => {
@@ -118,22 +118,19 @@ fn empty_mesh() -> Arc<MeshIR> {
 
 fn one_layer_plan() -> ExecutionPlan {
     ExecutionPlan {
-        prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
-            index: 0,
-            z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+        global_layers: Arc::new(vec![{
+            // exhaustive: cancellation plan fixture explicitly defines every GlobalLayer field
+            GlobalLayer {
+                // exhaustive: test fixture intentionally specifies the  boundary
+                index: 0,
+                z: 0.2,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
+            }
         }]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: std::collections::BTreeMap::new(),
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 struct NoopLayerRunner;

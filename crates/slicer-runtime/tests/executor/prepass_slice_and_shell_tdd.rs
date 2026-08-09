@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
-    SliceIR, SlicedRegion, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, SliceIR, SlicedRegion,
+    Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{
     commit_shell_classification_builtin, commit_slice_builtin, execute_prepass_slice_all_layers,
@@ -89,17 +89,10 @@ fn make_layer(index: u32, z: f32, object_id: &str) -> GlobalLayer {
         active_regions: vec![ActiveRegion {
             object_id: object_id.to_string(),
             region_id: 0,
-            resolved_config: ResolvedConfig::default(),
             effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-        ..Default::default()
+            ..Default::default()
         }],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -147,7 +140,7 @@ fn seeded_blackboard(mesh: MeshIR, plan: LayerPlanIR, region_map: RegionMapIR) -
     bb.commit_region_map(Arc::new(region_map))
         .expect("commit_region_map");
     bb
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
 }
 
 // ============================================================================

@@ -34,6 +34,7 @@ fn make_point(x: f32, y: f32, z: f32) -> SeamPoint3WithWidth {
 
 #[test]
 fn harvest_round_trip_preserves_variant_chain_flag() {
+    // exhaustive: SeamPlanEntry has no Default; variant-chain carrier fixture supplies every field
     let entry = SeamPlanEntry {
         variant_chain: vec![("fuzzy_skin".to_string(), PaintValue::Flag(true))],
         global_layer_index: 0,
@@ -66,6 +67,7 @@ fn harvest_round_trip_preserves_variant_chain_flag() {
 
 #[test]
 fn harvest_round_trip_preserves_variant_chain_tool_index() {
+    // exhaustive: SeamPlanEntry has no Default; variant-chain carrier fixture supplies every field
     let entry = SeamPlanEntry {
         variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(2))],
         global_layer_index: 1,

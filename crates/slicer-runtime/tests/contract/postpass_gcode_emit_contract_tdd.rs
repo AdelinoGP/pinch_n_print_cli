@@ -52,11 +52,8 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> slicer_ir::Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
-        overhang_distance_mm: None,
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 fn region_key_fixture() -> slicer_ir::RegionKey {
@@ -72,7 +69,8 @@ fn print_entity_fixture(
     points: Vec<slicer_ir::Point3WithWidth>,
     role: ExtrusionRole,
 ) -> slicer_ir::PrintEntity {
-    slicer_ir::PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: PrintEntity fixture specifies every field for postpass emission coverage
+    slicer_ir::PrintEntity {
         entity_id: 1,
         path: slicer_ir::ExtrusionPath3D {
             points,
@@ -100,18 +98,12 @@ fn layer_with_entity(
     entity: slicer_ir::PrintEntity,
 ) -> slicer_ir::LayerCollectionIR {
     slicer_ir::LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,
         ordered_entities: vec![entity],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 // ============================================================================

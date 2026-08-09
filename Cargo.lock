@@ -2358,6 +2358,7 @@ dependencies = [
  "slicer-runtime",
  "slicer-scheduler",
  "slicer-schema",
+ "slicer-sdk",
  "stl_io",
  "tempfile",
  "toml 0.8.23",

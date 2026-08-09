@@ -42,24 +42,26 @@ fn slice_ir() -> SliceIR {
         schema_version: semver(4, 1, 0),
         global_layer_index: 0,
         z: 0.2,
-        regions: vec![SlicedRegion {
-            object_id: "lightning-object".to_string(),
-            region_id: 7,
-            polygons: vec![square()],
-            infill_areas: vec![square()],
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: Vec::new(),
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: vec![square()],
-        ..Default::default()
+        regions: vec![{
+            // exhaustive: SlicedRegion lightning fixture specifies the complete region.
+            SlicedRegion {
+                object_id: "lightning-object".to_string(),
+                region_id: 7,
+                polygons: vec![square()],
+                infill_areas: vec![square()],
+                nonplanar_surface: None,
+                effective_layer_height: 0.2,
+                segment_annotations: HashMap::new(),
+                variant_chain: Vec::new(),
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: Vec::new(),
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: vec![square()],
+            }
         }],
     }
 }

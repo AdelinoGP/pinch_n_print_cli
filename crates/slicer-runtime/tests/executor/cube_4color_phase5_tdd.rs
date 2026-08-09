@@ -59,19 +59,10 @@ fn slice_cube(name: &str, config_json: Option<&str>) -> String {
         mesh,
         model_label: "cube_4color".to_string(),
         config_path,
-        output_path: None,
         module_dirs: vec![core_modules_dir()],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
-        config_overrides: std::collections::HashMap::new(),
-    ..Default::default()
+        // omitted options retain their quiet Default values.
+        ..Default::default()
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed: {e}"))

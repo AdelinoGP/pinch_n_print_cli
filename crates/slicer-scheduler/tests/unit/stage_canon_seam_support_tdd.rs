@@ -61,15 +61,11 @@ fn unknown_stage_errors(
         .collect()
 }
 
-#[test]
-fn prepass_seam_planning_module_is_not_unknown_stage() {
-    let m = module(
-        "com.example.seam-planner",
-        "PrePass::SeamPlanning",
-        &["SeamPlanIR.entries"],
-    );
-    let request = DagValidationRequest {
-        modules: vec![m],
+fn dag_validation_request_base() -> DagValidationRequest {
+    // Shared non-default fixture; stage tests override only the module list.
+    // exhaustive: this helper is the single construction point for the no-default base.
+    DagValidationRequest {
+        modules: Vec::new(),
         stage_dags: Vec::new(),
         host_ir_schema_version: SemVer {
             major: 1,
@@ -83,6 +79,19 @@ fn prepass_seam_planning_module_is_not_unknown_stage() {
         },
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
+    }
+}
+
+#[test]
+fn prepass_seam_planning_module_is_not_unknown_stage() {
+    let m = module(
+        "com.example.seam-planner",
+        "PrePass::SeamPlanning",
+        &["SeamPlanIR.entries"],
+    );
+    let request = DagValidationRequest {
+        modules: vec![m],
+        ..dag_validation_request_base()
     };
     let report = validate_startup_dag(&request);
     assert!(
@@ -101,19 +110,7 @@ fn prepass_support_geometry_module_is_not_unknown_stage() {
     );
     let request = DagValidationRequest {
         modules: vec![m],
-        stage_dags: Vec::new(),
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        claim_holders: Vec::new(),
-        access_audits: Vec::new(),
+        ..dag_validation_request_base()
     };
     let report = validate_startup_dag(&request);
     assert!(
@@ -132,19 +129,7 @@ fn layer_paint_region_annotation_module_is_not_unknown_stage() {
     );
     let request = DagValidationRequest {
         modules: vec![m],
-        stage_dags: Vec::new(),
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        claim_holders: Vec::new(),
-        access_audits: Vec::new(),
+        ..dag_validation_request_base()
     };
     let report = validate_startup_dag(&request);
     assert!(
@@ -163,19 +148,7 @@ fn genuinely_unknown_stage_is_still_rejected() {
     );
     let request = DagValidationRequest {
         modules: vec![m],
-        stage_dags: Vec::new(),
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        claim_holders: Vec::new(),
-        access_audits: Vec::new(),
+        ..dag_validation_request_base()
     };
     let report = validate_startup_dag(&request);
     assert!(

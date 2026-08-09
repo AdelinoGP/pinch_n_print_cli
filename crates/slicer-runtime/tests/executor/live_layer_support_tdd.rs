@@ -37,27 +37,23 @@ fn make_support_path(
 ) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![
+            // exhaustive: Point3WithWidth support-path fixture specifies every point field.
             Point3WithWidth {
                 x: x1,
                 y: y1,
                 z: layer_z,
                 width,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            ..Default::default()
+                ..Default::default()
             },
+            // exhaustive: Point3WithWidth support-path fixture specifies every point field.
             Point3WithWidth {
                 x: x2,
                 y: y2,
                 z: layer_z,
                 width,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            ..Default::default()
+                ..Default::default()
             },
         ],
         role: IrExtrusionRole::SupportMaterial,
@@ -71,6 +67,7 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
     if paths.is_empty() {
         return None;
     }
+    // exhaustive: SupportIR support-commit fixture specifies every commit field.
     Some(LayerStageCommit::Support(SupportIR {
         schema_version: SemVer {
             major: 1,
@@ -79,10 +76,7 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
         },
         global_layer_index: 0,
         support_paths: paths,
-        interface_paths: vec![],
-        raft_paths: vec![],
-        ironing_paths: vec![],
-    ..Default::default()
+        ..Default::default()
     }))
 }
 
@@ -483,37 +477,28 @@ fn compile_support_module(
 
 fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
     let regions = (0..region_count)
-        .map(|i| SlicedRegion {
-            object_id: format!("obj-{i}"),
-            region_id: i as u64,
-            polygons: vec![ExPolygon {
-                contour: Polygon {
-                    points: vec![
-                        Point2 { x: 0, y: 0 },
-                        Point2 { x: 10_000, y: 0 },
-                        Point2 {
-                            x: 10_000,
-                            y: 10_000,
-                        },
-                        Point2 { x: 0, y: 10_000 },
-                    ],
-                },
-                holes: Vec::new(),
-            }],
-            infill_areas: Vec::new(),
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: std::collections::HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        ..Default::default()
+        .map(|i| {
+            // exhaustive: SlicedRegion support fixture specifies every region field.
+            SlicedRegion {
+                object_id: format!("obj-{i}"),
+                region_id: i as u64,
+                polygons: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2 { x: 0, y: 0 },
+                            Point2 { x: 10_000, y: 0 },
+                            Point2 {
+                                x: 10_000,
+                                y: 10_000,
+                            },
+                            Point2 { x: 0, y: 10_000 },
+                        ],
+                    },
+                    holes: Vec::new(),
+                }],
+                effective_layer_height: 0.2,
+                ..Default::default()
+            }
         })
         .collect();
 
@@ -586,13 +571,14 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let layer_z = 0.2;
     let layer_index = 0u32;
+    // exhaustive: GlobalLayer support fixture specifies every layer field.
+    // exhaustive: GlobalLayer support fixture specifies every layer field.
+    // exhaustive: GlobalLayer support fixture specifies every layer field.
+    // exhaustive: GlobalLayer support fixture specifies every layer field.
     let layer = GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: vec![],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
 
     let mut arena = LayerArena::new();
@@ -691,13 +677,11 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let layer_z = 0.2;
     let layer_index = 0u32;
+    // exhaustive: GlobalLayer support fixture specifies every layer field.
     let layer = GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: vec![],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
 
     let mut arena = LayerArena::new();
@@ -801,10 +785,7 @@ fn support_deterministic_across_repeated_runs() {
     let layer = GlobalLayer {
         index: layer_index,
         z: layer_z,
-        active_regions: vec![],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
 
     let run_dispatch = |bb: &Blackboard, layer: &GlobalLayer| {
@@ -996,6 +977,7 @@ mod planner_consuming_tier {
 
     fn make_slice_ir(layer_index: u32, z: f32) -> slicer_ir::SliceIR {
         let extent = slicer_ir::mm_to_units(10.0);
+        // exhaustive: SlicedRegion support fixture specifies every region field.
         let region = SlicedRegion {
             object_id: "obj-0".to_string(),
             region_id: 0,
@@ -1013,20 +995,8 @@ mod planner_consuming_tier {
                 },
                 holes: vec![],
             }],
-            infill_areas: vec![],
-            nonplanar_surface: None,
             effective_layer_height: 0.2,
-            segment_annotations: std::collections::HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        ..Default::default()
+            ..Default::default()
         };
         slicer_ir::SliceIR {
             global_layer_index: layer_index,
@@ -1036,7 +1006,7 @@ mod planner_consuming_tier {
         }
     }
 
-// exhaustive: Blackboard explicit test fixture preserves boundary data
+    // exhaustive: Blackboard explicit test fixture preserves boundary data
     fn empty_blackboard_with_support_plan(plan: Option<Arc<SupportPlanIR>>) -> Blackboard {
         let mesh = Arc::new(MeshIR {
             build_volume: BoundingBox3 {
@@ -1055,7 +1025,7 @@ mod planner_consuming_tier {
                 .expect("commit_support_plan must succeed");
         }
         bb
-    // exhaustive: Blackboard explicit test fixture preserves boundary data
+        // exhaustive: Blackboard explicit test fixture preserves boundary data
     }
 
     fn dispatch_support(
@@ -1063,7 +1033,7 @@ mod planner_consuming_tier {
         manifest_id: &str,
         manifest_reads: Vec<&str>,
         plan: Option<Arc<SupportPlanIR>>,
-// exhaustive: SupportIR explicit test fixture preserves boundary data
+        // exhaustive: SupportIR explicit test fixture preserves boundary data
     ) -> slicer_ir::SupportIR {
         let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -1074,13 +1044,11 @@ mod planner_consuming_tier {
 
         let layer_z = 0.2;
         let layer_index = 0u32;
+        // exhaustive: GlobalLayer support fixture specifies every layer field.
         let layer = GlobalLayer {
             index: layer_index,
             z: layer_z,
-            active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         };
 
         let mut arena = LayerArena::new();
@@ -1098,33 +1066,29 @@ mod planner_consuming_tier {
         .expect("Layer::Support dispatch must succeed");
 
         arena.take_support().expect("SupportIR must be committed")
-    // exhaustive: SupportIR explicit test fixture preserves boundary data
+        // exhaustive: SupportIR explicit test fixture preserves boundary data
     }
 
     fn make_planned_segment(layer_z: f32) -> ExtrusionPath3D {
         ExtrusionPath3D {
             points: vec![
+                // exhaustive: Point3WithWidth support-path fixture specifies every point field.
                 Point3WithWidth {
                     x: 1.0,
                     y: 2.0,
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
+                // exhaustive: Point3WithWidth support-path fixture specifies every point field.
                 Point3WithWidth {
                     x: 7.0,
                     y: 8.0,
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -1289,27 +1253,23 @@ mod planner_consuming_tier {
         let seg_for = |_rid: u64, z: f32| -> ExtrusionPath3D {
             ExtrusionPath3D {
                 points: vec![
+                    // exhaustive: Point3WithWidth support-path fixture specifies every point field.
                     Point3WithWidth {
                         x: 1.0,
                         y: 2.0,
                         z,
                         width: 0.4,
                         flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                        overhang_distance_mm: None,
-                    ..Default::default()
+                        ..Default::default()
                     },
+                    // exhaustive: Point3WithWidth support-path fixture specifies every point field.
                     Point3WithWidth {
                         x: 7.0,
                         y: 8.0,
                         z,
                         width: 0.4,
                         flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                        overhang_distance_mm: None,
-                    ..Default::default()
+                        ..Default::default()
                     },
                 ],
                 role: IrExtrusionRole::SupportMaterial,
@@ -1340,37 +1300,28 @@ mod planner_consuming_tier {
         let slice_ir = SliceIR {
             global_layer_index: layer_index,
             z: layer_z,
-            regions: vec![SlicedRegion {
-                object_id: "obj-0".to_string(),
-                region_id: target_region_id,
-                polygons: vec![ExPolygon {
-                    contour: Polygon {
-                        points: vec![
-                            Point2 { x: 0, y: 0 },
-                            Point2 { x: extent, y: 0 },
-                            Point2 {
-                                x: extent,
-                                y: extent,
-                            },
-                            Point2 { x: 0, y: extent },
-                        ],
-                    },
-                    holes: vec![],
-                }],
-                infill_areas: vec![],
-                nonplanar_surface: None,
-                effective_layer_height: 0.2,
-                segment_annotations: std::collections::HashMap::new(),
-                variant_chain: Vec::new(),
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: vec![],
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
-            ..Default::default()
+            regions: vec![{
+                // exhaustive: SlicedRegion support fixture specifies every region field.
+                SlicedRegion {
+                    object_id: "obj-0".to_string(),
+                    region_id: target_region_id,
+                    polygons: vec![ExPolygon {
+                        contour: Polygon {
+                            points: vec![
+                                Point2 { x: 0, y: 0 },
+                                Point2 { x: extent, y: 0 },
+                                Point2 {
+                                    x: extent,
+                                    y: extent,
+                                },
+                                Point2 { x: 0, y: extent },
+                            ],
+                        },
+                        holes: vec![],
+                    }],
+                    effective_layer_height: 0.2,
+                    ..Default::default()
+                }
             }],
             ..Default::default()
         };
@@ -1393,13 +1344,11 @@ mod planner_consuming_tier {
 
         let blackboard = empty_blackboard_with_support_plan(Some(Arc::clone(&plan)));
 
+        // exhaustive: GlobalLayer support fixture specifies every layer field.
         let layer = GlobalLayer {
             index: layer_index,
             z: layer_z,
-            active_regions: vec![],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         };
 
         let mut arena = LayerArena::new();

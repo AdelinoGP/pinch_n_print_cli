@@ -188,14 +188,10 @@ pub mod perimeter_ir {
                         })
                         .collect();
                     PerimeterRegion {
-                        variant_chain: Vec::new(),
                         object_id,
                         region_id,
                         walls,
                         infill_areas,
-                        seam_candidates: Vec::new(),
-                        resolved_seam: None,
-
                         ..Default::default()
                     }
                 })

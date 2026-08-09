@@ -144,22 +144,26 @@ fn seeded_seam_plan() -> SeamPlanIR {
     };
     SeamPlanIR {
         schema_version: CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION,
-        entries: vec![SeamPlanEntry {
-            region_key: RegionKey {
-                global_layer_index: 0,
-                object_id: "obj-0".to_string(),
-                region_id: 7,
-            },
-            chosen_candidate: SeamPosition {
-                point,
-                wall_index: 0,
-            },
-            scored_candidates: vec![ScoredSeamCandidate {
+        entries: vec![{
+            let mut entry = SeamPlanEntry {
+                region_key: RegionKey {
+                    global_layer_index: 0,
+                    object_id: "obj-0".to_string(),
+                    region_id: 7,
+                    ..Default::default()
+                },
+                chosen_candidate: SeamPosition {
+                    point,
+                    wall_index: 0,
+                },
+                ..Default::default()
+            };
+            entry.scored_candidates = vec![ScoredSeamCandidate {
                 position: point,
                 score: 0.1,
                 reason: SeamReason::Concave,
-            }],
-            ..Default::default()
+            }];
+            entry
         }],
     }
 }

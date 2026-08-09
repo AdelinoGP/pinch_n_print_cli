@@ -70,11 +70,8 @@ fn overhang_mesh() -> MeshIR {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: build_volume(),
     }
 }
@@ -104,11 +101,8 @@ fn flat_top_cube_mesh() -> MeshIR {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: build_volume(),
     }
 }

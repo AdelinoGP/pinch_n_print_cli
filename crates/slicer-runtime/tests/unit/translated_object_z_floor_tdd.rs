@@ -34,22 +34,22 @@ fn translated_layer_plan_fixture() -> LayerPlanIR {
     let world_z_floor = 10.0;
     LayerPlanIR {
         global_layers: vec![
+            // exhaustive: GlobalLayer fixture intentionally specifies every layer field.
             GlobalLayer {
                 index: 0,
                 z: world_z_floor + layer_height,
                 active_regions: vec![],
                 has_nonplanar: false,
                 is_sync_layer: true,
-            
-                ..Default::default()},
+            },
+            // exhaustive: GlobalLayer fixture intentionally specifies every layer field.
             GlobalLayer {
                 index: 1,
                 z: world_z_floor + 2.0 * layer_height,
                 active_regions: vec![],
                 has_nonplanar: false,
                 is_sync_layer: true,
-            
-                ..Default::default()},
+            },
         ],
         object_participation: HashMap::from([(
             String::from("translated-obj"),
@@ -89,23 +89,26 @@ fn region_map_fixture() -> RegionMapIR {
 }
 
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
+    // exhaustive: ExecutionPlan fixture intentionally defines every execution stage and index.
     ExecutionPlan {
         prepass_stages,
         per_layer_stages: Vec::new(),
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
-            index: 0,
-            z: 10.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: true,
-        }]),
+        global_layers: Arc::new(vec![
+            // exhaustive: GlobalLayer fixture intentionally specifies every layer field.
+            GlobalLayer {
+                index: 0,
+                z: 10.2,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: true,
+            },
+        ]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+    }
 }
 
 fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {

@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -254,20 +254,13 @@ impl PrepassStageRunner for ScriptedRunner {
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
     ExecutionPlan {
         prepass_stages,
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
-            has_nonplanar: false,
             is_sync_layer: true,
             ..Default::default()
         }]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
         ..Default::default()
     }
 }
@@ -403,8 +396,6 @@ fn layer_plan_fixture() -> LayerPlanIR {
         global_layers: vec![GlobalLayer {
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
             is_sync_layer: true,
             ..Default::default()
         }],

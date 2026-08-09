@@ -87,14 +87,14 @@ fn witness_config() -> ConfigView {
 }
 
 fn layer_at(index: u32, z: f32) -> GlobalLayer {
+    // exhaustive: postprocess fixture explicitly defines every GlobalLayer field
     GlobalLayer {
         index,
         z,
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    
-        ..Default::default()}
+    }
 }
 
 fn expoly(contour: &[(i64, i64)], holes: &[&[(i64, i64)]]) -> ExPolygon {
@@ -111,17 +111,19 @@ fn path(role: ExtrusionRole, pts: &[(f32, f32, f32)]) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: pts
             .iter()
-            .map(|&(x, y, z)| Point3WithWidth {
-                x,
-                y,
-                z,
-                width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            
-                ..Default::default()})
+            .map(|&(x, y, z)| {
+                // exhaustive: postprocess fixture explicitly defines every point field
+                Point3WithWidth {
+                    x,
+                    y,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                }
+            })
             .collect(),
         role,
         speed_factor: 1.0,
@@ -272,24 +274,22 @@ fn infill_postprocess_prior_ir_multi_region_buckets() {
             .collect()
     };
     let prior = InfillIR {
-        global_layer_index: 0,
         regions: vec![
+            // exhaustive: InfillRegion contract fixture specifies every field under test.
             InfillRegion {
                 object_id: "obj-a".into(),
                 region_id: 7,
                 sparse_infill: mk(2, ExtrusionRole::SparseInfill),
                 solid_infill: mk(1, ExtrusionRole::TopSolidInfill),
                 ironing: mk(3, ExtrusionRole::Ironing),
-            
-                ..Default::default()},
+            },
             InfillRegion {
                 object_id: "obj-b".into(),
                 region_id: 9,
                 sparse_infill: mk(1, ExtrusionRole::SparseInfill),
                 solid_infill: mk(2, ExtrusionRole::TopSolidInfill),
-                ironing: Vec::new(),
-            
-                ..Default::default()},
+                ..Default::default()
+            },
         ],
         ..Default::default()
     };
@@ -510,7 +510,6 @@ fn infill_postprocess_wall_source() {
 #[test]
 fn infill_postprocess_absent_module_is_fatal_without_mutating_infill() {
     let prior = InfillIR {
-        global_layer_index: 0,
         regions: vec![InfillRegion {
             object_id: "obj-0".into(),
             region_id: 0,
@@ -518,13 +517,13 @@ fn infill_postprocess_absent_module_is_fatal_without_mutating_infill() {
                 ExtrusionRole::SparseInfill,
                 &[(0.0, 0.0, 0.0), (4.0, 4.0, 0.0)],
             )],
-            solid_infill: Vec::new(),
             ironing: vec![path(
                 ExtrusionRole::Ironing,
                 &[(1.0, 1.0, 0.0), (2.0, 2.0, 0.0)],
             )],
-        
-            ..Default::default()}],
+
+            ..Default::default()
+        }],
         ..Default::default()
     };
 

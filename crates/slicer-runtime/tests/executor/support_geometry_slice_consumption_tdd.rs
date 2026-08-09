@@ -45,7 +45,6 @@ fn unit_square(side_mm: f32) -> ExPolygon {
 
 fn make_active_region(object_id: &str, layer_height: f32) -> ActiveRegion {
     make_active_region_with_support_lh(object_id, layer_height, 0.0)
-
 }
 
 fn make_active_region_with_support_lh(
@@ -61,11 +60,7 @@ fn make_active_region_with_support_lh(
             ..ResolvedConfig::default()
         },
         effective_layer_height: layer_height,
-        nonplanar_shell: None,
-        is_catchup_layer: false,
-        catchup_z_bottom: 0.0,
-        tool_index: 0,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -74,9 +69,7 @@ fn make_layer(index: u32, z: f32, object_id: &str, layer_height: f32) -> GlobalL
         index,
         z,
         active_regions: vec![make_active_region(object_id, layer_height)],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -314,9 +307,7 @@ fn per_object_support_layer_height_is_honored_by_execute_support_geometry() {
                 make_active_region_with_support_lh(obj_a, 0.2, 0.4),
                 make_active_region_with_support_lh(obj_b, 0.2, 0.0),
             ],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
 
@@ -371,7 +362,6 @@ fn make_active_region_with_support_lh_and_rid(
     ActiveRegion {
         region_id,
         ..make_active_region_with_support_lh(object_id, layer_height, support_layer_height_mm)
-
     }
 }
 
@@ -405,9 +395,7 @@ fn per_layer_cadence_for_multi_region_object() {
                 make_active_region_with_support_lh_and_rid(obj, 0, 0.2, 0.4),
                 make_active_region_with_support_lh_and_rid(obj, 1, 0.2, 0.4),
             ],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
     let plan = LayerPlanIR {
@@ -511,9 +499,7 @@ fn global_support_layer_index_equals_model_layer_index() {
             index: i,
             z: (i + 1) as f32 * 0.2,
             active_regions: vec![make_active_region_with_support_lh(obj, 0.2, 0.4)],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         })
         .collect();
     let plan = LayerPlanIR {

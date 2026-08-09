@@ -2810,31 +2810,34 @@ mod region_origin_tests {
         let mut ctx =
             HostExecutionContextBuilder::new("com.test.slice-origin".to_string(), 0.0, 0.2).build();
         let handle = ctx
-            .push_slice_region(SliceRegionData {
-                object_id: "obj-1".to_string(),
-                region_id: "01".to_string(),
-                polygons: Vec::new(),
-                prev_layer_boundary: Vec::new(),
-                infill_areas: Vec::new(),
-                effective_layer_height: 0.2,
-                z: 0.2,
-                has_nonplanar: false,
-                segment_annotations: Vec::new(),
-                variant_chain: Vec::new(),
-                needs_support: true,
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: Vec::new(),
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
-                held_claims: Vec::new(),
-                overhang_areas: Vec::new(),
-                overhang_quartile_polygons: Vec::new(),
-                surface_group: None,
-            })
+            .push_slice_region(
+                // exhaustive: rejects non-canonical region IDs with a fully specified fixture
+                SliceRegionData {
+                    object_id: "obj-1".to_string(),
+                    region_id: "01".to_string(),
+                    polygons: Vec::new(),
+                    prev_layer_boundary: Vec::new(),
+                    infill_areas: Vec::new(),
+                    effective_layer_height: 0.2,
+                    z: 0.2,
+                    has_nonplanar: false,
+                    segment_annotations: Vec::new(),
+                    variant_chain: Vec::new(),
+                    needs_support: true,
+                    top_shell_index: None,
+                    bottom_shell_index: None,
+                    top_solid_fill: Vec::new(),
+                    bottom_solid_fill: Vec::new(),
+                    is_bridge: false,
+                    bridge_areas: Vec::new(),
+                    bridge_orientation_deg: 0.0,
+                    sparse_infill_area: Vec::new(),
+                    held_claims: Vec::new(),
+                    overhang_areas: Vec::new(),
+                    overhang_quartile_polygons: Vec::new(),
+                    surface_group: None,
+                },
+            )
             .expect("push slice region");
 
         let err = ctx
@@ -2854,20 +2857,23 @@ mod region_origin_tests {
             HostExecutionContextBuilder::new("com.test.perimeter-origin".to_string(), 0.0, 0.2)
                 .build();
         let handle = ctx
-            .push_perimeter_region(PerimeterRegionData {
-                object_id: "obj-1".to_string(),
-                region_id: "01".to_string(),
-                wall_loops: Vec::new(),
-                infill_areas: Vec::new(),
-                resolved_seam: None,
-                seam_candidates: Vec::new(),
-                sparse_infill_area: Vec::new(),
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                bridge_areas: Vec::new(),
-                tool_index: 0,
-                wall_source_region_id: None,
-            })
+            .push_perimeter_region(
+                // exhaustive: rejects non-canonical region IDs with a fully specified fixture
+                PerimeterRegionData {
+                    object_id: "obj-1".to_string(),
+                    region_id: "01".to_string(),
+                    wall_loops: Vec::new(),
+                    infill_areas: Vec::new(),
+                    resolved_seam: None,
+                    seam_candidates: Vec::new(),
+                    sparse_infill_area: Vec::new(),
+                    top_solid_fill: Vec::new(),
+                    bottom_solid_fill: Vec::new(),
+                    bridge_areas: Vec::new(),
+                    tool_index: 0,
+                    wall_source_region_id: None,
+                },
+            )
             .expect("push perimeter region");
 
         let err = ctx

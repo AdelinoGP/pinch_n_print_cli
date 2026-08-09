@@ -651,15 +651,8 @@ fn postpass_executor_propagates_serializer_error() {
 
 fn execution_plan_fixture(postpass_stages: Vec<CompiledStage>) -> ExecutionPlan {
     ExecutionPlan {
-        prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
         postpass_stages,
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -729,10 +722,7 @@ fn mesh_fixture() -> MeshIR {
             config: slicer_ir::ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
-        ..Default::default()
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -751,17 +741,10 @@ fn mesh_fixture() -> MeshIR {
 
 fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,
-        ordered_entities: Vec::new(),
-        tool_changes: Vec::new(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: Vec::new(),
-        travel_moves: Vec::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 

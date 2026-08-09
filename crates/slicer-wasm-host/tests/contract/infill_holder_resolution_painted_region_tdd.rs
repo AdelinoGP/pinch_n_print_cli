@@ -124,13 +124,11 @@ fn run_infill_stage(
     region_map: &RegionMapIR,
 ) -> Option<slicer_ir::LayerStageCommit> {
     let layer = GlobalLayer {
-        index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
+        ..Default::default()
     };
     let mesh = Arc::new(slicer_ir::MeshIR::default());
+    // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh,
         paint_regions: None,

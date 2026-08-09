@@ -43,19 +43,8 @@ fn run_slice_against_wedge_returns_nonempty_gcode() {
     let opts = SliceRunOptions {
         mesh,
         model_label: model.to_string_lossy().into_owned(),
-        config_path: None,
-        output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
-        thumbnail: None,
-        report: None,
-        report_verbose: false,
-        instrument_stderr: false,
-        profile: false,
-        profile_verbose: false,
-        progress_events: false,
-        cancel_flag: None,
-        config_overrides: std::collections::HashMap::new(),
         ..Default::default()
     };
 

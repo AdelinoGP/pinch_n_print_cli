@@ -98,13 +98,8 @@ fn run_echo(
     module_config: ConfigView,
 ) -> Vec<(u64, f64)> {
     let layer = GlobalLayer {
-        index: 0,
-        z: 0.0,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     let bundle = echo_bundle(module_config);
     run_layer_and_commit_with_bundle(
         &fx.dispatcher,
@@ -270,7 +265,8 @@ fn modifier_split_subregion_density() {
         .extensions
         .insert(INFILL_DENSITY.into(), ConfigValue::Float(0.15));
 
-    let modifier_volume = slicer_ir::ModifierVolume { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: ModifierVolume fixture specifies every field for modifier split coverage
+    let modifier_volume = slicer_ir::ModifierVolume {
         id: "mod-0".into(),
         mesh: slicer_ir::IndexedTriangleSet::default(),
         config_delta: slicer_ir::ConfigDelta {

@@ -93,6 +93,7 @@ fn model_request_with_viz(
     visualizations: Vec<VisualizationSpec>,
     resolution_scale: u32,
 ) -> VisualDebugRequest {
+    // exhaustive: model-source visualization request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {
@@ -533,20 +534,14 @@ fn infill_capture_with_extent(from: f32, to: f32) -> StageCapture {
                 y: from,
                 z: 0.0,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: to,
                 y: to,
                 z: 0.0,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -556,8 +551,7 @@ fn infill_capture_with_extent(from: f32, to: f32) -> StageCapture {
         object_id: "obj".to_string(),
         region_id: 1,
         sparse_infill: vec![path],
-        solid_infill: Vec::new(),
-        ironing: Vec::new(),
+        ..Default::default()
     };
     let ir = InfillIR {
         regions: vec![region],
@@ -579,20 +573,14 @@ fn simple_infill_capture(width: f32) -> StageCapture {
                 y: 0.0,
                 z: 0.0,
                 width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: 10.0,
                 y: 0.0,
                 z: 0.0,
                 width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -602,8 +590,7 @@ fn simple_infill_capture(width: f32) -> StageCapture {
         object_id: "obj".to_string(),
         region_id: 1,
         sparse_infill: vec![path],
-        solid_infill: Vec::new(),
-        ironing: Vec::new(),
+        ..Default::default()
     };
     let ir = InfillIR {
         regions: vec![region],
@@ -635,21 +622,16 @@ fn perimeter_capture_with_seam(seam_xy: (f32, f32)) -> StageCapture {
             y: seam_xy.1,
             z: 0.0,
             width: 0.0,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         },
         wall_index: 0,
     };
     let region = PerimeterRegion {
-        variant_chain: Vec::new(),
         object_id: "obj".to_string(),
         region_id: 1,
-        walls: Vec::new(),
         infill_areas: vec![square],
-        seam_candidates: Vec::new(),
         resolved_seam: Some(seam),
+        ..Default::default()
     };
     let ir = PerimeterIR {
         regions: vec![region],
@@ -665,7 +647,7 @@ fn perimeter_capture_with_seam(seam_xy: (f32, f32)) -> StageCapture {
 
 fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
     use slicer_ir::{
-        LayerAnnotation, LayerAnnotationKind, LayerCollectionIR, PrintEntity, RegionKey, TravelMove,
+        LayerAnnotation, LayerAnnotationKind, LayerCollectionIR, PrintEntity, TravelMove,
     };
 
     let path = ExtrusionPath3D {
@@ -675,20 +657,14 @@ fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
                 y: 0.0,
                 z: 0.0,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             Point3WithWidth {
                 x: 10.0,
                 y: 0.0,
                 z: 0.0,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
         ],
         role: ExtrusionRole::OuterWall,
@@ -697,17 +673,14 @@ fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
     let entity = PrintEntity {
         entity_id: 1,
         path,
-        role: ExtrusionRole::OuterWall,
-        region_key: RegionKey::default(),
-        topo_order: 0,
-        tool_index: 0,
+        ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
     };
     let travel = TravelMove {
         entity_id: 1,
         x: Some(9.0),
         y: Some(9.0),
         z: Some(0.0),
-        f: None,
+        ..Default::default()
     };
     let annotation = LayerAnnotation {
         after_entity_index: 0,
@@ -1214,6 +1187,7 @@ fn missing_layer_collection_geometry_fails_with_render_failed_via_cli() {
     let output = tmp.path().join("bundle");
     let module_dir = minimal_layer_collection_only_module_dir(tmp.path());
 
+    // exhaustive: render-failure request boundary fixture
     let req = VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {

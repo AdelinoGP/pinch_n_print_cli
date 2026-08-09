@@ -50,24 +50,27 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 fn empty_mesh_ir() -> Arc<MeshIR> {
     Arc::new(MeshIR {
         schema_version: semver(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: "cube".to_string(),
-            mesh: slicer_ir::IndexedTriangleSet {
-                vertices: vec![],
-                indices: vec![],
-            },
-            transform: Transform3d {
-                matrix: [
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                ],
-            },
-            config: slicer_ir::ObjectConfig {
-                data: std::collections::HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        ..Default::default()
+        objects: vec![{
+            // exhaustive: live finalization fixture explicitly defines every ObjectMesh field
+            ObjectMesh {
+                id: "cube".to_string(),
+                mesh: slicer_ir::IndexedTriangleSet {
+                    vertices: vec![],
+                    indices: vec![],
+                },
+                transform: Transform3d {
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                        1.0,
+                    ],
+                },
+                config: slicer_ir::ObjectConfig {
+                    data: std::collections::HashMap::new(),
+                },
+                modifier_volumes: vec![],
+                paint_data: None,
+                world_z_extent: None,
+            }
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -137,7 +140,7 @@ fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestM
 
 // exhaustive: PrintEntity explicit test fixture preserves boundary data
 fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
@@ -147,22 +150,14 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     y: 10.0,
                     z,
                     width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 20.0,
                     y: 20.0,
                     z,
                     width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -177,24 +172,19 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
             variant_chain: Vec::new(),
         },
         topo_order: 0,
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,
         ordered_entities: entities,
         tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -243,7 +233,6 @@ fn make_module_with_config(
 
 fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: semver(1, 0, 0),
         global_layer_index: index,
         z,
@@ -253,11 +242,7 @@ fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
             from_tool: 0,
             to_tool: 1,
         }],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    ..Default::default()
+        ..Default::default()
     }
 }
 

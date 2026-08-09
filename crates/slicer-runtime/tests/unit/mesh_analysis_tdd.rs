@@ -15,7 +15,7 @@
 //! docs/02_ir_schemas.md Â§"IR 2 â€" SurfaceClassificationIR",
 //! docs/04_host_scheduler.md Â§"Full Lifecycle" (prepass).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -118,11 +118,8 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: build_volume(),
     };
 
@@ -237,16 +234,8 @@ fn mesh_analysis_is_deterministic_for_same_input() {
 
 fn empty_plan() -> ExecutionPlan {
     ExecutionPlan {
-        prepass_stages: vec![],
-        per_layer_stages: vec![],
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+        ..Default::default()
+    }
 }
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -299,11 +288,8 @@ fn triangle_mesh(id: &str) -> MeshIR {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: build_volume(),
     }
 }
@@ -333,11 +319,8 @@ fn cube_like_mesh() -> MeshIR {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        
-            ..Default::default()}],
+            ..Default::default()
+        }],
         build_volume: build_volume(),
     }
 }

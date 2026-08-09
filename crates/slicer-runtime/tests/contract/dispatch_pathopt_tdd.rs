@@ -19,11 +19,9 @@ fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
     fx.run_layer(&layer).unwrap();
     let tcs = fx.arena.take_deferred_tool_changes();
     assert_eq!(tcs.len(), 3, "three tool-changes routed to deferred queue");
@@ -43,6 +41,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
     let (seed_module, seed_handles) = seed_fx.bundle.into_module_and_handles();
     wasm_handles.extend(seed_handles);
 
+    // exhaustive: execution fixture sets every plan collection explicitly
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
@@ -55,20 +54,14 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
                 modules: vec![pathopt_module],
             },
         ],
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+        global_layers: Arc::new(vec![GlobalLayer {
+            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     seed_slice_ir(&mut blackboard, &plan);
 
@@ -133,26 +126,26 @@ fn path_optimization_empty_input_is_no_op() {
     let dispatcher = fx.dispatcher;
     let (module, wasm_handles) = fx.bundle.into_module_and_handles();
 
+    // exhaustive: this fixture must define the complete empty-input execution plan.
+    // exhaustive: execution fixture sets every plan collection explicitly
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::PathOptimization".into(),
             modules: vec![module],
         }],
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+        global_layers: Arc::new(vec![GlobalLayer {
+            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()};
+    };
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     seed_slice_ir(&mut blackboard, &plan);
     let layers = execute_per_layer(&plan, &blackboard, &dispatcher, &wasm_handles).expect("exec");
@@ -183,20 +176,15 @@ fn path_optimization_deterministic_across_repeated_runs() {
                 modules: vec![pathopt_module.clone()],
             },
         ],
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+        global_layers: Arc::new(vec![GlobalLayer {
+            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()};
+        // omitted empty maps and optional stages retain their Default values.
+        ..Default::default()
+    };
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -409,7 +397,8 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         });
     ctx.gcode_output_mut()
         .commands
-        .push(GcodeCommandCollected::Move(GcodeMoveCmd { // exhaustive: test fixture intentionally specifies the  boundary
+        // exhaustive: this fixture specifies the exact travel move sent to the guest.
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
             x: Some(50.0),
             y: Some(50.0),
             z: None,
@@ -426,20 +415,18 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         });
 
     let mut fx = dispatch_fixture::for_stage("Layer::PathOptimization").build();
-    let entity = slicer_ir::PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: this fixture specifies the exact entity serialized to the guest.
+    let entity = slicer_ir::PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth {
-                x: 0.0,
-                y: 0.0,
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            
-                ..Default::default()}],
+                // x/y, overhang_quartile, dist_to_top_mm, and overhang_distance_mm
+                // retain their Default values for this exact fixture.
+                ..Default::default()
+            }],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
@@ -552,18 +539,15 @@ fn path_optimization_end_to_end_populates_z_hops() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+        global_layers: Arc::new(vec![GlobalLayer {
+            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()};
+        // omitted empty maps and optional stages retain their Default values.
+        ..Default::default()
+    };
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -625,6 +609,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     let (seed_module, seed_handles) = seed_fx.bundle.into_module_and_handles();
     wasm_handles.extend(seed_handles);
 
+    // exhaustive: execution fixture sets every plan collection explicitly
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
@@ -639,18 +624,16 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
+        global_layers: Arc::new(vec![GlobalLayer {
+            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
+            ..Default::default()
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()};
+    };
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -802,14 +785,12 @@ fn path_optimization_receives_real_perimeter_regions() {
                 .build(),
         )
         .build();
+    // exhaustive: layer fixture relies on default metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     let r = fx.run_layer(&layer);
     assert!(
@@ -852,11 +833,13 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     // guest side). A PerimeterRegion with one wall loop.
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
     let mut arena = LayerArena::new();
-    let wall = slicer_ir::WallLoop { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: this fixture specifies the exact wall geometry serialized to the guest.
+    let wall = slicer_ir::WallLoop {
         perimeter_index: 0,
         loop_type: slicer_ir::LoopType::Outer,
         path: slicer_ir::ExtrusionPath3D {
             points: vec![
+                // exhaustive: fixture preserves explicit point metadata
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
                     y: 0.0,
@@ -866,8 +849,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                
-                    ..Default::default()},
+                },
+                // exhaustive: fixture preserves explicit point metadata
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
                     y: 0.0,
@@ -877,8 +860,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                
-                    ..Default::default()},
+                },
+                // exhaustive: fixture preserves explicit point metadata
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
                     y: 1.0,
@@ -888,8 +871,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                
-                    ..Default::default()},
+                },
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -898,6 +880,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
             widths: vec![0.4; 3],
         },
         feature_flags: vec![
+            // exhaustive: fixture preserves all wall feature flags
             slicer_ir::WallFeatureFlags {
                 tool_index: None,
                 fuzzy_skin: false,
@@ -905,24 +888,25 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                 is_thin_wall: false,
                 skip_ironing: false,
                 custom: HashMap::new(),
-            
-                ..Default::default()};
+            };
             3
         ],
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
     };
     let perim = slicer_ir::PerimeterIR {
         global_layer_index: 7,
-        regions: vec![slicer_ir::PerimeterRegion {
-            variant_chain: Vec::new(),
-            object_id: "obj".into(),
-            region_id: 0,
-            walls: vec![wall],
-            seam_candidates: Vec::new(),
-            infill_areas: Vec::new(),
-            resolved_seam: None,
-        
-            ..Default::default()}],
+        regions: vec![
+            // exhaustive: fixture preserves all perimeter-region metadata
+            slicer_ir::PerimeterRegion {
+                variant_chain: Vec::new(),
+                object_id: "obj".into(),
+                region_id: 0,
+                walls: vec![wall],
+                seam_candidates: Vec::new(),
+                infill_areas: Vec::new(),
+                resolved_seam: None,
+            },
+        ],
         ..Default::default()
     };
     arena.set_perimeter(perim).expect("seed perimeter");
@@ -930,11 +914,9 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     let layer = slicer_ir::GlobalLayer {
         index: 7,
         z: 1.4,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
@@ -992,11 +974,9 @@ fn path_optimization_dispatch_is_deterministic() {
     let layer = slicer_ir::GlobalLayer {
         index: 3,
         z: 0.6,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
 
     let run_once = || -> Vec<slicer_ir::LayerAnnotation> {

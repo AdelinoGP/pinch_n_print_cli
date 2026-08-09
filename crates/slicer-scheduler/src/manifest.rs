@@ -1620,6 +1620,7 @@ mod tests {
         let mut entries = BTreeMap::new();
         entries.insert(
             "density".to_string(),
+            // exhaustive: schema JSON test covers every wire field explicitly.
             ConfigFieldEntry {
                 field_type: "float".to_string(),
                 default: Some("0.15".to_string()),

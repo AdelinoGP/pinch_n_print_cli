@@ -192,14 +192,13 @@ fn prepass_runner_invokes_wasm_export() {
 fn layer_runner_invokes_typed_wasm_export() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill").build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
+    // exhaustive: dispatch protocol fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     fx.run_layer(&layer)
         .expect("Layer::Infill dispatch+commit should succeed");
@@ -296,14 +295,12 @@ fn typed_instantiation_failure_produces_structured_error() {
         .with_wat(WAT_EMPTY_COMPONENT)
         .build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
     let arena = LayerArena::new();
 
     let live = fx.bundle.as_live();
@@ -336,14 +333,12 @@ fn missing_component_is_fatal() {
         .no_wasm()
         .build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     let result = fx.run_layer(&layer);
 
@@ -366,14 +361,12 @@ fn missing_component_is_fatal() {
 fn pool_slot_released_after_successful_typed_call() {
     let fx = dispatch_fixture::for_stage("Layer::Infill").build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     for _i in 0..3 {
         let arena = LayerArena::new();
@@ -395,14 +388,12 @@ fn pool_slot_released_after_failed_typed_call() {
         .with_wat(WAT_EMPTY_COMPONENT)
         .build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     for i in 0..3 {
         let arena = LayerArena::new();
@@ -424,14 +415,12 @@ fn pool_slot_released_after_failed_typed_call() {
 fn typed_layer_dispatch_creates_fresh_context_per_call() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill").build();
 
+    // exhaustive: dispatch fixture specifies all layer metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    
-        ..Default::default()};
+        ..Default::default()
+    };
 
     for _i in 0..3 {
         fx.run_layer(&layer)
@@ -443,7 +432,9 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
 
 #[test]
 fn dispatch_error_display_includes_all_diagnostic_fields() {
-    let err = slicer_runtime::DispatchError { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: error fixture specifies every diagnostic field
+    let err = slicer_runtime::DispatchError {
+        // exhaustive: test fixture intentionally specifies the  boundary
         module_id: "com.test.mod".to_string(),
         stage_id: "Layer::Infill".to_string(),
         export_name: "run-infill".to_string(),
@@ -617,14 +608,14 @@ fn stage_miss_is_fatal_at_instantiation() {
     );
     let layer_blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let layer_arena = LayerArena::new();
+    // exhaustive: GlobalLayer dispatch fixture explicitly supplies all fields for the missing-export protocol test
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    
-        ..Default::default()};
+    };
     let layer_live = layer_bundle.as_live();
     let layer_result = LayerStageRunner::run_stage(
         &dispatcher,

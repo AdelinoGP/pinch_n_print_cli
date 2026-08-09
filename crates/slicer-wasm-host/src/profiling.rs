@@ -280,14 +280,17 @@ mod tests {
         let folded = fold_marks(&[enter(7, 100, 10), exit(7, 400, 40)]);
         assert_eq!(
             folded,
-            vec![ScopeTotals {
-                scope: 7,
-                calls: 1,
-                total_fuel: 300,
-                self_fuel: 300,
-                total_wall_ns: 30,
-                self_wall_ns: 30,
-            }]
+            vec![
+                // exhaustive: scope-folding assertion specifies every total field
+                ScopeTotals {
+                    scope: 7,
+                    calls: 1,
+                    total_fuel: 300,
+                    self_fuel: 300,
+                    total_wall_ns: 30,
+                    self_wall_ns: 30,
+                }
+            ]
         );
     }
 
@@ -305,6 +308,7 @@ mod tests {
         assert_eq!(
             folded,
             vec![
+                // exhaustive: nested scope assertion specifies every total field
                 ScopeTotals {
                     scope: 1,
                     calls: 1,
@@ -314,6 +318,7 @@ mod tests {
                     total_wall_ns: 50,
                     self_wall_ns: 20,
                 },
+                // exhaustive: nested child assertion specifies every total field
                 ScopeTotals {
                     scope: 2,
                     calls: 1,

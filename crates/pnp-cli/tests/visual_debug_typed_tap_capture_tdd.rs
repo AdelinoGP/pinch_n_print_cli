@@ -77,6 +77,7 @@ fn model_request_for_model(
     layers: Vec<i64>,
     config: PathBuf,
 ) -> VisualDebugRequest {
+    // exhaustive: model-source request boundary fixture
     model_request_for_model_with_selectors(
         model,
         taps,
@@ -91,6 +92,7 @@ fn model_request_for_model_with_selectors(
     layers: Vec<LayerSelector>,
     config: PathBuf,
 ) -> VisualDebugRequest {
+    // exhaustive: model-source request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {
@@ -113,6 +115,7 @@ fn model_request_for_model_with_selectors(
 /// filesystem for the model or config (AC-N2, AC-N4: "pipeline closure not
 /// executed").
 fn unreachable_model_request(taps: Vec<&str>, layers: Vec<i64>) -> VisualDebugRequest {
+    // exhaustive: deliberately unreachable model request boundary fixture
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {

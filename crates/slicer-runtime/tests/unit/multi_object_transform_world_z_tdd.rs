@@ -14,7 +14,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -232,11 +232,10 @@ fn mesh_with_two_objects() -> MeshIR {
         config: ObjectConfig {
             data: HashMap::new(),
         },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
         world_z_extent: Some((-1.0, 0.0)),
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     // Object B: translate by +10 in Z
     let mut trans_z10 = identity_transform().matrix;
@@ -248,11 +247,10 @@ fn mesh_with_two_objects() -> MeshIR {
         config: ObjectConfig {
             data: HashMap::new(),
         },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
         world_z_extent: Some((10.0, 11.0)),
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     MeshIR {
         schema_version: semver(1, 0, 0),
@@ -296,11 +294,10 @@ fn mesh_with_three_objects() -> MeshIR {
                 config: ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: Vec::new(),
-                paint_data: None,
                 world_z_extent: Some((-1.0, 0.0)),
-            
-                ..Default::default()},
+
+                ..Default::default()
+            },
             ObjectMesh {
                 id: String::from("object-b"),
                 mesh: unit_cube_its(),
@@ -308,11 +305,10 @@ fn mesh_with_three_objects() -> MeshIR {
                 config: ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: Vec::new(),
-                paint_data: None,
                 world_z_extent: Some((10.0, 11.0)),
-            
-                ..Default::default()},
+
+                ..Default::default()
+            },
             ObjectMesh {
                 id: String::from("object-c"),
                 mesh: unit_cube_its(),
@@ -320,11 +316,10 @@ fn mesh_with_three_objects() -> MeshIR {
                 config: ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: Vec::new(),
-                paint_data: None,
                 world_z_extent: Some((20.0, 21.0)),
-            
-                ..Default::default()},
+
+                ..Default::default()
+            },
         ],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -372,21 +367,24 @@ fn build_lcm_layer_plan() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: global_idx,
             z: *z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("object-a"),
-                region_id: 0,
-                resolved_config: resolved_config_for_height(*height),
-                effective_layer_height: *height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: *z - height,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            active_regions: vec![
+                // exhaustive: ActiveRegion fixture explicitly defines all boundary fields
+                ActiveRegion {
+                    // exhaustive: test fixture intentionally specifies the  boundary
+                    object_id: String::from("object-a"),
+                    region_id: 0,
+                    resolved_config: resolved_config_for_height(*height),
+                    effective_layer_height: *height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: *z - height,
+                    tool_index: 0,
+                },
+            ],
+            is_sync_layer: true,
+
+            ..Default::default()
+        });
         global_idx += 1;
     }
 
@@ -395,21 +393,24 @@ fn build_lcm_layer_plan() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: global_idx,
             z: *z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("object-b"),
-                region_id: 0,
-                resolved_config: resolved_config_for_height(*height),
-                effective_layer_height: *height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: *z - height,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            active_regions: vec![
+                // exhaustive: ActiveRegion fixture explicitly defines all boundary fields
+                ActiveRegion {
+                    // exhaustive: test fixture intentionally specifies the  boundary
+                    object_id: String::from("object-b"),
+                    region_id: 0,
+                    resolved_config: resolved_config_for_height(*height),
+                    effective_layer_height: *height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: *z - height,
+                    tool_index: 0,
+                },
+            ],
+            is_sync_layer: true,
+
+            ..Default::default()
+        });
         global_idx += 1;
     }
 
@@ -481,21 +482,24 @@ fn build_three_object_lcm_layer_plan() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: global_idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("object-a"),
-                region_id: 0,
-                resolved_config: resolved_config_for_height(height),
-                effective_layer_height: height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - height,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            active_regions: vec![
+                // exhaustive: ActiveRegion fixture explicitly defines all boundary fields
+                ActiveRegion {
+                    // exhaustive: test fixture intentionally specifies the  boundary
+                    object_id: String::from("object-a"),
+                    region_id: 0,
+                    resolved_config: resolved_config_for_height(height),
+                    effective_layer_height: height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - height,
+                    tool_index: 0,
+                },
+            ],
+            is_sync_layer: true,
+
+            ..Default::default()
+        });
         global_idx += 1;
     }
 
@@ -504,21 +508,24 @@ fn build_three_object_lcm_layer_plan() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: global_idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("object-b"),
-                region_id: 0,
-                resolved_config: resolved_config_for_height(height),
-                effective_layer_height: height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - height,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            active_regions: vec![
+                // exhaustive: ActiveRegion fixture explicitly defines all boundary fields
+                ActiveRegion {
+                    // exhaustive: test fixture intentionally specifies the  boundary
+                    object_id: String::from("object-b"),
+                    region_id: 0,
+                    resolved_config: resolved_config_for_height(height),
+                    effective_layer_height: height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - height,
+                    tool_index: 0,
+                },
+            ],
+            is_sync_layer: true,
+
+            ..Default::default()
+        });
         global_idx += 1;
     }
 
@@ -527,21 +534,24 @@ fn build_three_object_lcm_layer_plan() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: global_idx,
             z,
-            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
-                object_id: String::from("object-c"),
-                region_id: 0,
-                resolved_config: resolved_config_for_height(height),
-                effective_layer_height: height,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: z - height,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: 
-     true,
-        
-            ..Default::default()});
+            active_regions: vec![
+                // exhaustive: ActiveRegion fixture explicitly defines all boundary fields
+                ActiveRegion {
+                    // exhaustive: test fixture intentionally specifies the  boundary
+                    object_id: String::from("object-c"),
+                    region_id: 0,
+                    resolved_config: resolved_config_for_height(height),
+                    effective_layer_height: height,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: z - height,
+                    tool_index: 0,
+                },
+            ],
+            is_sync_layer: true,
+
+            ..Default::default()
+        });
         global_idx += 1;
     }
 
@@ -681,15 +691,9 @@ fn execution_plan_fixture() -> ExecutionPlan {
             stage_id: String::from("PrePass::LayerPlanning"),
             modules: vec![compiled_layer_planning_module()],
         }],
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    
-        ..Default::default()}
+
+        ..Default::default()
+    }
 }
 
 fn compiled_layer_planning_module() -> CompiledModule {

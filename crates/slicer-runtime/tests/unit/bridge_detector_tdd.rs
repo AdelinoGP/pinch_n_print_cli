@@ -222,6 +222,7 @@ fn make_rotated_bridge_mesh_walls(
 
     let mesh = IndexedTriangleSet { vertices, indices };
     let object_id = "bridge-obj".to_string();
+    // exhaustive: bridge mesh fixture explicitly defines every ObjectMesh field
     let object_mesh = ObjectMesh {
         id: object_id.clone(),
         mesh,
@@ -232,8 +233,6 @@ fn make_rotated_bridge_mesh_walls(
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
-
-        ..Default::default()
     };
 
     MeshIR {
@@ -272,6 +271,7 @@ fn make_topfacing_only_mesh() -> MeshIR {
     let indices = vec![0, 1, 2, 0, 2, 3];
     let mesh = IndexedTriangleSet { vertices, indices };
     let object_id = "top-only".to_string();
+    // exhaustive: top-facing mesh fixture explicitly defines every ObjectMesh field
     let object_mesh = ObjectMesh {
         id: object_id,
         mesh,
@@ -282,8 +282,6 @@ fn make_topfacing_only_mesh() -> MeshIR {
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
-
-        ..Default::default()
     };
     MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -342,6 +340,7 @@ fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> M
         3, 0, 4,  3, 4, 7,
     ];
     let mesh = IndexedTriangleSet { vertices, indices };
+    // exhaustive: box mesh fixture explicitly defines every ObjectMesh field
     let object_mesh = ObjectMesh {
         id: id.to_string(),
         mesh,
@@ -352,8 +351,6 @@ fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> M
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
-
-        ..Default::default()
     };
     MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -726,6 +723,7 @@ fn expansion_margin_grows_polygon_observably() {
 
     let object_id = "test-obj".to_string();
 
+    // exhaustive: expansion-margin fixture explicitly defines every BridgeRegion field
     let bridge_region = BridgeRegion {
         id: 0,
         facet_indices: vec![],
@@ -735,8 +733,6 @@ fn expansion_margin_grows_polygon_observably() {
         expansion_margin_mm: 1.5,
         is_valid: true,
         xy_footprint: vec![footprint],
-
-        ..Default::default()
     };
 
     let obj_surface = ObjectSurfaceData {
@@ -756,6 +752,7 @@ fn expansion_margin_grows_polygon_observably() {
         prev_layer_boundaries: std::collections::HashMap::new(),
     };
 
+    // exhaustive: expansion-margin fixture explicitly defines every SlicedRegion field
     let mut sliced_region = SlicedRegion {
         object_id: object_id.clone(),
         region_id: RegionId::default(),
@@ -773,8 +770,6 @@ fn expansion_margin_grows_polygon_observably() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
-
-        ..Default::default()
     };
 
     assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
@@ -838,6 +833,7 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
 
     let object_id = "vshape-obj".to_string();
 
+    // exhaustive: sharp-anchor fixture explicitly defines every BridgeRegion field
     let bridge_region = BridgeRegion {
         id: 0,
         facet_indices: vec![],
@@ -847,8 +843,6 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         expansion_margin_mm: 1.5,
         is_valid: true,
         xy_footprint: v_footprint,
-
-        ..Default::default()
     };
 
     let obj_surface = ObjectSurfaceData {
@@ -868,6 +862,7 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         prev_layer_boundaries: std::collections::HashMap::new(),
     };
 
+    // exhaustive: sharp-anchor fixture explicitly defines every SlicedRegion field
     let mut sliced_region = SlicedRegion {
         object_id: object_id.clone(),
         region_id: RegionId::default(),
@@ -885,8 +880,6 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
-
-        ..Default::default()
     };
 
     // Must not panic.
@@ -933,6 +926,7 @@ fn non_bridge_region_has_empty_bridge_areas() {
     let indices = vec![0, 1, 2, 3, 4, 5];
     let mesh = IndexedTriangleSet { vertices, indices };
     let object_id = "solid-block".to_string();
+    // exhaustive: solid-block fixture explicitly defines every ObjectMesh field
     let object_mesh = ObjectMesh {
         id: object_id.clone(),
         mesh,
@@ -943,8 +937,6 @@ fn non_bridge_region_has_empty_bridge_areas() {
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
-
-        ..Default::default()
     };
     let mesh_ir = MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -969,24 +961,25 @@ fn non_bridge_region_has_empty_bridge_areas() {
     let analysis = execute_mesh_analysis_with(&mesh_ir, MeshAnalysisConfig::default())
         .expect("analysis must succeed");
 
+    // exhaustive: solid-block fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
         index: 0,
         z: 0.5,
-        active_regions: vec![ActiveRegion {
-            object_id: object_id.clone(),
-            region_id: RegionId::default(),
-            resolved_config: slicer_ir::ResolvedConfig::default(),
-            effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-            ..Default::default()
+        active_regions: vec![{
+            // exhaustive: solid-block fixture explicitly defines every ActiveRegion field
+            ActiveRegion {
+                object_id: object_id.clone(),
+                region_id: RegionId::default(),
+                resolved_config: slicer_ir::ResolvedConfig::default(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }
         }],
         has_nonplanar: false,
         is_sync_layer: false,
-
-        ..Default::default()
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&analysis), None)
@@ -1028,24 +1021,25 @@ fn invalid_bridge_excluded_from_slice_areas() {
         "5Ã—20mm bridge must be invalid under min_bridge_length_mm=25.0"
     );
 
+    // exhaustive: invalid-bridge fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
         index: 0,
         z: 1.0,
-        active_regions: vec![ActiveRegion {
-            object_id: "bridge-obj".to_string(),
-            region_id: RegionId::default(),
-            resolved_config: slicer_ir::ResolvedConfig::default(),
-            effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-            ..Default::default()
+        active_regions: vec![{
+            // exhaustive: invalid-bridge fixture explicitly defines every ActiveRegion field
+            ActiveRegion {
+                object_id: "bridge-obj".to_string(),
+                region_id: RegionId::default(),
+                resolved_config: slicer_ir::ResolvedConfig::default(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }
         }],
         has_nonplanar: false,
         is_sync_layer: false,
-
-        ..Default::default()
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&result), None)
@@ -1088,24 +1082,25 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
          not Overhang) — this is the defect precondition"
     );
 
+    // exhaustive: flat-bridge fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
         index: 5,
         z: 11.5,
-        active_regions: vec![ActiveRegion {
-            object_id: "slab-obj".to_string(),
-            region_id: RegionId::default(),
-            resolved_config: slicer_ir::ResolvedConfig::default(),
-            effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-            ..Default::default()
+        active_regions: vec![{
+            // exhaustive: flat-bridge fixture explicitly defines every ActiveRegion field
+            ActiveRegion {
+                object_id: "slab-obj".to_string(),
+                region_id: RegionId::default(),
+                resolved_config: slicer_ir::ResolvedConfig::default(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }
         }],
         has_nonplanar: false,
         is_sync_layer: false,
-
-        ..Default::default()
     };
 
     // This layer's cross-section: the full beam. The previous layer: two end
@@ -1188,24 +1183,25 @@ fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
     let cases: [(u32, f32, Option<&HashMap<String, Vec<ExPolygon>>>); 2] =
         [(0, 0.1, None), (10, 2.1, Some(&footprint))];
     for (index, z, prev_raw_polygons) in cases {
+        // exhaustive: solid-box fixture explicitly defines every GlobalLayer field
         let layer = GlobalLayer {
             index,
             z,
-            active_regions: vec![ActiveRegion {
-                object_id: "box-obj".to_string(),
-                region_id: RegionId::default(),
-                resolved_config: slicer_ir::ResolvedConfig::default(),
-                effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-                ..Default::default()
+            active_regions: vec![{
+                // exhaustive: solid-box fixture explicitly defines every ActiveRegion field
+                ActiveRegion {
+                    object_id: "box-obj".to_string(),
+                    region_id: RegionId::default(),
+                    resolved_config: slicer_ir::ResolvedConfig::default(),
+                    effective_layer_height: 0.2,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: 0.0,
+                    tool_index: 0,
+                }
             }],
             has_nonplanar: false,
             is_sync_layer: false,
-
-            ..Default::default()
         };
         let cache = PrepassSliceCache {
             raw_polygons: &footprint,

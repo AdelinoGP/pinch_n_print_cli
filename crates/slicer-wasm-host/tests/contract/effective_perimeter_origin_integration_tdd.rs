@@ -59,6 +59,7 @@ fn make_wall_loop() -> WallLoopView {
         loop_type: WallLoopType::Outer,
         path: ExtrusionPath3d {
             points: vec![
+                // exhaustive: Point3WithWidth has no Default; wall-loop fixture specifies all geometry fields
                 Point3WithWidth {
                     overhang_distance_mm: None,
                     x: 0.0,
@@ -69,6 +70,7 @@ fn make_wall_loop() -> WallLoopView {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                 },
+                // exhaustive: Point3WithWidth has no Default; wall-loop fixture specifies all geometry fields
                 Point3WithWidth {
                     overhang_distance_mm: None,
                     x: 10.0,

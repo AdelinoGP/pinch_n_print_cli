@@ -22,7 +22,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -122,10 +122,7 @@ fn cube_mesh() -> MeshIR {
             config: slicer_ir::ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
-        ..Default::default()
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -216,14 +213,7 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
             stage_id: "PrePass::SeamPlanning".to_string(),
             modules: vec![module],
         }],
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::<GlobalLayer>::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     };
 
     let mesh = Arc::new(cube_mesh());
@@ -241,10 +231,7 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
             global_layers: vec![GlobalLayer {
                 index: 0,
                 z: 0.2,
-                active_regions: Vec::new(),
-                has_nonplanar: false,
-                is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             }],
             object_participation: HashMap::new(),
         }))

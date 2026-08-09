@@ -6,7 +6,7 @@
 //! deterministic across runs, and that invalid setups fail with a
 //! structured diagnostic.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::LayerStageCommit;
@@ -87,10 +87,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
             config: ObjectConfig {
                 data: HashMap::new(),
             },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
-        ..Default::default()
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -117,15 +114,9 @@ fn layer_at(index: u32, z: f32, object_id: &str) -> GlobalLayer {
             region_id: 0,
             resolved_config: default_resolved(),
             effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-        ..Default::default()
+            ..Default::default()
         }],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -189,15 +180,8 @@ impl LayerStageRunner for RecordingRunner {
 
 fn plan_with_one_layer(layer: GlobalLayer) -> ExecutionPlan {
     ExecutionPlan {
-        prepass_stages: Vec::new(),
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![layer]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 
@@ -315,15 +299,9 @@ fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
                 region_id: 0,
                 resolved_config: default_resolved(),
                 effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            ..Default::default()
+                ..Default::default()
             }],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         };
         let slice =
             execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
@@ -368,15 +346,9 @@ fn layer_slice_builtin_is_deterministic_for_wedge_mesh() {
             region_id: 0,
             resolved_config: default_resolved(),
             effective_layer_height: 0.2,
-            nonplanar_shell: None,
-            is_catchup_layer: false,
-            catchup_z_bottom: 0.0,
-            tool_index: 0,
-        ..Default::default()
+            ..Default::default()
         }],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
     let a = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice a");
     let b = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice b");
@@ -441,17 +413,12 @@ fn layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions() {
         active_regions: vec![ActiveRegion {
             object_id: "obj-a".to_string(),
             region_id: 0,
-            resolved_config: default_resolved(),
             effective_layer_height: 0.3,
-            nonplanar_shell: None,
             is_catchup_layer: true,
             catchup_z_bottom: 0.3,
-            tool_index: 0,
-        ..Default::default()
+            ..Default::default()
         }],
-        has_nonplanar: false,
-        is_sync_layer: false,
-    ..Default::default()
+        ..Default::default()
     };
 
     let slice = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
