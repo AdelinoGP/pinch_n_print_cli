@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::common;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -29,7 +29,6 @@ fn empty_plan() -> ExecutionPlan {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     }
@@ -117,15 +116,20 @@ fn gcode_with_optional_flavor(flavor: Option<&str>) -> String {
     }
 
     let config = PipelineConfig {
-// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
-        ..common::pipeline_config_base(mesh_ir, empty_plan(), PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
-            layer: Box::new(NoopLayerRunner),
-            finalization: Box::new(NoopFinalizationRunner),
-            postpass: Box::new(NoopPostpassRunner),
-            emitter: Box::new(DefaultGCodeEmitter::new("pnp_cli-test 0.1.0".into())),
-            serializer: Box::new(DefaultGCodeSerializer::new()),
-        })
+        // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+        ..common::pipeline_config_base(
+            mesh_ir,
+            empty_plan(),
+            // exhaustive: PipelineStageRunners explicit runner wiring boundary fixture
+            PipelineStageRunners {
+                prepass: Box::new(NoopPrepassRunner),
+                layer: Box::new(NoopLayerRunner),
+                finalization: Box::new(NoopFinalizationRunner),
+                postpass: Box::new(NoopPostpassRunner),
+                emitter: Box::new(DefaultGCodeEmitter::new("pnp_cli-test 0.1.0".into())),
+                serializer: Box::new(DefaultGCodeSerializer::new()),
+            },
+        )
     };
 
     run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

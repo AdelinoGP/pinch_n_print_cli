@@ -105,7 +105,6 @@ fn build_fixture_slice_ir(layer_index: u32, region_z: f32) -> SliceIR {
         nonplanar_surface: Some(slicer_ir::SurfaceGroupId::default()), // → has_nonplanar = true
         effective_layer_height: 0.35,
         segment_annotations,
-        variant_chain: Vec::new(),
         top_shell_index: Some(3),
         bottom_shell_index: Some(5),
         top_solid_fill: vec![
@@ -229,7 +228,6 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     let layer = GlobalLayer {
         index: layer_index,
         z: region_z,
-        active_regions: Vec::new(),
         has_nonplanar: true,
         is_sync_layer: false,
 

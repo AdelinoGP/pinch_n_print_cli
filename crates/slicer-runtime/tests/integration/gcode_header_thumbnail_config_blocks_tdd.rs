@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use crate::common;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -66,7 +66,6 @@ fn empty_plan() -> ExecutionPlan {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     }
@@ -138,7 +137,7 @@ impl PostpassStageRunner for NoopPostpassRunner {
 }
 
 fn default_runners() -> PipelineStageRunners {
-// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+    // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),

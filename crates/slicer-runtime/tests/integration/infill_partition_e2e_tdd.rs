@@ -75,11 +75,10 @@ fn make_perimeter_ir(obj: &str, rid: RegionId, infill_areas: Vec<ExPolygon>) -> 
             region_id: rid,
             walls: Vec::new(),
             infill_areas,
-            seam_candidates: Vec::new(),
             resolved_seam: None,
 
-        ..Default::default()
-    }],
+            ..Default::default()
+        }],
     }
 }
 

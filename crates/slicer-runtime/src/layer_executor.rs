@@ -507,14 +507,12 @@ fn execute_single_layer_inner(
                 );
             }
             if !writes.is_empty() || !runtime_reads.is_empty() || !batch_calls.is_empty() {
-                // exhaustive: ModuleAccessAudit explicit test fixture preserves boundary data
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: writes,
                     batch_calls,
                     diagnostics: Vec::new(),
-                    // exhaustive: ModuleAccessAudit explicit test fixture preserves boundary data
                 });
             }
         }
@@ -593,36 +591,28 @@ fn execute_single_layer_inner(
             arena
                 .take_deferred_retracts()
                 .into_iter()
-            .map(|r| {
-                let mut retract = slicer_ir::TravelRetract {
+                .map(|r| slicer_ir::TravelRetract {
                     after_entity_index: r.after_entity_index,
-                    ..Default::default()
-                };
-                retract.length = r.length;
-                retract.speed = r.speed;
-                retract.is_unretract = r.is_unretract;
-                retract.mode = r.mode;
-                retract
-            }),
+                    length: r.length,
+                    speed: r.speed,
+                    is_unretract: r.is_unretract,
+                    mode: r.mode,
+                }),
         );
     {
         let raw_travels = arena.take_deferred_travel_moves();
         let mapped: Vec<slicer_ir::TravelMove> = raw_travels
             .into_iter()
-            .map(|m| {
-                let mut travel = slicer_ir::TravelMove {
-                    entity_id: layer_output
-                        .ordered_entities
-                        .get(m.after_entity_index as usize)
-                        .map(|e| e.entity_id)
-                        .unwrap_or(0),
-                    ..Default::default()
-                };
-                travel.x = m.x;
-                travel.y = m.y;
-                travel.z = m.z;
-                travel.f = m.f;
-                travel
+            .map(|m| slicer_ir::TravelMove {
+                entity_id: layer_output
+                    .ordered_entities
+                    .get(m.after_entity_index as usize)
+                    .map(|e| e.entity_id)
+                    .unwrap_or(0),
+                x: m.x,
+                y: m.y,
+                z: m.z,
+                f: m.f,
             })
             .collect();
         layer_output.travel_moves.extend(mapped);
@@ -1571,7 +1561,6 @@ pub(crate) fn assemble_ordered_entities(
                 key: RegionKey,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
-        // exhaustive: PrintEntity explicit test fixture preserves boundary data
         acc.push(PrintEntity {
             entity_id: id_gen.next(),
             path,
@@ -1582,7 +1571,6 @@ pub(crate) fn assemble_ordered_entities(
             tool_index,
             region_key: key,
             topo_order,
-            // exhaustive: PrintEntity explicit test fixture preserves boundary data
         });
     };
 
@@ -2340,14 +2328,12 @@ pub(crate) fn apply(
                 });
             }
             for t in c.travel_moves {
-                // exhaustive: TravelMove explicit test fixture preserves boundary data
                 arena.push_deferred_travel_move(crate::blackboard::DeferredTravelMove {
                     after_entity_index: anchor,
                     x: t.x,
                     y: t.y,
                     z: t.z,
                     f: t.f,
-                    // exhaustive: TravelMove explicit test fixture preserves boundary data
                 });
             }
         }

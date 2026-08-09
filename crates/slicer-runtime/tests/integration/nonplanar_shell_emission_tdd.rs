@@ -14,7 +14,7 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 
 fn make_surface_group(shell_count: u32) -> SurfaceGroup {
-// exhaustive: SurfaceGroup explicit boundary fixture for this integration test
+    // exhaustive: SurfaceGroup explicit boundary fixture for this integration test
     SurfaceGroup {
         id: 7,
         facet_indices: vec![],

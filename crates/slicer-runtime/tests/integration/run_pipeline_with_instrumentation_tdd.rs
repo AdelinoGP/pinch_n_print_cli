@@ -10,7 +10,7 @@
 //!   brackets inside the rayon parallel iterator)
 
 use crate::common;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -79,7 +79,6 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
     GlobalLayer {
         index,
         z,
-        active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
 
@@ -207,7 +206,7 @@ impl GCodeSerializer for MinimalSerializer {
 }
 
 fn noop_runners() -> PipelineStageRunners {
-// exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
+    // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
     PipelineStageRunners {
         prepass: Box::new(NoopPrepassRunner),
         layer: Box::new(NoopLayerRunner),
@@ -229,18 +228,21 @@ fn empty_raw_config() -> HashMap<slicer_ir::ConfigKey, slicer_ir::ConfigValue> {
 #[test]
 fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
     let config = PipelineConfig {
-        ..common::pipeline_config_base(empty_mesh_ir(), ExecutionPlan {
-            prepass_stages: Vec::new(),
-            per_layer_stages: Vec::new(),
-            layer_finalization_stage: None,
-            postpass_stages: Vec::new(),
-            global_layers: Arc::new(Vec::new()),
-            region_plans: Arc::new(HashMap::new()),
-            module_region_index: HashMap::new(),
-            aggregated_region_split: BTreeMap::new(),
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            ExecutionPlan {
+                prepass_stages: Vec::new(),
+                per_layer_stages: Vec::new(),
+                layer_finalization_stage: None,
+                postpass_stages: Vec::new(),
+                global_layers: Arc::new(Vec::new()),
+                region_plans: Arc::new(HashMap::new()),
+                module_region_index: HashMap::new(),
 
-        ..Default::default()
-    }, noop_runners())
+                ..Default::default()
+            },
+            noop_runners(),
+        )
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -299,7 +301,6 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -476,7 +477,6 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -626,7 +626,6 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };

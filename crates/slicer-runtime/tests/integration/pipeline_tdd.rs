@@ -4,7 +4,7 @@
 //! all host scheduler stages (prepass â†’ per-layer â†’ finalization â†’ postpass).
 
 use crate::common;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -73,7 +73,6 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
     GlobalLayer {
         index,
         z,
-        active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
 
@@ -356,7 +355,6 @@ fn run_pipeline_propagates_layer_error() {
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -513,7 +511,6 @@ fn run_pipeline_calls_stages_in_order() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -561,7 +558,6 @@ fn run_pipeline_propagates_finalization_error() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -657,7 +653,6 @@ fn run_pipeline_with_layers_produces_output() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -736,7 +731,6 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         global_layers: Arc::new(Vec::new()), // empty â€” must be filled by promotion
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -812,7 +806,6 @@ fn prepass_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -908,7 +901,6 @@ fn prepass_audits_carry_batch_calls() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -1011,7 +1003,6 @@ fn layer_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
         ..Default::default()
     };
 
@@ -1109,7 +1100,6 @@ fn access_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };
@@ -1271,7 +1261,6 @@ fn access_audits_live_path_read_performing() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     };

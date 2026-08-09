@@ -4,7 +4,6 @@
 // each test file below is mounted as a submodule. See the migration plan for the taxonomy.
 
 #![allow(missing_docs)]
-#![allow(clippy::needless_update)]
 
 #[path = "../common/mod.rs"]
 mod common;

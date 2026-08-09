@@ -261,6 +261,7 @@ fn mirrored_insert_extended_points(
                        next_distance: f32,
                        distance: f32| {
         let curr_is_closer = (curr_distance - distance).abs() <= (next_distance - distance).abs();
+        // exhaustive: Point3WithWidth interpolation intentionally specifies every field.
         Point3WithWidth {
             x: curr.x + t * (next.x - curr.x),
             y: curr.y + t * (next.y - curr.y),
@@ -274,9 +275,7 @@ fn mirrored_insert_extended_points(
             },
             dist_to_top_mm: curr.dist_to_top_mm + t * (next.dist_to_top_mm - curr.dist_to_top_mm),
             overhang_distance_mm: Some(distance),
-
-        ..Default::default()
-    }
+        }
     };
 
     let mut crossing_points = Vec::with_capacity(points.len() + boundary.len());
@@ -610,9 +609,7 @@ fn wall_entity_with_quartile(layer_index: u32, quartile: u8) -> slicer_ir::Print
         y,
         z,
         width: w,
-        flow_factor: 1.0,
         overhang_quartile: Some(quartile),
-        dist_to_top_mm: 0.0,
         overhang_distance_mm: distance,
 
         ..Default::default()
@@ -714,13 +711,11 @@ fn crossing_mirror_layers() -> Vec<LayerCollectionView> {
             y,
             z,
             width: 0.4,
-            flow_factor: 1.0,
             overhang_quartile: quartile,
-            dist_to_top_mm: 0.0,
             overhang_distance_mm: distance,
 
-        ..Default::default()
-    };
+            ..Default::default()
+        };
     let entity = |entity_id: u64, layer_index: u32, points: Vec<Point3WithWidth>| {
         print_entity(
             entity_id,

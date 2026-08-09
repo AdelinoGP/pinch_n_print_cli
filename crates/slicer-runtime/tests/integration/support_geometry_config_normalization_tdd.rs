@@ -8,7 +8,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -110,26 +110,16 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                 .iter()
                 .map(|oid| ActiveRegion {
                     object_id: oid.clone(),
-                    region_id: 0,
-                    resolved_config: slicer_ir::ResolvedConfig::default(),
                     effective_layer_height: layer_height,
-                    nonplanar_shell: None,
-                    is_catchup_layer: false,
-                    catchup_z_bottom: 0.0,
-                    tool_index: 0,
-
-        ..Default::default()
-    })
+                    ..Default::default()
+                })
                 .collect();
             GlobalLayer {
-                index: i,
                 z: (i + 1) as f32 * layer_height,
                 active_regions: regions,
-                has_nonplanar: false,
-                is_sync_layer: false,
-
-        ..Default::default()
-    }
+                index: i,
+                ..Default::default()
+            }
         })
         .collect();
     let mut object_participation = HashMap::new();
@@ -234,7 +224,6 @@ fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan
         global_layers: Arc::new(Vec::<GlobalLayer>::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
 
         ..Default::default()
     }

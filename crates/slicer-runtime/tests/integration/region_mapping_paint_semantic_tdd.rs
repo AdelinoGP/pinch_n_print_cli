@@ -37,42 +37,44 @@ fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
 fn minimal_mesh(object_id: &str) -> MeshIR {
     MeshIR {
         schema_version: sv(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: object_id.to_string(),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 0.0,
-                        y: 1.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
+        objects: vec![
+            // exhaustive: ObjectMesh fixture intentionally specifies every field.
+            ObjectMesh {
+                id: object_id.to_string(),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 1.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 1.0,
+                            z: 0.0,
+                        },
+                    ],
+                    indices: vec![0, 1, 2],
+                },
+                transform: Transform3d {
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                        1.0,
+                    ],
+                },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: vec![],
+                paint_data: None,
+                world_z_extent: None,
             },
-            transform: Transform3d {
-                matrix: [
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                ],
-            },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-
-        ..Default::default()
-    }],
+        ],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -89,6 +91,7 @@ fn minimal_mesh(object_id: &str) -> MeshIR {
 }
 
 fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
+    // exhaustive: ActiveRegion fixture intentionally specifies every field.
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id,
@@ -98,8 +101,6 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
-
-        ..Default::default()
     }
 }
 
@@ -127,15 +128,16 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
 fn region_overlap_applies_override() {
     let layer_plan = Arc::new(LayerPlanIR {
         schema_version: sv(1, 0, 0),
-        global_layers: vec![GlobalLayer {
-            index: 5,
-            z: 1.0,
-            active_regions: vec![active_region("obj-a", 0)],
-            has_nonplanar: false,
-            is_sync_layer: false,
-
-        ..Default::default()
-    }],
+        global_layers: vec![
+            // exhaustive: GlobalLayer fixture intentionally specifies every field.
+            GlobalLayer {
+                index: 5,
+                z: 1.0,
+                active_regions: vec![active_region("obj-a", 0)],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+        ],
         object_participation: HashMap::new(),
     });
 
@@ -230,15 +232,16 @@ fn object_with_paint(object_id: &str, semantic: PaintSemantic, value: PaintValue
 fn no_overlap_keeps_object_config() {
     let layer_plan = Arc::new(LayerPlanIR {
         schema_version: sv(1, 0, 0),
-        global_layers: vec![GlobalLayer {
-            index: 0,
-            z: 0.2,
-            active_regions: vec![active_region("obj-b", 0)],
-            has_nonplanar: false,
-            is_sync_layer: false,
-
-        ..Default::default()
-    }],
+        global_layers: vec![
+            // exhaustive: GlobalLayer fixture intentionally specifies every field.
+            GlobalLayer {
+                index: 0,
+                z: 0.2,
+                active_regions: vec![active_region("obj-b", 0)],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+        ],
         object_participation: HashMap::new(),
     });
 
@@ -288,15 +291,16 @@ fn no_overlap_keeps_object_config() {
 fn overlap_precedence_is_deterministic() {
     let layer_plan = Arc::new(LayerPlanIR {
         schema_version: sv(1, 0, 0),
-        global_layers: vec![GlobalLayer {
-            index: 0,
-            z: 0.2,
-            active_regions: vec![active_region("obj-c", 0)],
-            has_nonplanar: false,
-            is_sync_layer: false,
-
-        ..Default::default()
-    }],
+        global_layers: vec![
+            // exhaustive: GlobalLayer fixture intentionally specifies every field.
+            GlobalLayer {
+                index: 0,
+                z: 0.2,
+                active_regions: vec![active_region("obj-c", 0)],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+        ],
         object_participation: HashMap::new(),
     });
 

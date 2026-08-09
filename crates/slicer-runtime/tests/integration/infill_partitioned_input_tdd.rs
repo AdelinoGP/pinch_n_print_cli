@@ -331,7 +331,6 @@ fn run_and_link(
         region_id: *region.region_id(),
         sparse_infill: raw.sparse_paths().to_vec(),
         solid_infill: raw.solid_paths().to_vec(),
-        ironing: raw.ironing_paths().to_vec(),
 
         ..Default::default()
     }];

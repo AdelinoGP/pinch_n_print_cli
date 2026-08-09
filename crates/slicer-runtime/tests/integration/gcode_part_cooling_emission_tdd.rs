@@ -42,9 +42,7 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
         y,
         z,
         width: 0.4,
-        flow_factor: 1.0,
         overhang_quartile: None,
-        dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
 
         ..Default::default()
@@ -74,7 +72,6 @@ fn wall_entity() -> PrintEntity {
         role: ExtrusionRole::OuterWall,
         tool_index: 0,
         region_key: region_key_fixture(0),
-        topo_order: 0,
 
         ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
     }
@@ -110,7 +107,6 @@ fn layer(index: u32, z: f32, annotations: Vec<LayerAnnotation>) -> LayerCollecti
         global_layer_index: index,
         z,
         ordered_entities: vec![wall_entity()],
-        tool_changes: vec![],
         z_hops: vec![],
         annotations,
         retracts: vec![],

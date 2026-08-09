@@ -82,13 +82,10 @@ fn perimeter_region(
     infill_areas: Vec<ExPolygon>,
 ) -> PerimeterRegion {
     PerimeterRegion {
-        variant_chain: Vec::new(),
         object_id: ObjectId::from(object_id),
         region_id,
         walls: Vec::new(),
         infill_areas,
-        seam_candidates: Vec::new(),
-        resolved_seam: None,
 
         ..Default::default()
     }
@@ -136,6 +133,7 @@ fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
 // Synthetic wall loop used by the post-process IR. The actual geometry is
 // irrelevant — Fix 4 only inspects `infill_areas` / `seam_candidates`.
 fn synthetic_wall() -> WallLoop {
+    // exhaustive: WallLoop fixture intentionally specifies every field under test.
     WallLoop {
         perimeter_index: 0,
         loop_type: LoopType::Outer,
@@ -146,25 +144,17 @@ fn synthetic_wall() -> WallLoop {
                     y: 0.0,
                     z: 0.2,
                     width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
 
-        ..Default::default()
-    },
+                    ..Default::default()
+                },
                 Point3WithWidth {
                     x: 1.0,
                     y: 0.0,
                     z: 0.2,
                     width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
 
-        ..Default::default()
-    },
+                    ..Default::default()
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -172,8 +162,6 @@ fn synthetic_wall() -> WallLoop {
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),
         boundary_type: WallBoundaryType::Interior,
-
-        ..slicer_sdk::test_support::fixtures::wall_loop_base(LoopType::Outer, WallBoundaryType::Interior)
     }
 }
 
@@ -184,13 +172,9 @@ fn synthetic_seam_candidate() -> SeamCandidate {
             y: 0.0,
             z: 0.2,
             width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
 
-        ..Default::default()
-    },
+            ..Default::default()
+        },
         score: 0.5,
         reason: SeamReason::Aligned,
     }
@@ -225,13 +209,10 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
     // seam_candidates empty — the "fuzzy-skin / seam-placer wall-only emit".
     let mut ir_owned = empty_perimeter_ir();
     ir_owned.regions.push(PerimeterRegion {
-        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],
         infill_areas: Vec::new(),
-        seam_candidates: Vec::new(),
-        resolved_seam: None,
 
         ..Default::default()
     });
@@ -318,24 +299,18 @@ fn pairs_regions_by_object_id_not_by_position() {
     // (10×10 = 100 mm²) onto B, and vice versa.
     let mut ir_owned = empty_perimeter_ir();
     ir_owned.regions.push(PerimeterRegion {
-        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-2"),
         region_id: 0,
         walls: vec![synthetic_wall()],
         infill_areas: Vec::new(),
-        seam_candidates: Vec::new(),
-        resolved_seam: None,
 
         ..Default::default()
     });
     ir_owned.regions.push(PerimeterRegion {
-        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],
         infill_areas: Vec::new(),
-        seam_candidates: Vec::new(),
-        resolved_seam: None,
 
         ..Default::default()
     });
@@ -431,6 +406,7 @@ fn partition_re_fires_under_post_process_only_path() {
     arena.set_slice(slice).expect("set_slice");
 
     let mut ir_owned = empty_perimeter_ir();
+    // exhaustive: PerimeterRegion fixture intentionally specifies every field.
     ir_owned.regions.push(PerimeterRegion {
         variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
@@ -439,8 +415,6 @@ fn partition_re_fires_under_post_process_only_path() {
         infill_areas: vec![wall_inset.clone()],
         seam_candidates: Vec::new(),
         resolved_seam: None,
-
-        ..Default::default()
     });
 
     apply_for_test(
