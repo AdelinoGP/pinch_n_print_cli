@@ -309,6 +309,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] TASK-318 — FRU sweep of slicer-ir/slicer-core/slicer-gcode test literals for the struct-literal churn gate — packet 196.
 
+- [x] TASK-319 — FRU sweep of slicer-runtime/slicer-scheduler/slicer-wasm-host/pnp-cli test literals for the struct-literal churn gate — packet 197.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a

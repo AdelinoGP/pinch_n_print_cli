@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 197-literal-sweep-host-runtime
 task_ids:
   - TASK-319
