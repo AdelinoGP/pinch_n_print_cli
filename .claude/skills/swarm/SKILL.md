@@ -2,7 +2,7 @@
 name: swarm
 description: Planner-Worker orchestration to implement or refine an active spec packet under docs/spec_packets/, including OrcaSlicer parity checks.
 type: anthropic-skill
-version: "1.6"
+version: "1.7"
 metadata:
   internal: true
 ---
@@ -68,12 +68,13 @@ To escalate, append an ESCALATION block to the step ledger and state it in the t
 ESCALATION
 - Trigger: <criterion 1 | 2 | 3, plus one line of evidence>
 - Spend plan: <which permitted categories, rough split>
+- WIP commits: on — this is a protected run
 - Stop line: 300k hard
 ```
 
 One escalation per run. No band above extended: at 300k the only moves are finalize or `Status: PARTIAL` handoff.
 
-**L/XL packets must use partial WIP commits.** For any packet rated L (or a run that escalates via criterion 1 or 3), the planner MUST commit partial work-in-progress after each verified step or milestone — a small checkpoint commit with an honest message naming the verified steps and any known-open items. This is the exception to the general no-commit rule below, and it is mandatory, not optional: it exists because a single recovery action (a `git stash` to escape a broken worker state, a `git checkout`, or a session loss) can otherwise discard an entire completed sweep. Never `git stash drop` those checkpoints' antecedents, and never commit a step whose verification is still red without saying so in the message. The user asking for a mid-term checkpoint also satisfies this rule.
+**Protected runs checkpoint every verified sweep.** A run is protected when its PLAN rates planner cost L, or when it enters extended band via any escalation criterion. A sweep is a step whose exit condition and validation command both went green — a step still red is an open item, never a verified sweep. In a protected run, the planner commits after every verified sweep and before the next dispatch: a small checkpoint whose message starts `wip(<slug>):`, names each verified step, and lists every open item. A criterion-2 escalation first checkpoints the whole verified ledger, then continues per-sweep; a user-requested mid-term checkpoint is a mandatory commit on top of this cadence. This is the exception to the no-commit rule below, and it is mandatory: a single recovery action (a `git stash`, a `git checkout`, a session loss) otherwise discards every sweep still in the working tree, while checkpoints cap the loss at the in-flight step. At close, after the acceptance ceremony and the docs/07 edit, squash the run's checkpoints into one honest packet commit — but only when every commit between the first checkpoint's parent and HEAD is a run checkpoint; otherwise report and ask. A PARTIAL handoff keeps the checkpoints and lists their hashes in the report. A stash entry is droppable only when `git stash show -p <entry>` shows nothing against HEAD — its content fully present in a checkpoint — or on an explicit user ask.
 
 ## Subagent contract
 
@@ -179,7 +180,7 @@ If no packet is supplied and there is not exactly one `active` packet, stop and 
 - The planner MUST compile packet docs once into a compact execution manifest and use that manifest plus rolling deltas thereafter.
 - Worker outputs MUST be structured and bounded.
 - Intermediate review may be delta-scoped; packet-close decisions always need a final full review — if the run cannot fit one even after a justified escalation, closure defers to a fresh session (see Phase 5.1).
-- Do not commit, create branches, or require per-worker commits unless the user explicitly asks — EXCEPT the mandatory partial WIP commits for L/XL packets (see the escalation protocol). Workers never commit; the planner makes the checkpoint commits.
+- Do not commit, create branches, or require per-worker commits unless the user explicitly asks — except protected runs, whose planner checkpoint commits are mandatory (see the escalation protocol). Workers never commit; the planner owns every commit.
 
 ## Workflow
 
@@ -284,7 +285,7 @@ Validation order:
 3. packet-level verification commands
 4. broader workspace checks only if the packet asks for them
 
-Do not replace packet-specific commands with generic workspace tests. Use the manifest's command registry so later iterations rerun only the commands affected by `changed_steps`/`changed_files`.
+Do not replace packet-specific commands with generic workspace tests. Use the manifest's command registry so later iterations rerun only the commands affected by `changed_steps`/`changed_files`. Protected runs: once a step's targeted command passes, checkpoint-commit that sweep before the next dispatch (see the escalation protocol).
 
 **`cargo test --workspace` is forbidden during implementation iterations.** The suite is >1000 tests and takes ≥11 minutes per run — running it inside a fix loop burns budget without adding signal beyond the targeted command. It runs at most once, in Phase 5.1's acceptance ceremony, and only if the packet itself lists it as a closure gate. Targeted commands (`cargo test -p <crate> --test <file>` / `-- <test_name>`) and `cargo check --workspace` are the workhorses; reach for `--workspace` test runs deliberately, never reflexively.
 
@@ -306,7 +307,7 @@ Intermediate loops may use a delta review keyed to `changed_steps`/`changed_file
 
 ### Phase 5 — Completion, status, docs
 
-**5.1 Acceptance ceremony.** Re-dispatch every pipe-suffixed acceptance command from `packet.spec.md`; every non-duplicate verification command from `implementation-plan.md` that still matters at packet scope; every packet-level command from the `Verification` section; a final **full** `spec-review` (packet scope) pass before status change. If budget does not allow a full review, the packet does not close this session — report DEFERRED and propose a fresh-session full review. Budget pressure defers closure; it never waives review.
+**5.1 Acceptance ceremony.** Re-dispatch every pipe-suffixed acceptance command from `packet.spec.md`; every non-duplicate verification command from `implementation-plan.md` that still matters at packet scope; every packet-level command from the `Verification` section; a final **full** `spec-review` (packet scope) pass before status change. If budget does not allow a full review, the packet does not close this session — report DEFERRED and propose a fresh-session full review. Budget pressure defers closure; it never waives review. Protected runs: after the ceremony passes and the docs/07 edit lands, squash the run's checkpoints into one packet commit (see the escalation protocol) before emitting the report.
 
 **5.2 Status transitions.**
 - `draft` used only for refinement → keep `draft`.

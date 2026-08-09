@@ -16,6 +16,7 @@ Iterations: N
 Workers used: N
 Planner state backend: session-memory | packet-checkpoint
 Planner context cost (peak): <%>; remaining at report time: <%>
+Checkpoint commits (protected runs only): <squash commit hash, or per-step hashes on PARTIAL>
 
 Packet-quality preflight:
 - PASS / FAIL
@@ -53,5 +54,6 @@ Handoff (if Status: PARTIAL or DEFERRED):
 ## Fill-in notes
 
 - `Planner context cost (peak)` is the highest budget reading observed during the run; `remaining at report time` is the budget left when the report is emitted.
+- `Checkpoint commits` appears only for protected runs: the squash commit hash at close, or the per-step checkpoint hashes on PARTIAL/BLOCKED/DEFERRED — a fresh session needs them to know what is already safe and what still needs work.
 - `Docs and status impact / docs/07 change: no` is correct for retrofit packets correcting already-closed work — emit it explicitly rather than omitting the line.
 - `Handoff` is omitted only on `Status: COMPLETED` runs; on PARTIAL/BLOCKED/DEFERRED the section is mandatory.
