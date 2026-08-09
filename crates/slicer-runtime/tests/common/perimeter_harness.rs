@@ -4,11 +4,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use super::pipeline_config_base;
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_ir::{ConfigValue, GlobalLayer, LayerStageCommit, ModuleId, PerimeterIR, StageId};
-use slicer_runtime::pipeline::{
-    run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
-};
+use slicer_runtime::pipeline::{run_pipeline_with_raw_config, PipelineStageRunners};
 use slicer_runtime::{
     assemble_search_roots, build_live_execution_plan, load_live_modules_for_plan_with_config,
     resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
@@ -223,10 +222,11 @@ pub fn run_pipeline_capturing_perimeters(
         WasmRuntimeDispatcher::new(Arc::clone(&engine)),
     ));
     let sink = capturing_runner.sink();
-    let pipeline_config = PipelineConfig {
-        mesh_ir: mesh,
+    let mut pipeline_config = pipeline_config_base(
+        mesh,
         plan,
-        runners: PipelineStageRunners {
+        // exhaustive: PipelineStageRunners owns the runtime trait-object boundary for this harness.
+        PipelineStageRunners {
             prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             layer: Box::new(capturing_runner),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -238,13 +238,11 @@ pub fn run_pipeline_capturing_perimeters(
             ),
             serializer: Box::new(DefaultGCodeSerializer::with_extrusion_mode(relative)),
         },
-        resolved_configs: Arc::new(resolved_configs_map),
-        default_resolved_config: Arc::new(default_resolved_config),
-        bounds: Arc::new(config_bounds),
-        wasm_handles,
-        cancel_flag: None,
-        support_tools: Default::default(),
-    };
+    );
+    pipeline_config.resolved_configs = Arc::new(resolved_configs_map);
+    pipeline_config.default_resolved_config = Arc::new(default_resolved_config);
+    pipeline_config.bounds = Arc::new(config_bounds);
+    pipeline_config.wasm_handles = wasm_handles;
     run_pipeline_with_raw_config(pipeline_config, &config_source, &NoopLayerProgressSink)
         .map_err(|e| PerimeterHarnessError(format!("pipeline run failed: {e}")))?;
 

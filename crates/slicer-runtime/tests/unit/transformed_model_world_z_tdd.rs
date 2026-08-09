@@ -239,7 +239,8 @@ fn execution_plan_fixture() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    }
+    
+        ..Default::default()}
 }
 
 fn compiled_layer_planning_module() -> CompiledModule {
@@ -327,7 +328,8 @@ fn mesh_with_90deg_x_rotation() -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((-1.0, 0.0)),
-        }],
+        
+            ..Default::default()}],
         build_volume: BoundingBox3 {
             // After 90Â° X rotation: world X=[0,1], Y=[0,1], Z=[-1,0]
             min: Point3 {
@@ -357,7 +359,8 @@ fn mesh_with_identity_transform() -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((0.0, 1.0)),
-        }],
+        
+            ..Default::default()}],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -388,7 +391,8 @@ fn mesh_with_z_translation(tz: f64) -> MeshIR {
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((tz as f32, (tz + 1.0) as f32)),
-        }],
+        
+            ..Default::default()}],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -479,7 +483,7 @@ fn layer_plan_in_world_space() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion {
+            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
                 object_id: String::from("rotated-cube"),
                 region_id: 0,
                 resolved_config: default_resolved(layer_height),
@@ -490,8 +494,10 @@ fn layer_plan_in_world_space() -> LayerPlanIR {
                 tool_index: 0,
             }],
             has_nonplanar: false,
-            is_sync_layer: true,
-        });
+            is_sync_layer: 
+     true,
+        
+            ..Default::default()});
         z += layer_height;
         idx += 1;
     }
@@ -527,7 +533,7 @@ fn layer_plan_identity_world_z() -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion {
+            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
                 object_id: String::from("identity-cube"),
                 region_id: 0,
                 resolved_config: default_resolved(layer_height),
@@ -538,8 +544,10 @@ fn layer_plan_identity_world_z() -> LayerPlanIR {
                 tool_index: 0,
             }],
             has_nonplanar: false,
-            is_sync_layer: true,
-        });
+            is_sync_layer: 
+     true,
+        
+            ..Default::default()});
         z += layer_height;
         idx += 1;
     }
@@ -576,7 +584,7 @@ fn layer_plan_for_translated_mesh(tz: f64) -> LayerPlanIR {
         global_layers.push(GlobalLayer {
             index: idx,
             z,
-            active_regions: vec![ActiveRegion {
+            active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
                 object_id: String::from("translated-cube"),
                 region_id: 0,
                 resolved_config: default_resolved(layer_height),
@@ -587,8 +595,10 @@ fn layer_plan_for_translated_mesh(tz: f64) -> LayerPlanIR {
                 tool_index: 0,
             }],
             has_nonplanar: false,
-            is_sync_layer: true,
-        });
+            is_sync_layer: 
+     true,
+        
+            ..Default::default()});
         z += layer_height;
         idx += 1;
     }

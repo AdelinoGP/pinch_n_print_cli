@@ -79,7 +79,7 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
 /// `slicer_gcode::reconcile_finalization_travel` is a no-op on it — the
 /// captured `finalized_layers` is byte-identical to what is seeded here.
 fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
+    // exhaustive: PrintEntity explicit test fixture preserves boundary data
     let entity = PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
@@ -89,22 +89,20 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     y: 0.0,
                     z,
                     width: 0.4,
-                    flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
                 Point3WithWidth {
                     x: 10.0,
                     y: 0.0,
                     z,
                     width: 0.4,
-                    flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -117,10 +115,9 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
         },
         topo_order: 0,
         tool_index: 0,
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
+        // exhaustive: PrintEntity explicit test fixture preserves boundary data
     };
     LayerCollectionIR {
-        speed_profiles: Vec::new(),
         schema_version: CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
         global_layer_index: index,
         z,
@@ -129,15 +126,17 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
         z_hops: Vec::new(),
         annotations: Vec::new(),
         retracts: Vec::new(),
-        travel_moves: vec![TravelMove {
-            entity_id: 1,
-            x: Some(0.0),
-            y: Some(0.0),
-            z: Some(z),
-            f: Some(1200.0),
+        travel_moves: vec![
+            // exhaustive: TravelMove boundary fixture specifies every emitted motion field.
+            TravelMove {
+                entity_id: 1,
+                x: Some(0.0),
+                y: Some(0.0),
+                z: Some(z),
+                f: Some(1200.0),
+            },
+        ],
         ..Default::default()
-        }],
-    ..Default::default()
     }
 }
 
@@ -342,23 +341,20 @@ fn two_layer_plan() -> ExecutionPlan {
                 index: 0,
                 z: 0.2,
                 active_regions: Vec::new(),
-                has_nonplanar: false,
                 is_sync_layer: true,
-            ..Default::default()
+                ..Default::default()
             },
             GlobalLayer {
                 index: 1,
                 z: 0.4,
                 active_regions: Vec::new(),
-                has_nonplanar: false,
                 is_sync_layer: false,
-            ..Default::default()
+                ..Default::default()
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
-        aggregated_region_split: BTreeMap::new(),
-    ..Default::default()
+        ..Default::default()
     }
 }
 

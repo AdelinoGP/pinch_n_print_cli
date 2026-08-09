@@ -136,7 +136,8 @@ fn active_region(object_id: &str) -> ActiveRegion {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
-    }
+    
+        ..Default::default()}
 }
 
 fn two_global_layers() -> Vec<GlobalLayer> {
@@ -147,14 +148,16 @@ fn two_global_layers() -> Vec<GlobalLayer> {
             active_regions: vec![active_region("ramp")],
             has_nonplanar: false,
             is_sync_layer: false,
-        },
+        
+            ..Default::default()},
         GlobalLayer {
             index: 1,
             z: 1.5,
             active_regions: vec![active_region("ramp")],
             has_nonplanar: false,
             is_sync_layer: false,
-        },
+        
+            ..Default::default()},
     ]
 }
 

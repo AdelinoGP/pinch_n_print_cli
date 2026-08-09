@@ -111,6 +111,7 @@ fn run_echo(
     fx: &mut dispatch_fixture::DispatchFixture,
     module_config: ConfigView,
 ) -> Vec<(u64, f64)> {
+    // exhaustive: GlobalLayer fixture intentionally supplies a deliberate layer shape
     let layer = GlobalLayer {
         index: 0,
         z: 0.0,

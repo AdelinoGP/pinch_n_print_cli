@@ -55,7 +55,8 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> slicer_ir::Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-    }
+    
+        ..Default::default()}
 }
 
 fn region_key_fixture() -> slicer_ir::RegionKey {
@@ -71,7 +72,7 @@ fn print_entity_fixture(
     points: Vec<slicer_ir::Point3WithWidth>,
     role: ExtrusionRole,
 ) -> slicer_ir::PrintEntity {
-    slicer_ir::PrintEntity {
+    slicer_ir::PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
         entity_id: 1,
         path: slicer_ir::ExtrusionPath3D {
             points,
@@ -109,7 +110,8 @@ fn layer_with_entity(
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
-    }
+    
+        ..Default::default()}
 }
 
 // ============================================================================

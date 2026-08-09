@@ -232,6 +232,8 @@ fn make_rotated_bridge_mesh_walls(
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
+
+        ..Default::default()
     };
 
     MeshIR {
@@ -280,6 +282,8 @@ fn make_topfacing_only_mesh() -> MeshIR {
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
+
+        ..Default::default()
     };
     MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -348,6 +352,8 @@ fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> M
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
+
+        ..Default::default()
     };
     MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -729,6 +735,8 @@ fn expansion_margin_grows_polygon_observably() {
         expansion_margin_mm: 1.5,
         is_valid: true,
         xy_footprint: vec![footprint],
+
+        ..Default::default()
     };
 
     let obj_surface = ObjectSurfaceData {
@@ -765,6 +773,8 @@ fn expansion_margin_grows_polygon_observably() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
+
+        ..Default::default()
     };
 
     assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
@@ -837,6 +847,8 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         expansion_margin_mm: 1.5,
         is_valid: true,
         xy_footprint: v_footprint,
+
+        ..Default::default()
     };
 
     let obj_surface = ObjectSurfaceData {
@@ -873,6 +885,8 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
+
+        ..Default::default()
     };
 
     // Must not panic.
@@ -929,6 +943,8 @@ fn non_bridge_region_has_empty_bridge_areas() {
         modifier_volumes: vec![],
         paint_data: None,
         world_z_extent: None,
+
+        ..Default::default()
     };
     let mesh_ir = MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -965,9 +981,12 @@ fn non_bridge_region_has_empty_bridge_areas() {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+            ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+
+        ..Default::default()
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&analysis), None)
@@ -1021,9 +1040,12 @@ fn invalid_bridge_excluded_from_slice_areas() {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+            ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+
+        ..Default::default()
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&result), None)
@@ -1078,9 +1100,12 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
             is_catchup_layer: false,
             catchup_z_bottom: 0.0,
             tool_index: 0,
+            ..Default::default()
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+
+        ..Default::default()
     };
 
     // This layer's cross-section: the full beam. The previous layer: two end
@@ -1175,9 +1200,12 @@ fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+                ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+
+            ..Default::default()
         };
         let cache = PrepassSliceCache {
             raw_polygons: &footprint,

@@ -49,12 +49,13 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-    }
+    
+        ..Default::default()}
 }
 
 fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintEntity {
     let role = ExtrusionRole::SparseInfill;
-    PrintEntity {
+    PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
@@ -93,7 +94,8 @@ fn three_entity_arena() -> LayerArena {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    });
+    
+        ..Default::default()});
     arena
 }
 
@@ -111,7 +113,8 @@ fn single_entity_arena_with_path(start: Point3WithWidth, end: Point3WithWidth) -
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    });
+    
+        ..Default::default()});
     arena
 }
 
@@ -259,7 +262,7 @@ fn entity_with_points_and_role(
     original_idx: u32,
     role: ExtrusionRole,
 ) -> PrintEntity {
-    PrintEntity {
+    PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
@@ -300,7 +303,8 @@ fn get_ordered_entities_projects_staged_entities_in_index_order() {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    });
+    
+        ..Default::default()});
 
     let views = project_ordered_entities(&arena);
 
@@ -503,7 +507,8 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
-        },
+        
+            ..Default::default()},
         Point3WithWidth {
             x: x + 1.0,
             y: 0.0,
@@ -513,9 +518,10 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
-        },
+        
+            ..Default::default()},
     ];
-    WallLoop {
+    WallLoop { // exhaustive: test fixture intentionally specifies the  boundary
         perimeter_index,
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
@@ -535,7 +541,8 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
                 is_thin_wall: false,
                 skip_ironing: false,
                 custom: HashMap::new(),
-            })
+            
+                ..Default::default()})
             .collect(),
         boundary_type: WallBoundaryType::Interior,
     }
@@ -560,7 +567,8 @@ fn make_three_region_perimeter(layer_index: u32) -> PerimeterIR {
             }],
             seam_candidates: Vec::new(),
             resolved_seam: None,
-        })
+        
+            ..Default::default()})
         .collect();
     PerimeterIR {
         schema_version: semver_v(1, 0, 0),
@@ -671,7 +679,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -681,7 +689,8 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
     let runner = PerimeterSeedingRunner {

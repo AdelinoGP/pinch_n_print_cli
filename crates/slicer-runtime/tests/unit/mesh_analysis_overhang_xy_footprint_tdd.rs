@@ -73,7 +73,8 @@ fn overhang_mesh() -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: build_volume(),
     }
 }
@@ -106,7 +107,8 @@ fn flat_top_cube_mesh() -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: build_volume(),
     }
 }

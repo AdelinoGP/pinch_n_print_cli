@@ -105,6 +105,7 @@ fn prepass_executor_surfaces_duplicate_commit_as_a_deterministic_blackboard_erro
 
     assert_eq!(
         execute_prepass(&plan, &mut blackboard, &runner, &Default::default()),
+        // exhaustive: Blackboard is an enum error variant carrying the exact duplicate-slot diagnostic.
         Err(PrepassExecutionError::Blackboard {
             stage_id: String::from("PrePass::MeshAnalysis"),
             module_id: String::from("com.example.mesh-analysis.b"),

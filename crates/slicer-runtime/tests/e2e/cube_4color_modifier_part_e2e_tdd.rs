@@ -48,9 +48,11 @@ fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+                ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+            ..Default::default()
         }],
         object_participation: Default::default(),
         ..Default::default()
@@ -267,6 +269,7 @@ fn modifier_projections_annotate_contour_points() {
             modifier_volumes: vec![mv],
             paint_data: None,
             world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: slicer_ir::BoundingBox3 {
             min: Point3 {
@@ -395,6 +398,7 @@ fn modifier_projection_z_band_restriction() {
             modifier_volumes: vec![mv],
             paint_data: None,
             world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: slicer_ir::BoundingBox3 {
             min: Point3 {

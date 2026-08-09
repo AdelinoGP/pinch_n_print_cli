@@ -59,10 +59,10 @@ fn point3(x: f32, y: f32) -> Point3WithWidth {
         y,
         z: 0.0,
         width: 0.4,
-        flow_factor: 1.0,
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+        ..Default::default()
     }
 }
 
@@ -118,7 +118,7 @@ fn mixed_unit_shared_viewport() {
                     point: point3(-400.0, 100.0),
                     wall_index: 0,
                 },
-                scored_candidates: Vec::new(),
+                ..Default::default()
             }],
         }),
     };
@@ -597,7 +597,7 @@ fn regionmapping_join_and_layerplanning_overlay() {
                     point: point3(-30.0, 30.0),
                     wall_index: 0,
                 },
-                scored_candidates: Vec::new(),
+                ..Default::default()
             }],
         }),
     };

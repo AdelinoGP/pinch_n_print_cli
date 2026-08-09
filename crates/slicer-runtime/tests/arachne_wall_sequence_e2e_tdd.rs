@@ -310,14 +310,17 @@ fn plan() -> ExecutionPlan {
                         is_catchup_layer: false,
                         catchup_z_bottom: 0.0,
                         tool_index: 0,
+                        ..Default::default()
                     }],
                     has_nonplanar: false,
                     is_sync_layer: index == 0,
+                    ..Default::default()
                 })
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: std::collections::BTreeMap::new(),
+        ..Default::default()
     }
 }

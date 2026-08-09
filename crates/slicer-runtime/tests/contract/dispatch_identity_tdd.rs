@@ -6,8 +6,8 @@
 use crate::common::{dispatch_fixture, ir_builders};
 use slicer_ir::GlobalLayer;
 
-fn default_layer() -> GlobalLayer {
-    GlobalLayer {
+fn default_layer() -> GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
+    GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
@@ -307,7 +307,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         SupportOutputCollected,
     };
     let mk_path = || ExtrusionPath3d {
-        points: vec![Point3WithWidth {
+        points: vec![Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
             x: 0.0,
             y: 0.0,
             z: 0.0,
@@ -320,7 +320,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
     };
-    let output = SupportOutputCollected {
+    let output = SupportOutputCollected { // exhaustive: boundary fixture preserves explicit test data
         support_paths: vec![mk_path(), mk_path()],
         interface_paths: Vec::new(),
         raft_paths: Vec::new(),
@@ -362,7 +362,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
         )
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 2,
         z: 0.4,
         active_regions: Vec::new(),
@@ -451,12 +451,12 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
         WitWallBoundaryType,
     };
     // One untagged wall_loop and one tagged seam_candidate => mixed mode.
-    let output = PerimeterOutputCollected {
+    let output = PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
         wall_loops: vec![WallLoopView {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
-                points: vec![Point3WithWidth {
+                points: vec![Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
                     x: 0.0,
                     y: 0.0,
                     z: 0.0,

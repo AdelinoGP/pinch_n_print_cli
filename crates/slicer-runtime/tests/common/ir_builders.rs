@@ -195,6 +195,8 @@ pub mod perimeter_ir {
                         infill_areas,
                         seam_candidates: Vec::new(),
                         resolved_seam: None,
+
+                        ..Default::default()
                     }
                 })
                 .collect();
@@ -277,7 +279,7 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
             flow_factor: 1.0,
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
+            ..Default::default()
         })
         .collect();
     let feature_flags: Vec<WallFeatureFlags> = (0..point_count)
@@ -287,10 +289,11 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
             is_bridge: false,
             is_thin_wall: false,
             skip_ironing: false,
-            custom: std::collections::HashMap::new(),
+            ..Default::default()
         })
         .collect();
 
+    // exhaustive: WallLoop is a no-Default fixture boundary assembled by this builder.
     WallLoop {
         perimeter_index,
         loop_type: LoopType::Outer,

@@ -56,6 +56,7 @@ fn run_slice_against_wedge_returns_nonempty_gcode() {
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
+        ..Default::default()
     };
 
     let outcome = run_slice(opts).expect("run_slice must succeed against wedge + core-modules");

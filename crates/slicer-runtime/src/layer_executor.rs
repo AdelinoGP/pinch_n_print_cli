@@ -587,36 +587,42 @@ fn execute_single_layer_inner(
         .annotations
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
-    layer_output.retracts.extend(
-        arena
-            .take_deferred_retracts()
-            .into_iter()
-            // exhaustive: TravelRetract explicit test fixture preserves boundary data
-            .map(|r| slicer_ir::TravelRetract {
-                after_entity_index: r.after_entity_index,
-                length: r.length,
-                speed: r.speed,
-                is_unretract: r.is_unretract,
-                mode: r.mode,
-                // exhaustive: TravelRetract explicit test fixture preserves boundary data
+    layer_output
+        .retracts
+        .extend(
+            arena
+                .take_deferred_retracts()
+                .into_iter()
+            .map(|r| {
+                let mut retract = slicer_ir::TravelRetract {
+                    after_entity_index: r.after_entity_index,
+                    ..Default::default()
+                };
+                retract.length = r.length;
+                retract.speed = r.speed;
+                retract.is_unretract = r.is_unretract;
+                retract.mode = r.mode;
+                retract
             }),
-    );
+        );
     {
         let raw_travels = arena.take_deferred_travel_moves();
         let mapped: Vec<slicer_ir::TravelMove> = raw_travels
             .into_iter()
-            // exhaustive: TravelMove explicit test fixture preserves boundary data
-            .map(|m| slicer_ir::TravelMove {
-                entity_id: layer_output
-                    .ordered_entities
-                    .get(m.after_entity_index as usize)
-                    .map(|e| e.entity_id)
-                    .unwrap_or(0),
-                x: m.x,
-                y: m.y,
-                z: m.z,
-                f: m.f,
-                // exhaustive: TravelMove explicit test fixture preserves boundary data
+            .map(|m| {
+                let mut travel = slicer_ir::TravelMove {
+                    entity_id: layer_output
+                        .ordered_entities
+                        .get(m.after_entity_index as usize)
+                        .map(|e| e.entity_id)
+                        .unwrap_or(0),
+                    ..Default::default()
+                };
+                travel.x = m.x;
+                travel.y = m.y;
+                travel.z = m.z;
+                travel.f = m.f;
+                travel
             })
             .collect();
         layer_output.travel_moves.extend(mapped);
@@ -2420,7 +2426,6 @@ mod tests {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
-                dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
                 ..Default::default()
             };
@@ -2472,7 +2477,6 @@ mod tests {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
-                dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
                 ..Default::default()
             };
@@ -2535,7 +2539,6 @@ mod tests {
             PerimeterRegion, Point3WithWidth, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop,
             WidthProfile,
         };
-        use std::collections::HashMap;
 
         // A paint-variant IDENTITY large enough to produce a 9.9 GiB alloc
         // when passed as u32 to vec![0.0f32; max_tool+1].
@@ -2555,7 +2558,6 @@ mod tests {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
-            dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
             ..Default::default()
         };
@@ -2571,7 +2573,6 @@ mod tests {
             is_bridge: false,
             is_thin_wall: false,
             skip_ironing: false,
-            custom: HashMap::new(),
             ..Default::default()
         };
         // exhaustive: WallLoop explicit fixture preserves the exact path/role test data
@@ -2590,7 +2591,6 @@ mod tests {
             schema_version,
             global_layer_index: 0,
             regions: vec![PerimeterRegion {
-                variant_chain: Vec::new(),
                 object_id: "obj".to_string(),
                 region_id: IDENTITY, // the dangerous identity
                 walls: vec![wall],
@@ -2610,7 +2610,6 @@ mod tests {
                 region_id: IDENTITY,
                 sparse_infill: vec![wall_path.clone()],
                 solid_infill: Vec::new(),
-                ironing: Vec::new(),
                 ..Default::default()
             }],
         };

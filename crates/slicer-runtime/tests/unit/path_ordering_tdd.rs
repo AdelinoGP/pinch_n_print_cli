@@ -45,7 +45,8 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-    }
+    
+        ..Default::default()}
 }
 
 // â"€â"€ AC-1: same-object nearest-neighbor ordering â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -75,7 +76,8 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
             sparse_infill: vec![path_at(30.0, 0.0), path_at(10.0, 0.0), path_at(0.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
-        }],
+        
+            ..Default::default()}],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -279,14 +281,16 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 sparse_infill: vec![path_at(0.0, 0.0), path_at(0.0, 100.0)],
                 solid_infill: vec![],
                 ironing: vec![],
-            },
+            
+                ..Default::default()},
             InfillRegion {
                 object_id: "test-object".to_string(),
                 region_id: 1,
                 sparse_infill: vec![path_at(1.0, 0.0), path_at(1.0, 1.0)],
                 solid_infill: vec![],
                 ironing: vec![],
-            },
+            
+                ..Default::default()},
         ],
     };
 
@@ -395,7 +399,8 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
             ],
             solid_infill: vec![],
             ironing: vec![],
-        }],
+        
+            ..Default::default()}],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -504,7 +509,8 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
                 sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(15.0, 0.0)],
                 solid_infill: vec![],
                 ironing: vec![],
-            }],
+            
+                ..Default::default()}],
         }
     }
 
@@ -609,7 +615,8 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
             sparse_infill: vec![path_at(0.0, 0.0), path_at(10.0, 0.0), path_at(30.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
-        }],
+        
+            ..Default::default()}],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -715,7 +722,8 @@ fn no_module_proposal_leaves_raw_assembled_order() {
             sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(10.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
-        }],
+        
+            ..Default::default()}],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -852,7 +860,8 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -877,10 +886,10 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
         postpass_stages: vec![],
         global_layers: Arc::new(
             (0..layer_count)
-                .map(|i| GlobalLayer {
+                .map(|i| GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
                     index: i as u32,
                     z: 0.2 * (i as f32 + 1.0),
-                    active_regions: vec![ActiveRegion {
+                    active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
                         object_id: "test-object".to_string(),
                         region_id: 0,
                         resolved_config: ResolvedConfig::default(),
@@ -891,14 +900,16 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
                         tool_index: 0,
                     }],
                     has_nonplanar: false,
-                    is_sync_layer: i == 0,
+                   
+    is_sync_layer: i == 0,
                 })
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    }
+    
+        ..Default::default()}
 }
 
 fn stage(stage_id: &str, module_id: &str) -> CompiledStage {

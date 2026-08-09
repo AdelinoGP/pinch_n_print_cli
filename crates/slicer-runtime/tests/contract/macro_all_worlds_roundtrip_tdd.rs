@@ -299,7 +299,8 @@ fn one_layer_arena() -> (slicer_runtime::LayerArena, GlobalLayer) {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     (slicer_runtime::LayerArena::new(), layer)
 }
 
@@ -464,7 +465,8 @@ fn slice_ir_with_regions(
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-        })
+        
+            ..Default::default()})
         .collect();
     SliceIR {
         schema_version: semver(1, 0, 0),
@@ -499,7 +501,8 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     let mut arena = LayerArena::new();
     let slice = slice_ir_with_regions(7, 1.4, 2, 3);
     arena.set_slice(slice).expect("commit slice ir");
@@ -550,7 +553,8 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     let mut arena = LayerArena::new();
     // 3 regions, 4 polygons each â†’ total 12 polygons.
     let slice = slice_ir_with_regions(9, 1.8, 3, 4);
@@ -650,7 +654,8 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: false,
-        };
+        
+            ..Default::default()};
         let mut arena = LayerArena::new();
         arena
             .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
@@ -890,7 +895,8 @@ fn wall_feature_flags_custom_payload_roundtrip() {
             "key".to_string(),
             slicer_ir::PaintValue::Scalar(0.5),
         )]),
-    };
+    
+        ..Default::default()};
 
     // Convert IR â†’ WIT using inline logic (mirrors macro's __slicer_ir_feature_to_wit)
     let wit_flags = WitWallFeatureFlag {
@@ -956,7 +962,8 @@ fn wall_feature_flags_custom_multiple_entries_roundtrip() {
             ("b".to_string(), slicer_ir::PaintValue::Flag(true)),
             ("c".to_string(), slicer_ir::PaintValue::ToolIndex(2)),
         ]),
-    };
+    
+        ..Default::default()};
 
     // Convert IR â†’ WIT using inline logic
     let wit_flags = WitWallFeatureFlag {

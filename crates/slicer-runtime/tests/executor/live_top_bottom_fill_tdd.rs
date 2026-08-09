@@ -21,11 +21,9 @@
 #![allow(missing_docs)]
 
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
-use slicer_runtime::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
-};
+use slicer_runtime::wit_host::{ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder};
 
-use crate::common::commit_hec_for_test;
+use crate::common::{commit_hec_for_test, point3_with_width};
 
 /// Helper: make a 2-point horizontal path at (z=layer_z) in mm units.
 fn make_path(
@@ -39,30 +37,8 @@ fn make_path(
 ) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
-            Point3WithWidth {
-                x: x1,
-                y: y1,
-                z: layer_z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-
-            },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
-            Point3WithWidth {
-                x: x2,
-                y: y2,
-                z: layer_z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-
-            },
+            point3_with_width(x1, y1, layer_z, width),
+            point3_with_width(x2, y2, layer_z, width),
         ],
         role,
         speed_factor: 1.0,

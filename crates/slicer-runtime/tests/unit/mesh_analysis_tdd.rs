@@ -121,7 +121,8 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: build_volume(),
     };
 
@@ -244,7 +245,8 @@ fn empty_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    }
+    
+        ..Default::default()}
 }
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -300,7 +302,8 @@ fn triangle_mesh(id: &str) -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: build_volume(),
     }
 }
@@ -333,7 +336,8 @@ fn cube_like_mesh() -> MeshIR {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: build_volume(),
     }
 }

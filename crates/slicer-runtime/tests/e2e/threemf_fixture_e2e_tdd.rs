@@ -116,6 +116,7 @@ fn layer_plan_for_mesh(mesh_ir: &MeshIR, layer_count: u32, layer_height_mm: f32)
                     is_catchup_layer: false,
                     catchup_z_bottom: 0.0,
                     tool_index: 0,
+                    ..Default::default()
                 }
             })
             .collect();
@@ -125,6 +126,7 @@ fn layer_plan_for_mesh(mesh_ir: &MeshIR, layer_count: u32, layer_height_mm: f32)
             active_regions,
             has_nonplanar: false,
             is_sync_layer: false,
+            ..Default::default()
         });
     }
     LayerPlanIR {
@@ -277,6 +279,7 @@ fn negative_part_subtracts_via_full_pipeline() {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            ..Default::default()
         }],
     };
 
@@ -834,6 +837,7 @@ fn model_without_negative_skips_subtract() {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            ..Default::default()
         }],
     };
 
@@ -1393,6 +1397,7 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
             modifier_volumes: vec![mv],
             paint_data: None,
             world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -1566,6 +1571,7 @@ fn synthetic_object_with_modifiers(object_id: &str, mods: Vec<ModifierVolume>) -
         modifier_volumes: mods,
         paint_data: None,
         world_z_extent: None,
+        ..Default::default()
     }
 }
 
@@ -1592,9 +1598,11 @@ fn synthetic_layer_plan_single_region(object_id: &str) -> LayerPlanIR {
                 is_catchup_layer: false,
                 catchup_z_bottom: 0.0,
                 tool_index: 0,
+                ..Default::default()
             }],
             has_nonplanar: false,
             is_sync_layer: true,
+            ..Default::default()
         }],
         object_participation,
         ..Default::default()

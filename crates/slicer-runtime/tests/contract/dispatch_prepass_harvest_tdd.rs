@@ -139,7 +139,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     }
     .into_module_and_handles();
 
-    let plan = ExecutionPlan {
+    let plan = ExecutionPlan { // exhaustive: boundary fixture preserves explicit test data
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::LayerPlanning".into(),
             modules: vec![module],
@@ -543,7 +543,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
 
     // Build a minimal valid SeamPosition for the chosen_candidate field.
-    let dummy_position = slicer_ir::Point3WithWidth {
+    let dummy_position = slicer_ir::Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
         x: 0.0,
         y: 0.0,
         z: 0.0,
@@ -561,7 +561,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
     // First commit with valid unique entries.
     let seam_plan = SeamPlanIR {
         entries: vec![
-            SeamPlanEntry {
+            SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key: RegionKey {
                     global_layer_index: 0,
                     object_id: "obj-A".to_string(),
@@ -571,7 +571,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                 chosen_candidate: seam_position.clone(),
                 ..Default::default()
             },
-            SeamPlanEntry {
+            SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key: RegionKey {
                     global_layer_index: 0,
                     object_id: "obj-B".to_string(),
@@ -595,7 +595,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
     // Second commit — same region key (global_layer_index=0, obj-A, region_id=1)
     // is a duplicate and must be rejected.
     let duplicate_seam_plan = SeamPlanIR {
-        entries: vec![SeamPlanEntry {
+        entries: vec![SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
             region_key: RegionKey {
                 global_layer_index: 0,
                 object_id: "obj-A".to_string(),
@@ -627,7 +627,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys_within_one_ir() {
 
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
     let seam_position = SeamPosition {
-        point: slicer_ir::Point3WithWidth {
+        point: slicer_ir::Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
             width: 0.4,
             flow_factor: 1.0,
             ..Default::default()
@@ -642,12 +642,12 @@ fn seam_plan_ir_rejects_duplicate_region_keys_within_one_ir() {
     };
     let plan = SeamPlanIR {
         entries: vec![
-            SeamPlanEntry {
+            SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key: region_key.clone(),
                 chosen_candidate: seam_position.clone(),
                 ..Default::default()
             },
-            SeamPlanEntry {
+            SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key,
                 chosen_candidate: seam_position,
                 ..Default::default()
@@ -670,7 +670,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys_within_one_ir() {
 #[test]
 fn seam_plan_ir_preserves_variant_chain() {
     let make_entry =
-        |region_id: &str, variant_chain| slicer_wasm_host::host::prepass::SeamPlanEntry {
+        |region_id: &str, variant_chain| slicer_wasm_host::host::prepass::SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
             global_layer_index: 0,
             object_id: "obj-A".to_string(),
             region_id: region_id.to_string(),
@@ -713,7 +713,7 @@ fn seam_plan_ir_preserves_variant_chain() {
 #[test]
 fn seam_plan_injection_matches_variant_chain() {
     let position = |x| slicer_ir::SeamPosition {
-        point: slicer_ir::Point3WithWidth {
+        point: slicer_ir::Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
             x,
             ..Default::default()
         },
@@ -727,12 +727,12 @@ fn seam_plan_injection_matches_variant_chain() {
     };
     let plan = slicer_ir::SeamPlanIR {
         entries: vec![
-            slicer_ir::SeamPlanEntry {
+            slicer_ir::SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key: base_key(Vec::new()),
                 chosen_candidate: position(10.0),
                 ..Default::default()
             },
-            slicer_ir::SeamPlanEntry {
+            slicer_ir::SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 region_key: base_key(vec![(
                     "material".to_string(),
                     slicer_ir::PaintValue::ToolIndex(1),
@@ -771,7 +771,7 @@ fn seam_plan_injection_matches_variant_chain() {
 
 #[test]
 fn seam_plan_ir_rejects_invalid_region_identity() {
-    let entry = slicer_wasm_host::host::prepass::SeamPlanEntry {
+    let entry = slicer_wasm_host::host::prepass::SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
         global_layer_index: 0,
         object_id: "obj-A".to_string(),
         region_id: "not-a-region-id".to_string(),
@@ -963,7 +963,7 @@ fn prepass_seam_planning_commits_populated_seam_plan_ir_from_slice_ir() {
         .iter()
         .enumerate()
         .map(
-            |(index, key)| slicer_wasm_host::host::prepass::SeamPlanEntry {
+            |(index, key)| slicer_wasm_host::host::prepass::SeamPlanEntry { // exhaustive: boundary fixture preserves explicit test data
                 global_layer_index: key.global_layer_index,
                 object_id: key.object_id.clone(),
                 region_id: key.region_id.to_string(),

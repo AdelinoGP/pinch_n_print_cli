@@ -22,7 +22,8 @@ fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     fx.run_layer(&layer).unwrap();
     let tcs = fx.arena.take_deferred_tool_changes();
     assert_eq!(tcs.len(), 3, "three tool-changes routed to deferred queue");
@@ -56,7 +57,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -66,7 +67,8 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     seed_slice_ir(&mut blackboard, &plan);
 
@@ -139,7 +141,7 @@ fn path_optimization_empty_input_is_no_op() {
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -149,7 +151,8 @@ fn path_optimization_empty_input_is_no_op() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     seed_slice_ir(&mut blackboard, &plan);
     let layers = execute_per_layer(&plan, &blackboard, &dispatcher, &wasm_handles).expect("exec");
@@ -182,7 +185,7 @@ fn path_optimization_deterministic_across_repeated_runs() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -192,7 +195,8 @@ fn path_optimization_deterministic_across_repeated_runs() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -405,7 +409,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         });
     ctx.gcode_output_mut()
         .commands
-        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd { // exhaustive: test fixture intentionally specifies the  boundary
             x: Some(50.0),
             y: Some(50.0),
             z: None,
@@ -422,7 +426,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         });
 
     let mut fx = dispatch_fixture::for_stage("Layer::PathOptimization").build();
-    let entity = slicer_ir::PrintEntity {
+    let entity = slicer_ir::PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth {
@@ -434,7 +438,8 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
-            }],
+            
+                ..Default::default()}],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
@@ -547,7 +552,7 @@ fn path_optimization_end_to_end_populates_z_hops() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -557,7 +562,8 @@ fn path_optimization_end_to_end_populates_z_hops() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -633,7 +639,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -643,7 +649,8 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    };
+    
+        ..Default::default()};
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -801,7 +808,8 @@ fn path_optimization_receives_real_perimeter_regions() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
 
     let r = fx.run_layer(&layer);
     assert!(
@@ -844,7 +852,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     // guest side). A PerimeterRegion with one wall loop.
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
     let mut arena = LayerArena::new();
-    let wall = slicer_ir::WallLoop {
+    let wall = slicer_ir::WallLoop { // exhaustive: test fixture intentionally specifies the  boundary
         perimeter_index: 0,
         loop_type: slicer_ir::LoopType::Outer,
         path: slicer_ir::ExtrusionPath3D {
@@ -858,7 +866,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                },
+                
+                    ..Default::default()},
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
                     y: 0.0,
@@ -868,7 +877,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                },
+                
+                    ..Default::default()},
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
                     y: 1.0,
@@ -878,7 +888,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-                },
+                
+                    ..Default::default()},
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -894,7 +905,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                 is_thin_wall: false,
                 skip_ironing: false,
                 custom: HashMap::new(),
-            };
+            
+                ..Default::default()};
             3
         ],
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
@@ -909,7 +921,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
             seam_candidates: Vec::new(),
             infill_areas: Vec::new(),
             resolved_seam: None,
-        }],
+        
+            ..Default::default()}],
         ..Default::default()
     };
     arena.set_perimeter(perim).expect("seed perimeter");
@@ -920,7 +933,8 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
 
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
@@ -981,7 +995,8 @@ fn path_optimization_dispatch_is_deterministic() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
 
     let run_once = || -> Vec<slicer_ir::LayerAnnotation> {

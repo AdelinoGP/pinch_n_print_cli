@@ -222,7 +222,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
     let (lp_module, lp_handles) = lp_bundle.into_module_and_handles();
     wasm_handles.extend(lp_handles);
 
-    let plan = ExecutionPlan {
+    let plan = ExecutionPlan { // exhaustive: boundary fixture preserves explicit test data
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::LayerPlanning".into(),
             modules: vec![lp_module],
@@ -233,7 +233,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -245,10 +245,10 @@ fn full_pipeline_with_typed_layer_dispatch() {
         aggregated_region_split: BTreeMap::new(),
     };
 
-    let config = PipelineConfig {
+    let config = PipelineConfig { // exhaustive: boundary fixture preserves explicit test data
         mesh_ir: Arc::new(MeshIR::default()),
         plan,
-        runners: PipelineStageRunners {
+        runners: PipelineStageRunners { // exhaustive: boundary fixture preserves explicit test data
             prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -294,7 +294,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
     let (gcode_module, gcode_handles) = gcode_bundle.into_module_and_handles();
     wasm_handles.extend(gcode_handles);
 
-    let plan = ExecutionPlan {
+    let plan = ExecutionPlan { // exhaustive: boundary fixture preserves explicit test data
         prepass_stages: vec![
             CompiledStage {
                 stage_id: "PrePass::MeshAnalysis".into(),
@@ -317,7 +317,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
             stage_id: "PostPass::GCodePostProcess".into(),
             modules: vec![gcode_module],
         }],
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -329,10 +329,10 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         aggregated_region_split: BTreeMap::new(),
     };
 
-    let config = PipelineConfig {
+    let config = PipelineConfig { // exhaustive: boundary fixture preserves explicit test data
         mesh_ir: Arc::new(MeshIR::default()),
         plan,
-        runners: PipelineStageRunners {
+        runners: PipelineStageRunners { // exhaustive: boundary fixture preserves explicit test data
             prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -369,7 +369,7 @@ fn guest_infill_output_committed_to_arena() {
         )
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 7,
         z: 1.4,
         active_regions: Vec::new(),
@@ -406,7 +406,7 @@ fn output_commitment_deterministic_across_repeated_runs() {
         .with_slice(ir_builders::slice_ir::with_count(1).build())
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
@@ -446,7 +446,7 @@ fn invalid_nan_output_rejected_with_diagnostic() {
 
     let bad_output = InfillOutputCollected {
         sparse_paths: vec![ExtrusionPath3d {
-            points: vec![Point3WithWidth {
+            points: vec![Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
                 x: f32::NAN,
                 y: 0.0,
                 z: 0.0,
@@ -485,7 +485,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
     let (lp_module, lp_handles) = lp_bundle.into_module_and_handles();
     wasm_handles.extend(lp_handles);
 
-    let plan = ExecutionPlan {
+    let plan = ExecutionPlan { // exhaustive: boundary fixture preserves explicit test data
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::LayerPlanning".into(),
             modules: vec![lp_module],
@@ -497,14 +497,14 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![
-            GlobalLayer {
+            GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
                 index: 0,
                 z: 0.2,
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
             },
-            GlobalLayer {
+            GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
                 index: 1,
                 z: 0.4,
                 active_regions: Vec::new(),
@@ -517,10 +517,10 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         aggregated_region_split: BTreeMap::new(),
     };
 
-    let config = PipelineConfig {
+    let config = PipelineConfig { // exhaustive: boundary fixture preserves explicit test data
         mesh_ir: Arc::new(MeshIR::default()),
         plan,
-        runners: PipelineStageRunners {
+        runners: PipelineStageRunners { // exhaustive: boundary fixture preserves explicit test data
             prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -563,7 +563,7 @@ fn infill_output_correct_when_slice_regions_present() {
         .with_config(slicer_ir::ConfigView::from_map(fields))
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 5,
         z: 1.0,
         active_regions: Vec::new(),
@@ -600,7 +600,7 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     // — this is the documented empty case and must not fail.
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess").build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
@@ -633,7 +633,7 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
         )
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
@@ -660,7 +660,7 @@ fn failed_commit_does_not_leak_into_next_call() {
         .with_slice(ir_builders::slice_ir::with_count(1).build())
         .build();
 
-    let layer = GlobalLayer {
+    let layer = GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),

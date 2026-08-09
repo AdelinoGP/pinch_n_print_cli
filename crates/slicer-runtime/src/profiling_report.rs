@@ -885,6 +885,7 @@ mod tests {
                 self_fuel: 0,
                 total_wall_ns: 7_000,
                 self_wall_ns: 7_000,
+                ..Default::default()
             }],
             1,
             9_000,
@@ -959,6 +960,7 @@ mod tests {
                 self_fuel: 0,
                 total_wall_ns: 4_000,
                 self_wall_ns: 4_000,
+                ..Default::default()
             }],
             1,
             5_000,
@@ -995,6 +997,7 @@ mod tests {
                 self_fuel: 0,
                 total_wall_ns: 2_500_000_000,
                 self_wall_ns: 2_500_000_000,
+                ..Default::default()
             }],
             1,
             4_000_000_000,

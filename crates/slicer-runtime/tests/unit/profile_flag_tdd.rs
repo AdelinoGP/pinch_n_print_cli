@@ -37,6 +37,7 @@ fn unprofiled_options() -> SliceRunOptions {
     let root = workspace_root();
     let model = root.join("resources").join("regression_wedge.stl");
     let mesh = Arc::new(slicer_model_io::load_model(&model).expect("wedge fixture must load"));
+    // exhaustive: SliceRunOptions fixture intentionally supplies explicit profiling options
     SliceRunOptions {
         mesh,
         model_label: model.to_string_lossy().into_owned(),

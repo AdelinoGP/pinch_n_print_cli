@@ -103,7 +103,8 @@ fn run_echo(
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     let bundle = echo_bundle(module_config);
     run_layer_and_commit_with_bundle(
         &fx.dispatcher,
@@ -269,7 +270,7 @@ fn modifier_split_subregion_density() {
         .extensions
         .insert(INFILL_DENSITY.into(), ConfigValue::Float(0.15));
 
-    let modifier_volume = slicer_ir::ModifierVolume {
+    let modifier_volume = slicer_ir::ModifierVolume { // exhaustive: test fixture intentionally specifies the  boundary
         id: "mod-0".into(),
         mesh: slicer_ir::IndexedTriangleSet::default(),
         config_delta: slicer_ir::ConfigDelta {

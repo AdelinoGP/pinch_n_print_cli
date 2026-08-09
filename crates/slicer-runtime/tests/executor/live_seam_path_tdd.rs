@@ -74,7 +74,7 @@ fn stage_minimal_slice_ir(
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-
+            ..Default::default()
         })
         .collect();
 
@@ -84,8 +84,8 @@ fn stage_minimal_slice_ir(
             z,
             regions,
 
-        ..Default::default()
-})
+            ..Default::default()
+        })
         .expect("stage_minimal_slice_ir: set_slice must succeed");
 }
 
@@ -96,7 +96,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
         loop_type: WallLoopType::Outer,
         path: slicer_runtime::wit_host::ExtrusionPath3d {
             points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: x1,
                     y: y1,
@@ -106,9 +106,8 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: x2,
                     y: y2,
@@ -118,7 +117,6 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -470,13 +468,12 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             variant_chain: Vec::new(),
             object_id: "test-object".to_string(),
             region_id: 0,
-// exhaustive: WallLoop explicit test fixture preserves boundary data
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
             walls: vec![slicer_ir::WallLoop {
                 perimeter_index: 0,
                 loop_type: slicer_ir::LoopType::Outer,
                 path: slicer_ir::ExtrusionPath3D {
                     points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         slicer_ir::Point3WithWidth {
                             x: 0.0,
                             y: 0.0,
@@ -486,9 +483,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         slicer_ir::Point3WithWidth {
                             x: 10.0,
                             y: 0.0,
@@ -498,9 +494,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         slicer_ir::Point3WithWidth {
                             x: 10.0,
                             y: 10.0,
@@ -510,9 +505,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         slicer_ir::Point3WithWidth {
                             x: 0.0,
                             y: 10.0,
@@ -522,7 +516,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
                     ],
                     role: slicer_ir::ExtrusionRole::OuterWall,
@@ -533,12 +527,11 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                 },
                 feature_flags: vec![],
                 boundary_type: slicer_ir::WallBoundaryType::Interior,
-            // exhaustive: WallLoop explicit test fixture preserves boundary data
+                // exhaustive: WallLoop explicit test fixture preserves boundary data
             }],
             infill_areas: vec![],
             seam_candidates: vec![],
             resolved_seam: Some(slicer_ir::SeamPosition {
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                 point: slicer_ir::Point3WithWidth {
                     x: 5.0,
                     y: 0.0,
@@ -548,14 +541,14 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
+                    ..Default::default()
                 },
                 wall_index: 0,
             }),
-
+            ..Default::default()
         }],
-    ..Default::default()
-};
+        ..Default::default()
+    };
 
     // Stage PerimeterIR + empty LayerCollectionIR into arena.
     let mut arena = LayerArena::new();
@@ -575,7 +568,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
-
+        ..Default::default()
     });
 
     let blackboard = Blackboard::new(
@@ -598,8 +591,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                     z: 10.0,
                 },
             },
-        ..Default::default()
-}),
+            ..Default::default()
+        }),
         1,
     );
     let layer = GlobalLayer {
@@ -608,7 +601,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         active_regions: vec![],
         has_nonplanar: false,
         is_sync_layer: false,
-
+        ..Default::default()
     };
 
     // Dispatch PathOptimization through the real run_stage path.
@@ -668,7 +661,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
         loop_type: WallLoopType::Outer,
         path: slicer_runtime::wit_host::ExtrusionPath3d {
             points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: 0.0,
                     y: 0.0,
@@ -678,9 +671,8 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: 5.0,
                     y: 0.0,
@@ -690,9 +682,8 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: 10.0,
                     y: 0.0,
@@ -702,7 +693,6 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -730,7 +720,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
         boundary_type: WitWallBoundaryType::ExteriorSurface,
     };
 
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+    // exhaustive: Point3WithWidth crosses the host boundary and has no Default
     let _seam_pos = Point3WithWidth {
         x: 5.0,
         y: 0.0,
@@ -740,7 +730,6 @@ fn rotated_points_cardinality_mismatch_rejected() {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-
     };
 
     // Inject the bad wall loop directly into PerimeterOutputCollected.
@@ -796,7 +785,7 @@ fn seam_z_outside_layer_envelope_rejected() {
         loop_type: WallLoopType::Outer,
         path: slicer_runtime::wit_host::ExtrusionPath3d {
             points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: 0.0,
                     y: 0.0,
@@ -806,9 +795,8 @@ fn seam_z_outside_layer_envelope_rejected() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+                // exhaustive: Point3WithWidth crosses the host boundary and has no Default
                 Point3WithWidth {
                     x: 5.0,
                     y: 0.0,
@@ -818,7 +806,6 @@ fn seam_z_outside_layer_envelope_rejected() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -858,7 +845,7 @@ fn seam_z_outside_layer_envelope_rejected() {
     use wasmtime::component::Resource;
 
     let builder_resource = Resource::new_own(0);
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
+    // exhaustive: Point3WithWidth crosses the host boundary and has no Default
     let seam_pos_with_bad_z = Point3WithWidth {
         x: 5.0,
         y: 0.0,
@@ -868,7 +855,6 @@ fn seam_z_outside_layer_envelope_rejected() {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-
     };
     let result = ctx.push_reordered_wall_loop(
         builder_resource,
@@ -1026,13 +1012,12 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             variant_chain: Vec::new(),
             object_id: object_id.clone(),
             region_id,
-// exhaustive: WallLoop explicit test fixture preserves boundary data
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
             walls: vec![WallLoop {
                 perimeter_index: 0,
                 loop_type: LoopType::Outer,
                 path: ExtrusionPath3D {
                     points: vec![
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         Point3WithWidth {
                             x: 0.0,
                             y: 0.0,
@@ -1042,9 +1027,8 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         Point3WithWidth {
                             x: 10.0,
                             y: 0.0,
@@ -1054,9 +1038,8 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         Point3WithWidth {
                             x: 10.0,
                             y: 10.0,
@@ -1066,9 +1049,8 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                         Point3WithWidth {
                             x: 0.0,
                             y: 10.0,
@@ -1078,7 +1060,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
                             overhang_distance_mm: None,
-
+                            ..Default::default()
                         },
                     ],
                     role: ExtrusionRole::OuterWall,
@@ -1095,21 +1077,21 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                         is_thin_wall: false,
                         skip_ironing: false,
                         custom: std::collections::HashMap::new(),
-
+                        ..Default::default()
                     };
                     4
                 ],
                 boundary_type: WallBoundaryType::ExteriorSurface,
-            // exhaustive: WallLoop explicit test fixture preserves boundary data
+                // exhaustive: WallLoop explicit test fixture preserves boundary data
             }],
             infill_areas: vec![],
             seam_candidates: vec![],
             resolved_seam: None, // Not set â€” should be injected from SeamPlanIR
-
+            ..Default::default()
         }],
 
-    ..Default::default()
-};
+        ..Default::default()
+    };
 
     // Build a SeamPlanIR with an entry matching the perimeter region.
     // The chosen_candidate is what should be injected into PerimeterRegionView.resolved_seam.
@@ -1129,7 +1111,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                 variant_chain: Vec::new(),
             },
             chosen_candidate: SeamPosition {
-// exhaustive: Point3WithWidth uses the host boundary carrier without a Default implementation
                 point: Point3WithWidth {
                     x: chosen_x,
                     y: chosen_y,
@@ -1139,16 +1120,16 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
-
+                    ..Default::default()
                 },
                 wall_index: chosen_wall_index,
             },
             scored_candidates: vec![],
-
+            ..Default::default()
         }],
 
-    ..Default::default()
-};
+        ..Default::default()
+    };
 
     // Stage PerimeterIR into arena (without resolved_seam).
     let mut arena = LayerArena::new();
@@ -1171,8 +1152,8 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                 },
             },
 
-        ..Default::default()
-}),
+            ..Default::default()
+        }),
         1,
     );
     blackboard
@@ -1185,7 +1166,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         active_regions: vec![],
         has_nonplanar: false,
         is_sync_layer: false,
-
+        ..Default::default()
     };
 
     // Dispatch Layer::PerimetersPostProcess through the real run_stage path.
@@ -1451,11 +1432,11 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
-
+                ..Default::default()
             }],
 
-        ..Default::default()
-})
+            ..Default::default()
+        })
         .expect("set_slice must succeed");
 
     let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
@@ -1466,7 +1447,7 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-
+        ..Default::default()
     };
 
     crate::common::run_layer_and_commit_with_bundle(

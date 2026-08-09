@@ -93,7 +93,8 @@ fn layer_at(index: u32, z: f32) -> GlobalLayer {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    }
+    
+        ..Default::default()}
 }
 
 fn expoly(contour: &[(i64, i64)], holes: &[&[(i64, i64)]]) -> ExPolygon {
@@ -119,7 +120,8 @@ fn path(role: ExtrusionRole, pts: &[(f32, f32, f32)]) -> ExtrusionPath3D {
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
-            })
+            
+                ..Default::default()})
             .collect(),
         role,
         speed_factor: 1.0,
@@ -278,14 +280,16 @@ fn infill_postprocess_prior_ir_multi_region_buckets() {
                 sparse_infill: mk(2, ExtrusionRole::SparseInfill),
                 solid_infill: mk(1, ExtrusionRole::TopSolidInfill),
                 ironing: mk(3, ExtrusionRole::Ironing),
-            },
+            
+                ..Default::default()},
             InfillRegion {
                 object_id: "obj-b".into(),
                 region_id: 9,
                 sparse_infill: mk(1, ExtrusionRole::SparseInfill),
                 solid_infill: mk(2, ExtrusionRole::TopSolidInfill),
                 ironing: Vec::new(),
-            },
+            
+                ..Default::default()},
         ],
         ..Default::default()
     };
@@ -519,7 +523,8 @@ fn infill_postprocess_absent_module_is_fatal_without_mutating_infill() {
                 ExtrusionRole::Ironing,
                 &[(1.0, 1.0, 0.0), (2.0, 2.0, 0.0)],
             )],
-        }],
+        
+            ..Default::default()}],
         ..Default::default()
     };
 

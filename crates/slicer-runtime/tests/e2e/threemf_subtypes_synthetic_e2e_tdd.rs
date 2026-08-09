@@ -117,6 +117,7 @@ fn slice_ir_with_polygon(z_mm: f32, polygon: ExPolygon) -> SliceIR {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            ..Default::default()
         }],
     }
 }
@@ -155,6 +156,7 @@ fn mesh_ir_with_modifier(object_id: &str, mv: ModifierVolume) -> Arc<MeshIR> {
             modifier_volumes: vec![mv],
             paint_data: None,
             world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: p3(0.0, 0.0, 0.0),
@@ -181,9 +183,11 @@ fn layer_plan_with_z_values(object_id: &str, zs: &[(u32, f32)]) -> Arc<LayerPlan
                     is_catchup_layer: false,
                     catchup_z_bottom: 0.0,
                     tool_index: 0,
+                    ..Default::default()
                 }],
                 has_nonplanar: false,
                 is_sync_layer: false,
+                ..Default::default()
             })
             .collect(),
         object_participation: HashMap::new(),

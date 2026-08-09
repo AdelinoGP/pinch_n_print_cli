@@ -241,14 +241,16 @@ fn layer_plan_fixture() -> LayerPlanIR {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: true,
-            },
+            
+                ..Default::default()},
             GlobalLayer {
                 index: 1,
                 z: 0.4,
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
-            },
+            
+                ..Default::default()},
         ],
         ..Default::default()
     }
@@ -301,7 +303,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
     LayerCollectionIR {
         global_layer_index,
         z,
-        ordered_entities: vec![PrintEntity {
+        ordered_entities: vec![PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
             entity_id: 1,
             path: ExtrusionPath3D {
                 points: vec![Point3WithWidth {

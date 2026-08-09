@@ -44,7 +44,8 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
         progress_events: false,
         cancel_flag: Some(cancel_flag),
         config_overrides: HashMap::new(),
-    };
+    
+        ..Default::default()};
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
     match run_slice_with_collector(opts, Some(Arc::clone(&collector))) {
         Ok(outcome) => {
@@ -121,7 +122,7 @@ fn one_layer_plan() -> ExecutionPlan {
         per_layer_stages: Vec::new(),
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
+        global_layers: Arc::new(vec![GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             active_regions: Vec::new(),
@@ -131,7 +132,8 @@ fn one_layer_plan() -> ExecutionPlan {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: std::collections::BTreeMap::new(),
-    }
+    
+        ..Default::default()}
 }
 
 struct NoopLayerRunner;

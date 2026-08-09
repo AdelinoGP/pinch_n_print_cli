@@ -83,6 +83,7 @@ fn slice_fixture(model: PathBuf, config_overrides: HashMap<String, ConfigValue>)
         progress_events: false,
         cancel_flag: None,
         config_overrides,
+        ..Default::default()
     })
     .expect("run_slice must succeed");
 

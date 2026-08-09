@@ -22,41 +22,45 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 fn minimal_mesh() -> Arc<MeshIR> {
     Arc::new(MeshIR {
         schema_version: semver(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: String::from("obj"),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 0.0,
-                        y: 1.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
+        objects: vec![
+            // exhaustive: ObjectMesh fixture intentionally supplies explicit mesh data
+            ObjectMesh {
+                id: String::from("obj"),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 1.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 1.0,
+                            z: 0.0,
+                        },
+                    ],
+                    indices: vec![0, 1, 2],
+                },
+                transform: Transform3d {
+                    // column-major identity matrix
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                        1.0,
+                    ],
+                },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: vec![],
+                paint_data: None,
+                world_z_extent: None,
             },
-            transform: Transform3d {
-                // column-major identity matrix
-                matrix: [
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                ],
-            },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        }],
+        ],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,

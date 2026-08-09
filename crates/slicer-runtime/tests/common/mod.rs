@@ -39,8 +39,8 @@ pub fn pipeline_config_base(
     plan: ExecutionPlan,
     runners: PipelineStageRunners,
 ) -> PipelineConfig {
+    // exhaustive: PipelineConfig centralizes the shared test pipeline boundary construction.
     PipelineConfig {
-        // exhaustive: single per-crate construction point for trait-object holder PipelineConfig
         cancel_flag: None,
         mesh_ir,
         plan,
@@ -156,9 +156,7 @@ pub fn flat_plate_object(id: &str, local_z: f32, transform: Transform3d) -> Obje
         config: ObjectConfig {
             data: HashMap::new(),
         },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
-        world_z_extent: None,
+        ..Default::default()
     }
 }
 
@@ -179,9 +177,7 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
         config: ObjectConfig {
             data: HashMap::new(),
         },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
-        world_z_extent: None,
+        ..Default::default()
     }
 }
 
@@ -437,7 +433,7 @@ pub fn commit_hec_for_test(
                     annotations,
                     retracts,
                     travel_moves,
-                    order_proposal: None,
+                    ..Default::default()
                 }))
             }
         }
@@ -456,6 +452,7 @@ pub fn commit_hec_for_test(
 // so existing test call sites can use the new trait boundary with minimal churn.
 
 pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
+    // exhaustive: LayerStageInput is a boundary carrier with borrowed runtime state.
     LayerStageInput {
         mesh: blackboard.mesh().clone(),
         paint_regions: None,
@@ -472,6 +469,7 @@ pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> Lay
 }
 
 pub fn prepass_input(blackboard: &Blackboard) -> PrepassStageInput<'_> {
+    // exhaustive: PrepassStageInput is a boundary carrier with borrowed runtime state.
     PrepassStageInput {
         mesh: blackboard.mesh().clone(),
         layer_plan: blackboard.layer_plan().cloned(),

@@ -151,6 +151,7 @@ fn region(
         is_catchup_layer: is_catchup,
         catchup_z_bottom: catchup_z,
         tool_index: 0,
+        ..Default::default()
     }
 }
 
@@ -161,6 +162,7 @@ fn layer(index: u32, z: f32, is_sync: bool, regions: Vec<ActiveRegion>) -> Globa
         active_regions: regions,
         has_nonplanar: false,
         is_sync_layer: is_sync,
+        ..Default::default()
     }
 }
 
@@ -390,6 +392,7 @@ fn surface_group_id_round_trips_through_active_region_serde() {
         is_catchup_layer: false,
         catchup_z_bottom: 0.0,
         tool_index: 0,
+        ..Default::default()
     };
     let json = serde_json::to_string(&r).expect("ActiveRegion serializes");
     let back: ActiveRegion = serde_json::from_str(&json).expect("ActiveRegion round-trips");
@@ -414,6 +417,7 @@ fn seam_aligned_default_e2e() {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
+        ..Default::default()
     };
     let make_region = |object_id: &str, region_id: u64, x0: f32, seam_x: Option<f32>| {
         let mut region = slicer_sdk::views::PerimeterRegionView::default();

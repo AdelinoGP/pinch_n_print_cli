@@ -116,23 +116,15 @@ fn build_fixture(n_objects: usize, n_layers: usize) -> Blackboard {
         let active_regions: Vec<ActiveRegion> = (0..n_objects)
             .map(|i| ActiveRegion {
                 object_id: format!("obj-{i}"),
-                region_id: 0,
-                resolved_config: ResolvedConfig::default(),
                 effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            ..Default::default()
+                ..Default::default()
             })
             .collect();
         global_layers.push(GlobalLayer {
             index: layer_idx as u32,
             z,
             active_regions,
-            has_nonplanar: false,
-            is_sync_layer: false,
-        ..Default::default()
+            ..Default::default()
         });
     }
 

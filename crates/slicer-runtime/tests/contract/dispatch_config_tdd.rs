@@ -31,7 +31,8 @@ fn real_config_visible_through_production_layer_dispatch() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    })
+    
+        ..Default::default()})
     .unwrap();
 
     let infill = fx.arena.infill().expect("infill slot should be populated");
@@ -57,7 +58,8 @@ fn different_configs_produce_different_output() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    })
+    
+        ..Default::default()})
     .unwrap();
 
     let mut fx_b = dispatch_fixture::for_stage("Layer::Infill")
@@ -73,7 +75,8 @@ fn different_configs_produce_different_output() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    })
+    
+        ..Default::default()})
     .unwrap();
 
     let p_a = RawInfillWitnessPoint1::decode(
@@ -95,7 +98,8 @@ fn repeated_identical_config_produces_deterministic_output() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
 
     let mut results = Vec::new();
     for _ in 0..3 {
@@ -119,7 +123,8 @@ fn config_isolation_across_sequential_calls() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
 
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
         .with_config(ConfigView::from_map(
@@ -179,7 +184,8 @@ fn path_optimization_emit_layer_markers_false_suppresses_output() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
-    };
+    
+        ..Default::default()};
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PathOptimization",

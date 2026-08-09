@@ -96,6 +96,7 @@ fn region_map_fixture() -> RegionMapIR {
 }
 
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
+    // exhaustive: ExecutionPlan fixture intentionally supplies explicit plan stages
     ExecutionPlan {
         prepass_stages,
         per_layer_stages: Vec::new(),

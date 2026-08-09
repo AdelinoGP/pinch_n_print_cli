@@ -149,7 +149,6 @@ fn seeded_seam_plan() -> SeamPlanIR {
                 global_layer_index: 0,
                 object_id: "obj-0".to_string(),
                 region_id: 7,
-                variant_chain: Vec::new(),
             },
             chosen_candidate: SeamPosition {
                 point,
@@ -160,6 +159,7 @@ fn seeded_seam_plan() -> SeamPlanIR {
                 score: 0.1,
                 reason: SeamReason::Concave,
             }],
+            ..Default::default()
         }],
     }
 }

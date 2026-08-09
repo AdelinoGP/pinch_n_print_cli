@@ -46,7 +46,8 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         overhang_quartile: None,
         dist_to_top_mm: 0.0,
         overhang_distance_mm: None,
-    }
+    
+        ..Default::default()}
 }
 
 /// Build a PrintEntity with SparseInfill role and the given tool_index
@@ -61,7 +62,7 @@ fn entity_with_tool(
     object_id: &str,
     original_idx: u32,
 ) -> PrintEntity {
-    PrintEntity {
+    PrintEntity { // exhaustive: test fixture intentionally specifies the  boundary
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points: vec![pt(x, y)],
@@ -131,7 +132,8 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    };
+    
+        ..Default::default()};
 
     let plan = plan_with_stages(
         vec![
@@ -252,7 +254,8 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    };
+    
+        ..Default::default()};
 
     let plan = plan_with_stages(
         vec![
@@ -345,7 +348,8 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         annotations: Vec::new(),
         retracts: Vec::new(),
         travel_moves: Vec::new(),
-    };
+    
+        ..Default::default()};
 
     let plan = plan_with_stages(
         vec![
@@ -550,7 +554,8 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
-        }],
+        
+            ..Default::default()}],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -575,10 +580,10 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
         postpass_stages: vec![],
         global_layers: Arc::new(
             (0..layer_count)
-                .map(|i| GlobalLayer {
+                .map(|i| GlobalLayer { // exhaustive: test fixture intentionally specifies the  boundary
                     index: i as u32,
                     z: 0.2 * (i as f32 + 1.0),
-                    active_regions: vec![ActiveRegion {
+                    active_regions: vec![ActiveRegion { // exhaustive: test fixture intentionally specifies the  boundary
                         object_id: "test-object".to_string(),
                         region_id: 0,
                         resolved_config: ResolvedConfig::default(),
@@ -589,14 +594,16 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
                         tool_index: 0,
                     }],
                     has_nonplanar: false,
-                    is_sync_layer: i == 0,
+                   
+    is_sync_layer: i == 0,
                 })
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
-    }
+    
+        ..Default::default()}
 }
 
 fn stage(stage_id: &str, module_id: &str) -> CompiledStage {

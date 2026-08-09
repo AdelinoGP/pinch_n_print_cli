@@ -139,10 +139,7 @@ pub fn simplify_input_intersection_distance_gate() -> Vec<ExtrusionJunction> {
                 y,
                 z: 0.2,
                 width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
+                ..Default::default()
             },
             perimeter_index: 0,
         }

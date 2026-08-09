@@ -72,6 +72,7 @@ fn validation_request(modules: Vec<LoadedModule>) -> DagValidationRequest {
             })
         })
         .collect();
+    // exhaustive: DagValidationRequest fixture intentionally supplies the validation boundary
     DagValidationRequest {
         modules,
         stage_dags,
