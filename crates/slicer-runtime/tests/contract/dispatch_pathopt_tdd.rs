@@ -55,7 +55,6 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             },
         ],
         global_layers: Arc::new(vec![GlobalLayer {
-            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             ..Default::default()
@@ -126,7 +125,6 @@ fn path_optimization_empty_input_is_no_op() {
     let dispatcher = fx.dispatcher;
     let (module, wasm_handles) = fx.bundle.into_module_and_handles();
 
-    // exhaustive: this fixture must define the complete empty-input execution plan.
     // exhaustive: execution fixture sets every plan collection explicitly
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
@@ -135,7 +133,6 @@ fn path_optimization_empty_input_is_no_op() {
             modules: vec![module],
         }],
         global_layers: Arc::new(vec![GlobalLayer {
-            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             ..Default::default()
@@ -177,7 +174,6 @@ fn path_optimization_deterministic_across_repeated_runs() {
             },
         ],
         global_layers: Arc::new(vec![GlobalLayer {
-            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             ..Default::default()
@@ -540,7 +536,6 @@ fn path_optimization_end_to_end_populates_z_hops() {
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             ..Default::default()
@@ -625,7 +620,6 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            // exhaustive: test fixture intentionally specifies the  boundary
             index: 0,
             z: 0.2,
             ..Default::default()
@@ -785,7 +779,6 @@ fn path_optimization_receives_real_perimeter_regions() {
                 .build(),
         )
         .build();
-    // exhaustive: layer fixture relies on default metadata fields
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,

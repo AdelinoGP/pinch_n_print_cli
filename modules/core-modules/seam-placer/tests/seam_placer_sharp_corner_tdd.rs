@@ -48,18 +48,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate]) -> WallLoop {
             }
         })
         .collect();
-    let flags = vec![
-        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
-        WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: HashMap::new(),
-        };
-        points.len()
-    ];
+    let flags = vec![WallFeatureFlags::default(); points.len()];
     let path = ExtrusionPath3D {
         points,
         role: ExtrusionRole::OuterWall,

@@ -84,7 +84,6 @@ fn sliced_region(object_id: &str, region_id: RegionId, polys: Vec<ExPolygon>) ->
     }
 }
 
-// exhaustive: WallLoop explicit test fixture preserves boundary data
 fn synthetic_wall() -> WallLoop {
     // exhaustive: WallLoop explicit test fixture preserves boundary data
     WallLoop {
@@ -98,10 +97,7 @@ fn synthetic_wall() -> WallLoop {
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),
         boundary_type: WallBoundaryType::Interior,
-        // exhaustive: WallLoop fixture preserves the exact path/role test data
-        // exhaustive: WallLoop explicit test fixture preserves boundary data
     }
-    // exhaustive: WallLoop explicit test fixture preserves boundary data
 }
 
 /// A `LayerCollectionIR` with `n` entities, `entity_id` 1..=n at topo 0..n.
@@ -124,8 +120,6 @@ fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
                 variant_chain: Vec::new(),
             },
             topo_order: i,
-            // exhaustive: PrintEntity fixture preserves the exact path/role test data
-            // exhaustive: PrintEntity explicit test fixture preserves boundary data
         })
         .collect();
     LayerCollectionIR {

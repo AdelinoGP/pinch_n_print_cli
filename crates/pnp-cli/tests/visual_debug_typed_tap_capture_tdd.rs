@@ -77,7 +77,6 @@ fn model_request_for_model(
     layers: Vec<i64>,
     config: PathBuf,
 ) -> VisualDebugRequest {
-    // exhaustive: model-source request boundary fixture
     model_request_for_model_with_selectors(
         model,
         taps,

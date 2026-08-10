@@ -33,18 +33,7 @@ fn ir_point(x: f32, y: f32, z: f32) -> Point3WithWidth {
 }
 
 fn ir_flags(count: usize) -> Vec<WallFeatureFlags> {
-    vec![
-        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
-        WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: HashMap::new(),
-        };
-        count
-    ]
+    vec![WallFeatureFlags::default(); count]
 }
 
 fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {

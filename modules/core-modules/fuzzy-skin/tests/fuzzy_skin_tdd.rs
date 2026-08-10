@@ -3,8 +3,6 @@
 //! Tests verify selective outer-wall perturbation using propagated feature flags
 //! while preserving path/flag cardinality for the `Layer::PerimetersPostProcess` stage.
 
-use std::collections::HashMap;
-
 use slicer_ir::{
     ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth, WallBoundaryType,
     WallFeatureFlags, WallLoop, WidthProfile,
@@ -19,14 +17,9 @@ use fuzzy_skin::FuzzySkinModule;
 
 /// Helper: create default WallFeatureFlags with fuzzy_skin set to the given value.
 fn flags(fuzzy: bool) -> WallFeatureFlags {
-    // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
     WallFeatureFlags {
-        tool_index: None,
         fuzzy_skin: fuzzy,
-        is_bridge: false,
-        is_thin_wall: false,
-        skip_ironing: false,
-        custom: HashMap::new(),
+        ..Default::default()
     }
 }
 

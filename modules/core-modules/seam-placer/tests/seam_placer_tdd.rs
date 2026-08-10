@@ -45,18 +45,7 @@ fn wall_at_z(z: f32) -> WallLoop {
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
     };
-    let flags = vec![
-        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
-        WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: HashMap::new()
-        };
-        3
-    ];
+    let flags = vec![WallFeatureFlags::default(); 3];
     PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
         .build()
@@ -84,18 +73,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
             }
         })
         .collect();
-    let flags = vec![
-        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
-        WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: HashMap::new()
-        };
-        points.len()
-    ];
+    let flags = vec![WallFeatureFlags::default(); points.len()];
     let path = ExtrusionPath3D {
         points,
         role: ExtrusionRole::OuterWall,
@@ -558,18 +536,7 @@ fn make_wall(z: f32, points: &[(f32, f32)]) -> WallLoop {
             ..Default::default()
         })
         .collect();
-    let flags = vec![
-        // exhaustive: WallFeatureFlags has no safe Default and this helper pins its neutral flags.
-        WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: HashMap::new()
-        };
-        path_points.len()
-    ];
+    let flags = vec![WallFeatureFlags::default(); path_points.len()];
     let path = ExtrusionPath3D {
         points: path_points,
         role: ExtrusionRole::OuterWall,

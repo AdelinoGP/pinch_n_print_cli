@@ -43,8 +43,8 @@ fn entity(role: ExtrusionRole) -> PrintEntity {
     }
 }
 
-// exhaustive: ExtrusionPath3D has no Default or shared fixture; this base preserves its required fields.
 fn extrusion_path_base(role: ExtrusionRole) -> ExtrusionPath3D {
+    // exhaustive: ExtrusionPath3D has no Default or shared fixture; this base preserves its required fields.
     ExtrusionPath3D {
         points: vec![Point3WithWidth::default()],
         role,

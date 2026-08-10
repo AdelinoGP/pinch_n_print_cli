@@ -2561,7 +2561,6 @@ mod tests {
             skip_ironing: false,
             ..Default::default()
         };
-        // exhaustive: WallLoop explicit fixture preserves the exact path/role test data
         // exhaustive: WallLoop explicit test fixture preserves boundary data
         let wall = WallLoop {
             perimeter_index: 0,
@@ -2570,7 +2569,6 @@ mod tests {
             width_profile: WidthProfile::default(),
             feature_flags: vec![flags],
             boundary_type: WallBoundaryType::Interior,
-            // exhaustive: WallLoop explicit test fixture preserves boundary data
         };
 
         let perimeter = PerimeterIR {

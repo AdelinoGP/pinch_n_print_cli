@@ -99,14 +99,12 @@ fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestM
     }
 }
 
-// exhaustive: PrintEntity explicit test fixture preserves boundary data
 fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {
     // Finalization entity pushes are batch-prepended so the witness appears first.
     layer
         .ordered_entities
         .first()
         .expect("witness entity prepended")
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_entity(
@@ -114,7 +112,6 @@ fn make_entity(
     topo_order: u32,
     point_count: usize,
     speed_factor: f32,
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 ) -> PrintEntity {
     // exhaustive: PrintEntity explicit test fixture preserves boundary data
     PrintEntity {
@@ -142,9 +139,7 @@ fn make_entity(
             variant_chain: Vec::new(),
         },
         topo_order,
-        // exhaustive: PrintEntity explicit test fixture preserves boundary data
     }
-    // exhaustive: PrintEntity explicit test fixture preserves boundary data
 }
 
 fn make_layer(
