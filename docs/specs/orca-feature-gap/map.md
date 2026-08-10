@@ -41,8 +41,11 @@ off-map, after.
   citations by file + function, never line numbers; ledger facts (next free
   packet number, next `DEV-###`, line counts) must be **re-derived at point of
   use**, never frozen into a ticket or packet.
-- **Live ledger hazard:** packets `200-205` exist untracked in the working tree
-  and are not yet merged. Any numbering decision must be re-derived from disk.
+- **Live ledger note:** the map's original 200–205 "untracked" hazard resolved
+  itself — those packets are committed (spec-packets migration `a352c6b5`);
+  206–212 also exist, with live uncommitted edits on 200/201. Numbering is fully
+  decoupled from all of it by ticket 06's Rule 1: one number at a time, derived
+  from disk at authoring time.
 
 ## Decisions so far
 
@@ -96,6 +99,14 @@ off-map, after.
   [`05-asset-packet-list.md`](issues/05-asset-packet-list.md) — the 91
   authoring tickets are cut from it. 47 D + 2 fog-blocked A keys
   (`filament_density`, `filament_diameter`) not packetized.
+- [06 — Settle packet numbering and how this queue interleaves with live work](issues/06-queue-numbering-and-sequencing.md)
+  — **one packet number at a time, allocated by directory existence, derived
+  from disk at authoring time; no reserved block.** Derivation command:
+  `ls -d docs/spec_packets/[0-9]*/ | sed ... | sort -n | tail -1`; next free =
+  +1; letter suffixes only for re-splits (210a/b precedent). All packets born
+  `status: draft`; activation is a `/swarm`-time act. Authoring proceeds in
+  parallel with live packet work (200–205 are committed; 200/201 have in-flight
+  edits) — no merge blocking; numbering decouples via Rule 1.
 
 ## Not yet specified
 
