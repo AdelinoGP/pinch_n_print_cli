@@ -8,9 +8,16 @@ Map: ../map.md
 
 ## Question
 
-Author the spec packet for **P01 — Cooling / Notes — part-cooling** — 17 keys, Tier A plumbing, owner part-cooling. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P01 — Cooling / Notes — part-cooling):
+Author the spec packet for **P01 — Cooling / Notes — part-cooling** — 19 keys (17 Tier A plumbing + 2 Tier B logic), owner part-cooling. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P01 — Cooling / Notes — part-cooling), amended by ticket 99:
 
-`activate_air_filtration`, `activate_chamber_temp_control`, `additional_cooling_fan_speed`, `auxiliary_fan`, `complete_print_exhaust_fan_speed`, `dont_slow_down_outer_wall`, `during_print_exhaust_fan_speed`, `fan_cooling_layer_time`, `fan_kickstart`, `fan_speedup_overhangs`, `fan_speedup_time`, `full_fan_speed_layer`, `internal_bridge_fan_speed`, `ironing_fan_speed`, `overhang_fan_threshold`, `reduce_fan_stop_start_freq`, `support_material_interface_fan_speed`
+`activate_air_filtration`, `activate_chamber_temp_control`, `additional_cooling_fan_speed`, `auxiliary_fan`, `complete_print_exhaust_fan_speed`, `dont_slow_down_outer_wall`, `during_print_exhaust_fan_speed`, `fan_cooling_layer_time`, `fan_kickstart`, `fan_max_speed`, `fan_min_speed`, `fan_speedup_overhangs`, `fan_speedup_time`, `full_fan_speed_layer`, `internal_bridge_fan_speed`, `ironing_fan_speed`, `overhang_fan_threshold`, `reduce_fan_stop_start_freq`, `support_material_interface_fan_speed`
+
+The `fan_max_speed`/`fan_min_speed` keys are the 99 reclassification: the
+rename workstream (ticket 99) exposed Orca's percent (0–100) scale vs Pinch's
+raw (0–255) scale, and `fan_min_speed` is declared but never read. Packet work
+is the scale conversion (Tier B logic) plus wiring `fan_min_speed` to its
+consumer alongside `reduce_fan_stop_start_freq`; parity evidence per 02
+(canonical: `CoolingBuffer.cpp` fan-speed handling).
 
 Authoring obligations:
 - Use `/spec-packet-generator`; the authoring gate is `/spec-review <packet> --preflight` (must pass).

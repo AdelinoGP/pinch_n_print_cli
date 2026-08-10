@@ -1183,8 +1183,8 @@ impl LayerCollectionFixtureBuilder {
 /// use slicer_sdk::test_support::fixtures::config_with;
 ///
 /// let cfg = config_with(&[
-///     ("fan_speed_max", ConfigValue::Int(255)),
-///     ("enable_overhang_fan", ConfigValue::Bool(false)),
+///     ("fan_max_speed", ConfigValue::Int(255)),
+///     ("enable_overhang_bridge_fan", ConfigValue::Bool(false)),
 /// ]);
 /// assert_eq!(cfg.len(), 2);
 /// ```

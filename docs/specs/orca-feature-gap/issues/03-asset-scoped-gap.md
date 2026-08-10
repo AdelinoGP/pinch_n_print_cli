@@ -57,10 +57,10 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 |---|---|---|---|
 | `fuzzy_skin_thickness` | `thickness` | `fuzzy-skin` | exact |
 | `fuzzy_skin_point_distance` | `point_distance` | `fuzzy-skin` | exact |
-| `close_fan_the_first_x_layers` | `disable_fan_first_layers` | `part-cooling` | exact |
-| `fan_max_speed` | `fan_speed_max` | `part-cooling` | exact (word order) |
-| `fan_min_speed` | `fan_speed_min` | `part-cooling` | exact (word order) |
-| `enable_overhang_bridge_fan` | `enable_overhang_fan` | `part-cooling` | exact |
+| `close_fan_the_first_x_layers` | `disable_fan_first_layers` | `part-cooling` | exact — **renamed in ticket 99** |
+| `fan_max_speed` | `fan_speed_max` | `part-cooling` | exact (word order) — **renamed in ticket 99**; scale deviation: Orca 0–100 % vs Pinch raw 0–255 → reclassified as gap work (P01) |
+| `fan_min_speed` | `fan_speed_min` | `part-cooling` | exact (word order) — **renamed in ticket 99**; same scale deviation + declared-but-never-read → reclassified as gap work (P01) |
+| `enable_overhang_bridge_fan` | `enable_overhang_fan` | `part-cooling` | exact — **renamed in ticket 99** |
 | `resolution` | `gcode_resolution` | `[host]` | exact |
 | `retraction_length` | `retract_length` | `path-optimization-default` | exact |
 | `retraction_speed` | `retract_speed` | `path-optimization-default` | exact |

@@ -3,7 +3,9 @@
 Derived from ticket 03's scoped list (414 keys) by applying the rubric below.
 **Amended by ticket 07: +2 keys** — `ironing_type` and `support_ironing`
 reclassified from 03's "already implemented (narrowed)" rows to genuine gaps
-(see 07's answer). Tier counts below include the amendment.
+(see 07's answer). **Amended by ticket 99: +2 keys** — `fan_max_speed` and
+`fan_min_speed` reclassified from false gaps (rename-exposed percent-vs-raw
+scale deviation). Tier counts below include both amendments.
 Every owner was **verified against the code** — first by read-site inspection
 in PnP, then by **five adversarial review passes against canonical
 OrcaSlicer** (parallel reviewers, each tracing canonical consumers). The
@@ -51,7 +53,8 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
 ticket 03's ruling), and dead alternate spellings. 11 keys; the scoped
-target is now **405** (403 + ticket 07's two reclassified ironing keys).
+target is now **407** (403 + ticket 07's two reclassified ironing keys +
+ticket 99's two fan-scale reclassifications).
 
 ### Special rulings
 
@@ -81,11 +84,11 @@ target is now **405** (403 + ticket 07's two reclassified ironing keys).
 | Tier | keys | meaning |
 |---:|---:|---|
 | A | 119 | plumbing into an existing decision point (incl. `support_ironing`, +1 from ticket 07) |
-| B | 224 | new logic in an existing owner (incl. `ironing_type`, +1 from ticket 07) |
+| B | 226 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
 | X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
-| **in scope** | **405** | |
+| **in scope** | **407** | |
 
 ## Owner map (verified + five times adversarially reviewed)
 
@@ -174,6 +177,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `during_print_exhaust_fan_speed` | A | part-cooling (emission-time cooling) |
 | `fan_cooling_layer_time` | A | part-cooling (emission-time cooling) |
 | `fan_kickstart` | A | part-cooling (emission-time cooling) |
+| `fan_max_speed` | B | part-cooling (emission-time cooling) | (ticket 99 finding — rename exposed percent-vs-raw scale gap; Orca 0–100 % vs Pinch raw 0–255) |
+| `fan_min_speed` | B | part-cooling (emission-time cooling) | (ticket 99 finding — same scale gap; key declared but never read; wire to consumer via P01's reduce_fan_stop_start_freq work) |
 | `fan_speedup_overhangs` | A | part-cooling (emission-time cooling) |
 | `fan_speedup_time` | A | part-cooling (emission-time cooling) |
 | `full_fan_speed_layer` | A | part-cooling (emission-time cooling) |

@@ -25,7 +25,7 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.fan_speed_min]
+[config.schema.fan_min_speed]
 type    = "int"
 default = 51
 min     = 0
@@ -33,7 +33,7 @@ max     = 255
 display = "Fan Speed Min"
 group   = "Cooling"
 
-[config.schema.fan_speed_max]
+[config.schema.fan_max_speed]
 type    = "int"
 default = 255
 min     = 0
@@ -41,7 +41,7 @@ max     = 255
 display = "Fan Speed Max"
 group   = "Cooling"
 
-[config.schema.disable_fan_first_layers]
+[config.schema.close_fan_the_first_x_layers]
 type    = "int"
 default = 1
 min     = 0
@@ -56,7 +56,7 @@ max     = 100
 display = "Overhang Fan Speed"
 group   = "Cooling"
 
-[config.schema.enable_overhang_fan]
+[config.schema.enable_overhang_bridge_fan]
 type    = "bool"
 default = true
 display = "Enable Overhang Fan"

@@ -42,9 +42,9 @@ fn assert_group_cooling(entry: &Value, key: &str) {
 fn int_keys_declared_with_defaults() {
     let m = manifest();
     for (key, default) in [
-        ("fan_speed_min", 51),
-        ("fan_speed_max", 255),
-        ("disable_fan_first_layers", 1),
+        ("fan_min_speed", 51),
+        ("fan_max_speed", 255),
+        ("close_fan_the_first_x_layers", 1),
         ("overhang_fan_speed", 100),
     ] {
         let entry = schema_entry(&m, key);
@@ -66,7 +66,7 @@ fn int_keys_declared_with_defaults() {
 fn bool_keys_declared_with_defaults() {
     let m = manifest();
     for (key, default) in [
-        ("enable_overhang_fan", true),
+        ("enable_overhang_bridge_fan", true),
         ("slow_down_for_layer_cooling", true),
     ] {
         let entry = schema_entry(&m, key);

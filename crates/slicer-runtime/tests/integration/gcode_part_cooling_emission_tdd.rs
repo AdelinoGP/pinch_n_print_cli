@@ -8,7 +8,7 @@
 //!
 //! These tests own the HOST emission contract only. The part-cooling *module*
 //! (which layer gets which fan speed, first-layers disable, overhang bump,
-//! `fan_speed_max=0`) is exercised by the module's own crate tests
+//! `fan_max_speed=0`) is exercised by the module's own crate tests
 //! (`modules/core-modules/part-cooling/tests/`). Here we hand-construct the
 //! `LayerAnnotation`s the module would emit via `FinalizationOutputBuilder`, so
 //! this file links no module crate.

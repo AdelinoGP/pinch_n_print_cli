@@ -1,12 +1,12 @@
 # Asset — Packet list for the FFF gap queue (ticket 05)
 
 Derived from ticket 04's per-key tier assignment by applying the grouping rule
-below. **91 packets, 356 keys** (Tier A 117, Tier B 224, Tier C 15 — plus 2
+below. **91 packets, 358 keys** (Tier A 117, Tier B 226, Tier C 15 — plus 2
 fog-blocked Tier A keys and 47 Tier D keys, deferred). Packet order is the
 queue order: **tier-major (A, B, C), then owning module, then Orca UI section**.
-(Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A] —
-P14 becomes a mixed A/B packet, moving it to the B tier of the 20A/65B/6C
-packet counts: now 19 A, 66 B, 6 C.)
+(Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A];
+amended by ticket 99: P01 +`fan_max_speed`/`fan_min_speed` [B]. P01 and P14
+become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C.)
 
 ## The grouping rule (all rulings confirmed with the human, ticket 05 session)
 
@@ -72,9 +72,14 @@ sub-theme without changing the packet count. `hole_to_polyhole_max_edges`
 
 ## Tier A — 20 packets
 
-### P01 — Cooling / Notes — part-cooling (17 keys, Tier A)
+### P01 — Cooling / Notes — part-cooling (19 keys — 17 Tier A plumbing + 2 Tier B logic)
 
-`activate_air_filtration`, `activate_chamber_temp_control`, `additional_cooling_fan_speed`, `auxiliary_fan`, `complete_print_exhaust_fan_speed`, `dont_slow_down_outer_wall`, `during_print_exhaust_fan_speed`, `fan_cooling_layer_time`, `fan_kickstart`, `fan_speedup_overhangs`, `fan_speedup_time`, `full_fan_speed_layer`, `internal_bridge_fan_speed`, `ironing_fan_speed`, `overhang_fan_threshold`, `reduce_fan_stop_start_freq`, `support_material_interface_fan_speed`
+`activate_air_filtration`, `activate_chamber_temp_control`, `additional_cooling_fan_speed`, `auxiliary_fan`, `complete_print_exhaust_fan_speed`, `dont_slow_down_outer_wall`, `during_print_exhaust_fan_speed`, `fan_cooling_layer_time`, `fan_kickstart`, `fan_max_speed`, `fan_min_speed`, `fan_speedup_overhangs`, `fan_speedup_time`, `full_fan_speed_layer`, `internal_bridge_fan_speed`, `ironing_fan_speed`, `overhang_fan_threshold`, `reduce_fan_stop_start_freq`, `support_material_interface_fan_speed`
+
+(Amended by ticket 99: `fan_max_speed` + `fan_min_speed` reclassified from
+false gaps — the rename exposed Orca's percent 0–100 scale vs Pinch's raw
+0–255; packet work is scale conversion + wiring `fan_min_speed` to its
+consumer via `reduce_fan_stop_start_freq`. P01 becomes a mixed A/B packet.)
 
 ### P02 — Multimaterial / Prime tower (1/2) — wipe-tower (13 keys, Tier A)
 
