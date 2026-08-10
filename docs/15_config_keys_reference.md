@@ -137,7 +137,7 @@ is the authoritative catalog of their defaults and ranges.
 | `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
-| `infill_density` | float | `20.0` | [0.0, 100.0] | `gyroid-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
@@ -152,7 +152,7 @@ is the authoritative catalog of their defaults and ranges.
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
-| `infill_density` | float | `20.0` | [0.0, 100.0] | `lightning-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `lightning-infill` |
@@ -196,7 +196,7 @@ is the authoritative catalog of their defaults and ranges.
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
-| `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |

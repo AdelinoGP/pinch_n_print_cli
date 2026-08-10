@@ -87,3 +87,88 @@ impl Default for FeedrateConfig {
         }
     }
 }
+
+/// Reads a single mm/s speed from a raw config source.
+///
+/// Accepts a plain `Float`/`Int`, a `List` whose first element is numeric
+/// (Orca stores some per-filament speeds as `coFloats` arrays), and a
+/// non-percent `FloatOrPercent`. Anything else (including a `Percent`, which
+/// cannot be resolved without a base here) returns `None` so the caller keeps
+/// its default.
+fn read_speed(
+    config: &std::collections::HashMap<String, crate::ConfigValue>,
+    key: &str,
+) -> Option<f32> {
+    fn as_number(value: &crate::ConfigValue) -> Option<f32> {
+        match value {
+            crate::ConfigValue::Float(v) => Some(*v as f32),
+            crate::ConfigValue::Int(v) => Some(*v as f32),
+            crate::ConfigValue::FloatOrPercent {
+                value,
+                is_percent: false,
+            } => Some(*value as f32),
+            _ => None,
+        }
+    }
+    match config.get(key)? {
+        crate::ConfigValue::List(items) => items.iter().find_map(as_number),
+        other => as_number(other),
+    }
+}
+
+impl FeedrateConfig {
+    /// Builds the feedrate table from a raw config source keyed by the
+    /// `[speeds]` host names (the Orca key names the GUI's translated config
+    /// uses; all mm/s). Keys that are absent or not numeric keep the
+    /// [`FeedrateConfig::default`] value, so `docs/config/host-keys.toml`'s
+    /// `[speeds]` table stays the source of truth for the defaults.
+    ///
+    /// This is what wires host speeds into the G-code emitter: the emitter's
+    /// `resolve_feedrate` previously read `FeedrateConfig::default()` on every
+    /// run, so every F value in the G-code was a pnp default scaled by module
+    /// speed factors.
+    pub fn from_raw_config(config: &std::collections::HashMap<String, crate::ConfigValue>) -> Self {
+        let mut fc = Self::default();
+        fc.outer_wall_speed = read_speed(config, "outer_wall_speed").unwrap_or(fc.outer_wall_speed);
+        fc.inner_wall_speed = read_speed(config, "inner_wall_speed").unwrap_or(fc.inner_wall_speed);
+        fc.thin_wall_speed = read_speed(config, "thin_wall_speed").unwrap_or(fc.thin_wall_speed);
+        fc.top_surface_speed =
+            read_speed(config, "top_surface_speed").unwrap_or(fc.top_surface_speed);
+        fc.bottom_surface_speed =
+            read_speed(config, "bottom_surface_speed").unwrap_or(fc.bottom_surface_speed);
+        fc.sparse_infill_speed =
+            read_speed(config, "sparse_infill_speed").unwrap_or(fc.sparse_infill_speed);
+        fc.bridge_speed = read_speed(config, "bridge_speed").unwrap_or(fc.bridge_speed);
+        fc.internal_bridge_speed =
+            read_speed(config, "internal_bridge_speed").unwrap_or(fc.internal_bridge_speed);
+        fc.support_speed = read_speed(config, "support_speed").unwrap_or(fc.support_speed);
+        fc.support_interface_speed =
+            read_speed(config, "support_interface_speed").unwrap_or(fc.support_interface_speed);
+        fc.gap_infill_speed = read_speed(config, "gap_infill_speed").unwrap_or(fc.gap_infill_speed);
+        fc.ironing_speed = read_speed(config, "ironing_speed").unwrap_or(fc.ironing_speed);
+        fc.skirt_speed = read_speed(config, "skirt_speed").unwrap_or(fc.skirt_speed);
+        fc.wipe_tower_speed = read_speed(config, "wipe_tower_speed").unwrap_or(fc.wipe_tower_speed);
+        fc.prime_tower_speed =
+            read_speed(config, "prime_tower_speed").unwrap_or(fc.prime_tower_speed);
+        fc.travel_speed = read_speed(config, "travel_speed").unwrap_or(fc.travel_speed);
+        fc.travel_speed_z = read_speed(config, "travel_speed_z").unwrap_or(fc.travel_speed_z);
+        fc.initial_layer_speed =
+            read_speed(config, "initial_layer_speed").unwrap_or(fc.initial_layer_speed);
+        fc.initial_layer_infill_speed = read_speed(config, "initial_layer_infill_speed")
+            .unwrap_or(fc.initial_layer_infill_speed);
+        fc.initial_layer_travel_speed = read_speed(config, "initial_layer_travel_speed")
+            .unwrap_or(fc.initial_layer_travel_speed);
+        fc.wipe_speed = read_speed(config, "wipe_speed").unwrap_or(fc.wipe_speed);
+        fc.overhang_1_4_speed =
+            read_speed(config, "overhang_1_4_speed").unwrap_or(fc.overhang_1_4_speed);
+        fc.overhang_2_4_speed =
+            read_speed(config, "overhang_2_4_speed").unwrap_or(fc.overhang_2_4_speed);
+        fc.overhang_3_4_speed =
+            read_speed(config, "overhang_3_4_speed").unwrap_or(fc.overhang_3_4_speed);
+        fc.overhang_4_4_speed =
+            read_speed(config, "overhang_4_4_speed").unwrap_or(fc.overhang_4_4_speed);
+        fc.filament_ironing_speed =
+            read_speed(config, "filament_ironing_speed").unwrap_or(fc.filament_ironing_speed);
+        fc
+    }
+}

@@ -37,9 +37,9 @@ max-ir-schema     = "5.0.0"
 [config.schema]
 [config.schema.infill_density]
 type    = "float"
-default = 20.0
+default = 0.2
 min     = 0.0
-max     = 100.0
+max     = 1.0
 display = "Infill Density"
 group   = "Infill"
 

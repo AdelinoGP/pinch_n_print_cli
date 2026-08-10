@@ -54,6 +54,43 @@ fn write_config(tmp: &TempDir, support_enabled: bool) -> PathBuf {
     path
 }
 
+// Copy the support fixture with an added Metadata/project_settings.config
+// sidecar, exactly like the GUI's plate export (translated config merged into
+// the 3MF). Returns the rewritten file's path.
+fn write_fixture_with_sidecar(tmp: &TempDir, sidecar_json: &str) -> PathBuf {
+    let path = tmp.path().join("fixture-with-sidecar.3mf");
+    let file = fs::File::open(fixture_path()).expect("open support fixture");
+    let mut archive = zip::ZipArchive::new(file).expect("open fixture zip");
+    let out = fs::File::create(&path).expect("create rewritten 3MF");
+    let mut writer = zip::ZipWriter::new(out);
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).expect("fixture zip entry");
+        // The fixture may already carry a sidecar; ours must win, so the
+        // copied entry is dropped and the new one is written last.
+        if entry.name() == "Metadata/project_settings.config" {
+            continue;
+        }
+        let mut contents = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut contents).expect("read fixture zip entry");
+        writer
+            .start_file(
+                entry.name().to_owned(),
+                zip::write::SimpleFileOptions::default(),
+            )
+            .expect("start fixture zip entry");
+        std::io::Write::write_all(&mut writer, &contents).expect("write fixture zip entry");
+    }
+    writer
+        .start_file(
+            "Metadata/project_settings.config",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .expect("start sidecar entry");
+    std::io::Write::write_all(&mut writer, sidecar_json.as_bytes()).expect("write sidecar entry");
+    writer.finish().expect("finalize rewritten 3MF");
+    path
+}
+
 fn read_doc(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).expect("read preview JSON")).expect("parse preview JSON")
 }
@@ -395,6 +432,51 @@ fn support_disabled_yields_empty_layers_exit_zero() {
     assert_eq!(doc["layer_count"], 40);
     assert_eq!(doc["layers"].as_array().expect("layers").len(), 0);
     assert_eq!(doc["skipped_intermediate_entries"], 0);
+}
+
+#[test]
+fn sidecar_enables_support_without_config_file() {
+    let tmp = TempDir::new().expect("tempdir");
+    let input = write_fixture_with_sidecar(&tmp, r#"{"enable_support": true}"#);
+    let output = tmp.path().join("support-preview.json");
+
+    assert!(run_support_preview(&input, &output, None, &[module_dir()], true).is_ok());
+    let doc = read_doc(&output);
+    let layers = doc["layers"].as_array().expect("layers must be an array");
+    assert!(
+        layers.iter().any(|layer| {
+            layer["support"]
+                .as_array()
+                .is_some_and(|support| !support.is_empty())
+        }),
+        "the sidecar must enable supports without a --config file"
+    );
+}
+
+#[test]
+fn sidecar_disables_support_without_config_file() {
+    let tmp = TempDir::new().expect("tempdir");
+    let input = write_fixture_with_sidecar(&tmp, r#"{"enable_support": false}"#);
+    let output = tmp.path().join("support-preview.json");
+
+    assert!(run_support_preview(&input, &output, None, &[module_dir()], true).is_ok());
+    let doc = read_doc(&output);
+    assert_eq!(doc["layer_count"], 40);
+    assert_eq!(doc["layers"].as_array().expect("layers").len(), 0);
+}
+
+#[test]
+fn explicit_config_file_wins_over_sidecar() {
+    let tmp = TempDir::new().expect("tempdir");
+    // The sidecar says enabled, the explicit --config file says disabled:
+    // the file must win, mirroring the slice path's seeding order.
+    let input = write_fixture_with_sidecar(&tmp, r#"{"enable_support": true}"#);
+    let config = write_config(&tmp, false);
+    let output = tmp.path().join("support-preview.json");
+
+    assert!(run_support_preview(&input, &output, Some(&config), &[module_dir()], true).is_ok());
+    let doc = read_doc(&output);
+    assert_eq!(doc["layers"].as_array().expect("layers").len(), 0);
 }
 
 #[test]

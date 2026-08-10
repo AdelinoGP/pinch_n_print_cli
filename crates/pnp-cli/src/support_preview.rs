@@ -41,7 +41,7 @@ pub fn run_support_preview(
 
     let mesh = slicer_model_io::load_model(input)
         .map_err(|e| format!("failed to load model {}: {e}", input.display()))?;
-    let config_source = match config {
+    let mut config_source = match config {
         Some(path) => {
             let text = fs::read_to_string(path)
                 .map_err(|e| format!("failed to read config {}: {e}", path.display()))?;
@@ -50,6 +50,15 @@ pub fn run_support_preview(
         }
         None => HashMap::new(),
     };
+    // Seed the model's authored config (the 3MF project_settings.config
+    // sidecar the GUI merges its translated config into) as defaults, exactly
+    // like the slice path (slicer-runtime::run_slice): an explicit --config
+    // file wins, the sidecar fills every other key.
+    if let Some(sidecar) = slicer_model_io::read_3mf_project_settings(input) {
+        for (key, value) in sidecar {
+            config_source.entry(key).or_insert(value);
+        }
+    }
     let support_enabled = !matches!(
         config_source.get("enable_support"),
         Some(ConfigValue::Bool(false))

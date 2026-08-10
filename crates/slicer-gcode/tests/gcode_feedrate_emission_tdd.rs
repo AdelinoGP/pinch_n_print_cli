@@ -856,3 +856,177 @@ fn per_point_profile_replaces_rather_than_scales_whole_entity_speed_factor() {
         assert_eq!(fs[i], *r, "point {} must read the replace value", i);
     }
 }
+
+#[test]
+fn raw_config_source_wires_feedrate_table_into_emitted_f_values() {
+    // The production path builds FeedrateConfig::from_raw_config(&config_source)
+    // and passes it via new_with_config; a raw [speeds] key must reach the F
+    // token. Before the wiring every F was FeedrateConfig::default() (60 mm/s
+    // outer wall -> F3600) regardless of the config.
+    let raw: std::collections::HashMap<String, ConfigValue> = std::collections::HashMap::from([
+        ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
+        ("inner_wall_speed".to_string(), ConfigValue::Float(60.0)),
+        ("sparse_infill_speed".to_string(), ConfigValue::Float(120.0)),
+    ]);
+    let emitter = DefaultGCodeEmitter::new_with_config(
+        "1.0".to_string(),
+        FeedrateConfig::from_raw_config(&raw),
+    );
+
+    let mut layer = LayerCollectionIR {
+        z: 0.2,
+        ..Default::default()
+    };
+    let roles = [
+        (1u64, ExtrusionRole::OuterWall),
+        (2, ExtrusionRole::InnerWall),
+        (3, ExtrusionRole::SparseInfill),
+    ];
+    for (entity_id, role) in &roles {
+        let path = ExtrusionPath3D {
+            points: vec![
+                Point3WithWidth {
+                    x: 0.0,
+                    y: *entity_id as f32,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+                Point3WithWidth {
+                    x: 10.0,
+                    y: *entity_id as f32,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+            ],
+            role: role.clone(),
+            speed_factor: 1.0,
+        };
+        layer.ordered_entities.push(PrintEntity {
+            entity_id: *entity_id,
+            path,
+            tool_index: *entity_id as u32,
+            region_key: RegionKey {
+                region_id: *entity_id,
+                global_layer_index: 0,
+                object_id: "obj".to_string(),
+                variant_chain: Vec::new(),
+            },
+            topo_order: *entity_id as u32,
+            ..print_entity_base(role.clone())
+        });
+    }
+
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+    let mut firsts: Vec<f32> = Vec::new();
+    for cmd in &gcode_ir.commands {
+        if let GCodeCommand::Move {
+            f: Some(f_val),
+            role,
+            ..
+        } = cmd
+        {
+            if matches!(
+                role,
+                ExtrusionRole::OuterWall | ExtrusionRole::InnerWall | ExtrusionRole::SparseInfill
+            ) {
+                let role_idx = match role {
+                    ExtrusionRole::OuterWall => 0,
+                    ExtrusionRole::InnerWall => 1,
+                    ExtrusionRole::SparseInfill => 2,
+                    _ => unreachable!(),
+                };
+                if firsts.len() == role_idx {
+                    firsts.push(*f_val);
+                }
+            }
+        }
+    }
+    assert_eq!(firsts, vec![1800.0, 3600.0, 7200.0]);
+}
+
+#[test]
+fn first_layer_volumetric_e_uses_configured_first_layer_height() {
+    // The first layer's volumetric E is width x height x length / filament
+    // area. The fallback used to be a hardcoded 0.2 mm, over-extruding ~2x
+    // whenever first_layer_height was 0.1 mm (measured: outer wall E/mm 0.0494
+    // at Z0.1 implied 0.2 mm height).
+    let emitter = DefaultGCodeEmitter::new("1.0".to_string()).with_resolved_config(
+        ResolvedConfig {
+            first_layer_height: 0.1,
+            ..Default::default()
+        },
+    );
+
+    let path = ExtrusionPath3D {
+        points: vec![
+            Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.1,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: 10.0,
+                y: 0.0,
+                z: 0.1,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+        ],
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    };
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.1,
+        ordered_entities: vec![PrintEntity {
+            entity_id: 1,
+            path,
+            tool_index: 0,
+            region_key: RegionKey {
+                global_layer_index: 0,
+                object_id: "obj".to_string(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            topo_order: 1,
+            ..print_entity_base(ExtrusionRole::OuterWall)
+        }],
+        ..Default::default()
+    };
+
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+
+    // Filament 1.75 mm -> area pi*0.875^2; E = 10 * 0.4 * 0.1 / area.
+    let filament_area = std::f32::consts::PI * 0.875_f32 * 0.875_f32;
+    let expected_e = 10.0 * 0.4 * 0.1 / filament_area;
+    let mut first_e: Option<f32> = None;
+    let mut height_comment: Option<String> = None;
+    for cmd in &gcode_ir.commands {
+        if let GCodeCommand::Move { e: Some(e_val), .. } = cmd {
+            if first_e.is_none() {
+                first_e = Some(*e_val);
+            }
+        }
+        if let GCodeCommand::Raw { text } = cmd {
+            if text.starts_with(";HEIGHT:") {
+                height_comment = Some(text.clone());
+            }
+        }
+    }
+    let first_e = first_e.expect("a first-layer move must carry E");
+    assert!(
+        (first_e - expected_e).abs() < 1e-3,
+        "first-layer E {first_e} must equal width x height x length / area ({expected_e}); \
+         the 0.2 mm fallback would emit {}",
+        2.0 * expected_e
+    );
+    assert_eq!(height_comment.as_deref(), Some(";HEIGHT:0.1"));
+}

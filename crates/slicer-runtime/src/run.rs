@@ -848,9 +848,16 @@ pub fn run_slice_with_collector(
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             emitter: Box::new(
-                DefaultGCodeEmitter::new(concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into())
-                    .with_resolved_config(default_resolved_config.clone())
-                    .with_tool_configs(per_tool_configs_map.clone()),
+                // Wire the host `[speeds]` keys (Orca names, mm/s) from the
+                // raw config into the emitter's feedrate table; without this
+                // every F value was FeedrateConfig::default() scaled by module
+                // speed factors.
+                DefaultGCodeEmitter::new_with_config(
+                    concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into(),
+                    slicer_ir::FeedrateConfig::from_raw_config(&config_source),
+                )
+                .with_resolved_config(default_resolved_config.clone())
+                .with_tool_configs(per_tool_configs_map.clone()),
             ),
             serializer: Box::new(
                 DefaultGCodeSerializer::with_extrusion_mode(relative).with_flavor(flavor),

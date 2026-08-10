@@ -2362,6 +2362,7 @@ dependencies = [
  "stl_io",
  "tempfile",
  "toml 0.8.23",
+ "zip",
 ]
 
 [[package]]
