@@ -1,9 +1,12 @@
 # Asset — Packet list for the FFF gap queue (ticket 05)
 
 Derived from ticket 04's per-key tier assignment by applying the grouping rule
-below. **91 packets, 354 keys** (Tier A 116, Tier B 223, Tier C 15 — plus 2
+below. **91 packets, 356 keys** (Tier A 117, Tier B 224, Tier C 15 — plus 2
 fog-blocked Tier A keys and 47 Tier D keys, deferred). Packet order is the
 queue order: **tier-major (A, B, C), then owning module, then Orca UI section**.
+(Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A] —
+P14 becomes a mixed A/B packet, moving it to the B tier of the 20A/65B/6C
+packet counts: now 19 A, 66 B, 6 C.)
 
 ## The grouping rule (all rulings confirmed with the human, ticket 05 session)
 
@@ -121,13 +124,21 @@ sub-theme without changing the packet count. `hole_to_polyhole_max_edges`
 
 `enforce_support_layers`, `raft_first_layer_expansion`, `support_bottom_z_distance`, `support_critical_regions_only`, `support_expansion`, `support_object_first_layer_gap`, `support_object_xy_distance`, `support_remove_small_overhang`, `support_style`, `support_threshold_angle`, `support_threshold_overlap`, `support_type`
 
-### P14 — Quality / Ironing — top-surface-ironing (3 keys, Tier A)
+### P14 — Quality / Ironing — top-surface-ironing (4 keys — 3 Tier A plumbing + 1 Tier B logic)
 
-`ironing_angle`, `ironing_angle_fixed`, `ironing_inset`
+`ironing_angle`, `ironing_angle_fixed`, `ironing_inset`, `ironing_type`
 
-### P15 — Support / Support ironing — support-surface-ironing (1 keys, Tier A)
+(Amended by ticket 07: `ironing_type` reclassified from "already implemented
+(narrowed)" to a genuine gap — widens the shared `ironing_enabled` bool to
+Orca's 4-mode enum.)
 
-`support_ironing_pattern`
+### P15 — Support / Support ironing — support-surface-ironing (2 keys, Tier A)
+
+`support_ironing_pattern`, `support_ironing`
+
+(Amended by ticket 07: `support_ironing` reclassified from "already
+implemented (narrowed)" to a genuine gap — an independent bool so support
+ironing no longer rides the shared `ironing_enabled`.)
 
 ### P16 — Quality / Wall generator — Arachne — arachne-perimeters (1 keys, Tier A)
 

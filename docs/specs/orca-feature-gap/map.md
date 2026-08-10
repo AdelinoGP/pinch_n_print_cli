@@ -22,15 +22,21 @@ off-map, after.
   the `Default` column is machine-read, by `xtask/src/gen_config_docs.rs`).
   Ticket 01 measured it: wrong on 66 of 574 FFF keys. **Never size anything off
   that column** — use ticket 01's asset, or re-derive.
-- **Pinch 'n Print renames Orca's keys.** The alias map is adjudicated in
-  [`03-asset-scoped-gap.md`](issues/03-asset-scoped-gap.md) — consult it before
-  treating any key as a gap. It also records three keys that exist under *two*
-  spellings (`infill_density`/`sparse_infill_density` and friends) and two Orca
-  enums narrowed to Pinch bools (`ironing_type`, `support_ironing`), which are
-  parity gaps hiding inside keys that look present.
-- **The scoped target is 414 keys** — see the by-section list in
-  [`03-asset-scoped-gap.md`](issues/03-asset-scoped-gap.md). Size packets off
-  that, never off the reference's ❌ column.
+- **Pinch 'n Print renamed Orca's keys — now being standardised away.**
+  Ticket 07's ruling: **standardise to Orca's names**, not document. The
+  mechanical rename workstream is tickets **99–107** (26 keys: 22 exact rows +
+  3 duplicate collapses + `ironing_spacing_mm`); it **gates the queue** — P01
+  (ticket 08) is blocked by all nine, and sessions take frontier tickets in
+  order. `03-asset-scoped-gap.md` remains the historical adjudication; each
+  workstream ticket updates its own rows there. The 34 Pinch-specific keys
+  and the `raft_layers` 1→3 split (a strict superset — not a gap) stay
+  untouched. The two narrowed ironing enums were reclassified as **gaps**:
+  P14 +`ironing_type`, P15 +`support_ironing` (see Decisions so far).
+- **The scoped target is 405 queue keys** (03's 414 minus 04's 11 rulings plus
+  07's 2 reclassified ironing keys) — per-key tier table in
+  [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
+  list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
+  packets off those, never off the reference's ❌ column.
 - **Execution override:** this map deliberately carries execution — packet
   *authoring* happens inside the map, not after it. Implementation does not.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
@@ -57,8 +63,8 @@ off-map, after.
   renamed key vocabulary (62 declared keys have no Orca counterpart), which is
   what makes the count a band rather than a number.
 - [03 — Triage which verified-missing keys are not applicable at all](issues/03-nonapplicable-keys-triage.md)
-  — **the queue must cover 414 keys** (403 after ticket 04's 11 additional
-  out-of-scope rulings). 42 ruled out of scope (print-host/preset,
+  — **the queue must cover 414 keys** (405 after ticket 04's 11 additional
+  out-of-scope rulings and ticket 07's 2 reclassified ironing keys). 42 ruled out of scope (print-host/preset,
   non-physical filament metadata, Bambu-proprietary, pellet, plater/GUI state);
   25 of the 62-key rename pool are genuine renames whose Orca key was a false
   gap, 34 are Pinch-specific, and 3 are *duplicate spellings of live keys*.
@@ -75,7 +81,8 @@ off-map, after.
   blocks. Boilerplate lives as the `parity-evidence` snippet in the
   spec-packet-generator skill.
 - [04 — Define the cost rubric that makes "cheapest-first" decidable](issues/04-cost-tiering-rubric.md)
-  — **A=118, B=223, C=15, D=47, X=11 — 403 keys in scope.** Tier A = plumbing
+  — **A=119, B=224, C=15, D=47, X=11 — 405 keys in scope** (403 at 04's
+  closure; +2 reclassified by ticket 07). Tier A = plumbing
   into an existing decision point (owner + decision point exist); B = new
   logic in an existing owner; C = new granular module at a new seam; D =
   deferred (per-filament config model); X = out of scope. Owners were
@@ -89,7 +96,9 @@ off-map, after.
   manifest-declaration work. Tie-breaker: owning module. Full per-key table
   in [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
 - [05 — Decide packet granularity and grouping](issues/05-packet-granularity.md)
-  — **the queue is 91 packets (20 A, 65 B, 6 C; 354 keys)**. Grouping: owning
+  — **the queue is 91 packets (19 A, 66 B, 6 C; 356 keys)** (354 at 05's
+  closure; P14 +`ironing_type` becomes mixed A/B, P15 +`support_ironing` stays
+  A — ticket 07). Grouping: owning
   module, then Orca UI section; tier is a purity check + queue-order key.
   Ceilings by tier: A ≤ 25, B ≤ 12, C ≤ 4 (split by sub-theme: Prime tower
   13+13, Retraction 10+10, Seam 8+8, Walls 9+9, interlocking 3+3). No merging
@@ -107,6 +116,17 @@ off-map, after.
   `status: draft`; activation is a `/swarm`-time act. Authoring proceeds in
   parallel with live packet work (200–205 are committed; 200/201 have in-flight
   edits) — no merge blocking; numbering decouples via Rule 1.
+- [07 — Document the Orca→Pinch alias map and retire the hand-maintained ❌ column](issues/07-alias-map-and-column-retirement.md)
+  — **standardise to Orca's names, don't document; the alias map is
+  eliminated, not maintained.** 26 mechanical renames (22 exact rows + 3
+  duplicate collapses + `ironing_spacing_mm`) executed as workstream tickets
+  **99–107**, gating the queue (08 blocked by all nine). Shape changes stay
+  out of the rename: `raft_layers` 1→3 split is a strict superset (recorded
+  divergence, no gap); the two narrowed enums are **gaps** — the shared
+  `ironing_enabled` bool can't express `ironing_type`'s modes nor toggle the
+  two Orca features independently → P14 +`ironing_type` (B), P15
+  +`support_ironing` (A). 34 Pinch-specific keys untouched. ❌ column
+  retirement ruled **out of scope** (tooling hygiene; queue never reads it).
 
 ## Not yet specified
 
@@ -141,3 +161,15 @@ off-map, after.
   class): `printer_technology`, `printer_variant`, `flush_volumes_vector`,
   `default_bed_type`. Per-key rows in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
+- **Retiring the hand-maintained ❌ column of `docs/ORCA_CONFIG_REFERENCE.md`**
+  (07 ruling) — replacing it with generated presence flags + a `--check` gate
+  is tooling hygiene, not a queue prerequisite: the queue never reads the
+  column (ticket 01's asset and the map Notes neutralise its 66-key error).
+  Returns only if the destination is redrawn. The standardisation workstream
+  (99–107) makes the vocabulary converge meanwhile, shrinking the column's
+  remaining drift surface.
+- **Standardising the 34 Pinch-specific keys or the `raft_layers` 1→3 split**
+  (07 ruling) — the Pinch-specific keys have no Orca counterpart, and the raft
+  split is a strict superset of Orca's single count; neither is a gap or a
+  rename. The raft divergence is recorded in
+  [`03-asset-scoped-gap.md`](issues/03-asset-scoped-gap.md)'s 07 update.

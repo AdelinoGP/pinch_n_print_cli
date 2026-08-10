@@ -1,6 +1,9 @@
 # Asset — Cost-tier rubric and tier assignment (ticket 04)
 
 Derived from ticket 03's scoped list (414 keys) by applying the rubric below.
+**Amended by ticket 07: +2 keys** — `ironing_type` and `support_ironing`
+reclassified from 03's "already implemented (narrowed)" rows to genuine gaps
+(see 07's answer). Tier counts below include the amendment.
 Every owner was **verified against the code** — first by read-site inspection
 in PnP, then by **five adversarial review passes against canonical
 OrcaSlicer** (parallel reviewers, each tracing canonical consumers). The
@@ -48,7 +51,7 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
 ticket 03's ruling), and dead alternate spellings. 11 keys; the scoped
-target is now **403**.
+target is now **405** (403 + ticket 07's two reclassified ironing keys).
 
 ### Special rulings
 
@@ -77,12 +80,12 @@ target is now **403**.
 
 | Tier | keys | meaning |
 |---:|---:|---|
-| A | 118 | plumbing into an existing decision point |
-| B | 223 | new logic in an existing owner |
+| A | 119 | plumbing into an existing decision point (incl. `support_ironing`, +1 from ticket 07) |
+| B | 224 | new logic in an existing owner (incl. `ironing_type`, +1 from ticket 07) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
 | X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
-| **in scope** | **403** | |
+| **in scope** | **405** | |
 
 ## Owner map (verified + five times adversarially reviewed)
 
@@ -484,6 +487,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `ironing_angle` | A | top-surface-ironing + support-surface-ironing |
 | `ironing_angle_fixed` | A | top-surface-ironing + support-surface-ironing |
 | `ironing_inset` | A | top-surface-ironing + support-surface-ironing |
+| `ironing_type` | B | top-surface-ironing + support-surface-ironing | (ticket 07 reclassification — enum modes unexpressible via the shared `ironing_enabled` bool; mode-selection logic) |
 
 ### Quality / Layer height
 | `first_layer_print_sequence` | B | tool-ordering (ToolOrdering.cpp) |
@@ -666,6 +670,7 @@ findings (the one flagged row was a stale-asset artifact).
 ### Support / Support ironing
 | `support_air_filtration` | B | crates/slicer-gcode (air-filtration emission) |
 | `support_ironing_pattern` | A | support-surface-ironing |
+| `support_ironing` | A | support-surface-ironing | (ticket 07 reclassification — independent bool so support ironing no longer rides the shared `ironing_enabled`) |
 
 ### Support / Tree supports
 | `tree_support_angle_slow` | B | tree-support |

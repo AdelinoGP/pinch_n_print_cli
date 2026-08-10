@@ -8,9 +8,15 @@ Map: ../map.md
 
 ## Question
 
-Author the spec packet for **P15 — Support / Support ironing — support-surface-ironing** — 1 keys, Tier A plumbing, owner support-surface-ironing. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P15 — Support / Support ironing — support-surface-ironing):
+Author the spec packet for **P15 — Support / Support ironing — support-surface-ironing** — 2 keys, Tier A plumbing, owner support-surface-ironing. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P15 — Support / Support ironing — support-surface-ironing), amended by ticket 07:
 
-`support_ironing_pattern`
+`support_ironing_pattern`, `support_ironing`
+
+The `support_ironing` key is the 07 reclassification: an independent bool so
+support-interface ironing no longer rides the shared `ironing_enabled` bool
+(declared identically by both support-surface-ironing and
+top-surface-ironing — the two Orca features cannot be toggled independently
+today).
 
 Authoring obligations:
 - Use `/spec-packet-generator`; the authoring gate is `/spec-review <packet> --preflight` (must pass).

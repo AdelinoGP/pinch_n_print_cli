@@ -8,9 +8,15 @@ Map: ../map.md
 
 ## Question
 
-Author the spec packet for **P14 — Quality / Ironing — top-surface-ironing** — 3 keys, Tier A plumbing, owner top-surface-ironing. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P14 — Quality / Ironing — top-surface-ironing):
+Author the spec packet for **P14 — Quality / Ironing — top-surface-ironing** — 4 keys (3 Tier A plumbing + 1 Tier B logic), owner top-surface-ironing. Key membership from [05-asset-packet-list.md](./05-asset-packet-list.md) (packet P14 — Quality / Ironing — top-surface-ironing), amended by ticket 07:
 
-`ironing_angle`, `ironing_angle_fixed`, `ironing_inset`
+`ironing_angle`, `ironing_angle_fixed`, `ironing_inset`, `ironing_type`
+
+The `ironing_type` key is the 07 reclassification: it widens the shared
+`ironing_enabled` bool (declared identically by both top-surface-ironing and
+support-surface-ironing) to Orca's 4-mode enum (no ironing/top/topmost/solid)
+— enum modes are unexpressible today. Mode-dependent layer selection is new
+logic (Tier B); parity evidence per 02 (canonical: `Fill.cpp::Layer::make_ironing`).
 
 Authoring obligations:
 - Use `/spec-packet-generator`; the authoring gate is `/spec-review <packet> --preflight` (must pass).

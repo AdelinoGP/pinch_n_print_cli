@@ -741,3 +741,28 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 - `tree_support_tip_diameter`
 - `tree_support_top_rate`
 - `tree_support_with_infill`
+
+---
+
+## Update after 07 (standardise-to-Orca ruling)
+
+Ticket 07 resolved how the rename layer is treated — **standardise, don't
+document**. Consequences for this asset:
+
+- **The 25-table's three shape-change rows are reclassified.** `ironing_type`
+  (narrowed) and `support_ironing` (narrowed) are genuine gaps — both modules
+  declare the same shared `ironing_enabled` bool, so Orca's enum modes are
+  unexpressible and the two Orca features can't be toggled independently.
+  Moved into the queue: P14 +`ironing_type` (Tier B), P15 +`support_ironing`
+  (Tier A). `raft_layers` (split) is **not** a gap — Orca derives its
+  base/interface split internally from one count (`Slicing.cpp:194-196`);
+  Pinch's three keys are a strict superset. Documented divergence, no rename.
+- **One rename 03's table missed:** `ironing_spacing_mm` →
+  `ironing_spacing` (top-surface-ironing) — the "four spellings, one concept"
+  line from 07's original question.
+- **Mechanical rename scope = 26 keys**: the 22 exact/word-order/unit-suffix
+  rows of the 25-table + the 3 duplicate collapses (the `infill_*` duplicates
+  row above) + `ironing_spacing_mm`. Executed by workstream tickets 99–107;
+  each ticket updates its own rows here with the new names. The 34
+  Pinch-specific keys and the raft split stay untouched. The ❌ column
+  retirement is out of scope (07 ruling).
