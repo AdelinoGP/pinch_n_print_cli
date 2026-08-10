@@ -85,6 +85,17 @@ off-map, after.
   preset-management 3). 5 ResolvedConfig-only keys are Tier A
   manifest-declaration work. Tie-breaker: owning module. Full per-key table
   in [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
+- [05 — Decide packet granularity and grouping](issues/05-packet-granularity.md)
+  — **the queue is 91 packets (20 A, 65 B, 6 C; 354 keys)**. Grouping: owning
+  module, then Orca UI section; tier is a purity check + queue-order key.
+  Ceilings by tier: A ≤ 25, B ≤ 12, C ≤ 4 (split by sub-theme: Prime tower
+  13+13, Retraction 10+10, Seam 8+8, Walls 9+9, interlocking 3+3). No merging
+  of small groups (36 packets are ≤2 keys — packet 212 precedent). ADRs only
+  for interlocking + mmu-segmented-region, authored inside the packet ticket.
+  Full list in
+  [`05-asset-packet-list.md`](issues/05-asset-packet-list.md) — the 91
+  authoring tickets are cut from it. 47 D + 2 fog-blocked A keys
+  (`filament_density`, `filament_diameter`) not packetized.
 
 ## Not yet specified
 
@@ -92,11 +103,9 @@ off-map, after.
   on this question: does Pinch 'n Print have a per-filament config model at
   all, or do these keys imply a new subsystem? 11 filament keys were found
   to be global (not per-filament) and are assignable now (ticket 04).
-  Revisit once the queue reaches Tier D.
-- **The bulk authoring batches.** The main body of the map — one ticket per
-  packet-authoring batch — cannot be specified until granularity (05) is
-  settled. Expect this patch to graduate into the majority of the map's
-  tickets.
+  Revisit once the queue reaches Tier D. Graduating with it: 2 fog-blocked
+  Tier A keys (`filament_density`, `filament_diameter` — declare-in-manifest
+  work whose manifest home depends on the model).
 
 ## Out of scope
 
