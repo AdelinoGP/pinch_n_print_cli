@@ -3271,6 +3271,7 @@ mod tests {
             indices: vec![],
         };
         let world_z_extent = object_world_z_extent_from_mesh_and_transform(&mesh, &transform);
+        // exhaustive: helper deliberately computes world_z_extent and src cfg-test cannot reach tests/common
         ObjectMesh {
             id: id.to_string(),
             mesh,

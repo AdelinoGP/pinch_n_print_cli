@@ -17,9 +17,9 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+mod common;
 
-use slicer_ir::{IndexedTriangleSet, ObjectConfig, ObjectMesh, Point3, Transform3d};
+use slicer_ir::{IndexedTriangleSet, ObjectMesh, Point3, Transform3d};
 use slicer_model_io::loader::{validate_world_z_floor, ModelLoadError};
 
 // ---------------------------------------------------------------------------
@@ -51,12 +51,7 @@ fn make_object(vertices: Vec<Point3>, matrix: [f64; 16]) -> ObjectMesh {
             indices: vec![],
         },
         transform: Transform3d { matrix },
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
-        world_z_extent: None, // computed by caller if needed; validator uses live math
+        ..common::object_mesh_base()
     }
 }
 

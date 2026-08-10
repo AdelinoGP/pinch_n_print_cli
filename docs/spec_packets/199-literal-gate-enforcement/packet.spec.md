@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 199-literal-gate-enforcement
 task_ids:
   - TASK-321

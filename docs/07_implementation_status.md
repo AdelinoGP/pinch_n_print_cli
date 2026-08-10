@@ -311,6 +311,7 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] TASK-319 — FRU sweep of slicer-runtime/slicer-scheduler/slicer-wasm-host/pnp-cli test literals for the struct-literal churn gate — packet 197.
 - [x] TASK-320 — FRU sweep of slicer-sdk + core-module test literals for the struct-literal churn gate — packet 198.
+- [x] TASK-321 — Literal gate enforcement — packet 199.
 
 ## Open Deviation Map
 

@@ -95,6 +95,7 @@ pub struct InfillOutputBuilder {
 
 impl InfillOutputBuilder {
     pub fn new() -> Self {
+        // exhaustive: 1-field mock that must keep the watched sdk builder name - the #[slicer_module] expansion resolves this identifier in scope; renaming impossible, FRU meaningless on 1 field
         Self { paths: Vec::new() }
     }
 
@@ -121,6 +122,7 @@ pub struct PerimeterOutputBuilder {
 
 impl PerimeterOutputBuilder {
     pub fn new() -> Self {
+        // exhaustive: 1-field mock that must keep the watched sdk builder name - the #[slicer_module] expansion resolves this identifier in scope; renaming impossible, FRU meaningless on 1 field
         Self { loops: Vec::new() }
     }
 

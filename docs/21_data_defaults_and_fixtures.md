@@ -27,7 +27,9 @@ let p = Point3WithWidth { x: 1.0, y: 2.0, z: 3.0, width: 0.0 }; // exhaustive: w
 
 An exhaustive literal (all fields spelled, no `..`) of a watched type in test
 code is a violation. `cargo xtask check-literals` enforces this and exits 1 on
-any violation; `--report` prints the same output and always exits 0.
+any violation; `--report` prints the same output and always exits 0. The gate is
+**enforced since packet 199**, runs as the `check-literals preflight` in
+`cargo xtask test`, and is required before committing.
 
 ## 2. Production-exemption rationale
 

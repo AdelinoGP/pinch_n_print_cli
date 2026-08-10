@@ -5,25 +5,14 @@
 
 use std::io::Cursor;
 
-use slicer_ir::slice_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
-};
+mod common;
+
+use slicer_ir::slice_ir::{BoundingBox3, IndexedTriangleSet, MeshIR, ObjectMesh, Point3, SemVer};
 use slicer_model_io::{load_model, write_3mf, write_obj};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, // col 0
-            0.0, 1.0, 0.0, 0.0, // col 1
-            0.0, 0.0, 1.0, 0.0, // col 2
-            0.0, 0.0, 0.0, 1.0, // col 3
-        ],
-    }
-}
 
 /// A single tetrahedron: 4 vertices, 4 triangles.
 fn single_tetra_mesh() -> MeshIR {
@@ -59,13 +48,8 @@ fn single_tetra_mesh() -> MeshIR {
     let obj = ObjectMesh {
         id: "obj0".to_string(),
         mesh: its,
-        transform: identity_transform(),
-        config: ObjectConfig {
-            data: Default::default(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
         world_z_extent: Some((0.0, 1.0)),
+        ..common::object_mesh_base()
     };
 
     MeshIR {
@@ -125,24 +109,14 @@ fn two_cube_mesh() -> MeshIR {
     let obj0 = ObjectMesh {
         id: "cube0".to_string(),
         mesh: cube_its(0.0),
-        transform: identity_transform(),
-        config: ObjectConfig {
-            data: Default::default(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
         world_z_extent: Some((0.0, 1.0)),
+        ..common::object_mesh_base()
     };
     let obj1 = ObjectMesh {
         id: "cube1".to_string(),
         mesh: cube_its(2.0),
-        transform: identity_transform(),
-        config: ObjectConfig {
-            data: Default::default(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
         world_z_extent: Some((0.0, 1.0)),
+        ..common::object_mesh_base()
     };
 
     MeshIR {

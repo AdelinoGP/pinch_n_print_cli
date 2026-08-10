@@ -15,6 +15,7 @@ latter defines timing, DAG, and manifest diagnosis.
 ```bash
 cargo build --workspace
 cargo clippy --workspace --all-targets -- -D warnings  # required before committing
+cargo xtask check-literals                              # required before committing
 cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd   # narrow run; integration tests bucket into 5 binaries: unit|contract|executor|integration|e2e
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
 cargo xtask dist                                     # build guests + pnp_cli (release), stage into target/dist/ (add --debug for debug binary)
@@ -47,7 +48,7 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 
 Two mechanisms do this, and `slicer-core` uses both: 11 test targets carry `required-features = ["host-algos"]` in `Cargo.toml` (Cargo skips building them outright), and most of `crates/slicer-core/tests/arachne_*.rs` additionally open with `#![cfg(feature = "host-algos")]` (the file compiles to an empty binary). With `default = []`, a bare `-p slicer-core` run gets neither.
 
-Under `--workspace` the feature is unified on, because `slicer-runtime`, `slicer-sdk` and `slicer-wasm-host` each depend on `slicer-core` with `features = ["host-algos"]`. That is why the broad run sees tests the narrow run cannot.
+Under `--workspace` the feature is unified on: `slicer-runtime`, non-wasm `slicer-sdk`, and `slicer-wasm-host` each depend on `slicer-core` with `features = ["host-algos"]`. `slicer-gcode` has no production `slicer-core` dependency; its packet-196 dev-dependency on `slicer-sdk` with feature `test` pulls `slicer-core/host-algos` into the slicer-gcode DEV graph only. For `slicer-sdk`, the self dev-dependency enables the feature, so bare runs work; `cargo test -p slicer-sdk --features test` remains the explicit belt-and-braces invocation.
 
 ```bash
 cargo test -p slicer-core --features host-algos --no-fail-fast   # correct
@@ -69,7 +70,7 @@ When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail
 
 ### `cargo xtask test` — the gated entry point
 
-`cargo xtask test [ARGS...]` runs `cargo xtask build-guests --check` first (rebuilding if any guest is stale), then execs `cargo test ARGS...` with output tee'd to `target/test-output.log`. It is the **enforced entry point** for any test run that touches guest WASM artifacts — i.e. the two `cargo test --workspace` cases above and any whole-suite / multi-crate run.
+`cargo xtask test [ARGS...]` runs the `check-literals preflight`, then `cargo xtask build-guests --check` (rebuilding if any guest is stale), then execs `cargo test ARGS...` with output tee'd to `target/test-output.log`. It is the **enforced entry point** for any test run that touches guest WASM artifacts — i.e. the two `cargo test --workspace` cases above and any whole-suite / multi-crate run.
 
 `cargo xtask test --summary [ARGS...]` — same pipeline but prints a compact LLM-friendly digest (one `test result:` line per test binary, failing-test detail, final `PASS`/`FAIL`, full-output path). **Prefer `--summary` for agent-driven runs.**
 
@@ -100,7 +101,7 @@ When inspecting results, you MUST read the file — never re-run the tests to se
 
 In test code, a struct literal of a watched type (a `pub` struct with ≥5 named fields defined under `crates/*/src`) must use a `..` rest (FRU) or an `// exhaustive: <reason>` waiver. Production `src/` literals stay exhaustive. Full rule, watchlist derivation, and waiver format: `docs/21_data_defaults_and_fixtures.md`.
 
-`cargo xtask check-literals` enforces this (exit 1 on violations); `--report` mode lists violations and exits 0. This is **not yet a required gate — enforcement flips on in packet 199**; do not add it to the required-before-commit list or the `cargo xtask test` preflight until then.
+`cargo xtask check-literals` enforces this (exit 1 on violations); `--report` mode lists violations and exits 0. This gate is **enforced since packet 199**, is required before committing, and runs as the `cargo xtask test` `check-literals preflight`.
 
 ## Coordinate System Hazard
 

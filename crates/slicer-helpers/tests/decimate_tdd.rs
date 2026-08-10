@@ -46,6 +46,7 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
         }
     };
     MeshIR {
+        // exhaustive: file-local FRU base for this test file's single constructor helper - a new ObjectMesh field must be routed here deliberately
         objects: vec![ObjectMesh {
             id: "test-object".to_string(),
             mesh: its,

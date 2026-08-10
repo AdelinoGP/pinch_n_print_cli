@@ -46,6 +46,8 @@ jobs:
         run: cargo check --workspace
       - name: Deviation status + config docs in sync
         run: cargo run -q -p xtask -- check-deviations --check
+      - name: Struct-literal gate
+        run: cargo run -q -p xtask -- check-literals
 
   clippy:
     name: Clippy

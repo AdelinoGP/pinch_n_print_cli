@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::build_guests;
+use crate::check_literals;
 
 fn newest_mtime_in(root: &Path) -> Option<SystemTime> {
     fn visit(path: &Path, newest: &mut Option<SystemTime>) {
@@ -43,8 +44,9 @@ fn newest_mtime_in(root: &Path) -> Option<SystemTime> {
 ///   (neither flag)          Live-stream `cargo test` output to the terminal,
 ///                           tee'd to the log file (original behaviour).
 ///
-/// All modes run the guest-WASM freshness check first (`build-guests --check`),
-/// rebuilding if stale, UNLESS `--summary-from` is given (no test run = no gate).
+/// Non-`--summary-from` modes run the check-literals preflight first, then the
+/// guest-WASM freshness check (`build-guests --check`), rebuilding if stale.
+/// `--summary-from` is gate-free (no test run = no gate).
 ///
 /// This is the gated entry point for "whole suite" / regression-diagnosis runs.
 /// Narrow single-test invocations should still use plain `cargo test` directly.
@@ -144,7 +146,15 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         test_args.extend(libtest_args);
     }
 
-    // Step 1: freshness check.
+    // Step 1: check-literals preflight, then freshness check.
+    let literals_code = check_literals_preflight(ws_root);
+    if literals_code != 0 {
+        eprintln!(
+            "xtask test: check-literals preflight failed; fix violations or add reasoned waivers (docs/21_data_defaults_and_fixtures.md), then re-run."
+        );
+        return 1;
+    }
+
     let check_code = build_guests::check_command(ws_root);
     if check_code != 0 {
         eprintln!("xtask test: guest artifacts are stale; rebuilding...");
@@ -228,6 +238,10 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     }
 
     exit_code
+}
+
+fn check_literals_preflight(ws_root: &Path) -> i32 {
+    check_literals::run(ws_root, false, &[])
 }
 
 /// Outcome of the pnp_cli freshness gate: the exit code `test_command` should
@@ -441,15 +455,7 @@ fn print_summary(log_path: &Path, succeeded: bool) {
     // panic, not a per-test failure). Skip lines already captured in a block
     // body so we don't duplicate them.
     let in_block: Vec<String> = blocks.iter().flat_map(|(_, b)| b.iter()).cloned().collect();
-    let mut bare_panics: Vec<&str> = Vec::new();
-    for line in &lines {
-        if line.contains("panicked at")
-            && !line.starts_with("----")
-            && !in_block.iter().any(|b| b == line)
-        {
-            bare_panics.push(line);
-        }
-    }
+    let bare_panics: Vec<&str> = collect_bare_panics(&lines, &in_block);
 
     let process_details = collect_process_failure_details(&lines);
     let has_failures = !blocks.is_empty() || !bare_panics.is_empty() || !process_details.is_empty();
@@ -478,6 +484,28 @@ fn print_summary(log_path: &Path, succeeded: bool) {
     } else {
         println!("VERDICT: FAIL");
     }
+}
+
+/// Collect bare panic-location lines that libtest prints outside a captured
+/// stdout block (e.g. `thread 'main' panicked at ...` from a process-level
+/// panic, not a per-test failure).
+///
+/// The `--summary` flow echoes an instructional grep line into the log
+/// (`grep -n "FAILED|panicked at" <log>`). That line contains the literal
+/// `panicked at` substring but is not a real panic, so a later
+/// `--summary-from` parse must not count it as failure evidence. A genuine
+/// panic line never contains the `FAILED|panicked at` grep pattern itself.
+fn collect_bare_panics<'a>(lines: &[&'a str], in_block: &[String]) -> Vec<&'a str> {
+    lines
+        .iter()
+        .filter(|line| {
+            line.contains("panicked at")
+                && !line.contains("FAILED|panicked at")
+                && !line.starts_with("----")
+                && !in_block.iter().any(|b| b == *line)
+        })
+        .copied()
+        .collect()
 }
 
 /// Extract failure evidence that libtest does not format as a per-test block.
@@ -514,6 +542,34 @@ fn collect_process_failure_details(lines: &[&str]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::collect_process_failure_details;
+
+    #[test]
+    fn summary_ignores_instructional_grep_line_as_panic_evidence() {
+        let lines = [
+            "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "               grep -n \"FAILED|panicked at\" target/test-output.log (failures)",
+        ];
+
+        let panics = super::collect_bare_panics(&lines, &[]);
+
+        assert!(
+            panics.is_empty(),
+            "instructional grep line must not be counted as a panic, got: {panics:?}"
+        );
+    }
+
+    #[test]
+    fn summary_still_collects_real_panic_line() {
+        let lines = [
+            "thread 'main' panicked at 'boom', src/main.rs:12:5",
+            "               grep -n \"FAILED|panicked at\" target/test-output.log (failures)",
+        ];
+
+        let panics = super::collect_bare_panics(&lines, &[]);
+
+        assert_eq!(panics.len(), 1, "real panic must still be collected");
+        assert!(panics[0].contains("boom"));
+    }
 
     #[test]
     fn summary_collects_allocator_abort_without_libtest_failure_block() {
@@ -572,5 +628,61 @@ mod tests {
             detail.contains("pnp_cli rebuild failed"),
             "failure detail must name the failing process, got: {detail}"
         );
+    }
+
+    #[test]
+    fn preflight_blocks_on_violating_fixture_tree() {
+        let root = std::env::temp_dir().join(format!(
+            "xtask-check-literals-preflight-block-{}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&root).ok();
+        let src = root.join("crates/probe/src");
+        let tests = root.join("crates/probe/tests");
+        std::fs::create_dir_all(&src).expect("create probe source directory");
+        std::fs::create_dir_all(&tests).expect("create probe test directory");
+        std::fs::write(
+            src.join("lib.rs"),
+            "pub struct Probe { a: i32, b: i32, c: i32, d: i32, e: i32 }\n",
+        )
+        .expect("write probe definition");
+        std::fs::write(
+            tests.join("probe.rs"),
+            "fn probe() { let _ = Probe { a: 1, b: 2, c: 3, d: 4, e: 5 }; }\n",
+        )
+        .expect("write violating probe literal");
+
+        let result = super::check_literals_preflight(&root);
+        std::fs::remove_dir_all(&root).expect("remove fixture tree");
+
+        assert_ne!(result, 0);
+    }
+
+    #[test]
+    fn preflight_passes_on_clean_fixture_tree() {
+        let root = std::env::temp_dir().join(format!(
+            "xtask-check-literals-preflight-clean-{}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&root).ok();
+        let src = root.join("crates/probe/src");
+        let tests = root.join("crates/probe/tests");
+        std::fs::create_dir_all(&src).expect("create probe source directory");
+        std::fs::create_dir_all(&tests).expect("create probe test directory");
+        std::fs::write(
+            src.join("lib.rs"),
+            "pub struct Probe { a: i32, b: i32, c: i32, d: i32, e: i32 }\n",
+        )
+        .expect("write probe definition");
+        std::fs::write(
+            tests.join("probe.rs"),
+            "fn probe() { let _ = Probe { a: 1, b: 2, c: 3, d: 4, e: 5, ..Default::default() }; }\n",
+        )
+        .expect("write clean probe literal");
+
+        let result = super::check_literals_preflight(&root);
+        std::fs::remove_dir_all(&root).expect("remove fixture tree");
+
+        assert_eq!(result, 0);
     }
 }

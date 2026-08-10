@@ -1,17 +1,8 @@
 //! AC-7 — 3MF writer round-trip: write_3mf -> load_model preserves triangle count.
 
-use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, Transform3d};
+mod common;
 
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, // col 0
-            0.0, 1.0, 0.0, 0.0, // col 1
-            0.0, 0.0, 1.0, 0.0, // col 2
-            0.0, 0.0, 0.0, 1.0, // col 3
-        ],
-    }
-}
+use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectMesh, Point3};
 
 fn unit_triangle_mesh() -> MeshIR {
     let mesh = IndexedTriangleSet {
@@ -37,11 +28,8 @@ fn unit_triangle_mesh() -> MeshIR {
     let obj = ObjectMesh {
         id: "tri".to_string(),
         mesh,
-        transform: identity_transform(),
-        config: ObjectConfig::default(),
-        modifier_volumes: Vec::new(),
-        paint_data: None,
         world_z_extent: Some((0.0, 0.0)),
+        ..common::object_mesh_base()
     };
     MeshIR {
         objects: vec![obj],

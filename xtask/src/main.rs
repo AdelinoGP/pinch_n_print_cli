@@ -32,8 +32,8 @@ SUBCOMMANDS:
     compact-specs         Collapse each docs/spec_packets/_OLD packet into a single
                           design-only <NN_slug>.md, then delete the source dir.
     compact-specs --dry-run  Write digests but keep the source dirs (preview).
-    test [ARGS...]        Run `cargo xtask build-guests --check` (rebuild if stale),
-                          then `cargo test ARGS...` with output tee'd to
+    test [ARGS...]        Run the check-literals preflight, then `cargo xtask build-guests --check`
+                          (rebuild if stale), then `cargo test ARGS...` with output tee'd to
                           target/test-output.log. Use for whole-suite /
                           regression-diagnosis runs. Narrow single-test runs
                           should still use plain `cargo test` directly.
