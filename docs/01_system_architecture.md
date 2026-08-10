@@ -624,7 +624,7 @@ Top-surface ironing is performed at `PostPass::LayerFinalization` (packet 38-rev
 
 #### Part Cooling Fan Modulation (packet 53)
 
-Part cooling fan modulation lives in `PostPass::LayerFinalization`. The `PartCooling` module reads per-layer time budgets and target temperatures from `ResolvedConfig` (`fan_speed_min`, `fan_speed_max`, `slow_down_for_layer_cooling`, `min_layer_time`) and inserts `GCodeCommand::FanSpeed` entities at the appropriate layer transitions (packet 53).
+Part cooling fan modulation lives in `PostPass::LayerFinalization`. The `PartCooling` module reads per-layer time budgets and target temperatures from `ResolvedConfig` (`fan_min_speed`, `fan_max_speed`, `slow_down_for_layer_cooling`, `min_layer_time`) and inserts `GCodeCommand::FanSpeed` entities at the appropriate layer transitions (packet 53).
 
 #### Toolchange and Purge Integration (packet 58)
 

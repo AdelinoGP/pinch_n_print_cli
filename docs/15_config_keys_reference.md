@@ -181,10 +181,10 @@ is the authoritative catalog of their defaults and ranges.
 | `overhang_4_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `slowdown_for_curled_perimeters` | bool | `false` | — | `overhang-classifier-default` |
 | `thin_wall_speed` | float | `30.0` | — | `overhang-classifier-default` |
-| `disable_fan_first_layers` | int | `1` | >= 0.0 | `part-cooling` |
-| `enable_overhang_fan` | bool | `true` | — | `part-cooling` |
-| `fan_speed_max` | int | `255` | [0.0, 255.0] | `part-cooling` |
-| `fan_speed_min` | int | `51` | [0.0, 255.0] | `part-cooling` |
+| `close_fan_the_first_x_layers` | int | `1` | >= 0.0 | `part-cooling` |
+| `enable_overhang_bridge_fan` | bool | `true` | — | `part-cooling` |
+| `fan_max_speed` | int | `255` | [0.0, 255.0] | `part-cooling` |
+| `fan_min_speed` | int | `51` | [0.0, 255.0] | `part-cooling` |
 | `overhang_fan_speed` | int | `100` | [0.0, 100.0] | `part-cooling` |
 | `slow_down_for_layer_cooling` | bool | `true` | — | `part-cooling` |
 | `slow_down_layer_time` | float | `5.0` | >= 0.0 | `part-cooling` |
@@ -456,6 +456,8 @@ upstream or has no upstream equivalent.
 | Key | Owner | Pinch 'n Print default | OrcaSlicer default |
 |---|---|---|---|
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
+| `fan_max_speed` | `part-cooling` | `255` | `100.0` |
+| `fan_min_speed` | `part-cooling` | `51` | `20.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |
 | `internal_solid_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |
@@ -496,7 +498,7 @@ drifted 15 of 26 defaults away from the code.
 Keys consumed by the `part-cooling` finalization-stage module
 (`modules/core-modules/part-cooling/`). Defaults and ranges are in the generated
 **Module-owned config keys** table above (module `part-cooling`). Behaviour:
-`enable_overhang_fan` modulates the fan on overhang quartiles 3–4;
+`enable_overhang_bridge_fan` modulates the fan on overhang quartiles 3–4;
 `slow_down_for_layer_cooling` reduces speed toward `slow_down_min_speed` when a
 layer's print time falls below `slow_down_layer_time`.
 

@@ -69,9 +69,9 @@ fn layer(index: u32, role: ExtrusionRole) -> LayerCollectionIR {
 fn integrated_parity_part_cooling() {
     let config = Arc::new(ConfigView::from_map(
         [
-            ("fan_speed_max".into(), ConfigValue::Int(200)),
-            ("disable_fan_first_layers".into(), ConfigValue::Int(0)),
-            ("enable_overhang_fan".into(), ConfigValue::Bool(true)),
+            ("fan_max_speed".into(), ConfigValue::Int(200)),
+            ("close_fan_the_first_x_layers".into(), ConfigValue::Int(0)),
+            ("enable_overhang_bridge_fan".into(), ConfigValue::Bool(true)),
             ("overhang_fan_speed".into(), ConfigValue::Int(100)),
         ]
         .into_iter()

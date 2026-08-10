@@ -4,7 +4,7 @@
 //! inspects the recorded fan-command annotations. Host G-code *rendering* of
 //! these annotations is covered by slicer-runtime's emitter tests; here we test
 //! the module's decision logic: first-layers disable, overhang bump, trailing
-//! fan-off, and the `fan_speed_max == 0` short-circuit.
+//! fan-off, and the `fan_max_speed == 0` short-circuit.
 
 #![allow(missing_docs)]
 
@@ -105,9 +105,9 @@ fn first_layers_disabled_then_fan_on() {
     ];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(255)),
-            ("disable_fan_first_layers", ConfigValue::Int(2)),
-            ("enable_overhang_fan", ConfigValue::Bool(false)),
+            ("fan_max_speed", ConfigValue::Int(255)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(2)),
+            ("enable_overhang_bridge_fan", ConfigValue::Bool(false)),
         ],
         &layers,
     );
@@ -129,7 +129,7 @@ fn first_layers_disabled_then_fan_on() {
     let l2 = raws_for_layer(&output, 2);
     assert!(
         l2.contains(&"M106 S255".to_string()),
-        "layer 2 (>= disable_fan_first_layers) must turn fan to max: {l2:?}"
+        "layer 2 (>= close_fan_the_first_x_layers) must turn fan to max: {l2:?}"
     );
 }
 
@@ -141,9 +141,9 @@ fn trailing_fan_off_after_last_layer() {
     ];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(255)),
-            ("disable_fan_first_layers", ConfigValue::Int(0)),
-            ("enable_overhang_fan", ConfigValue::Bool(false)),
+            ("fan_max_speed", ConfigValue::Int(255)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(0)),
+            ("enable_overhang_bridge_fan", ConfigValue::Bool(false)),
         ],
         &layers,
     );
@@ -165,7 +165,7 @@ fn trailing_fan_off_after_last_layer() {
 
 #[test]
 fn overhang_region_bumps_fan() {
-    // overhang_fan_speed=40, fan_speed_max=255 → bump value = 40*255/100 = 102.
+    // overhang_fan_speed=40, fan_max_speed=255 → bump value = 40*255/100 = 102.
     // Base/restore stay at 255, so the bump is distinguishable as M106 S102.
     let layers = vec![layer_view(
         0,
@@ -177,9 +177,9 @@ fn overhang_region_bumps_fan() {
     )];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(255)),
-            ("disable_fan_first_layers", ConfigValue::Int(0)),
-            ("enable_overhang_fan", ConfigValue::Bool(true)),
+            ("fan_max_speed", ConfigValue::Int(255)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(0)),
+            ("enable_overhang_bridge_fan", ConfigValue::Bool(true)),
             ("overhang_fan_speed", ConfigValue::Int(40)),
         ],
         &layers,
@@ -204,9 +204,9 @@ fn overhang_fan_disabled_no_bump() {
     )];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(255)),
-            ("disable_fan_first_layers", ConfigValue::Int(0)),
-            ("enable_overhang_fan", ConfigValue::Bool(false)),
+            ("fan_max_speed", ConfigValue::Int(255)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(0)),
+            ("enable_overhang_bridge_fan", ConfigValue::Bool(false)),
             ("overhang_fan_speed", ConfigValue::Int(40)),
         ],
         &layers,
@@ -215,20 +215,20 @@ fn overhang_fan_disabled_no_bump() {
     let l0 = raws_for_layer(&output, 0);
     assert!(
         !l0.contains(&"M106 S102".to_string()),
-        "with enable_overhang_fan=false there must be no overhang bump: {l0:?}"
+        "with enable_overhang_bridge_fan=false there must be no overhang bump: {l0:?}"
     );
 }
 
 #[test]
-fn fan_speed_max_zero_emits_single_m107() {
+fn fan_max_speed_zero_emits_single_m107() {
     let layers = vec![
         layer_view(0, &[ExtrusionRole::OuterWall]),
         layer_view(1, &[ExtrusionRole::OuterWall]),
     ];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(0)),
-            ("disable_fan_first_layers", ConfigValue::Int(1)),
+            ("fan_max_speed", ConfigValue::Int(0)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(1)),
         ],
         &layers,
     );
@@ -237,7 +237,7 @@ fn fan_speed_max_zero_emits_single_m107() {
     assert_eq!(
         all.len(),
         1,
-        "fan_speed_max=0 must emit exactly one annotation, got {}",
+        "fan_max_speed=0 must emit exactly one annotation, got {}",
         all.len()
     );
     assert!(
@@ -252,8 +252,8 @@ fn empty_layers_is_noop() {
     let layers: Vec<LayerCollectionView> = vec![];
     let output = run(
         &[
-            ("fan_speed_max", ConfigValue::Int(255)),
-            ("disable_fan_first_layers", ConfigValue::Int(1)),
+            ("fan_max_speed", ConfigValue::Int(255)),
+            ("close_fan_the_first_x_layers", ConfigValue::Int(1)),
         ],
         &layers,
     );

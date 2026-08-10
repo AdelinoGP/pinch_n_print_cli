@@ -32,8 +32,8 @@ off-map, after.
   and the `raft_layers` 1→3 split (a strict superset — not a gap) stay
   untouched. The two narrowed ironing enums were reclassified as **gaps**:
   P14 +`ironing_type`, P15 +`support_ironing` (see Decisions so far).
-- **The scoped target is 405 queue keys** (03's 414 minus 04's 11 rulings plus
-  07's 2 reclassified ironing keys) — per-key tier table in
+- **The scoped target is 407 queue keys** (03's 414 minus 04's 11 rulings plus
+  07's 2 reclassified ironing keys plus 99's 2 fan-scale keys) — per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
@@ -81,8 +81,8 @@ off-map, after.
   blocks. Boilerplate lives as the `parity-evidence` snippet in the
   spec-packet-generator skill.
 - [04 — Define the cost rubric that makes "cheapest-first" decidable](issues/04-cost-tiering-rubric.md)
-  — **A=119, B=224, C=15, D=47, X=11 — 405 keys in scope** (403 at 04's
-  closure; +2 reclassified by ticket 07). Tier A = plumbing
+  — **A=119, B=226, C=15, D=47, X=11 — 407 keys in scope** (403 at 04's
+  closure; +2 reclassified by ticket 07, +2 by ticket 99). Tier A = plumbing
   into an existing decision point (owner + decision point exist); B = new
   logic in an existing owner; C = new granular module at a new seam; D =
   deferred (per-filament config model); X = out of scope. Owners were
@@ -96,9 +96,9 @@ off-map, after.
   manifest-declaration work. Tie-breaker: owning module. Full per-key table
   in [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
 - [05 — Decide packet granularity and grouping](issues/05-packet-granularity.md)
-  — **the queue is 91 packets (19 A, 66 B, 6 C; 356 keys)** (354 at 05's
-  closure; P14 +`ironing_type` becomes mixed A/B, P15 +`support_ironing` stays
-  A — ticket 07). Grouping: owning
+  — **the queue is 91 packets (18 A, 67 B, 6 C; 358 keys)** (354 at 05's
+  closure; P14 +`ironing_type` and P01 +`fan_max_speed`/`fan_min_speed` become
+  mixed A/B — tickets 07/99 — P15 +`support_ironing` stays A). Grouping: owning
   module, then Orca UI section; tier is a purity check + queue-order key.
   Ceilings by tier: A ≤ 25, B ≤ 12, C ≤ 4 (split by sub-theme: Prime tower
   13+13, Retraction 10+10, Seam 8+8, Walls 9+9, interlocking 3+3). No merging
@@ -127,6 +127,14 @@ off-map, after.
   two Orca features independently → P14 +`ironing_type` (B), P15
   +`support_ironing` (A). 34 Pinch-specific keys untouched. ❌ column
   retirement ruled **out of scope** (tooling hygiene; queue never reads it).
+- [99 — Rename part-cooling keys to Orca names](issues/99-rename-part-cooling-keys.md)
+  — four renames merged, tree green on all gates. The rename **exposed a
+  scale deviation**: Orca's `fan_max_speed`/`fan_min_speed` are percent
+  (0–100) while Pinch's were raw 0–255, and `fan_min_speed` was declared but
+  never read → reclassified as gap work, **P01 +`fan_max_speed`/`fan_min_speed`
+  (Tier B)** — queue is now 407 keys, 358 in packets (18 A / 67 B / 6 C).
+  Known pre-existing condition reported: `cargo xtask build-guests --check`
+  reports all 30+ guests stale even on a clean tree (unrelated to renames).
 
 ## Not yet specified
 

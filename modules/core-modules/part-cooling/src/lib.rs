@@ -23,26 +23,26 @@ use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCol
 
 /// Part cooling fan command generator.
 pub struct PartCooling {
-    fan_speed_max: u8,
-    disable_fan_first_layers: u32,
-    enable_overhang_fan: bool,
+    fan_max_speed: u8,
+    close_fan_the_first_x_layers: u32,
+    enable_overhang_bridge_fan: bool,
     overhang_fan_speed: u8,
 }
 
 impl PartCooling {
     /// Construct from a config view, reading cooling settings with defaults.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let fan_speed_max = match config.get("fan_speed_max") {
+        let fan_max_speed = match config.get("fan_max_speed") {
             Some(ConfigValue::Int(v)) => *v as u8,
             _ => 255,
         };
 
-        let disable_fan_first_layers = match config.get("disable_fan_first_layers") {
+        let close_fan_the_first_x_layers = match config.get("close_fan_the_first_x_layers") {
             Some(ConfigValue::Int(v)) => *v as u32,
             _ => 1,
         };
 
-        let enable_overhang_fan = match config.get("enable_overhang_fan") {
+        let enable_overhang_bridge_fan = match config.get("enable_overhang_bridge_fan") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => true,
         };
@@ -53,19 +53,19 @@ impl PartCooling {
         };
 
         Ok(Self {
-            fan_speed_max,
-            disable_fan_first_layers,
-            enable_overhang_fan,
+            fan_max_speed,
+            close_fan_the_first_x_layers,
+            enable_overhang_bridge_fan,
             overhang_fan_speed,
         })
     }
 
     /// Compute the target fan speed for a given layer index.
     fn layer_fan_speed(&self, layer_index: u32) -> u8 {
-        if layer_index < self.disable_fan_first_layers {
+        if layer_index < self.close_fan_the_first_x_layers {
             0
         } else {
-            self.fan_speed_max
+            self.fan_max_speed
         }
     }
 
@@ -80,13 +80,13 @@ impl PartCooling {
     /// finalization pass and does not emit commands or annotations.
     pub fn cooling_decision_for_event(&self, view: &LayerCollectionView) -> u8 {
         let base_speed = self.layer_fan_speed(view.layer_index());
-        if self.enable_overhang_fan
+        if self.enable_overhang_bridge_fan
             && view
                 .ordered_entities()
                 .iter()
                 .any(|entity| Self::is_overhang_role(&entity.path.role))
         {
-            ((self.overhang_fan_speed as u16 * self.fan_speed_max as u16) / 100) as u8
+            ((self.overhang_fan_speed as u16 * self.fan_max_speed as u16) / 100) as u8
         } else {
             base_speed
         }
@@ -109,8 +109,8 @@ impl FinalizationModule for PartCooling {
             return Ok(());
         }
 
-        // fan_speed_max == 0 → single M107 on the first layer, nothing else.
-        if self.fan_speed_max == 0 {
+        // fan_max_speed == 0 → single M107 on the first layer, nothing else.
+        if self.fan_max_speed == 0 {
             let first_layer = layers[0].layer_index();
             let _ = output.push_fan_speed(first_layer, 0);
             return Ok(());
@@ -123,7 +123,7 @@ impl FinalizationModule for PartCooling {
             let base_speed = self.layer_fan_speed(layer_index);
             let _ = output.push_fan_speed(layer_index, base_speed);
 
-            if self.enable_overhang_fan {
+            if self.enable_overhang_bridge_fan {
                 let entities = view.ordered_entities();
                 let mut in_overhang = false;
 
