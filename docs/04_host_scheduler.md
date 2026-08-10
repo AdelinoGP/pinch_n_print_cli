@@ -116,6 +116,10 @@ The manifest naming is canonical for author-facing docs and examples. Runtime fi
 
 Ingestion scans all module search paths and deserializes every `.toml`. TOML schema errors produce a structured `LoadError` with file path and field name. No module is silently skipped.
 
+Ingestion is generalized over manifest source: a module may come from a disk
+file or embedded TOML. `LoadedModule` carries a `ModuleProvenance` marker
+(`External | Integrated`); claims and DAG machinery never inspects provenance.
+
 ### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92)
 
 When ingestion completes, the scheduler aggregates the

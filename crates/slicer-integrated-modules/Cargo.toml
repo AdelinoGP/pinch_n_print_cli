@@ -1,0 +1,13 @@
+[package]
+name = "slicer-integrated-modules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+slicer-scheduler = { path = "../slicer-scheduler" }
+
+[features]
+default = []
+classic-perimeters = []

@@ -912,9 +912,11 @@ Validation rule:
 ## Module Search Path
 
 `pnp_cli` assembles module search roots from CLI flags, an env var, and
-two platform defaults, in the priority order listed below. Within each root
-the discovery contract is unchanged: `*.toml` manifests at the root level or
-one subdirectory deep, each requiring a same-stem `*.wasm` companion.
+two platform defaults, in the priority order listed below. Within each disk
+root the discovery contract is unchanged: `*.toml` manifests at the root
+level or one subdirectory deep, each requiring a same-stem `*.wasm` companion.
+Integrated modules are embedded manifest TOML registrations and have no
+on-disk `.wasm`.
 Assembly lives in `crates/slicer-scheduler/src/module_search_path.rs`
 (`assemble_search_roots`); per-root scanning and intra-root `module.id`
 deduplication live in `crates/slicer-scheduler/src/manifest.rs`
@@ -934,7 +936,10 @@ callers may reach them under either crate path.
    `~/Library/Application Support/modular-slicer/modules/`; on Windows,
    `%APPDATA%\modular-slicer\config\modules\`. Silently skipped if absent.
 4. **`{executable_dir}/modules/`** — relative to the running binary via
-   `std::env::current_exe()`. Silently skipped if absent.
+    `std::env::current_exe()`. Silently skipped if absent.
+5. **Tier 5: integrated modules** — embedded manifest TOML registrations (no on-disk
+   `.wasm`), loaded last via `load_modules_from_roots_with_integrated` after
+   the four disk tiers.
 
 Tiers 3 and 4 are omitted entirely when `--no-default-module-paths` is
 passed. Tiers 1 and 2 always apply.
@@ -952,7 +957,12 @@ dedup, not a configuration error.
 After roots are assembled, `load_modules_from_roots` walks them in order
 and dedups discovered modules by `module.id`. The first root's module
 wins, and later duplicates emit a `DiagnosticLevel::Warning` on stderr.
-This is independent of (and runs after) the canonical-path dedup above.
+When an external (disk) module wins dedup over an integrated registration
+with the same id, the warning reads `external module {id} shadows integrated
+module {id}` (level `Warning`, field `module.id`). This is independent of
+(and runs after) the canonical-path dedup above. When the integrated registry
+is empty (the default), `load_modules_from_roots_with_integrated(roots, &[])`
+is a strict identity with `load_modules_from_roots(roots)`.
 
 ### Per-root scan failures are non-fatal
 

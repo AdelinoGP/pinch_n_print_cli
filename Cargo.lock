@@ -3158,6 +3158,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slicer-integrated-modules"
+version = "0.1.0"
+dependencies = [
+ "slicer-scheduler",
+]
+
+[[package]]
 name = "slicer-ir"
 version = "0.1.0"
 dependencies = [
@@ -3223,6 +3230,7 @@ dependencies = [
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
+ "slicer-integrated-modules",
  "slicer-ir",
  "slicer-model-io",
  "slicer-scheduler",

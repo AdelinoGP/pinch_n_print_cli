@@ -59,9 +59,9 @@ use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
 use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
-use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_profiled;
+use slicer_wasm_host::build_live_execution_plan;
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use slicer_wasm_host::WasmRuntimeDispatcher;
-use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
 /// Validated runtime options derived from CLI arguments.
 ///
@@ -584,11 +584,12 @@ pub fn run_slice_with_collector(
     // doc comment for the production defect this closes).
     // `opts.profile` reaches every guest through this one engine: it turns on
     // `consume_fuel` *and* is what `profile-enabled` answers with.
-    let mut loaded = load_live_modules_for_plan_profiled(
+    let mut loaded = load_live_modules_for_plan_with_integrated(
         &search_roots,
         num_cpus_guess(),
         &config_source,
         opts.profile,
+        &slicer_integrated_modules::integrated_registrations(),
     )
     .map_err(|e| {
         SliceRunError(format!(
@@ -1055,15 +1056,20 @@ pub fn prepare_prepass_context(
     }
 
     let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
-    let mut loaded =
-        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
-            .map_err(|e| {
-                SliceRunError(format!(
-                    "failed to load modules from {} root(s) {:?}: {e}",
-                    search_roots.len(),
-                    search_roots
-                ))
-            })?;
+    let mut loaded = load_live_modules_for_plan_with_integrated(
+        &search_roots,
+        num_cpus_guess(),
+        &config_source,
+        false,
+        &slicer_integrated_modules::integrated_registrations(),
+    )
+    .map_err(|e| {
+        SliceRunError(format!(
+            "failed to load modules from {} root(s) {:?}: {e}",
+            search_roots.len(),
+            search_roots
+        ))
+    })?;
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
     let default_resolved_config = resolve_global_config(&config_source, &config_bounds)

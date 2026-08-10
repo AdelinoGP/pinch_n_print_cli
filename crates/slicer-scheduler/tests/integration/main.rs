@@ -9,5 +9,6 @@ mod config_bounds_enforcement_tdd;
 mod config_resolution_paint_semantic_tdd;
 mod config_resolution_tdd;
 mod dag_cli_integration;
+mod integrated_tier_tdd;
 mod manifest_ingestion_tdd;
 mod manifest_unknown_stage_tdd;

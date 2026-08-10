@@ -46,9 +46,11 @@ pub use execution_plan::{
 };
 pub use instrumentation::{compute_serial_edges_for_stage, EdgeReason, SerialEdge};
 pub use manifest::{
-    build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
-    ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
-    LoadedModule, LoadedModuleBuilder, RegionSplitDeclaration, RegionSplitValueType,
+    build_config_schema_json, load_module_from_paths, load_modules_from_roots,
+    load_modules_from_roots_with_integrated, ConfigFieldEntry, ConfigSchema, DiagnosticLevel,
+    IntegratedModuleRegistration, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
+    LoadedModule, LoadedModuleBuilder, ModuleProvenance, RegionSplitDeclaration,
+    RegionSplitValueType,
 };
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use topology::topological_sort;

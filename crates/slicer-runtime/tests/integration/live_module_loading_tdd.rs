@@ -19,6 +19,8 @@ use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     ExecutionPlanError, LoadDiagnostic, STAGE_ORDER,
 };
+use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -126,6 +128,49 @@ fn prepass_manifest(id: &str) -> String {
         &[],
         &["SurfaceClassificationIR"],
     )
+}
+
+/// AC-5 (ADR-0056 / packet 201): an integrated-provenance module that
+/// survives dedup must get a `LiveModuleBinding` with `wasm_component: None`,
+/// and component compilation must never be attempted for it (observable as a
+/// `LiveModuleLoadError::Component` for the synthetic id if the guard is
+/// missing — the module has no on-disk `.wasm`).
+#[test]
+fn integrated_binding_skips_component_compile() {
+    let dir = TempDir::new().unwrap();
+    // No disk root provides this id, so the integrated module survives dedup.
+    // `manifest_toml` is `&'static str` (registrations are normally
+    // `include_str!` embeds); leak the helper-built manifest in test scope.
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.integrated-infill", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-fixture",
+    };
+
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+    )
+    .expect("integrated module load must succeed (no Component error)");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == "com.example.integrated-infill")
+        .expect("integrated module binding present");
+    assert_eq!(
+        binding.module.provenance(),
+        ModuleProvenance::Integrated,
+        "integrated registration must carry Integrated provenance"
+    );
+    assert!(
+        binding.wasm_component.is_none(),
+        "integrated module must skip component compilation (wasm_component: None)"
+    );
 }
 
 #[test]

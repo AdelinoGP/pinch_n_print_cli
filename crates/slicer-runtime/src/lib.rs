@@ -134,8 +134,9 @@ pub use execution_plan::{
 };
 // Live-path symbols moved to slicer-wasm-host (Step 3.5).
 pub use slicer_wasm_host::{
-    build_live_execution_plan, load_live_modules_for_plan, load_live_modules_for_plan_with_config,
-    LiveModuleBinding, LiveModuleLoadError, LiveModuleLoadOutput,
+    build_live_execution_plan, execution_plan_live::load_live_modules_for_plan_with_integrated,
+    load_live_modules_for_plan, load_live_modules_for_plan_with_config, LiveModuleBinding,
+    LiveModuleLoadError, LiveModuleLoadOutput,
 };
 // CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
 pub use crate::builtins::region_mapping_producer::{
@@ -169,7 +170,7 @@ pub use layer_finalization::{
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
-    LoadedModule, LoadedModuleBuilder,
+    LoadedModule, LoadedModuleBuilder, ModuleProvenance,
 };
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use postpass::execute_postpass;

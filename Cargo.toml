@@ -12,6 +12,7 @@ members = [
     "crates/slicer-helpers",
     "crates/slicer-model-io",
     "crates/slicer-wasm-host",
+    "crates/slicer-integrated-modules",
     "crates/pnp-cli-locator",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
