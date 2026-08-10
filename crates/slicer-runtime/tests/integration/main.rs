@@ -45,6 +45,7 @@ mod pipeline_tdd;
 mod pnp_cli_freshness_tdd;
 mod precise_outer_wall_tdd;
 mod prepass_diagnostic_roundtrip_tdd;
+mod host_bridge_roundtrip_tdd;
 mod progress_events_tdd;
 mod region_map_cap_overflow_tdd;
 mod region_mapping_paint_semantic_tdd;

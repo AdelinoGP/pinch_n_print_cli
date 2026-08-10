@@ -125,3 +125,21 @@ adds per-call detail for finding a single pathological layer.
   summary, different units — the summary must say which.
 - New WIT functions in the shared `host-services` interface invalidate every
   guest, costing one 34-guest rebuild.
+
+## Amendment
+
+### 2026-08-10 — Host-bridge evidence
+
+The Step 1 and Step 6 measurements use the same model (`resources/extruder_idler.obj`), machine, and release profile. The measured evidence is:
+
+| Measure | Before (Step 1) | After (Step 6) | Delta |
+| --- | ---: | ---: | ---: |
+| `com.core.classic-perimeters` `polygon_ops::offset2_ex` self_fuel/total_fuel | 12,896,309,593 | 12,894,722,552 (`total_wall_ns` 1,593,728,900) | -1,587,041 |
+| `com.core.classic-perimeters` `polygon_ops::offset` self_fuel/total_fuel | 4,122,712,969 | absent from summary (guest fuel 0) | -4,122,712,969 |
+| `com.core.classic-perimeters` `polygon_ops::clip_polygons` self_fuel/total_fuel | 880,143,896 | absent from summary (guest fuel 0) | -880,143,896 |
+| `com.core.support-planner` fuel | 74,231,712 | 74,234,286 | +2,574 |
+| Profiling-off wall-clock runs (ms) | 592,581 / 719,513 / 455,294 | 341,373 / 342,807 / 343,434 | median -249,774 ms |
+
+The profiling-off median changed from 592,581 ms to 342,807 ms. The before run-to-run spread was 264,219 ms; the after spread was 2,061 ms. The decision-rule outcome is **KEEP**: the median improved, with no regression beyond the 264,219 ms baseline spread.
+
+This answers the open in-guest-vs-host-native question: host-native routing of the migrated offset/clip work shows a guest-fuel drop by construction and a wall-clock improvement of ~250 s median on this model. Per ADR-0055, host calls burn no fuel, so the missing `offset` and `clip_polygons` rows prove routing, not speed. The residual in-guest share (`offset2_ex`, `opening_ex`, and `split_top_surfaces`) is quantified, not migrated. DEV-093 remains a caveat: whole-slice fuel totals can drift on a handful of layers, so the comparison uses per-scope rows.

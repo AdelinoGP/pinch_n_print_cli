@@ -21,12 +21,12 @@ pub struct ExPolygonWithOffset {
 
 impl ExPolygonWithOffset {
     pub fn new(source: &[ExPolygon], aoffset1_mm: f32, aoffset2_mm: f32) -> Self {
-        let polygons_outer = offset_polygons(source, aoffset1_mm, OffsetJoinType::Miter);
+        let polygons_outer = offset_polygons(source, aoffset1_mm, OffsetJoinType::Miter, 0.0);
         let inner_delta_mm = -(aoffset1_mm - aoffset2_mm);
         let polygons_inner = if inner_delta_mm == 0.0 {
             polygons_outer.clone()
         } else {
-            offset_polygons(&polygons_outer, inner_delta_mm, OffsetJoinType::Miter)
+            offset_polygons(&polygons_outer, inner_delta_mm, OffsetJoinType::Miter, 0.0)
         };
 
         Self {

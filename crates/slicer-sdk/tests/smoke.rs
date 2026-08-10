@@ -57,7 +57,7 @@ fn host_wrappers_have_real_behavior() {
     // Clipping/offsetting degenerate empty input still yields empty
     // output, but via real Clipper2 — no longer a silent no-op.
     assert!(host::clip_polygons(&degenerate, &degenerate, host::ClipOperation::Union).is_empty());
-    assert!(host::offset_polygons(&degenerate, 0.2, host::OffsetJoinType::Miter).is_empty());
+    assert!(host::offset_polygons(&degenerate, 0.2, host::OffsetJoinType::Miter, 0.0).is_empty());
 
     let simplified = host::simplify_polygon(&degenerate[0].contour, 0.05);
     assert_eq!(simplified.points.len(), 0);

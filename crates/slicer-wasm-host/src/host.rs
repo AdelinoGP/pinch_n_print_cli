@@ -2478,9 +2478,11 @@ impl hs::Host for HostExecutionContext {
         polygons: Vec<ExPolygon>,
         delta_mm: f32,
         join: hs::OffsetJoinType,
+        arc_tolerance_mm: f32,
     ) -> wasmtime::Result<Vec<ExPolygon>> {
         let ir_polys = wit_to_ir_expolygons(&polygons);
-        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join(join), 0.0);
+        let result =
+            slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join(join), arc_tolerance_mm);
         Ok(ir_to_wit_expolygons(&result))
     }
 
@@ -2501,8 +2503,12 @@ impl hs::Host for HostExecutionContext {
             |r| expolygon_vertex_count(&r.polygons),
             |r| {
                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
-                let result =
-                    slicer_core::polygon_ops::offset(&ir_polys, r.delta_mm, ir_join(r.join), 0.0);
+                let result = slicer_core::polygon_ops::offset(
+                    &ir_polys,
+                    r.delta_mm,
+                    ir_join(r.join),
+                    r.arc_tolerance_mm,
+                );
                 ir_to_wit_expolygons(&result)
             },
         );

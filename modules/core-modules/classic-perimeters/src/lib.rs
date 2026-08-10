@@ -30,7 +30,7 @@ use slicer_core::perimeter_utils::{
     WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
-    difference_ex, offset, offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType,
+    offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::slice_ir::QuartileBand;
@@ -40,6 +40,7 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::host::{ClipOperation, OffsetJoinType as HostJoin};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -526,7 +527,7 @@ impl LayerModule for ClassicPerimeters {
                         &kept,
                         -min_width_top,
                         min_width_top + 0.85 * inner_wall_line_width as f64,
-                        OffsetJoinType::Miter,
+                        CoreJoin::Miter,
                         3.0,
                     );
                     let top_portion = if expanded.is_empty() { kept } else { expanded };
@@ -769,10 +770,10 @@ impl ClassicPerimeters {
             } else {
                 -perimeter_spacing
             };
-            let inset_result = offset(
+            let inset_result = slicer_sdk::host::offset_polygons(
                 &current_polygons,
                 inset_delta,
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
             if inset_result.is_empty() {
@@ -783,19 +784,23 @@ impl ClassicPerimeters {
             // where the actual spacing exceeds `d` (a true gap). Skipped at i==0.
             if i >= 1 {
                 let distance = inset_delta.abs();
-                let shrunk_prev = offset(
+                let shrunk_prev = slicer_sdk::host::offset_polygons(
                     &current_polygons,
                     -(0.5 * distance),
-                    OffsetJoinType::Miter,
+                    HostJoin::Miter,
                     self.perimeter_arc_tolerance,
                 );
-                let grown_cur = offset(
+                let grown_cur = slicer_sdk::host::offset_polygons(
                     &inset_result,
                     0.5 * distance,
-                    OffsetJoinType::Miter,
+                    HostJoin::Miter,
                     self.perimeter_arc_tolerance,
                 );
-                gaps.extend(difference_ex(&shrunk_prev, &grown_cur));
+                gaps.extend(slicer_sdk::host::clip_polygons(
+                    &shrunk_prev,
+                    &grown_cur,
+                    ClipOperation::Difference,
+                ));
             }
             all_wall_polygons.push((i, inset_result.clone()));
             current_polygons = inset_result;
@@ -809,25 +814,29 @@ impl ClassicPerimeters {
         // per-color MMU bisector ring slivers — wide cells produce ~zero here.
         if !current_polygons.is_empty() {
             let distance = inner_wall_line_width;
-            let infill_area = offset(
+            let infill_area = slicer_sdk::host::offset_polygons(
                 &current_polygons,
                 -distance,
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
-            let shrunk_inner = offset(
+            let shrunk_inner = slicer_sdk::host::offset_polygons(
                 &current_polygons,
                 -(0.5 * distance),
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
-            let grown_infill = offset(
+            let grown_infill = slicer_sdk::host::offset_polygons(
                 &infill_area,
                 0.5 * distance,
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
-            gaps.extend(difference_ex(&shrunk_inner, &grown_infill));
+            gaps.extend(slicer_sdk::host::clip_polygons(
+                &shrunk_inner,
+                &grown_infill,
+                ClipOperation::Difference,
+            ));
         }
 
         let mut walls: Vec<slicer_ir::WallLoop> = Vec::new();
@@ -1007,10 +1016,11 @@ impl ClassicPerimeters {
             let thick_core = opening_ex(
                 polygons,
                 min_width as f64,
-                OffsetJoinType::Miter,
+                CoreJoin::Miter,
                 self.perimeter_arc_tolerance as f64,
             );
-            let thin_protrusions = difference_ex(polygons, &thick_core);
+            let thin_protrusions =
+                slicer_sdk::host::clip_polygons(polygons, &thick_core, ClipOperation::Difference);
             for protrusion in &thin_protrusions {
                 let axes = slicer_sdk::host::medial_axis(
                     protrusion,
@@ -1082,17 +1092,21 @@ impl ClassicPerimeters {
             let opened_min = opening_ex(
                 &gaps,
                 (min_gap_fill_width / 2.0) as f64,
-                OffsetJoinType::Miter,
+                CoreJoin::Miter,
                 self.perimeter_arc_tolerance as f64,
             );
             let opened_max = offset2_ex(
                 &gaps,
                 -((max_gap_fill_width / 2.0) as f64),
                 (max_gap_fill_width / 2.0) as f64,
-                OffsetJoinType::Miter,
+                CoreJoin::Miter,
                 self.perimeter_arc_tolerance as f64,
             );
-            let filtered_gaps = difference_ex(&opened_min, &opened_max);
+            let filtered_gaps = slicer_sdk::host::clip_polygons(
+                &opened_min,
+                &opened_max,
+                ClipOperation::Difference,
+            );
             for gap in &filtered_gaps {
                 let axes =
                     slicer_sdk::host::medial_axis(gap, min_gap_fill_width, max_gap_fill_width);
@@ -1180,10 +1194,10 @@ impl ClassicPerimeters {
                 .unwrap_or(inner_wall_line_width)
                 - infill_wall_overlap)
                 .max(0.0);
-            let infill = offset(
+            let infill = slicer_sdk::host::offset_polygons(
                 &current_polygons,
                 -infill_inset,
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
             if !infill.is_empty() {
@@ -1238,10 +1252,10 @@ impl ClassicPerimeters {
             } else {
                 -perimeter_spacing
             };
-            let inset_result = offset(
+            let inset_result = slicer_sdk::host::offset_polygons(
                 &current_polygons,
                 inset_delta,
-                OffsetJoinType::Miter,
+                HostJoin::Miter,
                 self.perimeter_arc_tolerance,
             );
             if inset_result.is_empty() {
@@ -1394,7 +1408,7 @@ fn classify_narrow_island(
     let opened = opening_ex(
         polygons,
         (threshold_mm / 2.0) as f64,
-        OffsetJoinType::Miter,
+        CoreJoin::Miter,
         arc_tolerance as f64,
     );
     if !opened.is_empty() {

@@ -29,6 +29,106 @@ use std::time::Instant;
 
 use slicer_ir::{BoundingBox3, ExPolygon, Point3, Polygon};
 
+#[cfg(target_arch = "wasm32")]
+mod __sdk_host_services_import {
+    ::wit_bindgen::generate!({
+        inline: r#"
+package slicer:sdk-host-services-helper;
+
+package slicer:types {
+    interface geometry {
+        record point2 { x: s64, y: s64 }
+        record point3 { x: f32, y: f32, z: f32 }
+        record bounding-box3 { min: point3, max: point3 }
+        record polygon { points: list<point2> }
+        record ex-polygon { contour: polygon, holes: list<polygon> }
+    }
+}
+
+package slicer:common {
+    interface host-services {
+        use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+        type object-id = string;
+        enum clip-operation { union, intersection, difference, xor }
+        enum offset-join-type { miter, round, square }
+        raycast-z-down: func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+        surface-normal-at: func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+        object-bounds: func(object-id: object-id) -> bounding-box3;
+        clip-polygons: func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+        offset-polygons: func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
+        simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+        now-us: func() -> u64;
+    }
+}
+
+world sdk-host-services {
+    import slicer:common/host-services;
+}
+"#,
+        world: "sdk-host-services",
+        generate_all,
+    });
+
+    use slicer::types::geometry as g;
+
+    pub fn to_wit_polygon(p: &slicer_ir::Polygon) -> g::Polygon {
+        g::Polygon {
+            points: p
+                .points
+                .iter()
+                .map(|pt| g::Point2 { x: pt.x, y: pt.y })
+                .collect(),
+        }
+    }
+
+    pub fn from_wit_polygon(p: &g::Polygon) -> slicer_ir::Polygon {
+        slicer_ir::Polygon {
+            points: p
+                .points
+                .iter()
+                .map(|pt| slicer_ir::Point2 { x: pt.x, y: pt.y })
+                .collect(),
+        }
+    }
+
+    pub fn to_wit_expolygon(e: &slicer_ir::ExPolygon) -> g::ExPolygon {
+        g::ExPolygon {
+            contour: to_wit_polygon(&e.contour),
+            holes: e.holes.iter().map(to_wit_polygon).collect(),
+        }
+    }
+
+    pub fn from_wit_expolygon(e: &g::ExPolygon) -> slicer_ir::ExPolygon {
+        slicer_ir::ExPolygon {
+            contour: from_wit_polygon(&e.contour),
+            holes: e.holes.iter().map(from_wit_polygon).collect(),
+        }
+    }
+
+    pub fn to_wit_clip_op(
+        op: super::ClipOperation,
+    ) -> slicer::common::host_services::ClipOperation {
+        use slicer::common::host_services::ClipOperation as W;
+        match op {
+            super::ClipOperation::Union => W::Union,
+            super::ClipOperation::Intersection => W::Intersection,
+            super::ClipOperation::Difference => W::Difference,
+            super::ClipOperation::Xor => W::Xor,
+        }
+    }
+
+    pub fn to_wit_join(
+        join: super::OffsetJoinType,
+    ) -> slicer::common::host_services::OffsetJoinType {
+        use slicer::common::host_services::OffsetJoinType as W;
+        match join {
+            super::OffsetJoinType::Miter => W::Miter,
+            super::OffsetJoinType::Round => W::Round,
+            super::OffsetJoinType::Square => W::Square,
+        }
+    }
+}
+
 /// Wall emission sequence, mirroring
 /// `slicer_core::perimeter_utils::WallSequence`. Re-exported here so
 /// module authors can refer to the SDK's host-side `ArachneParams.wall_sequence`
@@ -254,14 +354,37 @@ fn with_mesh_source<R>(f: impl FnOnce(Option<&dyn MeshSource>) -> R) -> R {
 /// is installed, returns `None`.
 #[must_use]
 pub fn raycast_z_down(object_id: &str, x: f32, y: f32, start_z: f32) -> Option<f32> {
-    with_mesh_source(|src| src.and_then(|s| s.raycast_z_down(object_id, x, y, start_z)))
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        with_mesh_source(|src| src.and_then(|s| s.raycast_z_down(object_id, x, y, start_z)))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        __sdk_host_services_import::slicer::common::host_services::raycast_z_down(
+            object_id, x, y, start_z,
+        )
+    }
 }
 
 /// Queries the surface normal at a 3D point. `None` when unknown or when
 /// no [`MeshSource`] is installed.
 #[must_use]
 pub fn surface_normal_at(object_id: &str, x: f32, y: f32, z: f32) -> Option<Point3> {
-    with_mesh_source(|src| src.and_then(|s| s.surface_normal_at(object_id, x, y, z)))
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        with_mesh_source(|src| src.and_then(|s| s.surface_normal_at(object_id, x, y, z)))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        __sdk_host_services_import::slicer::common::host_services::surface_normal_at(
+            object_id, x, y, z,
+        )
+        .map(|p| Point3 {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+        })
+    }
 }
 
 /// Returns axis-aligned object bounds in millimeters, or
@@ -270,13 +393,33 @@ pub fn surface_normal_at(object_id: &str, x: f32, y: f32, z: f32) -> Option<Poin
 /// zero-box no-op so callers cannot accidentally proceed with bogus
 /// bounds.
 pub fn object_bounds(object_id: &str) -> Result<BoundingBox3, HostUnavailable> {
-    with_mesh_source(|src| {
-        src.and_then(|s| s.object_bounds(object_id))
-            .ok_or_else(|| HostUnavailable {
-                service: "object_bounds",
-                subject: object_id.to_string(),
-            })
-    })
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        with_mesh_source(|src| {
+            src.and_then(|s| s.object_bounds(object_id))
+                .ok_or_else(|| HostUnavailable {
+                    service: "object_bounds",
+                    subject: object_id.to_string(),
+                })
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let bb =
+            __sdk_host_services_import::slicer::common::host_services::object_bounds(object_id);
+        Ok(BoundingBox3 {
+            min: Point3 {
+                x: bb.min.x,
+                y: bb.min.y,
+                z: bb.min.z,
+            },
+            max: Point3 {
+                x: bb.max.x,
+                y: bb.max.y,
+                z: bb.max.z,
+            },
+        })
+    }
 }
 
 // ── Geometry (delegates to slicer-core, the same backing the host uses) ─
@@ -307,7 +450,34 @@ pub fn clip_polygons(
     clip: &[ExPolygon],
     op: ClipOperation,
 ) -> Vec<ExPolygon> {
-    slicer_core::polygon_ops::clip_polygons(subject, clip, to_core_clip_op(op))
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        slicer_core::polygon_ops::clip_polygons(subject, clip, to_core_clip_op(op))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use __sdk_host_services_import::slicer::common::host_services as svc;
+        let op = match op {
+            ClipOperation::Union => svc::ClipOperation::Union,
+            ClipOperation::Intersection => svc::ClipOperation::Intersection,
+            ClipOperation::Difference => svc::ClipOperation::Difference,
+            ClipOperation::Xor => svc::ClipOperation::Xor,
+        };
+        svc::clip_polygons(
+            &subject
+                .iter()
+                .map(__sdk_host_services_import::to_wit_expolygon)
+                .collect::<Vec<_>>(),
+            &clip
+                .iter()
+                .map(__sdk_host_services_import::to_wit_expolygon)
+                .collect::<Vec<_>>(),
+            op,
+        )
+        .iter()
+        .map(__sdk_host_services_import::from_wit_expolygon)
+        .collect()
+    }
 }
 
 /// Applies host-side polygon offsetting. Backed by
@@ -317,8 +487,29 @@ pub fn offset_polygons(
     polygons: &[ExPolygon],
     delta_mm: f32,
     join: OffsetJoinType,
+    arc_tolerance_mm: f32,
 ) -> Vec<ExPolygon> {
-    slicer_core::polygon_ops::offset(polygons, delta_mm, to_core_join(join), 0.0)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        slicer_core::polygon_ops::offset(polygons, delta_mm, to_core_join(join), arc_tolerance_mm)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use __sdk_host_services_import::slicer::common::host_services as svc;
+        let join = match join {
+            OffsetJoinType::Miter => svc::OffsetJoinType::Miter,
+            OffsetJoinType::Round => svc::OffsetJoinType::Round,
+            OffsetJoinType::Square => svc::OffsetJoinType::Square,
+        };
+        let polygons = polygons
+            .iter()
+            .map(__sdk_host_services_import::to_wit_expolygon)
+            .collect::<Vec<_>>();
+        svc::offset_polygons(&polygons, delta_mm, join, arc_tolerance_mm)
+            .iter()
+            .map(__sdk_host_services_import::from_wit_expolygon)
+            .collect()
+    }
 }
 
 /// Simplifies a polygon by removing collinear vertices, mirroring the
@@ -328,41 +519,52 @@ pub fn offset_polygons(
 /// collinear vertices.
 #[must_use]
 pub fn simplify_polygon(polygon: &Polygon, tolerance_mm: f32) -> Polygon {
-    let _ = tolerance_mm;
-    let mut points = polygon.points.clone();
-    if points.len() < 3 {
-        return Polygon { points };
+    #[cfg(target_arch = "wasm32")]
+    {
+        let polygon = __sdk_host_services_import::slicer::common::host_services::simplify_polygon(
+            &__sdk_host_services_import::to_wit_polygon(polygon),
+            tolerance_mm,
+        );
+        return __sdk_host_services_import::from_wit_polygon(&polygon);
     }
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let n = points.len();
-        if n < 3 {
-            break;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = tolerance_mm;
+        let mut points = polygon.points.clone();
+        if points.len() < 3 {
+            return Polygon { points };
         }
-        let mut keep = vec![true; n];
-        for i in 0..n {
-            let prev = points[(i + n - 1) % n];
-            let curr = points[i];
-            let next = points[(i + 1) % n];
-            // Cross product of (curr - prev) × (next - curr) on i64 lattice.
-            let cross = (curr.x - prev.x) as i128 * (next.y - curr.y) as i128
-                - (curr.y - prev.y) as i128 * (next.x - curr.x) as i128;
-            if cross == 0 {
-                keep[i] = false;
-                changed = true;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let n = points.len();
+            if n < 3 {
+                break;
+            }
+            let mut keep = vec![true; n];
+            for i in 0..n {
+                let prev = points[(i + n - 1) % n];
+                let curr = points[i];
+                let next = points[(i + 1) % n];
+                // Cross product of (curr - prev) × (next - curr) on i64 lattice.
+                let cross = (curr.x - prev.x) as i128 * (next.y - curr.y) as i128
+                    - (curr.y - prev.y) as i128 * (next.x - curr.x) as i128;
+                if cross == 0 {
+                    keep[i] = false;
+                    changed = true;
+                }
+            }
+            if changed {
+                points = points
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(i, _)| keep[*i])
+                    .map(|(_, p)| p)
+                    .collect();
             }
         }
-        if changed {
-            points = points
-                .into_iter()
-                .enumerate()
-                .filter(|(i, _)| keep[*i])
-                .map(|(_, p)| p)
-                .collect();
-        }
+        Polygon { points }
     }
-    Polygon { points }
 }
 
 // ── Medial axis (host-only Voronoi; cfg-split native vs wasm32) ─────────
@@ -865,7 +1067,14 @@ fn process_start() -> Instant {
 /// profiling baseline (`HostExecutionContext::start_time.elapsed()`).
 #[must_use]
 pub fn now_us() -> u64 {
-    process_start().elapsed().as_micros() as u64
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        process_start().elapsed().as_micros() as u64
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        __sdk_host_services_import::slicer::common::host_services::now_us()
+    }
 }
 
 // ── Test support ────────────────────────────────────────────────────────
