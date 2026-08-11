@@ -21,6 +21,8 @@ required-features = ["integrated-classic-perimeters"]
 default = ["report"]
 report = ["slicer-runtime/report"]
 integrated-classic-perimeters = ["slicer-integrated-modules/classic-perimeters"]
+integrated-arachne-perimeters = ["slicer-integrated-modules/arachne-perimeters"]
+integrated-support-planner = ["slicer-integrated-modules/support-planner"]
 
 [dependencies]
 ctrlc = "3"

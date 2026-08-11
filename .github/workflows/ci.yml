@@ -83,3 +83,44 @@ jobs:
         run: cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
         run: cargo test -p slicer-runtime && cargo test -p pnp-cli && cargo test -p slicer-helpers
+
+  dist-editions:
+    name: Dist editions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Dist developer edition (debug)
+        run: cargo xtask dist --edition developer --debug
+      - name: Dist hybrid edition (debug)
+        run: cargo xtask dist --edition hybrid --debug
+      # ADR-0056 disjointness invariant: an edition must never stage an
+      # external copy of a module it integrates. Verify the staged artifact
+      # matches the plan for both editions.
+      - name: Verify edition disjointness invariant
+        shell: sh
+        run: |
+          set -e
+          for e in developer hybrid; do
+            cargo xtask dist --edition "$e" --plan > "plan-$e.txt"
+            for m in $(grep -P '^integrated\t' "plan-$e.txt" | cut -f2); do
+              if [ -e "target/dist/$e/modules/$m" ]; then
+                echo "::error::disjointness invariant violated: integrated module '$m' staged externally in edition '$e'"
+                exit 1
+              fi
+            done
+            staged=$(ls "target/dist/$e/modules" | wc -l)
+            planned=$(grep -cP '^external\t' "plan-$e.txt")
+            if [ "$staged" != "$planned" ]; then
+              echo "::error::disjointness invariant violated: staged module dirs ($staged) != external plan lines ($planned) in edition '$e'"
+              exit 1
+            fi
+          done
+          echo "OK: disjointness invariant holds for developer and hybrid editions"

@@ -18,7 +18,7 @@ cargo clippy --workspace --all-targets -- -D warnings  # required before committ
 cargo xtask check-literals                              # required before committing
 cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd   # narrow run; integration tests bucket into 5 binaries: unit|contract|executor|integration|e2e
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
-cargo xtask dist                                     # build guests + pnp_cli (release), stage into target/dist/ (add --debug for debug binary)
+cargo xtask dist --edition <developer|hybrid|integrated> # build guests + pnp_cli (release), stage into target/dist/<edition>/ (add --debug for debug binary)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
 

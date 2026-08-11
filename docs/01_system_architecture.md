@@ -994,19 +994,19 @@ recognises both; `Cargo.toml` files inside subdirectories are excluded.
 `cargo xtask dist` is the canonical way to assemble the
 `{executable_dir}/modules/` layout for shipping. It rebuilds every
 core-module guest WASM, builds `pnp_cli` (release by default; `--debug`
-opt-in), wipes `target/dist/`, and stages:
+opt-in), wipes `target/dist/<edition>/`, and stages:
 
 ```text
-target/dist/
+target/dist/<edition>/
 ├── pnp_cli[.exe]
 └── modules/
     └── <module-name>/
         ├── <module-name>.toml
-        └── <module-name>.wasm   (one subdir per core module; 21 today)
+        └── <module-name>.wasm   (one subdir per staged core module)
 ```
 
 Because tier 4 of the search path resolves to `current_exe()/modules/`,
-running `target/dist/pnp_cli` with no `--module-dir` flags discovers all
+running `target/dist/<edition>/pnp_cli` with no `--module-dir` flags discovers all
 staged modules automatically. Test-guests under
 `crates/slicer-wasm-host/test-guests/` are filtered out — the bundle
 contains shippable core modules only.
@@ -1017,13 +1017,19 @@ not linger in old dist bundles. Implementation lives in
 shipped set tracks the same validated walk used by `cargo xtask
 build-guests`.
 
+The `--edition <developer|hybrid|integrated>` flag selects the distribution
+edition and defaults to `developer`; each edition is written under
+`target/dist/<edition>/`. The staged external set is the exact complement of
+the edition's integrated set, and any violation of that disjointness is a
+hard `dist` failure rather than a warning.
+
 Edition selection is defined by the committed `dist/editions.toml` (schema
 version 1), which provides the `developer`, `hybrid`, and `integrated` edition
 keys through `integrate_all` and `integrated_modules`. The developer edition
 sets `integrate_all = false` with no integrated modules, the hybrid edition
-integrates `classic-perimeters`, `arachne-perimeters`, and `support-planner`,
-and the integrated edition sets `integrate_all = true`; the hybrid set was
-finalized by ADR-0055 profiling. Every `integrated_modules` name is a module
+integrates exactly the modules named in its `integrated_modules` array, and
+the integrated edition sets `integrate_all = true`; the hybrid membership is
+finalized by profiling and lives only in this config. Every `integrated_modules` name is a module
 directory name shared by `modules/core-modules/<name>`, its
 `slicer-integrated-modules` Cargo feature, and the staged `<name>.wasm` and
 `<name>.toml` stems. `xtask::editions::load_editions` reads and validates this
