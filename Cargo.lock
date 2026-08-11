@@ -3204,9 +3204,11 @@ dependencies = [
 name = "slicer-integrated-modules"
 version = "0.1.0"
 dependencies = [
+ "arachne-perimeters",
  "classic-perimeters",
  "slicer-scheduler",
  "slicer-sdk",
+ "support-planner",
 ]
 
 [[package]]
@@ -3287,6 +3289,7 @@ dependencies = [
  "slicer-sdk",
  "slicer-wasm-host",
  "stl_io",
+ "support-planner",
  "tempfile",
  "toml 0.8.23",
  "wasmtime",

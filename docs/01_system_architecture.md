@@ -1017,6 +1017,18 @@ not linger in old dist bundles. Implementation lives in
 shipped set tracks the same validated walk used by `cargo xtask
 build-guests`.
 
+Edition selection is defined by the committed `dist/editions.toml` (schema
+version 1), which provides the `developer`, `hybrid`, and `integrated` edition
+keys through `integrate_all` and `integrated_modules`. The developer edition
+sets `integrate_all = false` with no integrated modules, the hybrid edition
+integrates `classic-perimeters`, `arachne-perimeters`, and `support-planner`,
+and the integrated edition sets `integrate_all = true`; the hybrid set was
+finalized by ADR-0055 profiling. Every `integrated_modules` name is a module
+directory name shared by `modules/core-modules/<name>`, its
+`slicer-integrated-modules` Cargo feature, and the staged `<name>.wasm` and
+`<name>.toml` stems. `xtask::editions::load_editions` reads and validates this
+configuration before `cargo xtask dist` stages the selected layout.
+
 ### Diagnostics
 
 Setting `SLICER_DEBUG_PATHS=1` causes the host to print the assembled

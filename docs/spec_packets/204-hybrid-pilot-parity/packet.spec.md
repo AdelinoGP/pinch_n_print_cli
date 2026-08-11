@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 204-hybrid-pilot-parity
 task_ids:
   - ADR-0056

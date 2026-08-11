@@ -1,0 +1,30 @@
+# evidence:
+# model: resources/extruder_idler.obj
+# run date: 2026-08-11
+# override mechanism: --config target/p204-arachne-config.json, JSON {"wall_generator":"arachne"}
+# command: target/release/pnp_cli.exe slice --model resources/extruder_idler.obj --module-dir modules/core-modules --output target/p204.gcode --profile 2> target/p204-profile.jsonl && target/release/pnp_cli.exe profile --from target/p204-profile.jsonl --json > target/p204-summary.json
+# command: target/release/pnp_cli.exe slice --model resources/extruder_idler.obj --module-dir modules/core-modules --output target/p204-arachne.gcode --config target/p204-arachne-config.json --profile 2> target/p204-arachne-profile.jsonl && target/release/pnp_cli.exe profile --from target/p204-arachne-profile.jsonl --json > target/p204-arachne-summary.json
+# command: for i in 1 2 3; do target/release/pnp_cli.exe slice --model resources/extruder_idler.obj --module-dir modules/core-modules --output target/p204-noprof.gcode --instrument-stderr 2> target/p204-noprof-$i.log || exit 1; done
+# command: for i in 1 2 3; do target/release/pnp_cli.exe slice --model resources/extruder_idler.obj --module-dir modules/core-modules --output target/p204-arachne-noprof.gcode --config target/p204-arachne-config.json --instrument-stderr 2> target/p204-arachne-noprof-$i.log || exit 1; done
+# Fuel (guest instructions, --profile on external/wasm build; load-independent):
+# classic-perimeters: 28,114,439,731 total_fuel; arachne-perimeters: 6,639,302,472 total_fuel; support-planner: 74,234,286 total_fuel. Arachne fuel > 0 confirms the override took effect.
+# Finding versus previous fuel: classic-perimeters differs (28,114,439,731 now vs 28,114,468,527 previously); arachne-perimeters and support-planner are identical.
+# Wall-clock (profiling-off --instrument-stderr, module elapsed share):
+# classic-perimeters: 3270/3401/3535 ms = 88.86%/89.03%/88.29%, min 3270 ms, max 3535 ms, run-to-run spread 265 ms;
+# arachne-perimeters: 878/911/886 ms = 65.97%/65.97%/66.27%, min 878 ms, max 911 ms, run-to-run spread 33 ms;
+# support-planner: 22/23/23 ms = 0.60%/0.60%/0.57%, min 22 ms, max 23 ms, run-to-run spread 1 ms.
+# LOAD-CONDITION: the measured run-to-run spread was tighter than the prior concurrent-load measurement (classic 265 ms vs 1015 ms, arachne 33 ms vs 21 ms, support 1 ms vs 10 ms); this observation does not claim an idle host.
+
+schema_version = 1
+
+[edition.developer]
+integrate_all = false
+integrated_modules = []
+
+[edition.hybrid]
+integrate_all = false
+integrated_modules = ["classic-perimeters", "arachne-perimeters", "support-planner"]
+
+[edition.integrated]
+integrate_all = true
+integrated_modules = []

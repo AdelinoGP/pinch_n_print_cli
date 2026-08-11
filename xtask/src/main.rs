@@ -3,6 +3,7 @@ mod check_deviations;
 mod check_literals;
 mod compact_specs;
 mod dist;
+mod editions;
 mod gen_config_docs;
 mod test;
 mod wit_verify;

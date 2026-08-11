@@ -79,6 +79,10 @@ path = "../../modules/core-modules/infill-linker"
 [dev-dependencies.classic-perimeters]
 path = "../../modules/core-modules/classic-perimeters"
 
+# packet 204 (AC-5): integrated_parity_support_planner_tdd drives SupportPlanner
+[dev-dependencies.support-planner]
+path = "../../modules/core-modules/support-planner"
+
 # packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
 # natively (mirroring the module's own canonical tdd tests) instead of
 # substring-matching its source text.
