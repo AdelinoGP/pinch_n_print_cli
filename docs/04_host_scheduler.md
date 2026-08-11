@@ -508,6 +508,37 @@ Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):
 the resolved holder must remain constant across every layer for a given object.
 
+### Support-generator selection (`support_type` dedup)
+
+Both `com.core.traditional-support` and `com.core.tree-support` declare
+`holds = ["support-generator"]`. Like `perimeter-generator`, the claim is
+resolved at module-load dedup time (before `validate_startup_dag` runs) by
+`dedup_same_claim_modules_with_wall_generator`
+(`crates/slicer-scheduler/src/execution_plan.rs`), so the two support modules
+never trip the startup conflict for each other.
+
+Selection rules:
+
+1. **`support_type` config key** — read directly from the raw config source
+   at module-load time (before `ResolvedConfig` exists) via
+   `SUPPORT_GENERATOR_CONFIG_KEY` (`"support_type"`). Values are OrcaSlicer's
+   raw spellings, carried in the 3MF sidecar next to the raw `enable_support`
+   key: values starting with `tree` (`tree(auto)`, `tree(manual)`) or with
+   `hybrid` (legacy `hybrid(auto)`, which OrcaSlicer itself migrates to
+   `tree(auto)` at config load) select `com.core.tree-support`; absent values
+   and everything else select `com.core.traditional-support`. Falling back to
+   traditional matches the historical alphabetical winner, so configs without
+   the key slice exactly as before. Manual (enforcer-only) variants select the
+   same holder as their auto counterpart — pnp has no enforcer-only concept.
+
+2. **Alphabetical fallback** — when the preferred module is not among the
+   loaded candidates (e.g. a community module reusing the claim name), the
+   first-winner alphabetical default applies, as for `perimeter-generator`.
+
+Unlike the fill claims, `support-generator` is a stable single-owner claim:
+the resolved holder must remain constant across every layer for a given object
+(see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`).
+
 ### Write Conflict vs Claim Conflict — Enforcement Level Summary
 
 These two mechanisms are complementary, not redundant. Understanding the

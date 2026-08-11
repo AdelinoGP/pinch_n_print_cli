@@ -70,6 +70,7 @@ fn kept_ids(
         &mut diagnostics,
         wall_generator,
         spiral_vase,
+        None,
     );
     kept.iter().map(|m| m.id().to_string()).collect()
 }

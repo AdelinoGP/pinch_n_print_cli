@@ -15,7 +15,8 @@ use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_with_wall_generator,
     ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest,
-    SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, WALL_GENERATOR_CONFIG_KEY,
+    SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, SUPPORT_GENERATOR_CONFIG_KEY,
+    WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
     load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule,
@@ -257,14 +258,24 @@ pub fn load_live_modules_for_plan_profiled(
         })
         .unwrap_or(false);
 
-    // Claim-uniqueness enforcement, config-aware for `perimeter-generator`.
-    // `spiral_vase` forces the classic perimeter generator (Arachne is
-    // incompatible with spiral-vase mode).
+    let support_type = config_source
+        .get(SUPPORT_GENERATOR_CONFIG_KEY)
+        .and_then(|v| match v {
+            ConfigValue::String(s) => Some(s.as_str()),
+            _ => None,
+        });
+
+    // Claim-uniqueness enforcement, config-aware for `perimeter-generator`
+    // and `support-generator`. `spiral_vase` forces the classic perimeter
+    // generator (Arachne is incompatible with spiral-vase mode);
+    // `support_type` selects the `support-generator` claim holder
+    // (traditional by default).
     let filtered_modules = dedup_same_claim_modules_with_wall_generator(
         &mut report.modules,
         &mut report.diagnostics,
         wall_generator,
         spiral_vase,
+        support_type,
     );
     report.modules = filtered_modules;
 

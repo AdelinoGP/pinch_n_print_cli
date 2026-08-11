@@ -59,7 +59,7 @@ fn wall_widths(config: &ConfigView, layer_index: u32) -> Vec<(LoopType, f32)> {
         }
         for pt in &wall.path.points {
             if pt.width > 0.0 {
-                widths.push((wall.loop_type.clone(), pt.width));
+                widths.push((wall.loop_type, pt.width));
             }
         }
     }

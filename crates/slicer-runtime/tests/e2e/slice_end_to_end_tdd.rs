@@ -1013,6 +1013,71 @@ fn tree_support_active_holder() {
     );
 }
 
+/// AC-7b: support_type_tree_config_selects_tree_support_holder — proves
+/// that with the full core-modules dir AND a raw `support_type` config
+/// carrying OrcaSlicer's `tree(auto)` spelling, the config-aware
+/// support-generator dedup exception flips the holder from
+/// `com.core.traditional-support` (the alphabetical default) to
+/// `com.core.tree-support`. Contrasts with `tree_support_active_holder`
+/// above, which needed traditional-support physically removed from the
+/// search dir because the dedup had no config input for the support claim.
+#[test]
+fn support_type_tree_config_selects_tree_support_holder() {
+    use slicer_ir::ConfigValue;
+    use slicer_runtime::{load_live_modules_for_plan_with_config, DiagnosticLevel};
+    use std::collections::HashMap;
+
+    let full = core_modules_dir();
+    assert_path_exists(&full, "core-modules directory");
+
+    let mut config_source: HashMap<String, ConfigValue> = HashMap::new();
+    config_source.insert(
+        "support_type".to_string(),
+        ConfigValue::String("tree(auto)".to_string()),
+    );
+
+    let loaded = load_live_modules_for_plan_with_config(&[full], 1, &config_source)
+        .expect("config-aware live module load must succeed");
+
+    let bound_ids: Vec<String> = loaded
+        .bindings
+        .iter()
+        .map(|b| b.module.id().to_string())
+        .collect();
+    assert!(
+        bound_ids.iter().any(|id| id == "com.core.tree-support"),
+        "with support_type=tree(auto) the bindings must include 'com.core.tree-support', \
+         got: {:?}",
+        bound_ids
+    );
+    assert!(
+        !bound_ids
+            .iter()
+            .any(|id| id == "com.core.traditional-support"),
+        "with support_type=tree(auto) the bindings must NOT include \
+         'com.core.traditional-support', got: {:?}",
+        bound_ids
+    );
+
+    let dropped_traditional = loaded.diagnostics.iter().any(|d| {
+        matches!(d.level, DiagnosticLevel::Info)
+            && d.message.contains("module 'com.core.traditional-support'")
+            && d.message.contains("dropped")
+            && d.message.contains("support-generator")
+            && d.message.contains("com.core.tree-support")
+    });
+    assert!(
+        dropped_traditional,
+        "dedup must emit a diagnostic dropping traditional-support in favour of \
+         tree-support; diagnostics: {:?}",
+        loaded
+            .diagnostics
+            .iter()
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // TASK-135 seam evidence (Step 7)
 // ---------------------------------------------------------------------------

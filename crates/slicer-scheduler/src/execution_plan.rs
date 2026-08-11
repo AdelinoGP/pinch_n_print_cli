@@ -216,6 +216,41 @@ const PERIMETER_GENERATOR_CLAIM: &str = "perimeter-generator";
 const CLASSIC_PERIMETERS_MODULE_ID: &str = "com.core.classic-perimeters";
 const ARACHNE_PERIMETERS_MODULE_ID: &str = "com.core.arachne-perimeters";
 
+/// Config key selecting which support module wins the `support-generator`
+/// claim when more than one module declares it. Mirrors OrcaSlicer's
+/// `support_type` setting (`"normal(auto)"` | `"tree(auto)"` | manual
+/// variants; legacy `"normal"`/`"tree"`/`"hybrid(auto)"` spellings can still
+/// appear in old 3MF sidecars).
+///
+/// Read directly from the raw CLI/JSON config source at module-load time —
+/// the same channel OrcaSlicer's raw `enable_support` reaches pnp through
+/// (the GUI merges its translated config over the raw Orca config in the 3MF
+/// sidecar; the raw `support_type` string rides along) — rather than through
+/// `ResolvedConfig`, because this selection has to happen before
+/// `ResolvedConfig` is built (module loading / claim dedup runs first; see
+/// `crates/slicer-runtime/src/run.rs`).
+pub const SUPPORT_GENERATOR_CONFIG_KEY: &str = "support_type";
+
+const SUPPORT_GENERATOR_CLAIM: &str = "support-generator";
+const TRADITIONAL_SUPPORT_MODULE_ID: &str = "com.core.traditional-support";
+const TREE_SUPPORT_MODULE_ID: &str = "com.core.tree-support";
+
+/// Resolve a raw `support_type` config value (`config_source.get("support_type")`,
+/// e.g. `Some("tree(auto)")` — OrcaSlicer's spelling) to the module id it
+/// selects for the `support-generator` claim. Values starting with `tree`
+/// (`tree(auto)` / `tree(manual)`) or `hybrid` (the legacy `hybrid(auto)`
+/// spelling — OrcaSlicer itself migrates it to `tree(auto)` at config load,
+/// and a raw 3MF sidecar may still carry it) select
+/// `com.core.tree-support`. Absent (`None`) and every other value fall back
+/// to `com.core.traditional-support` — which is also the alphabetical first
+/// winner, so an absent key keeps historical behaviour byte-for-byte.
+fn support_generator_preferred_module_id(support_type: Option<&str>) -> &'static str {
+    match support_type {
+        Some(v) if v.starts_with("tree") || v.starts_with("hybrid") => TREE_SUPPORT_MODULE_ID,
+        _ => TRADITIONAL_SUPPORT_MODULE_ID,
+    }
+}
+
 /// Resolve a raw `wall_generator` config value (`config_source.get("wall_generator")`,
 /// e.g. `Some("arachne")`) to the module id it selects for the
 /// `perimeter-generator` claim. Absent (`None`) or unrecognized values fall
@@ -234,8 +269,8 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// operators can see which module "won" each claim. Modules with no
 /// `claims.holds` entries are kept unchanged.
 ///
-/// The winner is normally the alphabetically-first candidate. The
-/// `perimeter-generator` claim is a documented exception (packet 112 Step
+/// The winner is normally the alphabetically-first candidate. Two claims are
+/// documented exceptions. The `perimeter-generator` claim (packet 112 Step
 /// 10): when both `com.core.classic-perimeters` and
 /// `com.core.arachne-perimeters` are candidates, the winner is resolved by
 /// `wall_generator` (see [`wall_generator_preferred_module_id`]) instead —
@@ -243,7 +278,12 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// dedup with no config input and silently selected `arachne-perimeters`
 /// (alphabetically first) with no way for a user's config to express intent,
 /// and `incompatible-with` never fired because dedup runs before
-/// `validate_startup_dag`.
+/// `validate_startup_dag`. The `support-generator` claim: when both
+/// `com.core.traditional-support` and `com.core.tree-support` are
+/// candidates, the winner is resolved by the raw `support_type` config (see
+/// [`support_generator_preferred_module_id`]) — without it, `tree-support`
+/// always lost by alphabetical accident (`traditional` sorts before
+/// `tree`) and OrcaSlicer's support-type dropdown could never select it.
 ///
 /// Matches docs/04 §2 "Global claim conflicts" (exactly one holder
 /// globally per claim) and docs/10 §Glossary ("Exactly one holder per
@@ -253,26 +293,29 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// Test-only wrapper around [`dedup_same_claim_modules`] so integration
 /// tests can exercise the claim dedup path without building a full
 /// `LoadModulesReport`. Behaviour is identical to the private helper with
-/// `wall_generator` absent (`None`), i.e. [`DEFAULT_WALL_GENERATOR`]
-/// (`"classic"`) applies if a `perimeter-generator` collision is present.
-/// See [`dedup_same_claim_modules_with_wall_generator`] for the config-aware
+/// `wall_generator` and `support_type` absent (`None`), i.e.
+/// [`DEFAULT_WALL_GENERATOR`] (`"classic"`) and the traditional support
+/// holder apply if a claim collision is present. See
+/// [`dedup_same_claim_modules_with_wall_generator`] for the config-aware
 /// entry point the production live-loader uses.
 #[doc(hidden)]
 pub fn dedup_same_claim_modules_for_test(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
 ) -> Vec<LoadedModule> {
-    dedup_same_claim_modules(modules, diagnostics, None, false)
+    dedup_same_claim_modules(modules, diagnostics, None, false, None)
 }
 
 /// Config-aware claim dedup: identical to [`dedup_same_claim_modules_for_test`]
 /// except `wall_generator` (the raw `config_source.get("wall_generator")`
-/// string value, or `None` if the key is absent) and `spiral_vase` (the raw
-/// `config_source.get("spiral_vase")` bool value, or `false` if absent) are
-/// threaded through to resolve the `perimeter-generator` claim. When
-/// `spiral_vase` is `true`, the classic perimeter generator is forced for that
-/// claim regardless of `wall_generator` (Arachne is incompatible with
-/// spiral-vase mode). This is the entry point
+/// string value, or `None` if the key is absent), `spiral_vase` (the raw
+/// `config_source.get("spiral_vase")` bool value, or `false` if absent) and
+/// `support_type` (the raw `config_source.get("support_type")` string value,
+/// or `None` if the key is absent) are threaded through to resolve the
+/// `perimeter-generator` and `support-generator` claims. When `spiral_vase`
+/// is `true`, the classic perimeter generator is forced for that claim
+/// regardless of `wall_generator` (Arachne is incompatible with spiral-vase
+/// mode). This is the entry point
 /// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
@@ -280,8 +323,15 @@ pub fn dedup_same_claim_modules_with_wall_generator(
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
     spiral_vase: bool,
+    support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
-    dedup_same_claim_modules(modules, diagnostics, wall_generator, spiral_vase)
+    dedup_same_claim_modules(
+        modules,
+        diagnostics,
+        wall_generator,
+        spiral_vase,
+        support_type,
+    )
 }
 
 fn dedup_same_claim_modules(
@@ -289,6 +339,7 @@ fn dedup_same_claim_modules(
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
     spiral_vase: bool,
+    support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
 
@@ -331,6 +382,22 @@ fn dedup_same_claim_modules(
             } else {
                 wall_generator_preferred_module_id(wall_generator)
             };
+            if candidate_ids.iter().any(|id| id == preferred) {
+                winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
+                continue;
+            }
+            // Preferred module isn't actually among the candidates (e.g. a
+            // community module reusing this claim name) — fall through to
+            // the alphabetical default below.
+        }
+        if claim == SUPPORT_GENERATOR_CLAIM {
+            // `tree-support` always lost the default alphabetical dedup
+            // (`traditional` sorts before `tree`), so OrcaSlicer's
+            // `support_type` dropdown could never select it. The raw
+            // `support_type` config value (the same channel the raw
+            // `enable_support` reaches pnp through) resolves the claim
+            // instead.
+            let preferred = support_generator_preferred_module_id(support_type);
             if candidate_ids.iter().any(|id| id == preferred) {
                 winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
                 continue;
@@ -1077,7 +1144,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
 
         assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
         assert_eq!(kept[0].id, "com.core.classic-perimeters");
@@ -1108,7 +1175,8 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("arachne"), false);
+        let kept =
+            dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("arachne"), false, None);
 
         assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
         assert_eq!(kept[0].id, "com.core.arachne-perimeters");
@@ -1136,10 +1204,213 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("bogus"), false);
+        let kept =
+            dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("bogus"), false, None);
 
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].id, "com.core.classic-perimeters");
+    }
+
+    #[test]
+    fn support_type_tree_selects_tree_support_holder() {
+        // OrcaSlicer's `support_type` spelling `tree(auto)` — the raw value
+        // the GUI's 3MF sidecar carries — must flip the `support-generator`
+        // holder from `com.core.traditional-support` (the default /
+        // alphabetical winner) to `com.core.tree-support`.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(
+            &mut modules,
+            &mut diagnostics,
+            None,
+            false,
+            Some("tree(auto)"),
+        );
+
+        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
+        assert_eq!(kept[0].id, "com.core.tree-support");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("com.core.tree-support"));
+    }
+
+    #[test]
+    fn support_type_absent_defaults_to_traditional_support_holder() {
+        // No `support_type` config: traditional-support keeps winning — both
+        // because it is the documented default and because it sorts first
+        // alphabetically, so every existing slice is unchanged.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
+
+        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
+        assert_eq!(kept[0].id, "com.core.traditional-support");
+    }
+
+    #[test]
+    fn support_type_normal_falls_back_to_traditional_support_holder() {
+        // `normal(auto)` — and by extension `normal(manual)` — selects the
+        // traditional holder explicitly.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(
+            &mut modules,
+            &mut diagnostics,
+            None,
+            false,
+            Some("normal(auto)"),
+        );
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.core.traditional-support");
+    }
+
+    #[test]
+    fn support_type_tree_manual_selects_tree_support_holder() {
+        // Orca's manual variant (enforcer-only mode) carries the same
+        // tree/normal geometry prefix; pnp has no enforcer-only concept, so
+        // it selects the same holder as `tree(auto)`.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(
+            &mut modules,
+            &mut diagnostics,
+            None,
+            false,
+            Some("tree(manual)"),
+        );
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.core.tree-support");
+    }
+
+    #[test]
+    fn support_type_hybrid_legacy_selects_tree_support_holder() {
+        // Legacy `hybrid(auto)` spellings (old OrcaSlicer files) are
+        // migrated by Orca itself to `tree(auto)` at config load; a raw 3MF
+        // sidecar may still carry the old spelling, so the resolver honours
+        // Orca's own migration.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(
+            &mut modules,
+            &mut diagnostics,
+            None,
+            false,
+            Some("hybrid(auto)"),
+        );
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.core.tree-support");
+    }
+
+    #[test]
+    fn support_type_unrecognized_value_falls_back_to_traditional_support_holder() {
+        // An unrecognized `support_type` string (typo, unsupported value)
+        // must not panic or drop both candidates — it falls back to the
+        // traditional holder, the same winner alphabetical order would pick.
+        let mut modules = vec![
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept =
+            dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, Some("bogus"));
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.core.traditional-support");
+    }
+
+    #[test]
+    fn support_type_preferred_module_not_among_candidates_keeps_alphabetical_default() {
+        // A community module reusing the claim name is not in the preferred
+        // set: the config cannot name it, so the alphabetical first-winner
+        // default applies (docs/04 §2).
+        let mut modules = vec![
+            loaded(
+                "com.community.fancy-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(
+            &mut modules,
+            &mut diagnostics,
+            None,
+            false,
+            Some("tree(auto)"),
+        );
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.community.fancy-support");
     }
 
     #[test]
@@ -1151,7 +1422,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Infill", &["x"]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -1163,7 +1434,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Perimeters", &[]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -1295,7 +1566,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // All three infill modules survive — per-region resolution picks the
