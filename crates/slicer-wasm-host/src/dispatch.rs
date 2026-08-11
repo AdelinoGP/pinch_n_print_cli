@@ -15,6 +15,7 @@ use std::sync::Arc;
 use wasmtime::component::Resource;
 
 use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
+use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
 use slicer_sdk::traits::{EntityMutation, SortKey};
 
 use crate::binding::{
@@ -2334,6 +2335,41 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModuleLive<'_>,
         input: PrepassStageInput<'_>,
     ) -> Result<slicer_core::PrepassStageOutput, slicer_ir::PrepassRunnerError> {
+        if let Some(entry) = &module.native_entry {
+            let stage_export = slicer_schema::stage_by_id(stage_id)
+                .map(|s| s.stage_id)
+                .ok_or_else(|| slicer_ir::PrepassRunnerError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "unknown stage ID".to_string(),
+                })?;
+            let NativeStageEntry::Prepass(entry) = entry else {
+                return Err(slicer_ir::PrepassRunnerError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "native entry family does not match prepass runner".to_string(),
+                });
+            };
+            let response = entry(&crate::marshal::native::build_native_prepass_request(
+                stage_export,
+                &input,
+                module,
+            ))
+            .map_err(|e| slicer_ir::PrepassRunnerError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: format!(
+                    "module error (code={}, fatal={}): {}",
+                    e.code, e.fatal, e.message
+                ),
+            })?;
+            return crate::marshal::native::commit_native_prepass_response(&response, stage_export)
+                .map_err(|message| slicer_ir::PrepassRunnerError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message,
+                });
+        }
         let module_id_str = module.module_id.as_str();
 
         let ctx = match self.dispatch_prepass_call(
@@ -2451,6 +2487,47 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+        if let Some(entry) = &module.native_entry {
+            let stage_export = slicer_schema::stage_by_id(stage_id)
+                .map(|s| s.stage_id)
+                .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "unknown stage ID".to_string(),
+                })?;
+            let NativeStageEntry::Layer(entry) = entry else {
+                return Err(slicer_ir::LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "native entry family does not match layer runner".to_string(),
+                });
+            };
+            let request = crate::marshal::native::build_native_layer_request(
+                stage_export,
+                layer.index,
+                &input,
+                module,
+            );
+            let response =
+                entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: format!(
+                        "module error (code={}, fatal={}): {}",
+                        e.code, e.fatal, e.message
+                    ),
+                })?;
+            return crate::marshal::native::commit_native_layer_response(
+                &response,
+                stage_export,
+                layer.index,
+            )
+            .map_err(|message| slicer_ir::LayerStageError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message,
+            });
+        }
         let module_id_str = module.module_id.as_str();
         let (envelope_floor, envelope_height) =
             derive_layer_output_envelope_from_input(layer, input.slice);
@@ -2666,6 +2743,42 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         input: FinalizationStageInput<'_>,
         layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<slicer_ir::FinalizationOutput, slicer_ir::FinalizationError> {
+        if let Some(entry) = &module.native_entry {
+            let stage_export = slicer_schema::stage_by_id(stage_id)
+                .map(|s| s.stage_id)
+                .ok_or_else(|| slicer_ir::FinalizationError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "unknown stage ID".to_string(),
+                })?;
+            let NativeStageEntry::Finalization(entry) = entry else {
+                return Err(slicer_ir::FinalizationError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "native entry family does not match finalization runner".to_string(),
+                });
+            };
+            let response = entry(&crate::marshal::native::build_native_finalization_request(
+                stage_export,
+                &input,
+                module,
+                layers,
+            ))
+            .map_err(|e| slicer_ir::FinalizationError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: format!(
+                    "module error (code={}, fatal={}): {}",
+                    e.code, e.fatal, e.message
+                ),
+            })?;
+            return crate::marshal::native::commit_native_finalization_response(response, layers)
+                .map_err(|message| slicer_ir::FinalizationError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message,
+                });
+        }
         let module_id_str = module.module_id.as_str();
 
         let pushes = match self.dispatch_finalization_call(
@@ -2718,6 +2831,43 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         input: PostpassStageInput<'_>,
         commands: &mut Vec<GCodeCommand>,
     ) -> Result<slicer_ir::PostpassOutput, slicer_ir::PostpassError> {
+        if let Some(entry) = &module.native_entry {
+            let stage_export = slicer_schema::stage_by_id(stage_id)
+                .map(|s| s.stage_id)
+                .ok_or_else(|| slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "unknown stage ID".to_string(),
+                })?;
+            let NativeStageEntry::Postpass(entry) = entry else {
+                return Err(slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "native entry family does not match postpass runner".to_string(),
+                });
+            };
+            let response = entry(&crate::marshal::native::build_native_postpass_request(
+                stage_export,
+                &input,
+                module,
+                NativePostpassInput::Gcode(commands.clone()),
+            ))
+            .map_err(|e| slicer_ir::PostpassError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: format!(
+                    "module error (code={}, fatal={}): {}",
+                    e.code, e.fatal, e.message
+                ),
+            })?;
+            return crate::marshal::native::commit_native_postpass_response(response).map_err(
+                |message| slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message,
+                },
+            );
+        }
         let module_id_str = module.module_id.as_str();
         let (result, reads) = self.dispatch_postpass_gcode_call(
             stage_id,
@@ -2759,6 +2909,43 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<slicer_ir::PostpassOutput, slicer_ir::PostpassError> {
+        if let Some(entry) = &module.native_entry {
+            let stage_export = slicer_schema::stage_by_id(stage_id)
+                .map(|s| s.stage_id)
+                .ok_or_else(|| slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "unknown stage ID".to_string(),
+                })?;
+            let NativeStageEntry::Postpass(entry) = entry else {
+                return Err(slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: "native entry family does not match postpass runner".to_string(),
+                });
+            };
+            let response = entry(&crate::marshal::native::build_native_postpass_request(
+                stage_export,
+                &input,
+                module,
+                NativePostpassInput::Text(text),
+            ))
+            .map_err(|e| slicer_ir::PostpassError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: format!(
+                    "module error (code={}, fatal={}): {}",
+                    e.code, e.fatal, e.message
+                ),
+            })?;
+            return crate::marshal::native::commit_native_postpass_response(response).map_err(
+                |message| slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message,
+                },
+            );
+        }
         let module_id_str = module.module_id.as_str();
         let (result, reads) = self.dispatch_postpass_text_call(
             stage_id,

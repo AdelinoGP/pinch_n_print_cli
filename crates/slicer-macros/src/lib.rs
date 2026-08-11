@@ -163,6 +163,210 @@ fn generate_slicer_module_impl(
     };
     let wit_exports_tokens = wit_exports.iter().map(|e| quote! { #e });
 
+    let native_entry_tokens = if stage_id_literal.starts_with("Layer::") {
+        let body = match stage_method_literal {
+            "run_infill" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let paint = req.paint.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing paint".to_string()))?;
+                let mut output = ::slicer_sdk::builders::InfillOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill(
+                    &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: Some(output), perimeters: None, support: None, slice_postprocess: None,
+                })
+            },
+            "run_perimeters" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let paint = req.paint.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing paint".to_string()))?;
+                let mut output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_perimeters(
+                    &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: Some(output), support: None, slice_postprocess: None,
+                })
+            },
+            "run_wall_postprocess" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let mut output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_wall_postprocess(
+                    &module, req.layer_index, regions, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: Some(output), support: None, slice_postprocess: None,
+                })
+            },
+            "run_infill_postprocess" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let prior = req.prior_infill.as_deref().unwrap_or(&[]);
+                let mut output = ::slicer_sdk::builders::InfillOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill_postprocess(
+                    &module, req.layer_index, regions, prior, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: Some(output), perimeters: None, support: None, slice_postprocess: None,
+                })
+            },
+            "run_slice_postprocess" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let paint = req.paint.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing paint".to_string()))?;
+                let mut output = ::slicer_sdk::builders::SlicePostprocessBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_slice_postprocess(
+                    &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: None, support: None, slice_postprocess: Some(output),
+                })
+            },
+            "run_support" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let paint = req.paint.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing paint".to_string()))?;
+                let mut output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
+                    &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: None, support: Some(output), slice_postprocess: None,
+                })
+            },
+            "run_support_postprocess" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support_postprocess(
+                    &module, req.layer_index, &req.regions, &mut output, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: None, support: Some(output), slice_postprocess: None,
+                })
+            },
+            "run_path_optimization" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let mut output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+                let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
+                    &module, req.layer_index, regions, &mut output, &mut collection, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                    infill: None, perimeters: None, support: None, slice_postprocess: None,
+                })
+            },
+            _ => quote! { unreachable!() },
+        };
+        quote! {
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #[doc(hidden)]
+            pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
+                ::slicer_sdk::native::NativeStageEntry::Layer(Self::__slicer_native_layer_entry)
+            }
+
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            fn __slicer_native_layer_entry(
+                req: &::slicer_sdk::native::NativeLayerRequest,
+            ) -> ::std::result::Result<::slicer_sdk::native::NativeLayerResponse, ::slicer_sdk::error::ModuleError> {
+                #body
+            }
+        }
+    } else if stage_id_literal.starts_with("PrePass::") {
+        let body = match stage_method_literal {
+            "run_mesh_analysis" => quote! {
+                let objects = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::prepass_builders::MeshAnalysisOutput::new();
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_analysis(&module, objects, &mut output, &req.config)?;
+                Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: Some(output), layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: None })
+            },
+            "run_layer_planning" => quote! {
+                let objects = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(&module, objects, &mut output, &req.config)?;
+                Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: None, layer_plan: Some(output), paint_segmentation: None, seam_planning: None, support_geometry: None })
+            },
+            "run_seam_planning" => quote! {
+                let objects = req.mesh_objects.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing mesh objects".to_string()))?;
+                let layer_plan = req.layer_plan.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer plan".to_string()))?;
+                let regions = req.seam_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing seam regions".to_string()))?;
+                let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(&module, objects, layer_plan, &mut output, &req.config, regions)?;
+                Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: None, layer_plan: None, paint_segmentation: None, seam_planning: Some(output), support_geometry: None })
+            },
+            "run_support_geometry" => quote! {
+                let objects = req.mesh_objects.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing mesh objects".to_string()))?;
+                let layer_plan = req.layer_plan.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer plan".to_string()))?;
+                let regions = req.region_segmentation.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing region segmentation".to_string()))?;
+                let support = req.support_geometry.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing support geometry".to_string()))?;
+                let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(&module, objects, layer_plan, regions, support, &mut output, &req.config)?;
+                Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: None, layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: Some(output) })
+            },
+            _ => quote! { unreachable!() },
+        };
+        quote! {
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #[doc(hidden)]
+            pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
+                ::slicer_sdk::native::NativeStageEntry::Prepass(Self::__slicer_native_prepass_entry)
+            }
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            fn __slicer_native_prepass_entry(req: &::slicer_sdk::native::NativePrepassRequest) -> ::std::result::Result<::slicer_sdk::native::NativePrepassResponse, ::slicer_sdk::error::ModuleError> {
+                #body
+            }
+        }
+    } else if stage_id_literal.starts_with("PostPass::")
+        && stage_id_literal != "PostPass::LayerFinalization"
+    {
+        let body = if stage_method_literal == "run_text_postprocess" {
+            quote! {
+                let text = match &req.input { ::slicer_sdk::native::NativePostpassInput::Text(text) => text, _ => return Err(::slicer_sdk::error::ModuleError::fatal(1, "native postpass request has the wrong input variant".to_string())) };
+                let module = <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&req.config)?;
+                let output = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_text_postprocess(&module, text, &req.config)?;
+                Ok(::slicer_sdk::native::NativePostpassResponse::Text(output))
+            }
+        } else {
+            quote! {
+                let commands = match &req.input { ::slicer_sdk::native::NativePostpassInput::Gcode(commands) => commands, _ => return Err(::slicer_sdk::error::ModuleError::fatal(1, "native postpass request has the wrong input variant".to_string())) };
+                let module = <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_gcode_postprocess(&module, commands, &mut output, &req.config)?;
+                Ok(::slicer_sdk::native::NativePostpassResponse::Gcode(output.commands().to_vec()))
+            }
+        };
+        quote! {
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #[doc(hidden)]
+            pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
+                ::slicer_sdk::native::NativeStageEntry::Postpass(Self::__slicer_native_postpass_entry)
+            }
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            fn __slicer_native_postpass_entry(req: &::slicer_sdk::native::NativePostpassRequest) -> ::std::result::Result<::slicer_sdk::native::NativePostpassResponse, ::slicer_sdk::error::ModuleError> {
+                #body
+            }
+        }
+    } else if stage_id_literal == "PostPass::LayerFinalization" {
+        quote! {
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #[doc(hidden)]
+            pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
+                ::slicer_sdk::native::NativeStageEntry::Finalization(Self::__slicer_native_finalization_entry)
+            }
+            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            fn __slicer_native_finalization_entry(req: &::slicer_sdk::native::NativeFinalizationRequest) -> ::std::result::Result<::slicer_sdk::native::NativeFinalizationResponse, ::slicer_sdk::error::ModuleError> {
+                let module = <#self_ty as ::slicer_sdk::traits::FinalizationModule>::from_config(&req.config)?;
+                let mut output = ::slicer_sdk::traits::FinalizationOutputBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::FinalizationModule>::run_finalization(&module, &req.layers, &mut output, &req.config)?;
+                Ok(::slicer_sdk::native::NativeFinalizationResponse { output })
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let stage_binding_tokens: TokenStream2 = if stage_export_literal.is_empty() {
         quote! {}
     } else {
@@ -281,6 +485,8 @@ fn generate_slicer_module_impl(
             pub fn __slicer_module_schema() -> &'static ::slicer_schema::SlicerModuleSchema {
                 &Self::SLICER_MODULE_SCHEMA
             }
+
+            #native_entry_tokens
 
         }
     };

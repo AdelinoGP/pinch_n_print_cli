@@ -9,6 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ModuleId, ResolvedConfig};
+use slicer_sdk::native::NativeStageEntry;
 use slicer_wasm_host::{WasmComponent, WasmInstancePool};
 
 /// Default for the `thumbnail_path` host config key when the user does not set
@@ -86,7 +87,14 @@ pub struct PipelineConfig {
     /// Keyed by `ModuleId`. Executors look up this map to construct a
     /// `CompiledModuleLive` for each module they dispatch. An empty map is valid
     /// for in-process test pipelines that don't exercise real WASM dispatch.
-    pub wasm_handles: HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    pub wasm_handles: HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<NativeStageEntry>,
+        ),
+    >,
 }
 
 /// Output produced by a successful pipeline run.
@@ -515,7 +523,14 @@ fn run_postpass_with_thumbnail(
     default_resolved_config: &ResolvedConfig,
     layer_irs: &[LayerCollectionIR],
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<NativeStageEntry>,
+        ),
+    >,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
     // Extract and validate thumbnail bytes from raw_config before serialization.
     // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.

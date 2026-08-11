@@ -42,6 +42,10 @@ serde_json = "1.0"
 base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
 slicer-schema = { path = "../slicer-schema" }
+sdk-layer-infill-guest = { path = "../slicer-wasm-host/test-guests/sdk-layer-infill-guest" }
+sdk-finalization-guest = { path = "../slicer-wasm-host/test-guests/sdk-finalization-guest" }
+sdk-postpass-text-guest = { path = "../slicer-wasm-host/test-guests/sdk-postpass-text-guest" }
+sdk-prepass-guest = { path = "../slicer-wasm-host/test-guests/sdk-prepass-guest" }
 pnp-cli-locator = { path = "../pnp-cli-locator" }
 criterion = { workspace = true }
 toml = "0.8"

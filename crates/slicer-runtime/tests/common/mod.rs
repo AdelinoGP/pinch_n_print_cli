@@ -530,12 +530,13 @@ impl TestModuleBundle {
             (
                 Arc<slicer_wasm_host::WasmInstancePool>,
                 Option<Arc<slicer_wasm_host::WasmComponent>>,
+                Option<slicer_sdk::native::NativeStageEntry>,
             ),
         >,
     ) {
         let id = self.module.module_id().to_string();
         let mut handles = HashMap::new();
-        handles.insert(id, (self.pool, self.component));
+        handles.insert(id, (self.pool, self.component, None));
         (self.module, handles)
     }
 }

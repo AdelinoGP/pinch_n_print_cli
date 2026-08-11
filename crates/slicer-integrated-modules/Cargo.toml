@@ -7,7 +7,9 @@ authors.workspace = true
 
 [dependencies]
 slicer-scheduler = { path = "../slicer-scheduler" }
+slicer-sdk = { path = "../slicer-sdk" }
+classic-perimeters = { path = "../../modules/core-modules/classic-perimeters", optional = true }
 
 [features]
 default = []
-classic-perimeters = []
+classic-perimeters = ["dep:classic-perimeters"]

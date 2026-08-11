@@ -13,7 +13,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
+use sdk_layer_infill_guest::SdkLayerInfillModule;
+use slicer_ir::{ConfigValue, GlobalLayer, LayerStageError, RegionKey, RegionPlan, StageId};
 use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
@@ -21,6 +22,9 @@ use slicer_runtime::{
 };
 use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
 use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
+use slicer_wasm_host::{
+    CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmRuntimeDispatcher,
+};
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -154,6 +158,7 @@ fn integrated_binding_skips_component_compile() {
         &HashMap::new(),
         false,
         std::slice::from_ref(&registration),
+        &[],
     )
     .expect("integrated module load must succeed (no Component error)");
 
@@ -171,6 +176,133 @@ fn integrated_binding_skips_component_compile() {
         binding.wasm_component.is_none(),
         "integrated module must skip component compilation (wasm_component: None)"
     );
+}
+
+#[test]
+fn integrated_binding_attaches_native_entry() {
+    let dir = TempDir::new().unwrap();
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.integrated-native", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-native",
+    };
+    let module_id = "com.example.integrated-native".to_string();
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[(module_id, SdkLayerInfillModule::__slicer_native_entry())],
+    )
+    .expect("integrated module load must succeed");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == "com.example.integrated-native")
+        .expect("integrated binding present");
+    assert!(binding.native_entry.is_some());
+    assert!(binding.wasm_component.is_none());
+}
+
+#[test]
+fn external_override_forces_wasm_dispatch() {
+    let dir = TempDir::new().unwrap();
+    let id = "com.example.override";
+    write_module_with_wasm(
+        dir.path(),
+        "override",
+        &infill_manifest(id, &[]),
+        &minimal_component_bytes(),
+    );
+    let manifest_toml: &'static str = Box::leak(infill_manifest(id, &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-override",
+    };
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[(
+            id.to_string(),
+            SdkLayerInfillModule::__slicer_native_entry(),
+        )],
+    )
+    .expect("external override must load");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == id)
+        .expect("override binding present");
+    assert_eq!(binding.module.provenance(), ModuleProvenance::External);
+    assert!(binding.native_entry.is_none());
+    assert!(binding.wasm_component.is_some());
+}
+
+#[test]
+fn integrated_without_native_entry_fails_loud() {
+    let dir = TempDir::new().unwrap();
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.no-native", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-no-native",
+    };
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[],
+    )
+    .expect("integrated module load must succeed without an entry");
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == "com.example.no-native")
+        .expect("integrated binding present");
+    assert!(binding.native_entry.is_none());
+    assert!(binding.wasm_component.is_none());
+
+    let dispatcher = WasmRuntimeDispatcher::new(out.engine.clone());
+    let module_id = binding.module.id().to_string();
+    let live = CompiledModuleLive::new(
+        &module_id,
+        binding.instance_pool.clone(),
+        binding.wasm_component.clone(),
+        &[],
+        Arc::new(slicer_ir::ConfigView::default()),
+    );
+    let result = dispatcher.run_stage(
+        &StageId::from("Layer::Infill"),
+        &GlobalLayer::default(),
+        &live,
+        LayerStageInput {
+            mesh: Arc::new(slicer_ir::MeshIR::default()),
+            paint_regions: None,
+            seam_plan: None,
+            support_plan: None,
+            lightning_tree_ir: None,
+            region_map: None,
+            slice: None,
+            perimeter: None,
+            layer_collection: None,
+            surface_classification: None,
+            infill: None,
+        },
+    );
+    let Err(LayerStageError::FatalModule { message, .. }) = result else {
+        panic!("missing layer component was not fatal: {result:?}");
+    };
+    assert!(message.contains("MissingComponent"));
+    assert!(message.contains("com.example.no-native"));
 }
 
 #[test]

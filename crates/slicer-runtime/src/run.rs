@@ -590,6 +590,7 @@ pub fn run_slice_with_collector(
         &config_source,
         opts.profile,
         &slicer_integrated_modules::integrated_registrations(),
+        &slicer_integrated_modules::native_entries(),
     )
     .map_err(|e| {
         SliceRunError(format!(
@@ -795,6 +796,7 @@ pub fn run_slice_with_collector(
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = loaded
         .bindings
@@ -802,7 +804,11 @@ pub fn run_slice_with_collector(
         .map(|b| {
             (
                 b.module.id().to_string(),
-                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+                (
+                    Arc::clone(&b.instance_pool),
+                    b.wasm_component.clone(),
+                    b.native_entry,
+                ),
             )
         })
         .collect();
@@ -984,6 +990,7 @@ pub struct PrepassContext {
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     >,
     /// Dispatcher ready to run per-layer (Tier 2) stages against the same
@@ -1062,6 +1069,7 @@ pub fn prepare_prepass_context(
         &config_source,
         false,
         &slicer_integrated_modules::integrated_registrations(),
+        &slicer_integrated_modules::native_entries(),
     )
     .map_err(|e| {
         SliceRunError(format!(
@@ -1089,6 +1097,7 @@ pub fn prepare_prepass_context(
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = loaded
         .bindings
@@ -1096,7 +1105,11 @@ pub fn prepare_prepass_context(
         .map(|b| {
             (
                 b.module.id().to_string(),
-                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+                (
+                    Arc::clone(&b.instance_pool),
+                    b.wasm_component.clone(),
+                    b.native_entry,
+                ),
             )
         })
         .collect();

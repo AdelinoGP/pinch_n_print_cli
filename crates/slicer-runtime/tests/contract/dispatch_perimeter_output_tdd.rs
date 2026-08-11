@@ -10,13 +10,15 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
         Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
-    let output = PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
+    let output = PerimeterOutputCollected {
+        // exhaustive: boundary fixture preserves explicit test data
         wall_loops: vec![WallLoopView {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 0.0,
                         y: 0.0,
                         z: 0.2,
@@ -26,7 +28,8 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                         dist_to_top_mm: 0.0,
                         overhang_distance_mm: None,
                     },
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 10.0,
                         y: 0.0,
                         z: 0.2,
@@ -91,12 +94,14 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
         Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
-    let output = PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
+    let output = PerimeterOutputCollected {
+        // exhaustive: boundary fixture preserves explicit test data
         wall_loops: vec![WallLoopView {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
-                points: vec![Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                points: vec![Point3WithWidth {
+                    // exhaustive: boundary fixture preserves explicit test data
                     x: f32::NAN,
                     y: 0.0,
                     z: 0.0,
@@ -138,13 +143,15 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
     };
 
     // 2 points but only 1 feature flag → cardinality mismatch per docs/03
-    let output = PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
+    let output = PerimeterOutputCollected {
+        // exhaustive: boundary fixture preserves explicit test data
         wall_loops: vec![WallLoopView {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 0.0,
                         y: 0.0,
                         z: 0.2,
@@ -154,7 +161,8 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                         dist_to_top_mm: 0.0,
                         overhang_distance_mm: None,
                     },
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 10.0,
                         y: 0.0,
                         z: 0.2,
@@ -199,7 +207,8 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
 fn perimeter_output_rejects_nan_seam_candidate() {
     use slicer_runtime::wit_host::{convert_perimeter_output, PerimeterOutputCollected, Point3};
 
-    let output = PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
+    let output = PerimeterOutputCollected {
+        // exhaustive: boundary fixture preserves explicit test data
         wall_loops: Vec::new(),
         infill_areas: Vec::new(),
         seam_candidates: vec![(
@@ -227,7 +236,8 @@ fn perimeter_output_rejects_nan_seam_candidate() {
 fn empty_perimeter_output_does_not_populate_arena() {
     let mut fx = dispatch_fixture::for_stage("Layer::Perimeters").build();
 
-    let layer = slicer_ir::GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
+    let layer = slicer_ir::GlobalLayer {
+        // exhaustive: boundary fixture preserves explicit test data
         index: 0,
         z: 0.2,
         active_regions: Vec::new(),
@@ -252,13 +262,15 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
         Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
-    let mk_output = || PerimeterOutputCollected { // exhaustive: boundary fixture preserves explicit test data
+    let mk_output = || PerimeterOutputCollected {
+        // exhaustive: boundary fixture preserves explicit test data
         wall_loops: vec![WallLoopView {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 1.0,
                         y: 2.0,
                         z: 0.2,
@@ -268,7 +280,8 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                         dist_to_top_mm: 0.0,
                         overhang_distance_mm: None,
                     },
-                    Point3WithWidth { // exhaustive: boundary fixture preserves explicit test data
+                    Point3WithWidth {
+                        // exhaustive: boundary fixture preserves explicit test data
                         x: 3.0,
                         y: 4.0,
                         z: 0.2,
@@ -340,7 +353,8 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
                 .build(),
         )
         .build();
-    let layer = slicer_ir::GlobalLayer { // exhaustive: boundary fixture preserves explicit test data
+    let layer = slicer_ir::GlobalLayer {
+        // exhaustive: boundary fixture preserves explicit test data
         index: 1,
         z: 0.2,
         active_regions: Vec::new(),

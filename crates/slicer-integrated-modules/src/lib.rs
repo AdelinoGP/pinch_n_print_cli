@@ -1,4 +1,8 @@
 use slicer_scheduler::IntegratedModuleRegistration;
+use slicer_sdk::native::NativeStageEntry;
+
+#[cfg(feature = "classic-perimeters")]
+use classic_perimeters::ClassicPerimeters;
 
 #[cfg(feature = "classic-perimeters")]
 const CLASSIC_PERIMETERS_MANIFEST: &str =
@@ -12,6 +16,22 @@ pub fn integrated_registrations() -> Vec<IntegratedModuleRegistration> {
             manifest_toml: CLASSIC_PERIMETERS_MANIFEST,
             origin_label: "integrated://classic-perimeters",
         }]
+    }
+
+    #[cfg(not(feature = "classic-perimeters"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Return native entry points for the integrated modules enabled for this build.
+pub fn native_entries() -> Vec<(String, NativeStageEntry)> {
+    #[cfg(feature = "classic-perimeters")]
+    {
+        vec![(
+            String::from("com.core.classic-perimeters"),
+            ClassicPerimeters::__slicer_native_entry(),
+        )]
     }
 
     #[cfg(not(feature = "classic-perimeters"))]

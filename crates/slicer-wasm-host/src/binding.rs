@@ -20,6 +20,7 @@ use slicer_ir::{
 
 use crate::instance::WasmComponent;
 use crate::pool::WasmInstancePool;
+use slicer_sdk::native::NativeStageEntry;
 
 /// Wasm-host-side view of a `CompiledModule` valid for the duration of one dispatch call.
 pub struct CompiledModuleLive<'a> {
@@ -33,6 +34,8 @@ pub struct CompiledModuleLive<'a> {
     pub claims: &'a [String],
     /// Arc-cloned config view projected for this module's declared reads.
     pub config_view: Arc<ConfigView>,
+    /// Optional direct native SDK entry for integrated modules.
+    pub native_entry: Option<NativeStageEntry>,
 }
 
 impl<'a> CompiledModuleLive<'a> {
@@ -50,7 +53,14 @@ impl<'a> CompiledModuleLive<'a> {
             wasm_component,
             claims,
             config_view,
+            native_entry: None,
         }
+    }
+
+    /// Attach a direct native SDK entry to this live dispatch view.
+    pub fn with_native_entry(mut self, entry: NativeStageEntry) -> Self {
+        self.native_entry = Some(entry);
+        self
     }
 }
 

@@ -976,6 +976,14 @@ pub struct LayerStageInput<'a> {
 // PostpassStageInput<'a> follow the same pattern.
 ```
 
+Dispatch is provenance-routed: `CompiledModuleLive.native_entry` decides
+whether a stage uses the native call path or WASM instantiation. The marshalling
+boundary is shared between transports; the native path re-enters at the
+`*OutputCollected` accumulator layer, so the `out.rs` converters and
+`origin.rs` `OriginBucket` re-attribution run unchanged. Only the input-view
+leg differs. Module logic is single-threaded on both paths (ADR-0056 Decision
+item 5).
+
 The orchestrator constructs the input struct at each dispatch call
 site by projecting field-level borrows from `Blackboard` / `LayerArena`,
 then hands it to the wasm-host's `instance.call_*` path. Errors from

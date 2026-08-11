@@ -612,6 +612,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         (
             Arc<slicer_runtime::WasmInstancePool>,
             Option<Arc<slicer_runtime::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = HashMap::new();
     wasm_handles.insert(
@@ -619,6 +620,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         (
             Arc::clone(&bundle_perimeter.pool),
             bundle_perimeter.component.clone(),
+            None,
         ),
     );
     wasm_handles.insert(
@@ -626,6 +628,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         (
             Arc::clone(&bundle_pathopt.pool),
             bundle_pathopt.component.clone(),
+            None,
         ),
     );
 

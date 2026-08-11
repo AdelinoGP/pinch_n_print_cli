@@ -387,6 +387,7 @@ fn live_binding(module: &LoadedModule) -> LiveModuleBinding {
         module: module.clone(),
         instance_pool: pool,
         wasm_component: None,
+        native_entry: None,
     }
 }
 

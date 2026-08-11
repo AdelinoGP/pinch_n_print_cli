@@ -190,20 +190,27 @@ pub fn run_pipeline_capturing_perimeters(
             .map_err(|e| {
                 PerimeterHarnessError(format!("per-tool config resolution failed: {e:?}"))
             })?;
-    let wasm_handles: HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)> =
-        loaded
-            .bindings
-            .iter()
-            .map(|binding| {
+    let wasm_handles: HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    > = loaded
+        .bindings
+        .iter()
+        .map(|binding| {
+            (
+                binding.module.id().to_string(),
                 (
-                    binding.module.id().to_string(),
-                    (
-                        Arc::clone(&binding.instance_pool),
-                        binding.wasm_component.clone(),
-                    ),
-                )
-            })
-            .collect();
+                    Arc::clone(&binding.instance_pool),
+                    binding.wasm_component.clone(),
+                    binding.native_entry,
+                ),
+            )
+        })
+        .collect();
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,

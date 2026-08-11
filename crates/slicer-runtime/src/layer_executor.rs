@@ -151,7 +151,14 @@ pub fn execute_per_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
     let (layers, _audits) = execute_per_layer_with_events(
         plan,
@@ -176,7 +183,14 @@ pub fn execute_per_layer_with_events(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     execute_per_layer_with_events_and_support_tools(
         plan,
@@ -195,7 +209,14 @@ pub fn execute_per_layer_with_events_and_support_tools(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     support_tools: SupportToolSelection,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     execute_per_layer_with_instrumentation_and_support_tools(
@@ -223,7 +244,14 @@ pub fn execute_per_layer_with_instrumentation(
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     execute_per_layer_with_instrumentation_and_support_tools(
@@ -244,7 +272,14 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
@@ -299,7 +334,14 @@ fn execute_single_layer(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     support_tools: SupportToolSelection,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     instrumentation.on_layer_start(layer.index, layer.z);
@@ -335,7 +377,14 @@ fn execute_single_layer_inner(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     support_tools: SupportToolSelection,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let mut audits = Vec::new();
@@ -380,17 +429,20 @@ fn execute_single_layer_inner(
 
             // Build the IR-typed borrow structs for the new slicer-wasm-host trait boundary.
             // CompiledModuleLive borrows from CompiledModule for the duration of this call.
-            let (instance_pool, wasm_component) = wasm_handles
+            let (instance_pool, wasm_component, native_entry) = wasm_handles
                 .get(module.module_id().as_str())
-                .map(|(p, c)| (Arc::clone(p), c.clone()))
-                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
-            let live_module = CompiledModuleLive::new(
+                .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+            let mut live_module = CompiledModuleLive::new(
                 module.module_id(),
                 instance_pool,
                 wasm_component,
                 module.claims(),
                 Arc::clone(module.config_view()),
             );
+            if let Some(entry) = native_entry {
+                live_module = live_module.with_native_entry(entry);
+            }
             let input = LayerStageInput {
                 mesh: Arc::clone(blackboard.mesh()),
                 paint_regions: None,
@@ -1094,7 +1146,14 @@ pub fn execute_captured_stages(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     request: &CaptureRequest,
 ) -> Result<CaptureOutput, CaptureExecutionError> {
     execute_captured_stages_with_support_tools(
@@ -1113,7 +1172,14 @@ pub fn execute_captured_stages_with_support_tools(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     support_tools: SupportToolSelection,
     request: &CaptureRequest,
 ) -> Result<CaptureOutput, CaptureExecutionError> {
@@ -1197,17 +1263,20 @@ pub fn execute_captured_stages_with_support_tools(
                 ) {
                     continue;
                 }
-                let (instance_pool, wasm_component) = wasm_handles
+                let (instance_pool, wasm_component, native_entry) = wasm_handles
                     .get(module.module_id().as_str())
-                    .map(|(p, c)| (Arc::clone(p), c.clone()))
-                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
-                let live_module = CompiledModuleLive::new(
+                    .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+                let mut live_module = CompiledModuleLive::new(
                     module.module_id(),
                     instance_pool,
                     wasm_component,
                     module.claims(),
                     Arc::clone(module.config_view()),
                 );
+                if let Some(entry) = native_entry {
+                    live_module = live_module.with_native_entry(entry);
+                }
                 let input = LayerStageInput {
                     mesh: Arc::clone(blackboard.mesh()),
                     paint_regions: None,

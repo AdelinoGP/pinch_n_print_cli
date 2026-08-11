@@ -180,6 +180,16 @@ construct-a-tiny-GCodeIR-and-serialise example.
 
 The `#[slicer_module]` macro generates the WIT export bindings, validates that the impl matches the declared stage, and wires up the detected stage export.
 
+For native host dispatch, the macro also emits
+`__slicer_native_entry()`: a `#[cfg(not(target_arch = "wasm32"))]` inherent
+`pub fn` returning the `::slicer_sdk::native::NativeStageEntry` family variant
+matching the implemented SDK trait. Its adapter body
+constructs the module with `from_config`, calls the trait stage method, and
+drains the SDK output builder. The adapter is generated from the same
+`slicer_schema::STAGES` table as the wasm32 glue, providing a single-source
+dual-target module model: the same crate compiles both to a WASM component and
+natively into the host.
+
 ```rust
 use slicer_sdk::prelude::*;
 

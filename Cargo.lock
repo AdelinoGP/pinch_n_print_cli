@@ -2934,6 +2934,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "sdk-finalization-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+ "witness",
+]
+
+[[package]]
+name = "sdk-layer-infill-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+ "witness",
+]
+
+[[package]]
+name = "sdk-postpass-text-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
+name = "sdk-prepass-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
 name = "seam-placer"
 version = "0.1.0"
 dependencies = [
@@ -3161,7 +3203,9 @@ dependencies = [
 name = "slicer-integrated-modules"
 version = "0.1.0"
 dependencies = [
+ "classic-perimeters",
  "slicer-scheduler",
+ "slicer-sdk",
 ]
 
 [[package]]
@@ -3224,6 +3268,10 @@ dependencies = [
  "rayon",
  "rectilinear-infill",
  "rstar",
+ "sdk-finalization-guest",
+ "sdk-layer-infill-guest",
+ "sdk-postpass-text-guest",
+ "sdk-prepass-guest",
  "seam-placer",
  "serde",
  "serde_json",

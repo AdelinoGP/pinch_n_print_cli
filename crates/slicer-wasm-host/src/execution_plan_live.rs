@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_sdk::native::NativeStageEntry;
 
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
@@ -45,6 +46,8 @@ pub struct LiveModuleBinding {
     /// Compiled WASM component for runtime instantiation (optional for
     /// fixtures that don't exercise dispatch).
     pub wasm_component: Option<Arc<WasmComponent>>,
+    /// Native entry point for an integrated module, when registered.
+    pub native_entry: Option<NativeStageEntry>,
 }
 
 /// Build the immutable `ExecutionPlan` used by the live host/runtime path.
@@ -247,6 +250,7 @@ pub fn load_live_modules_for_plan_profiled(
         config_source,
         profile,
         &[],
+        &[],
     )
 }
 
@@ -270,6 +274,7 @@ pub fn load_live_modules_for_plan_with_integrated(
     config_source: &HashMap<ConfigKey, ConfigValue>,
     profile: bool,
     integrated: &[IntegratedModuleRegistration],
+    native_entries: &[(ModuleId, NativeStageEntry)],
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
     let mut report = load_modules_from_roots_with_integrated(search_roots, integrated)?;
 
@@ -338,6 +343,14 @@ pub fn load_live_modules_for_plan_with_integrated(
             Box::new(LiveModuleLoadError::InstancePool(e))
         })?;
         let instance_pool = Arc::new(pool);
+        let native_entry = (module.provenance() == ModuleProvenance::Integrated)
+            .then(|| {
+                native_entries
+                    .iter()
+                    .find(|(id, _)| id == module.id())
+                    .map(|(_, entry)| *entry)
+            })
+            .flatten();
         // ADR-0056: integrated modules carry no on-disk `.wasm` artifact;
         // dispatch for them is native, so component compilation is skipped.
         if module.provenance() == ModuleProvenance::Integrated {
@@ -345,6 +358,7 @@ pub fn load_live_modules_for_plan_with_integrated(
                 module,
                 instance_pool,
                 wasm_component: None,
+                native_entry,
             });
             continue;
         }
@@ -353,6 +367,7 @@ pub fn load_live_modules_for_plan_with_integrated(
             module,
             instance_pool,
             wasm_component: Some(wasm_component),
+            native_entry,
         });
     }
 

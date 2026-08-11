@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 202-native-adapter-and-dispatch
 task_ids:
   - ADR-0056
