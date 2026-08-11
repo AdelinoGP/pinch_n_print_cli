@@ -313,6 +313,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 - [x] TASK-320 — FRU sweep of slicer-sdk + core-module test literals for the struct-literal churn gate — packet 198.
 - [x] TASK-321 — Literal gate enforcement — packet 199.
 
+- [x] **P203 — Integrated CLI + provenance** (no TASK row; packet 203-integrated-cli-provenance, status: active, closing to implemented; ADR-0056, ADR-0057). Delivered the CLI-and-provenance slice of the multi-edition distribution program: the `--no-integrated-modules` flag on the seven verbs (`slice`, `module diagnose`, `module config-schema`, `dag stages`/`stage`/`depends`/`claims`), `SliceRunOptions.no_integrated_modules`, the integrated-aware `run_diagnose` with the `modules: [{id, provenance}]` provenance array, integrated-aware `dag`/`config-schema` loading, the `integrated-classic-perimeters` pnp-cli passthrough feature, and the six-test feature-gated `integrated_provenance_tdd` suite. **Known gap (deliberate):** `support-preview`/`visual-debug` still load the integrated tier with no disable flag — tracked in 203's requirements.md, unassigned pending 205. Delivered 2026-08-10.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a

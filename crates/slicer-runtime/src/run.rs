@@ -82,6 +82,8 @@ pub struct SliceRunOptions {
     pub module_dirs: Vec<PathBuf>,
     /// When true, suppress the platform default module search paths.
     pub no_default_module_paths: bool,
+    /// When true, disable the integrated-module tier entirely (ADR-0057).
+    pub no_integrated_modules: bool,
     /// Optional path to a PNG thumbnail image for the G-code header.
     pub thumbnail: Option<PathBuf>,
     /// Optional path for an HTML slicer report. When the `report` feature is
@@ -133,6 +135,7 @@ impl Default for SliceRunOptions {
             output_path: None,
             module_dirs: Vec::new(),
             no_default_module_paths: false,
+            no_integrated_modules: false,
             thumbnail: None,
             report: None,
             report_verbose: false,
@@ -584,13 +587,21 @@ pub fn run_slice_with_collector(
     // doc comment for the production defect this closes).
     // `opts.profile` reaches every guest through this one engine: it turns on
     // `consume_fuel` *and* is what `profile-enabled` answers with.
+    let (integrated_regs, native_entries) = if opts.no_integrated_modules {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            slicer_integrated_modules::integrated_registrations(),
+            slicer_integrated_modules::native_entries(),
+        )
+    };
     let mut loaded = load_live_modules_for_plan_with_integrated(
         &search_roots,
         num_cpus_guess(),
         &config_source,
         opts.profile,
-        &slicer_integrated_modules::integrated_registrations(),
-        &slicer_integrated_modules::native_entries(),
+        &integrated_regs,
+        &native_entries,
     )
     .map_err(|e| {
         SliceRunError(format!(

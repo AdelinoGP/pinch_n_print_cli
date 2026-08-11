@@ -45,6 +45,7 @@ fn unprofiled_options() -> SliceRunOptions {
         output_path: None,
         module_dirs: vec![root.join("modules").join("core-modules")],
         no_default_module_paths: true,
+        no_integrated_modules: false,
         thumbnail: None,
         report: None,
         report_verbose: false,
