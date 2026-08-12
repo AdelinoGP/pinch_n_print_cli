@@ -68,7 +68,7 @@ fn slice_with_report_emits_nonempty_html() {
     assert!(
         html.contains("<html") || html.contains("<!DOCTYPE"),
         "report file must look like HTML, first 200 bytes: {:?}",
-        &html.chars().take(200).collect::<String>()
+        html.chars().take(200).collect::<String>()
     );
 }
 

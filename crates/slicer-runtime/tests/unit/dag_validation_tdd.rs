@@ -37,7 +37,8 @@ fn validates_claim_conflicts_for_global_and_per_region_resolution_contracts() {
     let beta = loaded_module("com.example.beta", stage).with_claims(&["infill-generator"]);
     let alpha_module = alpha.clone().build();
     let beta_module = beta.clone().build();
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![alpha_module, beta_module],
         stage_dags: vec![stage_dag(stage, &[alpha.clone(), beta.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
@@ -108,7 +109,8 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
     let beta = loaded_module("com.example.beta", stage);
     let gamma =
         loaded_module("com.example.gamma", stage).with_ir_range(semver(9, 0, 0), semver(10, 0, 0));
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![
             alpha.clone().build(),
             beta.clone().build(),
@@ -161,7 +163,8 @@ fn module_requiring_newer_host_than_running_produces_host_version_incompatible_e
     .build();
     let producers: Vec<&dyn Producer> = vec![&module];
     let nodes = build_intra_stage_dag(stage.to_string(), &producers).expect("dag should build");
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![module],
         stage_dags: vec![StageDag {
             stage: stage.to_string(),
@@ -188,7 +191,8 @@ fn module_requiring_newer_host_than_running_produces_host_version_incompatible_e
 fn module_compatible_with_running_host_produces_no_host_version_error() {
     let stage = "Layer::Support";
     let alpha = loaded_module("com.example.alpha", stage);
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![alpha.clone().build()],
         stage_dags: vec![stage_dag(stage, &[alpha])],
         host_ir_schema_version: semver(1, 0, 0),
@@ -222,7 +226,8 @@ fn validates_cycles_write_conflicts_unfulfilled_reads_and_dead_write_warnings() 
     let dead_writer = loaded_module("com.example.dead-writer", stage)
         .with_reads(&[])
         .with_writes(&["PerimeterIR.regions.walls.unused"]);
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![
             alpha.clone().build(),
             beta.clone().build(),
@@ -265,7 +270,8 @@ fn write_conflict_orderable_is_false_when_neither_module_reads_conflicting_field
         .with_writes(&["PerimeterIR.regions.walls.shared"]);
     let beta =
         loaded_module("com.example.beta", stage).with_writes(&["PerimeterIR.regions.walls.shared"]);
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![alpha.clone().build(), beta.clone().build()],
         stage_dags: vec![stage_dag(stage, &[alpha, beta])],
         host_ir_schema_version: semver(1, 0, 0),
@@ -308,7 +314,8 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
         .with_reads(&["PerimeterIR.regions.walls.shared"])
         .with_writes(&["PerimeterIR.regions.walls.shared"])
         .with_requires_modules(&["com.example.alpha"]);
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![alpha.clone().build(), beta.clone().build()],
         stage_dags: vec![stage_dag(stage, &[alpha, beta])],
         host_ir_schema_version: semver(1, 0, 0),
@@ -461,7 +468,8 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             runtime_writes.push(String::from("SliceIR.regions.undeclared_write"));
         }
 
-        ModuleAccessAudit { // exhaustive: test fixture intentionally specifies the  boundary
+        // exhaustive: test fixture intentionally specifies the  boundary
+        ModuleAccessAudit {
             module_id: module_id.to_string(),
             runtime_reads,
             runtime_writes,
@@ -495,7 +503,8 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
         &["MeshIR".to_string(), "SliceIR.regions.polygons".to_string()],
         &["SliceIR".to_string()],
     );
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![earlier.clone().build(), later.clone().build()],
         stage_dags: vec![
             stage_dag("Layer::SlicePostProcess", &[earlier.clone()]),
@@ -558,7 +567,8 @@ fn validates_transitive_dependencies_that_reach_later_stages() {
     let beta = loaded_module("com.example.beta", "PrePass::LayerPlanning")
         .with_requires_modules(&["com.example.gamma"]);
     let gamma = loaded_module("com.example.gamma", "Layer::Support");
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![
             alpha.clone().build(),
             beta.clone().build(),
@@ -668,7 +678,8 @@ impl LoadedModuleBuilder {
 }
 
 fn loaded_module(id: &str, stage: &str) -> LoadedModuleBuilder {
-    LoadedModuleBuilder { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    LoadedModuleBuilder {
         id: String::from(id),
         stage: String::from(stage),
         ir_reads: Vec::new(),
@@ -795,7 +806,8 @@ fn all_core_module_manifests_accept_current_host_ir_schema() {
         modules.len()
     );
 
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules,
         stage_dags: Vec::new(),
         host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
@@ -840,7 +852,8 @@ fn dag_rejects_arachne_and_classic_coexistence() {
         .with_reads(&["SliceIR", "PaintRegionIR"])
         .with_writes(&["PerimeterIR"])
         .with_claims(&["perimeter-generator"]);
-    let request = DagValidationRequest { // exhaustive: test fixture intentionally specifies the  boundary
+    // exhaustive: test fixture intentionally specifies the  boundary
+    let request = DagValidationRequest {
         modules: vec![arachne.clone().build(), classic.clone().build()],
         stage_dags: vec![stage_dag(stage, &[arachne, classic])],
         host_ir_schema_version: semver(1, 0, 0),

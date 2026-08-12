@@ -43,6 +43,7 @@ fn config_path_with(infill_overlap: f32) -> PathBuf {
 "#,
         infill_overlap
     );
+    std::fs::create_dir_all(path.parent().expect("config parent dir")).expect("create config dir");
     std::fs::write(&path, json).expect("write config");
     path
 }

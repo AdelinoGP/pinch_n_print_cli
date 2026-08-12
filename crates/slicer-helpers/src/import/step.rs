@@ -178,7 +178,7 @@ pub fn import_step_with_options(
 
     let mut meshes: Vec<NamedMesh> = Vec::with_capacity(shell_count);
 
-    for (_idx, step_shell) in table.shell.iter() {
+    for step_shell in table.shell.values() {
         let compressed = match table.to_compressed_shell(step_shell) {
             Ok(c) => c,
             Err(e) => {

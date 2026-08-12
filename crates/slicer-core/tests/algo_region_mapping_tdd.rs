@@ -871,7 +871,7 @@ fn region_mapping_chain_derived_overlay_matches_layer_wide_overlay_when_aggregat
     .expect("region mapping must succeed");
 
     let base = ResolvedConfig::default();
-    for (key, _plan) in region_map.entries.iter() {
+    for key in region_map.entries.keys() {
         assert!(
             key.variant_chain.is_empty(),
             "expected empty chain, got {:?}",

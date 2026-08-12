@@ -954,12 +954,11 @@ fn first_layer_volumetric_e_uses_configured_first_layer_height() {
     // area. The fallback used to be a hardcoded 0.2 mm, over-extruding ~2x
     // whenever first_layer_height was 0.1 mm (measured: outer wall E/mm 0.0494
     // at Z0.1 implied 0.2 mm height).
-    let emitter = DefaultGCodeEmitter::new("1.0".to_string()).with_resolved_config(
-        ResolvedConfig {
+    let emitter =
+        DefaultGCodeEmitter::new("1.0".to_string()).with_resolved_config(ResolvedConfig {
             first_layer_height: 0.1,
             ..Default::default()
-        },
-    );
+        });
 
     let path = ExtrusionPath3D {
         points: vec![
