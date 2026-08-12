@@ -1038,6 +1038,7 @@ pub fn prepare_prepass_context(
     mut config_source: std::collections::HashMap<String, ConfigValue>,
     module_dirs: &[PathBuf],
     no_default_module_paths: bool,
+    no_integrated_modules: bool,
 ) -> Result<PrepassContext, SliceRunError> {
     // Seed planner-visible per-object world heights — required for
     // `layer-planner-default` (and any layer planner) to produce a
@@ -1074,13 +1075,23 @@ pub fn prepare_prepass_context(
     }
 
     let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
+    let integrated_registrations = if no_integrated_modules {
+        Vec::new()
+    } else {
+        slicer_integrated_modules::integrated_registrations()
+    };
+    let native_entries = if no_integrated_modules {
+        Vec::new()
+    } else {
+        slicer_integrated_modules::native_entries()
+    };
     let mut loaded = load_live_modules_for_plan_with_integrated(
         &search_roots,
         num_cpus_guess(),
         &config_source,
         false,
-        &slicer_integrated_modules::integrated_registrations(),
-        &slicer_integrated_modules::native_entries(),
+        &integrated_registrations,
+        &native_entries,
     )
     .map_err(|e| {
         SliceRunError(format!(

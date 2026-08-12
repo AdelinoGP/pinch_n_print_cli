@@ -94,6 +94,7 @@ fn perimeter() -> PerimeterIR {
     let region = |object_id: &str, offset: f32| PerimeterRegion {
         object_id: object_id.into(),
         region_id: 0,
+        // exhaustive: parity comparison pins every field explicitly
         walls: vec![WallLoop {
             perimeter_index: 0,
             loop_type: LoopType::Outer,

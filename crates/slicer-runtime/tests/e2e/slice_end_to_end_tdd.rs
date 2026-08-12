@@ -2390,8 +2390,9 @@ fn path_optimization_markers_appear_in_wedge_gcode() {
     );
 }
 
-/// Slicing Benchy without the `part-cooling` core module must succeed and
-/// emit zero `M106` (fan) lines. Moved from
+/// Slicing Benchy without the `part-cooling` module must succeed and emit zero
+/// `M106` (fan) lines. Both external and integrated module tiers are disabled
+/// for this filtered scenario. Moved from
 /// `integration/gcode_part_cooling_emission_tdd.rs` — this is a real
 /// end-to-end pnp_cli slice. Uses the cached `PartCoolingFiltered` module
 /// directory (see `common/slicer_cache.rs`) so future tests sharing this

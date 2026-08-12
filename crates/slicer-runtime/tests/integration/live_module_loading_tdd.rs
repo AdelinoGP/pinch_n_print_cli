@@ -284,6 +284,7 @@ fn integrated_without_native_entry_fails_loud() {
         &StageId::from("Layer::Infill"),
         &GlobalLayer::default(),
         &live,
+        // exhaustive: module loading fixture pins every field explicitly
         LayerStageInput {
             mesh: Arc::new(slicer_ir::MeshIR::default()),
             paint_regions: None,

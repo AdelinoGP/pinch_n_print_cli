@@ -69,6 +69,7 @@ fn wasm_live<'a>(module: &'a slicer_runtime::CompiledModule) -> CompiledModuleLi
 }
 
 fn entity(layer: u32, annotated: bool) -> PrintEntity {
+    // exhaustive: parity comparison pins every field explicitly
     PrintEntity {
         entity_id: layer as u64 + 1,
         path: ExtrusionPath3D {

@@ -106,6 +106,7 @@ fn blackboard(mesh: MeshIR) -> Blackboard {
     let ids: Vec<String> = mesh.objects.iter().map(|o| o.id.clone()).collect();
     let regions = || {
         ids.iter()
+            // exhaustive: host bridge roundtrip pins every field explicitly
             .map(|id| ActiveRegion {
                 object_id: id.clone(),
                 region_id: 0,
@@ -119,6 +120,7 @@ fn blackboard(mesh: MeshIR) -> Blackboard {
             .collect::<Vec<_>>()
     };
     let global_layers = (0..5)
+        // exhaustive: host bridge roundtrip pins every field explicitly
         .map(|i| GlobalLayer {
             index: i,
             z: (i + 1) as f32 * 0.2,

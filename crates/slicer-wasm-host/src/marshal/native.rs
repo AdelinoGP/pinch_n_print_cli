@@ -173,23 +173,34 @@ pub fn build_native_layer_request(
         })
         .unwrap_or_default();
 
-    let perimeter_regions = input.perimeter.map(|perimeter| {
-        perimeter
-            .regions
-            .iter()
-            .map(|region| {
-                let mut view = PerimeterRegionView::default();
-                view.set_object_id(region.object_id.clone());
-                view.set_region_id(region.region_id);
-                view.set_wall_loops(region.walls.clone());
-                view.set_infill_areas(region.infill_areas.clone());
-                view.set_seam_candidates(region.seam_candidates.clone());
-                view.set_resolved_seam(region.resolved_seam.clone());
-                view.set_config((*module.config_view).clone());
-                view
+    // Mirror the wasm leg (`push_perimeter_regions`): a layer with no committed
+    // `PerimeterIR` yields an empty region list, never `None`. The postprocess
+    // native entries (`run_wall_postprocess` / `run_infill_postprocess` /
+    // `run_path_optimization`) require `perimeter_regions` to be `Some`; the
+    // wasm leg tolerates a missing perimeter by pushing zero regions, so the
+    // native leg must too (native/wasm leg parity, cf. 9685cd03).
+    let perimeter_regions = Some(
+        input
+            .perimeter
+            .map(|perimeter| {
+                perimeter
+                    .regions
+                    .iter()
+                    .map(|region| {
+                        let mut view = PerimeterRegionView::default();
+                        view.set_object_id(region.object_id.clone());
+                        view.set_region_id(region.region_id);
+                        view.set_wall_loops(region.walls.clone());
+                        view.set_infill_areas(region.infill_areas.clone());
+                        view.set_seam_candidates(region.seam_candidates.clone());
+                        view.set_resolved_seam(region.resolved_seam.clone());
+                        view.set_config((*module.config_view).clone());
+                        view
+                    })
+                    .collect()
             })
-            .collect()
-    });
+            .unwrap_or_default(),
+    );
 
     let mut paint = input
         .paint_regions
@@ -804,7 +815,12 @@ fn collect_perimeter(builder: &PerimeterOutputBuilder) -> PerimeterOutputCollect
                 seam.wall_index,
             )
         }),
-        resolved_seam_origin: None,
+        resolved_seam_origin: builder
+            .resolved_seam_origin()
+            .map(|(object_id, region_id)| OriginId {
+                object_id: object_id.clone(),
+                region_id: *region_id,
+            }),
     }
 }
 

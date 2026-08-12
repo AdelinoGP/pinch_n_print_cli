@@ -67,6 +67,18 @@ pub enum ModuleDirKind {
     PartCoolingFiltered,
 }
 
+impl ModuleDirKind {
+    /// Whether this scenario is intended to contain only the listed external
+    /// module directories. Integrated registrations would otherwise re-add a
+    /// module that the scenario deliberately excludes.
+    fn disables_integrated_modules(&self) -> bool {
+        matches!(
+            self,
+            ModuleDirKind::TreeSupportFiltered | ModuleDirKind::PartCoolingFiltered
+        )
+    }
+}
+
 /// Captured outcome of a `pnp_cli` invocation. `success == false` is a
 /// real cached value (not an error) — failure-asserting tests
 /// (`cli_rejects_top_shell_layers_string`) read this directly.
@@ -273,7 +285,13 @@ fn execute_slicer(model: &Path, module_dir: &ModuleDirKind, config: Option<&Path
     // did during *this* invocation.
     let _ = std::fs::remove_file(&out_path);
 
-    let proc_out = run_pnp_cli_uncached(model, &modules, &out_path, config);
+    let proc_out = run_pnp_cli_uncached_with_options(
+        model,
+        &modules,
+        &out_path,
+        config,
+        module_dir.disables_integrated_modules(),
+    );
     let output_written = out_path.exists();
     let gcode = if output_written {
         std::fs::read_to_string(&out_path).unwrap_or_default()
@@ -300,6 +318,16 @@ pub fn run_pnp_cli_uncached(
     output: &Path,
     config: Option<&Path>,
 ) -> std::process::Output {
+    run_pnp_cli_uncached_with_options(model, module_dirs, output, config, false)
+}
+
+fn run_pnp_cli_uncached_with_options(
+    model: &Path,
+    module_dirs: &[PathBuf],
+    output: &Path,
+    config: Option<&Path>,
+    no_integrated_modules: bool,
+) -> std::process::Output {
     let bin = pnp_cli_bin();
     let mut cmd = Command::new(bin);
     cmd.args(["slice", "--model", model.to_str().unwrap()]);
@@ -309,6 +337,9 @@ pub fn run_pnp_cli_uncached(
     cmd.args(["--output", output.to_str().unwrap()]);
     if let Some(config_path) = config {
         cmd.arg("--config").arg(config_path);
+    }
+    if no_integrated_modules {
+        cmd.arg("--no-integrated-modules");
     }
     cmd.output().expect("pnp_cli binary should execute")
 }

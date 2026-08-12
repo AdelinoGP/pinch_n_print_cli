@@ -1364,9 +1364,14 @@ fn run_model_source(
     // so two bundles over one model can be compared stage-to-stage.
     let model_bounds = mesh_xy_bounds(&mesh);
 
-    let mut ctx =
-        slicer_runtime::prepare_prepass_context(Arc::new(mesh), config_source, module_dirs, false)
-            .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+    let mut ctx = slicer_runtime::prepare_prepass_context(
+        Arc::new(mesh),
+        config_source,
+        module_dirs,
+        false,
+        true,
+    )
+    .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
 
     // Phase 2 (ADR-0041): resolve every requested layer selector
     // (`Index`/`Range`/z-only `Detail`) against the real, just-committed

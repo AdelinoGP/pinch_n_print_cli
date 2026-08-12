@@ -105,6 +105,7 @@ fn perimeter() -> PerimeterIR {
         regions: vec![PerimeterRegion {
             object_id: "parity-object".into(),
             region_id: 0,
+            // exhaustive: parity comparison pins every field explicitly
             walls: vec![WallLoop {
                 perimeter_index: 0,
                 loop_type: LoopType::Outer,
@@ -183,4 +184,59 @@ fn integrated_parity_fuzzy_skin() {
     .expect("native commit");
     assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect("fuzzy skin native/wasm parity");
+}
+
+/// Regression: the native `Layer::PerimetersPostProcess` leg must tolerate a
+/// layer with no committed `PerimeterIR` (arena.perimeter() == None) exactly
+/// like the wasm leg does.
+///
+/// Pre-fix, `build_native_layer_request` set `perimeter_regions = None` when
+/// `input.perimeter` was None, and the macro-emitted `run_wall_postprocess`
+/// native entry aborted with a fatal "missing perimeter regions" error. The
+/// wasm leg (`push_perimeter_regions`) instead pushes an empty region list and
+/// the module succeeds with no output. The two legs diverged; this test pins
+/// the native leg to the wasm leg's behaviour.
+#[test]
+fn native_fuzzy_skin_without_committed_perimeter_does_not_fatal() {
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+        ("thickness".into(), slicer_ir::ConfigValue::Float(0.3)),
+        ("point_distance".into(), slicer_ir::ConfigValue::Float(0.5)),
+        ("apply_to_all".into(), slicer_ir::ConfigValue::Bool(true)),
+    ])));
+    let native_module = CompiledModuleBuilder::new("com.core.fuzzy-skin")
+        .config_view(config)
+        .build();
+    let native_live = CompiledModuleLive::new(
+        native_module.module_id(),
+        WasmInstancePool::placeholder(),
+        None,
+        native_module.claims(),
+        Arc::clone(native_module.config_view()),
+    )
+    .with_native_entry(FuzzySkinModule::__slicer_native_entry());
+    let bb = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    // Deliberately leave the arena perimeter unset: input.perimeter == None.
+    let native_arena = LayerArena::new();
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        ..Default::default()
+    };
+    let stage: StageId = "Layer::PerimetersPostProcess".into();
+    let commit = LayerStageRunner::run_stage(
+        &dispatcher,
+        &stage,
+        &layer,
+        &native_live,
+        crate::common::layer_input(&bb, &native_arena),
+    )
+    .expect("native dispatch must not fatal on a missing committed perimeter");
+    match commit {
+        Some(slicer_ir::LayerStageCommit::PerimetersPostProcess(None)) => {}
+        other => {
+            panic!("with no committed perimeter the module must emit no output; got {other:?}")
+        }
+    }
 }

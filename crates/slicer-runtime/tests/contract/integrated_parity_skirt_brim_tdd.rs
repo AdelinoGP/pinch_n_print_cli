@@ -73,6 +73,7 @@ fn layers() -> Vec<LayerCollectionIR> {
         schema_version: semver(),
         global_layer_index: 0,
         z,
+        // exhaustive: parity comparison pins every field explicitly
         ordered_entities: vec![PrintEntity {
             entity_id: 1,
             path: ExtrusionPath3D {

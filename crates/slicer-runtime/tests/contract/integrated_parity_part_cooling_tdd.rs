@@ -72,6 +72,7 @@ fn layer(index: u32, role: ExtrusionRole) -> LayerCollectionIR {
         schema_version: semver(),
         global_layer_index: index,
         z: 0.2 + index as f32 * 0.2,
+        // exhaustive: parity comparison pins every field explicitly
         ordered_entities: vec![PrintEntity {
             entity_id: index as u64 + 1,
             path: ExtrusionPath3D {

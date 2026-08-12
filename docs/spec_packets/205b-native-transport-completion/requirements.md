@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `ADR-0056`, `ADR-0057`; no `docs/07_implementation_status.md` TASK row exists for this program.
 - Backlog source: `docs/specs/multi-edition-distribution-plan.md` §"Also unscheduled".
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

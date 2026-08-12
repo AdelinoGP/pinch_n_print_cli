@@ -33,7 +33,7 @@
   - `crates/slicer-wasm-host/src/marshal/native.rs` — 869 lines; only the two fatal arms and their nearest committed neighbors (~lines 560-680 and ~800-869)
   - the two module manifests and bounded module sources (by `rg` only) — the native output shapes
   - the existing committed layer/postpass converters — the conversion pattern to mirror
-- Files allowed to edit (at most 3):
+- Files allowed to edit (at most 5):
   - `crates/slicer-wasm-host/src/marshal/native.rs`
   - `crates/slicer-sdk/src/native.rs` (user-approved scope expansion)
   - `crates/slicer-macros/src/lib.rs` (user-approved scope expansion)

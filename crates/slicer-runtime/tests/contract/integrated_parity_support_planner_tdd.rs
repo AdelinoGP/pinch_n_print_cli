@@ -24,6 +24,7 @@ fn module_id() -> slicer_ir::ModuleId {
 }
 
 fn input(ctx: &PrepassContext) -> PrepassStageInput<'static> {
+    // exhaustive: parity comparison pins every field explicitly
     PrepassStageInput {
         mesh: Arc::clone(ctx.blackboard.mesh()),
         layer_plan: ctx.blackboard.layer_plan().map(Arc::clone),

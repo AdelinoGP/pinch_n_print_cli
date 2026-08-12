@@ -52,6 +52,7 @@ fn square_wall(perimeter_index: u32, half: f32, jitter: f32) -> WallLoop {
         .zip(widths)
         .map(|((x, y), w)| pt(x + jitter, y + jitter, 3.0 + jitter, w))
         .collect();
+    // exhaustive: invariant selftest pins every field explicitly
     WallLoop {
         perimeter_index,
         loop_type: LoopType::Outer,
@@ -309,6 +310,7 @@ fn finalization_entity(
     point_count: usize,
     jitter: f32,
 ) -> PrintEntity {
+    // exhaustive: invariant selftest pins every field explicitly
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {
@@ -431,6 +433,7 @@ fn seam_candidate(x: f32, score: f32, reason: SeamReason, jitter: f32) -> Scored
 }
 
 fn seam_entry(layer: u32, jitter: f32) -> SeamPlanEntry {
+    // exhaustive: invariant selftest pins every field explicitly
     SeamPlanEntry {
         region_key: RegionKey {
             global_layer_index: layer,
@@ -546,6 +549,7 @@ fn layer_plan_output(jitter: f32) -> PrepassStageOutput {
         ..Default::default()
     };
     let global_layers = vec![
+        // exhaustive: invariant selftest pins every field explicitly
         GlobalLayer {
             index: 0,
             z: 0.2 + jitter,
@@ -553,6 +557,7 @@ fn layer_plan_output(jitter: f32) -> PrepassStageOutput {
             has_nonplanar: false,
             is_sync_layer: false,
         },
+        // exhaustive: invariant selftest pins every field explicitly
         GlobalLayer {
             index: 1,
             z: 0.4 + jitter,
@@ -657,6 +662,7 @@ fn parity_comparator_rejects_moved_layer_plan_z() {
 // ── Infill layer family fixtures ────────────────────────────────────────────
 
 fn infill_region(jitter: f32) -> InfillRegion {
+    // exhaustive: invariant selftest pins every field explicitly
     InfillRegion {
         object_id: "parity-object".to_string(),
         region_id: 0,
@@ -743,6 +749,7 @@ fn parity_comparator_rejects_moved_infill_point() {
 // ── Support layer family fixtures ───────────────────────────────────────────
 
 fn support_ir(jitter: f32) -> SupportIR {
+    // exhaustive: invariant selftest pins every field explicitly
     SupportIR {
         schema_version: semver(),
         global_layer_index: 0,

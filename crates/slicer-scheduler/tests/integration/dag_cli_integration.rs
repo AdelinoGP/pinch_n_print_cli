@@ -166,6 +166,7 @@ fn dag_stage_unknown_id_exits_nonzero() {
         .arg("--module-dir")
         .arg(&core)
         .arg("--no-default-module-paths")
+        .arg("--no-integrated-modules")
         .output()
         .expect("spawn");
     assert_ne!(output.status.code(), Some(0));
@@ -204,6 +205,7 @@ fn dag_depends_unknown_module_exits_nonzero() {
         .arg("--module-dir")
         .arg(&core)
         .arg("--no-default-module-paths")
+        .arg("--no-integrated-modules")
         .output()
         .expect("spawn");
     assert_ne!(output.status.code(), Some(0));
@@ -235,6 +237,7 @@ fn diagnose_clean_core_modules_returns_pass_true_exit_zero() {
         .arg("--module-dir")
         .arg(&core)
         .arg("--no-default-module-paths")
+        .arg("--no-integrated-modules")
         .output()
         .expect("spawn");
     assert_eq!(output.status.code(), Some(0));
@@ -266,6 +269,7 @@ fn diagnose_malformed_manifest_exits_two() {
         .arg("--module-dir")
         .arg(&tmp)
         .arg("--no-default-module-paths")
+        .arg("--no-integrated-modules")
         .output()
         .expect("spawn");
     assert_eq!(
@@ -292,6 +296,7 @@ fn diagnose_nonexistent_module_dir_exits_one() {
         .arg("--module-dir")
         .arg(&tmp)
         .arg("--no-default-module-paths")
+        .arg("--no-integrated-modules")
         .output()
         .expect("spawn");
     assert_eq!(

@@ -180,6 +180,11 @@ pub struct PerimeterOutputBuilder {
     infill_areas: Vec<Vec<ExPolygon>>,
     seam_candidates: Vec<(Point3, f32)>,
     resolved_seam: Option<SeamPosition>,
+    /// The region origin the `resolved_seam` was emitted for, captured from
+    /// `current_origin` at `set_resolved_seam` call time. Mirrors the wasm leg
+    /// where the host records `effective_perimeter_origin()` on
+    /// `push_resolved_seam`.
+    resolved_seam_origin: Option<(String, u64)>,
     /// Rotated wall loops with seam at points[0], set by seam-placer.
     rotated_wall_loops: Vec<(Point3WithWidth, u32, WallLoop)>,
     max_wall_loops: Option<usize>,
@@ -211,6 +216,7 @@ impl PerimeterOutputBuilder {
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
             resolved_seam: None,
+            resolved_seam_origin: None,
             rotated_wall_loops: Vec::new(),
             max_wall_loops: None,
             max_infill_areas: None,
@@ -240,6 +246,7 @@ impl PerimeterOutputBuilder {
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
             resolved_seam: None,
+            resolved_seam_origin: None,
             rotated_wall_loops: Vec::new(),
             max_wall_loops,
             max_infill_areas,
@@ -322,6 +329,7 @@ impl PerimeterOutputBuilder {
         wall_index: u32,
     ) -> Result<(), String> {
         self.resolved_seam = Some(SeamPosition { point, wall_index });
+        self.resolved_seam_origin = self.current_origin.clone();
         Ok(())
     }
 
@@ -386,6 +394,12 @@ impl PerimeterOutputBuilder {
     #[doc(hidden)]
     pub fn resolved_seam(&self) -> Option<&SeamPosition> {
         self.resolved_seam.as_ref()
+    }
+
+    /// Get the region origin the resolved seam was emitted for (for testing).
+    #[doc(hidden)]
+    pub fn resolved_seam_origin(&self) -> Option<&(String, u64)> {
+        self.resolved_seam_origin.as_ref()
     }
 
     /// Get the current explicit region origin (for testing).
