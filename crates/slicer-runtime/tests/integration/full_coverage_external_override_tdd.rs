@@ -16,9 +16,14 @@ const MODULES: &[(&str, &str)] = &[
     ("com.core.infill-linker", "infill-linker"),
     ("com.core.layer-planner-default", "layer-planner-default"),
     ("com.core.lightning-infill", "lightning-infill"),
+    ("com.core.machine-gcode-emit", "machine-gcode-emit"),
     (
         "com.core.overhang-classifier-default",
         "overhang-classifier-default",
+    ),
+    (
+        "com.core.path-optimization-default",
+        "path-optimization-default",
     ),
     ("com.core.part-cooling", "part-cooling"),
     ("com.core.rectilinear-infill", "rectilinear-infill"),

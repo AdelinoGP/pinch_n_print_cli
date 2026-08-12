@@ -2860,13 +2860,15 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
                     e.code, e.fatal, e.message
                 ),
             })?;
-            return crate::marshal::native::commit_native_postpass_response(response).map_err(
-                |message| slicer_ir::PostpassError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message,
-                },
-            );
+            return crate::marshal::native::commit_native_postpass_response(
+                response,
+                Some(commands),
+            )
+            .map_err(|message| slicer_ir::PostpassError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message,
+            });
         }
         let module_id_str = module.module_id.as_str();
         let (result, reads) = self.dispatch_postpass_gcode_call(
@@ -2938,13 +2940,12 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
                     e.code, e.fatal, e.message
                 ),
             })?;
-            return crate::marshal::native::commit_native_postpass_response(response).map_err(
-                |message| slicer_ir::PostpassError::FatalModule {
+            return crate::marshal::native::commit_native_postpass_response(response, None)
+                .map_err(|message| slicer_ir::PostpassError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message,
-                },
-            );
+                });
         }
         let module_id_str = module.module_id.as_str();
         let (result, reads) = self.dispatch_postpass_text_call(

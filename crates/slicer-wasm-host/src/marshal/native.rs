@@ -591,11 +591,12 @@ pub fn build_native_postpass_request(
 /// Commit native postpass output; text bypasses the gcode accumulator just like WASM.
 pub fn commit_native_postpass_response(
     response: NativePostpassResponse,
+    commands: Option<&mut Vec<slicer_ir::GCodeCommand>>,
 ) -> Result<slicer_ir::PostpassOutput, String> {
     match response {
         NativePostpassResponse::Text(text) => Ok(slicer_ir::PostpassOutput::TextSuccess { text }),
-        NativePostpassResponse::Gcode(commands) => {
-            let collected = commands
+        NativePostpassResponse::Gcode(output_commands) => {
+            let collected = output_commands
                 .into_iter()
                 .map(|command| Ok::<_, String>(match command {
                     GcodeOutputCommand::Command(command) => match command {
@@ -672,10 +673,17 @@ pub fn commit_native_postpass_response(
                 .collect::<Result<Vec<_>, String>>()?;
             match crate::marshal::collect_postpass_output(&collected)? {
                 None => Ok(slicer_ir::PostpassOutput::GCodeSuccess),
-                Some(_) => Err(
-                    "native gcode postpass emitted commands, but the native commit transport cannot apply them"
-                        .to_string(),
-                ),
+                Some(new_commands) => {
+                    if let Some(commands) = commands {
+                        *commands = new_commands;
+                        Ok(slicer_ir::PostpassOutput::GCodeSuccess)
+                    } else {
+                        Err(
+                            "native gcode postpass emitted commands without a gcode accumulator"
+                                .to_string(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -879,9 +887,68 @@ pub fn commit_native_layer_response(
                 Ok(ir.map(|value| LayerStageCommit::Perimeters(value)))
             }
         }
-        "Layer::SlicePostProcess" | "Layer::PathOptimization" => Err(format!(
+        "Layer::SlicePostProcess" => Err(format!(
             "native path does not yet support stage {stage_export} output commit"
         )),
+        "Layer::PathOptimization" => {
+            let Some(path) = response.path_optimization.as_ref() else {
+                return Ok(None);
+            };
+            let mut commit = slicer_ir::PathOptimizationCommit::default();
+            for (i, command) in path.output.commands().iter().enumerate() {
+                match command {
+                    GcodeOutputCommand::Command(command) => match command {
+                        slicer_ir::GCodeCommand::ToolChange { after_entity_index, from, to } => {
+                            commit.tool_changes.push(slicer_ir::ToolChange {
+                                after_entity_index: *after_entity_index,
+                                from_tool: *from,
+                                to_tool: *to,
+                            });
+                        }
+                        slicer_ir::GCodeCommand::Comment { text } => commit.annotations.push(
+                            slicer_ir::LayerAnnotationKind::Comment(text.clone()),
+                        ),
+                        slicer_ir::GCodeCommand::Raw { text } => commit
+                            .annotations
+                            .push(slicer_ir::LayerAnnotationKind::Raw(text.clone())),
+                        slicer_ir::GCodeCommand::Move { x, y, z, f, .. } => {
+                            commit.travel_moves.push(slicer_ir::TravelMoveDest {
+                                x: *x, y: *y, z: *z, f: *f,
+                            });
+                        }
+                        slicer_ir::GCodeCommand::Retract { length, speed, mode } => {
+                            commit.retracts.push(slicer_ir::RetractSpec {
+                                length: *length, speed: *speed, is_unretract: false, mode: *mode,
+                            });
+                        }
+                        slicer_ir::GCodeCommand::Unretract { length, speed, mode } => {
+                            commit.retracts.push(slicer_ir::RetractSpec {
+                                length: *length, speed: *speed, is_unretract: true, mode: *mode,
+                            });
+                        }
+                        slicer_ir::GCodeCommand::FanSpeed { .. } => return Err(format!(
+                            "native Layer::PathOptimization emitted unsupported GCode command FanSpeed at index {i}"
+                        )),
+                        slicer_ir::GCodeCommand::Temperature { .. } => return Err(format!(
+                            "native Layer::PathOptimization emitted unsupported GCode command Temperature at index {i}"
+                        )),
+                        slicer_ir::GCodeCommand::ExtrusionMode { .. } => return Err(format!(
+                            "native Layer::PathOptimization emitted unsupported GCode command ExtrusionMode at index {i}"
+                        )),
+                    },
+                    GcodeOutputCommand::ZHop { hop_height, .. } => {
+                        if !hop_height.is_finite() || *hop_height <= 0.0 {
+                            return Err(format!(
+                                "native Layer::PathOptimization push-z-hop at index {i} rejected: hop-height={hop_height} is not finite and strictly positive"
+                            ));
+                        }
+                        commit.z_hops.push(*hop_height);
+                    }
+                }
+            }
+            commit.order_proposal = path.collection.proposal().map(|proposal| proposal.to_vec());
+            Ok(Some(LayerStageCommit::PathOptimization(commit)))
+        }
         _ => Err(format!(
             "native layer response has no output commit for stage {stage_export}"
         )),

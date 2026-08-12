@@ -95,7 +95,9 @@ coverage is complete, rather than shipping an artifact that calls itself
 Integrated while tier-shadowing the remainder. A follow-on packet (205a+)
 integrates sixteen modules, and packet 205b completes the transports for the
 two remaining transport-blocked modules — mechanically repeating 204's
-registration-plus-parity-gate pattern per module — before that edition builds.
+registration-plus-parity-gate pattern per module. With 205b landed, the
+Integrated edition now builds: every registered core module is integrated and
+nothing is staged externally, closing this plan's Integrated-edition row.
 
 ### Exports ledger (net-new symbols downstream packets may consume)
 

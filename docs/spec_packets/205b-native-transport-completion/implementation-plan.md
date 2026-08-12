@@ -35,7 +35,11 @@
   - the existing committed layer/postpass converters — the conversion pattern to mirror
 - Files allowed to edit (at most 3):
   - `crates/slicer-wasm-host/src/marshal/native.rs`
-- Files explicitly out of bounds: `modules/core-modules/**/src/**`, `crates/slicer-sdk/src/native.rs`, `crates/slicer-macros/**`, dispatch routing, `xtask/**`, `crates/slicer-integrated-modules/**`.
+  - `crates/slicer-sdk/src/native.rs` (user-approved scope expansion)
+  - `crates/slicer-macros/src/lib.rs` (user-approved scope expansion)
+  - `crates/slicer-wasm-host/src/dispatch.rs` (user-approved scope expansion)
+- Files explicitly out of bounds: `modules/core-modules/**/src/**`, dispatch routing, `xtask/**`, `crates/slicer-integrated-modules/**`.
+- **Scope note:** the two transports required a user-approved scope expansion to complete. The `Layer::PathOptimization` response had no field to carry the module's output, so `crates/slicer-sdk/src/native.rs` gained a `path_optimization` field plus `NativePathOptimizationOutput`, `crates/slicer-macros/src/lib.rs`'s `run_path_optimization` native entry now populates it, and the two native postpass callers in `crates/slicer-wasm-host/src/dispatch.rs` now pass the gcode command accumulator to `commit_native_postpass_response`. `crates/slicer-runtime/Cargo.toml` also gained the two modules as dev-dependencies with their features enabled on `slicer-integrated-modules`. These files were originally out of bounds and are now in scope for this step by user approval.
 - Blast-radius discipline: not applicable — both arms currently return fatal errors, so no working call site changes behavior class; no struct field or constant is added.
 - Expected sub-agent dispatches:
   - Question: which existing converter and accumulator apply path should each transport call? scope: bounded `native.rs` and stage IR definitions; return: `SNIPPETS` (≤4, ≤30 lines)

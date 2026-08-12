@@ -173,7 +173,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: Some(output), perimeters: None, support: None, slice_postprocess: None,
+                     infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_perimeters" => quote! {
@@ -184,7 +184,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: Some(output), support: None, slice_postprocess: None,
+                     infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_wall_postprocess" => quote! {
@@ -195,7 +195,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, regions, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: Some(output), support: None, slice_postprocess: None,
+                     infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_infill_postprocess" => quote! {
@@ -207,7 +207,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, regions, prior, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: Some(output), perimeters: None, support: None, slice_postprocess: None,
+                     infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_slice_postprocess" => quote! {
@@ -218,7 +218,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: None, support: None, slice_postprocess: Some(output),
+                     infill: None, perimeters: None, support: None, slice_postprocess: Some(output), path_optimization: None,
                 })
             },
             "run_support" => quote! {
@@ -229,7 +229,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: None, support: Some(output), slice_postprocess: None,
+                     infill: None, perimeters: None, support: Some(output), slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_support_postprocess" => quote! {
@@ -239,7 +239,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: None, support: Some(output), slice_postprocess: None,
+                     infill: None, perimeters: None, support: Some(output), slice_postprocess: None, path_optimization: None,
                 })
             },
             "run_path_optimization" => quote! {
@@ -251,7 +251,8 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, regions, &mut output, &mut collection, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                    infill: None, perimeters: None, support: None, slice_postprocess: None,
+                     infill: None, perimeters: None, support: None, slice_postprocess: None,
+                     path_optimization: Some(::slicer_sdk::native::NativePathOptimizationOutput { output, collection }),
                 })
             },
             _ => quote! { unreachable!() },

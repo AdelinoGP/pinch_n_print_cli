@@ -9,18 +9,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, InfillRegion,
-    LayerCollectionIR, LayerPlanIR, LayerStageCommit, LoopType, ObjectLayerRef, PerimeterIR,
-    PerimeterRegion, Point3WithWidth, PrintEntity, RegionKey, ScoredSeamCandidate, SeamPlanEntry,
-    SeamPlanIR, SeamPosition, SeamReason, SupportIR, SupportPlanEntry, SupportPlanIR,
-    WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    ActiveRegion, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, InfillIR,
+    InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit, LoopType, ObjectLayerRef,
+    PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point3WithWidth, PrintEntity, RegionKey,
+    ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SeamReason, SupportIR,
+    SupportPlanEntry, SupportPlanIR, TravelMoveDest, WallBoundaryType, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
 use slicer_runtime::PrepassStageOutput;
 
 use crate::common::parity_invariants::{
-    assert_finalization_parity_structural, assert_layer_plan_parity_structural,
-    assert_parity_structural, assert_prepass_parity_structural, assert_seam_parity_structural,
-    ParityTolerance,
+    assert_finalization_parity_structural, assert_gcode_sequence_parity_structural,
+    assert_layer_plan_parity_structural, assert_parity_structural,
+    assert_prepass_parity_structural, assert_seam_parity_structural, ParityTolerance,
 };
 use crate::common::semver;
 
@@ -85,6 +86,43 @@ fn perimeters_of(commit: LayerStageCommit) -> PerimeterIR {
         LayerStageCommit::Perimeters(ir) => ir,
         other => panic!("expected Perimeters, got {:?}", other.stage_id()),
     }
+}
+
+fn pathopt_commit() -> LayerStageCommit {
+    LayerStageCommit::PathOptimization(PathOptimizationCommit {
+        travel_moves: vec![TravelMoveDest {
+            x: Some(10.0),
+            y: Some(20.0),
+            z: None,
+            f: Some(60.0),
+        }],
+        ..Default::default()
+    })
+}
+
+#[test]
+fn parity_comparator_rejects_dropped_path() {
+    let native = pathopt_commit();
+    let wasm = LayerStageCommit::PathOptimization(PathOptimizationCommit::default());
+    let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
+        .expect_err("dropped travel path must be rejected");
+    assert!(
+        err.contains("travel_moves count"),
+        "error must name travel_moves: {err}"
+    );
+}
+
+#[test]
+fn parity_comparator_rejects_dropped_gcode_command() {
+    let native = vec![GCodeCommand::Comment {
+        text: "path".into(),
+    }];
+    let err = assert_gcode_sequence_parity_structural(&native, &[], ParityTolerance::default())
+        .expect_err("dropped gcode command must be rejected");
+    assert!(
+        err.contains("command count"),
+        "error must name command count: {err}"
+    );
 }
 
 #[test]

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 205b-native-transport-completion
 task_ids:
   - ADR-0056
@@ -17,6 +17,8 @@ Complete the two native dispatch transports packet 202 left as fatal errors — 
 ## Scope Boundaries
 
 This packet extends `crates/slicer-wasm-host/src/marshal/native.rs` (the two missing commit arms), adds the two modules to `crates/slicer-integrated-modules/` (features, `integrated_registrations()`, `native_entries()`), adds two parity contract tests, and extends `crates/pnp-cli/Cargo.toml`'s passthrough features. It does **not** change dispatch routing, macro emission, the CLI surface, or `cargo xtask dist` (202, 203, 205 respectively), and it does **not** touch the geometry call sites inside `modules/core-modules/{path-optimization-default,machine-gcode-emit}/src/lib.rs`. It is the final packet of the plan's "205a+" follow-on: after it, `--edition integrated` builds and the multi-edition plan's Integrated-edition row is closed.
+
+**User-approved scope expansion:** completing the two transports required a user-approved scope expansion to `crates/slicer-sdk/src/native.rs` (added `path_optimization` field on `NativeLayerResponse` + `NativePathOptimizationOutput`), `crates/slicer-macros/src/lib.rs` (the `run_path_optimization` native entry now populates the field), `crates/slicer-wasm-host/src/dispatch.rs` (the two native postpass callers now pass the gcode command accumulator), and `crates/slicer-runtime/Cargo.toml` (dev-deps + features for the two modules). These files were originally out of bounds and are now in scope by user approval.
 
 ## Prerequisites and Blockers
 

@@ -42,6 +42,16 @@ pub struct NativeLayerResponse {
     pub support: Option<builders::SupportOutputBuilder>,
     /// Accumulated slice-postprocess output, if the stage emits one.
     pub slice_postprocess: Option<builders::SlicePostprocessBuilder>,
+    /// Accumulated path-optimization output, if the stage emits one.
+    pub path_optimization: Option<NativePathOptimizationOutput>,
+}
+
+/// Output accumulated by a native `Layer::PathOptimization` entry.
+pub struct NativePathOptimizationOutput {
+    /// G-code side effects emitted by the module.
+    pub output: crate::postpass_builders::GcodeOutputBuilder,
+    /// Entity-order proposal emitted by the module.
+    pub collection: crate::layer_collection_builder::LayerCollectionBuilder,
 }
 
 /// Input to a native prepass entry.  Only the stage-selected option is

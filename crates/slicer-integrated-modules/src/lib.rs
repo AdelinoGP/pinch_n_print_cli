@@ -11,10 +11,14 @@ use infill_linker::InfillLinker;
 use layer_planner_default::DefaultLayerPlanner;
 #[cfg(feature = "lightning-infill")]
 use lightning_infill::LightningInfill;
+#[cfg(feature = "machine-gcode-emit")]
+use machine_gcode_emit::MachineGcodeEmit;
 #[cfg(feature = "overhang-classifier-default")]
 use overhang_classifier_default::OverhangClassifierDefault;
 #[cfg(feature = "part-cooling")]
 use part_cooling::PartCooling;
+#[cfg(feature = "path-optimization-default")]
+use path_optimization_default::PathOptimizationDefault;
 #[cfg(feature = "rectilinear-infill")]
 use rectilinear_infill::RectilinearInfill;
 #[cfg(feature = "seam-placer")]
@@ -136,6 +140,16 @@ manifest_const!(
     "wipe-tower",
     "../../../modules/core-modules/wipe-tower/wipe-tower.toml"
 );
+manifest_const!(
+    PATH_OPTIMIZATION_DEFAULT_MANIFEST,
+    "path-optimization-default",
+    "../../../modules/core-modules/path-optimization-default/path-optimization-default.toml"
+);
+manifest_const!(
+    MACHINE_GCODE_EMIT_MANIFEST,
+    "machine-gcode-emit",
+    "../../../modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml"
+);
 
 /// Return the integrated module manifests enabled for this build.
 #[allow(clippy::vec_init_then_push)]
@@ -246,6 +260,16 @@ pub fn integrated_registrations() -> Vec<IntegratedModuleRegistration> {
     registrations.push(IntegratedModuleRegistration {
         manifest_toml: WIPE_TOWER_MANIFEST,
         origin_label: "integrated://wipe-tower",
+    });
+    #[cfg(feature = "path-optimization-default")]
+    registrations.push(IntegratedModuleRegistration {
+        manifest_toml: PATH_OPTIMIZATION_DEFAULT_MANIFEST,
+        origin_label: "integrated://path-optimization-default",
+    });
+    #[cfg(feature = "machine-gcode-emit")]
+    registrations.push(IntegratedModuleRegistration {
+        manifest_toml: MACHINE_GCODE_EMIT_MANIFEST,
+        origin_label: "integrated://machine-gcode-emit",
     });
 
     registrations
@@ -361,6 +385,16 @@ pub fn native_entries() -> Vec<(String, NativeStageEntry)> {
         String::from("com.core.wipe-tower"),
         WipeTower::__slicer_native_entry(),
     ));
+    #[cfg(feature = "path-optimization-default")]
+    entries.push((
+        String::from("com.core.path-optimization-default"),
+        PathOptimizationDefault::__slicer_native_entry(),
+    ));
+    #[cfg(feature = "machine-gcode-emit")]
+    entries.push((
+        String::from("com.core.machine-gcode-emit"),
+        MachineGcodeEmit::__slicer_native_entry(),
+    ));
 
     entries
 }
@@ -403,7 +437,9 @@ mod classic_perimeters_tests {
     not(feature = "top-surface-ironing"),
     not(feature = "traditional-support"),
     not(feature = "tree-support"),
-    not(feature = "wipe-tower")
+    not(feature = "wipe-tower"),
+    not(feature = "path-optimization-default"),
+    not(feature = "machine-gcode-emit")
 ))]
 #[test]
 fn integrated_registrations_are_empty_by_default() {
@@ -430,7 +466,9 @@ fn integrated_registrations_are_empty_by_default() {
     not(feature = "top-surface-ironing"),
     not(feature = "traditional-support"),
     not(feature = "tree-support"),
-    not(feature = "wipe-tower")
+    not(feature = "wipe-tower"),
+    not(feature = "path-optimization-default"),
+    not(feature = "machine-gcode-emit")
 ))]
 mod hybrid_pilot_tests {
     use super::{integrated_registrations, native_entries};
@@ -508,7 +546,9 @@ mod hybrid_pilot_tests {
     feature = "top-surface-ironing",
     feature = "traditional-support",
     feature = "tree-support",
-    feature = "wipe-tower"
+    feature = "wipe-tower",
+    feature = "path-optimization-default",
+    feature = "machine-gcode-emit"
 ))]
 mod full_coverage_tests {
     use super::{integrated_registrations, native_entries};
@@ -520,7 +560,7 @@ mod full_coverage_tests {
         "arachne-perimeters",
         "support-planner",
     ];
-    const NEW: [&str; 16] = [
+    const NEW: [&str; 18] = [
         "fuzzy-skin",
         "gyroid-infill",
         "infill-linker",
@@ -537,6 +577,8 @@ mod full_coverage_tests {
         "traditional-support",
         "tree-support",
         "wipe-tower",
+        "path-optimization-default",
+        "machine-gcode-emit",
     ];
 
     fn expected_ids() -> BTreeSet<String> {
@@ -599,6 +641,13 @@ mod full_coverage_tests {
                 .unwrap();
             assert!(matches!(entry.1, NativeStageEntry::Layer(_)));
         }
+        for name in ["path-optimization-default"] {
+            let entry = entries
+                .iter()
+                .find(|(id, _)| id == &format!("com.core.{name}"))
+                .unwrap();
+            assert!(matches!(entry.1, NativeStageEntry::Layer(_)));
+        }
         for name in ["layer-planner-default", "seam-planner-default"] {
             let entry = entries
                 .iter()
@@ -617,6 +666,13 @@ mod full_coverage_tests {
                 .find(|(id, _)| id == &format!("com.core.{name}"))
                 .unwrap();
             assert!(matches!(entry.1, NativeStageEntry::Finalization(_)));
+        }
+        for name in ["machine-gcode-emit"] {
+            let entry = entries
+                .iter()
+                .find(|(id, _)| id == &format!("com.core.{name}"))
+                .unwrap();
+            assert!(matches!(entry.1, NativeStageEntry::Postpass(_)));
         }
     }
 }

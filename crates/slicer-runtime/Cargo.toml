@@ -32,6 +32,8 @@ slicer-integrated-modules = { path = "../slicer-integrated-modules", features = 
     "traditional-support",
     "tree-support",
     "wipe-tower",
+    "path-optimization-default",
+    "machine-gcode-emit",
 ] }
 slicer-gcode = { path = "../slicer-gcode" }
 toml = "0.8"
@@ -143,6 +145,12 @@ path = "../../modules/core-modules/tree-support"
 
 [dev-dependencies.wipe-tower]
 path = "../../modules/core-modules/wipe-tower"
+
+[dev-dependencies.path-optimization-default]
+path = "../../modules/core-modules/path-optimization-default"
+
+[dev-dependencies.machine-gcode-emit]
+path = "../../modules/core-modules/machine-gcode-emit"
 
 [[bench]]
 name = "pipeline"

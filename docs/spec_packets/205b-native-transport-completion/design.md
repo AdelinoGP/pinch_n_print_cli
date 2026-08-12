@@ -24,6 +24,7 @@
 - Add `integrated-path-optimization-default` and `integrated-machine-gcode-emit` passthrough features to `crates/pnp-cli/Cargo.toml`.
 - Add `integrated_parity_path_optimization` and `integrated_parity_machine_gcode_emit` under `crates/slicer-runtime/tests/contract/`, with `mod` lines in `contract/main.rs`; **amend** the external-override integration test under `tests/integration/` (created and registered by packet 205a) to additionally cover the two new modules — do not create or re-register it.
 - Reuse the existing parity invariant helpers. Extend them only if the transport output needs a missing structural assertion, and give every new assertion a negative self-test.
+- **User-approved scope expansion:** completing the two transports required expanding scope beyond the original files-in-scope list. The `Layer::PathOptimization` response had no field to carry the module's output, so `crates/slicer-sdk/src/native.rs` gained a `path_optimization` field on `NativeLayerResponse` plus a `NativePathOptimizationOutput` struct; `crates/slicer-macros/src/lib.rs`'s `run_path_optimization` native entry now populates that field (previously it discarded the module's output); the two native postpass callers in `crates/slicer-wasm-host/src/dispatch.rs` now pass the gcode command accumulator to `commit_native_postpass_response`; and `crates/slicer-runtime/Cargo.toml` added `path-optimization-default` and `machine-gcode-emit` as dev-dependencies with their features enabled on the `slicer-integrated-modules` dependency. This expansion was explicitly approved by the user.
 
 ## Files in Scope
 
@@ -35,6 +36,10 @@
 - `crates/slicer-runtime/tests/contract/main.rs`.
 - `crates/slicer-runtime/tests/integration/full_coverage_external_override_tdd.rs` — **amended** (created and registered by packet 205a); 205b extends it to the two new modules without touching `tests/integration/main.rs`.
 - `crates/pnp-cli/Cargo.toml` — passthrough features.
+- `crates/slicer-sdk/src/native.rs` — `path_optimization` field on `NativeLayerResponse` + `NativePathOptimizationOutput` (user-approved scope expansion).
+- `crates/slicer-macros/src/lib.rs` — `run_path_optimization` native entry populates the new field (user-approved scope expansion).
+- `crates/slicer-wasm-host/src/dispatch.rs` — the two native postpass callers pass the gcode command accumulator (user-approved scope expansion).
+- `crates/slicer-runtime/Cargo.toml` — dev-deps + features for the two modules (user-approved scope expansion).
 - `docs/01_system_architecture.md`, `docs/specs/multi-edition-distribution-plan.md` — the doc edits in `packet.spec.md` §Doc Impact Statement.
 
 ## Read-Only Context
@@ -52,7 +57,7 @@
 ## Out-of-Bounds Files
 
 - `modules/core-modules/path-optimization-default/**` and `modules/core-modules/machine-gcode-emit/**` — inspect symbols only; do not edit.
-- `crates/slicer-macros/**`, `crates/slicer-sdk/src/native.rs`, dispatch routing, scheduler, `xtask/**`, `dist/editions.toml`, and generated guests.
+- dispatch routing, scheduler, `xtask/**`, `dist/editions.toml`, and generated guests.
 - `docs/adr/**`, `docs/07_implementation_status.md`, and `CONTEXT.md` — never modified by this packet.
 - `target/`, `Cargo.lock`, vendored dependencies, and `OrcaSlicerDocumented/`.
 

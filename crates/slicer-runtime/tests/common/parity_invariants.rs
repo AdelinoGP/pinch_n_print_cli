@@ -7,9 +7,9 @@
 //! compared, so it cannot certify a broken path vacuously.
 
 use slicer_ir::{
-    ExtrusionPath3D, InfillIR, InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit,
-    PerimeterIR, PerimeterRegion, Point3WithWidth, SeamPlanEntry, SeamPlanIR, SupportIR,
-    SupportPlanIR, WallLoop,
+    ExtrusionPath3D, GCodeCommand, InfillIR, InfillRegion, LayerCollectionIR, LayerPlanIR,
+    LayerStageCommit, PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point3WithWidth,
+    RetractSpec, SeamPlanEntry, SeamPlanIR, SupportIR, SupportPlanIR, TravelMoveDest, WallLoop,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -70,11 +70,301 @@ pub fn assert_parity_structural(
         | (LayerStageCommit::SupportPostProcess(n), LayerStageCommit::SupportPostProcess(w)) => {
             compare_support_ir(n, w, &tol)
         }
+        (LayerStageCommit::PathOptimization(n), LayerStageCommit::PathOptimization(w)) => {
+            compare_path_optimization(n, w, &tol)
+        }
         _ => Err(format!(
             "variant mismatch: native={} wasm={} \
              (assert_parity_structural requires the same LayerStageCommit variant on both paths)",
             commit_variant_name(native),
             commit_variant_name(wasm)
+        )),
+    }
+}
+
+/// Structural parity gate for emitted G-code command sequences. Command kinds
+/// and order are exact; numeric parameters use `tol.coord_mm`.
+pub fn assert_gcode_sequence_parity_structural(
+    native: &[GCodeCommand],
+    wasm: &[GCodeCommand],
+    tol: ParityTolerance,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "gcode command count mismatch: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (index, (n, w)) in native.iter().zip(wasm).enumerate() {
+        compare_gcode_command(n, w, index, tol.coord_mm)?;
+    }
+    Ok(())
+}
+
+fn compare_path_optimization(
+    native: &PathOptimizationCommit,
+    wasm: &PathOptimizationCommit,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    if native.tool_changes != wasm.tool_changes {
+        return Err(format!(
+            "tool_changes mismatch: native={:?} wasm={:?}",
+            native.tool_changes, wasm.tool_changes
+        ));
+    }
+    compare_f32_slice(&native.z_hops, &wasm.z_hops, tol.coord_mm, "z_hops")?;
+    if native.annotations != wasm.annotations {
+        return Err(format!(
+            "annotations mismatch: native={:?} wasm={:?}",
+            native.annotations, wasm.annotations
+        ));
+    }
+    if native.retracts.len() != wasm.retracts.len() {
+        return Err(format!(
+            "retracts count mismatch: native={} wasm={}",
+            native.retracts.len(),
+            wasm.retracts.len()
+        ));
+    }
+    for (index, (n, w)) in native.retracts.iter().zip(&wasm.retracts).enumerate() {
+        compare_retract(n, w, index, tol.coord_mm)?;
+    }
+    if native.travel_moves.len() != wasm.travel_moves.len() {
+        return Err(format!(
+            "travel_moves count mismatch: native={} wasm={}",
+            native.travel_moves.len(),
+            wasm.travel_moves.len()
+        ));
+    }
+    for (index, (n, w)) in native
+        .travel_moves
+        .iter()
+        .zip(&wasm.travel_moves)
+        .enumerate()
+    {
+        compare_travel(n, w, index, tol.coord_mm)?;
+    }
+    if native.order_proposal != wasm.order_proposal {
+        return Err(format!(
+            "order_proposal mismatch: native={:?} wasm={:?}",
+            native.order_proposal, wasm.order_proposal
+        ));
+    }
+    Ok(())
+}
+
+fn compare_f32_slice(
+    native: &[f32],
+    wasm: &[f32],
+    tolerance: f32,
+    name: &str,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "{name} count mismatch: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (index, (n, w)) in native.iter().zip(wasm).enumerate() {
+        if (*n - *w).abs() > tolerance {
+            return Err(format!(
+                "{name} mismatch at index {index}: native={n} wasm={w}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn compare_retract(
+    native: &RetractSpec,
+    wasm: &RetractSpec,
+    index: usize,
+    tolerance: f32,
+) -> Result<(), String> {
+    if (native.length - wasm.length).abs() > tolerance
+        || (native.speed - wasm.speed).abs() > tolerance
+    {
+        return Err(format!(
+            "retracts mismatch at index {index}: native={native:?} wasm={wasm:?}"
+        ));
+    }
+    if native.is_unretract != wasm.is_unretract || native.mode != wasm.mode {
+        return Err(format!(
+            "retracts mode mismatch at index {index}: native={native:?} wasm={wasm:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn compare_travel(
+    native: &TravelMoveDest,
+    wasm: &TravelMoveDest,
+    index: usize,
+    tolerance: f32,
+) -> Result<(), String> {
+    for (name, n, w) in [
+        ("x", native.x, wasm.x),
+        ("y", native.y, wasm.y),
+        ("z", native.z, wasm.z),
+        ("f", native.f, wasm.f),
+    ] {
+        match (n, w) {
+            (Some(n), Some(w)) if (n - w).abs() <= tolerance => {}
+            (None, None) => {}
+            _ => {
+                return Err(format!(
+                    "travel_moves {name} mismatch at index {index}: native={n:?} wasm={w:?}"
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
+fn compare_gcode_command(
+    native: &GCodeCommand,
+    wasm: &GCodeCommand,
+    index: usize,
+    tolerance: f32,
+) -> Result<(), String> {
+    let mismatch = || {
+        Err(format!(
+            "gcode command kind mismatch at index {index}: native={native:?} wasm={wasm:?}"
+        ))
+    };
+    match (native, wasm) {
+        (
+            GCodeCommand::Move {
+                x: nx,
+                y: ny,
+                z: nz,
+                e: ne,
+                f: nf,
+                role: nr,
+            },
+            GCodeCommand::Move {
+                x: wx,
+                y: wy,
+                z: wz,
+                e: we,
+                f: wf,
+                role: wr,
+            },
+        ) => {
+            for (name, n, w) in [
+                ("x", nx, wx),
+                ("y", ny, wy),
+                ("z", nz, wz),
+                ("e", ne, we),
+                ("f", nf, wf),
+            ] {
+                compare_optional_float(n, w, tolerance, index, name)?;
+            }
+            if nr != wr {
+                return mismatch();
+            }
+        }
+        (
+            GCodeCommand::Retract {
+                length: nl,
+                speed: ns,
+                mode: nm,
+            },
+            GCodeCommand::Retract {
+                length: wl,
+                speed: ws,
+                mode: wm,
+            },
+        )
+        | (
+            GCodeCommand::Unretract {
+                length: nl,
+                speed: ns,
+                mode: nm,
+            },
+            GCodeCommand::Unretract {
+                length: wl,
+                speed: ws,
+                mode: wm,
+            },
+        ) => {
+            compare_float(nl, wl, tolerance, index, "length")?;
+            compare_float(ns, ws, tolerance, index, "speed")?;
+            if nm != wm {
+                return mismatch();
+            }
+        }
+        (GCodeCommand::FanSpeed { value: n }, GCodeCommand::FanSpeed { value: w }) if n == w => {}
+        (
+            GCodeCommand::Temperature {
+                tool: nt,
+                celsius: nc,
+                wait: nw,
+            },
+            GCodeCommand::Temperature {
+                tool: wt,
+                celsius: wc,
+                wait: ww,
+            },
+        ) => {
+            if nt != wt || nw != ww {
+                return mismatch();
+            }
+            compare_float(nc, wc, tolerance, index, "celsius")?;
+        }
+        (
+            GCodeCommand::ToolChange {
+                after_entity_index: na,
+                from: nf,
+                to: nt,
+            },
+            GCodeCommand::ToolChange {
+                after_entity_index: wa,
+                from: wf,
+                to: wt,
+            },
+        ) if na == wa && nf == wf && nt == wt => {}
+        (GCodeCommand::Comment { text: n }, GCodeCommand::Comment { text: w }) if n == w => {}
+        (GCodeCommand::Raw { text: n }, GCodeCommand::Raw { text: w }) if n == w => {}
+        (
+            GCodeCommand::ExtrusionMode { absolute: n },
+            GCodeCommand::ExtrusionMode { absolute: w },
+        ) if n == w => {}
+        _ => return mismatch(),
+    }
+    Ok(())
+}
+
+fn compare_float(
+    native: &f32,
+    wasm: &f32,
+    tolerance: f32,
+    index: usize,
+    name: &str,
+) -> Result<(), String> {
+    if (*native - *wasm).abs() > tolerance {
+        Err(format!(
+            "gcode {name} mismatch at index {index}: native={native} wasm={wasm}"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn compare_optional_float(
+    native: &Option<f32>,
+    wasm: &Option<f32>,
+    tolerance: f32,
+    index: usize,
+    name: &str,
+) -> Result<(), String> {
+    match (native, wasm) {
+        (Some(n), Some(w)) => compare_float(n, w, tolerance, index, name),
+        (None, None) => Ok(()),
+        _ => Err(format!(
+            "gcode {name} presence mismatch at index {index}: native={native:?} wasm={wasm:?}"
         )),
     }
 }
