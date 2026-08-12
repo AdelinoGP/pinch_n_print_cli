@@ -67,6 +67,10 @@
 - Largest step: `M`
 - Highest-risk dispatch and required return format: visual-debug run; `FACT` with manifest path and bounded failure output.
 
+## Reopen Addendum
+
+The renderer in `crates/slicer-runtime/src/visual_debug_render.rs` is now in scope for the degenerate-segment visualization path. AC-2 verification is strengthened to assert typed-capture content, not just manifest presence.
+
 ## Open Questions
 
 None.

@@ -394,6 +394,12 @@ enum Shape {
         points: Vec<(f32, f32)>,
         color: [u8; 3],
     },
+    /// A filled disk used for zero-length width-bearing paths.
+    Disk {
+        center: (f32, f32),
+        radius_mm: f32,
+        color: [u8; 3],
+    },
 }
 
 /// Compute the shared, bundle-wide viewport (AC-4) as the fixed-margin XY
@@ -702,14 +708,39 @@ fn expand_swept_shape(shape: Shape) -> Vec<Shape> {
     }
 }
 
-fn filament_lines_from_path(path: &ExtrusionPath3D) -> Option<Shape> {
+fn filament_lines_from_path(path: &ExtrusionPath3D) -> Vec<Shape> {
     if path.points.len() < 2 {
-        return None;
+        return Vec::new();
     }
-    Some(Shape::Line {
+    let first = path.points[0];
+    let last = path.points[path.points.len() - 1];
+    let dx = last.x - first.x;
+    let dy = last.y - first.y;
+    if (dx * dx + dy * dy).sqrt() < 1e-6 {
+        return vec![Shape::Disk {
+            center: (first.x, first.y),
+            radius_mm: first.width.max(last.width).max(0.0) / 2.0,
+            color: role_color(&path.role),
+        }];
+    }
+    let color = role_color(&path.role);
+    let mut shapes = vec![Shape::Line {
         points: path.points.iter().map(|p| (p.x, p.y)).collect(),
-        color: role_color(&path.role),
-    })
+        color,
+    }];
+    for pair in path.points.windows(2) {
+        let (p0, p1) = (pair[0], pair[1]);
+        let dx = p1.x - p0.x;
+        let dy = p1.y - p0.y;
+        if (dx * dx + dy * dy).sqrt() < 1e-6 {
+            shapes.push(Shape::Disk {
+                center: (p0.x, p0.y),
+                radius_mm: p0.width.max(p1.width).max(0.0) / 2.0,
+                color,
+            });
+        }
+    }
+    shapes
 }
 
 fn perimeter_shapes(
@@ -737,9 +768,7 @@ fn perimeter_shapes(
         GeometryView::FilamentLines => {
             for region in &p.regions {
                 for wall in &region.walls {
-                    if let Some(shape) = filament_lines_from_path(&wall.path) {
-                        shapes.push(shape);
-                    }
+                    shapes.extend(filament_lines_from_path(&wall.path));
                 }
             }
         }
@@ -784,9 +813,7 @@ fn infill_shapes(
         GeometryView::FilamentLines => {
             for region in &i.regions {
                 for path in region_paths(region) {
-                    if let Some(shape) = filament_lines_from_path(path) {
-                        shapes.push(shape);
-                    }
+                    shapes.extend(filament_lines_from_path(path));
                 }
             }
         }
@@ -828,9 +855,7 @@ fn support_shapes(
         }
         GeometryView::FilamentLines => {
             for path in support_paths(s) {
-                if let Some(shape) = filament_lines_from_path(path) {
-                    shapes.push(shape);
-                }
+                shapes.extend(filament_lines_from_path(path));
             }
         }
     }
@@ -866,9 +891,7 @@ fn layer_collection_shapes(
         }
         GeometryView::FilamentLines => {
             for entity in &l.ordered_entities {
-                if let Some(shape) = filament_lines_from_path(&entity.path) {
-                    shapes.push(shape);
-                }
+                shapes.extend(filament_lines_from_path(&entity.path));
             }
         }
     }
@@ -1104,9 +1127,7 @@ fn support_geometry_shapes(
                     }
                 }
                 GeometryView::FilamentLines => {
-                    if let Some(shape) = filament_lines_from_path(path) {
-                        shapes.push(shape);
-                    }
+                    shapes.extend(filament_lines_from_path(path));
                 }
             }
         }
@@ -1478,7 +1499,9 @@ fn shapes_for_styled(
 fn recolor_shapes(shapes: &mut [Shape], color: [u8; 3]) {
     for shape in shapes {
         match shape {
-            Shape::Fill { color: c, .. } | Shape::Line { color: c, .. } => *c = color,
+            Shape::Fill { color: c, .. }
+            | Shape::Line { color: c, .. }
+            | Shape::Disk { color: c, .. } => *c = color,
         }
     }
 }
@@ -1807,6 +1830,27 @@ impl Canvas {
             self.line(pair[0], pair[1], color);
         }
     }
+
+    fn fill_disk(&mut self, center: (f32, f32), radius_mm: f32, color: [u8; 3]) {
+        let (cx, cy) = self.to_px(center.0, center.1);
+        // Convert the width-derived world radius through the canvas' uniform
+        // mm-to-pixel scale, retaining at least one visible pixel.
+        let radius_px = self.projector.scale_mm(f64::from(radius_mm)).max(1.0) as f32;
+        let min_x = (cx - radius_px).floor() as i64;
+        let max_x = (cx + radius_px).ceil() as i64;
+        let min_y = (cy - radius_px).floor() as i64;
+        let max_y = (cy + radius_px).ceil() as i64;
+        let radius_sq = radius_px * radius_px;
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let dx = x as f32 + 0.5 - cx;
+                let dy = y as f32 + 0.5 - cy;
+                if dx * dx + dy * dy <= radius_sq {
+                    self.set(x, y, color);
+                }
+            }
+        }
+    }
 }
 
 // Bresenham line rasterization (separate impl block to keep `draw_line_px`
@@ -1919,6 +1963,11 @@ fn draw_shapes(canvas: &mut Canvas, shapes: &[Shape]) {
                 color,
             } => canvas.fill_polygon(contour, holes, *color),
             Shape::Line { points, color } => canvas.stroke_line(points, *color),
+            Shape::Disk {
+                center,
+                radius_mm,
+                color,
+            } => canvas.fill_disk(*center, *radius_mm, *color),
         }
     }
 }

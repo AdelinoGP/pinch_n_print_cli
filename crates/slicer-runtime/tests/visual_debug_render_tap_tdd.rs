@@ -256,6 +256,135 @@ fn pixel_at(rgb: &[u8], width: u32, x: usize, y: usize) -> [u8; 3] {
 
 const BACKGROUND: [u8; 3] = [255, 255, 255];
 
+#[test]
+fn degenerate_support_branch_renders_as_visible_disk() {
+    let capture = StageCapture {
+        stage_id: "Layer::Support".to_string(),
+        layer_index: 0,
+        layer_z: 0.0,
+        ir: CapturedIr::SupportGeometry {
+            geometry: SupportGeometryIR::default(),
+            plan: SupportPlanIR {
+                schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                entries: vec![SupportPlanEntry {
+                    global_layer_index: 0,
+                    object_id: "obj-0".to_string(),
+                    region_id: 0,
+                    branch_segments: vec![ExtrusionPath3D {
+                        points: vec![point3(0.0, 0.0), point3(0.0, 0.0)],
+                        role: ExtrusionRole::SupportMaterial,
+                        speed_factor: 1.0,
+                    }],
+                }],
+                raft_plan: None,
+            },
+        },
+    };
+    let bounds = compute_viewport_bounds(std::slice::from_ref(&capture));
+    let rendered = render_stage_capture(
+        &capture,
+        RenderView::Geometry(GeometryView::FilamentLines),
+        1,
+        bounds,
+    )
+    .expect("degenerate support branch should render");
+    let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
+    let painted = rgb
+        .chunks_exact(3)
+        .filter(|pixel| *pixel != BACKGROUND)
+        .count();
+    assert!(
+        painted > 1,
+        "degenerate branch rendered only {painted} pixel"
+    );
+}
+
+#[test]
+fn degenerate_segment_at_path_end_renders_as_visible_disk() {
+    let capture = StageCapture {
+        stage_id: "Layer::Support".to_string(),
+        layer_index: 0,
+        layer_z: 0.0,
+        ir: CapturedIr::SupportGeometry {
+            geometry: SupportGeometryIR::default(),
+            plan: SupportPlanIR {
+                schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                entries: vec![SupportPlanEntry {
+                    global_layer_index: 0,
+                    object_id: "obj-0".to_string(),
+                    region_id: 0,
+                    branch_segments: vec![ExtrusionPath3D {
+                        points: vec![point3(3.0, 9.557), point3(3.0, 9.808), point3(3.0, 9.808)],
+                        role: ExtrusionRole::SupportMaterial,
+                        speed_factor: 1.0,
+                    }],
+                }],
+                raft_plan: None,
+            },
+        },
+    };
+    let bounds = compute_viewport_bounds(std::slice::from_ref(&capture));
+    let rendered = render_stage_capture(
+        &capture,
+        RenderView::Geometry(GeometryView::FilamentLines),
+        1,
+        bounds,
+    )
+    .expect("mixed support branch should render");
+    let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
+    let painted = rgb
+        .chunks_exact(3)
+        .filter(|pixel| *pixel != BACKGROUND)
+        .count();
+    assert!(
+        painted > 1,
+        "degenerate segment rendered only {painted} pixel"
+    );
+}
+
+#[test]
+fn nearly_equal_path_endpoints_render_as_visible_disk() {
+    let capture = StageCapture {
+        stage_id: "Layer::Support".to_string(),
+        layer_index: 0,
+        layer_z: 0.0,
+        ir: CapturedIr::SupportGeometry {
+            geometry: SupportGeometryIR::default(),
+            plan: SupportPlanIR {
+                schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                entries: vec![SupportPlanEntry {
+                    global_layer_index: 0,
+                    object_id: "obj-0".to_string(),
+                    region_id: 0,
+                    branch_segments: vec![ExtrusionPath3D {
+                        points: vec![point3(3.0, 9.808), point3(3.0 + 1e-9, 9.808)],
+                        role: ExtrusionRole::SupportMaterial,
+                        speed_factor: 1.0,
+                    }],
+                }],
+                raft_plan: None,
+            },
+        },
+    };
+    let bounds = compute_viewport_bounds(std::slice::from_ref(&capture));
+    let rendered = render_stage_capture(
+        &capture,
+        RenderView::Geometry(GeometryView::FilamentLines),
+        1,
+        bounds,
+    )
+    .expect("nearly degenerate support branch should render");
+    let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
+    let painted = rgb
+        .chunks_exact(3)
+        .filter(|pixel| *pixel != BACKGROUND)
+        .count();
+    assert!(
+        painted > 1,
+        "nearly degenerate branch rendered only {painted} pixel"
+    );
+}
+
 /// `RegionMapping` join half (packet 161, Step 6's scope): a `RegionMapIR`
 /// entry keyed `(global_layer_index: 0, object_id: "obj-0", region_id: 7,
 /// variant_chain: [])` joined against a `SliceIR` carrying that exact

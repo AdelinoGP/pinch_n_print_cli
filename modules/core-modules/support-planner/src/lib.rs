@@ -33,8 +33,8 @@
 //!   `mm_to_top = dist_to_top * effective_layer_height`,
 //!   `raw = if mm_to_top <= branch_radius { mm_to_top }
 //!          else { branch_radius + (mm_to_top - branch_radius) * tan(diameter_angle) }`,
-//!   then `radius = clamp(raw, 0.0, MAX_BRANCH_RADIUS_MM = 6.0)`. The top of the column
-//!   tapers to a point (`mm_to_top = 0 → 0.0`).
+//!   then `radius = clamp(raw, MIN_BRANCH_RADIUS = 0.4, MAX_BRANCH_RADIUS_MM = 6.0)`.
+//!   The top of the column tapers to the minimum branch radius (`mm_to_top = 0 → 0.4`).
 //! - **Wall-count scaling**: `max_move_distance = tan(angle) * height *
 //!   wall_count.max(1)`.
 //! - **dist_to_top tracking**: `u32` counter on each `PlannedSupportNode`
@@ -63,6 +63,7 @@ const OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 /// Hard upper clamp on branch radius in mm. Matches OrcaSlicer's
 /// `TreeSupportData::max_radius` hard upper bound (6.0 mm).
 const MAX_BRANCH_RADIUS_MM: f32 = 6.0;
+const MIN_BRANCH_RADIUS: f32 = 0.4;
 
 /// Multi-layer organic tree-support planner.
 #[allow(dead_code)]
@@ -603,10 +604,13 @@ impl SupportPlanner {
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
             let mut origin_contacts_emitted = vec![false; active_nodes.len()];
+            let mut mst_emitted = vec![false; active_nodes.len()];
             for (a_idx, b_idx, _) in &mst_edges {
                 if drop[*a_idx] || drop[*b_idx] {
                     continue;
                 }
+                mst_emitted[*a_idx] = true;
+                mst_emitted[*b_idx] = true;
                 let na = &active_nodes[*a_idx];
                 let nb = &active_nodes[*b_idx];
 
@@ -670,12 +674,7 @@ impl SupportPlanner {
                 if node.dist_to_top != 0 || origin_contacts_emitted[i] {
                     continue;
                 }
-                let width = tapered_radius(
-                    branch_radius,
-                    tan_diameter_angle,
-                    node.dist_to_top,
-                    effective_height,
-                ) * 2.0;
+                let width = 0.0;
                 // Origin contacts are the support tips required to reach the
                 // overhang centroid. They may intentionally lie in model
                 // collision geometry; propagated nodes remain guarded below.
@@ -691,6 +690,38 @@ impl SupportPlanner {
                     overhang_distance_mm: None,
                 };
                 branch_segments.push(vec![point, point]);
+            }
+
+            // A surviving lone propagated node (dist_to_top > 0) with no surviving
+            // MST edge still reaches the buildplate and must be emitted as a
+            // degenerate current-layer segment (OrcaSlicer draw_circles parity).
+            for (i, node) in active_nodes.iter().enumerate() {
+                if drop[i] || mst_emitted[i] || node.dist_to_top == 0 {
+                    continue;
+                }
+                if node.dist_to_top > 0 {
+                    if point_in_any_expoly(collision_polys, node.x, node.y) {
+                        continue;
+                    }
+                    let width = tapered_radius(
+                        branch_radius,
+                        tan_diameter_angle,
+                        node.dist_to_top,
+                        effective_height,
+                    ) * 2.0;
+                    let dist_mm = node.dist_to_top as f32 * effective_height;
+                    let point = Point3WithWidth {
+                        x: node.x,
+                        y: node.y,
+                        z: z_current,
+                        width,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: dist_mm,
+                        overhang_distance_mm: None,
+                    };
+                    branch_segments.push(vec![point, point]);
+                }
             }
 
             // Top-interface densification (Step 6 AC-4):
@@ -1294,7 +1325,7 @@ pub fn aggregate_neighbour_targets(
 ///   to `branch_radius` at the cone base).
 /// - Otherwise: radius = branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
 ///   (continue the same slope above the cone).
-///   Clamped to `[0, MAX_BRANCH_RADIUS_MM]`.
+///   Clamped to `[MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM]`.
 pub fn tapered_radius(
     branch_radius: f32,
     tan_diameter_angle: f32,
@@ -1307,7 +1338,7 @@ pub fn tapered_radius(
     } else {
         branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
     };
-    raw.clamp(0.0, MAX_BRANCH_RADIUS_MM)
+    raw.clamp(MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM)
 }
 
 /// Clamp a point into the union of avoidance polygons.
@@ -1817,7 +1848,7 @@ mod tests {
     }
 
     #[test]
-    fn tapered_radius_at_tip_is_zero() {
+    fn tapered_radius_at_tip_is_floored_at_min_branch_radius() {
         let branch_radius = 2.5_f32;
         let tan_diameter_angle = (5.0_f32).to_radians().tan();
         let dist_to_top = 0_u32;
@@ -1829,8 +1860,8 @@ mod tests {
             effective_layer_height,
         );
         assert!(
-            (result - 0.0).abs() < 1e-6,
-            "tapered_radius at tip (dist_to_top=0) must be 0.0; got {result}"
+            (result - MIN_BRANCH_RADIUS).abs() < 1e-6,
+            "tapered_radius at tip (dist_to_top=0) must use the 0.4 floor; got {result}"
         );
     }
 

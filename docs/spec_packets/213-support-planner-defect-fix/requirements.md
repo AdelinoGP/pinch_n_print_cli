@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-322`
+- Grouped task IDs: `TASK-329`
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`

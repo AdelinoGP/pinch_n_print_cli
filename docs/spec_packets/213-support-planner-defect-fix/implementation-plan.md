@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-- Work one atomic step at a time; map every step to `TASK-322`.
+- Work one atomic step at a time; map every step to `TASK-329`.
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled independently.
 
@@ -10,7 +10,7 @@
 
 ### Step 1: Lock focused planner regression coverage
 
-- Task IDs: `TASK-322`
+- Task IDs: `TASK-329`
 - Objective: add or extend focused assertions for lone-node emission and the radius floor.
 - Precondition: current node and helper shapes are confirmed in the bounded source ranges.
 - Postcondition: tests assert a lone propagated node produces a degenerate segment and `tapered_radius` returns at least `0.4` at the tip.
@@ -34,7 +34,7 @@
 
 ### Step 2: Implement lone-node continuation and minimum radius
 
-- Task IDs: `TASK-322`
+- Task IDs: `TASK-329`
 - Objective: update `plan_for_object` and `tapered_radius` without changing propagation, merge, collision, or MST behavior.
 - Precondition: Step 1 regression assertions exist and fail for the current implementation.
 - Postcondition: all surviving lone propagated nodes emit degenerate current-layer segments; radius clamp is `[MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM]`.
@@ -58,7 +58,7 @@
 
 ### Step 3: Prove guest and visual behavior
 
-- Task IDs: `TASK-322`
+- Task IDs: `TASK-329`
 - Objective: prove branch geometry reaches lower layers and contact geometry is renderable.
 - Precondition: Step 2 passes and guest artifacts are fresh.
 - Postcondition: the visual-debug manifest exists under `target/vd-tree-fixed` and requested planner/consumer layers are captured for inspection.
@@ -80,6 +80,18 @@
   - `cargo run -q -p pnp-cli --bin pnp_cli -- visual-debug --request tmp/visual-debug-tree-fixed.json --output target/vd-tree-fixed --overwrite` - FACT manifest plus bounded evidence for planner and consumer taps at layers `0/50/100/125`
 - Exit condition: delegated visual inspection confirms planner geometry at layers `100/50/0` and no zero-width filled-area failure at the contact.
 
+### Step 4: Render degenerate branch segments as visible disks
+
+- Task IDs: TASK-329
+- Objective: make lone-node degenerate branch_segments render as visible geometry in `filament_lines` instead of a single pixel.
+- Precondition: Step 2 (planner fix) is in place; visual-debug currently produces single-pixel marks at l0/l50.
+- Postcondition: `filament_lines` detects equal-endpoint 2-point branch_segments and renders a width-derived disk at the endpoint.
+- Files allowed to read: `crates/slicer-runtime/src/visual_debug_render.rs` (lines 700-720, 1059-1121, 1800-1840 specifically); `crates/slicer-sdk/src/prepass_types.rs` (Point3WithWidth shape).
+- Files allowed to edit: `crates/slicer-runtime/src/visual_debug_render.rs` (renderer); the renderer test file (locate via rg) for regression assertions.
+- Verification: a unit test asserts that a degenerate 2-point path with non-zero width renders more than one pixel OR draws a disk shape; AND the strengthened AC-2 command passes against regenerated visual-debug output.
+- Exit condition: Layer::Support PNGs at l0 and l50 show non-trivial geometry (visually inspectable), and the strengthened AC-2 verification command returns PASS.
+- Context cost: M
+
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
@@ -87,6 +99,7 @@
 | Step 1 | S | focused test harness |
 | Step 2 | S | one implementation file |
 | Step 3 | M | visual-debug evidence |
+| Step 4 | M | renderer-side degenerate segment visualization |
 
 ## Packet Completion Gate
 

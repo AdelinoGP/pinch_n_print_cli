@@ -52,11 +52,11 @@ fn radius_tapers_with_distance_to_top() {
     let tan_diameter_angle = diameter_angle_deg.to_radians().tan();
     let layer_height = 0.2_f32; // mm per layer
 
-    // Top layer: dist_to_top = 0 → radius should be 0.0 (tip-cone starts at zero)
+    // Top layer: dist_to_top = 0 → radius is floored at MIN_BRANCH_RADIUS = 0.4 per packet 213.
     let radius_top = tapered_radius(branch_radius, tan_diameter_angle, 0, layer_height);
     assert!(
-        (radius_top - 0.0).abs() < 1e-6,
-        "radius at dist_to_top=0 must be 0.0 (tip-cone); got {radius_top}"
+        (radius_top - 0.4).abs() < 1e-6,
+        "radius at dist_to_top=0 must be 0.4 (minimum floor); got {radius_top}"
     );
 
     // 10 layers down: dist_to_top = 10
@@ -76,12 +76,29 @@ fn radius_tapers_with_distance_to_top() {
         "radius_10={radius_10} must match expected={expected_radius_10} (mm_to_top inside tip-cone)"
     );
 
-    // Width = 2 * radius. Bottom width should be > top width (top is 0).
+    // Width = 2 * radius. Bottom width should be > top width (tip floored at 0.4).
     let width_top = 2.0 * radius_top;
     let width_10 = 2.0 * radius_10;
     assert!(
         width_10 > width_top,
         "AC-2: bottom_width={width_10} must exceed top_width={width_top}"
+    );
+}
+
+// RC-4 zero tip width: the tapered radius must retain the minimum branch floor.
+#[test]
+fn tapered_radius_at_tip_respects_minimum_floor() {
+    let branch_radius = 2.5_f32;
+    let tan_diameter_angle = 10.0_f32.to_radians().tan();
+    let effective_layer_height = 0.2_f32;
+
+    let radius = tapered_radius(branch_radius, tan_diameter_angle, 0, effective_layer_height);
+
+    // MIN_BRANCH_RADIUS is introduced by the production fix; keep this RED
+    // test independent of that not-yet-existing constant.
+    assert!(
+        radius >= 0.4,
+        "tip radius must be at least the 0.4mm minimum branch radius; got {radius}"
     );
 }
 
@@ -528,6 +545,55 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
     );
 }
 
+// RC-1 lone-node column mid-air: a propagated node must still emit its segment.
+#[test]
+fn lone_node_emits_degenerate_segment_on_propagated_layers() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = single_contact_fixture("lone-node");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("lone-node", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .expect("run_support_geometry");
+
+    let entries = output.entries();
+    let contact_layer = entries
+        .iter()
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("expected a contact-layer output entry");
+    let propagated_segments: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.global_layer_index < contact_layer)
+        .flat_map(|entry| entry.branch_segments.iter())
+        .filter(|segment| segment.len() == 2)
+        .collect();
+
+    assert!(
+        propagated_segments.iter().any(|segment| {
+            let first = &segment[0];
+            let second = &segment[1];
+            first.x == second.x && first.y == second.y && first.z == second.z
+        }),
+        "a lone propagated node must emit a degenerate two-point segment below the contact layer"
+    );
+}
+
 // ── Test fixtures ──────────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -587,6 +653,25 @@ fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
         [0.0, 4.0, 1.8],
     ];
     let triangles = vec![[1, 3, 2], [1, 4, 3]];
+    MeshObjectView {
+        object_id: object_id.to_string(),
+        vertices,
+        triangles,
+        paint_layers: vec![],
+    }
+}
+
+/// Build the same floating plate as `overhang_plate_fixture`, but with one
+/// downward-facing triangle so its contact propagates as a lone node.
+fn single_contact_fixture(object_id: &str) -> MeshObjectView {
+    let vertices = vec![
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.8],
+        [4.0, 0.0, 1.8],
+        [4.0, 4.0, 1.8],
+        [0.0, 4.0, 1.8],
+    ];
+    let triangles = vec![[1, 3, 2]];
     MeshObjectView {
         object_id: object_id.to_string(),
         vertices,
