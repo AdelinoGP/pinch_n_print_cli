@@ -6,6 +6,8 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
+use std::collections::HashMap;
+
 use slicer_sdk::builders::{InfillOutputBuilder, PerimeterOutputBuilder, SupportOutputBuilder};
 use slicer_sdk::native::{
     NativeFinalizationRequest, NativeFinalizationResponse, NativeLayerRequest, NativeLayerResponse,
@@ -112,6 +114,7 @@ pub fn build_native_layer_request(
     layer_index: u32,
     input: &LayerStageInput<'_>,
     module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
 ) -> NativeLayerRequest {
     // Completeness mirror (the wasm leg is `sliced_region_to_data`):
     // | SDK field                 | IR source                         | wasm backer       |
@@ -130,7 +133,7 @@ pub fn build_native_layer_request(
     // | bridge_areas              | SlicedRegion.bridge_areas           | bridge-areas      |
     // | bridge_orientation_deg    | SlicedRegion.bridge_orientation_deg | bridge-orientation|
     // | sparse_infill_area        | SlicedRegion.sparse_infill_area     | sparse-infill-area|
-    // | held_claims               | CompiledModuleLive.claims           | held-claims       |
+    // | held_claims               | resolved per-region fill holder     | held-claims       |
     // | z                         | SliceIR.z                           | z                 |
     let regions = input
         .slice
@@ -157,7 +160,12 @@ pub fn build_native_layer_request(
                     view.set_bridge_orientation_deg(region.bridge_orientation_deg);
                     view.set_sparse_infill_area(region.sparse_infill_area.clone());
                     view.set_variant_chain(region.variant_chain.clone());
-                    view.set_held_claims(module.claims.to_vec());
+                    view.set_held_claims(
+                        held_claims_map
+                            .get(&(region.object_id.clone(), region.region_id.to_string()))
+                            .cloned()
+                            .unwrap_or_default(),
+                    );
                     view.set_config((*module.config_view).clone());
                     view
                 })

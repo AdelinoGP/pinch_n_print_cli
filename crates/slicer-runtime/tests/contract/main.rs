@@ -51,6 +51,7 @@ mod macro_postpass_text_roundtrip_tdd;
 mod modifier_split_subregion_density_tdd;
 mod native_adapter_tdd;
 mod native_dispatch_parity_seam_tdd;
+mod native_infill_claim_resolution_tdd;
 mod only_one_wall_first_layer_tdd;
 mod only_one_wall_top_tdd;
 mod overhang_areas_empty_until_p106_tdd;
