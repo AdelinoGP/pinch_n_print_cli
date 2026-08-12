@@ -124,6 +124,29 @@ this form; in an edition without a WASM runtime, external modules are skipped
 loudly rather than loaded.
 _Avoid_: loose module, user module (when provenance rather than authorship is meant)
 
+### Community module
+An **external module** authored by a non-core party and distributed as a git
+**submodule** into a **fork** of Pinch 'n Print. A temporary, pre-SDK workflow:
+while the SDK is not yet consumable as a dependency, a community module ships in
+its own repo, is pinned into a fork, and re-declares the WIT types it needs. A
+provenance + distribution term, not a capability term — capability-wise it is
+exactly an external module. Community modules are referenced by full id
+(`com.<owner>.<name>`; `com.core.` is reserved). Real community modules are
+never added to this repository; the committed Dragon Curve module is a labeled
+example only.
+_Avoid_: user module (when authorship rather than provenance is meant)
+
+### Authored coloring
+Per-path tool control granted to a module over the output of a fill role it
+holds. Granted only by the intersection of two consents: the module **discloses**
+the capability via a `claim:authored-coloring` claim in its manifest, and the
+config author lists the fill-role claim (e.g. `claim:sparse-fill`) in the
+`fill_authored_coloring` setting (overridable per region). A granted module emits
+a per-path `tool-index` (`Some`) on `extrusion-path3d`; the host honors it as an
+override of the region-resolved tool. Absent either consent, the host strips any
+ungranted `Some` and colors per region as usual.
+_Avoid_: self-coloring, module coloring, tiled coloring
+
 ### Edition
 The identity of a shipped artifact set, naming which core modules are
 **integrated** and which ship **external**: Developer (all external — today's

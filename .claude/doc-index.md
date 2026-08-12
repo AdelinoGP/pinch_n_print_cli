@@ -20,6 +20,7 @@ Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glo
 - `docs/11_operational_governance_and_acceptance_gate.md` — Architecture Acceptance Gate criteria and release governance.
 - `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
 - `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.
+- `docs/14_submodule_programming_languages.md` — which module-authoring languages wit-bindgen supports and what PnP's stage contracts require of a guest (Rust today; Go/MoonBit probes). Probe records: `docs/feasibility-probes/`.
 - `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
 - `docs/16_slicer_report.md` — HTML slicer report format, allocator contract, known v1 limitations.
 - `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.
