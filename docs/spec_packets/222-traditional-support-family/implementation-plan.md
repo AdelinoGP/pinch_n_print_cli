@@ -75,9 +75,9 @@
 - Precondition: Step 4's runtime fixture exists and the real aggregator remains `crates/slicer-runtime/tests/integration/main.rs`.
 - Postcondition: `cargo test -p slicer-runtime --test integration` builds the single aggregator binary and includes `traditional_support_family`.
 - Files allowed to read: `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/Cargo.toml`.
-- Files allowed to edit (at most 2): `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/Cargo.toml`.
+- Files allowed to edit (at most 2): `crates/slicer-runtime/tests/integration/main.rs`.
 - Files explicitly out of bounds: mixed-family routing, packet 213, status ledger.
-- Expected dispatch: add `mod traditional_support_family;` beside the existing integration submodules and add `[[test]] name = "integration" path = "tests/integration/main.rs"` to the runtime manifest; return `LOCATIONS`.
+- Expected dispatch: add `mod traditional_support_family;` beside the existing integration submodules; the `integration` Cargo target is already registered by TASK-330 (packet 219 Step 0) — confirm it exists, do not re-add; return `LOCATIONS`.
 - Context cost: `S`
 - Authoritative docs: `crates/slicer-runtime/tests/integration/main.rs` aggregator and `crates/slicer-runtime/Cargo.toml` target declarations.
 - OrcaSlicer refs: none.

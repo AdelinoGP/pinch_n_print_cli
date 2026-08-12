@@ -75,12 +75,12 @@
 - Precondition: Step 4 rejection behavior is covered by the planner and renderer tests.
 - Postcondition: `cargo test -p slicer-runtime --test integration` discovers `tree_support_family` through the real aggregator.
 - Files allowed to read: `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/Cargo.toml`; existing runtime integration helpers.
-- Files allowed to edit (at most 3): `crates/slicer-runtime/Cargo.toml`; `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/tests/integration/tree_support_family.rs`.
+- Files allowed to edit (at most 3): `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/tests/integration/tree_support_family.rs`.
 - Files explicitly out of bounds: mixed-family routing, packet 213, status ledger.
 - Expected dispatch: preserve the aggregator's submodule pattern and add `mod tree_support_family;`; return `LOCATIONS`.
 - Context cost: `S`
 - Verification: `cargo test -p slicer-runtime --test integration`
-- Test-target wiring: add `[[test]] name = "integration" path = "tests/integration/main.rs"` in `crates/slicer-runtime/Cargo.toml` and mount `tree_support_family` in the aggregator.
+- Test-target wiring: confirm the `integration` Cargo target registered by TASK-330 (packet 219 Step 0) exists and mount `tree_support_family` in the aggregator.
 - Exit condition: the planned runtime test is registered in the existing aggregator and the `integration` Cargo target is explicit.
 
 ## Per-Step Budget Roll-Up

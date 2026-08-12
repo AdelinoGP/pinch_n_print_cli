@@ -12,7 +12,7 @@
 - Precondition: `tmp/SupportTest.stl`, `tmp/SupportTest_Tree_Orca.gcode`, `tmp/SupportTest_Normal_Orca.gcode`, `target/vd-orca-tree-compare`, and `target/vd-orca-normal-compare` exist.
 - Postcondition: the primary fixture-driven closure path is runnable and the request covers both families plus analysis/routing taps.
 - Files allowed to read, with ranges when over 300 lines: `tmp/**`; `crates/slicer-runtime/Cargo.toml`; integration aggregator.
-- Files allowed to edit (at most 3): `crates/slicer-runtime/Cargo.toml`; `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/tests/integration/support_family_closure.rs`. Register `[[test]] name = "integration" path = "tests/integration/main.rs"`, its integration `mod`, and the closure tests in this single step.
+- Files allowed to edit (at most 3): `crates/slicer-runtime/tests/integration/main.rs`; `crates/slicer-runtime/tests/integration/support_family_closure.rs`; `crates/slicer-runtime/Cargo.toml` (read-only confirmation only — the `integration` target is registered by TASK-330 packet 219 Step 0). Register the closure `mod` in the aggregator and the closure tests in this single step.
 - Files explicitly out of bounds: Orca source, target, family implementations.
 - Expected sub-agent dispatches: Question: verify/provide fixture provenance; scope: `tmp/**`; return: `FACT`.
 - Context cost: `S`

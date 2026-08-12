@@ -58,10 +58,10 @@ Files to inspect for this packet:
 | `cargo test -p slicer-wasm-host --test contract support_plan_structural_contract -- --exact` | Universal plan fields and no toolpaths | FACT pass/fail; bounded failure SNIPPETS |
 | `cargo test -p slicer-scheduler --test scheduler_integration support_family_selection -- --exact` | Atomic family selection and alias mapping | FACT pass/fail |
 | `cargo test -p slicer-scheduler --test scheduler_integration support_family_pairing_rejected -- --exact` | Fatal mismatch enforcement | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration structured_support_identity -- --exact` | Identity through anchored execution and G-code handoff; the target is added in the plan | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration structured_support_identity -- --exact` | Identity through anchored execution and G-code handoff; the target is registered by TASK-330 | FACT pass/fail |
 | `cargo test -p slicer-wasm-host --test contract support_plan_validation -- --exact` | Complete-body validation and degraded unmet diagnostics | FACT pass/fail |
 | `cargo test -p slicer-wasm-host --test contract support_decline_contract -- --exact` | Decline reasons and no fallback filler | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration support_disabled_no_output -- --exact` | Disabled-support suppression; the target is added in the plan | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration support_disabled_no_output -- --exact` | Disabled-support suppression; the target is registered by TASK-330 | FACT pass/fail |
 | `cargo check --workspace --all-targets` | IR/WIT/macro blast radius | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Workspace lint | FACT pass/fail |
 

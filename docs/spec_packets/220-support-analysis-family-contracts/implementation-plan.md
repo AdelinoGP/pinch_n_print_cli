@@ -83,7 +83,7 @@
    - `crates/slicer-ir/src/slice_ir.rs`
    - `crates/slicer-wasm-host/src/marshal/out.rs`
    - `crates/slicer-runtime/src/layer_executor.rs`
-- Runtime test-target/registration sub-step (at most 3 files): add `[[test]] name = "integration"` with `path = "tests/integration/main.rs"` to `crates/slicer-runtime/Cargo.toml`, add `crates/slicer-runtime/tests/integration/structured_support_identity.rs`, and register `mod structured_support_identity;` in `crates/slicer-runtime/tests/integration/main.rs`; these are the exact target, module, and aggregator driven by AC-4.
+- Runtime test-target/registration sub-step (at most 3 files): confirm the `integration` Cargo target registered by TASK-330 (packet 219 Step 0) exists, add `crates/slicer-runtime/tests/integration/structured_support_identity.rs`, and register `mod structured_support_identity;` in `crates/slicer-runtime/tests/integration/main.rs`; these are the exact target, module, and aggregator driven by AC-4.
 - Files explicitly out of bounds:
   - support algorithm implementations, scheduler claim selection, generated WIT, packet 213
 - Blast-radius discipline: every `SupportIR` literal and flat-path assertion is in this step's edit inventory; preserve raft/ironing role handling explicitly.

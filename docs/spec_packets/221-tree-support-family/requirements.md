@@ -65,7 +65,7 @@ AC-1..AC-6 cover distributed planning, collision-safe structural geometry, termi
 | Distributed contacts and tree geometry | planner test | `cargo test -p tree-support-planner --test tree_family_tdd distributed_contacts -- --exact` |
 | Radius-aware collision and termination | planner test | `cargo test -p tree-support-planner --test tree_family_tdd radius_aware_collision -- --exact` |
 | Renderer identity and polygon construction | renderer test | `cargo test -p tree-support --test tree_family_tdd polygon_renderer_identity -- --exact` |
-| Family manifest selection | bounded grep | `rg -q 'support-family:tree' modules/core-modules/tree-support` |
+| Family manifest selection | bounded grep | `rg -q 'support-family:tree' modules/core-modules/tree-support/tree-support.toml && rg -q 'support-family:tree' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q 'support-generator' modules/core-modules/tree-support/tree-support.toml && rg -q 'support-planner' modules/core-modules/tree-support-planner/tree-support-planner.toml` |
 | Rejection and no fallback | planner/renderer tests | `cargo test -p tree-support-planner --test tree_family_tdd invalid_body_rejected -- --exact` |
 
 ## Doc Impact Statement

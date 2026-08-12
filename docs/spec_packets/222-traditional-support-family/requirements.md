@@ -14,7 +14,7 @@ The live traditional renderer is `Layer::Support` but writes `SupportIR` without
 - Detect contact areas across model layers, propagate base geometry downward, create top/bottom interfaces, avoid obstacles, and select model/plate termination surfaces.
 - Emit universal structural `SupportPlanIR` roles, identities, anchored support heights, provenance, and decline records.
 - Make `traditional-support` require traditional plan entries and scan-fill only their semantic polygons into structured `SupportIR`.
-- Implement and test `support_interface_layers`, `support_base_pattern`, contact/interface spacing, `support_top_z_distance_mm`, `support_layer_height_mm`, and relevant support filament/contact settings already exposed by the resolved config.
+- Implement and test `support_interface_top_layers`, `support_interface_bottom_layers`, contact/interface spacing, `support_top_z_distance_mm`, `support_layer_height_mm`, and relevant support filament/contact settings already exposed by the resolved config; add `support_base_pattern` (Orca `PrintConfig.cpp:6867` parity) as a new traditional-family config key owned by the `traditional-support-planner` manifest.
 
 ## Out of Scope
 - TASK-331 exact-Z seam/schema decision, tree family, mixed-family routing, final Orca closure, and raft scheduling.
@@ -71,11 +71,11 @@ AC-1..AC-6 cover contact/base/interface/obstacle planning, termination, anchored
 | Cross-layer contacts and base/interface propagation | planner test | `cargo test -p traditional-support-planner --test traditional_family_tdd contact_area_planning -- --exact` |
 | Obstacle-safe termination | planner test | `cargo test -p traditional-support-planner --test traditional_family_tdd base_interface_obstacle -- --exact` |
 | Planned polygon-only rendering | renderer test | `cargo test -p traditional-support --test traditional_family_tdd planned_polygon_renderer -- --exact` |
-| Family manifest selection | bounded grep | `rg -q 'support-family:traditional' modules/core-modules/traditional-support` |
+| Family manifest selection | bounded grep | `rg -q 'support-family:traditional' modules/core-modules/traditional-support/traditional-support.toml && rg -q 'support-family:traditional' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support-generator' modules/core-modules/traditional-support/traditional-support.toml && rg -q 'support-planner' modules/core-modules/traditional-support-planner/traditional-support-planner.toml` |
 | Invalid/missing plan rejection | planner/renderer tests | `cargo test -p traditional-support --test traditional_family_tdd mismatched_or_missing_plan -- --exact` |
 
 ## Doc Impact Statement
 - `docs/02_ir_schemas.md` traditional family role section - `rg -q 'traditional-support-planner' docs/02_ir_schemas.md`
 - `docs/03_wit_and_manifest.md` family claims section - `rg -q 'support-family:traditional' docs/03_wit_and_manifest.md`
 - `docs/04_host_scheduler.md` traditional dispatch section - `rg -q 'traditional-support-planner' docs/04_host_scheduler.md`
-- `docs/15_config_keys_reference.md` traditional support key ownership - `rg -q 'support_interface_layers' docs/15_config_keys_reference.md`
+- `docs/15_config_keys_reference.md` traditional support key ownership - `rg -q 'support_base_pattern' docs/15_config_keys_reference.md`

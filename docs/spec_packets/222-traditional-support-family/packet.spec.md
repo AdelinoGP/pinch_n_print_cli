@@ -23,10 +23,10 @@ This packet owns the traditional family planner, renderer, manifests, traditiona
 
 ## Acceptance Criteria
 - **AC-1. Given** overhang candidates assigned to `traditional`, **when** `traditional-support-planner` runs, **then** `SupportPlanIR` contains stable `family_id=traditional`, demand/body IDs, and contact-area body/interface roles derived across layers rather than a per-layer filler. | `cargo test -p traditional-support-planner --test traditional_family_tdd contact_area_planning -- --exact`
-- **AC-2. Given** accepted traditional contacts, **when** downward planning runs, **then** base polygons propagate through eligible layers, interface polygons honor `support_interface_layers` and `support_base_pattern`, and obstacles are excluded using exact-Z occupancy. | `cargo test -p traditional-support-planner --test traditional_family_tdd base_interface_obstacle -- --exact`
+- **AC-2. Given** accepted traditional contacts, **when** downward planning runs, **then** base polygons propagate through eligible layers, interface polygons honor `support_interface_top_layers`/`support_interface_bottom_layers` and the `support_base_pattern` key added by this packet, and obstacles are excluded using exact-Z occupancy. | `cargo test -p traditional-support-planner --test traditional_family_tdd base_interface_obstacle -- --exact`
 - **AC-3. Given** a reachable traditional demand, **when** planning completes, **then** structural body/interface entries preserve all demand IDs and connect to an eligible plate/model termination with anchored support Z/heights. | `cargo test -p traditional-support-planner --test traditional_family_tdd anchored_termination -- --exact`
 - **AC-4. Given** validated traditional plan entries, **when** `traditional-support` renders `Layer::Support`, **then** it scan-fills only planned body/interface polygons into attributed `SupportIR` and never reads `region.polygons()` or independently derives eligibility. | `cargo test -p traditional-support --test traditional_family_tdd planned_polygon_renderer -- --exact`
-- **AC-5. Given** `support_type` is `normal*` or `classic*`, **when** family selection runs, **then** the matching `support-family:traditional` planner and renderer are selected atomically and manifests retain `support-planner`/`support-generator` role claims. | `rg -q 'support-family:traditional' modules/core-modules/traditional-support modules/core-modules/traditional-support-planner 2>/dev/null || rg -q 'support-family:traditional' modules/core-modules/traditional-support`
+- **AC-5. Given** `support_type` is `normal*` or `classic*`, **when** family selection runs, **then** the matching `support-family:traditional` planner and renderer are selected atomically and manifests retain `support-planner`/`support-generator` role claims. | `rg -q 'support-family:traditional' modules/core-modules/traditional-support/traditional-support.toml && rg -q 'support-family:traditional' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support-generator' modules/core-modules/traditional-support/traditional-support.toml && rg -q 'support-planner' modules/core-modules/traditional-support-planner/traditional-support-planner.toml`
 - **AC-6. Given** support is disabled or a candidate is declined, **when** the traditional family executes, **then** it emits no body, anchored event, or fallback filler and records a structured decline reason. | `cargo test -p traditional-support-planner --test traditional_family_tdd disabled_and_declined -- --exact`
 
 ## Negative Test Cases
@@ -69,7 +69,7 @@ Files to inspect for this packet:
 - `docs/02_ir_schemas.md` traditional family role section - `rg -q 'traditional-support-planner' docs/02_ir_schemas.md`
 - `docs/03_wit_and_manifest.md` family claims section - `rg -q 'support-family:traditional' docs/03_wit_and_manifest.md`
 - `docs/04_host_scheduler.md` traditional dispatch section - `rg -q 'traditional-support-planner' docs/04_host_scheduler.md`
-- `docs/15_config_keys_reference.md` traditional support key ownership - `rg -q 'support_interface_layers' docs/15_config_keys_reference.md`
+- `docs/15_config_keys_reference.md` traditional support key ownership - `rg -q 'support_base_pattern' docs/15_config_keys_reference.md`
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

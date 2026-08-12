@@ -9,7 +9,7 @@
 
 ## Problem Statement
 
-The live tree models `GlobalLayer` as an unsigned-index worker and `LayerCollectionIR` as one flat per-layer output (`crates/slicer-ir/src/slice_ir.rs:1013-1026`, `2323-2349`). The approved plan requires work below, at, and above a model event while retaining global-layer barriers. Existing `Layer::PathOptimization` and staged commit seams must be generalized rather than introducing a second scheduler.
+The live tree models `GlobalLayer` as an unsigned-index worker and `LayerCollectionIR` as one flat per-layer output (`crates/slicer-ir/src/slice_ir.rs:1015-1026`, `2323-2349`). The approved plan requires work below, at, and above a model event while retaining global-layer barriers. Existing `Layer::PathOptimization` and staged commit seams must be generalized rather than introducing a second scheduler.
 
 ## In Scope
 
