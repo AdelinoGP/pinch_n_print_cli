@@ -175,6 +175,22 @@ One authoritative horizontal slicing plane spanning the whole build and shared
 by every object. The canonical Z list against which all per-object layers are
 aligned.
 
+### Sublayer
+An ordered execution subdivision anchored to a global layer that does not create a model slice at its own Z; the anchor determines when it prints, not the sublayer's permitted physical Z.
+_Avoid_: Intermediate layer, non-planar layer
+
+### Print event
+One entry in the authoritative physical execution timeline, identified independently of its sorted position and carrying the capabilities available at its print height.
+_Avoid_: Layer (when no model slice exists), layer event
+
+### Anchored entity
+A printable work item assigned to one global layer for execution ordering while declaring its own planar Z or continuous Z span and applicable pipeline capabilities.
+_Avoid_: Global layer, sublayer
+
+### Z-spanning print entity
+A continuous printable entity anchored to one global layer whose points cross more than one global-layer height interval and which remains atomic to preserve continuity.
+_Avoid_: Sublayer, non-planar layer
+
 ### Object-local layer
 A layer counted relative to a single object, independent of where that object
 sits in the global Z list. Each maps deterministically onto a **global layer**.
@@ -200,6 +216,38 @@ narrowing or replacing what the object-level config would otherwise specify.
 An exclusive capability slot (e.g. generating infill) that exactly one module
 holds for a given layer/object/region. Prevents two modules from contending for
 the same job.
+
+### Support family
+A matched support strategy planner and support layer renderer that together implement one support mechanism and are selected as a unit.
+_Avoid_: Support generator (when referring to only one half of the family)
+
+### Support candidate
+A host-identified unsupported or explicitly enforced surface region that an assigned support family evaluates for support contact.
+_Avoid_: Support body, support volume
+
+### Support demand
+A support candidate accepted by its assigned support family as requiring contact from a support body.
+_Avoid_: Required support body, support candidate
+
+### Feasible support envelope
+The per-layer baseline space within which a support strategy may consider placing material after shared hard constraints are applied; a strategy must tighten it for its own geometry and clearance rules.
+_Avoid_: Support body, collision polygons
+
+### Support body
+A connected structural region selected by a support strategy to carry one or more support demands toward eligible termination surfaces.
+_Avoid_: Feasible support envelope, support demand
+
+### Support routing cell
+A host-assigned portion of feasible support space that one support family may use to route bodies for an attributed demand group.
+_Avoid_: Model region, support body
+
+### Support strategy planner
+The cross-layer half of a support family that converts shared support analysis into immutable per-layer strategy geometry before layer execution begins.
+_Avoid_: Support generator, support filler
+
+### Support layer renderer
+The layer-independent half of a support family that converts its strategy geometry into printable support paths for one layer.
+_Avoid_: Support planner, support generator
 
 ### Degraded success
 A slice that finishes despite one or more non-fatal module failures. The result

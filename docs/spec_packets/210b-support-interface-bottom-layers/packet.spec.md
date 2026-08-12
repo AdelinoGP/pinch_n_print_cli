@@ -1,5 +1,5 @@
 ---
-status: draft
+status: superseded
 packet: 210b-support-interface-bottom-layers
 task_ids:
   - TASK-327
@@ -7,9 +7,13 @@ backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 depends_on: 210a-support-planner-coord-t (must be IMPLEMENTED and merged, not merely generated)
 split_from: 210-support-planner-coord-t (the 210+211 merge)
+superseded_by: 220-support-analysis-family-contracts (bottom-interface as a standard role in structural SupportPlanIR) + 221-tree-support-family + 222-traditional-support-family (family planners emit interface polygons)
+superseded_on: 2026-08-12
 ---
 
 # Packet Contract: 210b-support-interface-bottom-layers
+
+> **SUPERSEDED 2026-08-12 by the support-families and anchored-entities sequence** (`docs/specs/support-families-anchored-entities-plan.md`). DEV-129's bottom-interface (floor) bands become a standard semantic role in the structural `SupportPlanIR` (packet 220), and both family planners (packets 221/222) emit interface polygons; the code-1003 stub is retired by the family-contract migration rather than by a post-pass over the old `SupportPlanEntry` rows. Directory retained intact for provenance; do not implement as-is.
 
 ## Goal
 

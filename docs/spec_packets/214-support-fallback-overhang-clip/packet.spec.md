@@ -1,13 +1,17 @@
 ---
-status: draft
+status: superseded
 packet: 214-support-fallback-overhang-clip
 task_ids:
   - TASK-323
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
+superseded_by: 220-support-analysis-family-contracts + 222-traditional-support-family (fallback fillers removed; traditional family planner replaces clipping `region.overhang_areas()` inside a per-layer filler)
+superseded_on: 2026-08-12
 ---
 
 # Packet Contract: 214-support-fallback-overhang-clip
+
+> **SUPERSEDED 2026-08-12 by the support-families and anchored-entities sequence** (`docs/specs/support-families-anchored-entities-plan.md`). The fallback fillers are removed entirely; the traditional family planner (`traditional-support-planner`, packet 222) performs contact detection and body planning, and the host marshalling `needs_support` derivation moves into `PrePass::SupportAnalysis` (packet 220). Directory retained intact for provenance; do not implement as-is.
 
 ## Goal
 

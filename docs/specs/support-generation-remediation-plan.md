@@ -56,8 +56,8 @@ source-adjudicated + structural invariants + human-authored gcode visual-debug
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | support-planner-defect-fix | Fix RC-1 (lone-node vertical columns) and RC-4 (tip-radius floor) in the support-planner. | TASK-322 | - | generated | docs/spec_packets/213-support-planner-defect-fix/ |
-| 2 | support-fallback-overhang-clip | Fix RC-2 (clip fallback fill to overhang_areas) and RC-3 (needs_support = has overhang) in the fallback fillers and marshalling boundary. | TASK-323 | - | generated | docs/spec_packets/214-support-fallback-overhang-clip/ |
+| 1 | support-planner-defect-fix | Fix RC-1 (lone-node vertical columns) and RC-4 (tip-radius floor) in the support-planner. | TASK-322 | - | superseded | docs/spec_packets/213-support-planner-defect-fix/ |
+| 2 | support-fallback-overhang-clip | Fix RC-2 (clip fallback fill to overhang_areas) and RC-3 (needs_support = has overhang) in the fallback fillers and marshalling boundary. | TASK-323 | - | superseded | docs/spec_packets/214-support-fallback-overhang-clip/ |
 | 3 | raft-geometry | Add a new raft-generator module (Layer::Infill, claim:raft-fill per ADR-0009) emitting full raft geometry (object footprint + margin, first/base/interface pattern) as SupportIR.raft_paths, and migrate IR layer-index fields (LayerPlanIR/SliceIR/SupportIR) from u32 to i32 for negative raft prefix layers. | TASK-324 | #1 | generated | docs/spec_packets/215-raft-geometry/ |
 | 4 | support-interface-layers | Refactor interface layers to planner-plans/module-generates and implement bottom interface layers, removing the code-1003 warning. | TASK-325 | #1 | generated | docs/spec_packets/216-support-interface-layers/ |
 | 5 | support-type-variants | Implement the 4-variant support model (tree/classic × auto/manual) via a planner mode flag, keeping the 2-way module split. | TASK-326 | #1 | generated | docs/spec_packets/217-support-type-variants/ |

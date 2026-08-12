@@ -1,5 +1,5 @@
 ---
-status: draft
+status: superseded
 packet: 210a-support-planner-coord-t
 task_ids:
   - TASK-326
@@ -7,9 +7,13 @@ backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 split_from: 210-support-planner-coord-t (the 210+211 merge)
 paired_with: 210b-support-interface-bottom-layers
+superseded_by: 221-tree-support-family (DEV-128 integer-coordinate work absorbed into the tree planner rewrite) + 220-support-analysis-family-contracts (structural SupportPlanIR migration)
+superseded_on: 2026-08-12
 ---
 
 # Packet Contract: 210a-support-planner-coord-t
+
+> **SUPERSEDED 2026-08-12 by the support-families and anchored-entities sequence** (`docs/specs/support-families-anchored-entities-plan.md`). The single `support-planner` is split and renamed into `tree-support-planner` (packet 221), which rewrites the planner with distributed contacts and radius-aware collision; DEV-128's scaled-integer geometry work is absorbed there only where it remains valid inside the new tree family, and the structural `SupportPlanIR` migration (packet 220) supersedes the branch-path schema this packet's emission boundary assumed. Directory retained intact for provenance; do not implement as-is.
 
 ## Goal
 
