@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sdk_layer_infill_guest::SdkLayerInfillModule;
-use slicer_ir::{ConfigValue, GlobalLayer, LayerStageError, RegionKey, RegionPlan, StageId};
+use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
@@ -22,9 +22,6 @@ use slicer_runtime::{
 };
 use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
 use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
-use slicer_wasm_host::{
-    CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmRuntimeDispatcher,
-};
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -158,7 +155,10 @@ fn integrated_binding_skips_component_compile() {
         &HashMap::new(),
         false,
         std::slice::from_ref(&registration),
-        &[],
+        &[(
+            "com.example.integrated-infill".to_string(),
+            SdkLayerInfillModule::__slicer_native_entry(),
+        )],
     )
     .expect("integrated module load must succeed (no Component error)");
 
@@ -254,7 +254,7 @@ fn integrated_without_native_entry_fails_loud() {
         manifest_toml,
         origin_label: "test-integrated-no-native",
     };
-    let out = load_live_modules_for_plan_with_integrated(
+    let error = load_live_modules_for_plan_with_integrated(
         std::slice::from_ref(&PathBuf::from(dir.path())),
         1,
         &HashMap::new(),
@@ -262,48 +262,11 @@ fn integrated_without_native_entry_fails_loud() {
         std::slice::from_ref(&registration),
         &[],
     )
-    .expect("integrated module load must succeed without an entry");
-    let binding = out
-        .bindings
-        .iter()
-        .find(|b| b.module.id() == "com.example.no-native")
-        .expect("integrated binding present");
-    assert!(binding.native_entry.is_none());
-    assert!(binding.wasm_component.is_none());
-
-    let dispatcher = WasmRuntimeDispatcher::new(out.engine.clone());
-    let module_id = binding.module.id().to_string();
-    let live = CompiledModuleLive::new(
-        &module_id,
-        binding.instance_pool.clone(),
-        binding.wasm_component.clone(),
-        &[],
-        Arc::new(slicer_ir::ConfigView::default()),
-    );
-    let result = dispatcher.run_stage(
-        &StageId::from("Layer::Infill"),
-        &GlobalLayer::default(),
-        &live,
-        // exhaustive: module loading fixture pins every field explicitly
-        LayerStageInput {
-            mesh: Arc::new(slicer_ir::MeshIR::default()),
-            paint_regions: None,
-            seam_plan: None,
-            support_plan: None,
-            lightning_tree_ir: None,
-            region_map: None,
-            slice: None,
-            perimeter: None,
-            layer_collection: None,
-            surface_classification: None,
-            infill: None,
-        },
-    );
-    let Err(LayerStageError::FatalModule { message, .. }) = result else {
-        panic!("missing layer component was not fatal: {result:?}");
-    };
-    assert!(message.contains("MissingComponent"));
+    .expect_err("integrated module without a native entry must fail at load");
+    let message = error.to_string();
     assert!(message.contains("com.example.no-native"));
+    assert!(message.contains("Layer::Infill"));
+    assert!(message.contains("no native entry"));
 }
 
 #[test]

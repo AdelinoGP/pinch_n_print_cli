@@ -250,16 +250,16 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
         .support()
         .expect("support populated after post-process");
     assert_eq!(
-        support.support_paths.len(),
+        support.regions.len(),
         2,
         "two origin-tagged paths preserved"
     );
     assert_eq!(
-        support.support_paths[0].points[0].x, 1.0,
+        support.regions[0].support_paths[0].points[0].x, 1.0,
         "region 0 has 1 polygon"
     );
     assert_eq!(
-        support.support_paths[1].points[0].x, 1.0,
+        support.regions[1].support_paths[0].points[0].x, 1.0,
         "region 1 has 1 polygon"
     );
 }
@@ -291,12 +291,12 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     fx2.run_layer(&default_layer()).unwrap();
 
     assert_eq!(
-        fx1.arena.support().unwrap().support_paths.len(),
+        fx1.arena.support().unwrap().regions.len(),
         3,
         "dispatch 1 kept its 3 regions"
     );
     assert_eq!(
-        fx2.arena.support().unwrap().support_paths.len(),
+        fx2.arena.support().unwrap().regions.len(),
         1,
         "dispatch 2 kept its 1 region (no leak)"
     );

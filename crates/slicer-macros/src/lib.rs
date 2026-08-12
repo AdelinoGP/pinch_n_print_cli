@@ -2990,13 +2990,25 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             sdk: &::slicer_sdk::builders::SupportOutputBuilder,
             wit: &SupportOutputBuilder,
         ) {
-            for p in sdk.support_paths() {
+            let support_origins = sdk.support_path_origins();
+            for (i, p) in sdk.support_paths().iter().enumerate() {
+                if let Some((obj, reg)) = &support_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
                 let _ = wit.push_support_path(&__slicer_ir_path_to_wit(p));
             }
-            for (p, top) in sdk.interface_paths() {
+            let interface_origins = sdk.interface_path_origins();
+            for (i, (p, top)) in sdk.interface_paths().iter().enumerate() {
+                if let Some((obj, reg)) = &interface_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
                 let _ = wit.push_interface_path(&__slicer_ir_path_to_wit(p), *top);
             }
-            for p in sdk.raft_paths() {
+            let raft_origins = sdk.raft_path_origins();
+            for (i, p) in sdk.raft_paths().iter().enumerate() {
+                if let Some((obj, reg)) = &raft_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
                 let _ = wit.push_raft_path(&__slicer_ir_path_to_wit(p));
             }
         }

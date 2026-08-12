@@ -753,10 +753,13 @@ fn support_ir(jitter: f32) -> SupportIR {
     SupportIR {
         schema_version: semver(),
         global_layer_index: 0,
-        support_paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
-        interface_paths: vec![support_segment(2, ExtrusionRole::SupportInterface, jitter)],
-        raft_paths: vec![support_segment(2, ExtrusionRole::RaftInfill, jitter)],
-        ironing_paths: vec![],
+        regions: vec![slicer_ir::slice_ir::SupportRegion {
+            support_paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
+            interface_paths: vec![support_segment(2, ExtrusionRole::SupportInterface, jitter)],
+            raft_paths: vec![support_segment(2, ExtrusionRole::RaftInfill, jitter)],
+            ironing_paths: vec![],
+            ..Default::default()
+        }],
     }
 }
 
@@ -780,7 +783,7 @@ fn parity_comparator_rejects_dropped_support_path() {
     // per-field path count, naming the field.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut dropped = support_ir(0.0);
-    dropped.interface_paths.pop();
+    dropped.regions[0].interface_paths.pop();
     let wasm = LayerStageCommit::Support(dropped);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("dropped support path must be rejected");
@@ -796,7 +799,7 @@ fn parity_comparator_rejects_moved_support_point() {
     // the point coordinates invariant.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut moved = support_ir(0.0);
-    moved.support_paths[0].points[1].x += 0.5;
+    moved.regions[0].support_paths[0].points[1].x += 0.5;
     let wasm = LayerStageCommit::Support(moved);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("moved support point must be rejected");

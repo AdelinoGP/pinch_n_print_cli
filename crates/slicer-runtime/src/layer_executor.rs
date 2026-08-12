@@ -1893,51 +1893,49 @@ pub(crate) fn assemble_ordered_entities(
     }
 
     if let Some(sup) = support {
-        // SupportIR is flat in the current schema — no per-region identity
-        // available. Emit with an empty object_id and region_id=0 rather than
-        // inventing synthetic structure.
-        let key = RegionKey {
-            global_layer_index,
-            object_id: String::new(),
-            region_id: 0,
-            variant_chain: Vec::new(),
-        };
-        // Support geometry uses the configured support tool (default T0); region_id=0 identity.
-        for path in &sup.support_paths {
-            push(
-                path.clone(),
-                path.role.clone(),
-                support_tools.support_tool,
-                key.clone(),
-                &mut out,
-            );
-        }
-        for path in &sup.interface_paths {
-            push(
-                path.clone(),
-                path.role.clone(),
-                support_tools.interface_tool,
-                key.clone(),
-                &mut out,
-            );
-        }
-        for path in &sup.raft_paths {
-            push(
-                path.clone(),
-                path.role.clone(),
-                support_tools.support_tool,
-                key.clone(),
-                &mut out,
-            );
-        }
-        for path in &sup.ironing_paths {
-            push(
-                path.clone(),
-                path.role.clone(),
-                support_tools.interface_tool,
-                key.clone(),
-                &mut out,
-            );
+        for region in &sup.regions {
+            let key = RegionKey {
+                global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: Vec::new(),
+            };
+            for path in &region.support_paths {
+                push(
+                    path.clone(),
+                    path.role.clone(),
+                    support_tools.support_tool,
+                    key.clone(),
+                    &mut out,
+                );
+            }
+            for path in &region.interface_paths {
+                push(
+                    path.clone(),
+                    path.role.clone(),
+                    support_tools.interface_tool,
+                    key.clone(),
+                    &mut out,
+                );
+            }
+            for path in &region.raft_paths {
+                push(
+                    path.clone(),
+                    path.role.clone(),
+                    support_tools.support_tool,
+                    key.clone(),
+                    &mut out,
+                );
+            }
+            for path in &region.ironing_paths {
+                push(
+                    path.clone(),
+                    path.role.clone(),
+                    support_tools.interface_tool,
+                    key.clone(),
+                    &mut out,
+                );
+            }
         }
     }
 
@@ -2492,10 +2490,13 @@ mod tests {
         }
 
         let support = slicer_ir::SupportIR {
-            support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-            interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
-            raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-            ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+            regions: vec![slicer_ir::slice_ir::SupportRegion {
+                support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+                raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+                ..Default::default()
+            }],
             ..Default::default()
         };
         let mut raw_config = std::collections::HashMap::new();
@@ -2543,10 +2544,13 @@ mod tests {
         }
 
         let support = slicer_ir::SupportIR {
-            support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-            interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
-            raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-            ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+            regions: vec![slicer_ir::slice_ir::SupportRegion {
+                support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+                raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 

@@ -116,25 +116,6 @@ pub fn build_native_layer_request(
     module: &CompiledModuleLive<'_>,
     held_claims_map: &HashMap<(String, String), Vec<String>>,
 ) -> NativeLayerRequest {
-    // Completeness mirror (the wasm leg is `sliced_region_to_data`):
-    // | SDK field                 | IR source                         | wasm backer       |
-    // | object_id                 | SlicedRegion.object_id            | object-id         |
-    // | region_id                 | SlicedRegion.region_id            | region-id         |
-    // | polygons                  | SlicedRegion.polygons             | polygons          |
-    // | infill_areas              | SlicedRegion.infill_areas         | infill-areas      |
-    // | nonplanar_surface         | is_some()                          | has-nonplanar     |
-    // | effective_layer_height    | SlicedRegion.effective_layer_height| effective-height  |
-    // | segment_annotations       | SlicedRegion.segment_annotations  | segment-annotations|
-    // | top_shell_index           | SlicedRegion.top_shell_index      | top-shell-index   |
-    // | bottom_shell_index        | SlicedRegion.bottom_shell_index   | bottom-shell-index|
-    // | top_solid_fill            | SlicedRegion.top_solid_fill        | top-solid-fill    |
-    // | bottom_solid_fill         | SlicedRegion.bottom_solid_fill     | bottom-solid-fill |
-    // | is_bridge                 | SlicedRegion.is_bridge             | is-bridge         |
-    // | bridge_areas              | SlicedRegion.bridge_areas           | bridge-areas      |
-    // | bridge_orientation_deg    | SlicedRegion.bridge_orientation_deg | bridge-orientation|
-    // | sparse_infill_area        | SlicedRegion.sparse_infill_area     | sparse-infill-area|
-    // | held_claims               | resolved per-region fill holder     | held-claims       |
-    // | z                         | SliceIR.z                           | z                 |
     let regions = input
         .slice
         .map(|slice| {
@@ -142,25 +123,9 @@ pub fn build_native_layer_request(
                 .regions
                 .iter()
                 .map(|region| {
-                    let mut view = SliceRegionView::default();
-                    view.set_object_id(region.object_id.clone());
-                    view.set_region_id(region.region_id);
-                    view.set_polygons(region.polygons.clone());
-                    view.set_infill_areas(region.infill_areas.clone());
-                    view.set_effective_layer_height(region.effective_layer_height);
-                    view.set_z(slice.z);
-                    view.set_has_nonplanar(region.nonplanar_surface.is_some());
-                    view.set_segment_annotations(region.segment_annotations.clone());
-                    view.set_top_shell_index(region.top_shell_index);
-                    view.set_bottom_shell_index(region.bottom_shell_index);
-                    view.set_top_solid_fill(region.top_solid_fill.clone());
-                    view.set_bottom_solid_fill(region.bottom_solid_fill.clone());
-                    view.set_is_bridge(region.is_bridge);
-                    view.set_bridge_areas(region.bridge_areas.clone());
-                    view.set_bridge_orientation_deg(region.bridge_orientation_deg);
-                    view.set_sparse_infill_area(region.sparse_infill_area.clone());
-                    view.set_variant_chain(region.variant_chain.clone());
-                    view.set_held_claims(
+                    let mut view = SliceRegionView::from_ir(
+                        region,
+                        slice.z,
                         held_claims_map
                             .get(&(region.object_id.clone(), region.region_id.to_string()))
                             .cloned()
@@ -187,13 +152,7 @@ pub fn build_native_layer_request(
                     .regions
                     .iter()
                     .map(|region| {
-                        let mut view = PerimeterRegionView::default();
-                        view.set_object_id(region.object_id.clone());
-                        view.set_region_id(region.region_id);
-                        view.set_wall_loops(region.walls.clone());
-                        view.set_infill_areas(region.infill_areas.clone());
-                        view.set_seam_candidates(region.seam_candidates.clone());
-                        view.set_resolved_seam(region.resolved_seam.clone());
+                        let mut view = PerimeterRegionView::from_ir(region);
                         view.set_config((*module.config_view).clone());
                         view
                     })
@@ -229,16 +188,6 @@ pub fn build_native_prepass_request(
     input: &PrepassStageInput<'_>,
     module: &CompiledModuleLive<'_>,
 ) -> NativePrepassRequest {
-    // Completeness mirror (the wasm leg is `dispatch_prepass_call`):
-    // | SDK field             | IR source                         |
-    // | mesh_objects          | MeshIR.objects                    |
-    // | object_ids            | MeshIR.objects[].id               |
-    // | layer_plan            | LayerPlanIR                       |
-    // | region_segmentation   | RegionMapIR                       |
-    // | support_geometry      | SupportGeometryIR                |
-    // | paint_objects         | MeshIR.objects + paint_data       |
-    // | seam_regions          | SliceIR + LayerPlanIR + RegionMapIR|
-    // | config                | CompiledModuleLive.config_view    |
     let mesh_objects: Vec<MeshObjectView> = input
         .mesh
         .objects
@@ -407,14 +356,13 @@ pub fn commit_native_prepass_response(
     stage_export: &str,
 ) -> Result<slicer_core::PrepassStageOutput, String> {
     use std::sync::Arc;
-    // The native envelope carries the same response fields as the WASM
-    // resource. Its layer proposal has no original index/participation map,
-    // and its seam candidate has no reason, so those IR fields cannot be
-    // reconstructed here; supported metadata is otherwise retained below.
     match stage_export {
         "PrePass::LayerPlanning" => {
             let Some(output) = response.layer_plan.as_ref() else {
-                return Ok(slicer_core::PrepassStageOutput::None);
+                return Err(
+                    "native prepass response missing layer-plan output for stage PrePass::LayerPlanning"
+                        .to_string(),
+                );
             };
             let mut global_layers = Vec::new();
             let mut participation: std::collections::HashMap<
@@ -441,11 +389,10 @@ pub fn commit_native_prepass_response(
                     .collect();
                 let active_regions = active_regions?;
                 for region in &proposal.active_regions {
-                    let obj_refs = participation
-                        .entry(region.object_id.clone())
-                        .or_default();
-                    let already_referenced =
-                        obj_refs.iter().any(|r| r.global_layer_index == index as u32);
+                    let obj_refs = participation.entry(region.object_id.clone()).or_default();
+                    let already_referenced = obj_refs
+                        .iter()
+                        .any(|r| r.global_layer_index == index as u32);
                     if !already_referenced {
                         obj_refs.push(slicer_ir::ObjectLayerRef {
                             local_layer_index: obj_refs.len() as u32,
@@ -469,63 +416,84 @@ pub fn commit_native_prepass_response(
                 },
             )))
         }
-        "PrePass::SeamPlanning" => Ok(response
-            .seam_planning
-            .as_ref()
-            .map(|output| {
-                slicer_core::PrepassStageOutput::SeamPlan(Arc::new(slicer_ir::SeamPlanIR {
+        "PrePass::SeamPlanning" => {
+            let Some(output) = response.seam_planning.as_ref() else {
+                return Err(
+                    "native prepass response missing seam-planning output for stage PrePass::SeamPlanning"
+                        .to_string(),
+                );
+            };
+            Ok(slicer_core::PrepassStageOutput::SeamPlan(Arc::new(
+                slicer_ir::SeamPlanIR {
                     entries: output
                         .entries()
                         .iter()
-                        .map(|entry| slicer_ir::SeamPlanEntry {
-                            region_key: slicer_ir::RegionKey {
+                        .map(|entry| -> Result<_, String> {
+                            Ok(slicer_ir::SeamPlanEntry {
+                                region_key: slicer_ir::RegionKey {
+                                    global_layer_index: entry.global_layer_index,
+                                    object_id: entry.object_id.clone(),
+                                    region_id: entry.region_id.parse().map_err(|e| {
+                                        format!("invalid seam region id '{}': {e}", entry.region_id)
+                                    })?,
+                                    variant_chain: entry.variant_chain.clone(),
+                                },
+                                chosen_candidate: slicer_ir::SeamPosition {
+                                    point: entry.chosen_position,
+                                    wall_index: entry.chosen_wall_index,
+                                },
+                                scored_candidates: entry
+                                    .scored_candidates
+                                    .iter()
+                                    .map(|candidate| slicer_ir::ScoredSeamCandidate {
+                                        position: candidate.position,
+                                        score: candidate.score,
+                                        reason: match candidate.reason.tag.as_str() {
+                                            "concave" => slicer_ir::SeamReason::Concave,
+                                            "sharp" => slicer_ir::SeamReason::Sharp,
+                                            "user_forced" => slicer_ir::SeamReason::UserForced,
+                                            _ => slicer_ir::SeamReason::Aligned,
+                                        },
+                                    })
+                                    .collect(),
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()?,
+                    ..Default::default()
+                },
+            )))
+        }
+        "PrePass::SupportGeometry" => {
+            let Some(output) = response.support_geometry.as_ref() else {
+                return Err(
+                    "native prepass response missing support-geometry output for stage PrePass::SupportGeometry"
+                        .to_string(),
+                );
+            };
+            Ok(slicer_core::PrepassStageOutput::SupportPlan(Arc::new(
+                slicer_ir::SupportPlanIR {
+                    entries: output
+                        .entries()
+                        .iter()
+                        .map(|entry| -> Result<_, String> {
+                            Ok(slicer_ir::SupportPlanEntry {
                                 global_layer_index: entry.global_layer_index,
                                 object_id: entry.object_id.clone(),
-                                region_id: entry.region_id.parse().unwrap_or_default(),
-                                variant_chain: entry.variant_chain.clone(),
-                            },
-                            chosen_candidate: slicer_ir::SeamPosition {
-                                point: entry.chosen_position,
-                                wall_index: entry.chosen_wall_index,
-                            },
-                            scored_candidates: entry
-                                .scored_candidates
-                                .iter()
-                                .map(|candidate| slicer_ir::ScoredSeamCandidate {
-                                    position: candidate.position,
-                                    score: candidate.score,
-                                    reason: slicer_ir::SeamReason::Aligned,
-                                })
-                                .collect(),
+                                region_id: entry.region_id.parse().map_err(|e| {
+                                    format!("invalid support region id '{}': {e}", entry.region_id)
+                                })?,
+                                branch_segments: entry
+                                    .branch_segments
+                                    .iter()
+                                    .map(|segment| slicer_ir::ExtrusionPath3D {
+                                        points: segment.clone(),
+                                        role: slicer_ir::ExtrusionRole::SupportMaterial,
+                                        speed_factor: 1.0,
+                                    })
+                                    .collect(),
+                            })
                         })
-                        .collect(),
-                    ..Default::default()
-                }))
-            })
-            .unwrap_or(slicer_core::PrepassStageOutput::None)),
-        "PrePass::SupportGeometry" => Ok(response
-            .support_geometry
-            .as_ref()
-            .map(|output| {
-                slicer_core::PrepassStageOutput::SupportPlan(Arc::new(slicer_ir::SupportPlanIR {
-                    entries: output
-                        .entries()
-                        .iter()
-                        .map(|entry| slicer_ir::SupportPlanEntry {
-                            global_layer_index: entry.global_layer_index,
-                            object_id: entry.object_id.clone(),
-                            region_id: entry.region_id.parse().unwrap_or_default(),
-                            branch_segments: entry
-                                .branch_segments
-                                .iter()
-                                .map(|segment| slicer_ir::ExtrusionPath3D {
-                                    points: segment.clone(),
-                                    role: slicer_ir::ExtrusionRole::SupportMaterial,
-                                    speed_factor: 1.0,
-                                })
-                                .collect(),
-                        })
-                        .collect(),
+                        .collect::<Result<Vec<_>, String>>()?,
                     raft_plan: output.raft_plan().cloned().map(|plan| slicer_ir::RaftPlan {
                         raft_layers: plan.raft_layers,
                         raft_first_layer_density: plan.raft_first_layer_density,
@@ -533,59 +501,70 @@ pub fn commit_native_prepass_response(
                         interface_raft_layers: plan.interface_raft_layers,
                     }),
                     ..Default::default()
-                }))
-            })
-            .unwrap_or(slicer_core::PrepassStageOutput::None)),
-        "PrePass::MeshAnalysis" => Ok(response
-            .mesh_analysis
-            .as_ref()
-            .map(|output| {
-                slicer_core::PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(
-                    slicer_core::MeshAnalysisAuxiliary {
-                        facet_annotations: output
-                            .facet_annotations()
-                            .iter()
-                            .map(|(id, annotation)| {
-                                (
-                                    id.clone(),
-                                    slicer_core::FacetAnnotationRecord {
-                                        facet_index: annotation.facet_index,
-                                        slope_angle_deg: annotation.slope_angle_deg,
-                                         classification: match annotation.classification {
-                                             slicer_sdk::prepass_types::FacetClass::Normal => slicer_core::FacetClassRecord::Normal,
-                                             slicer_sdk::prepass_types::FacetClass::NearHorizontal => slicer_core::FacetClassRecord::NearHorizontal,
-                                             slicer_sdk::prepass_types::FacetClass::Overhang => slicer_core::FacetClassRecord::Overhang,
-                                             slicer_sdk::prepass_types::FacetClass::Bridge => slicer_core::FacetClassRecord::Bridge,
-                                             slicer_sdk::prepass_types::FacetClass::TopSurface => slicer_core::FacetClassRecord::TopSurface,
-                                             slicer_sdk::prepass_types::FacetClass::BottomSurface => slicer_core::FacetClassRecord::BottomSurface,
-                                         },
+                },
+            )))
+        }
+        "PrePass::MeshAnalysis" => {
+            let Some(output) = response.mesh_analysis.as_ref() else {
+                return Err(
+                    "native prepass response missing mesh-analysis output for stage PrePass::MeshAnalysis"
+                        .to_string(),
+                );
+            };
+            Ok(slicer_core::PrepassStageOutput::MeshAnalysisAuxiliary(
+                Arc::new(slicer_core::MeshAnalysisAuxiliary {
+                    facet_annotations: output
+                        .facet_annotations()
+                        .iter()
+                        .map(|(id, annotation)| {
+                            (
+                                id.clone(),
+                                slicer_core::FacetAnnotationRecord {
+                                    facet_index: annotation.facet_index,
+                                    slope_angle_deg: annotation.slope_angle_deg,
+                                    classification: match annotation.classification {
+                                        slicer_sdk::prepass_types::FacetClass::Normal => {
+                                            slicer_core::FacetClassRecord::Normal
+                                        }
+                                        slicer_sdk::prepass_types::FacetClass::NearHorizontal => {
+                                            slicer_core::FacetClassRecord::NearHorizontal
+                                        }
+                                        slicer_sdk::prepass_types::FacetClass::Overhang => {
+                                            slicer_core::FacetClassRecord::Overhang
+                                        }
+                                        slicer_sdk::prepass_types::FacetClass::Bridge => {
+                                            slicer_core::FacetClassRecord::Bridge
+                                        }
+                                        slicer_sdk::prepass_types::FacetClass::TopSurface => {
+                                            slicer_core::FacetClassRecord::TopSurface
+                                        }
+                                        slicer_sdk::prepass_types::FacetClass::BottomSurface => {
+                                            slicer_core::FacetClassRecord::BottomSurface
+                                        }
                                     },
-                                )
-                            })
-                            .collect(),
-                        surface_groups: output
-                            .surface_groups()
-                            .iter()
-                            .map(|(id, group)| {
-                                (
-                                    id.clone(),
-                                    slicer_core::SurfaceGroupRecord {
-                                        facet_indices: group.facet_indices.clone(),
-                                        z_min: group.z_min,
-                                        z_max: group.z_max,
-                                        shell_count: group.shell_count,
-                                    },
-                                )
-                            })
-                            .collect(),
-                    },
-                ))
-            })
-            .unwrap_or(slicer_core::PrepassStageOutput::None)),
-        "PrePass::PaintSegmentation" => Err(
-            "native path does not yet support stage PrePass::PaintSegmentation output commit"
-                .to_string(),
-        ),
+                                },
+                            )
+                        })
+                        .collect(),
+                    surface_groups: output
+                        .surface_groups()
+                        .iter()
+                        .map(|(id, group)| {
+                            (
+                                id.clone(),
+                                slicer_core::SurfaceGroupRecord {
+                                    facet_indices: group.facet_indices.clone(),
+                                    z_min: group.z_min,
+                                    z_max: group.z_max,
+                                    shell_count: group.shell_count,
+                                },
+                            )
+                        })
+                        .collect(),
+                }),
+            ))
+        }
+        "PrePass::PaintSegmentation" => Ok(slicer_core::PrepassStageOutput::None),
         _ => Err(format!(
             "native prepass response has no output commit for stage {stage_export}"
         )),
@@ -841,9 +820,13 @@ fn collect_support(builder: &SupportOutputBuilder) -> SupportOutputCollected {
             .iter()
             .map(ir_to_wit_extrusion_path)
             .collect(),
-        support_path_origins: Vec::new(),
-        interface_path_origins: Vec::new(),
-        raft_path_origins: Vec::new(),
+        support_path_origins: builder.support_path_origins().iter().map(origin).collect(),
+        interface_path_origins: builder
+            .interface_path_origins()
+            .iter()
+            .map(origin)
+            .collect(),
+        raft_path_origins: builder.raft_path_origins().iter().map(origin).collect(),
     }
 }
 
@@ -911,9 +894,52 @@ pub fn commit_native_layer_response(
                 Ok(ir.map(|value| LayerStageCommit::Perimeters(value)))
             }
         }
-        "Layer::SlicePostProcess" => Err(format!(
-            "native path does not yet support stage {stage_export} output commit"
-        )),
+        "Layer::SlicePostProcess" => {
+            let Some(builder) = response.slice_postprocess.as_ref() else {
+                return Ok(None);
+            };
+            if builder.polygon_updates().is_empty() && builder.path_z_updates().is_empty() {
+                return Ok(None);
+            }
+            let polygon_updates = builder
+                .polygon_updates()
+                .iter()
+                .map(|(key, polys)| {
+                    let region_id = key.region_id;
+                    Ok((
+                        slicer_ir::RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: key.object_id.clone(),
+                            region_id,
+                            variant_chain: Vec::new(),
+                        },
+                        polys.clone(),
+                    ))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let path_z_updates = builder
+                .path_z_updates()
+                .iter()
+                .map(|(key, path_idx, vertex_idx, z)| {
+                    let region_id = key.region_id;
+                    Ok((
+                        slicer_ir::RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: key.object_id.clone(),
+                            region_id,
+                            variant_chain: Vec::new(),
+                        },
+                        *path_idx,
+                        *vertex_idx,
+                        *z,
+                    ))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(Some(LayerStageCommit::SlicePostProcess {
+                polygon_updates,
+                path_z_updates,
+            }))
+        }
         "Layer::PathOptimization" => {
             let Some(path) = response.path_optimization.as_ref() else {
                 return Ok(None);

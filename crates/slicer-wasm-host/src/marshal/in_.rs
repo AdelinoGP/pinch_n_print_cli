@@ -294,6 +294,7 @@ pub fn sliced_region_to_data(
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     global_layer_index: u32,
 ) -> SliceRegionData {
+    let view = slicer_sdk::views::SliceRegionView::from_ir(region, z, held_claims);
     let segment_annotations: Vec<SegmentAnnotationsEntry> = region
         .segment_annotations
         .iter()
@@ -314,8 +315,8 @@ pub fn sliced_region_to_data(
     // Project the region's paint variant chain (carries the painted FuzzySkin
     // signal) so the guest's `variant-chain()` accessor can enable per-vertex
     // jitter without routing FuzzySkin through segment_annotations (D14).
-    let variant_chain: Vec<(String, _)> = region
-        .variant_chain
+    let variant_chain: Vec<(String, _)> = view
+        .variant_chain()
         .iter()
         .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
         .collect();
@@ -398,25 +399,25 @@ pub fn sliced_region_to_data(
             .unwrap_or_default();
 
     SliceRegionData {
-        object_id: region.object_id.clone(),
-        region_id: region.region_id.to_string(),
-        polygons: ir_to_wit_expolygons(&region.polygons),
-        infill_areas: ir_to_wit_expolygons(&region.infill_areas),
-        effective_layer_height: region.effective_layer_height,
-        z,
+        object_id: view.object_id().clone(),
+        region_id: view.region_id().to_string(),
+        polygons: ir_to_wit_expolygons(view.polygons()),
+        infill_areas: ir_to_wit_expolygons(view.infill_areas()),
+        effective_layer_height: view.effective_layer_height(),
+        z: view.z(),
         variant_chain,
-        has_nonplanar: region.nonplanar_surface.is_some(),
+        has_nonplanar: view.has_nonplanar(),
         segment_annotations,
         needs_support: true,
-        top_shell_index: region.top_shell_index,
-        bottom_shell_index: region.bottom_shell_index,
-        top_solid_fill: ir_to_wit_expolygons(&region.top_solid_fill),
-        bottom_solid_fill: ir_to_wit_expolygons(&region.bottom_solid_fill),
-        is_bridge: region.is_bridge,
-        bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
-        bridge_orientation_deg: region.bridge_orientation_deg,
-        sparse_infill_area: ir_to_wit_expolygons(&region.sparse_infill_area),
-        held_claims,
+        top_shell_index: view.top_shell_index(),
+        bottom_shell_index: view.bottom_shell_index(),
+        top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),
+        bottom_solid_fill: ir_to_wit_expolygons(view.bottom_solid_fill()),
+        is_bridge: view.is_bridge(),
+        bridge_areas: ir_to_wit_expolygons(view.bridge_areas()),
+        bridge_orientation_deg: view.bridge_orientation_deg(),
+        sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
+        held_claims: view.held_claims().to_vec(),
         overhang_areas,
         overhang_quartile_polygons,
         prev_layer_boundary,

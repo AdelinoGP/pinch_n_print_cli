@@ -269,6 +269,8 @@ fn native_seam_placer_aligned_commits_resolved_seam_with_origin() {
     // region directly (it does not resolve from the seam plan like the wasm
     // leg does), so seed it here.
     let mut perim = perimeter();
+    perim.regions[0].object_id = "source-object".into();
+    perim.regions[0].region_id = 7;
     perim.regions[0].resolved_seam = Some(SeamPosition {
         point: Point3WithWidth {
             x: 0.0,
@@ -305,4 +307,6 @@ fn native_seam_placer_aligned_commits_resolved_seam_with_origin() {
         perim.regions[0].resolved_seam.is_some(),
         "seam-placer must emit the resolved_seam into the committed perimeter"
     );
+    assert_eq!(perim.regions[0].object_id, "source-object");
+    assert_eq!(perim.regions[0].region_id, 7);
 }

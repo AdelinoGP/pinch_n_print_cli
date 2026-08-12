@@ -964,6 +964,11 @@ module {id}` (level `Warning`, field `module.id`). This is independent of
 is empty (the default), `load_modules_from_roots_with_integrated(roots, &[])`
 is a strict identity with `load_modules_from_roots(roots)`.
 
+Integrated and WASM dispatch share the SDK view-construction authority:
+`SliceRegionView::from_ir` and `PerimeterRegionView::from_ir`. The WASM leg
+adapts those shared SDK views to WIT resources, while the native leg consumes
+the same views directly.
+
 ### Per-root scan failures are non-fatal
 
 Tiers 3 and 4 pre-filter with `.is_dir()` before ever handing the path to

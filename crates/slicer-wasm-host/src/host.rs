@@ -3875,7 +3875,10 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output.support_paths.push(path);
         self.support_output.support_path_origins.push(origin);
         self.record_write("SupportIR");
@@ -3892,7 +3895,10 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output
             .interface_paths
             .push((path, is_top_interface));
@@ -3910,11 +3916,31 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output.raft_paths.push(path);
         self.support_output.raft_path_origins.push(origin);
         self.record_write("SupportIR");
         Ok(Ok(()))
+    }
+    fn set_current_origin(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        match region_id.parse::<u64>() {
+            Ok(parsed) => {
+                self.explicit_perimeter_origin = Some(OriginId {
+                    object_id,
+                    region_id: parsed,
+                });
+                Ok(Ok(()))
+            }
+            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+        }
     }
     fn drop(&mut self, rep: Resource<SupportOutputBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

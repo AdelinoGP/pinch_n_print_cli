@@ -4,14 +4,26 @@ use std::sync::Arc;
 
 use sdk_layer_infill_guest::SdkLayerInfillModule;
 use slicer_ir::{
-    ConfigView, ExPolygon, GlobalLayer, LayerStageCommit, Point2, Polygon, SemVer, SliceIR,
-    SlicedRegion, StageId,
+    ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LayerStageCommit, Point2,
+    Point3WithWidth, Polygon, SemVer, SliceIR, SlicedRegion, StageId,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
     LoadedModuleBuilder, WasmInstancePool, WasmRuntimeDispatcher,
 };
+use slicer_sdk::builders::SupportOutputBuilder;
+use slicer_sdk::error::ModuleError;
+use slicer_sdk::native::NativePrepassResponse;
+use slicer_sdk::native::{NativeLayerRequest, NativeLayerResponse, NativeStageEntry};
+use slicer_sdk::prepass_builders::{
+    LayerPlanOutput, MeshAnalysisOutput, SeamPlanningOutput, SupportGeometryOutput,
+};
+use slicer_sdk::prepass_types::{
+    FacetAnnotation, FacetClass, LayerProposal, RegionLayerProposal, ScoredSeamCandidate,
+    SeamPlanEntry, SeamReason, SupportPlanEntry, SurfaceGroupProposal,
+};
+use slicer_wasm_host::marshal::native::commit_native_prepass_response;
 
 use crate::common::wasm_cache;
 
@@ -43,6 +55,64 @@ fn non_empty_slice() -> SliceIR {
             ..Default::default()
         }],
     }
+}
+
+fn support_slice() -> SliceIR {
+    let mut slice = non_empty_slice();
+    slice.regions = vec![
+        SlicedRegion {
+            object_id: "support-object-a".to_string(),
+            region_id: 7,
+            ..slice.regions[0].clone()
+        },
+        SlicedRegion {
+            object_id: "support-object-b".to_string(),
+            region_id: 11,
+            ..slice.regions[0].clone()
+        },
+    ];
+    slice
+}
+
+fn support_path(x: f32) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: vec![
+            Point3WithWidth {
+                x,
+                y: 0.0,
+                z: 1.0,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: x + 1.0,
+                y: 0.0,
+                z: 1.0,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+        ],
+        role: ExtrusionRole::SupportMaterial,
+        speed_factor: 1.0,
+    }
+}
+
+fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, ModuleError> {
+    let mut support = SupportOutputBuilder::new();
+    support.begin_region("support-object-a", 7);
+    support.push_support_path(support_path(0.0))?;
+    support.begin_region("support-object-b", 11);
+    support.push_interface_path(support_path(10.0), true)?;
+    support.push_raft_path(support_path(20.0))?;
+    Ok(NativeLayerResponse {
+        infill: None,
+        perimeters: None,
+        support: Some(support),
+        slice_postprocess: None,
+        path_optimization: None,
+    })
 }
 
 fn module_id() -> slicer_ir::ModuleId {
@@ -211,4 +281,263 @@ fn native_dispatch_matches_wasm_structurally() {
 #[test]
 fn native_dispatch_without_component() {
     assert!(matches!(run_native_only(), LayerStageCommit::Infill(_)));
+}
+
+#[test]
+fn native_support_dispatch_preserves_per_region_origins() {
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let module = CompiledModuleBuilder::new("com.test.native-support-origins".to_string())
+        .config_view(Arc::new(ConfigView::new()))
+        .build();
+    let live = CompiledModuleLive::new(
+        module.module_id(),
+        WasmInstancePool::placeholder(),
+        None,
+        module.claims(),
+        Arc::clone(module.config_view()),
+    )
+    .with_native_entry(NativeStageEntry::Layer(native_support_entry));
+    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut arena = LayerArena::new();
+    arena.set_slice(support_slice()).expect("set support slice");
+    let layer = GlobalLayer {
+        index: 5,
+        z: 1.0,
+        ..Default::default()
+    };
+    let input = crate::common::layer_input(&blackboard, &arena);
+    let commit = LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::Support".to_string(),
+        &layer,
+        &live,
+        input,
+    )
+    .expect("native support dispatch")
+    .expect("native support commit");
+
+    let LayerStageCommit::Support(support) = commit else {
+        panic!("expected support commit");
+    };
+    assert_eq!(support.regions.len(), 2);
+    assert_eq!(support.regions[0].object_id, "support-object-a");
+    assert_eq!(support.regions[0].region_id, 7);
+    assert_eq!(support.regions[0].support_paths.len(), 1);
+    assert_eq!(support.regions[1].object_id, "support-object-b");
+    assert_eq!(support.regions[1].region_id, 11);
+    assert_eq!(support.regions[1].interface_paths.len(), 1);
+    assert_eq!(support.regions[1].raft_paths.len(), 1);
+}
+
+#[test]
+fn native_prepass_commit_preserves_seam_candidate_reason() {
+    let mut output = SeamPlanningOutput::new();
+    output
+        .push_seam_plan(SeamPlanEntry {
+            global_layer_index: 3,
+            object_id: "object".into(),
+            region_id: "4".into(),
+            chosen_position: Point3WithWidth::default(),
+            scored_candidates: vec![ScoredSeamCandidate {
+                reason: SeamReason {
+                    tag: "sharp".into(),
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    let response = NativePrepassResponse {
+        mesh_analysis: None,
+        layer_plan: None,
+        paint_segmentation: None,
+        seam_planning: Some(output),
+        support_geometry: None,
+    };
+    let slicer_core::PrepassStageOutput::SeamPlan(plan) =
+        commit_native_prepass_response(&response, "PrePass::SeamPlanning").unwrap()
+    else {
+        panic!("expected seam plan");
+    };
+    assert_eq!(
+        plan.entries[0].scored_candidates[0].reason,
+        slicer_ir::SeamReason::Sharp
+    );
+}
+
+#[test]
+fn native_prepass_commit_rejects_invalid_region_id() {
+    let mut output = SeamPlanningOutput::new();
+    output
+        .push_seam_plan(SeamPlanEntry {
+            object_id: "object".into(),
+            region_id: "not-a-number".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let response = NativePrepassResponse {
+        mesh_analysis: None,
+        layer_plan: None,
+        paint_segmentation: None,
+        seam_planning: Some(output),
+        support_geometry: None,
+    };
+    let error = commit_native_prepass_response(&response, "PrePass::SeamPlanning").unwrap_err();
+    assert!(error.contains("invalid seam region id"));
+}
+
+fn empty_native_prepass_response() -> NativePrepassResponse {
+    NativePrepassResponse {
+        mesh_analysis: None,
+        layer_plan: None,
+        paint_segmentation: None,
+        seam_planning: None,
+        support_geometry: None,
+    }
+}
+
+#[test]
+fn native_prepass_commit_rejects_absent_layer_plan_output() {
+    let error =
+        commit_native_prepass_response(&empty_native_prepass_response(), "PrePass::LayerPlanning")
+            .unwrap_err();
+    assert!(error.contains("LayerPlanning"));
+    assert!(error.contains("layer-plan output"));
+}
+
+#[test]
+fn native_prepass_commit_rejects_absent_seam_plan_output() {
+    let error =
+        commit_native_prepass_response(&empty_native_prepass_response(), "PrePass::SeamPlanning")
+            .unwrap_err();
+    assert!(error.contains("SeamPlanning"));
+    assert!(error.contains("seam-planning output"));
+}
+
+#[test]
+fn native_prepass_commit_rejects_absent_support_plan_output() {
+    let error = commit_native_prepass_response(
+        &empty_native_prepass_response(),
+        "PrePass::SupportGeometry",
+    )
+    .unwrap_err();
+    assert!(error.contains("SupportGeometry"));
+    assert!(error.contains("support-geometry output"));
+}
+
+#[test]
+fn native_prepass_commit_rejects_absent_mesh_analysis_output() {
+    let error =
+        commit_native_prepass_response(&empty_native_prepass_response(), "PrePass::MeshAnalysis")
+            .unwrap_err();
+    assert!(error.contains("MeshAnalysis"));
+    assert!(error.contains("mesh-analysis output"));
+}
+
+#[test]
+fn native_paint_segmentation_commit_mirrors_wasm_leg() {
+    let response = empty_native_prepass_response();
+    let output = commit_native_prepass_response(&response, "PrePass::PaintSegmentation")
+        .expect("paint segmentation is intentionally outputless");
+    assert!(matches!(output, slicer_core::PrepassStageOutput::None));
+}
+
+#[test]
+fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
+    let mut layers = LayerPlanOutput::new();
+    layers
+        .push_layer(LayerProposal {
+            z: 0.2,
+            active_regions: vec![RegionLayerProposal {
+                object_id: "object".into(),
+                region_id: "2".into(),
+                effective_layer_height: 0.2,
+                ..Default::default()
+            }],
+        })
+        .unwrap();
+    let mut mesh = MeshAnalysisOutput::new();
+    mesh.push_facet_annotation(
+        "object".into(),
+        FacetAnnotation {
+            facet_index: 7,
+            classification: FacetClass::Overhang,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    mesh.push_surface_group(
+        "object".into(),
+        SurfaceGroupProposal {
+            facet_indices: vec![7, 8],
+            z_min: 0.1,
+            z_max: 0.3,
+            shell_count: 2,
+        },
+    )
+    .unwrap();
+    let mut support = SupportGeometryOutput::new();
+    support
+        .push_support_plan_entry(SupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "object".into(),
+            region_id: "2".into(),
+            branch_segments: vec![vec![Point3WithWidth::default()]],
+        })
+        .unwrap();
+    let response = NativePrepassResponse {
+        mesh_analysis: Some(mesh),
+        layer_plan: Some(layers),
+        paint_segmentation: None,
+        seam_planning: None,
+        support_geometry: Some(support),
+    };
+    let slicer_core::PrepassStageOutput::LayerPlan(plan) =
+        commit_native_prepass_response(&response, "PrePass::LayerPlanning").unwrap()
+    else {
+        panic!("expected layer plan");
+    };
+    assert_eq!(plan.global_layers.len(), 1);
+    let participation = &plan.object_participation["object"];
+    assert_eq!(participation.len(), 1);
+    assert_eq!(participation[0].local_layer_index, 0);
+    assert_eq!(participation[0].global_layer_index, 0);
+    assert_eq!(participation[0].effective_layer_height, 0.2);
+    let slicer_core::PrepassStageOutput::MeshAnalysisAuxiliary(analysis) =
+        commit_native_prepass_response(&response, "PrePass::MeshAnalysis").unwrap()
+    else {
+        panic!("expected mesh analysis");
+    };
+    assert_eq!(analysis.facet_annotations.len(), 1);
+    let (annotation_object, annotation) = &analysis.facet_annotations[0];
+    assert_eq!(annotation_object, "object");
+    assert_eq!(annotation.facet_index, 7);
+    assert_eq!(annotation.slope_angle_deg, 0.0);
+    assert_eq!(
+        annotation.classification,
+        slicer_core::FacetClassRecord::Overhang
+    );
+    let (group_object, group) = &analysis.surface_groups[0];
+    assert_eq!(group_object, "object");
+    assert_eq!(group.facet_indices, vec![7, 8]);
+    assert_eq!(group.z_min, 0.1);
+    assert_eq!(group.z_max, 0.3);
+    assert_eq!(group.shell_count, 2);
+    let slicer_core::PrepassStageOutput::SupportPlan(support) =
+        commit_native_prepass_response(&response, "PrePass::SupportGeometry").unwrap()
+    else {
+        panic!("expected support plan");
+    };
+    assert_eq!(support.entries.len(), 1);
+    let entry = &support.entries[0];
+    assert_eq!(entry.global_layer_index, 0);
+    assert_eq!(entry.object_id, "object");
+    assert_eq!(entry.region_id, 2);
+    assert_eq!(entry.branch_segments.len(), 1);
+    assert_eq!(
+        entry.branch_segments[0].role,
+        slicer_ir::ExtrusionRole::SupportMaterial
+    );
+    assert_eq!(entry.branch_segments[0].speed_factor, 1.0);
 }

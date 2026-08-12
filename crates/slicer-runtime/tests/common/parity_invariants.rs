@@ -729,25 +729,44 @@ fn compare_support_ir(
             native.global_layer_index, wasm.global_layer_index
         ));
     }
-    compare_path_vector(
-        &native.support_paths,
-        &wasm.support_paths,
-        tol,
-        "support_paths",
-    )?;
-    compare_path_vector(
-        &native.interface_paths,
-        &wasm.interface_paths,
-        tol,
-        "interface_paths",
-    )?;
-    compare_path_vector(&native.raft_paths, &wasm.raft_paths, tol, "raft_paths")?;
-    compare_path_vector(
-        &native.ironing_paths,
-        &wasm.ironing_paths,
-        tol,
-        "ironing_paths",
-    )?;
+    if native.regions.len() != wasm.regions.len() {
+        return Err(format!(
+            "regions count mismatch: native={} wasm={}",
+            native.regions.len(),
+            wasm.regions.len()
+        ));
+    }
+    for (index, (n, w)) in native.regions.iter().zip(&wasm.regions).enumerate() {
+        let anonymous_native = n.object_id.is_empty() && n.region_id == 0;
+        if (!anonymous_native && n.object_id != w.object_id) || n.region_id != w.region_id {
+            return Err(format!("region[{index}] identity mismatch"));
+        }
+        let label = format!("region[{index}]");
+        compare_path_vector(
+            &n.support_paths,
+            &w.support_paths,
+            tol,
+            &format!("{label} support_paths"),
+        )?;
+        compare_path_vector(
+            &n.interface_paths,
+            &w.interface_paths,
+            tol,
+            &format!("{label} interface_paths"),
+        )?;
+        compare_path_vector(
+            &n.raft_paths,
+            &w.raft_paths,
+            tol,
+            &format!("{label} raft_paths"),
+        )?;
+        compare_path_vector(
+            &n.ironing_paths,
+            &w.ironing_paths,
+            tol,
+            &format!("{label} ironing_paths"),
+        )?;
+    }
     Ok(())
 }
 

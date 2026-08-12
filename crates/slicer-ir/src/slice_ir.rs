@@ -2169,13 +2169,13 @@ impl Default for InfillIR {
 // Support IR Types
 // ============================================================================
 
-/// Support IR
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SupportIR {
-    /// Schema version of this IR
-    pub schema_version: SemVer,
-    /// Global layer index
-    pub global_layer_index: u32,
+/// Support region
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportRegion {
+    /// Object ID this region belongs to
+    pub object_id: ObjectId,
+    /// Region ID
+    pub region_id: RegionId,
     /// Support paths
     pub support_paths: Vec<ExtrusionPath3D>,
     /// Interface paths
@@ -2186,15 +2186,23 @@ pub struct SupportIR {
     pub ironing_paths: Vec<ExtrusionPath3D>,
 }
 
+/// Support IR
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportIR {
+    /// Schema version of this IR
+    pub schema_version: SemVer,
+    /// Global layer index
+    pub global_layer_index: u32,
+    /// Support regions in this layer
+    pub regions: Vec<SupportRegion>,
+}
+
 impl Default for SupportIR {
     fn default() -> Self {
         Self {
             schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: 0,
-            support_paths: Vec::new(),
-            interface_paths: Vec::new(),
-            raft_paths: Vec::new(),
-            ironing_paths: Vec::new(),
+            regions: Vec::new(),
         }
     }
 }

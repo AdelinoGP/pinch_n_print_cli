@@ -75,8 +75,10 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             patch: 0,
         },
         global_layer_index: 0,
-        support_paths: paths,
-        ..Default::default()
+        regions: vec![slicer_ir::slice_ir::SupportRegion {
+            support_paths: paths,
+            ..Default::default()
+        }],
     }))
 }
 
@@ -119,17 +121,17 @@ fn tree_support_dispatch_commits_support_material_paths() {
         .expect("SupportIR must be set after Layer::Support commit");
 
     assert!(
-        !support_ir.support_paths.is_empty(),
+        !support_ir.regions[0].support_paths.is_empty(),
         "SupportIR.support_paths must be non-empty after tree-support commit"
     );
     assert_eq!(
-        support_ir.support_paths.len(),
+        support_ir.regions[0].support_paths.len(),
         3,
         "tree-support must produce 3 support paths, got {}",
-        support_ir.support_paths.len()
+        support_ir.regions[0].support_paths.len()
     );
 
-    for path in &support_ir.support_paths {
+    for path in &support_ir.regions[0].support_paths {
         assert_eq!(
             path.role,
             IrExtrusionRole::SupportMaterial,
@@ -174,17 +176,17 @@ fn traditional_support_dispatch_commits_support_material_paths() {
         .expect("SupportIR must be set after traditional-support commit");
 
     assert!(
-        !support_ir.support_paths.is_empty(),
+        !support_ir.regions[0].support_paths.is_empty(),
         "SupportIR.support_paths must be non-empty after traditional-support commit"
     );
     assert_eq!(
-        support_ir.support_paths.len(),
+        support_ir.regions[0].support_paths.len(),
         4,
         "traditional-support must produce 4 support paths, got {}",
-        support_ir.support_paths.len()
+        support_ir.regions[0].support_paths.len()
     );
 
-    for path in &support_ir.support_paths {
+    for path in &support_ir.regions[0].support_paths {
         assert_eq!(
             path.role,
             IrExtrusionRole::SupportMaterial,
@@ -224,7 +226,10 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     );
 
     assert!(
-        !support_ir.support_paths.is_empty(),
+        support_ir
+            .regions
+            .iter()
+            .any(|r| !r.support_paths.is_empty()),
         "enforcer override must commit non-empty SupportIR even with needs_support=false"
     );
 }
@@ -314,15 +319,15 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     let ir2 = arena2.support().expect("second run must produce SupportIR");
 
     assert_eq!(
-        ir1.support_paths.len(),
-        ir2.support_paths.len(),
+        ir1.regions[0].support_paths.len(),
+        ir2.regions[0].support_paths.len(),
         "path count must be identical across runs"
     );
 
-    for (i, (p1, p2)) in ir1
+    for (i, (p1, p2)) in ir1.regions[0]
         .support_paths
         .iter()
-        .zip(ir2.support_paths.iter())
+        .zip(ir2.regions[0].support_paths.iter())
         .enumerate()
     {
         assert_eq!(
@@ -601,12 +606,19 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
         .expect("SupportIR must be committed after tree-support live dispatch");
 
     assert!(
-        !support_ir.support_paths.is_empty(),
+        support_ir
+            .regions
+            .iter()
+            .any(|r| !r.support_paths.is_empty()),
         "tree-support must produce non-empty support_paths, got {} paths",
-        support_ir.support_paths.len()
+        support_ir
+            .regions
+            .iter()
+            .map(|r| r.support_paths.len())
+            .sum::<usize>()
     );
 
-    for path in &support_ir.support_paths {
+    for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
         assert_eq!(
             path.role,
             slicer_ir::ExtrusionRole::SupportMaterial,
@@ -704,12 +716,19 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
         .expect("SupportIR must be committed after traditional-support live dispatch");
 
     assert!(
-        !support_ir.support_paths.is_empty(),
+        support_ir
+            .regions
+            .iter()
+            .any(|r| !r.support_paths.is_empty()),
         "traditional-support must produce non-empty support_paths, got {} paths",
-        support_ir.support_paths.len()
+        support_ir
+            .regions
+            .iter()
+            .map(|r| r.support_paths.len())
+            .sum::<usize>()
     );
 
-    for path in &support_ir.support_paths {
+    for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
         assert_eq!(
             path.role,
             slicer_ir::ExtrusionRole::SupportMaterial,
@@ -815,9 +834,7 @@ fn support_deterministic_across_repeated_runs() {
             )
             .expect("commit must succeed");
         }
-        arena
-            .support()
-            .expect("SupportIR must be present")
+        arena.support().expect("SupportIR must be present").regions[0]
             .support_paths
             .clone()
     };
@@ -1129,12 +1146,20 @@ mod planner_consuming_tier {
         );
 
         assert_eq!(
-            support_ir.support_paths.len(),
+            support_ir
+                .regions
+                .iter()
+                .map(|r| r.support_paths.len())
+                .sum::<usize>(),
             1,
             "tree-support live dispatch must emit exactly the planner's branch count; got {}",
-            support_ir.support_paths.len()
+            support_ir
+                .regions
+                .iter()
+                .map(|r| r.support_paths.len())
+                .sum::<usize>()
         );
-        let path = &support_ir.support_paths[0];
+        let path = &support_ir.regions[0].support_paths[0];
         assert_eq!(path.role, ExtrusionRole::SupportMaterial);
         let expected = &plan.entries[0].branch_segments[0];
         assert_eq!(path.points.len(), expected.points.len());
@@ -1177,10 +1202,13 @@ mod planner_consuming_tier {
             None,
         );
         assert!(
-            !support_ir.support_paths.is_empty(),
+            support_ir
+                .regions
+                .iter()
+                .any(|r| !r.support_paths.is_empty()),
             "tree-support must fall back to the grid-MST filler; got 0 paths"
         );
-        for path in &support_ir.support_paths {
+        for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
             assert_eq!(path.role, ExtrusionRole::SupportMaterial);
         }
     }
@@ -1211,17 +1239,17 @@ mod planner_consuming_tier {
         );
 
         assert_eq!(
-            no_plan.support_paths.len(),
-            with_plan.support_paths.len(),
+            no_plan.regions[0].support_paths.len(),
+            with_plan.regions[0].support_paths.len(),
             "traditional-support must produce identical path count irrespective of SupportPlanIR \
              (no-plan={}, with-plan={})",
-            no_plan.support_paths.len(),
-            with_plan.support_paths.len()
+            no_plan.regions[0].support_paths.len(),
+            with_plan.regions[0].support_paths.len()
         );
-        for (a, b) in no_plan
+        for (a, b) in no_plan.regions[0]
             .support_paths
             .iter()
-            .zip(with_plan.support_paths.iter())
+            .zip(with_plan.regions[0].support_paths.iter())
         {
             assert_eq!(a.role, b.role);
             assert_eq!(a.points.len(), b.points.len());
@@ -1366,10 +1394,24 @@ mod planner_consuming_tier {
         let support_ir = arena.take_support().expect("SupportIR must be committed");
 
         assert!(
-            !support_ir.support_paths.is_empty(),
+            support_ir
+                .regions
+                .iter()
+                .any(|r| !r.support_paths.is_empty()),
             "tree-support must find branches for region_id={target_region_id}; got 0 paths"
         );
-        for path in &support_ir.support_paths {
+        let target_region = support_ir
+            .regions
+            .iter()
+            .find(|region| region.region_id == target_region_id)
+            .expect("tree-support output must preserve the requested region identity");
+        assert_eq!(target_region.support_paths.len(), 1);
+        assert!(support_ir
+            .regions
+            .iter()
+            .filter(|region| region.region_id == other_region_id)
+            .all(|region| region.support_paths.is_empty()));
+        for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
             assert_eq!(
                 path.role,
                 IrExtrusionRole::SupportMaterial,

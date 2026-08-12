@@ -129,6 +129,13 @@ pub enum LiveModuleLoadError {
         /// Human-readable cause of the artifact load failure.
         cause: String,
     },
+    /// An integrated module has no registered native entry for its stage.
+    NativeEntry {
+        /// Module ID whose native entry is missing.
+        module_id: String,
+        /// Stage family that requires the entry.
+        stage_id: String,
+    },
 }
 
 impl std::fmt::Display for LiveModuleLoadError {
@@ -147,6 +154,13 @@ impl std::fmt::Display for LiveModuleLoadError {
                     "module '{module_id}' WASM component load failed: {cause}"
                 )
             }
+            Self::NativeEntry {
+                module_id,
+                stage_id,
+            } => write!(
+                f,
+                "integrated module '{module_id}' has no native entry for stage '{stage_id}'"
+            ),
         }
     }
 }
@@ -351,6 +365,12 @@ pub fn load_live_modules_for_plan_with_integrated(
                     .map(|(_, entry)| *entry)
             })
             .flatten();
+        if module.provenance() == ModuleProvenance::Integrated && native_entry.is_none() {
+            return Err(Box::new(LiveModuleLoadError::NativeEntry {
+                module_id: module.id().to_string(),
+                stage_id: module.stage().to_string(),
+            }));
+        }
         // ADR-0056: integrated modules carry no on-disk `.wasm` artifact;
         // dispatch for them is native, so component compilation is skipped.
         if module.provenance() == ModuleProvenance::Integrated {

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use wasmtime::component::Resource;
 
 use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
+use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
 use slicer_sdk::traits::{EntityMutation, SortKey};
 
@@ -2479,86 +2480,6 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
     }
 }
 
-/// Resolve the per-region held fill-claim set for one module on one layer.
-///
-/// Mirrors `slicer-runtime::validation::resolve_held_claims` (inlined so
-/// `slicer-wasm-host` has no back-edge dependency on `slicer-runtime`). For
-/// every region in the slice, the module holds a fill claim only when the
-/// region's configured `{top,bottom,bridge,sparse}_fill_holder` names this
-/// module. Shared by the WASM and native dispatch legs so both gate emission
-/// identically.
-fn resolve_layer_held_claims_map(
-    input: &LayerStageInput<'_>,
-    layer: &GlobalLayer,
-    module: &CompiledModuleLive<'_>,
-    module_id_str: &str,
-) -> HashMap<(String, String), Vec<String>> {
-    const FILL_CLAIM_IDS: &[&str] = &[
-        "claim:top-fill",
-        "claim:bottom-fill",
-        "claim:bridge-fill",
-        "claim:sparse-fill",
-    ];
-    let Some(slice_ir) = input.slice else {
-        return HashMap::new();
-    };
-    slice_ir
-        .regions
-        .iter()
-        .map(|region| {
-            // Resolve the per-region config by (layer, object, region) ignoring
-            // any paint-driven variant_chain entries. The fill-role holders are
-            // host-resolved and painted variants do not introduce separate
-            // fill-holder semantics, so the base/per-object/per-paint effective
-            // config for this region is the right authority.
-            let config = input
-                .region_map
-                .as_deref()
-                .and_then(|map| {
-                    map.entries
-                        .iter()
-                        .find(|(key, _)| {
-                            key.global_layer_index == layer.index
-                                && key.object_id == region.object_id
-                                && key.region_id == region.region_id
-                        })
-                        .map(|(_, plan)| map.config_for_raw(plan.config).clone())
-                })
-                .unwrap_or_default();
-            let top = config.top_fill_holder.as_str();
-            let bottom = config.bottom_fill_holder.as_str();
-            let bridge = config.bridge_fill_holder.as_str();
-            let sparse = config.sparse_fill_holder.as_str();
-            let held: Vec<String> = module
-                .claims
-                .iter()
-                .filter(|claim| FILL_CLAIM_IDS.contains(&claim.as_str()))
-                .filter(|claim| {
-                    let holder = match claim.as_str() {
-                        "claim:top-fill" => top,
-                        "claim:bottom-fill" => bottom,
-                        "claim:bridge-fill" => bridge,
-                        "claim:sparse-fill" => sparse,
-                        _ => "",
-                    };
-                    // Accepts either full ID (com.core.rectilinear-infill) or
-                    // short name (rectilinear-infill) for built-in modules. See
-                    // docs/03_wit_and_manifest.md §"Holder identifier matching".
-                    holder == module_id_str
-                        || module_id_str
-                            .strip_prefix("com.core.")
-                            .is_some_and(|short| short == holder)
-                })
-                .cloned()
-                .collect();
-            (
-                (region.object_id.clone(), region.region_id.to_string()),
-                held,
-            )
-        })
-        .collect()
-}
-
 impl LayerStageRunner for WasmRuntimeDispatcher {
     fn run_stage(
         &self,
@@ -2568,7 +2489,50 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         input: LayerStageInput<'_>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
         let module_id_str = module.module_id.as_str();
-        let held_claims_map = resolve_layer_held_claims_map(&input, layer, module, module_id_str);
+        let held_claims_map = input
+            .slice
+            .map(|slice_ir| {
+                slice_ir
+                    .regions
+                    .iter()
+                    .map(|region| {
+                        // Resolve the per-region config by (layer, object, region) ignoring
+                        // any paint-driven variant_chain entries. The fill-role holders are
+                        // host-resolved and painted variants do not introduce separate
+                        // fill-holder semantics, so the base/per-object/per-paint effective
+                        // config for this region is the right authority.
+                        let config = input
+                            .region_map
+                            .as_deref()
+                            .and_then(|map| {
+                                map.entries
+                                    .iter()
+                                    .find(|(key, _)| {
+                                        key.global_layer_index == layer.index
+                                            && key.object_id == region.object_id
+                                            && key.region_id == region.region_id
+                                    })
+                                    .map(|(_, plan)| map.config_for_raw(plan.config).clone())
+                            })
+                            .unwrap_or_default();
+                        let held = resolve_held_claims(
+                            module_id_str,
+                            &module.claims,
+                            &FillHolders {
+                                top: &config.top_fill_holder,
+                                bottom: &config.bottom_fill_holder,
+                                bridge: &config.bridge_fill_holder,
+                                sparse: &config.sparse_fill_holder,
+                            },
+                        );
+                        (
+                            (region.object_id.clone(), region.region_id.to_string()),
+                            held,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         if let Some(entry) = &module.native_entry {
             let stage_export = slicer_schema::stage_by_id(stage_id)
                 .map(|s| s.stage_id)
@@ -2676,8 +2640,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             _ => HashMap::new(),
         };
 
-        // held_claims_map is resolved once before the native/wasm branch by
-        // `resolve_layer_held_claims_map`, so both dispatch legs gate emission
+        // held_claims_map is resolved once before the native/wasm branch, so
+        // both dispatch legs gate emission
         // on the same per-region held claims.
 
         let ctx = match self.dispatch_layer_call(

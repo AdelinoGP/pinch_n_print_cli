@@ -459,6 +459,10 @@ pub struct SupportOutputBuilder {
     support_paths: Vec<ExtrusionPath3D>,
     interface_paths: Vec<(ExtrusionPath3D, bool)>, // (path, is_top_interface)
     raft_paths: Vec<ExtrusionPath3D>,
+    current_origin: Option<(String, u64)>,
+    support_path_origins: Vec<Option<(String, u64)>>,
+    interface_path_origins: Vec<Option<(String, u64)>>,
+    raft_path_origins: Vec<Option<(String, u64)>>,
 }
 
 impl SupportOutputBuilder {
@@ -468,12 +472,31 @@ impl SupportOutputBuilder {
             support_paths: Vec::new(),
             interface_paths: Vec::new(),
             raft_paths: Vec::new(),
+            current_origin: None,
+            support_path_origins: Vec::new(),
+            interface_path_origins: Vec::new(),
+            raft_path_origins: Vec::new(),
         }
+    }
+
+    /// Set the explicit origin for the region the guest is currently
+    /// iterating. The origin is attached to every subsequent per-item
+    /// support output push (`push_support_path`, `push_interface_path`,
+    /// `push_raft_path`) as a parallel `*_origins` entry, and is
+    /// forwarded to the host via the WIT `set-current-origin` method by
+    /// the macro drain.
+    ///
+    /// Pure setter — does not return `Result`. Call once per region before
+    /// pushing that region's support output. The host `touch_*` fallback
+    /// chain remains as defence-in-depth when no explicit origin is set.
+    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+        self.current_origin = Some((object_id.to_string(), region_id));
     }
 
     /// Push a support path.
     pub fn push_support_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.support_paths.push(path);
+        self.support_path_origins.push(self.current_origin.clone());
         Ok(())
     }
 
@@ -484,12 +507,15 @@ impl SupportOutputBuilder {
         is_top_interface: bool,
     ) -> Result<(), String> {
         self.interface_paths.push((path, is_top_interface));
+        self.interface_path_origins
+            .push(self.current_origin.clone());
         Ok(())
     }
 
     /// Push a raft path.
     pub fn push_raft_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.raft_paths.push(path);
+        self.raft_path_origins.push(self.current_origin.clone());
         Ok(())
     }
 
@@ -509,6 +535,23 @@ impl SupportOutputBuilder {
     #[doc(hidden)]
     pub fn raft_paths(&self) -> &[ExtrusionPath3D] {
         &self.raft_paths
+    }
+
+    #[doc(hidden)]
+    pub fn current_origin(&self) -> Option<&(String, u64)> {
+        self.current_origin.as_ref()
+    }
+    #[doc(hidden)]
+    pub fn support_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.support_path_origins
+    }
+    #[doc(hidden)]
+    pub fn interface_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.interface_path_origins
+    }
+    #[doc(hidden)]
+    pub fn raft_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.raft_path_origins
     }
 }
 

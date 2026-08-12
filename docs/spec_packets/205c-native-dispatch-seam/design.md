@@ -85,7 +85,7 @@
 
 ## Open Questions
 
-- `[FWD]` Whether the native seam-plan commit reads the candidate reason from the envelope's `ScoredSeamCandidate` (`prepass_types.rs:238`) or needs an additive envelope field; the commit must preserve the reason either way.
-- `[FWD]` Whether the canonical per-region held-claim map builder lives in `slicer-scheduler/src/validation.rs` or is composed there from `resolve_held_claims`; the inlined `resolve_layer_held_claims_map` (`dispatch.rs:2490`) is deleted either way.
-- `[FWD]` The exact WASM-leg harvest for `PrePass::PaintSegmentation` and `Layer::SlicePostProcess` that the new native commits must mirror.
+- Native seam-plan commit reads the candidate reason from the envelope's candidate; no additive envelope field is needed.
+- The held-claim map is composed at the `dispatch.rs` call site from `slicer_scheduler::validation::resolve_held_claims`; the inlined `resolve_layer_held_claims_map` is deleted.
+- `Layer::SlicePostProcess` mirrors `dispatch.rs`'s `LayerStageCommit::SlicePostProcess` plus `merge_slice_postprocess_into`; `PaintSegmentation` mirrors the WASM leg with no output variant and no fatal error.
 - `None.` — no activation blockers remain.

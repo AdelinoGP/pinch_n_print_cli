@@ -1,4 +1,4 @@
-//! Integration TDD for the `HostPerimeterOutputBuilder::set_current_origin` explicit
+//! Integration TDD for the explicit origin propagation paths.
 //! origin propagation path (AC-4).
 //!
 //! Pre-fix, origin-tagged pushes without a `current_perimeter_region` or
@@ -14,6 +14,7 @@
 #![allow(missing_docs)]
 
 use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
+use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::HostSupportOutputBuilder;
 use slicer_wasm_host::host::{
     convert_perimeter_output, ExPolygon, ExtrusionPath3d, ExtrusionRole,
     HostExecutionContextBuilder, Point2, Point3WithWidth, Polygon, WallFeatureFlag, WallLoopType,
@@ -168,4 +169,43 @@ fn set_current_origin_routes_to_correct_bucket() {
         1,
         "the set infill area must land in the explicit-origin region"
     );
+}
+
+#[test]
+fn support_set_current_origin_routes_to_correct_bucket() {
+    let mut ctx = HostExecutionContextBuilder::new("com.test.explicit-origin", 0.0, 0.2).build();
+    assert!(ctx.current_slice_region().is_none());
+
+    let handle = ctx
+        .push_support_output_builder()
+        .expect("push support output builder for set_current_origin");
+    let origin_result = <slicer_wasm_host::host::HostExecutionContext as HostSupportOutputBuilder>::set_current_origin(
+        &mut ctx,
+        handle,
+        TEST_UUID.to_string(),
+        TEST_REGION_ID.to_string(),
+    )
+    .expect("host call must succeed");
+    assert!(
+        origin_result.is_ok(),
+        "set_current_origin: {origin_result:?}"
+    );
+
+    let path_handle = ctx
+        .push_support_output_builder()
+        .expect("push support output builder for push_support_path");
+    let push_result = <slicer_wasm_host::host::HostExecutionContext as HostSupportOutputBuilder>::push_support_path(
+        &mut ctx,
+        path_handle,
+        make_wall_loop().path,
+    )
+    .expect("host call must succeed");
+    assert!(push_result.is_ok(), "push_support_path: {push_result:?}");
+
+    assert_eq!(ctx.support_output().support_path_origins.len(), 1);
+    let origin = ctx.support_output().support_path_origins[0]
+        .as_ref()
+        .expect("support path must carry explicit origin");
+    assert_eq!(origin.object_id, TEST_UUID);
+    assert_eq!(origin.region_id, TEST_REGION_ID);
 }

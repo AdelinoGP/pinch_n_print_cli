@@ -792,14 +792,15 @@ solid, and ironing extrusion paths.
 
 **Stage:** Output of `Layer::Support`, mutated by `Layer::SupportPostProcess`
 
-`SupportIR` is defined in `crates/slicer-ir/src/slice_ir.rs` and carries
-support, interface, raft, and ironing extrusion-path lists for one global
-layer.
+`SupportIR` and `SupportRegion` are defined in
+`crates/slicer-ir/src/slice_ir.rs`. Each layer carries a
+`regions: Vec<SupportRegion>` collection. Each `SupportRegion` contains
+`object_id`, `region_id`, and the support, interface, raft, and ironing
+extrusion-path lists for that region.
 
 Packet 172 routing: support paths and raft paths are emitted on the support
 tool; interface paths and ironing paths are emitted on the interface tool.
-Selection is global because this flat `SupportIR` has no per-object identity;
-a future packet can lift `SupportIR` to per-object selection when needed.
+Selection is region-scoped through `object_id` and `region_id`.
 
 ---
 

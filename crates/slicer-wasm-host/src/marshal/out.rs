@@ -156,7 +156,7 @@ fn infill_untagged_msg(e: MarshalError, kind: &str) -> String {
 
 /// Convert collected support output into a slicer-ir `SupportIR`.
 ///
-/// `SupportIR` is flat (no per-region struct). In identity mode, all three
+/// In identity mode, all three
 /// collections (support, interface, raft) share a SINGLE `OriginBucket` so
 /// that the first-seen origin order is global across all collections — matching
 /// the original `group_by_origin` implementation that threaded a single
@@ -201,10 +201,14 @@ pub fn convert_support_output(
                 patch: 0,
             },
             global_layer_index: layer_index,
-            support_paths: support,
-            interface_paths: interface,
-            raft_paths: raft,
-            ironing_paths: Vec::new(),
+            regions: vec![slicer_ir::slice_ir::SupportRegion {
+                object_id: String::new(),
+                region_id: 0,
+                support_paths: support,
+                interface_paths: interface,
+                raft_paths: raft,
+                ironing_paths: Vec::new(),
+            }],
         });
     }
 
@@ -212,13 +216,17 @@ pub fn convert_support_output(
     // that first-seen origin order is global (not per-collection).  Each region
     // accumulator holds three separate path vecs, one per collection.
     struct SupportRegion {
+        object_id: String,
+        region_id: u64,
         support: Vec<slicer_ir::ExtrusionPath3D>,
         interface: Vec<slicer_ir::ExtrusionPath3D>,
         raft: Vec<slicer_ir::ExtrusionPath3D>,
     }
 
-    fn mint_support_region(_: &OriginId) -> SupportRegion {
+    fn mint_support_region(o: &OriginId) -> SupportRegion {
         SupportRegion {
+            object_id: o.object_id.clone(),
+            region_id: o.region_id,
             support: Vec::new(),
             interface: Vec::new(),
             raft: Vec::new(),
@@ -251,15 +259,18 @@ pub fn convert_support_output(
         })
         .map_err(|e| support_untagged_msg(e, "raft"))?;
 
-    // Flatten each collection in shared first-seen origin order.
-    let mut support_paths: Vec<slicer_ir::ExtrusionPath3D> = Vec::new();
-    let mut interface_paths: Vec<slicer_ir::ExtrusionPath3D> = Vec::new();
-    let mut raft_paths: Vec<slicer_ir::ExtrusionPath3D> = Vec::new();
-    for r in bucket.into_regions() {
-        support_paths.extend(r.support);
-        interface_paths.extend(r.interface);
-        raft_paths.extend(r.raft);
-    }
+    let regions = bucket
+        .into_regions()
+        .into_iter()
+        .map(|r| slicer_ir::slice_ir::SupportRegion {
+            object_id: r.object_id,
+            region_id: r.region_id,
+            support_paths: r.support,
+            interface_paths: r.interface,
+            raft_paths: r.raft,
+            ironing_paths: Vec::new(),
+        })
+        .collect();
 
     Ok(slicer_ir::SupportIR {
         schema_version: slicer_ir::SemVer {
@@ -268,10 +279,7 @@ pub fn convert_support_output(
             patch: 0,
         },
         global_layer_index: layer_index,
-        support_paths,
-        interface_paths,
-        raft_paths,
-        ironing_paths: Vec::new(),
+        regions,
     })
 }
 
