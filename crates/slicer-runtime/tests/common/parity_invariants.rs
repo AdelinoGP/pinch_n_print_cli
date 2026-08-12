@@ -7,7 +7,8 @@
 //! compared, so it cannot certify a broken path vacuously.
 
 use slicer_ir::{
-    ExtrusionPath3D, LayerStageCommit, PerimeterIR, PerimeterRegion, Point3WithWidth,
+    ExtrusionPath3D, InfillIR, InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit,
+    PerimeterIR, PerimeterRegion, Point3WithWidth, SeamPlanEntry, SeamPlanIR, SupportIR,
     SupportPlanIR, WallLoop,
 };
 use slicer_runtime::PrepassStageOutput;
@@ -49,12 +50,40 @@ pub fn assert_parity_structural(
         (LayerStageCommit::Perimeters(n), LayerStageCommit::Perimeters(w)) => {
             compare_perimeter_ir(n, w, &tol, optimal_width_mm)
         }
+        (
+            LayerStageCommit::PerimetersPostProcess(n),
+            LayerStageCommit::PerimetersPostProcess(w),
+        ) => match (n, w) {
+            (Some(n_ir), Some(w_ir)) => compare_perimeter_ir(n_ir, w_ir, &tol, optimal_width_mm),
+            (None, None) => Ok(()),
+            _ => Err(format!(
+                "perimeters-postprocess Some/None mismatch: native={} wasm={}",
+                option_state(n),
+                option_state(w)
+            )),
+        },
+        (LayerStageCommit::Infill(n), LayerStageCommit::Infill(w))
+        | (LayerStageCommit::InfillPostProcess(n), LayerStageCommit::InfillPostProcess(w)) => {
+            compare_infill_ir(n, w, &tol)
+        }
+        (LayerStageCommit::Support(n), LayerStageCommit::Support(w))
+        | (LayerStageCommit::SupportPostProcess(n), LayerStageCommit::SupportPostProcess(w)) => {
+            compare_support_ir(n, w, &tol)
+        }
         _ => Err(format!(
             "variant mismatch: native={} wasm={} \
-             (assert_parity_structural requires LayerStageCommit::Perimeters on both paths)",
+             (assert_parity_structural requires the same LayerStageCommit variant on both paths)",
             commit_variant_name(native),
             commit_variant_name(wasm)
         )),
+    }
+}
+
+fn option_state<T>(opt: &Option<T>) -> &'static str {
+    if opt.is_some() {
+        "Some"
+    } else {
+        "None"
     }
 }
 
@@ -319,6 +348,140 @@ fn coverage_measure(ir: &PerimeterIR) -> f32 {
     total
 }
 
+// ── Layer family: LayerStageCommit::Infill / InfillPostProcess ─────────────
+
+fn compare_infill_ir(
+    native: &InfillIR,
+    wasm: &InfillIR,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    if native.schema_version != wasm.schema_version {
+        return Err(format!(
+            "schema_version mismatch: native={} wasm={}",
+            native.schema_version, wasm.schema_version
+        ));
+    }
+    if native.global_layer_index != wasm.global_layer_index {
+        return Err(format!(
+            "global layer index mismatch: native={} wasm={}",
+            native.global_layer_index, wasm.global_layer_index
+        ));
+    }
+    if native.regions.len() != wasm.regions.len() {
+        return Err(format!(
+            "region count mismatch: native={} wasm={}",
+            native.regions.len(),
+            wasm.regions.len()
+        ));
+    }
+    for n_region in &native.regions {
+        let w_region = wasm
+            .regions
+            .iter()
+            .find(|r| r.object_id == n_region.object_id && r.region_id == n_region.region_id)
+            .ok_or_else(|| {
+                format!(
+                    "region key set mismatch: wasm missing region (object_id={}, region_id={})",
+                    n_region.object_id, n_region.region_id
+                )
+            })?;
+        compare_infill_region(n_region, w_region, tol)?;
+    }
+    Ok(())
+}
+
+fn compare_infill_region(
+    native: &InfillRegion,
+    wasm: &InfillRegion,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    let region_label = format!(
+        "region (object_id={}, region_id={})",
+        native.object_id, native.region_id
+    );
+    compare_path_vector(
+        &native.sparse_infill,
+        &wasm.sparse_infill,
+        tol,
+        &format!("{region_label} sparse_infill"),
+    )?;
+    compare_path_vector(
+        &native.solid_infill,
+        &wasm.solid_infill,
+        tol,
+        &format!("{region_label} solid_infill"),
+    )?;
+    compare_path_vector(
+        &native.ironing,
+        &wasm.ironing,
+        tol,
+        &format!("{region_label} ironing"),
+    )?;
+    Ok(())
+}
+
+// ── Layer family: LayerStageCommit::Support / SupportPostProcess ───────────
+
+fn compare_support_ir(
+    native: &SupportIR,
+    wasm: &SupportIR,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    if native.schema_version != wasm.schema_version {
+        return Err(format!(
+            "schema_version mismatch: native={} wasm={}",
+            native.schema_version, wasm.schema_version
+        ));
+    }
+    if native.global_layer_index != wasm.global_layer_index {
+        return Err(format!(
+            "global layer index mismatch: native={} wasm={}",
+            native.global_layer_index, wasm.global_layer_index
+        ));
+    }
+    compare_path_vector(
+        &native.support_paths,
+        &wasm.support_paths,
+        tol,
+        "support_paths",
+    )?;
+    compare_path_vector(
+        &native.interface_paths,
+        &wasm.interface_paths,
+        tol,
+        "interface_paths",
+    )?;
+    compare_path_vector(&native.raft_paths, &wasm.raft_paths, tol, "raft_paths")?;
+    compare_path_vector(
+        &native.ironing_paths,
+        &wasm.ironing_paths,
+        tol,
+        "ironing_paths",
+    )?;
+    Ok(())
+}
+
+/// Shared path-vector comparison: count equality, then element-wise
+/// `compare_segment`. `label` names the owning region key and/or field.
+fn compare_path_vector(
+    native: &[ExtrusionPath3D],
+    wasm: &[ExtrusionPath3D],
+    tol: &ParityTolerance,
+    label: &str,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "{label} count mismatch: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (idx, (n_path, w_path)) in native.iter().zip(wasm).enumerate() {
+        compare_segment(n_path, w_path, tol, &format!("{label} path {idx}"))?;
+    }
+    Ok(())
+}
+
 // ── Prepass family: PrepassStageOutput::SupportPlan ────────────────────────
 
 /// Structural parity gate for the prepass output family. Both outputs must be
@@ -430,17 +593,365 @@ fn compare_segment(
         ));
     }
     for (i, (np, wp)) in native.points.iter().zip(&wasm.points).enumerate() {
-        let d = (np.x - wp.x)
-            .abs()
-            .max((np.y - wp.y).abs())
-            .max((np.z - wp.z).abs())
-            .max((np.width - wp.width).abs());
+        compare_point_with_width(
+            np,
+            wp,
+            tol,
+            &format!("{label} point {i}"),
+            "point (x, y, z, width)",
+        )?;
+    }
+    Ok(())
+}
+
+/// Shared per-point (x, y, z, width) comparison within coord_mm. `invariant`
+/// names the invariant class in the error so families can distinguish a raw
+/// path point from a chosen seam position.
+fn compare_point_with_width(
+    native: &Point3WithWidth,
+    wasm: &Point3WithWidth,
+    tol: &ParityTolerance,
+    label: &str,
+    invariant: &str,
+) -> Result<(), String> {
+    let d = (native.x - wasm.x)
+        .abs()
+        .max((native.y - wasm.y).abs())
+        .max((native.z - wasm.z).abs())
+        .max((native.width - wasm.width).abs());
+    if d > tol.coord_mm {
+        return Err(format!(
+            "{invariant} mismatch at {label}: max component delta {d:.6} mm > coord_mm {}",
+            tol.coord_mm
+        ));
+    }
+    Ok(())
+}
+
+// ── Finalization family: merged LayerCollectionIR ──────────────────────────
+
+/// Structural parity gate for the post-pass layer-finalization family
+/// (overhang-classifier-default, part-cooling, skirt-brim, wipe-tower).
+/// `FinalizationStageRunner::run_stage` appends into a caller-owned
+/// `Vec<LayerCollectionIR>`; both dispatch paths hand their merged vectors
+/// here. Returns `Err` naming the first violated invariant.
+pub fn assert_finalization_parity_structural(
+    native: &[LayerCollectionIR],
+    wasm: &[LayerCollectionIR],
+    tol: ParityTolerance,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "layer count mismatch: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (slot, (n_layer, w_layer)) in native.iter().zip(wasm).enumerate() {
+        compare_finalization_layer(n_layer, w_layer, &tol, slot)?;
+    }
+    Ok(())
+}
+
+fn compare_finalization_layer(
+    native: &LayerCollectionIR,
+    wasm: &LayerCollectionIR,
+    tol: &ParityTolerance,
+    slot: usize,
+) -> Result<(), String> {
+    if native.global_layer_index != wasm.global_layer_index {
+        return Err(format!(
+            "global layer index mismatch at layer slot {slot}: native={} wasm={}",
+            native.global_layer_index, wasm.global_layer_index
+        ));
+    }
+    let label = format!("layer {}", native.global_layer_index);
+    // (a) per-layer path count.
+    if native.ordered_entities.len() != wasm.ordered_entities.len() {
+        return Err(format!(
+            "entity count mismatch at {label}: native={} wasm={}",
+            native.ordered_entities.len(),
+            wasm.ordered_entities.len()
+        ));
+    }
+    for (entity_idx, (n_entity, w_entity)) in native
+        .ordered_entities
+        .iter()
+        .zip(&wasm.ordered_entities)
+        .enumerate()
+    {
+        let entity_label = format!("{label} entity {entity_idx}");
+        // (b) ExtrusionRole sequence per layer.
+        if n_entity.role != w_entity.role {
+            return Err(format!(
+                "entity role mismatch at {entity_label}: native={:?} wasm={:?}",
+                n_entity.role, w_entity.role
+            ));
+        }
+        // (c)+(d) per-path point count and coordinate equality within coord_mm.
+        compare_segment(&n_entity.path, &w_entity.path, tol, &entity_label)?;
+    }
+    Ok(())
+}
+
+// ── Prepass family: PrepassStageOutput::SeamPlan ───────────────────────────
+
+/// Structural parity gate for the seam-planning prepass output family
+/// (seam-planner-default). Both outputs must be `PrepassStageOutput::SeamPlan`;
+/// a variant mismatch is itself a parity failure. Returns `Err` naming the
+/// first violated invariant.
+pub fn assert_seam_parity_structural(
+    native: &PrepassStageOutput,
+    wasm: &PrepassStageOutput,
+    tol: ParityTolerance,
+) -> Result<(), String> {
+    match (native, wasm) {
+        (PrepassStageOutput::SeamPlan(n), PrepassStageOutput::SeamPlan(w)) => {
+            compare_seam_plan_ir(n, w, &tol)
+        }
+        _ => Err(format!(
+            "variant mismatch: native={} wasm={} \
+             (assert_seam_parity_structural requires PrepassStageOutput::SeamPlan on both paths)",
+            prepass_variant_name(native),
+            prepass_variant_name(wasm)
+        )),
+    }
+}
+
+fn compare_seam_plan_ir(
+    native: &SeamPlanIR,
+    wasm: &SeamPlanIR,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    if native.entries.len() != wasm.entries.len() {
+        return Err(format!(
+            "entries count mismatch: native={} wasm={}",
+            native.entries.len(),
+            wasm.entries.len()
+        ));
+    }
+    // RegionKey is the full entry identity (it includes variant_chain) and
+    // entries are unique by key at commit time, so count + lookup gives a
+    // pairwise comparison.
+    for n_entry in &native.entries {
+        let w_entry = wasm
+            .entries
+            .iter()
+            .find(|e| e.region_key == n_entry.region_key)
+            .ok_or_else(|| {
+                format!(
+                    "entry key set mismatch: wasm missing seam entry (layer={}, object_id={}, region_id={})",
+                    n_entry.region_key.global_layer_index,
+                    n_entry.region_key.object_id,
+                    n_entry.region_key.region_id
+                )
+            })?;
+        compare_seam_entry(n_entry, w_entry, tol)?;
+    }
+    Ok(())
+}
+
+fn compare_seam_entry(
+    native: &SeamPlanEntry,
+    wasm: &SeamPlanEntry,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    let label = format!(
+        "entry (layer={}, object_id={}, region_id={})",
+        native.region_key.global_layer_index,
+        native.region_key.object_id,
+        native.region_key.region_id
+    );
+    // Chosen seam position: wall index identity plus coordinates within
+    // coord_mm.
+    if native.chosen_candidate.wall_index != wasm.chosen_candidate.wall_index {
+        return Err(format!(
+            "chosen seam wall index mismatch at {label}: native={} wasm={}",
+            native.chosen_candidate.wall_index, wasm.chosen_candidate.wall_index
+        ));
+    }
+    compare_point_with_width(
+        &native.chosen_candidate.point,
+        &wasm.chosen_candidate.point,
+        tol,
+        label.as_str(),
+        "chosen seam position",
+    )?;
+    // Scored candidate evidence list.
+    if native.scored_candidates.len() != wasm.scored_candidates.len() {
+        return Err(format!(
+            "scored_candidates count mismatch at {label}: native={} wasm={}",
+            native.scored_candidates.len(),
+            wasm.scored_candidates.len()
+        ));
+    }
+    for (cand_idx, (n_cand, w_cand)) in native
+        .scored_candidates
+        .iter()
+        .zip(&wasm.scored_candidates)
+        .enumerate()
+    {
+        let cand_label = format!("{label} candidate {cand_idx}");
+        compare_point_with_width(
+            &n_cand.position,
+            &w_cand.position,
+            tol,
+            &cand_label,
+            "candidate position",
+        )?;
+        // Candidate scores are normalized and unitless; coord_mm doubles as
+        // the generic float tolerance.
+        let d = (n_cand.score - w_cand.score).abs();
         if d > tol.coord_mm {
             return Err(format!(
-                "point (x, y, z, width) mismatch at {label} point {i}: max component delta \
-                 {d:.6} mm > coord_mm {}",
+                "candidate score mismatch at {cand_label}: score delta {d:.6} > coord_mm {}",
                 tol.coord_mm
             ));
+        }
+        if n_cand.reason != w_cand.reason {
+            return Err(format!(
+                "candidate reason mismatch at {cand_label}: native={:?} wasm={:?}",
+                n_cand.reason, w_cand.reason
+            ));
+        }
+    }
+    Ok(())
+}
+
+// ── Prepass family: PrepassStageOutput::LayerPlan ──────────────────────────
+
+/// Structural parity gate for the layer-planning prepass output family
+/// (layer-planner-default). Both outputs must be `PrepassStageOutput::LayerPlan`;
+/// a variant mismatch is itself a parity failure. Returns `Err` naming the
+/// first violated invariant.
+///
+/// Scope note: `ActiveRegion.resolved_config` contents are inputs resolved
+/// upstream of the planner, not planner outputs, so the gate covers the
+/// plan's geometry — layer indices, Z heights, active-region keys, effective
+/// layer heights, and the object-participation mapping.
+pub fn assert_layer_plan_parity_structural(
+    native: &PrepassStageOutput,
+    wasm: &PrepassStageOutput,
+    tol: ParityTolerance,
+) -> Result<(), String> {
+    match (native, wasm) {
+        (PrepassStageOutput::LayerPlan(n), PrepassStageOutput::LayerPlan(w)) => {
+            compare_layer_plan_ir(n, w, &tol)
+        }
+        _ => Err(format!(
+            "variant mismatch: native={} wasm={} \
+             (assert_layer_plan_parity_structural requires PrepassStageOutput::LayerPlan on both paths)",
+            prepass_variant_name(native),
+            prepass_variant_name(wasm)
+        )),
+    }
+}
+
+fn compare_layer_plan_ir(
+    native: &LayerPlanIR,
+    wasm: &LayerPlanIR,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
+    if native.global_layers.len() != wasm.global_layers.len() {
+        return Err(format!(
+            "global_layers count mismatch: native={} wasm={}",
+            native.global_layers.len(),
+            wasm.global_layers.len()
+        ));
+    }
+    for (n_layer, w_layer) in native.global_layers.iter().zip(&wasm.global_layers) {
+        if n_layer.index != w_layer.index {
+            return Err(format!(
+                "global layer index mismatch: native={} wasm={}",
+                n_layer.index, w_layer.index
+            ));
+        }
+        let label = format!("global layer {}", n_layer.index);
+        let dz = (n_layer.z - w_layer.z).abs();
+        if dz > tol.coord_mm {
+            return Err(format!(
+                "layer z mismatch at {label}: |native.z - wasm.z| {dz:.6} mm > coord_mm {}",
+                tol.coord_mm
+            ));
+        }
+        if n_layer.active_regions.len() != w_layer.active_regions.len() {
+            return Err(format!(
+                "active region count mismatch at {label}: native={} wasm={}",
+                n_layer.active_regions.len(),
+                w_layer.active_regions.len()
+            ));
+        }
+        for n_region in &n_layer.active_regions {
+            let w_region = w_layer
+                .active_regions
+                .iter()
+                .find(|r| r.object_id == n_region.object_id && r.region_id == n_region.region_id)
+                .ok_or_else(|| {
+                    format!(
+                        "active region key set mismatch at {label}: wasm missing region (object_id={}, region_id={})",
+                        n_region.object_id, n_region.region_id
+                    )
+                })?;
+            let region_label = format!(
+                "{label} region (object_id={}, region_id={})",
+                n_region.object_id, n_region.region_id
+            );
+            let dh = (n_region.effective_layer_height - w_region.effective_layer_height).abs();
+            if dh > tol.coord_mm {
+                return Err(format!(
+                    "effective layer height mismatch at {region_label}: delta {dh:.6} mm > coord_mm {}",
+                    tol.coord_mm
+                ));
+            }
+            if n_region.tool_index != w_region.tool_index {
+                return Err(format!(
+                    "tool index mismatch at {region_label}: native={} wasm={}",
+                    n_region.tool_index, w_region.tool_index
+                ));
+            }
+        }
+    }
+    // Object participation mapping: identical object key set, and per-object
+    // ref sequences with matching indices and heights within coord_mm.
+    if native.object_participation.len() != wasm.object_participation.len() {
+        return Err(format!(
+            "participation object count mismatch: native={} wasm={}",
+            native.object_participation.len(),
+            wasm.object_participation.len()
+        ));
+    }
+    for (object_id, n_refs) in &native.object_participation {
+        let w_refs = wasm.object_participation.get(object_id).ok_or_else(|| {
+            format!("participation key set mismatch: wasm missing object '{object_id}'")
+        })?;
+        if n_refs.len() != w_refs.len() {
+            return Err(format!(
+                "participation ref count mismatch for object '{object_id}': native={} wasm={}",
+                n_refs.len(),
+                w_refs.len()
+            ));
+        }
+        for (n_ref, w_ref) in n_refs.iter().zip(w_refs) {
+            if n_ref.local_layer_index != w_ref.local_layer_index
+                || n_ref.global_layer_index != w_ref.global_layer_index
+            {
+                return Err(format!(
+                    "participation ref index mismatch for object '{object_id}': \
+                     native=(local {}, global {}) wasm=(local {}, global {})",
+                    n_ref.local_layer_index,
+                    n_ref.global_layer_index,
+                    w_ref.local_layer_index,
+                    w_ref.global_layer_index
+                ));
+            }
+            let dh = (n_ref.effective_layer_height - w_ref.effective_layer_height).abs();
+            if dh > tol.coord_mm {
+                return Err(format!(
+                    "participation ref height mismatch for object '{object_id}' local layer {}: \
+                     delta {dh:.6} mm > coord_mm {}",
+                    n_ref.local_layer_index, tol.coord_mm
+                ));
+            }
         }
     }
     Ok(())

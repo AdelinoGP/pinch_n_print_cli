@@ -183,11 +183,14 @@ pub fn build_native_layer_request(
             .collect()
     });
 
-    let paint = input
+    let mut paint = input
         .paint_regions
         .as_ref()
         .map(|_| PaintRegionLayerView::with_paint_regions(layer_index, std::sync::Arc::new(())))
         .unwrap_or_else(|| PaintRegionLayerView::new(layer_index));
+    if let Some(ir) = input.lightning_tree_ir.as_ref() {
+        paint = paint.with_lightning_tree_ir(std::sync::Arc::clone(ir));
+    }
 
     NativeLayerRequest {
         layer_index,
@@ -395,7 +398,10 @@ pub fn commit_native_prepass_response(
                 return Ok(slicer_core::PrepassStageOutput::None);
             };
             let mut global_layers = Vec::new();
-            let participation = std::collections::HashMap::new();
+            let mut participation: std::collections::HashMap<
+                String,
+                Vec<slicer_ir::ObjectLayerRef>,
+            > = std::collections::HashMap::new();
             for (index, proposal) in output.layers().iter().enumerate() {
                 let active_regions: Result<Vec<_>, String> = proposal
                     .active_regions
@@ -415,6 +421,20 @@ pub fn commit_native_prepass_response(
                     })
                     .collect();
                 let active_regions = active_regions?;
+                for region in &proposal.active_regions {
+                    let obj_refs = participation
+                        .entry(region.object_id.clone())
+                        .or_default();
+                    let already_referenced =
+                        obj_refs.iter().any(|r| r.global_layer_index == index as u32);
+                    if !already_referenced {
+                        obj_refs.push(slicer_ir::ObjectLayerRef {
+                            local_layer_index: obj_refs.len() as u32,
+                            global_layer_index: index as u32,
+                            effective_layer_height: region.effective_layer_height,
+                        });
+                    }
+                }
                 global_layers.push(slicer_ir::GlobalLayer {
                     index: index as u32,
                     z: proposal.z,

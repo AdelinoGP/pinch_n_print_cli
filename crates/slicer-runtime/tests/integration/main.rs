@@ -16,6 +16,7 @@ mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
 mod extra_perimeters_config_tdd;
 mod extra_perimeters_on_overhangs_tdd;
+mod full_coverage_external_override_tdd;
 mod gap_fill_emission_tdd;
 mod gcode_flavor_config_block_tdd;
 mod gcode_header_thumbnail_config_blocks_tdd;

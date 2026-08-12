@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 205a-integrated-edition-coverage
 task_ids:
   - ADR-0056

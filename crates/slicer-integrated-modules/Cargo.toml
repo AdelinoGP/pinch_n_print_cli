@@ -11,9 +11,41 @@ slicer-sdk = { path = "../slicer-sdk" }
 classic-perimeters = { path = "../../modules/core-modules/classic-perimeters", optional = true }
 arachne-perimeters = { path = "../../modules/core-modules/arachne-perimeters", optional = true }
 support-planner = { path = "../../modules/core-modules/support-planner", optional = true }
+fuzzy-skin = { path = "../../modules/core-modules/fuzzy-skin", optional = true }
+gyroid-infill = { path = "../../modules/core-modules/gyroid-infill", optional = true }
+infill-linker = { path = "../../modules/core-modules/infill-linker", optional = true }
+layer-planner-default = { path = "../../modules/core-modules/layer-planner-default", optional = true }
+lightning-infill = { path = "../../modules/core-modules/lightning-infill", optional = true }
+overhang-classifier-default = { path = "../../modules/core-modules/overhang-classifier-default", optional = true }
+part-cooling = { path = "../../modules/core-modules/part-cooling", optional = true }
+rectilinear-infill = { path = "../../modules/core-modules/rectilinear-infill", optional = true }
+seam-placer = { path = "../../modules/core-modules/seam-placer", optional = true }
+seam-planner-default = { path = "../../modules/core-modules/seam-planner-default", optional = true }
+skirt-brim = { path = "../../modules/core-modules/skirt-brim", optional = true }
+support-surface-ironing = { path = "../../modules/core-modules/support-surface-ironing", optional = true }
+top-surface-ironing = { path = "../../modules/core-modules/top-surface-ironing", optional = true }
+traditional-support = { path = "../../modules/core-modules/traditional-support", optional = true }
+tree-support = { path = "../../modules/core-modules/tree-support", optional = true }
+wipe-tower = { path = "../../modules/core-modules/wipe-tower", optional = true }
 
 [features] # arachne-perimeters and support-planner are optional pilot integrations
 default = []
 classic-perimeters = ["dep:classic-perimeters"]
 arachne-perimeters = ["dep:arachne-perimeters"]
 support-planner = ["dep:support-planner"]
+fuzzy-skin = ["dep:fuzzy-skin"]
+gyroid-infill = ["dep:gyroid-infill"]
+infill-linker = ["dep:infill-linker"]
+layer-planner-default = ["dep:layer-planner-default"]
+lightning-infill = ["dep:lightning-infill"]
+overhang-classifier-default = ["dep:overhang-classifier-default"]
+part-cooling = ["dep:part-cooling"]
+rectilinear-infill = ["dep:rectilinear-infill"]
+seam-placer = ["dep:seam-placer"]
+seam-planner-default = ["dep:seam-planner-default"]
+skirt-brim = ["dep:skirt-brim"]
+support-surface-ironing = ["dep:support-surface-ironing"]
+top-surface-ironing = ["dep:top-surface-ironing"]
+traditional-support = ["dep:traditional-support"]
+tree-support = ["dep:tree-support"]
+wipe-tower = ["dep:wipe-tower"]

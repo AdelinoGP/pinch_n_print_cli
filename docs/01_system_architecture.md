@@ -1028,8 +1028,9 @@ version 1), which provides the `developer`, `hybrid`, and `integrated` edition
 keys through `integrate_all` and `integrated_modules`. The developer edition
 sets `integrate_all = false` with no integrated modules, the hybrid edition
 integrates exactly the modules named in its `integrated_modules` array, and
-the integrated edition sets `integrate_all = true`; the hybrid membership is
-finalized by profiling and lives only in this config. Every `integrated_modules` name is a module
+the integrated edition sets `integrate_all = true`; its remaining coverage is
+limited to the two transport-blocked modules, `path-optimization-default` and
+`machine-gcode-emit`, pending packet 205b. The hybrid membership is finalized by profiling and lives only in this config. Every `integrated_modules` name is a module
 directory name shared by `modules/core-modules/<name>`, its
 `slicer-integrated-modules` Cargo feature, and the staged `<name>.wasm` and
 `<name>.toml` stems. `xtask::editions::load_editions` reads and validates this
