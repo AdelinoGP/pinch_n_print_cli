@@ -8,13 +8,13 @@ use slicer_ir::{
     PerimeterIR, PerimeterRegion, Point3WithWidth, RegionKey, SeamPlanEntry, SeamPlanIR,
     SeamPosition, SemVer, StageId, WallBoundaryType, WallLoop, WidthProfile,
 };
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
-    LoadedModuleBuilder, WasmInstancePool, WasmRuntimeDispatcher,
+    WasmInstancePool, WasmRuntimeDispatcher,
 };
 
 use crate::common::{
+    integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
     parity_invariants::{assert_parity_structural, ParityTolerance},
     wasm_cache,
 };
@@ -67,86 +67,12 @@ fn perimeter() -> PerimeterIR {
     }
 }
 
-fn wasm_live<'a>(module: &'a slicer_runtime::CompiledModule) -> CompiledModuleLive<'a> {
-    let loaded = LoadedModuleBuilder::new(
-        module.module_id().as_str(),
-        SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        "Layer::PerimetersPostProcess",
-        String::new(),
-        std::path::PathBuf::from("/dev/null"),
-    )
-    .min_host_version(SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    })
-    .min_ir_schema(SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    })
-    .max_ir_schema(SemVer {
-        major: 5,
-        minor: 0,
-        patch: 0,
-    })
-    .layer_parallel_safe(true)
-    .build();
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("build instance pool"),
-    );
-    let component = wasm_cache::compiled_component_at(
-        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../modules/core-modules/seam-placer/seam-placer.wasm"),
-    );
-    CompiledModuleLive::new(
-        module.module_id(),
-        pool,
-        Some(component),
-        module.claims(),
-        Arc::clone(module.config_view()),
-    )
-}
-
 #[test]
 fn integrated_parity_seam_placer() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([(
         "seam_mode".into(),
         ConfigValue::String("nearest".into()),
     )])));
-    let wasm_module = CompiledModuleBuilder::new("com.core.seam-placer")
-        .claims(vec!["seam-placer".into()])
-        .config_view(Arc::clone(&config))
-        .build();
-    let native_module = CompiledModuleBuilder::new("com.core.seam-placer")
-        .claims(vec!["seam-placer".into()])
-        .config_view(config)
-        .build();
-    let wasm_live = wasm_live(&wasm_module);
-    let native_live = CompiledModuleLive::new(
-        native_module.module_id(),
-        WasmInstancePool::placeholder(),
-        None,
-        native_module.claims(),
-        Arc::clone(native_module.config_view()),
-    )
-    .with_native_entry(SeamPlacer::__slicer_native_entry());
-
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     blackboard
         .commit_seam_plan(Arc::new(SeamPlanIR {
@@ -171,7 +97,6 @@ fn integrated_parity_seam_placer() {
             ..Default::default()
         }))
         .expect("commit seam plan");
-
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
@@ -186,24 +111,54 @@ fn integrated_parity_seam_placer() {
         ..Default::default()
     };
     let stage: StageId = "Layer::PerimetersPostProcess".into();
-    let wasm = LayerStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &layer,
-        &wasm_live,
-        crate::common::layer_input(&blackboard, &wasm_arena),
-    )
-    .expect("wasm dispatch")
-    .expect("wasm commit");
-    let native = LayerStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &layer,
-        &native_live,
-        crate::common::layer_input(&blackboard, &native_arena),
-    )
-    .expect("native dispatch")
-    .expect("native commit");
+    let (native, wasm) = run_integrated_parity(
+        IntegratedParitySpec {
+            module_id: "com.core.seam-placer".into(),
+            wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../modules/core-modules/seam-placer/seam-placer.wasm"),
+            stage: "Layer::PerimetersPostProcess".into(),
+            version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 5,
+                minor: 0,
+                patch: 0,
+            },
+            tier: String::new(),
+            claims: vec!["seam-placer".into()],
+            config,
+            native_entry: SeamPlacer::__slicer_native_entry(),
+        },
+        |dispatcher, native_live, wasm_live| {
+            let wasm = LayerStageRunner::run_stage(
+                dispatcher,
+                &stage,
+                &layer,
+                wasm_live,
+                crate::common::layer_input(&blackboard, &wasm_arena),
+            )
+            .expect("wasm dispatch")
+            .expect("wasm commit");
+            let native = LayerStageRunner::run_stage(
+                dispatcher,
+                &stage,
+                &layer,
+                native_live,
+                crate::common::layer_input(&blackboard, &native_arena),
+            )
+            .expect("native dispatch")
+            .expect("native commit");
+            (native, wasm)
+        },
+    );
     assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect("seam placer native/wasm parity");
 }

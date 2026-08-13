@@ -21,14 +21,12 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerStageCommit, Point2, Polygon, SemVer,
     SliceIR, SlicedRegion, StageId,
 };
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_runtime::{
-    Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
-    LoadedModuleBuilder, WasmInstancePool, WasmRuntimeDispatcher,
-};
+use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 
-use crate::common::parity_invariants::{assert_parity_structural, ParityTolerance};
-use crate::common::wasm_cache;
+use crate::common::{
+    integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
+    parity_invariants::{assert_parity_structural, ParityTolerance},
+};
 
 /// Coordinates use the seam's scale: 1 unit = 100 nm. A tapering
 /// quadrilateral — 20 mm wide (200_000 units) at y=0 narrowing to 7 mm
@@ -72,93 +70,12 @@ fn module_id() -> slicer_ir::ModuleId {
     "com.core.arachne-perimeters".to_string()
 }
 
-fn wasm_live<'a>(
-    module: &'a slicer_runtime::CompiledModule,
-) -> (CompiledModuleLive<'a>, Arc<slicer_runtime::WasmComponent>) {
-    let loaded = LoadedModuleBuilder::new(
-        module.module_id().as_str(),
-        SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        "Layer::Perimeters",
-        String::new(),
-        PathBuf::from("/dev/null"),
-    )
-    .min_host_version(SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    })
-    .min_ir_schema(SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    })
-    .max_ir_schema(SemVer {
-        major: 2,
-        minor: 0,
-        patch: 0,
-    })
-    .layer_parallel_safe(true)
-    .build();
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("build instance pool"),
-    );
-    // CARGO_MANIFEST_DIR is crates/slicer-runtime; two levels up is repo root.
-    let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("modules/core-modules/arachne-perimeters/arachne-perimeters.wasm");
-    assert!(
-        wasm_path.exists(),
-        "real arachne-perimeters guest is missing: {} (run `cargo xtask build-guests`)",
-        wasm_path.display()
-    );
-    let component = wasm_cache::compiled_component_at(&wasm_path);
-    let live = CompiledModuleLive::new(
-        module.module_id(),
-        pool,
-        Some(Arc::clone(&component)),
-        module.claims(),
-        Arc::clone(module.config_view()),
-    );
-    (live, component)
-}
-
 #[test]
 fn integrated_parity_arachne_perimeters_native_matches_wasm() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::from_map(HashMap::from([(
         "line_width".to_owned(),
         ConfigValue::Float(0.4),
     )])));
-    let wasm_module = CompiledModuleBuilder::new(module_id())
-        .config_view(Arc::clone(&config))
-        .build();
-    let native_module = CompiledModuleBuilder::new(module_id())
-        .config_view(Arc::clone(&config))
-        .build();
-    let (wasm_live, _component) = wasm_live(&wasm_module);
-    let native_live = CompiledModuleLive::new(
-        native_module.module_id(),
-        WasmInstancePool::placeholder(),
-        None,
-        native_module.claims(),
-        Arc::clone(native_module.config_view()),
-    )
-    .with_native_entry(ArachnePerimeters::__slicer_native_entry());
     let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let slice = taper_slice();
     let mut wasm_arena = LayerArena::new();
@@ -171,16 +88,46 @@ fn integrated_parity_arachne_perimeters_native_matches_wasm() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Perimeters".to_string();
-    let wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-    let native_input = crate::common::layer_input(&bb, &native_arena);
-    let wasm_commit: LayerStageCommit =
-        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &wasm_live, wasm_input)
-            .expect("wasm dispatch")
-            .expect("wasm commit");
-    let native_commit: LayerStageCommit =
-        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &native_live, native_input)
-            .expect("native dispatch")
-            .expect("native commit");
+    let (native_commit, wasm_commit): (LayerStageCommit, LayerStageCommit) = run_integrated_parity(
+        IntegratedParitySpec {
+            module_id: module_id(),
+            wasm_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../modules/core-modules/arachne-perimeters/arachne-perimeters.wasm"),
+            stage: stage.clone(),
+            version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            },
+            tier: String::new(),
+            claims: Vec::new(),
+            config: Arc::clone(&config),
+            native_entry: ArachnePerimeters::__slicer_native_entry(),
+        },
+        |dispatcher, native_live, wasm_live| {
+            let wasm_input = crate::common::layer_input(&bb, &wasm_arena);
+            let native_input = crate::common::layer_input(&bb, &native_arena);
+            let wasm =
+                LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input)
+                    .expect("wasm dispatch")
+                    .expect("wasm commit");
+            let native =
+                LayerStageRunner::run_stage(dispatcher, &stage, &layer, native_live, native_input)
+                    .expect("native dispatch")
+                    .expect("native commit");
+            (native, wasm)
+        },
+    );
     // AC-6 runtime half: the native path emits a NON-EMPTY wall set — at
     // least one loop with at least one point — proving the native arm of
     // `generate_arachne_walls` reached

@@ -6,72 +6,13 @@ use slicer_ir::{
     ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer, MeshIR, Point3WithWidth, SemVer,
     SliceIR, StageId, SupportPlanEntry, SupportPlanIR, CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
 };
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_runtime::{
-    Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
-    LoadedModuleBuilder, WasmInstancePool, WasmRuntimeDispatcher,
-};
+use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 use support_surface_ironing::SupportSurfaceIroning;
 
 use crate::common::{
+    integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
     parity_invariants::{assert_parity_structural, ParityTolerance},
-    wasm_cache,
 };
-
-fn wasm_live<'a>(module: &'a slicer_runtime::CompiledModule) -> CompiledModuleLive<'a> {
-    let loaded = LoadedModuleBuilder::new(
-        module.module_id().as_str(),
-        SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        "Layer::SupportPostProcess",
-        String::new(),
-        std::path::PathBuf::from("/dev/null"),
-    )
-    .min_host_version(SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    })
-    .min_ir_schema(SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    })
-    .max_ir_schema(SemVer {
-        major: 5,
-        minor: 0,
-        patch: 0,
-    })
-    .layer_parallel_safe(true)
-    .build();
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("build instance pool"),
-    );
-    let component = wasm_cache::compiled_component_at(
-        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-            "../../modules/core-modules/support-surface-ironing/support-surface-ironing.wasm",
-        ),
-    );
-    CompiledModuleLive::new(
-        module.module_id(),
-        pool,
-        Some(component),
-        module.claims(),
-        Arc::clone(module.config_view()),
-    )
-}
 
 fn support_plan() -> SupportPlanIR {
     SupportPlanIR {
@@ -109,8 +50,6 @@ fn support_plan() -> SupportPlanIR {
 
 #[test]
 fn integrated_parity_support_surface_ironing() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (
             "ironing_enabled".to_string(),
@@ -130,24 +69,7 @@ fn integrated_parity_support_surface_ironing() {
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
     ])));
-    let wasm_module = CompiledModuleBuilder::new("com.core.support-surface-ironing")
-        .config_view(Arc::clone(&config))
-        .build();
-    let native_module = CompiledModuleBuilder::new("com.core.support-surface-ironing")
-        .config_view(config)
-        .build();
-    let wasm_live = wasm_live(&wasm_module);
-    let native_live = CompiledModuleLive::new(
-        native_module.module_id(),
-        WasmInstancePool::placeholder(),
-        None,
-        native_module.claims(),
-        Arc::clone(native_module.config_view()),
-    )
-    .with_native_entry(SupportSurfaceIroning::__slicer_native_entry());
     let mut bb = Blackboard::new(Arc::new(MeshIR::default()), 1);
-    bb.commit_support_plan(Arc::new(support_plan()))
-        .expect("commit support plan");
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     let slice = SliceIR {
@@ -186,24 +108,57 @@ fn integrated_parity_support_surface_ironing() {
         ..Default::default()
     };
     let stage: StageId = "Layer::SupportPostProcess".to_string();
-    let wasm = LayerStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &layer,
-        &wasm_live,
-        crate::common::layer_input(&bb, &wasm_arena),
-    )
-    .expect("wasm dispatch")
-    .expect("wasm commit");
-    let native = LayerStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &layer,
-        &native_live,
-        crate::common::layer_input(&bb, &native_arena),
-    )
-    .expect("native dispatch")
-    .expect("native commit");
+    bb.commit_support_plan(Arc::new(support_plan()))
+        .expect("commit support plan");
+    let (native, wasm) = run_integrated_parity(
+        IntegratedParitySpec {
+            module_id: "com.core.support-surface-ironing".into(),
+            wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+                "../../modules/core-modules/support-surface-ironing/support-surface-ironing.wasm",
+            ),
+            stage: "Layer::SupportPostProcess".into(),
+            version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 5,
+                minor: 0,
+                patch: 0,
+            },
+            tier: String::new(),
+            claims: Vec::new(),
+            config: Arc::clone(&config),
+            native_entry: SupportSurfaceIroning::__slicer_native_entry(),
+        },
+        |dispatcher, native_live, wasm_live| {
+            let wasm = LayerStageRunner::run_stage(
+                dispatcher,
+                &stage,
+                &layer,
+                wasm_live,
+                crate::common::layer_input(&bb, &wasm_arena),
+            )
+            .expect("wasm dispatch")
+            .expect("wasm commit");
+            let native = LayerStageRunner::run_stage(
+                dispatcher,
+                &stage,
+                &layer,
+                native_live,
+                crate::common::layer_input(&bb, &native_arena),
+            )
+            .expect("native dispatch")
+            .expect("native commit");
+            (native, wasm)
+        },
+    );
     assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect("support ironing native/wasm parity");
 }

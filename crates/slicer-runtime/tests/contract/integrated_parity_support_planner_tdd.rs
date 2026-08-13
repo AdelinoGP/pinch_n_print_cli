@@ -8,16 +8,15 @@ use std::sync::Arc;
 
 use slicer_core::PrepassStageOutput;
 use slicer_ir::{ConfigView, SemVer, StageId};
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::run::PrepassContext;
-use slicer_runtime::{
-    CompiledModuleBuilder, CompiledModuleLive, LoadedModuleBuilder, PrepassStageInput,
-    PrepassStageRunner, WasmInstancePool, WasmRuntimeDispatcher,
-};
+use slicer_runtime::{PrepassStageInput, PrepassStageRunner};
 use support_planner::SupportPlanner;
 
-use crate::common::parity_invariants::{assert_prepass_parity_structural, ParityTolerance};
-use crate::common::{support_wedge, wasm_cache};
+use crate::common::support_wedge;
+use crate::common::{
+    integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
+    parity_invariants::{assert_prepass_parity_structural, ParityTolerance},
+};
 
 fn module_id() -> slicer_ir::ModuleId {
     "com.core.support-planner".to_string()
@@ -44,97 +43,45 @@ fn support_plan(output: &PrepassStageOutput) -> &slicer_ir::SupportPlanIR {
 
 #[test]
 fn integrated_parity_support_planner_native_matches_wasm() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::new());
-    let wasm_module = CompiledModuleBuilder::new(module_id())
-        .config_view(Arc::clone(&config))
-        .build();
-    let native_module = CompiledModuleBuilder::new(module_id())
-        .config_view(Arc::clone(&config))
-        .build();
-
-    let loaded = LoadedModuleBuilder::new(
-        module_id().as_str(),
-        SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        "PrePass::SupportGeometry",
-        String::new(),
-        PathBuf::from("/dev/null"),
-    )
-    .min_host_version(SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    })
-    .min_ir_schema(SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    })
-    .max_ir_schema(SemVer {
-        major: 2,
-        minor: 0,
-        patch: 0,
-    })
-    .layer_parallel_safe(false)
-    .build();
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("build instance pool"),
-    );
-    let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("modules/core-modules/support-planner/support-planner.wasm");
-    assert!(
-        wasm_path.exists(),
-        "real support-planner guest is missing: {} (run `cargo xtask build-guests`)",
-        wasm_path.display()
-    );
-    let component = wasm_cache::compiled_component_at(&wasm_path);
-    let wasm_live = CompiledModuleLive::new(
-        wasm_module.module_id(),
-        pool,
-        Some(component),
-        wasm_module.claims(),
-        Arc::clone(wasm_module.config_view()),
-    );
-    let native_live = CompiledModuleLive::new(
-        native_module.module_id(),
-        WasmInstancePool::placeholder(),
-        None,
-        native_module.claims(),
-        Arc::clone(native_module.config_view()),
-    )
-    .with_native_entry(SupportPlanner::__slicer_native_entry());
-
+    let stage = StageId::from("PrePass::SupportGeometry");
     let ctx = support_wedge::prepare_wedge_context(true);
-    let native_output = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &StageId::from("PrePass::SupportGeometry"),
-        &native_live,
-        input(&ctx),
-    )
-    .expect("native dispatch");
-    let wasm_output = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &StageId::from("PrePass::SupportGeometry"),
-        &wasm_live,
-        input(&ctx),
-    )
-    .expect("wasm dispatch");
+    let (native_output, wasm_output) = run_integrated_parity(
+        IntegratedParitySpec {
+            module_id: module_id(),
+            wasm_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../modules/core-modules/support-planner/support-planner.wasm"),
+            stage: stage.to_string(),
+            version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            },
+            tier: String::new(),
+            claims: Vec::new(),
+            config,
+            native_entry: SupportPlanner::__slicer_native_entry(),
+        },
+        |dispatcher, native_live, wasm_live| {
+            let native_output =
+                PrepassStageRunner::run_stage(dispatcher, &stage, native_live, input(&ctx))
+                    .expect("native dispatch");
+            let wasm_output =
+                PrepassStageRunner::run_stage(dispatcher, &stage, wasm_live, input(&ctx))
+                    .expect("wasm dispatch");
+            (native_output, wasm_output)
+        },
+    );
 
     for (name, output) in [("native", &native_output), ("wasm", &wasm_output)] {
         let plan = support_plan(output);

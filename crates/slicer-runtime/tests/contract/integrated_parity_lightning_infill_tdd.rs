@@ -2,17 +2,16 @@
 
 use std::sync::Arc;
 
-use crate::common::{parity_invariants::ParityTolerance, wasm_cache};
+use crate::common::{
+    integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
+    parity_invariants::ParityTolerance,
+};
 use lightning_infill::LightningInfill;
 use slicer_ir::{
     ConfigView, ExPolygon, GlobalLayer, LightningTreeEntry, LightningTreeIR, Point2, Polygon,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, StageId,
 };
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_runtime::{
-    Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
-    LoadedModuleBuilder, WasmInstancePool, WasmRuntimeDispatcher,
-};
+use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 
 fn non_empty_slice() -> SliceIR {
     let polygon = ExPolygon {
@@ -47,84 +46,8 @@ fn non_empty_slice() -> SliceIR {
     }
 }
 
-fn wasm_live<'a>(
-    module: &'a slicer_runtime::CompiledModule,
-) -> (CompiledModuleLive<'a>, Arc<slicer_runtime::WasmComponent>) {
-    let loaded = LoadedModuleBuilder::new(
-        module.module_id().as_str(),
-        SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        "Layer::Infill",
-        String::new(),
-        std::path::PathBuf::from("/dev/null"),
-    )
-    .min_host_version(SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    })
-    .min_ir_schema(SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    })
-    .max_ir_schema(SemVer {
-        major: 2,
-        minor: 0,
-        patch: 0,
-    })
-    .layer_parallel_safe(true)
-    .build();
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("build instance pool"),
-    );
-    let component = wasm_cache::compiled_component_at(
-        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm"),
-    );
-    let live = CompiledModuleLive::new(
-        module.module_id(),
-        pool,
-        Some(Arc::clone(&component)),
-        module.claims(),
-        Arc::clone(module.config_view()),
-    );
-    (live, component)
-}
-
 #[test]
 fn integrated_parity_lightning_infill() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let wasm_module = CompiledModuleBuilder::new("com.core.lightning-infill")
-        .claims(vec!["claim:sparse-fill".to_string()])
-        .config_view(Arc::new(ConfigView::new()))
-        .build();
-    let native_module = CompiledModuleBuilder::new("com.core.lightning-infill")
-        .claims(vec!["claim:sparse-fill".to_string()])
-        .config_view(Arc::new(ConfigView::new()))
-        .build();
-    let (wasm_live, _component) = wasm_live(&wasm_module);
-    let native_live = CompiledModuleLive::new(
-        native_module.module_id(),
-        WasmInstancePool::placeholder(),
-        None,
-        native_module.claims(),
-        Arc::clone(native_module.config_view()),
-    )
-    .with_native_entry(LightningInfill::__slicer_native_entry());
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();
     let resolved = ResolvedConfig {
@@ -181,13 +104,44 @@ fn integrated_parity_lightning_infill() {
     let mut native_input = crate::common::layer_input(&bb, &native_arena);
     wasm_input.paint_regions = Some(());
     native_input.paint_regions = Some(());
-    let wasm = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &wasm_live, wasm_input)
-        .expect("wasm dispatch")
-        .expect("wasm commit");
-    let native =
-        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &native_live, native_input)
-            .expect("native dispatch")
-            .expect("native commit");
+    let (native, wasm) = run_integrated_parity(
+        IntegratedParitySpec {
+            module_id: "com.core.lightning-infill".into(),
+            wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm"),
+            stage: stage.clone(),
+            version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            },
+            tier: String::new(),
+            claims: vec!["claim:sparse-fill".into()],
+            config: Arc::new(ConfigView::new()),
+            native_entry: LightningInfill::__slicer_native_entry(),
+        },
+        |dispatcher, native_live, wasm_live| {
+            let wasm =
+                LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input)
+                    .expect("wasm dispatch")
+                    .expect("wasm commit");
+            let native =
+                LayerStageRunner::run_stage(dispatcher, &stage, &layer, native_live, native_input)
+                    .expect("native dispatch")
+                    .expect("native commit");
+            (native, wasm)
+        },
+    );
     crate::common::parity_invariants::assert_parity_structural(
         &native,
         &wasm,

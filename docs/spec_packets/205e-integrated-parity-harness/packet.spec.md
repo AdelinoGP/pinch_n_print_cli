@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 205e-integrated-parity-harness
 task_ids:
   - TASK-331

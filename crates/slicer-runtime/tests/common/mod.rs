@@ -8,6 +8,7 @@
 // back to runtime). A future packet can extract them into a shared
 // `slicer-test-fixtures` crate if duplication grows.
 pub mod dispatch_fixture;
+pub mod integrated_parity_harness;
 pub mod ir_builders;
 pub mod model_cache;
 pub mod parity_invariants;
