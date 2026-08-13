@@ -1,0 +1,134 @@
+/// Host-owned support plan aggregation and complete-body validation contract.
+use std::sync::Arc;
+
+use slicer_ir::{ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Transform3d};
+use slicer_wasm_host::exact_z_query::ExactZQueryService;
+use slicer_wasm_host::support_aggregation::{aggregate_support_plans, SupportAggregationInput};
+
+fn square(x: i64, y: i64, size: i64) -> ExPolygon {
+    ExPolygon {
+        contour: slicer_ir::Polygon {
+            points: vec![
+                Point2 { x, y },
+                Point2 { x: x + size, y },
+                Point2 {
+                    x: x + size,
+                    y: y + size,
+                },
+                Point2 { x, y: y + size },
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
+fn mesh() -> MeshIR {
+    MeshIR {
+        objects: vec![ObjectMesh {
+            id: "object-a".into(),
+            mesh: IndexedTriangleSet {
+                vertices: vec![
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 10.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 10.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 10.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 10.0,
+                        z: 10.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 10.0,
+                    },
+                ],
+                indices: vec![
+                    0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6,
+                    7, 2, 7, 3, 3, 7, 4, 3, 4, 0,
+                ],
+            },
+            transform: Transform3d {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+fn entry(body: &str, x: i64) -> slicer_ir::SupportPlanEntry {
+    slicer_ir::SupportPlanEntry {
+        global_layer_index: 0,
+        object_id: "object-a".into(),
+        region_id: 7,
+        family_id: "tree".into(),
+        demand_ids: vec![body.into()],
+        body_ids: vec![body.into()],
+        anchor_layer_index: 0,
+        anchor_z: 4_321,
+        roles: vec![slicer_ir::SupportPlanRoleRegion {
+            role: slicer_ir::SupportPlanRole::SupportBody,
+            regions: vec![square(x, 5_000, 1_000)],
+        }],
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    }
+}
+
+#[test]
+pub fn support_plan_validation() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let result = aggregate_support_plans(SupportAggregationInput {
+        plans: vec![slicer_ir::SupportPlanIR {
+            entries: vec![
+                entry("valid", 20_000_000),
+                entry("colliding", 0),
+                entry("spans_cell", 1_048_076),
+            ],
+            ..Default::default()
+        }],
+        exact_z: &service,
+    });
+    assert_eq!(result.retained.len(), 1);
+    assert_eq!(result.retained[0].body_ids, vec!["valid"]);
+    assert!(result.degraded);
+    assert!(result
+        .unmet
+        .iter()
+        .any(|d| d.demand_id == "colliding" && d.reason.contains("occupancy")));
+    assert!(result
+        .unmet
+        .iter()
+        .any(|d| d.demand_id == "spans_cell" && d.reason.contains("routing cell")));
+}
