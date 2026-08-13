@@ -1,3 +1,3 @@
-pub fn run(gcode_text : String, config : @config.config_view) -> Result[String, @common.module_error] {
+pub fn run(gcode_text : String, config : @config-types.ConfigView) -> Result[String, @module-errors.ModuleError] {
   Ok(";; foreign-language-probe\n; probe input\n")
 }

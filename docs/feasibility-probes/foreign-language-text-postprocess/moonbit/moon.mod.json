@@ -1,1 +1,1 @@
-{"name":"foreign-language-text-postprocess","version":"0.1.0","deps":{}}
+{ "name": "slicer/postpass-text-postprocess", "preferred-target": "wasm" }
