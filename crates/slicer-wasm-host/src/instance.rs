@@ -92,20 +92,43 @@ impl std::error::Error for WasmLoadError {}
 ///
 /// Holds per-instance metadata such as the module identifier and (in future
 /// tasks) logger handles and configuration snapshots.
-#[derive(Debug, Clone)]
 pub struct HostState {
     module_id: String,
+    table: wasmtime::component::ResourceTable,
+    /// Default-deny WASI execution state for component instantiation.
+    pub wasi: wasmtime_wasi::WasiCtx,
+}
+
+impl fmt::Debug for HostState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HostState")
+            .field("module_id", &self.module_id)
+            .finish()
+    }
 }
 
 impl HostState {
     /// Create a new host state with the given module identifier.
     pub fn new(module_id: String) -> Self {
-        Self { module_id }
+        Self {
+            module_id,
+            table: wasmtime::component::ResourceTable::new(),
+            wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
+        }
     }
 
     /// Returns the module identifier.
     pub fn module_id(&self) -> &str {
         &self.module_id
+    }
+}
+
+impl wasmtime_wasi::WasiView for HostState {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        wasmtime_wasi::WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
     }
 }
 

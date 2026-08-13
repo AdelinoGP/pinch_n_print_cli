@@ -77,6 +77,10 @@ thread_local! {
     static LAST_CALL_FUEL: Cell<u64> = const { Cell::new(0) };
 }
 
+fn add_wasi_to_linker(linker: &mut wasmtime::component::Linker<HostExecutionContext>) {
+    wasmtime_wasi::p2::add_to_linker_sync(linker).expect("WASI linker registration must succeed");
+}
+
 /// Structured runtime dispatch error with full diagnostic context.
 #[derive(Debug, Clone)]
 pub struct DispatchError {
@@ -420,6 +424,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_infill::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -498,6 +503,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_infill_postprocess::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -574,6 +580,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_slice_postprocess::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -647,6 +654,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_perimeters::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -720,6 +728,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_perimeters_postprocess::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -787,6 +796,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_support::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -865,6 +875,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_support_postprocess::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -932,6 +943,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::layer_path_optimization::LayerModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -1096,6 +1108,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::prepass_mesh_analysis::PrepassModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -1142,6 +1155,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::prepass_layer_planning::PrepassModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -1193,6 +1207,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::prepass_seam_planning::PrepassModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -1266,6 +1281,7 @@ impl WasmRuntimeDispatcher {
                     reason: "no compiled WASM component available".to_string(),
                 })?;
                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
                 host::prepass_support_geometry::PrepassModule::add_to_linker::<
                     _,
                     wasmtime::component::HasSelf<_>,
@@ -1392,6 +1408,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+        add_wasi_to_linker(&mut linker);
         host::LayerFinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
             &mut linker,
             |ctx| ctx,
@@ -1538,6 +1555,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+        add_wasi_to_linker(&mut linker);
         if let Err(e) = host::GcodePostprocessModule::add_to_linker::<
             _,
             wasmtime::component::HasSelf<_>,
@@ -1719,6 +1737,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+        add_wasi_to_linker(&mut linker);
         if let Err(e) = host::TextPostprocessModule::add_to_linker::<
             _,
             wasmtime::component::HasSelf<_>,

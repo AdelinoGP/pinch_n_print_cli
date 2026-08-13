@@ -1134,6 +1134,8 @@ impl wasmtime::ResourceLimiter for MemTracker {
 pub struct HostExecutionContext {
     /// Resource handle table — manages lifetimes of host-provided resources.
     pub(crate) table: ResourceTable,
+    /// Default-deny WASI execution state for foreign-language components.
+    pub wasi: wasmtime_wasi::WasiCtx,
     /// Module identifier (from manifest).
     pub(crate) module_id: String,
     /// Monotonic clock start for profiling.
@@ -1339,6 +1341,15 @@ pub struct HostExecutionContext {
     pub(crate) profile_stack: Vec<u32>,
 }
 
+impl wasmtime_wasi::WasiView for HostExecutionContext {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        wasmtime_wasi::WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
+    }
+}
+
 /// Consuming builder for [`HostExecutionContext`].
 ///
 /// Per spec §6.4 — required positional args are `module_id`, `layer_z`,
@@ -1390,6 +1401,7 @@ impl HostExecutionContextBuilder {
     pub fn build(self) -> HostExecutionContext {
         HostExecutionContext {
             table: ResourceTable::new(),
+            wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
             module_id: self.module_id,
             start_time: Instant::now(),
             log_messages: Vec::new(),
