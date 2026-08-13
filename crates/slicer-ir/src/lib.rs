@@ -34,9 +34,15 @@ pub use validation::validate_travel_anchors;
 
 pub use slice_ir::{
     ActiveRegion,
+    AnchoredEntity,
+    AnchoredEntityProvenance,
+    AnchoredEventRuntimeHooks,
+    AnchoredGeometryContract,
     BoundingBox3,
     BridgeRegion,
     BridgeRegionId,
+    CapabilityDerivedEventClosure,
+
     ConfigDelta,
 
     // Config types
@@ -44,7 +50,6 @@ pub use slice_ir::{
     ConfigKey,
     ConfigValue,
     ConfigView,
-
     EntitySpeedProfile,
     ExPolygon,
     ExtrusionJunction,
@@ -90,9 +95,10 @@ pub use slice_ir::{
     // ID types
     ObjectId,
     ObjectLayerRef,
-
     ObjectMesh,
     ObjectSurfaceData,
+    OrderedEventCollection,
+
     OverhangRegion,
 
     OverhangRegionId,

@@ -48,6 +48,9 @@ pub type StageId = String;
 /// the factor has a single authoritative source.
 pub const UNITS_PER_MM: f64 = 10_000.0;
 
+/// Repository coordinate comparison tolerance (1e-3 mm) in canonical units.
+pub const COORDINATE_TOLERANCE_UNITS: i64 = 10;
+
 /// Convert millimeters to scaled integer units
 ///
 /// # Arguments
@@ -1023,6 +1026,134 @@ pub struct GlobalLayer {
     pub has_nonplanar: bool,
     /// True if multiple objects with different layer heights align at this Z
     pub is_sync_layer: bool,
+}
+
+/// The declared Z extent of an anchored entity, in canonical 100 nm units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnchoredGeometryContract {
+    /// Geometry whose every point must lie on one plane.
+    Planar {
+        /// Declared plane height in canonical units.
+        z: i64,
+    },
+    /// One atomic entity whose points may span this inclusive Z range.
+    ZSpanning {
+        /// Inclusive lower height in canonical units.
+        min_z: i64,
+        /// Inclusive upper height in canonical units.
+        max_z: i64,
+    },
+}
+
+impl AnchoredGeometryContract {
+    /// Repository coordinate comparison tolerance in canonical units.
+    pub const COORDINATE_TOLERANCE_UNITS: i64 = COORDINATE_TOLERANCE_UNITS;
+
+    /// Returns whether a canonical Z coordinate satisfies this contract.
+    pub fn contains_z(&self, z: i64) -> bool {
+        match *self {
+            Self::Planar { z: plane } => z == plane,
+            Self::ZSpanning { min_z, max_z } => (min_z..=max_z).contains(&z),
+        }
+    }
+}
+
+/// Provenance retained when anchored work is moved between execution stages.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchoredEntityProvenance {
+    /// Feature that requested the entity.
+    pub requesting_feature: String,
+    /// Source plan entry that produced the entity.
+    pub source_plan_entry: String,
+}
+
+/// Printable work assigned to one global layer while retaining its own Z contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnchoredEntity {
+    /// Stable identifier unique within the anchor global layer.
+    pub local_id: u64,
+    /// Global layer index that owns execution ordering for this entity.
+    pub anchor_global_layer_index: u32,
+    /// Declared planar or atomic Z-spanning geometry.
+    pub geometry: AnchoredGeometryContract,
+    /// Capabilities available to the entity's producer.
+    pub input_capabilities: Vec<String>,
+    /// Capabilities requested from downstream execution.
+    pub output_capabilities: Vec<String>,
+    /// Origin of the entity.
+    pub provenance: AnchoredEntityProvenance,
+    /// The entity's committed output path in millimeters.
+    pub path_points: Vec<Point3>,
+}
+
+/// Capability closure used to derive stages without an event-kind table.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilityDerivedEventClosure {
+    /// Capabilities supplied by the producer.
+    pub input_capabilities: Vec<String>,
+    /// Capabilities requested by the producer.
+    pub output_capabilities: Vec<String>,
+    /// Deterministically ordered union of input and requested capabilities.
+    pub derived_capabilities: Vec<String>,
+}
+
+impl CapabilityDerivedEventClosure {
+    /// Derive the closure directly from declared capabilities.
+    pub fn derive(input: &[String], output: &[String]) -> Self {
+        let mut derived = input.iter().chain(output).cloned().collect::<Vec<_>>();
+        derived.sort();
+        derived.dedup();
+        Self {
+            input_capabilities: input.to_vec(),
+            output_capabilities: output.to_vec(),
+            derived_capabilities: derived,
+        }
+    }
+}
+
+/// Per-event accounting and optimization policies applied by the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AnchoredEventRuntimeHooks {
+    /// Run path optimization for this event.
+    pub optimize_paths: bool,
+    /// Include cooling accounting for this event.
+    pub account_cooling: bool,
+    /// Include execution-time accounting for this event.
+    pub account_time: bool,
+}
+
+impl Default for AnchoredEventRuntimeHooks {
+    fn default() -> Self {
+        Self {
+            optimize_paths: true,
+            account_cooling: true,
+            account_time: true,
+        }
+    }
+}
+
+/// Deterministically ordered anchored work returned by a global-layer worker.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderedEventCollection {
+    /// Anchor owning this collection's execution position.
+    pub anchor_global_layer_index: u32,
+    /// Ordered entities, retaining identity and provenance on every item.
+    pub events: Vec<AnchoredEntity>,
+    /// Runtime policies applied to each event in order.
+    pub runtime_hooks: AnchoredEventRuntimeHooks,
+}
+
+impl OrderedEventCollection {
+    /// Sort events by physical Z and then stable local identity.
+    pub fn sort_deterministically(&mut self) {
+        self.events.sort_by_key(|event| {
+            let z = match event.geometry {
+                AnchoredGeometryContract::Planar { z } => z,
+                AnchoredGeometryContract::ZSpanning { min_z, .. } => min_z,
+            };
+            (z, event.local_id)
+        });
+    }
 }
 
 /// Object layer reference

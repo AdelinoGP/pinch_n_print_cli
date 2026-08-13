@@ -152,6 +152,10 @@ path = "../../modules/core-modules/path-optimization-default"
 [dev-dependencies.machine-gcode-emit]
 path = "../../modules/core-modules/machine-gcode-emit"
 
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
 [[bench]]
 name = "pipeline"
 harness = false

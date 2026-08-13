@@ -1071,6 +1071,22 @@ doc comments there carry the packet-39 /
 packet-125 / packet-189 contracts summarized in the ownership lifecycle
 above; read them from source rather than from a copy here.
 
+### anchored entity IR (additive)
+
+Anchored events are represented by the additive `AnchoredEntity` contract
+beside the ordinary layer collection. Each entity has a stable `local_id`, an
+`anchor_global_layer_index`, planar or Z-spanning geometry, input/output
+capabilities, provenance, and ordered `path_points`. `AnchoredEntityProvenance`
+records the producing module and source identity needed to retain attribution.
+
+The host groups entities into an `OrderedEventCollection`. The collection is
+an atomic ordered event: path optimization may propose an entity order within
+it, but must not reorder across physical event boundaries. An
+`CapabilityDerivedEventClosure` describes the stages required by the declared
+capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
+cooling accounting, and time accounting. These types are additive beside the
+layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
+
 ### Extrusion-role default priority (Normative)
 
 `ExtrusionRole::default_priority()` returns a `u32` used by

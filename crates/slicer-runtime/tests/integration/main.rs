@@ -9,6 +9,40 @@
 mod common;
 
 mod adapt_slice_regions_completeness_tdd;
+mod anchored_event_accounting;
+mod anchored_event_ordering;
+mod anchored_parallel_determinism;
+mod anchored_z_span_validation;
+mod anchored_z_validation;
+
+#[test]
+fn anchored_event_ordering() {
+    anchored_event_ordering::anchored_event_ordering();
+}
+#[test]
+fn anchored_event_accounting() {
+    anchored_event_accounting::anchored_event_accounting();
+}
+#[test]
+fn anchored_parallel_determinism() {
+    anchored_parallel_determinism::anchored_parallel_determinism();
+}
+#[test]
+fn anchored_z_validation() {
+    anchored_z_validation::anchored_z_validation();
+}
+#[test]
+fn anchored_entity_planar_z_mismatch() {
+    anchored_z_validation::anchored_entity_planar_z_mismatch();
+}
+#[test]
+fn anchored_z_span_validation() {
+    anchored_z_span_validation::anchored_z_span_validation();
+}
+#[test]
+fn rejects_out_of_range_point() {
+    anchored_z_span_validation::rejects_out_of_range_point();
+}
 mod arachne_wall_width_follows_config_tdd;
 mod classic_min_width_top_surface_tdd;
 mod classic_wall_width_resolution_tdd;
