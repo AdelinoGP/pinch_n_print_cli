@@ -634,6 +634,24 @@ pub fn execute_prepass_with_builtins_configured_instr(
             .map_err(|source| PrepassExecutionError::RegionMapping { source })
         },
     )?;
+    run_builtin_stage(
+        blackboard,
+        instrumentation,
+        "PrePass::SupportAnalysis",
+        "host:support_analysis",
+        |bb| bb.support_analysis().is_none() && bb.slice_ir().is_some(),
+        |bb| {
+            crate::builtins::support_analysis_producer::commit_support_analysis_builtin(
+                bb,
+                default_resolved_config.support_enabled,
+            )
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::SupportAnalysis".to_string(),
+                module_id: "host:support_analysis".to_string(),
+                source,
+            })
+        },
+    )?;
     // PrePass::Slice — host built-in. Runs once RegionMap is committed
     // (needs per-region slice_closing_radius / shell counts via RegionPlan).
     run_builtin_stage(
@@ -830,6 +848,7 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::SupportPlan => blackboard.support_plan().is_some(),
             BlackboardPrepassSlot::SliceIR => blackboard.slice_ir().is_some(),
             BlackboardPrepassSlot::SupportGeometry => blackboard.support_geometry().is_some(),
+            BlackboardPrepassSlot::SupportAnalysis => blackboard.support_analysis().is_some(),
             BlackboardPrepassSlot::LightningTreeIR => blackboard.lightning_tree_ir().is_some(),
         };
 
@@ -864,6 +883,7 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SliceIR,
             BlackboardPrepassSlot::SupportGeometry,
         ],
+        "PrePass::SupportAnalysis" => &[BlackboardPrepassSlot::SliceIR],
         "PrePass::LightningTreeGen" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
