@@ -23,8 +23,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use slicer_ir::{
-    ConfigKey, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
-    SemVer, SupportPlanEntry,
+    ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon, SemVer, SupportPlanEntry,
 };
 use slicer_sdk::module_test;
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
@@ -686,7 +685,7 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
 }
 
 /// Make a minimal SupportPlanEntry at a given layer index with given point width.
-fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry {
+fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry {
     SupportPlanEntry {
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),

@@ -729,42 +729,24 @@ fn compare_support_ir(
             native.global_layer_index, wasm.global_layer_index
         ));
     }
-    if native.regions.len() != wasm.regions.len() {
+    if native.entries.len() != wasm.entries.len() {
         return Err(format!(
-            "regions count mismatch: native={} wasm={}",
-            native.regions.len(),
-            wasm.regions.len()
+            "entries count mismatch: native={} wasm={}",
+            native.entries.len(),
+            wasm.entries.len()
         ));
     }
-    for (index, (n, w)) in native.regions.iter().zip(&wasm.regions).enumerate() {
-        if n.object_id != w.object_id || n.region_id != w.region_id {
-            return Err(format!("region[{index}] identity mismatch"));
+    for (index, (n, w)) in native.entries.iter().zip(&wasm.entries).enumerate() {
+        if n.family_id != w.family_id
+            || n.body_id != w.body_id
+            || n.demand_ids != w.demand_ids
+            || n.object_id != w.object_id
+            || n.region_id != w.region_id
+            || n.role != w.role
+        {
+            return Err(format!("entry[{index}] identity mismatch"));
         }
-        let label = format!("region[{index}]");
-        compare_path_vector(
-            &n.support_paths,
-            &w.support_paths,
-            tol,
-            &format!("{label} support_paths"),
-        )?;
-        compare_path_vector(
-            &n.interface_paths,
-            &w.interface_paths,
-            tol,
-            &format!("{label} interface_paths"),
-        )?;
-        compare_path_vector(
-            &n.raft_paths,
-            &w.raft_paths,
-            tol,
-            &format!("{label} raft_paths"),
-        )?;
-        compare_path_vector(
-            &n.ironing_paths,
-            &w.ironing_paths,
-            tol,
-            &format!("{label} ironing_paths"),
-        )?;
+        compare_path_vector(&n.paths, &w.paths, tol, &format!("entry[{index}] paths"))?;
     }
     Ok(())
 }
@@ -798,11 +780,11 @@ fn compare_path_vector(
 pub fn assert_prepass_parity_structural(
     native: &PrepassStageOutput,
     wasm: &PrepassStageOutput,
-    tol: ParityTolerance,
+    _tol: ParityTolerance,
 ) -> Result<(), String> {
     match (native, wasm) {
         (PrepassStageOutput::SupportPlan(n), PrepassStageOutput::SupportPlan(w)) => {
-            compare_support_plan_ir(n, w, &tol)
+            compare_support_plan_ir(n, w)
         }
         _ => Err(format!(
             "variant mismatch: native={} wasm={} \
@@ -826,11 +808,7 @@ fn prepass_variant_name(output: &PrepassStageOutput) -> &'static str {
     }
 }
 
-fn compare_support_plan_ir(
-    native: &SupportPlanIR,
-    wasm: &SupportPlanIR,
-    tol: &ParityTolerance,
-) -> Result<(), String> {
+fn compare_support_plan_ir(native: &SupportPlanIR, wasm: &SupportPlanIR) -> Result<(), String> {
     if native.entries.len() != wasm.entries.len() {
         return Err(format!(
             "entries count mismatch: native={} wasm={}",
@@ -862,20 +840,18 @@ fn compare_support_plan_ir(
             "entry (global_layer_index={}, object_id={}, region_id={})",
             n_entry.global_layer_index, n_entry.object_id, n_entry.region_id
         );
-        if n_entry.branch_segments.len() != w_entry.branch_segments.len() {
-            return Err(format!(
-                "branch_segments count mismatch at {label}: native={} wasm={}",
-                n_entry.branch_segments.len(),
-                w_entry.branch_segments.len()
-            ));
-        }
-        for (seg_idx, (n_seg, w_seg)) in n_entry
-            .branch_segments
-            .iter()
-            .zip(&w_entry.branch_segments)
-            .enumerate()
+        if n_entry.family_id != w_entry.family_id
+            || n_entry.demand_ids != w_entry.demand_ids
+            || n_entry.body_ids != w_entry.body_ids
+            || n_entry.anchor_layer_index != w_entry.anchor_layer_index
+            || n_entry.anchor_z != w_entry.anchor_z
+            || n_entry.roles != w_entry.roles
+            || n_entry.skeleton != w_entry.skeleton
+            || n_entry.capabilities != w_entry.capabilities
+            || n_entry.provenance != w_entry.provenance
+            || n_entry.decline_reason != w_entry.decline_reason
         {
-            compare_segment(n_seg, w_seg, tol, &format!("{label} segment {seg_idx}"))?;
+            return Err(format!("structural fields mismatch at {label}"));
         }
     }
     Ok(())
