@@ -155,6 +155,30 @@ impl host::prepass_support_geometry::slicer::prepass_support_geometry::support_g
     for HostExecutionContext
 {
 }
+impl host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_support_query::Host
+    for HostExecutionContext
+{
+    fn query(
+        &mut self,
+        object_id: String,
+        region_id: u64,
+        physical_z_mm: f32,
+    ) -> wasmtime::Result<Result<host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_support_query::QueryResult, String>>{
+        let service = self
+            .exact_z_query
+            .as_ref()
+            .ok_or_else(|| wasmtime::Error::msg("exact-z-support-query unavailable"))?;
+        let result = service.query(&object_id, region_id, physical_z_mm);
+        let result = result.map_err(|e| wasmtime::Error::msg(e))?;
+        Ok(Ok(host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_support_query::QueryResult {
+            z_units: result.z_units,
+            occupancy: host::ir_to_wit_expolygons(&result.occupancy),
+            blockers: host::ir_to_wit_expolygons(&result.blockers),
+            termination_surfaces: host::ir_to_wit_expolygons(&result.termination_surfaces),
+            baseline_envelope: host::ir_to_wit_expolygons(&result.baseline_envelope),
+        }))
+    }
+}
 /// Convert host-side `slicer_ir::RetractMode` to the WIT enum used by the
 /// postpass-module bindings (host→guest direction).
 fn retract_mode_to_postpass_wit(
@@ -1273,6 +1297,9 @@ impl WasmRuntimeDispatcher {
                 .map_err(mk_linker_err)?;
                 let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
                     .mesh_ir(Some(mesh_ir.clone()))
+                    .exact_z_query(Some(Arc::new(
+                        crate::exact_z_query::ExactZQueryService::new(mesh_ir.clone()),
+                    )))
                     .build();
                 let mut store = self.new_call_store(ctx);
                 let config_handle = store
@@ -1866,24 +1893,7 @@ fn build_paint_layer_data_with_plan(
                 continue;
             }
             let key = (entry.object_id.clone(), entry.region_id.to_string());
-            let bucket = data.support_plan_segments.entry(key).or_default();
-            for segment in &entry.branch_segments {
-                let pts: Vec<_> = segment
-                    .points
-                    .iter()
-                    .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
-                        x: p.x,
-                        y: p.y,
-                        z: p.z,
-                        width: p.width,
-                        flow_factor: p.flow_factor,
-                        overhang_quartile: p.overhang_quartile,
-                        dist_to_top_mm: p.dist_to_top_mm,
-                        overhang_distance_mm: p.overhang_distance_mm,
-                    })
-                    .collect();
-                bucket.push(pts);
-            }
+            let _ = key;
         }
     }
     if let Some(ir) = lightning_tree_ir {
@@ -2237,9 +2247,14 @@ use crate::marshal::in_::harvest_seam_plan_ir_from;
 fn harvest_support_plan_ir(
     _stage_id: &str,
     _module_id: &str,
+    mesh: &slicer_ir::MeshIR,
     ctx: host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
-    harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)
+    let plan = harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)?;
+    let exact_z = crate::exact_z_query::ExactZQueryService::new(Arc::new(mesh.clone()));
+    Ok(crate::support_aggregation::aggregate_support_plan_ir(
+        plan, &exact_z,
+    ))
 }
 
 // Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
@@ -2434,13 +2449,13 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         }
 
         if stage_id == "PrePass::SupportGeometry" {
-            let ir = harvest_support_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
-                slicer_ir::PrepassRunnerError::FatalModule {
+            let ir = harvest_support_plan_ir(stage_id, module_id_str, &input.mesh, ctx).map_err(
+                |msg| slicer_ir::PrepassRunnerError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: msg,
-                }
-            })?;
+                },
+            )?;
             return Ok(slicer_core::PrepassStageOutput::SupportPlan(
                 std::sync::Arc::new(ir),
             ));
@@ -3299,7 +3314,7 @@ fn deconstruct_layer_ctx(
             {
                 return Ok(None);
             }
-            let ir = crate::marshal::convert_support_output(support, layer_index)
+            let ir = crate::marshal::convert_support_output_with_plan(support, layer_index, None)
                 .map_err(|r| mk_fatal("support", r))?;
             Ok(Some(if stage_id == "Layer::SupportPostProcess" {
                 LayerStageCommit::SupportPostProcess(ir)

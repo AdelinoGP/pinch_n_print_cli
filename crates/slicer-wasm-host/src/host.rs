@@ -1278,6 +1278,8 @@ pub struct HostExecutionContext {
     catchup_z_bottom: Option<f32>,
     /// Host-owned mesh IR used by mesh-query host services.
     pub(crate) mesh_ir: Option<Arc<MeshIR>>,
+    /// Host-owned exact-Z support geometry service available to family planners.
+    pub(crate) exact_z_query: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
 
     /// Fill-role claim IDs held by `module_id` per `(object_id, region_id)`,
     /// resolved by `validation::resolve_held_claims` against the per-region
@@ -1353,6 +1355,7 @@ pub struct HostExecutionContextBuilder {
     effective_layer_height: f32,
     catchup_z_bottom: Option<f32>,
     mesh_ir: Option<Arc<MeshIR>>,
+    exact_z_query: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
 }
 
 impl HostExecutionContextBuilder {
@@ -1369,6 +1372,7 @@ impl HostExecutionContextBuilder {
             effective_layer_height,
             catchup_z_bottom: None,
             mesh_ir: None,
+            exact_z_query: None,
         }
     }
 
@@ -1383,6 +1387,15 @@ impl HostExecutionContextBuilder {
     /// Set the host-owned mesh IR for mesh-query host services.
     pub fn mesh_ir(mut self, v: Option<Arc<MeshIR>>) -> Self {
         self.mesh_ir = v;
+        self
+    }
+
+    /// Set the exact-Z support geometry service for support family planning.
+    pub fn exact_z_query(
+        mut self,
+        v: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
+    ) -> Self {
+        self.exact_z_query = v;
         self
     }
 
@@ -1421,6 +1434,7 @@ impl HostExecutionContextBuilder {
             effective_layer_height: self.effective_layer_height,
             catchup_z_bottom: self.catchup_z_bottom,
             mesh_ir: self.mesh_ir,
+            exact_z_query: self.exact_z_query,
             held_claims_per_region: std::collections::HashMap::new(),
             mem_tracker: MemTracker::default(),
             profiling_enabled: false,
