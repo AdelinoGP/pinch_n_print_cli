@@ -28,6 +28,7 @@ pub const STAGE_ORDER: &[&str] = &[
     // so it runs strictly AFTER Slice — never re-slicing the mesh.
     "PrePass::OverhangAnnotation",
     "PrePass::ShellClassification",
+    "PrePass::SupportAnalysis",
     "PrePass::SupportGeometry",
     "PrePass::LightningTreeGen",
     "Layer::PaintRegionAnnotation",
@@ -230,10 +231,10 @@ const ARACHNE_PERIMETERS_MODULE_ID: &str = "com.core.arachne-perimeters";
 /// `ResolvedConfig` is built (module loading / claim dedup runs first; see
 /// `crates/slicer-runtime/src/run.rs`).
 pub const SUPPORT_GENERATOR_CONFIG_KEY: &str = "support_type";
+/// Config key carrying the canonical per-region support family.
+pub const SUPPORT_FAMILY_CONFIG_KEY: &str = "support_family";
 
 const SUPPORT_GENERATOR_CLAIM: &str = "support-generator";
-const TRADITIONAL_SUPPORT_MODULE_ID: &str = "com.core.traditional-support";
-const TREE_SUPPORT_MODULE_ID: &str = "com.core.tree-support";
 
 /// Resolve a raw `support_type` config value (`config_source.get("support_type")`,
 /// e.g. `Some("tree(auto)")` — OrcaSlicer's spelling) to the module id it
@@ -244,10 +245,74 @@ const TREE_SUPPORT_MODULE_ID: &str = "com.core.tree-support";
 /// `com.core.tree-support`. Absent (`None`) and every other value fall back
 /// to `com.core.traditional-support` — which is also the alphabetical first
 /// winner, so an absent key keeps historical behaviour byte-for-byte.
-fn support_generator_preferred_module_id(support_type: Option<&str>) -> &'static str {
-    match support_type {
-        Some(v) if v.starts_with("tree") || v.starts_with("hybrid") => TREE_SUPPORT_MODULE_ID,
-        _ => TRADITIONAL_SUPPORT_MODULE_ID,
+/// Resolve canonical support-family selection, including legacy aliases.
+/// `support_type`, when present, intentionally overrides the canonical value.
+pub fn select_support_family(
+    support_family: Option<&str>,
+    support_type: Option<&str>,
+) -> &'static str {
+    let value = support_type.or(support_family).unwrap_or("traditional");
+    if value.starts_with("tree") || value.starts_with("hybrid") {
+        "tree"
+    } else if value.starts_with("normal") || value.starts_with("classic") {
+        "traditional"
+    } else if value == "tree" {
+        "tree"
+    } else {
+        "traditional"
+    }
+}
+
+/// Structured startup failure for an incomplete support planner/renderer pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportFamilyPairingError {
+    /// Family IDs that have a planner but no renderer.
+    pub missing_renderers: Vec<String>,
+    /// Family IDs that have a renderer but no planner.
+    pub missing_planners: Vec<String>,
+}
+
+impl std::fmt::Display for SupportFamilyPairingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "support family pairing invalid: missing renderers {:?}, missing planners {:?}",
+            self.missing_renderers, self.missing_planners
+        )
+    }
+}
+
+impl std::error::Error for SupportFamilyPairingError {}
+
+/// Validate that every declared support planner family has a renderer and vice versa.
+pub fn validate_support_family_pairing(
+    modules: &[LoadedModule],
+) -> Result<(), SupportFamilyPairingError> {
+    use std::collections::BTreeSet;
+    let mut planners = BTreeSet::new();
+    let mut renderers = BTreeSet::new();
+    for module in modules {
+        for claim in module.claims() {
+            if let Some(family) = claim.strip_prefix("support-family:") {
+                if module.claims().iter().any(|c| c == "support-planner") {
+                    planners.insert(family.to_string());
+                }
+                if module.claims().iter().any(|c| c == SUPPORT_GENERATOR_CLAIM) {
+                    renderers.insert(family.to_string());
+                }
+            }
+        }
+    }
+    let missing_renderers = planners.difference(&renderers).cloned().collect();
+    let missing_planners = renderers.difference(&planners).cloned().collect();
+    let error = SupportFamilyPairingError {
+        missing_renderers,
+        missing_planners,
+    };
+    if error.missing_renderers.is_empty() && error.missing_planners.is_empty() {
+        Ok(())
+    } else {
+        Err(error)
     }
 }
 
@@ -339,7 +404,7 @@ fn dedup_same_claim_modules(
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
     spiral_vase: bool,
-    support_type: Option<&str>,
+    _support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
 
@@ -391,20 +456,9 @@ fn dedup_same_claim_modules(
             // the alphabetical default below.
         }
         if claim == SUPPORT_GENERATOR_CLAIM {
-            // `tree-support` always lost the default alphabetical dedup
-            // (`traditional` sorts before `tree`), so OrcaSlicer's
-            // `support_type` dropdown could never select it. The raw
-            // `support_type` config value (the same channel the raw
-            // `enable_support` reaches pnp through) resolves the claim
-            // instead.
-            let preferred = support_generator_preferred_module_id(support_type);
-            if candidate_ids.iter().any(|id| id == preferred) {
-                winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
-                continue;
-            }
-            // Preferred module isn't actually among the candidates (e.g. a
-            // community module reusing this claim name) — fall through to
-            // the alphabetical default below.
+            // Support renderers are selected per region. Retaining every family
+            // candidate here is required for atomic planner/renderer dispatch.
+            continue;
         }
         // Default: alphabetically-first candidate wins (docs/04 §2 "Global
         // claim conflicts").
@@ -425,7 +479,9 @@ fn dedup_same_claim_modules(
             // alphabetically and rectilinear (which holds all four) is dropped
             // whole, defeating any user config that names rectilinear for
             // top/bottom/bridge — see DEV-065 and docs/04 §"Validation Passes".
-            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+                || claim == SUPPORT_GENERATOR_CLAIM
+            {
                 continue;
             }
             let key = (module.stage.clone(), claim.clone());
