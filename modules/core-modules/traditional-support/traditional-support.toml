@@ -14,7 +14,7 @@ reads  = ["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"]
 writes = ["SupportIR"]
 
 [claims]
-holds    = ["support-generator"]
+holds    = ["support-generator", "support-family:traditional"]
 requires = []
 
 [compatibility]

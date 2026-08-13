@@ -19,7 +19,7 @@
 //!   descending-sorted chain reproduces the coordinate list in listed order.
 //!   `smooth_branches` mutates `x`/`y` (and `width`) in place; z is preserved.
 
-use slicer_ir::Point3WithWidth;
+use slicer_ir::{Point3, Point3WithWidth};
 use slicer_sdk::prepass_types::SupportPlanEntry;
 
 /// The canonical 5-point branch column used by the curvature/endpoint tests.
@@ -52,7 +52,22 @@ fn entry(global_layer_index: i32, p: Point3WithWidth) -> SupportPlanEntry {
         global_layer_index,
         object_id: "obj".to_string(),
         region_id: "0".to_string(),
-        branch_segments: vec![vec![p]],
+        family_id: "tree".into(),
+        demand_ids: vec![],
+        body_ids: vec![],
+        anchor_layer_index: global_layer_index.max(0) as u32,
+        anchor_z: 0,
+        roles: vec![],
+        skeleton: Some(slicer_ir::SupportPlanSkeleton {
+            points: vec![Point3 {
+                x: p.x,
+                y: p.y,
+                z: p.z,
+            }],
+        }),
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 
@@ -73,7 +88,18 @@ fn build_column(coords: &[(f32, f32, f32)]) -> Vec<SupportPlanEntry> {
 fn read_column(entries: &[SupportPlanEntry]) -> Vec<Point3WithWidth> {
     let mut refs: Vec<&SupportPlanEntry> = entries.iter().collect();
     refs.sort_by_key(|r| std::cmp::Reverse(r.global_layer_index));
-    refs.iter().map(|e| e.branch_segments[0][0]).collect()
+    refs.iter()
+        .map(|e| {
+            let p = &e.skeleton.as_ref().unwrap().points[0];
+            Point3WithWidth {
+                x: p.x,
+                y: p.y,
+                z: p.z,
+                width: 0.4,
+                ..Default::default()
+            }
+        })
+        .collect()
 }
 
 /// Maximum turn-angle (in degrees) between consecutive segment vectors

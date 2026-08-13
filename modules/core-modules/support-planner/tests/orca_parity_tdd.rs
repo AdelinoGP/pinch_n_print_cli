@@ -23,8 +23,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use slicer_ir::{
-    ConfigKey, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
-    SemVer, SupportPlanEntry,
+    ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon, SemVer, SupportPlanEntry,
 };
 use slicer_sdk::module_test;
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
@@ -38,7 +37,6 @@ use slicer_sdk::traits::PrepassModule;
 // This lets us test tapered_radius() and point_in_polygon() without going
 // through WASM dispatch, verifying the Step-5 algorithmic implementation.
 use support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// AC-2: radius tapering — topmost width = branch_diameter,
 /// bottom > top + tan(diameter_angle) * height_diff.
@@ -209,7 +207,8 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     // branch_segments at each layer.
     let mut segs_by_layer: BTreeMap<i32, usize> = BTreeMap::new();
     for e in entries.iter().filter(|e| e.global_layer_index >= 0) {
-        *segs_by_layer.entry(e.global_layer_index).or_insert(0) += e.branch_segments.len();
+        *segs_by_layer.entry(e.global_layer_index).or_insert(0) +=
+            e.skeleton.as_ref().map_or(0, |s| s.points.len());
     }
     assert!(
         !segs_by_layer.is_empty(),
@@ -322,8 +321,12 @@ fn benchy_orca_parity_within_tolerance() {
     // Vec<Vec<Point3WithWidth>>: outer=branch, inner=polyline points.
     let mut output_endpoints: Vec<[f32; 3]> = entries
         .iter()
-        .flat_map(|e| e.branch_segments.iter())
-        .flat_map(|seg| seg.iter())
+        .flat_map(|e| {
+            e.skeleton
+                .as_ref()
+                .into_iter()
+                .flat_map(|s| s.points.iter())
+        })
         .map(|p| [round4(p.x), round4(p.y), round4(p.z)])
         .collect();
     sort_endpoints(&mut output_endpoints);
@@ -581,14 +584,14 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
     let propagated_segments: Vec<_> = entries
         .iter()
         .filter(|entry| entry.global_layer_index < contact_layer)
-        .flat_map(|entry| entry.branch_segments.iter())
-        .filter(|segment| segment.len() == 2)
+        .filter_map(|entry| entry.skeleton.as_ref())
+        .filter(|s| s.points.len() == 2)
         .collect();
 
     assert!(
         propagated_segments.iter().any(|segment| {
-            let first = &segment[0];
-            let second = &segment[1];
+            let first = &segment.points[0];
+            let second = &segment.points[1];
             first.x == second.x && first.y == second.y && first.z == second.z
         }),
         "a lone propagated node must emit a degenerate two-point segment below the contact layer"
@@ -687,25 +690,21 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),
         region_id: 0,
-        branch_segments: vec![ExtrusionPath3D {
+        family_id: "tree".into(),
+        demand_ids: vec![],
+        body_ids: vec![],
+        anchor_layer_index: layer_index.max(0) as u32,
+        anchor_z: slicer_ir::mm_to_units(z),
+        roles: vec![],
+        skeleton: Some(slicer_ir::SupportPlanSkeleton {
             points: vec![
-                slicer_ir::Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
-                    z,
-                    width,
-                    ..Default::default()
-                },
-                slicer_ir::Point3WithWidth {
-                    x: 1.0,
-                    y: 1.0,
-                    z,
-                    width,
-                    ..Default::default()
-                },
+                slicer_ir::Point3 { x: 0.0, y: 0.0, z },
+                slicer_ir::Point3 { x: 1.0, y: 1.0, z },
             ],
-            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-        }],
+        }),
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 
@@ -716,16 +715,22 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
         global_layer_index: index,
         object_id: "test-object".to_string(),
         region_id: 0,
-        branch_segments: vec![ExtrusionPath3D {
-            points: vec![slicer_ir::Point3WithWidth {
+        family_id: "tree".into(),
+        demand_ids: vec![],
+        body_ids: vec![],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        roles: vec![],
+        skeleton: Some(slicer_ir::SupportPlanSkeleton {
+            points: vec![slicer_ir::Point3 {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,
-                width: 0.4,
-                ..Default::default()
             }],
-            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-        }],
+        }),
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 

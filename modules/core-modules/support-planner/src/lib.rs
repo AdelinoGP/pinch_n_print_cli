@@ -120,6 +120,47 @@ struct PlannedSupportNode {
     to_buildplate: bool,
 }
 
+/// Convert planned centerline nodes into semantic, unit-space support-body
+/// regions. Width belongs to rendering, while the plan carries only a
+/// conservative structural footprint.
+fn structural_body_regions(
+    segments: &[Vec<Point3WithWidth>],
+    branch_radius_mm: f32,
+) -> Vec<ExPolygon> {
+    let half = mm_to_units(branch_radius_mm.max(0.4)).max(1);
+    segments
+        .iter()
+        .flat_map(|segment| segment.iter())
+        .map(|point| {
+            let x = mm_to_units(point.x);
+            let y = mm_to_units(point.y);
+            ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2 {
+                            x: x - half,
+                            y: y - half,
+                        },
+                        Point2 {
+                            x: x + half,
+                            y: y - half,
+                        },
+                        Point2 {
+                            x: x + half,
+                            y: y + half,
+                        },
+                        Point2 {
+                            x: x - half,
+                            y: y + half,
+                        },
+                    ],
+                },
+                holes: Vec::new(),
+            }
+        })
+        .collect()
+}
+
 /// Holds collision and avoidance polygons for a single support layer.
 #[derive(Clone, Debug, Default)]
 struct LayerCollisionCache {
@@ -782,7 +823,31 @@ impl SupportPlanner {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
                         region_id: region_id.clone(),
-                        branch_segments: branch_segments.clone(),
+                        family_id: "tree-support".to_string(),
+                        demand_ids: vec![format!("support-layer-{current_global_layer_index}")],
+                        body_ids: vec![format!("support-body-{}", obj.object_id)],
+                        anchor_layer_index: current_global_layer_index,
+                        // SupportPlanIR stores physical Z in canonical slicer
+                        // units (1 unit = 100 nm), not a WIT-specific scale.
+                        anchor_z: mm_to_units(z_current),
+                        roles: vec![slicer_ir::SupportPlanRoleRegion {
+                            role: slicer_ir::SupportPlanRole::SupportBody,
+                            regions: structural_body_regions(&branch_segments, branch_radius),
+                        }],
+                        skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                            points: branch_segments
+                                .iter()
+                                .flat_map(|segment| segment.iter())
+                                .map(|point| slicer_ir::Point3 {
+                                    x: point.x,
+                                    y: point.y,
+                                    z: point.z,
+                                })
+                                .collect(),
+                        }),
+                        capabilities: vec!["tree-branch-skeleton".to_string()],
+                        provenance: vec!["support-planner".to_string()],
+                        decline_reason: None,
                     });
                 }
             }
@@ -931,22 +996,18 @@ pub fn group_branches_into_columns(
     columns
 }
 
-/// Returns `(x, y, width)` of the first point of the first branch segment, if
-/// present. Used by `smooth_branches` so malformed entries never panic.
+/// Returns `(x, y, width)` of the first structural skeleton point, if present.
 fn first_point_xyw(entry: &slicer_sdk::prepass_types::SupportPlanEntry) -> Option<(f32, f32, f32)> {
     entry
-        .branch_segments
-        .first()
-        .and_then(|p| p.first())
-        .map(|pt| (pt.x, pt.y, pt.width))
+        .skeleton
+        .as_ref()
+        .and_then(|skeleton| skeleton.points.first())
+        .map(|point| (point.x, point.y, 0.0))
 }
 
 /// Rust port of Orca's `TreeSupport::smooth_nodes`. Applies an in-place
 /// three-point Laplacian smoother to each `(object_id, region_id)` column of
-/// `SupportPlanEntry` rows, chaining the single point of each entry's first
-/// branch segment. Endpoints (first and last in the descending-layer chain) are
-/// held fixed. Only the `(x, y, width)` of interior points are mutated; `z`,
-/// `role`, `speed_factor`, layer index, ids, and all counts are preserved.
+/// structural skeleton rows. Endpoints are held fixed.
 pub fn smooth_branches(
     entries: &mut Vec<slicer_sdk::prepass_types::SupportPlanEntry>,
     iterations: usize,
@@ -1006,13 +1067,10 @@ pub fn smooth_branches(
                     };
                     let new_x = (prev.0 + cur.0 + next.0) / 3.0;
                     let new_y = (prev.1 + cur.1 + next.1) / 3.0;
-                    let mut new_w = (prev.2 + cur.2 + next.2) / 3.0;
-                    new_w = new_w.clamp(0.0, MAX_BRANCH_RADIUS_MM);
-                    if let Some(path) = entries[column[i]].branch_segments.first_mut() {
-                        if let Some(pt) = path.first_mut() {
-                            pt.x = new_x;
-                            pt.y = new_y;
-                            pt.width = new_w;
+                    if let Some(skeleton) = entries[column[i]].skeleton.as_mut() {
+                        if let Some(point) = skeleton.points.first_mut() {
+                            point.x = new_x;
+                            point.y = new_y;
                         }
                     }
                 }
@@ -1696,17 +1754,12 @@ mod tests {
             .iter()
             .find(|entry| entry.global_layer_index == 8)
             .expect("lone fresh contact must emit on its origin layer");
-        assert_eq!(origin_entry.branch_segments.len(), 1);
-        let segment = &origin_entry.branch_segments[0];
+        let segment = &origin_entry.skeleton.as_ref().unwrap().points;
         assert_eq!(segment.len(), 2);
         assert_eq!(segment[0].x, segment[1].x);
         assert_eq!(segment[0].y, segment[1].y);
         assert!((segment[0].z - 1.8).abs() < 1e-5);
         assert!((segment[1].z - 1.8).abs() < 1e-5);
-        assert_eq!(segment[0].width, 0.0);
-        assert_eq!(segment[1].width, 0.0);
-        assert_eq!(segment[0].dist_to_top_mm, 0.0);
-        assert_eq!(segment[1].dist_to_top_mm, 0.0);
     }
 
     #[test]
@@ -1739,20 +1792,14 @@ mod tests {
         let mut distances_by_layer = std::collections::BTreeMap::<u32, Vec<u32>>::new();
         for entry in output.entries() {
             assert!(entry.global_layer_index >= 0);
-            for segment in &entry.branch_segments {
-                for point in segment {
-                    let distance_in_layers = point.dist_to_top_mm / layer_height;
-                    let rounded_distance = distance_in_layers.round();
-                    assert!(
-                        (distance_in_layers - rounded_distance).abs() <= 1e-4,
-                        "dist_to_top_mm={} is not an integral layer distance",
-                        point.dist_to_top_mm
-                    );
-                    distances_by_layer
-                        .entry(entry.global_layer_index as u32)
-                        .or_default()
-                        .push(rounded_distance as u32);
-                }
+            for point in &entry.skeleton.as_ref().unwrap().points {
+                let distance_in_layers = (1.8 - point.z).abs() / layer_height;
+                let rounded_distance = distance_in_layers.round();
+                assert!((distance_in_layers - rounded_distance).abs() <= 1e-4);
+                distances_by_layer
+                    .entry(entry.global_layer_index as u32)
+                    .or_default()
+                    .push(rounded_distance as u32);
             }
         }
 

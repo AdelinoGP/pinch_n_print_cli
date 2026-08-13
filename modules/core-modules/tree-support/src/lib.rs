@@ -142,33 +142,25 @@ impl LayerModule for TreeSupport {
         let speed_factor = self.support_speed / BASE_SPEED;
 
         for region in regions {
-            let polygons = region.polygons();
-            if polygons.is_empty() {
-                continue;
-            }
-
             let z = region.z();
             output.begin_region(region.object_id().as_str(), *region.region_id());
 
-            // Planner-consuming tier (TASK-161): when a `SupportPlanIR`
-            // is committed on the blackboard and carries an entry for
-            // this `(layer, object, region)` triple, emit its pre-planned
-            // branch geometry directly and skip the per-layer grid-MST
-            // fill. The grid-MST filler remains the fallback path when
-            // no planner module is installed.
-            let planned_segments =
-                paint.support_plan_segments_for(region.object_id().as_str(), *region.region_id());
-            if !planned_segments.is_empty() {
-                for segment in planned_segments {
-                    let mut path = segment.clone();
-                    path.role = ExtrusionRole::SupportMaterial;
-                    path.speed_factor = speed_factor;
-                    let _ = output.push_support_path(path);
-                }
+            // Structural support plans carry semantic regions, not printable
+            // paths. A missing entry means this demand was declined; do not
+            // resurrect it with the legacy grid-MST filler.
+            let planned_entries =
+                paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
+
+            if planned_entries.is_empty() {
                 continue;
             }
 
-            for expoly in polygons {
+            for expoly in planned_entries
+                .iter()
+                .flat_map(|entry| entry.roles.iter())
+                .filter(|role| matches!(role.role, slicer_ir::SupportPlanRole::SupportBody))
+                .flat_map(|role| role.regions.iter())
+            {
                 // Eligibility precedence (docs/01 Layer::Support, docs/02
                 // support precedence rules):
                 //   blocker → skip; enforcer → generate;
