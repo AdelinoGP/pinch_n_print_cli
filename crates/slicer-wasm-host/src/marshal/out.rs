@@ -274,6 +274,15 @@ pub fn convert_support_output(
     collected: &SupportOutputCollected,
     layer_index: u32,
 ) -> Result<slicer_ir::SupportIR, String> {
+    convert_support_output_with_plan(collected, layer_index, None)
+}
+
+/// Convert support output while joining each origin to the committed plan.
+pub fn convert_support_output_with_plan(
+    collected: &SupportOutputCollected,
+    layer_index: u32,
+    plan: Option<&slicer_ir::SupportPlanIR>,
+) -> Result<slicer_ir::SupportIR, String> {
     let support: Vec<_> = collected
         .support_paths
         .iter()
@@ -296,19 +305,13 @@ pub fn convert_support_output(
 
     if !any_tagged {
         return Ok(slicer_ir::SupportIR {
-            schema_version: slicer_ir::SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
+            schema_version: slicer_ir::CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: layer_index,
-            regions: vec![slicer_ir::slice_ir::SupportRegion {
+            entries: vec![slicer_ir::SupportEntry {
                 object_id: String::new(),
                 region_id: 0,
-                support_paths: support,
-                interface_paths: interface,
-                raft_paths: raft,
-                ironing_paths: Vec::new(),
+                paths: support.into_iter().chain(interface).chain(raft).collect(),
+                ..Default::default()
             }],
         });
     }
@@ -319,6 +322,9 @@ pub fn convert_support_output(
     struct SupportRegion {
         object_id: String,
         region_id: u64,
+        family_id: String,
+        body_id: String,
+        demand_ids: Vec<String>,
         support: Vec<slicer_ir::ExtrusionPath3D>,
         interface: Vec<slicer_ir::ExtrusionPath3D>,
         raft: Vec<slicer_ir::ExtrusionPath3D>,
@@ -328,6 +334,9 @@ pub fn convert_support_output(
         SupportRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            family_id: String::new(),
+            body_id: String::new(),
+            demand_ids: Vec::new(),
             support: Vec::new(),
             interface: Vec::new(),
             raft: Vec::new(),
@@ -360,27 +369,53 @@ pub fn convert_support_output(
         })
         .map_err(|e| support_untagged_msg(e, "raft"))?;
 
-    let regions = bucket
+    let entries = bucket
         .into_regions()
         .into_iter()
-        .map(|r| slicer_ir::slice_ir::SupportRegion {
-            object_id: r.object_id,
-            region_id: r.region_id,
-            support_paths: r.support,
-            interface_paths: r.interface,
-            raft_paths: r.raft,
-            ironing_paths: Vec::new(),
+        .flat_map(|r| {
+            let plan_entry = plan.and_then(|p| {
+                p.entries.iter().find(|e| {
+                    e.global_layer_index == layer_index as i32
+                        && e.object_id == r.object_id
+                        && e.region_id == r.region_id
+                })
+            });
+            let (family_id, body_id, demand_ids) = plan_entry
+                .map(|e| {
+                    (
+                        e.family_id.clone(),
+                        e.body_ids.first().cloned().unwrap_or_default(),
+                        e.demand_ids.clone(),
+                    )
+                })
+                .unwrap_or((r.family_id, r.body_id, r.demand_ids));
+            [
+                (slicer_ir::SupportRole::SupportBody, r.support),
+                (slicer_ir::SupportRole::TopInterface, r.interface),
+                (slicer_ir::SupportRole::Raft, r.raft),
+            ]
+            .into_iter()
+            .filter(move |(_, paths)| !paths.is_empty())
+            .map(move |(role, paths)| slicer_ir::SupportEntry {
+                family_id: family_id.clone(),
+                body_id: body_id.clone(),
+                demand_ids: demand_ids.clone(),
+                object_id: r.object_id.clone(),
+                region_id: r.region_id,
+                role,
+                paths,
+            })
         })
         .collect();
 
     Ok(slicer_ir::SupportIR {
         schema_version: slicer_ir::SemVer {
-            major: 1,
+            major: 2,
             minor: 0,
             patch: 0,
         },
         global_layer_index: layer_index,
-        regions,
+        entries,
     })
 }
 

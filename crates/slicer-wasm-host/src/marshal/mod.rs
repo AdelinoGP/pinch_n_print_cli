@@ -31,6 +31,7 @@ pub use origin::{MarshalError, OriginBucket, OriginId};
 // via `use crate::marshal::in_::harvest_*_from` — not re-exported at the marshal:: level.
 pub use out::{
     authored_coloring_granted, collect_postpass_output, convert_infill_output,
-    convert_perimeter_output, convert_support_output, infill_ir_to_prior_regions,
-    merge_slice_postprocess_into, AuthoredColoringContext, AUTHORED_COLORING_CLAIM,
+    convert_perimeter_output, convert_support_output, convert_support_output_with_plan,
+    infill_ir_to_prior_regions, merge_slice_postprocess_into, AuthoredColoringContext,
+    AUTHORED_COLORING_CLAIM,
 };

@@ -9,6 +9,7 @@
 pub mod batch;
 pub mod binding;
 pub mod dispatch;
+pub mod exact_z_query;
 pub mod execution_plan_live;
 pub mod host;
 pub mod instance;
@@ -18,6 +19,7 @@ pub mod pool;
 /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
 /// process-global scope-name registry (ADR-0055).
 pub mod profiling;
+pub mod support_aggregation;
 pub mod traits;
 
 // ---------------------------------------------------------------------------

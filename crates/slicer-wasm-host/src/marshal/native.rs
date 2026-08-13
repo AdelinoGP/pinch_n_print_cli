@@ -482,16 +482,16 @@ pub fn commit_native_prepass_response(
                                 region_id: entry.region_id.parse().map_err(|e| {
                                     format!("invalid support region id '{}': {e}", entry.region_id)
                                 })?,
-                                branch_segments: entry
-                                    .branch_segments
-                                    .iter()
-                                    .map(|segment| slicer_ir::ExtrusionPath3D {
-                                        points: segment.clone(),
-                                        role: slicer_ir::ExtrusionRole::SupportMaterial,
-                                        speed_factor: 1.0,
-                                        tool_index: None,
-                                    })
-                                    .collect(),
+                                family_id: entry.family_id.clone(),
+                                demand_ids: entry.demand_ids.clone(),
+                                body_ids: entry.body_ids.clone(),
+                                anchor_layer_index: entry.anchor_layer_index,
+                                anchor_z: entry.anchor_z,
+                                roles: entry.roles.clone(),
+                                skeleton: entry.skeleton.clone(),
+                                capabilities: entry.capabilities.clone(),
+                                provenance: entry.provenance.clone(),
+                                decline_reason: entry.decline_reason,
                             })
                         })
                         .collect::<Result<Vec<_>, String>>()?,

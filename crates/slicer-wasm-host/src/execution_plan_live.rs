@@ -15,9 +15,9 @@ use slicer_sdk::native::NativeStageEntry;
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_with_wall_generator,
-    ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest,
-    SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, SUPPORT_GENERATOR_CONFIG_KEY,
-    WALL_GENERATOR_CONFIG_KEY,
+    validate_support_family_pairing, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
+    ExecutionPlanRequest, SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER,
+    SUPPORT_FAMILY_CONFIG_KEY, SUPPORT_GENERATOR_CONFIG_KEY, WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
     load_modules_from_roots_with_integrated, LoadDiagnostic, LoadError, LoadedModule,
@@ -112,6 +112,8 @@ pub struct LiveModuleLoadOutput {
 pub enum LiveModuleLoadError {
     /// Manifest discovery/ingestion failed fatally.
     Load(LoadError),
+    /// Support planner and renderer family claims do not form pairs.
+    SupportFamilyPairing(slicer_scheduler::SupportFamilyPairingError),
     /// A stage's intra-stage DAG could not be built.
     Dag(SchedulerError),
     /// A stage's module set could not be topologically sorted (cycle).
@@ -143,6 +145,7 @@ impl std::fmt::Display for LiveModuleLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Load(e) => write!(f, "module discovery failed: {e:?}"),
+            Self::SupportFamilyPairing(e) => write!(f, "{e}"),
             Self::Dag(e) => write!(f, "intra-stage DAG construction failed: {e:?}"),
             Self::Cycle { stage_id, unsorted } => write!(
                 f,
@@ -293,6 +296,9 @@ pub fn load_live_modules_for_plan_with_integrated(
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
     let mut report = load_modules_from_roots_with_integrated(search_roots, integrated)?;
 
+    validate_support_family_pairing(&report.modules)
+        .map_err(|e| Box::new(LiveModuleLoadError::SupportFamilyPairing(e)))?;
+
     let wall_generator = config_source
         .get(WALL_GENERATOR_CONFIG_KEY)
         .and_then(|v| match v {
@@ -315,6 +321,13 @@ pub fn load_live_modules_for_plan_with_integrated(
             _ => None,
         });
 
+    let support_family = config_source
+        .get(SUPPORT_FAMILY_CONFIG_KEY)
+        .and_then(|v| match v {
+            ConfigValue::String(s) => Some(s.as_str()),
+            _ => None,
+        });
+
     // Claim-uniqueness enforcement, config-aware for `perimeter-generator`
     // and `support-generator`. `spiral_vase` forces the classic perimeter
     // generator (Arachne is incompatible with spiral-vase mode);
@@ -325,7 +338,7 @@ pub fn load_live_modules_for_plan_with_integrated(
         &mut report.diagnostics,
         wall_generator,
         spiral_vase,
-        support_type,
+        support_type.or(support_family),
     );
     report.modules = filtered_modules;
 
