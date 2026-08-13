@@ -138,13 +138,18 @@ pub use slice_ir::{
     SliceIR,
     SlicedRegion,
     StageId,
+    SupportEntry,
     // Support types
     SupportGeometryIR,
     SupportGeometryKey,
     SupportIR,
+    SupportPlanDeclineReason,
     SupportPlanEntry,
     SupportPlanIR,
-    SupportRegion,
+    SupportPlanRole,
+    SupportPlanRoleRegion,
+    SupportPlanSkeleton,
+    SupportRole,
     SupportType,
 
     // Surface classification types

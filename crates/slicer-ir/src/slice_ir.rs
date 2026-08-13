@@ -253,17 +253,24 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Bumped to 1.3.0 by packet 124 (additive
-/// `ExtrusionRole::RaftInfill` per ADR-0009).
+/// Schema version for `SupportPlanIR`. Bumped to 2.0.0 by packet 220
+/// (breaking structural support-family migration; branch extrusion paths removed).
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 3,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
 /// Schema version for `SupportGeometryIR`. Initial 1.0.0 — no bumps recorded
 /// in `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for host-owned support analysis inputs.
+pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
@@ -303,10 +310,10 @@ pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `SupportIR`. Bumped to 2.0.0 by packet 220: support
+/// output is now represented as attributed family/body/role entries.
 pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
+    major: 2,
     minor: 0,
     patch: 0,
 };
@@ -1272,7 +1279,49 @@ impl Default for SeamPlanIR {
 // Support Plan IR Types
 // ============================================================================
 
-/// One entry in the global support plan.
+/// Semantic role of a polygon carried by a structural support plan entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SupportPlanRole {
+    /// Printable support body geometry.
+    SupportBody,
+    /// Geometry supporting the top interface.
+    TopInterface,
+    /// Geometry supporting the bottom interface.
+    BottomInterface,
+    /// Geometry associated with raft generation.
+    RaftRelated,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Support polygons grouped by semantic role.
+pub struct SupportPlanRoleRegion {
+    /// Semantic role assigned to the polygons.
+    pub role: SupportPlanRole,
+    /// Analysis polygons for this role.
+    pub regions: Vec<ExPolygon>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Optional structural skeleton for a support plan.
+pub struct SupportPlanSkeleton {
+    /// Branch or skeleton points in model coordinates.
+    pub points: Vec<Point3>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Why a support plan candidate was declined.
+pub enum SupportPlanDeclineReason {
+    /// Declined by configured policy.
+    DeclinedPolicy,
+    /// No valid route exists.
+    NoRoute,
+    /// Candidate was blocked by geometry.
+    Blocked,
+    /// The requested mode is unavailable.
+    UnsupportedMode,
+}
+
+/// One structural entry in the global support plan.
 ///
 /// Produced once per `(global_layer_index, object_id, region_id)` triple
 /// by `PrePass::SupportGeometry` and stored immutably on the blackboard.
@@ -1293,10 +1342,26 @@ pub struct SupportPlanEntry {
     pub object_id: ObjectId,
     /// Region inside the object the branches belong to.
     pub region_id: RegionId,
-    /// Planned branch geometry for this `(layer, object, region)` triple.
-    /// Each `ExtrusionPath3D` is typically a two-point segment (a single
-    /// MST edge) but may be multi-point for long merged branches.
-    pub branch_segments: Vec<ExtrusionPath3D>,
+    /// Support family that produced the entry.
+    pub family_id: String,
+    /// Planner demand identities represented by this entry.
+    pub demand_ids: Vec<String>,
+    /// Physical support body identities represented by this entry.
+    pub body_ids: Vec<String>,
+    /// Layer on which the support is anchored.
+    pub anchor_layer_index: u32,
+    /// Anchor height in canonical units.
+    pub anchor_z: i64,
+    /// Role-attributed analysis polygons.
+    pub roles: Vec<SupportPlanRoleRegion>,
+    /// Optional branch skeleton.
+    pub skeleton: Option<SupportPlanSkeleton>,
+    /// Capabilities required by the downstream renderer.
+    pub capabilities: Vec<String>,
+    /// Producer provenance labels.
+    pub provenance: Vec<String>,
+    /// Structured reason when this candidate was declined.
+    pub decline_reason: Option<SupportPlanDeclineReason>,
 }
 
 /// Configuration-only raft plan emitted during support planning.
@@ -1385,6 +1450,67 @@ impl Default for SupportGeometryIR {
             support_layer_height_mm: 0.0,
             support_top_z_distance_mm: 0.0,
             entries: HashMap::new(),
+        }
+    }
+}
+
+/// Evidence identifying the geometry from which a conservative candidate came.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportCandidateSource {
+    /// Object from which the candidate originated.
+    pub object_id: ObjectId,
+    /// Region from which the candidate originated.
+    pub region_id: RegionId,
+    /// Global layer containing the candidate.
+    pub global_layer_index: u32,
+    /// Exact source height in canonical units.
+    pub z_units: i64,
+}
+
+/// A strategy-neutral surface that a support family may accept or decline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportCandidate {
+    /// Stable candidate identifier.
+    pub id: u64,
+    /// Candidate analysis geometry.
+    pub geometry: Vec<ExPolygon>,
+    /// Source identity and height.
+    pub source: SupportCandidateSource,
+    /// Whether policy requires retaining this candidate.
+    pub enforced: bool,
+    /// Whether the candidate is blocked by geometry.
+    pub blocked: bool,
+}
+
+/// Host-owned support inputs shared by all support family planners.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// Strategy-neutral candidates shared by support families.
+    pub candidates: Vec<SupportCandidate>,
+    /// Model occupancy keyed by support geometry identity.
+    pub model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Termination surfaces keyed by support geometry identity.
+    pub termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Shared family-neutral settings.
+    pub shared_settings: BTreeMap<String, String>,
+    /// Conservative feasible envelope shared by planners.
+    pub baseline_feasible_envelope: Vec<ExPolygon>,
+    /// Per-object/per-region family assignments.
+    pub family_assignments: BTreeMap<(ObjectId, RegionId), String>,
+}
+
+impl Default for SupportAnalysisIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
+            candidates: Vec::new(),
+            model_occupancy: HashMap::new(),
+            termination_surfaces: HashMap::new(),
+            shared_settings: BTreeMap::new(),
+            baseline_feasible_envelope: Vec::new(),
+            family_assignments: BTreeMap::new(),
         }
     }
 }
@@ -2300,21 +2426,39 @@ impl Default for InfillIR {
 // Support IR Types
 // ============================================================================
 
-/// Support region
+/// Role of printable support geometry.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SupportRole {
+    /// Printable support body.
+    #[default]
+    SupportBody,
+    /// Printable top interface.
+    TopInterface,
+    /// Printable bottom interface.
+    BottomInterface,
+    /// Raft geometry.
+    Raft,
+    /// Ironing geometry.
+    Ironing,
+}
+
+/// Attributed printable support output for one family/body/role.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SupportRegion {
-    /// Object ID this region belongs to
+pub struct SupportEntry {
+    /// Support family that produced the paths.
+    pub family_id: String,
+    /// Physical body identity.
+    pub body_id: String,
+    /// Planner demand identities represented by the body.
+    pub demand_ids: Vec<String>,
+    /// Object owning the support.
     pub object_id: ObjectId,
-    /// Region ID
+    /// Region owning the support.
     pub region_id: RegionId,
-    /// Support paths
-    pub support_paths: Vec<ExtrusionPath3D>,
-    /// Interface paths
-    pub interface_paths: Vec<ExtrusionPath3D>,
-    /// Raft paths
-    pub raft_paths: Vec<ExtrusionPath3D>,
-    /// Ironing paths
-    pub ironing_paths: Vec<ExtrusionPath3D>,
+    /// Printable role of the paths.
+    pub role: SupportRole,
+    /// Printable extrusion paths.
+    pub paths: Vec<ExtrusionPath3D>,
 }
 
 /// Support IR
@@ -2324,8 +2468,8 @@ pub struct SupportIR {
     pub schema_version: SemVer,
     /// Global layer index
     pub global_layer_index: u32,
-    /// Support regions in this layer
-    pub regions: Vec<SupportRegion>,
+    /// Attributed support entries in this layer.
+    pub entries: Vec<SupportEntry>,
 }
 
 impl Default for SupportIR {
@@ -2333,7 +2477,7 @@ impl Default for SupportIR {
         Self {
             schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: 0,
-            regions: Vec::new(),
+            entries: Vec::new(),
         }
     }
 }
