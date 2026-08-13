@@ -5,7 +5,7 @@ task_ids:
   - TASK-333
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Depends on draft support-analysis-family-contracts; inherited activation blockers remain open.
+copy_note: Depends on implemented support-analysis-family-contracts (packet 220); activation blockers resolved.
 ---
 
 # Packet Contract: traditional-support-family
@@ -17,9 +17,9 @@ Add a `traditional-support-planner` that plans cross-layer contact, base, interf
 This packet owns the traditional family planner, renderer, manifests, traditional support configuration, and family tests. It consumes TASK-331 strategy-neutral analysis, exact-Z queries, universal structural `SupportPlanIR` and structured `SupportIR`, plus TASK-330 anchored execution. Tree planning, mixed-family routing, and final closure evidence are separate packets.
 
 ## Prerequisites and Blockers
-- Depends on: draft `support-analysis-family-contracts` (TASK-331) and draft `anchored-entity-execution` (TASK-330), consumed as forward dependencies.
+- Depends on: implemented `support-analysis-family-contracts` (TASK-331, packet 220) and implemented `anchored-entity-execution` (TASK-330, packet 219), consumed as forward dependencies.
 - Unblocks: `mixed-support-family-routing` (TASK-334) and `support-family-orca-closure` (TASK-335).
-- Activation blockers: [BLOCK] TASK-331 exact-Z seam ownership; [BLOCK] TASK-331 breaking-versus-additive WIT migration. These inherited blockers keep this packet draft.
+- Activation blockers: RESOLVED (packet 220, 2026-08-13). (1) Exact-Z seam ownership: the host exact-Z support query service is `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs`, injected into `HostExecutionContext`, normalized to repo units, immutable per-(object,region,Z) caching, returning occupancy, blockers, eligible termination geometry, and baseline envelope. (2) WIT migration: breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`; `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` 1.0.0. These inherited blockers are resolved; this packet is no longer held draft by them.
 
 ## Acceptance Criteria
 - **AC-1. Given** overhang candidates assigned to `traditional`, **when** `traditional-support-planner` runs, **then** `SupportPlanIR` contains stable `family_id=traditional`, demand/body IDs, and contact-area body/interface roles derived across layers rather than a per-layer filler. | `cargo test -p traditional-support-planner --test traditional_family_tdd contact_area_planning -- --exact`

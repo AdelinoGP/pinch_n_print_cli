@@ -7,7 +7,7 @@
 - Aggregate context cost: `M`
 
 ## Problem Statement
-The live traditional renderer is `Layer::Support` but writes `SupportIR` without reading `SupportPlanIR` (`modules/core-modules/traditional-support/traditional-support.toml:9-18`). This packet introduces a genuine cross-layer traditional planner and removes per-layer eligibility/filler behavior from the renderer.
+The live traditional renderer is `Layer::Support` but writes `SupportIR` without reading `SupportPlanIR` (`modules/core-modules/traditional-support/traditional-support.toml:9-18`). This packet introduces a genuine cross-layer traditional planner and removes per-layer eligibility/filler behavior from the renderer. Packet 220 already removed the fallback filler; this packet migrates the renderer to attributed `SupportIR` v2.0.0 (per body/role: family_id, body_id, demand_ids, object/region, role incl. raft+ironing, printable paths).
 
 ## In Scope
 - Create `traditional-support-planner` at `PrePass::SupportGeometry` with `support-planner` and `support-family:traditional` claims.

@@ -5,7 +5,7 @@ task_ids:
   - TASK-332
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Depends on draft support-analysis-family-contracts; inherited activation blockers remain open.
+copy_note: Depends on implemented support-analysis-family-contracts (packet 220); activation blockers resolved.
 ---
 
 # Packet Contract: tree-support-family
@@ -17,9 +17,9 @@ Split the existing tree planner into `tree-support-planner` and make its paired 
 This packet owns the tree family algorithm, planner and renderer manifests, tree-specific config, and tree family tests. It consumes the universal analysis, exact-Z query, structural `SupportPlanIR`, structured `SupportIR`, and anchored execution contracts from TASK-331/TASK-330. Mixed-family conflict routing and final closure evidence remain downstream.
 
 ## Prerequisites and Blockers
-- Depends on: draft `support-analysis-family-contracts` (TASK-331) and draft `anchored-entity-execution` (TASK-330), consumed as forward dependencies.
+- Depends on: implemented `support-analysis-family-contracts` (TASK-331, packet 220) and implemented `anchored-entity-execution` (TASK-330, packet 219), consumed as forward dependencies.
 - Unblocks: `mixed-support-family-routing` (TASK-334) and `support-family-orca-closure` (TASK-335).
-- Activation blockers: [BLOCK] TASK-331 exact-Z seam ownership; [BLOCK] TASK-331 breaking-versus-additive WIT migration. These inherited blockers keep this packet draft.
+- Activation blockers: RESOLVED (both inherited from TASK-331). (1) Exact-Z seam ownership now lives in `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs`, injected into `HostExecutionContext`, normalized to repo units, immutable per-(object,region,Z) caching, returning occupancy, blockers, eligible termination geometry, and the baseline envelope. (2) The WIT migration is a breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0` (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` stays 1.0.0). Activation now waits only on this packet's own preflight.
 
 ## Acceptance Criteria
 - **AC-1. Given** distributed overhang candidates assigned to `tree`, **when** `tree-support-planner` runs once per object, **then** `SupportPlanIR` contains stable `family_id=tree`, demand/body IDs, semantic `support_body` or interface regions, and distributed corner/contour/interior contacts rather than a triangle-centroid-only contact. | `cargo test -p tree-support-planner --test tree_family_tdd distributed_contacts -- --exact`

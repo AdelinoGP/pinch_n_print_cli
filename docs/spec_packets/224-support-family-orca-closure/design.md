@@ -7,7 +7,7 @@
 
 ## Architecture Constraints
 - Closure proves behavioral parity only: coverage, termination, collision freedom, interfaces, independent heights, and printable construction; exact path identity is out of scope.
-- `Layer::Support` and `PrePass::SupportGeometry` are separate evidence boundaries and must both be captured.
+- `Layer::Support`, `PrePass::SupportAnalysis`, and `PrePass::SupportGeometry` are separate evidence boundaries and must all be captured. Both support stages exist: `PrePass::SupportAnalysis` (host analysis stage carrying candidates, occupancy/termination surfaces, baseline envelope, and deterministic family assignments) and `PrePass::SupportGeometry` (legacy geometry stage, still in STAGE_ORDER).
 - The existing decisive fixtures are the primary closure path. A deliberately missing copied path is reserved for the negative gate.
 - Final evidence must not treat PNG existence, byte size, manifest greps, or self-captured goldens as proof.
 <!-- snippet: coord-system -->
@@ -41,8 +41,9 @@
 - Question: delegate docs/07 closure and TASK-163b status; scope: `docs/07_implementation_status.md`; return: `SUMMARY`.
 
 ## Data and Contract Notes
-- IR/manifest contracts: assert typed captures at `PrePass::SupportGeometry` and `Layer::Support`; preserve structured family/body/demand roles from TASK-334.
-- WIT boundary: no new WIT contract; inherited TASK-331 migration blocker remains.
+- IR/manifest contracts: assert typed captures at `PrePass::SupportAnalysis`, `PrePass::SupportGeometry`, and `Layer::Support`; preserve structured family/body/demand roles from TASK-334.
+- WIT boundary: no new WIT contract; inherited TASK-331 migration blocker is resolved. Packet 220 performed a breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0` (package stays 1.0.0). Schema versions: `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` 1.0.0.
+- WASM boundary: packet 220's live WASM dispatch hands guests an EMPTY structural plan (the paint-view boundary does not carry plan entries); plan-consuming tests drive the renderer natively. For closure evidence, visual-debug taps and G-code role parsing must capture the host-side aggregated plan/`SupportIR` (which carry the identity), not guest-side plan reads.
 - Determinism/scheduler constraints: compare forced serial/parallel fixture results and preserve anchored event order.
 
 ## Locked Assumptions and Invariants
@@ -59,6 +60,6 @@
 - Highest-risk dispatch and required return format: fixture production/availability, `FACT` or `LOCATIONS`.
 
 ## Open Questions
-- [BLOCK] TASK-331 exact-Z seam and WIT migration decisions remain inherited activation blockers.
+- [RESOLVED] TASK-331 exact-Z seam and WIT migration decisions. Exact-Z seam = `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs` (injected into `HostExecutionContext`; normalized to repo units, immutable per-(object,region,Z) caching). WIT migration = breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`; `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` 1.0.0. New contracts live: `PrePass::SupportAnalysis` + `SupportAnalysisIR` (candidates, occupancy/termination surfaces, baseline envelope, deterministic family assignments); structural `SupportPlanIR` v2.0.0 (family_id, demand IDs, body IDs, anchor layer index + Z, semantic ExPolygon roles, optional skeleton metadata, capabilities/provenance, decline reasons); attributed `SupportIR` v2.0.0 (per body/role: family_id, body_id, demand_ids, object/region, role incl. raft+ironing, printable paths); `support_family` canonical + `support_type` aliases; `support-family:<id>` claims; startup pairing validation; host aggregation in `crates/slicer-wasm-host/src/support_aggregation.rs` with internal deterministic routing cells; no fallback filler.
 - [BLOCK] Who will provide authoritative Orca tree/normal G-code references if the documented checkout cannot regenerate them?
 - [FWD] TASK-334 must export final diagnostic fields and unmet-demand disposition consumed by closure tests.
