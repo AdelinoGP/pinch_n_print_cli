@@ -87,24 +87,25 @@ fn integrated_parity_support_planner_native_matches_wasm() {
         let plan = support_plan(output);
         assert!(
             plan.entries.iter().any(|entry| {
-                entry
-                    .branch_segments
-                    .iter()
-                    .any(|segment| !segment.points.is_empty())
+                entry.roles.iter().any(|role| !role.regions.is_empty())
+                    || entry
+                        .skeleton
+                        .as_ref()
+                        .is_some_and(|s| !s.points.is_empty())
             }),
-            "{name} support plan must contain an entry, branch segment, and point"
+            "{name} support plan must contain structural support geometry"
         );
         eprintln!(
             "{name} support plan: entries={}, segments={}, points={}",
             plan.entries.len(),
             plan.entries
                 .iter()
-                .map(|entry| entry.branch_segments.len())
+                .map(|entry| entry.roles.len())
                 .sum::<usize>(),
             plan.entries
                 .iter()
-                .flat_map(|entry| entry.branch_segments.iter())
-                .map(|segment| segment.points.len())
+                .flat_map(|entry| entry.roles.iter())
+                .map(|role| role.regions.len())
                 .sum::<usize>()
         );
     }

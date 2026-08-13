@@ -3,12 +3,11 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer, MeshIR, Point3WithWidth, SemVer,
-    SliceIR, StageId, SupportPlanEntry, SupportPlanIR, CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+    ConfigView, GlobalLayer, MeshIR, SemVer, SliceIR, StageId, SupportPlanEntry, SupportPlanIR,
+    CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 use support_surface_ironing::SupportSurfaceIroning;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
@@ -22,27 +21,16 @@ fn support_plan() -> SupportPlanIR {
             global_layer_index: 0,
             object_id: "parity-object".to_string(),
             region_id: 0,
-            branch_segments: vec![ExtrusionPath3D {
-                points: vec![
-                    Point3WithWidth {
-                        x: 1.0,
-                        y: 1.0,
-                        z: 0.2,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        ..Default::default()
-                    },
-                    Point3WithWidth {
-                        x: 9.0,
-                        y: 1.0,
-                        z: 0.2,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        ..Default::default()
-                    },
-                ],
-                ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-            }],
+            family_id: "tree".into(),
+            demand_ids: vec!["demand".into()],
+            body_ids: vec!["body".into()],
+            anchor_layer_index: 0,
+            anchor_z: 200,
+            roles: vec![],
+            skeleton: Some(slicer_ir::SupportPlanSkeleton { points: vec![] }),
+            capabilities: vec!["structural".into()],
+            provenance: vec!["test".into()],
+            decline_reason: None,
         }],
         raft_plan: None,
     }

@@ -23,13 +23,11 @@
 //! `triangle_expolygon`/`seeded_*` helpers (small, deterministic, arbitrary
 //! coordinates) — no new geometry generator is authored here.
 
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
-
 use slicer_ir::{
-    ActiveRegion, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, GlobalLayer,
-    Point2, Point3WithWidth, Polygon, PrintMetadata, RegionKey, RegionMapIR, RegionPlan,
-    ResolvedConfig, SeamPlanEntry, SeamPlanIR, SeamPosition, SliceIR, SlicedRegion,
-    SupportGeometryIR, SupportPlanEntry, SupportPlanIR, CURRENT_GCODE_IR_SCHEMA_VERSION,
+    ActiveRegion, ExPolygon, ExtrusionRole, GCodeCommand, GCodeIR, GlobalLayer, Point2, Point3,
+    Point3WithWidth, Polygon, PrintMetadata, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SeamPlanEntry, SeamPlanIR, SeamPosition, SliceIR, SlicedRegion, SupportGeometryIR,
+    SupportPlanEntry, SupportPlanIR, CURRENT_GCODE_IR_SCHEMA_VERSION,
     CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION, CURRENT_SLICE_IR_SCHEMA_VERSION,
     CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
 };
@@ -137,10 +135,29 @@ fn mixed_unit_shared_viewport() {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
                     region_id: 7,
-                    branch_segments: vec![ExtrusionPath3D {
-                        points: vec![point3(50.0, 600.0), point3(60.0, 600.0)],
-                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-                    }],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            Point3 {
+                                x: 50.0,
+                                y: 600.0,
+                                z: 0.0,
+                            },
+                            Point3 {
+                                x: 60.0,
+                                y: 600.0,
+                                z: 0.0,
+                            },
+                        ],
+                    }),
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 }],
                 raft_plan: None,
             },
@@ -271,10 +288,29 @@ fn degenerate_support_branch_renders_as_visible_disk() {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
                     region_id: 0,
-                    branch_segments: vec![ExtrusionPath3D {
-                        points: vec![point3(0.0, 0.0), point3(0.0, 0.0)],
-                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-                    }],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            Point3 {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            },
+                            Point3 {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            },
+                        ],
+                    }),
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 }],
                 raft_plan: None,
             },
@@ -313,10 +349,34 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
                     region_id: 0,
-                    branch_segments: vec![ExtrusionPath3D {
-                        points: vec![point3(3.0, 9.557), point3(3.0, 9.808), point3(3.0, 9.808)],
-                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-                    }],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            Point3 {
+                                x: 3.0,
+                                y: 9.557,
+                                z: 0.0,
+                            },
+                            Point3 {
+                                x: 3.0,
+                                y: 9.808,
+                                z: 0.0,
+                            },
+                            Point3 {
+                                x: 3.0,
+                                y: 9.808,
+                                z: 0.0,
+                            },
+                        ],
+                    }),
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 }],
                 raft_plan: None,
             },
@@ -355,10 +415,29 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
                     region_id: 0,
-                    branch_segments: vec![ExtrusionPath3D {
-                        points: vec![point3(3.0, 9.808), point3(3.0 + 1e-9, 9.808)],
-                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-                    }],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            Point3 {
+                                x: 3.0,
+                                y: 9.808,
+                                z: 0.0,
+                            },
+                            Point3 {
+                                x: 3.0 + 1e-9,
+                                y: 9.808,
+                                z: 0.0,
+                            },
+                        ],
+                    }),
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 }],
                 raft_plan: None,
             },

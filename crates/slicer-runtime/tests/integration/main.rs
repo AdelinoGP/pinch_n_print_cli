@@ -14,6 +14,13 @@ mod anchored_event_ordering;
 mod anchored_parallel_determinism;
 mod anchored_z_span_validation;
 mod anchored_z_validation;
+mod structured_support_identity;
+mod support_disabled_no_output;
+
+#[test]
+fn support_disabled_no_output() {
+    support_disabled_no_output::support_disabled_no_output();
+}
 
 #[test]
 fn anchored_event_ordering() {
@@ -44,6 +51,10 @@ fn rejects_out_of_range_point() {
     anchored_z_span_validation::rejects_out_of_range_point();
 }
 mod arachne_seam_paint_bias_tdd;
+#[test]
+fn structured_support_identity() {
+    structured_support_identity::structured_support_identity();
+}
 mod arachne_wall_width_follows_config_tdd;
 mod classic_min_width_top_surface_tdd;
 mod classic_wall_width_resolution_tdd;

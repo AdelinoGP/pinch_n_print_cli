@@ -22,11 +22,11 @@ use std::sync::Arc;
 
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
-    BridgeRegion, ExPolygon, ExtrusionPath3D, ExtrusionRole, MeshIR, ObjectSurfaceData,
-    OverhangRegion, PaintSemantic, PaintValue, Point2, Point3WithWidth, Polygon, RegionKey,
-    RegionMapIR, RegionPlan, ResolvedConfig, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR,
-    SeamPosition, SeamReason, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
-    SupportPlanEntry, SupportPlanIR, SurfaceClassificationIR, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    BridgeRegion, ExPolygon, MeshIR, ObjectSurfaceData, OverhangRegion, PaintSemantic, PaintValue,
+    Point2, Point3WithWidth, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SeamReason, SliceIR,
+    SlicedRegion, SupportGeometryIR, SupportGeometryKey, SupportPlanEntry, SupportPlanIR,
+    SurfaceClassificationIR, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
     CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION, CURRENT_SLICE_IR_SCHEMA_VERSION,
     CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION, CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
     CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
@@ -35,7 +35,6 @@ use slicer_runtime::layer_executor::{
     execute_blackboard_taps, CapturedIr, BLACKBOARD_TAP_STAGE_IDS,
 };
 use slicer_runtime::{Blackboard, CaptureExecutionError, CaptureRequest};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// One populated `ExPolygon`: a simple triangle, no holes. Values are
 /// arbitrary but deterministic — only used to prove the captured payload is
@@ -194,25 +193,29 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
             global_layer_index: 0,
             object_id: "obj-0".to_string(),
             region_id: 7,
-            branch_segments: vec![ExtrusionPath3D {
+            family_id: "tree-support".to_string(),
+            demand_ids: vec!["demand-0".to_string()],
+            body_ids: vec!["body-0".to_string()],
+            anchor_layer_index: 0,
+            anchor_z: 200_000,
+            roles: Vec::new(),
+            skeleton: Some(slicer_ir::SupportPlanSkeleton {
                 points: vec![
-                    Point3WithWidth {
+                    slicer_ir::Point3 {
                         x: 1.0,
                         y: 1.0,
                         z: 0.2,
-                        width: 0.4,
-                        ..Point3WithWidth::default()
                     },
-                    Point3WithWidth {
+                    slicer_ir::Point3 {
                         x: 2.0,
                         y: 2.0,
                         z: 0.4,
-                        width: 0.4,
-                        ..Point3WithWidth::default()
                     },
                 ],
-                ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-            }],
+            }),
+            capabilities: vec!["tree-branch-skeleton".to_string()],
+            provenance: vec!["test".to_string()],
+            decline_reason: None,
         }],
         raft_plan: None,
     };
@@ -470,7 +473,7 @@ fn blackboard_tap_capture_contracts() {
             support_geometry.support_top_z_distance_mm
         );
         assert_eq!(plan.entries, support_plan.entries);
-        let branch_point = plan.entries[0].branch_segments[0].points[0];
+        let branch_point = plan.entries[0].skeleton.as_ref().unwrap().points[0];
         assert_eq!(branch_point.x, 1.0);
         assert_eq!(branch_point.y, 1.0);
         assert_eq!(branch_point.z, 0.2);

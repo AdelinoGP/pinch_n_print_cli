@@ -415,14 +415,14 @@ fn planner_walks_real_layer_plan_with_variable_layer_heights() {
         );
     }
 
-    // The highest entry's branch_segments[*][0].z must be within 1e-4 of 2.0.
+    // The highest entry's structural skeleton must reach z=2.0.
     let highest = plan_ir
         .entries
         .iter()
         .max_by_key(|e| e.global_layer_index)
         .expect("SupportPlanIR must have at least one entry");
-    for seg in &highest.branch_segments {
-        let first_z = seg.points[0].z;
+    for point in &highest.skeleton.as_ref().expect("skeleton").points {
+        let first_z = point.z;
         assert!(
             (first_z - 2.0).abs() < 1e-4,
             "highest entry first point z={} expected ~2.0",
@@ -467,26 +467,25 @@ fn planner_emits_one_entry_per_region_in_region_map() {
         region_ids
     );
 
-    // Byte-identical branch_segments between the two entries.
+    // Byte-identical structural skeletons between the two entries.
     let entry_7 = matching.iter().find(|e| e.region_id == 7).unwrap();
     let entry_42 = matching.iter().find(|e| e.region_id == 42).unwrap();
     assert_eq!(
-        entry_7.branch_segments.len(),
-        entry_42.branch_segments.len(),
-        "branch_segments length mismatch between region 7 and 42"
+        entry_7.skeleton.as_ref().unwrap().points.len(),
+        entry_42.skeleton.as_ref().unwrap().points.len(),
+        "skeleton length mismatch between region 7 and 42"
     );
     for (seg_7, seg_42) in entry_7
-        .branch_segments
+        .skeleton
+        .as_ref()
+        .unwrap()
+        .points
         .iter()
-        .zip(entry_42.branch_segments.iter())
+        .zip(entry_42.skeleton.as_ref().unwrap().points.iter())
     {
-        assert_eq!(seg_7.points.len(), seg_42.points.len());
-        for (p7, p42) in seg_7.points.iter().zip(seg_42.points.iter()) {
-            assert_eq!(p7.x.to_bits(), p42.x.to_bits());
-            assert_eq!(p7.y.to_bits(), p42.y.to_bits());
-            assert_eq!(p7.z.to_bits(), p42.z.to_bits());
-            assert_eq!(p7.width.to_bits(), p42.width.to_bits());
-        }
+        assert_eq!(seg_7.x.to_bits(), seg_42.x.to_bits());
+        assert_eq!(seg_7.y.to_bits(), seg_42.y.to_bits());
+        assert_eq!(seg_7.z.to_bits(), seg_42.z.to_bits());
     }
 }
 
