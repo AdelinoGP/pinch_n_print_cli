@@ -711,6 +711,25 @@ requires = []                     # claim slots that MUST be held by another mod
 |--------------------------|----------|----------------|--------------------------------------------------------------------------|
 | `claim:infill-link`      | non-fill | first-winner   | `infill-linker` (`Layer::InfillPostProcess`, packet 130; ADR-0025)       |
 
+### Support-family claims (Normative — packet 220)
+
+Support families use a claims vocabulary of the form `support-family:<id>`,
+where `<id>` is the family identifier. A family planner and its renderer are
+paired by holding the **same** `support-family:<id>` claim:
+
+- **Planners** hold `support-planner` (the PrePass claim emitting
+  `SupportPlanIR`) **and** `support-family:<id>`.
+- **Renderers** hold `support-generator` (the `Layer::Support` claim) **and**
+  the same `support-family:<id>`.
+
+`support_family` is the canonical per-region selector. `support_type` is a
+**compatibility alias** only: values starting with `normal*` or `classic*`
+select the traditional family; values starting with `tree*` or `hybrid*`
+select the tree family. A missing or mismatched planner/renderer pair — a
+planner or renderer whose `support-family:<id>` has no matching counterpart
+holding the same `<id>` — fails at startup (see
+`docs/04_host_scheduler.md` § "Planner-Renderer Pairing").
+
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 
 ### Holder identifier matching

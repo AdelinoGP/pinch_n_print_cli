@@ -543,6 +543,41 @@ Unlike the fill claims, `support-generator` is a stable single-owner claim:
 the resolved holder must remain constant across every layer for a given object
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`).
 
+### Planner-Renderer Pairing (Normative — packet 220)
+
+Support family selection is **atomic per region**: the planner and the
+renderer are resolved together from one family, never independently. This
+`planner-renderer` pairing is the unit of family selection. For a
+given region, the selected `support_family` determines both the
+`support-planner` module (PrePass) and the `support-generator` renderer
+(`Layer::Support`) that serve it — they are paired by the shared
+`support-family:<id>` claim (see `docs/03_wit_and_manifest.md` §
+"Support-family claims"). There is no global "first winner" `support-generator`
+dedup that drops losing families.
+
+- **Per-region candidate retention.** All family candidates are retained
+  through load and dispatch. The host does not globally dedup away a
+  `support-generator`; each region keeps its own candidate set so a family
+  can be selected per region.
+- **Startup pairing validation.** A planner or renderer whose
+  `support-family:<id>` has no matching counterpart holding the same `<id>`
+  fails at startup (missing or mismatched pair). This is a fatal startup
+  validation error, not a runtime fallback.
+- **Host aggregation as the sole multi-writer merge point.** The host is the
+  only place that merges output from multiple family writers. Aggregation
+  assigns each body to a deterministic routing cell, so the merged result is
+  reproducible regardless of which family produced which body.
+- **Complete-body validation.** A complete body is validated against the
+  exact-Z occupancy and routing cells (see the host `exact_z_query` service in
+  `crates/slicer-wasm-host/src/exact_z_query.rs`). An invalid complete body is
+  dropped, not clipped or replaced by a fallback filler.
+- **Structured unmet diagnostics with degraded continuation.** A declined or
+  unroutable candidate surfaces a structured unmet diagnostic and the pipeline
+  continues in a degraded state; it is not silently filled.
+- **No missing-plan fallback filler.** When a family's plan is missing, the
+  host does not substitute a fallback filler — the region is left without
+  that family's output and the unmet condition is reported.
+
 ### Write Conflict vs Claim Conflict — Enforcement Level Summary
 
 These two mechanisms are complementary, not redundant. Understanding the
