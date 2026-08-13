@@ -5,40 +5,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use slicer_integrated_modules::{integrated_registrations, native_entries};
+use slicer_integrated_modules::{integrated_inventory, integrated_registrations, native_entries};
 use slicer_scheduler::ModuleProvenance;
 use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use tempfile::TempDir;
-
-const MODULES: &[(&str, &str)] = &[
-    ("com.core.fuzzy-skin", "fuzzy-skin"),
-    ("com.core.gyroid-infill", "gyroid-infill"),
-    ("com.core.infill-linker", "infill-linker"),
-    ("com.core.layer-planner-default", "layer-planner-default"),
-    ("com.core.lightning-infill", "lightning-infill"),
-    ("com.core.machine-gcode-emit", "machine-gcode-emit"),
-    (
-        "com.core.overhang-classifier-default",
-        "overhang-classifier-default",
-    ),
-    (
-        "com.core.path-optimization-default",
-        "path-optimization-default",
-    ),
-    ("com.core.part-cooling", "part-cooling"),
-    ("com.core.rectilinear-infill", "rectilinear-infill"),
-    ("com.core.seam-placer", "seam-placer"),
-    ("com.core.seam-planner-default", "seam-planner-default"),
-    ("com.core.skirt-brim", "skirt-brim"),
-    (
-        "com.core.support-surface-ironing",
-        "support-surface-ironing",
-    ),
-    ("com.core.top-surface-ironing", "top-surface-ironing"),
-    ("com.core.traditional-support", "traditional-support"),
-    ("com.core.tree-support", "tree-support"),
-    ("com.core.wipe-tower", "wipe-tower"),
-];
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -59,9 +29,12 @@ fn write_external_module(root: &Path, stem: &str, manifest: &str) {
 
 #[test]
 fn full_coverage_external_override_forces_wasm() {
-    let mut manifests = Vec::with_capacity(MODULES.len());
+    let inventory = integrated_inventory();
+    let mut manifests = Vec::with_capacity(inventory.len());
 
-    for (id, stem) in MODULES {
+    for module in &inventory {
+        let id = module.id;
+        let stem = id.strip_prefix("com.core.").unwrap();
         let manifest_path = repo_root()
             .join("modules")
             .join("core-modules")
@@ -69,15 +42,16 @@ fn full_coverage_external_override_forces_wasm() {
             .join(format!("{stem}.toml"));
         let manifest = fs::read_to_string(manifest_path).expect("read module manifest");
         assert!(manifest.contains(&format!("id           = \"{id}\"")));
-        manifests.push((*stem, manifest.clone()));
+        manifests.push((stem, manifest.clone()));
     }
 
     let registrations = integrated_registrations();
     let entries = native_entries();
-    assert_eq!(registrations.len(), MODULES.len());
-    assert_eq!(entries.len(), MODULES.len());
+    assert_eq!(registrations.len(), inventory.len());
+    assert_eq!(entries.len(), inventory.len());
 
-    for ((id, stem), (_, manifest)) in MODULES.iter().zip(manifests) {
+    for (module, (stem, manifest)) in inventory.iter().zip(manifests) {
+        let id = module.id;
         let dir = TempDir::new().unwrap();
         write_external_module(dir.path(), stem, &manifest);
         let registration = registrations
@@ -101,7 +75,7 @@ fn full_coverage_external_override_forces_wasm() {
         let binding = out
             .bindings
             .iter()
-            .find(|binding| binding.module.id() == *id)
+            .find(|binding| binding.module.id() == id)
             .unwrap_or_else(|| panic!("external override binding present: {id}"));
         assert_eq!(binding.module.provenance(), ModuleProvenance::External);
         assert!(

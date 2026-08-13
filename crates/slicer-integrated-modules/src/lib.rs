@@ -151,253 +151,259 @@ manifest_const!(
     "../../../modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml"
 );
 
-/// Return the integrated module manifests enabled for this build.
-#[allow(clippy::vec_init_then_push)]
-pub fn integrated_registrations() -> Vec<IntegratedModuleRegistration> {
-    #[allow(unused_mut)]
-    let mut registrations = Vec::new();
+macro_rules! integrated_registry {
+    ($(($feature:literal, $manifest:ident, $module:ty, $id:literal, $origin:literal, $family:ident)),+ $(,)?) => {
+        /// Return the integrated module manifests enabled for this build.
+        pub fn integrated_registrations() -> Vec<IntegratedModuleRegistration> {
+            vec![$(
+                {
+                    #[cfg(feature = $feature)]
+                    {
+                        Some(IntegratedModuleRegistration {
+                        manifest_toml: $manifest,
+                        origin_label: $origin,
+                        })
+                    }
+                    #[cfg(not(feature = $feature))]
+                    {
+                        None
+                    }
+                }
+            ),+]
+            .into_iter()
+            .flatten()
+            .collect()
+        }
 
-    #[cfg(feature = "classic-perimeters")]
-    {
-        registrations.push(IntegratedModuleRegistration {
-            manifest_toml: CLASSIC_PERIMETERS_MANIFEST,
-            origin_label: "integrated://classic-perimeters",
-        });
-    }
+        /// Return native entry points for the integrated modules enabled for this build.
+        pub fn native_entries() -> Vec<(String, NativeStageEntry)> {
+            vec![$(
+                {
+                    #[cfg(feature = $feature)]
+                    {
+                        Some((String::from($id), <$module>::__slicer_native_entry()))
+                    }
+                    #[cfg(not(feature = $feature))]
+                    {
+                        None
+                    }
+                }
+            ),+]
+            .into_iter()
+            .flatten()
+            .collect()
+        }
 
-    #[cfg(feature = "arachne-perimeters")]
-    {
-        registrations.push(IntegratedModuleRegistration {
-            manifest_toml: ARACHNE_PERIMETERS_MANIFEST,
-            origin_label: "integrated://arachne-perimeters",
-        });
-    }
-
-    #[cfg(feature = "support-planner")]
-    {
-        registrations.push(IntegratedModuleRegistration {
-            manifest_toml: SUPPORT_PLANNER_MANIFEST,
-            origin_label: "integrated://support-planner",
-        });
-    }
-
-    #[cfg(feature = "fuzzy-skin")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: FUZZY_SKIN_MANIFEST,
-        origin_label: "integrated://fuzzy-skin",
-    });
-    #[cfg(feature = "gyroid-infill")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: GYROID_INFILL_MANIFEST,
-        origin_label: "integrated://gyroid-infill",
-    });
-    #[cfg(feature = "infill-linker")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: INFILL_LINKER_MANIFEST,
-        origin_label: "integrated://infill-linker",
-    });
-    #[cfg(feature = "layer-planner-default")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: LAYER_PLANNER_DEFAULT_MANIFEST,
-        origin_label: "integrated://layer-planner-default",
-    });
-    #[cfg(feature = "lightning-infill")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: LIGHTNING_INFILL_MANIFEST,
-        origin_label: "integrated://lightning-infill",
-    });
-    #[cfg(feature = "overhang-classifier-default")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: OVERHANG_CLASSIFIER_DEFAULT_MANIFEST,
-        origin_label: "integrated://overhang-classifier-default",
-    });
-    #[cfg(feature = "part-cooling")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: PART_COOLING_MANIFEST,
-        origin_label: "integrated://part-cooling",
-    });
-    #[cfg(feature = "rectilinear-infill")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: RECTILINEAR_INFILL_MANIFEST,
-        origin_label: "integrated://rectilinear-infill",
-    });
-    #[cfg(feature = "seam-placer")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: SEAM_PLACER_MANIFEST,
-        origin_label: "integrated://seam-placer",
-    });
-    #[cfg(feature = "seam-planner-default")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: SEAM_PLANNER_DEFAULT_MANIFEST,
-        origin_label: "integrated://seam-planner-default",
-    });
-    #[cfg(feature = "skirt-brim")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: SKIRT_BRIM_MANIFEST,
-        origin_label: "integrated://skirt-brim",
-    });
-    #[cfg(feature = "support-surface-ironing")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: SUPPORT_SURFACE_IRONING_MANIFEST,
-        origin_label: "integrated://support-surface-ironing",
-    });
-    #[cfg(feature = "top-surface-ironing")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: TOP_SURFACE_IRONING_MANIFEST,
-        origin_label: "integrated://top-surface-ironing",
-    });
-    #[cfg(feature = "traditional-support")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: TRADITIONAL_SUPPORT_MANIFEST,
-        origin_label: "integrated://traditional-support",
-    });
-    #[cfg(feature = "tree-support")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: TREE_SUPPORT_MANIFEST,
-        origin_label: "integrated://tree-support",
-    });
-    #[cfg(feature = "wipe-tower")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: WIPE_TOWER_MANIFEST,
-        origin_label: "integrated://wipe-tower",
-    });
-    #[cfg(feature = "path-optimization-default")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: PATH_OPTIMIZATION_DEFAULT_MANIFEST,
-        origin_label: "integrated://path-optimization-default",
-    });
-    #[cfg(feature = "machine-gcode-emit")]
-    registrations.push(IntegratedModuleRegistration {
-        manifest_toml: MACHINE_GCODE_EMIT_MANIFEST,
-        origin_label: "integrated://machine-gcode-emit",
-    });
-
-    registrations
+        /// Return metadata for every integrated module enabled in this build.
+        pub fn integrated_inventory() -> Vec<IntegratedModuleInventory> {
+            vec![$(
+                {
+                    #[cfg(feature = $feature)]
+                    {
+                        Some(IntegratedModuleInventory {
+                            id: $id,
+                            origin_label: $origin,
+                            stage_family: StageFamily::$family,
+                        })
+                    }
+                    #[cfg(not(feature = $feature))]
+                    {
+                        None
+                    }
+                }
+            ),+]
+            .into_iter()
+            .flatten()
+            .collect()
+        }
+    };
 }
 
-/// Return native entry points for the integrated modules enabled for this build.
-#[allow(clippy::vec_init_then_push)]
-pub fn native_entries() -> Vec<(String, NativeStageEntry)> {
-    #[allow(unused_mut)]
-    let mut entries = Vec::new();
-
-    #[cfg(feature = "classic-perimeters")]
-    {
-        entries.push((
-            String::from("com.core.classic-perimeters"),
-            ClassicPerimeters::__slicer_native_entry(),
-        ));
-    }
-
-    #[cfg(feature = "arachne-perimeters")]
-    {
-        entries.push((
-            String::from("com.core.arachne-perimeters"),
-            ArachnePerimeters::__slicer_native_entry(),
-        ));
-    }
-
-    #[cfg(feature = "support-planner")]
-    {
-        entries.push((
-            String::from("com.core.support-planner"),
-            SupportPlanner::__slicer_native_entry(),
-        ));
-    }
-
-    #[cfg(feature = "fuzzy-skin")]
-    entries.push((
-        String::from("com.core.fuzzy-skin"),
-        FuzzySkinModule::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "gyroid-infill")]
-    entries.push((
-        String::from("com.core.gyroid-infill"),
-        GyroidInfill::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "infill-linker")]
-    entries.push((
-        String::from("com.core.infill-linker"),
-        InfillLinker::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "layer-planner-default")]
-    entries.push((
-        String::from("com.core.layer-planner-default"),
-        DefaultLayerPlanner::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "lightning-infill")]
-    entries.push((
-        String::from("com.core.lightning-infill"),
-        LightningInfill::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "overhang-classifier-default")]
-    entries.push((
-        String::from("com.core.overhang-classifier-default"),
-        OverhangClassifierDefault::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "part-cooling")]
-    entries.push((
-        String::from("com.core.part-cooling"),
-        PartCooling::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "rectilinear-infill")]
-    entries.push((
-        String::from("com.core.rectilinear-infill"),
-        RectilinearInfill::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "seam-placer")]
-    entries.push((
-        String::from("com.core.seam-placer"),
-        SeamPlacer::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "seam-planner-default")]
-    entries.push((
-        String::from("com.core.seam-planner-default"),
-        SeamPlannerDefault::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "skirt-brim")]
-    entries.push((
-        String::from("com.core.skirt-brim"),
-        SkirtBrim::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "support-surface-ironing")]
-    entries.push((
-        String::from("com.core.support-surface-ironing"),
-        SupportSurfaceIroning::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "top-surface-ironing")]
-    entries.push((
-        String::from("com.core.top-surface-ironing"),
-        TopSurfaceIroning::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "traditional-support")]
-    entries.push((
-        String::from("com.core.traditional-support"),
-        TraditionalSupport::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "tree-support")]
-    entries.push((
-        String::from("com.core.tree-support"),
-        TreeSupport::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "wipe-tower")]
-    entries.push((
-        String::from("com.core.wipe-tower"),
-        WipeTower::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "path-optimization-default")]
-    entries.push((
-        String::from("com.core.path-optimization-default"),
-        PathOptimizationDefault::__slicer_native_entry(),
-    ));
-    #[cfg(feature = "machine-gcode-emit")]
-    entries.push((
-        String::from("com.core.machine-gcode-emit"),
-        MachineGcodeEmit::__slicer_native_entry(),
-    ));
-
-    entries
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StageFamily {
+    Layer,
+    Prepass,
+    Finalization,
+    Postpass,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IntegratedModuleInventory {
+    pub id: &'static str,
+    pub origin_label: &'static str,
+    pub stage_family: StageFamily,
+}
+
+integrated_registry!(
+    (
+        "classic-perimeters",
+        CLASSIC_PERIMETERS_MANIFEST,
+        ClassicPerimeters,
+        "com.core.classic-perimeters",
+        "integrated://classic-perimeters",
+        Layer
+    ),
+    (
+        "arachne-perimeters",
+        ARACHNE_PERIMETERS_MANIFEST,
+        ArachnePerimeters,
+        "com.core.arachne-perimeters",
+        "integrated://arachne-perimeters",
+        Layer
+    ),
+    (
+        "support-planner",
+        SUPPORT_PLANNER_MANIFEST,
+        SupportPlanner,
+        "com.core.support-planner",
+        "integrated://support-planner",
+        Prepass
+    ),
+    (
+        "fuzzy-skin",
+        FUZZY_SKIN_MANIFEST,
+        FuzzySkinModule,
+        "com.core.fuzzy-skin",
+        "integrated://fuzzy-skin",
+        Layer
+    ),
+    (
+        "gyroid-infill",
+        GYROID_INFILL_MANIFEST,
+        GyroidInfill,
+        "com.core.gyroid-infill",
+        "integrated://gyroid-infill",
+        Layer
+    ),
+    (
+        "infill-linker",
+        INFILL_LINKER_MANIFEST,
+        InfillLinker,
+        "com.core.infill-linker",
+        "integrated://infill-linker",
+        Layer
+    ),
+    (
+        "layer-planner-default",
+        LAYER_PLANNER_DEFAULT_MANIFEST,
+        DefaultLayerPlanner,
+        "com.core.layer-planner-default",
+        "integrated://layer-planner-default",
+        Prepass
+    ),
+    (
+        "lightning-infill",
+        LIGHTNING_INFILL_MANIFEST,
+        LightningInfill,
+        "com.core.lightning-infill",
+        "integrated://lightning-infill",
+        Layer
+    ),
+    (
+        "overhang-classifier-default",
+        OVERHANG_CLASSIFIER_DEFAULT_MANIFEST,
+        OverhangClassifierDefault,
+        "com.core.overhang-classifier-default",
+        "integrated://overhang-classifier-default",
+        Finalization
+    ),
+    (
+        "part-cooling",
+        PART_COOLING_MANIFEST,
+        PartCooling,
+        "com.core.part-cooling",
+        "integrated://part-cooling",
+        Finalization
+    ),
+    (
+        "rectilinear-infill",
+        RECTILINEAR_INFILL_MANIFEST,
+        RectilinearInfill,
+        "com.core.rectilinear-infill",
+        "integrated://rectilinear-infill",
+        Layer
+    ),
+    (
+        "seam-placer",
+        SEAM_PLACER_MANIFEST,
+        SeamPlacer,
+        "com.core.seam-placer",
+        "integrated://seam-placer",
+        Layer
+    ),
+    (
+        "seam-planner-default",
+        SEAM_PLANNER_DEFAULT_MANIFEST,
+        SeamPlannerDefault,
+        "com.core.seam-planner-default",
+        "integrated://seam-planner-default",
+        Prepass
+    ),
+    (
+        "skirt-brim",
+        SKIRT_BRIM_MANIFEST,
+        SkirtBrim,
+        "com.core.skirt-brim",
+        "integrated://skirt-brim",
+        Finalization
+    ),
+    (
+        "support-surface-ironing",
+        SUPPORT_SURFACE_IRONING_MANIFEST,
+        SupportSurfaceIroning,
+        "com.core.support-surface-ironing",
+        "integrated://support-surface-ironing",
+        Layer
+    ),
+    (
+        "top-surface-ironing",
+        TOP_SURFACE_IRONING_MANIFEST,
+        TopSurfaceIroning,
+        "com.core.top-surface-ironing",
+        "integrated://top-surface-ironing",
+        Layer
+    ),
+    (
+        "traditional-support",
+        TRADITIONAL_SUPPORT_MANIFEST,
+        TraditionalSupport,
+        "com.core.traditional-support",
+        "integrated://traditional-support",
+        Layer
+    ),
+    (
+        "tree-support",
+        TREE_SUPPORT_MANIFEST,
+        TreeSupport,
+        "com.core.tree-support",
+        "integrated://tree-support",
+        Layer
+    ),
+    (
+        "wipe-tower",
+        WIPE_TOWER_MANIFEST,
+        WipeTower,
+        "com.core.wipe-tower",
+        "integrated://wipe-tower",
+        Finalization
+    ),
+    (
+        "path-optimization-default",
+        PATH_OPTIMIZATION_DEFAULT_MANIFEST,
+        PathOptimizationDefault,
+        "com.core.path-optimization-default",
+        "integrated://path-optimization-default",
+        Layer
+    ),
+    (
+        "machine-gcode-emit",
+        MACHINE_GCODE_EMIT_MANIFEST,
+        MachineGcodeEmit,
+        "com.core.machine-gcode-emit",
+        "integrated://machine-gcode-emit",
+        Postpass
+    ),
+);
 
 #[cfg(all(test, feature = "classic-perimeters"))]
 mod classic_perimeters_tests {
@@ -551,41 +557,14 @@ mod hybrid_pilot_tests {
     feature = "machine-gcode-emit"
 ))]
 mod full_coverage_tests {
-    use super::{integrated_registrations, native_entries};
+    use super::{integrated_inventory, integrated_registrations, native_entries, StageFamily};
     use slicer_sdk::native::NativeStageEntry;
     use std::collections::BTreeSet;
 
-    const PILOTS: [&str; 3] = [
-        "classic-perimeters",
-        "arachne-perimeters",
-        "support-planner",
-    ];
-    const NEW: [&str; 18] = [
-        "fuzzy-skin",
-        "gyroid-infill",
-        "infill-linker",
-        "layer-planner-default",
-        "lightning-infill",
-        "overhang-classifier-default",
-        "part-cooling",
-        "rectilinear-infill",
-        "seam-placer",
-        "seam-planner-default",
-        "skirt-brim",
-        "support-surface-ironing",
-        "top-surface-ironing",
-        "traditional-support",
-        "tree-support",
-        "wipe-tower",
-        "path-optimization-default",
-        "machine-gcode-emit",
-    ];
-
     fn expected_ids() -> BTreeSet<String> {
-        PILOTS
+        integrated_inventory()
             .iter()
-            .chain(NEW.iter())
-            .map(|name| format!("com.core.{name}"))
+            .map(|module| module.id.to_owned())
             .collect()
     }
 
@@ -605,14 +584,24 @@ mod full_coverage_tests {
             .collect();
         assert_eq!(actual, expected);
 
-        for name in NEW {
+        let expected_order: Vec<_> = integrated_inventory()
+            .iter()
+            .map(|module| module.origin_label)
+            .collect();
+        let actual_order: Vec<_> = integrated_registrations()
+            .iter()
+            .map(|registration| registration.origin_label)
+            .collect();
+        assert_eq!(actual_order, expected_order);
+
+        for module in integrated_inventory() {
             let registration = integrated_registrations()
                 .into_iter()
-                .find(|registration| registration.origin_label == format!("integrated://{name}"))
+                .find(|registration| registration.origin_label == module.origin_label)
                 .unwrap();
             assert!(registration
                 .manifest_toml
-                .contains(&format!("id           = \"com.core.{name}\"")));
+                .contains(&format!("id           = \"{}\"", module.id)));
         }
     }
 
@@ -623,56 +612,23 @@ mod full_coverage_tests {
         let actual: BTreeSet<_> = entries.iter().map(|(id, _)| id.clone()).collect();
         assert_eq!(actual, expected);
 
-        for name in [
-            "fuzzy-skin",
-            "gyroid-infill",
-            "infill-linker",
-            "lightning-infill",
-            "rectilinear-infill",
-            "seam-placer",
-            "support-surface-ironing",
-            "top-surface-ironing",
-            "traditional-support",
-            "tree-support",
-        ] {
-            let entry = entries
-                .iter()
-                .find(|(id, _)| id == &format!("com.core.{name}"))
-                .unwrap();
-            assert!(matches!(entry.1, NativeStageEntry::Layer(_)));
-        }
-        for name in ["path-optimization-default"] {
-            let entry = entries
-                .iter()
-                .find(|(id, _)| id == &format!("com.core.{name}"))
-                .unwrap();
-            assert!(matches!(entry.1, NativeStageEntry::Layer(_)));
-        }
-        for name in ["layer-planner-default", "seam-planner-default"] {
-            let entry = entries
-                .iter()
-                .find(|(id, _)| id == &format!("com.core.{name}"))
-                .unwrap();
-            assert!(matches!(entry.1, NativeStageEntry::Prepass(_)));
-        }
-        for name in [
-            "overhang-classifier-default",
-            "part-cooling",
-            "skirt-brim",
-            "wipe-tower",
-        ] {
-            let entry = entries
-                .iter()
-                .find(|(id, _)| id == &format!("com.core.{name}"))
-                .unwrap();
-            assert!(matches!(entry.1, NativeStageEntry::Finalization(_)));
-        }
-        for name in ["machine-gcode-emit"] {
-            let entry = entries
-                .iter()
-                .find(|(id, _)| id == &format!("com.core.{name}"))
-                .unwrap();
-            assert!(matches!(entry.1, NativeStageEntry::Postpass(_)));
+        let expected_order: Vec<_> = integrated_inventory()
+            .iter()
+            .map(|module| module.id)
+            .collect();
+        let actual_order: Vec<_> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(actual_order, expected_order);
+
+        for module in integrated_inventory() {
+            let entry = entries.iter().find(|(id, _)| id == module.id).unwrap();
+            match module.stage_family {
+                StageFamily::Layer => assert!(matches!(entry.1, NativeStageEntry::Layer(_))),
+                StageFamily::Prepass => assert!(matches!(entry.1, NativeStageEntry::Prepass(_))),
+                StageFamily::Finalization => {
+                    assert!(matches!(entry.1, NativeStageEntry::Finalization(_)))
+                }
+                StageFamily::Postpass => assert!(matches!(entry.1, NativeStageEntry::Postpass(_))),
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 205d-integrated-registry
 task_ids:
   - TASK-330

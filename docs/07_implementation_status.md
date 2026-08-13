@@ -54,7 +54,7 @@ and reflect state at time of writing, so treat any specific count, task id, or
 - [x] TASK-149 Widen the WIT types so `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, and `WallFeatureFlags.custom` can cross the boundary losslessly. Covers DEV-016.
 - [x] TASK-150 Update host, macro, and guest converters to preserve the widened custom payloads and add round-trip WIT regression tests. Continues DEV-016.
 - [x] TASK-329 Deepen the integrated native-dispatch seam: make native/WASM marshalling share one view authority, remove duplicate held-claim resolution, close lossy native commit paths, and validate integrated native entries at load time. Packet 205c; governed by ADR-0005, ADR-0021, ADR-0056, and ADR-0057.
-- [ ] TASK-330 Derive integrated registrations, native entries, and coverage checks from one registry authority while preserving the 21 per-module features, manifest IDs, origin labels, and edition semantics. Packet 205d; governed by ADR-0056 and ADR-0057.
+- [x] TASK-330 Derive integrated registrations, native entries, and coverage checks from one registry authority while preserving the 21 per-module features, manifest IDs, origin labels, and edition semantics. Packet 205d; governed by ADR-0056 and ADR-0057.
 - [ ] TASK-331 Consolidate integrated native/WASM parity setup and comparator scaffolding without reducing the 21 parity gates, structural invariants, tolerance checks, or negative self-tests. Packet 205e; governed by ADR-0042 and ADR-0056.
 
 ### Workstream 2 — Runtime correctness and scheduler guarantees
