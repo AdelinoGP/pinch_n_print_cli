@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 220-support-analysis-family-contracts
 task_ids:
   - TASK-331
