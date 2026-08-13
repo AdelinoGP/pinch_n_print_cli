@@ -198,8 +198,8 @@ requirements and notable lockfile resolutions.
 | Component     | Technology                              | Manifest requirement / resolution                                      |
 |---------------|-----------------------------------------|-------------------------------------------------------------------------|
 | Host language | Rust                                    | 1.91.0 (edition 2021)                                                  |
-| WASM runtime  | wasmtime                                | 43.0.0 workspace requirement; 43.0.1 in `Cargo.lock`                   |
-| WIT tooling   | wit-bindgen                             | 0.57.1 workspace requirement and primary lockfile resolution           |
+| WASM runtime  | wasmtime                                | 47.0.3 workspace requirement; 47.0.3 in `Cargo.lock`                   |
+| WIT tooling   | wit-bindgen                             | 0.60.0 workspace requirement and primary lockfile resolution           |
 | Parallelism   | rayon                                   | 1.80 workspace requirement; 1.10 in runtime/core/wasm-host; 1.11.0 lock |
 | Geometry      | clipper2-rust                           | 1.0.3                                                                    |
 | Serialization | serde + postcard                        | 1.0.228, 1.1.3                                                          |

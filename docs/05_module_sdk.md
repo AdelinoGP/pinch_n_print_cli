@@ -476,7 +476,7 @@ implements and relies on the trait's default `Ok(())` bodies for the rest. The t
 
 <!-- VERIFY: the `build_prepass_world_glue` / `segmentation_helpers` discussion
      below refers to wit-bindgen 0.24-era inline WIT. The current macro
-     (wit-bindgen 0.57.1) has no `build_prepass_world_glue` symbol and no
+     (wit-bindgen 0.60.0) has no `build_prepass_world_glue` symbol and no
      `segmentation_helpers` quote block; the prepass glue is per-stage
      (`__slicer_prepass_mesh_analysis_world_export`, etc.) and there is no
      `paint_seg_arm`. The claim is plausible as history but unverifiable

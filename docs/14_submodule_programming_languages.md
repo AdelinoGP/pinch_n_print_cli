@@ -23,7 +23,7 @@ stage's `run` function (e.g. `slicer:layer-infill/infill.run`).
 Today the only shipped guest language is **Rust**:
 
 - Generated bindings come from `wit-bindgen` (`Cargo.toml` workspace:
-  `wit-bindgen = "0.57.1"`).
+  `wit-bindgen = "0.60.0"`).
 - The `#[slicer_module]` macro (`crates/slicer-macros`) emits a `wit_bindgen::generate!`
   call gated behind `#[cfg(target_arch = "wasm32")]`, plus the component export
   shims.

@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wit-bindgen = "0.57.1"
+wit-bindgen = "0.60.0"
 slicer-sdk = { path = "../../../slicer-sdk" }
 slicer-ir  = { path = "../../../slicer-ir" }
 slicer-schema = { path = "../../../slicer-schema" }
