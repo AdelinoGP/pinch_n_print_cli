@@ -54,7 +54,6 @@ mod region_split_dispatch_filter;
 mod run_pipeline_with_instrumentation_tdd;
 mod runtime_wiring_tdd;
 mod support_geometry_config_normalization_tdd;
-mod support_golden_regression_wedge_tdd;
 mod support_invariants_wedge_tdd;
 mod thin_wall_emission_tdd;
 mod threemf_paint_drop_on_modifier_tdd;

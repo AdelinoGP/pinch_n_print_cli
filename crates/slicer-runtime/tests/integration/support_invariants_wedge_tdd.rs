@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use slicer_ir::{
-    point_in_contour_winding, point_in_polygon_winding, ConfigValue, GlobalLayer, RaftPlan,
-    SupportGeometryIR, SupportPlanEntry,
+    point_in_contour_winding, point_in_polygon_winding, ConfigValue, ExtrusionPath3D, GlobalLayer,
+    Point3WithWidth, RaftPlan, SupportGeometryIR, SupportPlanEntry,
 };
 use slicer_runtime::run::PrepassContext;
 
@@ -808,4 +808,374 @@ fn build_plate_only_emits_no_to_model_branches() {
         cleared_outline,
         skipped_missing_geometry
     );
+}
+
+// ============================================================================
+// Structural invariants replacing the wedge self-capture goldens
+//
+// `support_golden_regression_wedge_tdd.rs` compared the wedge's branch count
+// and endpoint positions against two self-captured baseline files (count
+// ±10%, endpoint Hausdorff ≤ 0.5 mm). Those baselines were PnP's own prior
+// output — not OrcaSlicer reference data — so green only ever meant
+// "unchanged from the last capture" (ADR-0042, D-109-SELF-CAPTURED-FIXTURES).
+// Packet 213's lone-node emission grew the count 78 → 136 for the *intended*
+// reason of emitting a degenerate segment per surviving propagated node —
+// exactly the failure mode a self-capture cannot distinguish from a
+// regression — and the baseline was re-blessed (e08dfe9a).
+//
+// The invariants below assert the structural properties those baselines
+// were standing in for, following the wedge byte-SHA reshape (33799527) and
+// the arachne baselines conversion (packet 177 / ADR-0042): the wedge's
+// support geometry is a small set of vertical columns that start at the
+// mesh's overhang facets, descend contiguously through the layer stack with
+// bounded per-layer drift, and widen monotonically toward the build plate.
+// Each fails by naming the property that changed.
+// ============================================================================
+
+/// Load `regression_wedge.stl` without going through the runtime's model
+/// cache, so these invariants read the same bytes the planner consumed.
+fn wedge_mesh() -> slicer_ir::MeshIR {
+    let wedge_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("resources")
+        .join("regression_wedge.stl");
+    let wedge_path = wedge_path
+        .canonicalize()
+        .expect("regression_wedge.stl must resolve");
+    slicer_model_io::load_model(&wedge_path).expect("load regression_wedge.stl must succeed")
+}
+
+/// One structural column: entries sharing `(object_id, region_id)`, ordered
+/// top → bottom by `global_layer_index`. This is the same grouping
+/// `support_planner::group_branches_into_columns` (and the smoother) use.
+fn wedge_columns<'a>(entries: &'a [SupportPlanEntry]) -> Vec<Vec<&'a SupportPlanEntry>> {
+    use std::collections::BTreeMap;
+    let mut columns: BTreeMap<
+        (slicer_ir::ObjectId, slicer_ir::RegionId),
+        Vec<&'a SupportPlanEntry>,
+    > = BTreeMap::new();
+    for entry in entries {
+        columns
+            .entry((entry.object_id.clone(), entry.region_id))
+            .or_default()
+            .push(entry);
+    }
+    let mut columns: Vec<Vec<&'a SupportPlanEntry>> = columns.into_values().collect();
+    for column in columns.iter_mut() {
+        column.sort_by_key(|entry| std::cmp::Reverse(entry.global_layer_index));
+    }
+    columns
+}
+
+/// Structural segments of a column: every `branch_segment` of every entry,
+/// tagged with its layer index. MST edges and interface scan-line fills are
+/// indistinguishable in the public IR, so these invariants are written to
+/// hold for both.
+fn column_segments<'a>(column: &[&'a SupportPlanEntry]) -> Vec<(i32, &'a ExtrusionPath3D)> {
+    column
+        .iter()
+        .flat_map(|entry| {
+            entry
+                .branch_segments
+                .iter()
+                .map(move |seg| (entry.global_layer_index, seg))
+        })
+        .collect()
+}
+
+/// First point of a segment. Structural segments always carry ≥ 2 points
+/// (pinned by `support_plan_has_finite_branch_paths`).
+fn first_point(seg: &ExtrusionPath3D) -> &Point3WithWidth {
+    &seg.points[0]
+}
+
+#[test]
+fn support_columns_are_contiguous_and_step_down_through_every_layer() {
+    // Per-layer XY drift bound. The planner's move pass is capped at
+    // `tan(45°) × 0.2 mm × wall_count = 0.2 mm`, and 100 Laplacian smoothing
+    // passes can only pull a column point toward the centroid of its
+    // neighbours — never past it. 1.0 mm is five move caps, chosen so that
+    // the smoother's cross-column interactions cannot trip it, while a
+    // degenerate column (tip emitted, then nothing) or a jump between
+    // distinct support trees (25+ mm apart on this fixture) fails loudly.
+    const MAX_STEP_MM: f32 = 1.0;
+    // `dist_to_top` advances by one per layer; the emitted mm value is the
+    // counter times the effective layer height (0.2 mm on this fixture).
+    const MAX_DTOP_INC_MM: f32 = 0.22;
+
+    let ctx = prepare_ctx();
+    let entries = plan_entries(&ctx);
+    assert!(!entries.is_empty(), "wedge support plan must be non-empty");
+
+    let mut columns_checked = 0usize;
+    let mut segments_checked = 0usize;
+    for column in wedge_columns(entries) {
+        let segments = column_segments(&column);
+        assert!(
+            !segments.is_empty(),
+            "column for obj={} region={} must carry branch segments",
+            column[0].object_id,
+            column[0].region_id
+        );
+        let top_segment = &segments[0].1;
+        assert_eq!(
+            first_point(top_segment).dist_to_top_mm,
+            0.0,
+            "the topmost segment of column obj={} region={} must be a fresh contact \
+             (dist_to_top_mm == 0); got {}",
+            column[0].object_id,
+            column[0].region_id,
+            first_point(top_segment).dist_to_top_mm
+        );
+
+        // Walk the column top → bottom comparing consecutive propagated
+        // segments only. A segment with `dist_to_top_mm == 0` is a fresh
+        // contact: a new support tree may begin below a propagated one
+        // (distinct overhang groups share one region column on this
+        // fixture), so fresh contacts legitimately interrupt the walk and
+        // reset the pairwise comparison.
+        let mut prev_layer = segments[0].0;
+        let mut prev = first_point(segments[0].1);
+        for &(layer_index, seg) in &segments[1..] {
+            let point = first_point(seg);
+            if prev.dist_to_top_mm > 0.0 && point.dist_to_top_mm > 0.0 {
+                segments_checked += 1;
+                assert_eq!(
+                    layer_index,
+                    prev_layer - 1,
+                    "column obj={} region={} must descend contiguously through the layer \
+                     stack; found layer {} then {}",
+                    column[0].object_id,
+                    column[0].region_id,
+                    prev_layer,
+                    layer_index
+                );
+                let step = (point.x - prev.x).hypot(point.y - prev.y);
+                assert!(
+                    step <= MAX_STEP_MM,
+                    "per-layer drift of column obj={} region={} at layer {} is {:.3} mm \
+                     (> {:.1} mm)",
+                    column[0].object_id,
+                    column[0].region_id,
+                    layer_index,
+                    step,
+                    MAX_STEP_MM
+                );
+                let inc = point.dist_to_top_mm - prev.dist_to_top_mm;
+                assert!(
+                    (0.0..=MAX_DTOP_INC_MM).contains(&inc),
+                    "dist_to_top_mm must advance by one layer per downward step in column \
+                     obj={} region={} at layer {}; increment {:.3}",
+                    column[0].object_id,
+                    column[0].region_id,
+                    layer_index,
+                    inc
+                );
+            }
+            prev_layer = layer_index;
+            prev = point;
+        }
+        columns_checked += 1;
+    }
+    assert!(
+        columns_checked >= 1 && segments_checked > 0,
+        "contiguity invariant checked no columns; columns={}",
+        columns_checked
+    );
+}
+
+#[test]
+fn support_branch_widths_widen_monotonically_toward_the_plate() {
+    // Radius bounds mirror `support_planner`: the 0.4 mm `MIN_BRANCH_RADIUS`
+    // floor (width 0.8 mm) and the 6.0 mm `MAX_BRANCH_RADIUS_MM` ceiling.
+    const MAX_RADIUS_MM: f32 = 6.0;
+    const MIN_NONZERO_WIDTH_MM: f32 = 0.8;
+    // `smooth_branches` averages first-point widths and clamps them to
+    // `MAX_BRANCH_RADIUS_MM = 6.0` (a diameter-vs-radius quirk: the clamp
+    // is applied to the width, not the radius). A sub-chain boundary point
+    // is pinned and can therefore sit above 6.0 while the next interior
+    // point is clamped back down to 6.0 — the only legitimate shrink.
+    // `smooth_branches` itself can never produce a value below 6.0 from an
+    // above-6.0 average, so any drop that lands below the clamp ceiling is
+    // a real regression, not smoothing noise.
+    const SMOOTH_CLAMP_CEILING_MM: f32 = 6.0;
+    // The smoother averages widths in `f32` over up to 100 passes; a small
+    // relax absorbs that averaging noise below the clamp ceiling.
+    const WIDTH_RELAX_MM: f32 = 0.1;
+
+    let ctx = prepare_ctx();
+    let entries = plan_entries(&ctx);
+
+    let mut monotonic_segments = 0usize;
+    let mut width_drops = 0usize;
+    for column in wedge_columns(entries) {
+        let segments = column_segments(&column);
+        let mut prev_layer = segments[0].0;
+        let mut prev = first_point(segments[0].1);
+        for &(layer_index, seg) in &segments[1..] {
+            let point = first_point(seg);
+            if prev.dist_to_top_mm > 0.0
+                && point.dist_to_top_mm > 0.0
+                && layer_index == prev_layer - 1
+            {
+                monotonic_segments += 1;
+                if point.width + WIDTH_RELAX_MM < prev.width {
+                    let clamp_explains = prev.width > SMOOTH_CLAMP_CEILING_MM
+                        && point.width >= SMOOTH_CLAMP_CEILING_MM - WIDTH_RELAX_MM;
+                    if !clamp_explains {
+                        width_drops += 1;
+                    }
+                }
+            }
+            prev_layer = layer_index;
+            prev = point;
+        }
+    }
+    assert!(
+        width_drops == 0,
+        "branch width must not shrink toward the build plate; {width_drops} drops \
+         (tolerance {WIDTH_RELAX_MM} mm), monotonic_segments={monotonic_segments}"
+    );
+    assert!(
+        monotonic_segments > 0,
+        "width invariant checked no segments"
+    );
+
+    for entry in entries {
+        for seg in &entry.branch_segments {
+            for pt in &seg.points {
+                assert!(
+                    pt.width == 0.0 || pt.width >= MIN_NONZERO_WIDTH_MM,
+                    "non-zero branch width must respect the MIN_BRANCH_RADIUS floor, got {}",
+                    pt.width
+                );
+                assert!(
+                    pt.width <= MAX_RADIUS_MM * 2.0,
+                    "branch width must respect the MAX_BRANCH_RADIUS_MM ceiling, got {}",
+                    pt.width
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn support_segments_stay_within_mesh_bbox() {
+    // Spatial containment: every support point must stay inside the mesh's
+    // XY bounding box plus a small margin. Nodes are clamped into the
+    // per-layer avoidance polys (model cross-sections inflated by
+    // `branch_radius + tree_support_branch_distance / 2 = 3.0 mm`), and
+    // interface scan lines extend at most `radius + branch_distance / 2 ≤
+    // 6.5 mm` from their node, so 10 mm of margin is a safe upper bound.
+    // This is the coarse replacement for the golden's endpoint Hausdorff:
+    // a branch escaping the model footprint entirely fails here.
+    const MESH_BBOX_MARGIN_MM: f32 = 10.0;
+
+    let ctx = prepare_ctx();
+    let entries = plan_entries(&ctx);
+
+    let mesh = wedge_mesh();
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for object in &mesh.objects {
+        for vertex in &object.mesh.vertices {
+            min_x = min_x.min(vertex.x);
+            max_x = max_x.max(vertex.x);
+            min_y = min_y.min(vertex.y);
+            max_y = max_y.max(vertex.y);
+        }
+    }
+    assert!(
+        min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite(),
+        "regression_wedge.stl must have a finite XY bounding box"
+    );
+
+    let mut points_checked = 0usize;
+    for entry in entries {
+        for seg in &entry.branch_segments {
+            for pt in &seg.points {
+                assert!(
+                    pt.x >= min_x - MESH_BBOX_MARGIN_MM && pt.x <= max_x + MESH_BBOX_MARGIN_MM,
+                    "branch x={} must stay within the mesh bbox x range [{}, {}] + {} mm \
+                     margin",
+                    pt.x,
+                    min_x,
+                    max_x,
+                    MESH_BBOX_MARGIN_MM
+                );
+                assert!(
+                    pt.y >= min_y - MESH_BBOX_MARGIN_MM && pt.y <= max_y + MESH_BBOX_MARGIN_MM,
+                    "branch y={} must stay within the mesh bbox y range [{}, {}] + {} mm \
+                     margin",
+                    pt.y,
+                    min_y,
+                    max_y,
+                    MESH_BBOX_MARGIN_MM
+                );
+                points_checked += 1;
+            }
+        }
+    }
+    assert!(points_checked > 0, "bbox invariant checked no points");
+}
+
+#[test]
+fn wedge_support_plan_is_byte_deterministic_across_repeated_runs() {
+    // The old golden comparison was also implicitly the only determinism
+    // gate on the wedge plan itself (a capture compared against itself would
+    // always pass). This pins bit-for-bit determinism of the committed
+    // `SupportPlanIR` across two full prepass runs, which is stronger: any
+    // nondeterminism fails here instead of surfacing as a future golden
+    // re-bless.
+    let ctx_a = prepare_ctx();
+    let ctx_b = prepare_ctx();
+    let plan_a = ctx_a
+        .blackboard
+        .support_plan()
+        .expect("support_plan must be committed");
+    let plan_b = ctx_b
+        .blackboard
+        .support_plan()
+        .expect("support_plan must be committed");
+
+    let entries_a = &plan_a.entries;
+    let entries_b = &plan_b.entries;
+    assert_eq!(
+        entries_a.len(),
+        entries_b.len(),
+        "entry count must be identical across repeated runs"
+    );
+    for (a, b) in entries_a.iter().zip(entries_b.iter()) {
+        assert_eq!(a.global_layer_index, b.global_layer_index);
+        assert_eq!(a.object_id, b.object_id);
+        assert_eq!(a.region_id, b.region_id);
+        assert_eq!(
+            a.branch_segments.len(),
+            b.branch_segments.len(),
+            "branch segment count must be identical at layer {}",
+            a.global_layer_index
+        );
+        for (seg_a, seg_b) in a.branch_segments.iter().zip(b.branch_segments.iter()) {
+            assert_eq!(
+                seg_a.points.len(),
+                seg_b.points.len(),
+                "point count must be identical at layer {}",
+                a.global_layer_index
+            );
+            for (pa, pb) in seg_a.points.iter().zip(seg_b.points.iter()) {
+                assert_eq!(
+                    pa.x.to_bits(),
+                    pb.x.to_bits(),
+                    "x bits must match at layer {}",
+                    a.global_layer_index
+                );
+                assert_eq!(pa.y.to_bits(), pb.y.to_bits());
+                assert_eq!(pa.z.to_bits(), pb.z.to_bits());
+                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
+            }
+        }
+    }
 }
