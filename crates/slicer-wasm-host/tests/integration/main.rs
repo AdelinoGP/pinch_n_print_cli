@@ -6,4 +6,5 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod foreign_language_feasibility_tdd;
 mod wasm_instance_tdd;
