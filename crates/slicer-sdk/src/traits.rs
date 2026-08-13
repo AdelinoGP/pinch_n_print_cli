@@ -146,14 +146,13 @@ impl PaintRegionLayerView {
         self.support_plan.as_ref()
     }
 
-    /// Returns all pre-planned branch segments for the `(layer, object_id,
-    /// region_id)` triple matching this view's `layer_index`. Returns an
-    /// empty vector if no plan is committed or no entry matches.
-    pub fn support_plan_segments_for(
+    /// Returns structural support entries for the `(layer, object_id,
+    /// region_id)` triple matching this view's `layer_index`.
+    pub fn support_plan_entries_for(
         &self,
         object_id: &str,
         region_id: u64,
-    ) -> Vec<&ExtrusionPath3D> {
+    ) -> Vec<&slicer_ir::SupportPlanEntry> {
         let Some(plan) = self.support_plan.as_ref() else {
             return Vec::new();
         };
@@ -164,8 +163,17 @@ impl PaintRegionLayerView {
                     && entry.object_id == object_id
                     && entry.region_id == region_id
             })
-            .flat_map(|entry| entry.branch_segments.iter())
             .collect()
+    }
+
+    /// Legacy branch-path view. Structural plans intentionally contain no
+    /// printable paths, so this always returns an empty collection.
+    pub fn support_plan_segments_for(
+        &self,
+        _object_id: &str,
+        _region_id: u64,
+    ) -> Vec<&ExtrusionPath3D> {
+        Vec::new()
     }
 
     /// Returns the attached `LightningTreeIR`, if any.

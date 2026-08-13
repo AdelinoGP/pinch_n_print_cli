@@ -268,9 +268,26 @@ pub struct SupportPlanEntry {
     pub object_id: ObjectId,
     /// Region identifier within the object.
     pub region_id: RegionId,
-    /// Planned branch geometry: each inner `Vec<Point3WithWidth>` is a single
-    /// polyline branch (typically a two-point MST edge).
-    pub branch_segments: Vec<Vec<Point3WithWidth>>,
+    /// Support family selected for this entry.
+    pub family_id: String,
+    /// Planner demand identities represented by this entry.
+    pub demand_ids: Vec<String>,
+    /// Physical support body identities represented by this entry.
+    pub body_ids: Vec<String>,
+    /// Layer on which the support is anchored.
+    pub anchor_layer_index: u32,
+    /// Anchor height in canonical units.
+    pub anchor_z: i64,
+    /// Role-attributed analysis polygons.
+    pub roles: Vec<slicer_ir::SupportPlanRoleRegion>,
+    /// Optional branch skeleton.
+    pub skeleton: Option<slicer_ir::SupportPlanSkeleton>,
+    /// Capabilities required by the renderer.
+    pub capabilities: Vec<String>,
+    /// Producer provenance labels.
+    pub provenance: Vec<String>,
+    /// Structured reason when this candidate was declined.
+    pub decline_reason: Option<slicer_ir::SupportPlanDeclineReason>,
 }
 
 /// Configuration-only raft plan emitted by the support planner.
