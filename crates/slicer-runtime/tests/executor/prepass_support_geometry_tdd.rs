@@ -389,21 +389,12 @@ fn support_planner_produces_branches_for_overhang_fixture() {
 
     for entry in &plan.entries {
         assert!(
-            !entry.branch_segments.is_empty(),
-            "every entry must carry at least one branch segment (entry layer={})",
+            entry.skeleton.as_ref().is_some_and(|s| s.points.len() >= 2),
+            "every entry must carry a structural skeleton (entry layer={})",
             entry.global_layer_index
         );
-        for segment in &entry.branch_segments {
-            assert!(
-                segment.points.len() >= 2,
-                "every segment must have â‰¥2 points; got {}",
-                segment.points.len()
-            );
-            for p in &segment.points {
-                assert!(p.width.is_finite());
-                assert!(p.flow_factor.is_finite());
-                assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
-            }
+        for p in &entry.skeleton.as_ref().unwrap().points {
+            assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
         }
     }
 }
@@ -426,19 +417,21 @@ fn support_planner_is_deterministic_across_runs() {
         assert_eq!(a.object_id, b.object_id);
         assert_eq!(a.region_id, b.region_id);
         assert_eq!(
-            a.branch_segments.len(),
-            b.branch_segments.len(),
-            "branch_segments.len() must match across runs"
+            a.skeleton.as_ref().unwrap().points.len(),
+            b.skeleton.as_ref().unwrap().points.len(),
+            "skeleton point count must match across runs"
         );
-        for (seg_a, seg_b) in a.branch_segments.iter().zip(b.branch_segments.iter()) {
-            assert_eq!(seg_a.points.len(), seg_b.points.len());
-            for (pa, pb) in seg_a.points.iter().zip(seg_b.points.iter()) {
-                assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must match");
-                assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must match");
-                assert_eq!(pa.z.to_bits(), pb.z.to_bits(), "z bits must match");
-                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
-                assert_eq!(pa.flow_factor.to_bits(), pb.flow_factor.to_bits());
-            }
+        for (pa, pb) in a
+            .skeleton
+            .as_ref()
+            .unwrap()
+            .points
+            .iter()
+            .zip(b.skeleton.as_ref().unwrap().points.iter())
+        {
+            assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must match");
+            assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must match");
+            assert_eq!(pa.z.to_bits(), pb.z.to_bits(), "z bits must match");
         }
     }
 }

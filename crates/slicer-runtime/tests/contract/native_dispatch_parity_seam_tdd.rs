@@ -320,14 +320,16 @@ fn native_support_dispatch_preserves_per_region_origins() {
     let LayerStageCommit::Support(support) = commit else {
         panic!("expected support commit");
     };
-    assert_eq!(support.regions.len(), 2);
-    assert_eq!(support.regions[0].object_id, "support-object-a");
-    assert_eq!(support.regions[0].region_id, 7);
-    assert_eq!(support.regions[0].support_paths.len(), 1);
-    assert_eq!(support.regions[1].object_id, "support-object-b");
-    assert_eq!(support.regions[1].region_id, 11);
-    assert_eq!(support.regions[1].interface_paths.len(), 1);
-    assert_eq!(support.regions[1].raft_paths.len(), 1);
+    assert_eq!(support.entries.len(), 3);
+    assert_eq!(support.entries[0].object_id, "support-object-a");
+    assert_eq!(support.entries[0].region_id, 7);
+    assert_eq!(support.entries[0].paths.len(), 1);
+    assert_eq!(support.entries[1].object_id, "support-object-b");
+    assert_eq!(support.entries[1].region_id, 11);
+    assert_eq!(support.entries[1].paths.len(), 1);
+    assert_eq!(support.entries[2].object_id, "support-object-b");
+    assert_eq!(support.entries[2].region_id, 11);
+    assert_eq!(support.entries[2].paths.len(), 1);
 }
 
 #[test]
@@ -483,7 +485,16 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             global_layer_index: 0,
             object_id: "object".into(),
             region_id: "2".into(),
-            branch_segments: vec![vec![Point3WithWidth::default()]],
+            family_id: "tree".into(),
+            demand_ids: vec!["demand".into()],
+            body_ids: vec!["body".into()],
+            anchor_layer_index: 0,
+            anchor_z: 200,
+            roles: vec![],
+            skeleton: Some(slicer_ir::SupportPlanSkeleton { points: vec![] }),
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
         })
         .unwrap();
     let response = NativePrepassResponse {
@@ -534,10 +545,6 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
     assert_eq!(entry.global_layer_index, 0);
     assert_eq!(entry.object_id, "object");
     assert_eq!(entry.region_id, 2);
-    assert_eq!(entry.branch_segments.len(), 1);
-    assert_eq!(
-        entry.branch_segments[0].role,
-        slicer_ir::ExtrusionRole::SupportMaterial
-    );
-    assert_eq!(entry.branch_segments[0].speed_factor, 1.0);
+    assert_eq!(entry.roles.len(), 0);
+    assert!(entry.skeleton.is_some());
 }

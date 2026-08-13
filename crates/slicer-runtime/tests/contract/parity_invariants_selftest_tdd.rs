@@ -12,9 +12,9 @@ use slicer_ir::{
     ActiveRegion, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, InfillIR,
     InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit, LoopType, ObjectLayerRef,
     PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point3WithWidth, PrintEntity, RegionKey,
-    ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SeamReason, SupportIR,
-    SupportPlanEntry, SupportPlanIR, TravelMoveDest, WallBoundaryType, WallFeatureFlags, WallLoop,
-    WidthProfile,
+    ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SeamReason, SupportEntry,
+    SupportIR, SupportPlanEntry, SupportPlanIR, SupportRole, TravelMoveDest, WallBoundaryType,
+    WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -179,7 +179,25 @@ fn support_entry(layer: i32, segments: Vec<ExtrusionPath3D>) -> SupportPlanEntry
         global_layer_index: layer,
         object_id: "parity-object".to_string(),
         region_id: 0,
-        branch_segments: segments,
+        family_id: "tree".into(),
+        demand_ids: vec!["demand".into()],
+        body_ids: vec!["body".into()],
+        anchor_layer_index: layer.max(0) as u32,
+        anchor_z: 100,
+        roles: segments
+            .into_iter()
+            .map(|segment| slicer_ir::SupportPlanRoleRegion {
+                role: match segment.role {
+                    ExtrusionRole::SupportInterface => slicer_ir::SupportPlanRole::TopInterface,
+                    _ => slicer_ir::SupportPlanRole::SupportBody,
+                },
+                regions: vec![],
+            })
+            .collect(),
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 
@@ -753,13 +771,29 @@ fn support_ir(jitter: f32) -> SupportIR {
     SupportIR {
         schema_version: semver(),
         global_layer_index: 0,
-        regions: vec![slicer_ir::slice_ir::SupportRegion {
-            support_paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
-            interface_paths: vec![support_segment(2, ExtrusionRole::SupportInterface, jitter)],
-            raft_paths: vec![support_segment(2, ExtrusionRole::RaftInfill, jitter)],
-            ironing_paths: vec![],
-            ..Default::default()
-        }],
+        entries: vec![
+            SupportEntry {
+                family_id: "fixture-family".into(),
+                body_id: "fixture-body".into(),
+                demand_ids: vec!["fixture-demand".into()],
+                object_id: "obj".into(),
+                region_id: 0,
+                role: SupportRole::SupportBody,
+                paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
+            },
+            SupportEntry {
+                family_id: "fixture-family".into(),
+                body_id: "fixture-body".into(),
+                demand_ids: vec!["fixture-demand".into()],
+                object_id: "obj".into(),
+                region_id: 0,
+                role: SupportRole::TopInterface,
+                paths: vec![
+                    support_segment(2, ExtrusionRole::SupportInterface, jitter),
+                    support_segment(2, ExtrusionRole::RaftInfill, jitter),
+                ],
+            },
+        ],
     }
 }
 
@@ -779,17 +813,17 @@ fn parity_comparator_accepts_support_ulp_perturbation() {
 
 #[test]
 fn parity_comparator_rejects_dropped_support_path() {
-    // One ExtrusionPath3D missing from interface_paths must fail on the
+    // One ExtrusionPath3D missing from the interface entry must fail on the
     // per-field path count, naming the field.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut dropped = support_ir(0.0);
-    dropped.regions[0].interface_paths.pop();
+    dropped.entries[1].paths.pop();
     let wasm = LayerStageCommit::Support(dropped);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("dropped support path must be rejected");
     assert!(
-        err.contains("interface_paths"),
-        "error must name the interface_paths field: {err}"
+        err.contains("entry[1] paths"),
+        "error must name the interface entry paths: {err}"
     );
 }
 
@@ -799,7 +833,7 @@ fn parity_comparator_rejects_moved_support_point() {
     // the point coordinates invariant.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut moved = support_ir(0.0);
-    moved.regions[0].support_paths[0].points[1].x += 0.5;
+    moved.entries[0].paths[0].points[1].x += 0.5;
     let wasm = LayerStageCommit::Support(moved);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("moved support point must be rejected");
