@@ -792,13 +792,26 @@ solid, and ironing extrusion paths.
 
 **Stage:** Output of `Layer::Support`, mutated by `Layer::SupportPostProcess`
 
-`SupportIR` and `SupportRegion` are defined in
-`crates/slicer-ir/src/slice_ir.rs`. Each layer carries a
-`regions: Vec<SupportRegion>` collection. Each `SupportRegion` contains
-`object_id`, `region_id`, and the support, interface, raft, and ironing
-extrusion-path lists for that region.
+**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Major bump by packet 220 — the flat
+per-region path lists were replaced by attributed per-body/role entries
+(breaking). Prior version: 1.0.0.
 
-Packet 172 routing: support paths and raft paths are emitted on the support
+`SupportIR` and `SupportEntry` are defined in
+`crates/slicer-ir/src/slice_ir.rs`. Each layer carries a
+`entries: Vec<SupportEntry>` collection. Each `SupportEntry` carries
+`family_id`, `body_id`, the source `demand_ids`, `object_id`, `region_id`,
+a `role: SupportRole`, and the printable `paths: Vec<ExtrusionPath3D>` for
+that body/role.
+
+`SupportRole` is `{ SupportBody, TopInterface, BottomInterface, Raft,
+Ironing }`. One entry is emitted per body/role — a single body may produce
+several entries (one per role), and each entry's paths are the renderer's
+printable extrusion output for that attributed body/role. The old flat
+per-region path lists (one `SupportRegion` per region carrying all four
+path lists) are gone; attribution is now carried on each entry.
+
+Packet 172 routing: support-body and raft paths are emitted on the support
 tool; interface paths and ironing paths are emitted on the interface tool.
 Selection is region-scoped through `object_id` and `region_id`.
 
@@ -823,16 +836,58 @@ and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
 
 ---
 
+## IR 9a′ — SupportAnalysisIR
+
+**Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
+`SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
+
+**Current schema_version: 1.0.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`).
+
+**Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
+host-owned input shared by all support family planners — it is produced once
+and consumed read-only by every family planner, so each family sees identical
+candidate and occupancy inputs.
+
+`SupportAnalysisIR`, `SupportCandidate`, and `SupportCandidateSource` are
+defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
+
+- `candidates: Vec<SupportCandidate>` — strategy-neutral candidates. Each
+  candidate carries an `id`, its `geometry: Vec<ExPolygon>`, and a
+  `source: SupportCandidateSource` (the `object_id`, `region_id`,
+  `global_layer_index`, and `z_units` evidence identifying the geometry from
+  which the conservative candidate came). Each candidate also carries
+  `enforced: bool` and `blocked: bool` — the enforcer/blocker annotations
+  (enforcers guarantee candidate creation, not printed geometry; blockers
+  mark geometry that must not receive support).
+- `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
+  occupancy per `(layer, object, region)` key.
+- `termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the
+  eligible model termination surfaces plus the build-plate termination surface.
+- `shared_settings: BTreeMap<String, String>` — shared support settings
+  consumed by all families.
+- `baseline_feasible_envelope: Vec<ExPolygon>` — the conservative baseline
+  feasible envelope before any family-specific tightening.
+- `family_assignments: BTreeMap<(ObjectId, RegionId), String>` — the
+  deterministic per-region family assignment (region → family id).
+
+**Determinism:** `family_assignments` is a `BTreeMap` keyed by
+`(ObjectId, RegionId)`, so per-region family assignment is deterministic and
+stable across identical inputs. Identical PrePass inputs must produce
+byte-identical `SupportAnalysisIR`.
+
+---
+
 ## IR 9b — SupportPlanIR
 
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Current schema_version: 1.3.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
-`crates/slicer-ir/src/slice_ir.rs`). Packet 119 added the per-point
-`Point3WithWidth.dist_to_top_mm` field and the optional raft configuration seam
-(1.1.0 → 1.2.0); packet 124 bumped 1.2.0 → 1.3.0 (semver-minor) for the additive
-`ExtrusionRole::RaftInfill` variant and its `claim:raft-fill` mapping.
+**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Major bump by packet 220 — breaking
+structural support-family migration: branch extrusion paths were removed; no
+planner emits nozzle-width `ExtrusionPath3D` paths into this IR. Prior
+versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124).
 
 **Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
 guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
@@ -840,15 +895,40 @@ the host built-in commits `SupportGeometryIR` first within the same stage
 (e.g. the bundled `support-planner` core module — a simplified port of OrcaSlicer's
 `TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes`).
 
+**WIT producer boundary:** the plan crosses the boundary through the
+`slicer:prepass-support-geometry@1.0.0` package's `support-plan-entry` record,
+which was **replaced in place** (breaking in-place replacement, not an additive
+parallel package) — see `docs/03_wit_and_manifest.md` and the packet-220
+design's resolved Q2.
+
 **Consumers:** `Layer::Support` modules that declare `SupportPlanIR` as a read in
 their manifest (notably `tree-support`). Modules whose algorithm is inherently
 per-layer (e.g. `traditional-support`'s scan-line filler) intentionally do not
 read this IR.
 
 `SupportPlanIR`, `RaftPlan`, and `SupportPlanEntry` are defined in
-`crates/slicer-ir/src/slice_ir.rs`. Support plans contain region-scoped branch
-segments and an optional configuration-only raft plan. Entry layer indices are
-signed so negative values can reserve raft-prefix layers.
+`crates/slicer-ir/src/slice_ir.rs`. The plan is structural and universal: it
+carries no printable nozzle-width paths. Each `SupportPlanEntry` is produced
+once per `(global_layer_index, object_id, region_id)` triple and carries:
+
+- `family_id` — the support family this entry belongs to.
+- `demand_ids` — the source demand identities the entry satisfies.
+- `body_ids` — the structural body identities the entry contributes to.
+- `anchor_layer_index: u32` and `anchor_z: i64` — the anchor layer index and
+  its Z (in repository units) that place the entry's geometry.
+- `roles: Vec<SupportPlanRoleRegion>` — structural universal roles, each a
+  semantic `ExPolygon` region: `SupportBody`, `TopInterface`,
+  `BottomInterface`, and `RaftRelated`.
+- `skeleton: Option<SupportPlanSkeleton>` — optional structural skeleton
+  metadata (a point chain) for organic families.
+- `capabilities: Vec<String>` and `provenance: Vec<String>` — capability
+  declarations and provenance attribution.
+- `decline_reason: Option<SupportPlanDeclineReason>` — a structured
+  declined-candidate reason (`DeclinedPolicy`, `NoRoute`, `Blocked`,
+  `UnsupportedMode`) when the entry is a declined/unroutable candidate.
+
+Entry layer indices are signed so negative values can reserve raft-prefix
+layers.
 
 `raft_plan` is emitted as `Some(RaftPlan)` when the support planner receives a
 positive `support_raft_layers` value. It mirrors the raft configuration only;
@@ -863,7 +943,7 @@ plan-aware module must:
 1. Look up `SupportPlanIR.entries` matching `(global_layer_index, object_id,
    region_id)` (e.g. via the SDK's `PaintRegionLayerView::support_plan_segments_for(...)`
    accessor).
-2. If at least one entry's `branch_segments` is non-empty: emit those segments
+2. If at least one entry's `roles` is non-empty: emit those structural regions
    directly with `ExtrusionRole::SupportMaterial` and skip the per-layer filler
    for that region.
 3. Otherwise: fall back to the module's own per-layer filler (e.g. tree-support's
@@ -874,7 +954,7 @@ module is installed, while enabling organic multi-layer branch geometry when
 one is loaded.
 
 **Determinism:** Identical PrePass inputs must produce byte-identical
-`SupportPlanIR` (`entries.len()`, every entry's `branch_segments.len()`, every
+`SupportPlanIR` (`entries.len()`, every entry's `roles.len()`, every
 endpoint coordinate, and the optional raft configuration). The host-side
 prepass ceremony round-trips this via
 the `support_planner_is_deterministic_across_runs` test.
