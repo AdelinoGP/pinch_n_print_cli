@@ -30,6 +30,8 @@ fn foreign_language_text_postprocess_component() {
         wasmtime::component::HasSelf<_>,
     >(&mut linker, |ctx| ctx)
     .expect("failed to add gcode postprocess bindings to linker");
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+        .expect("failed to add WASI preview2 bindings to linker");
 
     let context =
         host::HostExecutionContextBuilder::new("foreign-language-probe".to_string(), 0.0, 0.0)
