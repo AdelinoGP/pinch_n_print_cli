@@ -212,6 +212,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = loaded
         .bindings
@@ -219,7 +220,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
         .map(|b| {
             (
                 b.module.id().to_string(),
-                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+                (Arc::clone(&b.instance_pool), b.wasm_component.clone(), None),
             )
         })
         .collect();

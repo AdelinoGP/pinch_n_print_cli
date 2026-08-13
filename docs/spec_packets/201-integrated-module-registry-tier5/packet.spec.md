@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 201-integrated-module-registry-tier5
 task_ids:
   - ADR-0056

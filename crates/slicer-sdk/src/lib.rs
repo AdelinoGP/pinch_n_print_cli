@@ -26,6 +26,8 @@ pub mod error;
 pub mod host;
 pub mod host_batch;
 pub mod layer_collection_builder;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
 pub mod postpass_builders;
 pub mod postpass_types;
 pub mod prelude;

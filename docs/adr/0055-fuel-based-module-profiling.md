@@ -125,3 +125,21 @@ adds per-call detail for finding a single pathological layer.
   summary, different units — the summary must say which.
 - New WIT functions in the shared `host-services` interface invalidate every
   guest, costing one 34-guest rebuild.
+
+## Amendment
+
+### 2026-08-10 — Host-bridge evidence
+
+The Step 1 and Step 6 measurements use the same model (`resources/extruder_idler.obj`), machine, and release profile. The Step 1 baseline was re-captured on a quiescent tree (the first capture ran under concurrent session load and was discarded; its wall-clock spread of 264,219 ms was load noise, not run-to-run variance). The measured evidence is:
+
+| Measure | Before (Step 1) | After (Step 6) | Delta |
+| --- | ---: | ---: | ---: |
+| `com.core.classic-perimeters` `polygon_ops::offset2_ex` self_fuel/total_fuel | 12,896,274,227 | 12,894,723,902 | -1,550,325 |
+| `com.core.classic-perimeters` `polygon_ops::offset` self_fuel/total_fuel | 4,122,706,126 | absent from summary (guest fuel 0) | -4,122,706,126 |
+| `com.core.classic-perimeters` `polygon_ops::clip_polygons` self_fuel/total_fuel | 880,143,944 | absent from summary (guest fuel 0) | -880,143,944 |
+| `com.core.support-planner` fuel | 74,231,712 | 74,234,286 | +2,574 |
+| Profiling-off wall-clock runs (ms) | 358,512 / 358,969 / 361,136 | 360,145 / 376,306 / 374,440; 361,941 / 357,210 / 359,618 | median +2,074 ms |
+
+The profiling-off median changed from 358,969 ms to 361,043 ms (six after runs, two batches). The before run-to-run spread was 2,624 ms; the after spread was 19,096 ms (batch 1 carried two slow runs; batch 2 confirmed parity). The decision-rule outcome is **KEEP**: the +2,074 ms median delta is within the Step-1 run-to-run spread, so no regression beyond spread was measured.
+
+This answers the open in-guest-vs-host-native question: host-native routing of the migrated offset/clip work shows a guest-fuel drop by construction and no measurable wall-clock regression on this model. Per ADR-0055, host calls burn no fuel, so the missing `offset` and `clip_polygons` rows prove routing, not speed. The residual in-guest share (`offset2_ex`, `opening_ex`, and `split_top_surfaces`) is quantified, not migrated. DEV-093 remains a caveat: whole-slice fuel totals can drift on a handful of layers, so the comparison uses per-scope rows.

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 200-batched-host-bridge-wasm-arms
 task_ids:
   - DEV-094

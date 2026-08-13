@@ -279,9 +279,13 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
   from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
+   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
+   which tags the region currently being iterated so buffered per-region pushes are
+   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+- `support-output-builder` also carries
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
-  which tags the region currently being iterated so buffered per-region pushes are
-  attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+  which tags the support region currently being iterated so buffered per-region pushes
+  are attributed correctly (packet 205c; see the `begin_region` SDK method).
 
 Two contract points that the file alone does not state are the ID
 canonicalization rule and the wall-loop flag invariant below.

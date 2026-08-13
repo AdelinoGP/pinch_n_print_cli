@@ -117,7 +117,14 @@ pub fn execute_postpass(
     emitter: &dyn GCodeEmitter,
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     execute_postpass_with_instrumentation(
         plan,
@@ -170,7 +177,14 @@ pub fn execute_postpass_with_instrumentation(
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     execute_postpass_with_capture(
         plan,
@@ -222,7 +236,14 @@ pub fn execute_postpass_with_capture(
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
     capture: Option<&mut PostPassCapture>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1a: Reconcile finalization-aware travel moves before emission.
@@ -267,17 +288,20 @@ pub fn execute_postpass_with_capture(
             for module in &stage.modules {
                 instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
                 // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
-                let (instance_pool, wasm_component) = wasm_handles
+                let (instance_pool, wasm_component, native_entry) = wasm_handles
                     .get(module.module_id().as_str())
-                    .map(|(p, c)| (Arc::clone(p), c.clone()))
-                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
-                let live_module = CompiledModuleLive::new(
+                    .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+                let mut live_module = CompiledModuleLive::new(
                     module.module_id(),
                     instance_pool,
                     wasm_component,
                     module.claims(),
                     Arc::clone(module.config_view()),
                 );
+                if let Some(entry) = native_entry {
+                    live_module = live_module.with_native_entry(entry);
+                }
                 let input = PostpassStageInput {
                     mesh: std::sync::Arc::clone(blackboard.mesh()),
                     _phantom: std::marker::PhantomData,
@@ -400,17 +424,20 @@ pub fn execute_postpass_with_capture(
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
             instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
-            let (instance_pool, wasm_component) = wasm_handles
+            let (instance_pool, wasm_component, native_entry) = wasm_handles
                 .get(module.module_id().as_str())
-                .map(|(p, c)| (Arc::clone(p), c.clone()))
-                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
-            let live_module = CompiledModuleLive::new(
+                .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+            let mut live_module = CompiledModuleLive::new(
                 module.module_id(),
                 instance_pool,
                 wasm_component,
                 module.claims(),
                 Arc::clone(module.config_view()),
             );
+            if let Some(entry) = native_entry {
+                live_module = live_module.with_native_entry(entry);
+            }
             let input = PostpassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 _phantom: std::marker::PhantomData,

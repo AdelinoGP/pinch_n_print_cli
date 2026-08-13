@@ -123,6 +123,7 @@ fn prepared_context(support_enabled: bool) -> slicer_runtime::PrepassContext {
         config_source(support_enabled),
         &[module_dir()],
         true,
+        false,
     )
     .expect("prepare support preview context")
 }

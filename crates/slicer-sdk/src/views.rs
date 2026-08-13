@@ -119,6 +119,32 @@ impl Default for SliceRegionView {
 }
 
 impl SliceRegionView {
+    /// Construct the host-authoritative view for a sliced region.
+    pub fn from_ir(region: &slicer_ir::SlicedRegion, z: f32, held_claims: Vec<String>) -> Self {
+        Self {
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            polygons: region.polygons.clone(),
+            infill_areas: region.infill_areas.clone(),
+            effective_layer_height: region.effective_layer_height,
+            z,
+            has_nonplanar: region.nonplanar_surface.is_some(),
+            segment_annotations: region.segment_annotations.clone(),
+            variant_chain: region.variant_chain.clone(),
+            needs_support: true,
+            top_shell_index: region.top_shell_index,
+            bottom_shell_index: region.bottom_shell_index,
+            top_solid_fill: region.top_solid_fill.clone(),
+            bottom_solid_fill: region.bottom_solid_fill.clone(),
+            is_bridge: region.is_bridge,
+            bridge_areas: region.bridge_areas.clone(),
+            bridge_orientation_deg: region.bridge_orientation_deg,
+            sparse_infill_area: region.sparse_infill_area.clone(),
+            held_claims,
+            ..Self::default()
+        }
+    }
+
     /// Override the object ID (host-only, for testing).
     #[doc(hidden)]
     pub fn set_object_id(&mut self, object_id: impl Into<ObjectId>) {
@@ -581,6 +607,19 @@ pub struct PerimeterRegionView {
 }
 
 impl PerimeterRegionView {
+    /// Construct the host-authoritative view for a perimeter region.
+    pub fn from_ir(region: &slicer_ir::PerimeterRegion) -> Self {
+        Self {
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            wall_loops: region.walls.clone(),
+            infill_areas: region.infill_areas.clone(),
+            seam_candidates: region.seam_candidates.clone(),
+            resolved_seam: region.resolved_seam.clone(),
+            ..Self::default()
+        }
+    }
+
     /// Override the object ID (host-only, for testing).
     #[doc(hidden)]
     pub fn set_object_id(&mut self, object_id: impl Into<ObjectId>) {

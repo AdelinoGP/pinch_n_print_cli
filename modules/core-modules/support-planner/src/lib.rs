@@ -303,6 +303,7 @@ impl PrepassModule for SupportPlanner {
                 polygons: vec![(*expoly).clone()],
                 delta_mm: avoid_inflate,
                 join: OffsetJoinType::Miter,
+                arc_tolerance_mm: 0.0,
             }
         });
 
@@ -1956,7 +1957,7 @@ mod tests {
             },
             holes: vec![],
         };
-        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter, 0.0);
         assert!(
             !result.is_empty(),
             "offset must return at least one polygon"
@@ -2019,7 +2020,7 @@ mod tests {
             contour: outer,
             holes: vec![hole],
         };
-        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter, 0.0);
         assert!(
             !result.is_empty(),
             "offset must return at least one polygon"
@@ -2063,7 +2064,7 @@ mod tests {
             },
             holes: vec![],
         };
-        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter, 0.0);
         assert!(
             !result.is_empty(),
             "offset must return at least one polygon"

@@ -59,9 +59,9 @@ use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
 use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
-use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_profiled;
+use slicer_wasm_host::build_live_execution_plan;
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use slicer_wasm_host::WasmRuntimeDispatcher;
-use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
 /// Validated runtime options derived from CLI arguments.
 ///
@@ -82,6 +82,8 @@ pub struct SliceRunOptions {
     pub module_dirs: Vec<PathBuf>,
     /// When true, suppress the platform default module search paths.
     pub no_default_module_paths: bool,
+    /// When true, disable the integrated-module tier entirely (ADR-0057).
+    pub no_integrated_modules: bool,
     /// Optional path to a PNG thumbnail image for the G-code header.
     pub thumbnail: Option<PathBuf>,
     /// Optional path for an HTML slicer report. When the `report` feature is
@@ -133,6 +135,7 @@ impl Default for SliceRunOptions {
             output_path: None,
             module_dirs: Vec::new(),
             no_default_module_paths: false,
+            no_integrated_modules: false,
             thumbnail: None,
             report: None,
             report_verbose: false,
@@ -584,11 +587,21 @@ pub fn run_slice_with_collector(
     // doc comment for the production defect this closes).
     // `opts.profile` reaches every guest through this one engine: it turns on
     // `consume_fuel` *and* is what `profile-enabled` answers with.
-    let mut loaded = load_live_modules_for_plan_profiled(
+    let (integrated_regs, native_entries) = if opts.no_integrated_modules {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            slicer_integrated_modules::integrated_registrations(),
+            slicer_integrated_modules::native_entries(),
+        )
+    };
+    let mut loaded = load_live_modules_for_plan_with_integrated(
         &search_roots,
         num_cpus_guess(),
         &config_source,
         opts.profile,
+        &integrated_regs,
+        &native_entries,
     )
     .map_err(|e| {
         SliceRunError(format!(
@@ -794,6 +807,7 @@ pub fn run_slice_with_collector(
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = loaded
         .bindings
@@ -801,7 +815,11 @@ pub fn run_slice_with_collector(
         .map(|b| {
             (
                 b.module.id().to_string(),
-                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+                (
+                    Arc::clone(&b.instance_pool),
+                    b.wasm_component.clone(),
+                    b.native_entry,
+                ),
             )
         })
         .collect();
@@ -990,6 +1008,7 @@ pub struct PrepassContext {
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     >,
     /// Dispatcher ready to run per-layer (Tier 2) stages against the same
@@ -1026,6 +1045,7 @@ pub fn prepare_prepass_context(
     mut config_source: std::collections::HashMap<String, ConfigValue>,
     module_dirs: &[PathBuf],
     no_default_module_paths: bool,
+    no_integrated_modules: bool,
 ) -> Result<PrepassContext, SliceRunError> {
     // Seed planner-visible per-object world heights — required for
     // `layer-planner-default` (and any layer planner) to produce a
@@ -1062,15 +1082,31 @@ pub fn prepare_prepass_context(
     }
 
     let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
-    let mut loaded =
-        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
-            .map_err(|e| {
-                SliceRunError(format!(
-                    "failed to load modules from {} root(s) {:?}: {e}",
-                    search_roots.len(),
-                    search_roots
-                ))
-            })?;
+    let integrated_registrations = if no_integrated_modules {
+        Vec::new()
+    } else {
+        slicer_integrated_modules::integrated_registrations()
+    };
+    let native_entries = if no_integrated_modules {
+        Vec::new()
+    } else {
+        slicer_integrated_modules::native_entries()
+    };
+    let mut loaded = load_live_modules_for_plan_with_integrated(
+        &search_roots,
+        num_cpus_guess(),
+        &config_source,
+        false,
+        &integrated_registrations,
+        &native_entries,
+    )
+    .map_err(|e| {
+        SliceRunError(format!(
+            "failed to load modules from {} root(s) {:?}: {e}",
+            search_roots.len(),
+            search_roots
+        ))
+    })?;
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
     let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
@@ -1090,6 +1126,7 @@ pub fn prepare_prepass_context(
         (
             Arc<slicer_wasm_host::WasmInstancePool>,
             Option<Arc<slicer_wasm_host::WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
         ),
     > = loaded
         .bindings
@@ -1097,7 +1134,11 @@ pub fn prepare_prepass_context(
         .map(|b| {
             (
                 b.module.id().to_string(),
-                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+                (
+                    Arc::clone(&b.instance_pool),
+                    b.wasm_component.clone(),
+                    b.native_entry,
+                ),
             )
         })
         .collect();

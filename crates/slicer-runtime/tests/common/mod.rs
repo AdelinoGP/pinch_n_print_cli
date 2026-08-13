@@ -8,8 +8,10 @@
 // back to runtime). A future packet can extract them into a shared
 // `slicer-test-fixtures` crate if duplication grows.
 pub mod dispatch_fixture;
+pub mod integrated_parity_harness;
 pub mod ir_builders;
 pub mod model_cache;
+pub mod parity_invariants;
 pub mod perimeter_harness;
 pub mod seed;
 pub mod slicer_cache;
@@ -530,12 +532,13 @@ impl TestModuleBundle {
             (
                 Arc<slicer_wasm_host::WasmInstancePool>,
                 Option<Arc<slicer_wasm_host::WasmComponent>>,
+                Option<slicer_sdk::native::NativeStageEntry>,
             ),
         >,
     ) {
         let id = self.module.module_id().to_string();
         let mut handles = HashMap::new();
-        handles.insert(id, (self.pool, self.component));
+        handles.insert(id, (self.pool, self.component, None));
         (self.module, handles)
     }
 }

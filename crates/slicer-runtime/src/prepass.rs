@@ -191,7 +191,14 @@ pub fn execute_prepass(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     execute_prepass_with_instrumentation(
         plan,
@@ -210,7 +217,14 @@ pub fn execute_prepass_with_instrumentation(
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let mut audits = Vec::new();
 
@@ -221,17 +235,20 @@ pub fn execute_prepass_with_instrumentation(
         for module in &stage.modules {
             instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
-            let (instance_pool, wasm_component) = wasm_handles
+            let (instance_pool, wasm_component, native_entry) = wasm_handles
                 .get(module.module_id().as_str())
-                .map(|(p, c)| (Arc::clone(p), c.clone()))
-                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
-            let live_module = CompiledModuleLive::new(
+                .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+            let mut live_module = CompiledModuleLive::new(
                 module.module_id(),
                 instance_pool,
                 wasm_component,
                 module.claims(),
                 Arc::clone(module.config_view()),
             );
+            if let Some(entry) = native_entry {
+                live_module = live_module.with_native_entry(entry);
+            }
             let input = PrepassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 layer_plan: blackboard.layer_plan().cloned(),
@@ -369,7 +386,14 @@ pub fn execute_prepass_with_builtins(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let empty_resolved: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
     let default_resolved = ResolvedConfig::default();
@@ -400,7 +424,14 @@ pub fn execute_prepass_with_builtins_configured(
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &crate::ConfigBoundsIndex,
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     execute_prepass_with_builtins_configured_instr(
         plan,
@@ -434,7 +465,14 @@ pub fn execute_prepass_with_builtins_configured_instr(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &crate::ConfigBoundsIndex,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
-    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,

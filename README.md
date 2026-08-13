@@ -56,8 +56,8 @@ cargo build --workspace
 # Build all guest WASMs (core modules)
 cargo xtask build-guests
 
-# Build the release CLI and bundle guest modules into target/dist/
-cargo xtask dist
+# Build the release CLI and bundle guest modules into target/dist/<edition>/
+cargo xtask dist --edition <developer|hybrid|integrated>
 
 # Run the slicer
 cargo run --bin pnp_cli --release -- slice --input resources/benchy.stl --output /tmp/out.gcode

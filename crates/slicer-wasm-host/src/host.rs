@@ -2478,9 +2478,11 @@ impl hs::Host for HostExecutionContext {
         polygons: Vec<ExPolygon>,
         delta_mm: f32,
         join: hs::OffsetJoinType,
+        arc_tolerance_mm: f32,
     ) -> wasmtime::Result<Vec<ExPolygon>> {
         let ir_polys = wit_to_ir_expolygons(&polygons);
-        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join(join), 0.0);
+        let result =
+            slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join(join), arc_tolerance_mm);
         Ok(ir_to_wit_expolygons(&result))
     }
 
@@ -2501,8 +2503,12 @@ impl hs::Host for HostExecutionContext {
             |r| expolygon_vertex_count(&r.polygons),
             |r| {
                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
-                let result =
-                    slicer_core::polygon_ops::offset(&ir_polys, r.delta_mm, ir_join(r.join), 0.0);
+                let result = slicer_core::polygon_ops::offset(
+                    &ir_polys,
+                    r.delta_mm,
+                    ir_join(r.join),
+                    r.arc_tolerance_mm,
+                );
                 ir_to_wit_expolygons(&result)
             },
         );
@@ -3498,14 +3504,14 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         region_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
-            Ok(parsed) => {
+            Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
                 });
                 Ok(Ok(()))
             }
-            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
         }
     }
     fn drop(&mut self, rep: Resource<InfillOutputBuilderData>) -> wasmtime::Result<()> {
@@ -3617,14 +3623,14 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         region_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
-            Ok(parsed) => {
+            Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
                 });
                 Ok(Ok(()))
             }
-            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
         }
     }
     fn drop(&mut self, rep: Resource<PerimeterOutputBuilderData>) -> wasmtime::Result<()> {
@@ -3869,7 +3875,10 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output.support_paths.push(path);
         self.support_output.support_path_origins.push(origin);
         self.record_write("SupportIR");
@@ -3886,7 +3895,10 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output
             .interface_paths
             .push((path, is_top_interface));
@@ -3904,11 +3916,31 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_slice_region.clone();
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
         self.support_output.raft_paths.push(path);
         self.support_output.raft_path_origins.push(origin);
         self.record_write("SupportIR");
         Ok(Ok(()))
+    }
+    fn set_current_origin(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        match region_id.parse::<u64>() {
+            Ok(parsed) if parsed.to_string() == region_id => {
+                self.explicit_perimeter_origin = Some(OriginId {
+                    object_id,
+                    region_id: parsed,
+                });
+                Ok(Ok(()))
+            }
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
+        }
     }
     fn drop(&mut self, rep: Resource<SupportOutputBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

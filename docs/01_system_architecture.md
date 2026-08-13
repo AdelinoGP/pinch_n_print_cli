@@ -912,9 +912,11 @@ Validation rule:
 ## Module Search Path
 
 `pnp_cli` assembles module search roots from CLI flags, an env var, and
-two platform defaults, in the priority order listed below. Within each root
-the discovery contract is unchanged: `*.toml` manifests at the root level or
-one subdirectory deep, each requiring a same-stem `*.wasm` companion.
+two platform defaults, in the priority order listed below. Within each disk
+root the discovery contract is unchanged: `*.toml` manifests at the root
+level or one subdirectory deep, each requiring a same-stem `*.wasm` companion.
+Integrated modules are embedded manifest TOML registrations and have no
+on-disk `.wasm`.
 Assembly lives in `crates/slicer-scheduler/src/module_search_path.rs`
 (`assemble_search_roots`); per-root scanning and intra-root `module.id`
 deduplication live in `crates/slicer-scheduler/src/manifest.rs`
@@ -934,7 +936,10 @@ callers may reach them under either crate path.
    `~/Library/Application Support/modular-slicer/modules/`; on Windows,
    `%APPDATA%\modular-slicer\config\modules\`. Silently skipped if absent.
 4. **`{executable_dir}/modules/`** — relative to the running binary via
-   `std::env::current_exe()`. Silently skipped if absent.
+    `std::env::current_exe()`. Silently skipped if absent.
+5. **Tier 5: integrated modules** — embedded manifest TOML registrations (no on-disk
+   `.wasm`), loaded last via `load_modules_from_roots_with_integrated` after
+   the four disk tiers.
 
 Tiers 3 and 4 are omitted entirely when `--no-default-module-paths` is
 passed. Tiers 1 and 2 always apply.
@@ -952,7 +957,17 @@ dedup, not a configuration error.
 After roots are assembled, `load_modules_from_roots` walks them in order
 and dedups discovered modules by `module.id`. The first root's module
 wins, and later duplicates emit a `DiagnosticLevel::Warning` on stderr.
-This is independent of (and runs after) the canonical-path dedup above.
+When an external (disk) module wins dedup over an integrated registration
+with the same id, the warning reads `external module {id} shadows integrated
+module {id}` (level `Warning`, field `module.id`). This is independent of
+(and runs after) the canonical-path dedup above. When the integrated registry
+is empty (the default), `load_modules_from_roots_with_integrated(roots, &[])`
+is a strict identity with `load_modules_from_roots(roots)`.
+
+Integrated and WASM dispatch share the SDK view-construction authority:
+`SliceRegionView::from_ir` and `PerimeterRegionView::from_ir`. The WASM leg
+adapts those shared SDK views to WIT resources, while the native leg consumes
+the same views directly.
 
 ### Per-root scan failures are non-fatal
 
@@ -984,19 +999,19 @@ recognises both; `Cargo.toml` files inside subdirectories are excluded.
 `cargo xtask dist` is the canonical way to assemble the
 `{executable_dir}/modules/` layout for shipping. It rebuilds every
 core-module guest WASM, builds `pnp_cli` (release by default; `--debug`
-opt-in), wipes `target/dist/`, and stages:
+opt-in), wipes `target/dist/<edition>/`, and stages:
 
 ```text
-target/dist/
+target/dist/<edition>/
 ├── pnp_cli[.exe]
 └── modules/
     └── <module-name>/
         ├── <module-name>.toml
-        └── <module-name>.wasm   (one subdir per core module; 21 today)
+        └── <module-name>.wasm   (one subdir per staged core module)
 ```
 
 Because tier 4 of the search path resolves to `current_exe()/modules/`,
-running `target/dist/pnp_cli` with no `--module-dir` flags discovers all
+running `target/dist/<edition>/pnp_cli` with no `--module-dir` flags discovers all
 staged modules automatically. Test-guests under
 `crates/slicer-wasm-host/test-guests/` are filtered out — the bundle
 contains shippable core modules only.
@@ -1006,6 +1021,25 @@ not linger in old dist bundles. Implementation lives in
 `xtask/src/dist.rs` and reuses `build_guests::discover_guests` so the
 shipped set tracks the same validated walk used by `cargo xtask
 build-guests`.
+
+The `--edition <developer|hybrid|integrated>` flag selects the distribution
+edition and defaults to `developer`; each edition is written under
+`target/dist/<edition>/`. The staged external set is the exact complement of
+the edition's integrated set, and any violation of that disjointness is a
+hard `dist` failure rather than a warning.
+
+Edition selection is defined by the committed `dist/editions.toml` (schema
+version 1), which provides the `developer`, `hybrid`, and `integrated` edition
+keys through `integrate_all` and `integrated_modules`. The developer edition
+sets `integrate_all = false` with no integrated modules, the hybrid edition
+integrates exactly the modules named in its `integrated_modules` array, and
+the integrated edition sets `integrate_all = true`. As of packet 205b the
+integrated edition builds: every registered core module is integrated and
+nothing is staged externally. The hybrid membership is finalized by profiling and lives only in this config. Every `integrated_modules` name is a module
+directory name shared by `modules/core-modules/<name>`, its
+`slicer-integrated-modules` Cargo feature, and the staged `<name>.wasm` and
+`<name>.toml` stems. `xtask::editions::load_editions` reads and validates this
+configuration before `cargo xtask dist` stages the selected layout.
 
 ### Diagnostics
 

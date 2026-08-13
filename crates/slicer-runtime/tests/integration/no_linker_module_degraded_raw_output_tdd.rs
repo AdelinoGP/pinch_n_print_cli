@@ -93,7 +93,10 @@ fn no_linker_module_degraded_raw_output() {
     cmd.args(["slice", "--model"])
         .arg(&model)
         .args(["--output"])
-        .arg(&gcode);
+        .arg(&gcode)
+        // `--module-dir` controls external discovery only. Disable the
+        // integrated tier as well so this scenario truly excludes the linker.
+        .arg("--no-integrated-modules");
     let entries = std::fs::read_dir(&modules_root).expect("read core-modules dir");
     let mut any = false;
     for e in entries {

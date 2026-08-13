@@ -138,6 +138,7 @@ pub use slice_ir::{
     SupportIR,
     SupportPlanEntry,
     SupportPlanIR,
+    SupportRegion,
     SupportType,
 
     // Surface classification types

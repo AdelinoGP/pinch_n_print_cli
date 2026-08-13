@@ -12,13 +12,40 @@ path = "src/main.rs"
 name = "pnp_cli"
 path = "src/lib.rs"
 
+[[test]]
+name = "integrated_provenance_tdd"
+path = "tests/integrated_provenance_tdd.rs"
+required-features = ["integrated-classic-perimeters"]
+
 [features]
 default = ["report"]
 report = ["slicer-runtime/report"]
+integrated-classic-perimeters = ["slicer-integrated-modules/classic-perimeters"]
+integrated-arachne-perimeters = ["slicer-integrated-modules/arachne-perimeters"]
+integrated-support-planner = ["slicer-integrated-modules/support-planner"]
+integrated-fuzzy-skin = ["slicer-integrated-modules/fuzzy-skin"]
+integrated-gyroid-infill = ["slicer-integrated-modules/gyroid-infill"]
+integrated-infill-linker = ["slicer-integrated-modules/infill-linker"]
+integrated-layer-planner-default = ["slicer-integrated-modules/layer-planner-default"]
+integrated-lightning-infill = ["slicer-integrated-modules/lightning-infill"]
+integrated-machine-gcode-emit = ["slicer-integrated-modules/machine-gcode-emit"]
+integrated-overhang-classifier-default = ["slicer-integrated-modules/overhang-classifier-default"]
+integrated-part-cooling = ["slicer-integrated-modules/part-cooling"]
+integrated-path-optimization-default = ["slicer-integrated-modules/path-optimization-default"]
+integrated-rectilinear-infill = ["slicer-integrated-modules/rectilinear-infill"]
+integrated-seam-placer = ["slicer-integrated-modules/seam-placer"]
+integrated-seam-planner-default = ["slicer-integrated-modules/seam-planner-default"]
+integrated-skirt-brim = ["slicer-integrated-modules/skirt-brim"]
+integrated-support-surface-ironing = ["slicer-integrated-modules/support-surface-ironing"]
+integrated-top-surface-ironing = ["slicer-integrated-modules/top-surface-ironing"]
+integrated-traditional-support = ["slicer-integrated-modules/traditional-support"]
+integrated-tree-support = ["slicer-integrated-modules/tree-support"]
+integrated-wipe-tower = ["slicer-integrated-modules/wipe-tower"]
 
 [dependencies]
 ctrlc = "3"
 slicer-runtime = { path = "../slicer-runtime", default-features = false }
+slicer-integrated-modules = { path = "../slicer-integrated-modules" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-schema = { path = "../slicer-schema" }
 slicer-model-io = { path = "../slicer-model-io" }

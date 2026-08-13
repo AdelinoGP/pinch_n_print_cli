@@ -1,6 +1,8 @@
 pub mod accumulators;
 pub mod in_;
 pub mod leaf;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
 /// Origin tracking for WIT output buckets — [`OriginId`], [`OriginBucket`], and [`MarshalError`].
 pub mod origin;
 pub mod out;

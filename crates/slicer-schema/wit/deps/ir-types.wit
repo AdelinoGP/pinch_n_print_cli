@@ -206,6 +206,7 @@ interface ir-handles {
         push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
         push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
+        set-current-origin:  func(object-id: string, region-id: string) -> result<_, string>;
     }
 
     record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }

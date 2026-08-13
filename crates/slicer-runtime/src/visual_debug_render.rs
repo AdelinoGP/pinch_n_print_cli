@@ -469,14 +469,16 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
             }
         }
         CapturedIr::Support(s) => {
-            for path in s
-                .support_paths
-                .iter()
-                .chain(s.interface_paths.iter())
-                .chain(s.raft_paths.iter())
-                .chain(s.ironing_paths.iter())
-            {
-                push_path_points(path, &mut pts);
+            for region in &s.regions {
+                for path in region
+                    .support_paths
+                    .iter()
+                    .chain(region.interface_paths.iter())
+                    .chain(region.raft_paths.iter())
+                    .chain(region.ironing_paths.iter())
+                {
+                    push_path_points(path, &mut pts);
+                }
             }
         }
         CapturedIr::LayerCollection(l) => {
@@ -829,11 +831,13 @@ fn infill_shapes(
 }
 
 fn support_paths(s: &slicer_ir::SupportIR) -> impl Iterator<Item = &ExtrusionPath3D> {
-    s.support_paths
-        .iter()
-        .chain(s.interface_paths.iter())
-        .chain(s.raft_paths.iter())
-        .chain(s.ironing_paths.iter())
+    s.regions.iter().flat_map(|r| {
+        r.support_paths
+            .iter()
+            .chain(r.interface_paths.iter())
+            .chain(r.raft_paths.iter())
+            .chain(r.ironing_paths.iter())
+    })
 }
 
 fn support_shapes(

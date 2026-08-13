@@ -2353,6 +2353,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slicer-helpers",
+ "slicer-integrated-modules",
  "slicer-ir",
  "slicer-model-io",
  "slicer-runtime",
@@ -2935,6 +2936,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "sdk-finalization-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+ "witness",
+]
+
+[[package]]
+name = "sdk-layer-infill-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+ "witness",
+]
+
+[[package]]
+name = "sdk-postpass-text-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
+name = "sdk-prepass-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
 name = "seam-placer"
 version = "0.1.0"
 dependencies = [
@@ -3159,6 +3202,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "slicer-integrated-modules"
+version = "0.1.0"
+dependencies = [
+ "arachne-perimeters",
+ "classic-perimeters",
+ "fuzzy-skin",
+ "gyroid-infill",
+ "infill-linker",
+ "layer-planner-default",
+ "lightning-infill",
+ "machine-gcode-emit",
+ "overhang-classifier-default",
+ "part-cooling",
+ "path-optimization-default",
+ "rectilinear-infill",
+ "seam-placer",
+ "seam-planner-default",
+ "skirt-brim",
+ "slicer-scheduler",
+ "slicer-sdk",
+ "support-planner",
+ "support-surface-ironing",
+ "top-surface-ironing",
+ "traditional-support",
+ "tree-support",
+ "wipe-tower",
+]
+
+[[package]]
 name = "slicer-ir"
 version = "0.1.0"
 dependencies = [
@@ -3207,10 +3279,16 @@ dependencies = [
  "classic-perimeters",
  "criterion",
  "directories",
+ "fuzzy-skin",
  "gyroid-infill",
  "infill-linker",
+ "layer-planner-default",
  "lightning-infill",
  "log",
+ "machine-gcode-emit",
+ "overhang-classifier-default",
+ "part-cooling",
+ "path-optimization-default",
  "png",
  "pnp-cli-locator",
  "postcard",
@@ -3218,12 +3296,19 @@ dependencies = [
  "rayon",
  "rectilinear-infill",
  "rstar",
+ "sdk-finalization-guest",
+ "sdk-layer-infill-guest",
+ "sdk-postpass-text-guest",
+ "sdk-prepass-guest",
  "seam-placer",
+ "seam-planner-default",
  "serde",
  "serde_json",
+ "skirt-brim",
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
+ "slicer-integrated-modules",
  "slicer-ir",
  "slicer-model-io",
  "slicer-scheduler",
@@ -3231,10 +3316,16 @@ dependencies = [
  "slicer-sdk",
  "slicer-wasm-host",
  "stl_io",
+ "support-planner",
+ "support-surface-ironing",
  "tempfile",
  "toml 0.8.23",
+ "top-surface-ironing",
+ "traditional-support",
+ "tree-support",
  "wasmtime",
  "wat",
+ "wipe-tower",
  "wit-parser 0.247.0",
  "witness",
  "zip",

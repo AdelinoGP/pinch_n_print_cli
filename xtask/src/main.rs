@@ -3,6 +3,7 @@ mod check_deviations;
 mod check_literals;
 mod compact_specs;
 mod dist;
+mod editions;
 mod gen_config_docs;
 mod test;
 mod wit_verify;
@@ -27,7 +28,10 @@ SUBCOMMANDS:
     check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
-    dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
+    dist                  Build pnp_cli + core-module WASMs and stage them under
+                          target/dist/<edition>/ (default edition: developer).
+    dist --edition <NAME> Stage the named edition from dist/editions.toml.
+    dist --plan           Print the resolved plan (TSV) without building.
     dist --debug          Same as `dist`, but stages the debug-profile binary.
     compact-specs         Collapse each docs/spec_packets/_OLD packet into a single
                           design-only <NN_slug>.md, then delete the source dir.
@@ -118,24 +122,17 @@ fn main() -> ExitCode {
             let ws = build_guests::workspace_root();
             ExitCode::from(check_literals::run(&ws, report, &filters) as u8)
         }
-        Some("dist") => {
-            let flag = args.get(1).map(String::as_str);
-            match flag {
-                None => {
-                    let ws = build_guests::workspace_root();
-                    ExitCode::from(dist::dist_command(&ws, false) as u8)
-                }
-                Some("--debug") => {
-                    let ws = build_guests::workspace_root();
-                    ExitCode::from(dist::dist_command(&ws, true) as u8)
-                }
-                Some(other) => {
-                    eprintln!("xtask: unknown flag '{other}' for dist\n");
-                    eprintln!("{USAGE}");
-                    ExitCode::from(2)
-                }
+        Some("dist") => match dist::parse_dist_args(&args[1..]) {
+            Ok(parsed) => {
+                let ws = build_guests::workspace_root();
+                ExitCode::from(dist::dist_command(&ws, &parsed) as u8)
             }
-        }
+            Err(e) => {
+                eprintln!("xtask: {e}\n");
+                eprintln!("{USAGE}");
+                ExitCode::from(2)
+            }
+        },
         Some("gen-config-docs") => {
             let flag = args.get(1).map(String::as_str);
             match flag {

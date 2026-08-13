@@ -834,15 +834,17 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
     slicer_ir::SupportIR {
         schema_version: semver(1, 0, 0),
         global_layer_index: 0,
-        support_paths: vec![mk_path_role(
-            100.0,
-            slicer_ir::ExtrusionRole::SupportMaterial,
-        )],
-        interface_paths: vec![mk_path_role(
-            101.0,
-            slicer_ir::ExtrusionRole::SupportInterface,
-        )],
-        ..Default::default()
+        regions: vec![slicer_ir::slice_ir::SupportRegion {
+            support_paths: vec![mk_path_role(
+                100.0,
+                slicer_ir::ExtrusionRole::SupportMaterial,
+            )],
+            interface_paths: vec![mk_path_role(
+                101.0,
+                slicer_ir::ExtrusionRole::SupportInterface,
+            )],
+            ..Default::default()
+        }],
     }
     // exhaustive: SupportIR explicit test fixture preserves boundary data
 }

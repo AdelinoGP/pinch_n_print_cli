@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_sdk::native::NativeStageEntry;
 
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
@@ -19,10 +20,11 @@ use slicer_scheduler::execution_plan::{
     WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
-    load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule,
+    load_modules_from_roots_with_integrated, LoadDiagnostic, LoadError, LoadedModule,
 };
 use slicer_scheduler::topology::topological_sort;
 use slicer_scheduler::validation::SchedulerError;
+use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
 
 use crate::instance::{WasmComponent, WasmEngine};
 use crate::pool::{
@@ -45,6 +47,8 @@ pub struct LiveModuleBinding {
     /// Compiled WASM component for runtime instantiation (optional for
     /// fixtures that don't exercise dispatch).
     pub wasm_component: Option<Arc<WasmComponent>>,
+    /// Native entry point for an integrated module, when registered.
+    pub native_entry: Option<NativeStageEntry>,
 }
 
 /// Build the immutable `ExecutionPlan` used by the live host/runtime path.
@@ -126,6 +130,13 @@ pub enum LiveModuleLoadError {
         /// Human-readable cause of the artifact load failure.
         cause: String,
     },
+    /// An integrated module has no registered native entry for its stage.
+    NativeEntry {
+        /// Module ID whose native entry is missing.
+        module_id: String,
+        /// Stage family that requires the entry.
+        stage_id: String,
+    },
 }
 
 impl std::fmt::Display for LiveModuleLoadError {
@@ -144,6 +155,13 @@ impl std::fmt::Display for LiveModuleLoadError {
                     "module '{module_id}' WASM component load failed: {cause}"
                 )
             }
+            Self::NativeEntry {
+                module_id,
+                stage_id,
+            } => write!(
+                f,
+                "integrated module '{module_id}' has no native entry for stage '{stage_id}'"
+            ),
         }
     }
 }
@@ -241,7 +259,39 @@ pub fn load_live_modules_for_plan_profiled(
     config_source: &HashMap<ConfigKey, ConfigValue>,
     profile: bool,
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
-    let mut report = load_modules_from_roots(search_roots)?;
+    load_live_modules_for_plan_with_integrated(
+        search_roots,
+        host_parallelism,
+        config_source,
+        profile,
+        &[],
+        &[],
+    )
+}
+
+/// Same as [`load_live_modules_for_plan_profiled`], plus integrated-module
+/// registrations (ADR-0056): embedded-manifest modules with no on-disk
+/// `.wasm`, forming search tier 5 beneath the four search-path tiers.
+///
+/// Integrated modules flow through the identical ingestion/claims/DAG
+/// pipeline; the only difference on this path is that a module whose
+/// [`ModuleProvenance`] is `Integrated` skips component compilation — its
+/// [`LiveModuleBinding`] gets `wasm_component: None` and
+/// `compile_module_component` is never attempted for it (there is no `.wasm`
+/// artifact to read).
+///
+/// Kept as a separate entry point rather than a fifth parameter on
+/// [`load_live_modules_for_plan_profiled`] so existing call sites — none of
+/// which register integrated modules — stay untouched.
+pub fn load_live_modules_for_plan_with_integrated(
+    search_roots: &[PathBuf],
+    host_parallelism: usize,
+    config_source: &HashMap<ConfigKey, ConfigValue>,
+    profile: bool,
+    integrated: &[IntegratedModuleRegistration],
+    native_entries: &[(ModuleId, NativeStageEntry)],
+) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
+    let mut report = load_modules_from_roots_with_integrated(search_roots, integrated)?;
 
     let wall_generator = config_source
         .get(WALL_GENERATOR_CONFIG_KEY)
@@ -317,11 +367,38 @@ pub fn load_live_modules_for_plan_profiled(
         .map_err(|e| -> Box<LiveModuleLoadError> {
             Box::new(LiveModuleLoadError::InstancePool(e))
         })?;
+        let instance_pool = Arc::new(pool);
+        let native_entry = (module.provenance() == ModuleProvenance::Integrated)
+            .then(|| {
+                native_entries
+                    .iter()
+                    .find(|(id, _)| id == module.id())
+                    .map(|(_, entry)| *entry)
+            })
+            .flatten();
+        if module.provenance() == ModuleProvenance::Integrated && native_entry.is_none() {
+            return Err(Box::new(LiveModuleLoadError::NativeEntry {
+                module_id: module.id().to_string(),
+                stage_id: module.stage().to_string(),
+            }));
+        }
+        // ADR-0056: integrated modules carry no on-disk `.wasm` artifact;
+        // dispatch for them is native, so component compilation is skipped.
+        if module.provenance() == ModuleProvenance::Integrated {
+            bindings.push(LiveModuleBinding {
+                module,
+                instance_pool,
+                wasm_component: None,
+                native_entry,
+            });
+            continue;
+        }
         let wasm_component = compile_module_component(engine.as_ref(), &module)?;
         bindings.push(LiveModuleBinding {
             module,
-            instance_pool: Arc::new(pool),
+            instance_pool,
             wasm_component: Some(wasm_component),
+            native_entry,
         });
     }
 

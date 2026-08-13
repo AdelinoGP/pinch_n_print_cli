@@ -13,12 +13,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use sdk_layer_infill_guest::SdkLayerInfillModule;
 use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     ExecutionPlanError, LoadDiagnostic, STAGE_ORDER,
 };
+use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -126,6 +129,144 @@ fn prepass_manifest(id: &str) -> String {
         &[],
         &["SurfaceClassificationIR"],
     )
+}
+
+/// AC-5 (ADR-0056 / packet 201): an integrated-provenance module that
+/// survives dedup must get a `LiveModuleBinding` with `wasm_component: None`,
+/// and component compilation must never be attempted for it (observable as a
+/// `LiveModuleLoadError::Component` for the synthetic id if the guard is
+/// missing — the module has no on-disk `.wasm`).
+#[test]
+fn integrated_binding_skips_component_compile() {
+    let dir = TempDir::new().unwrap();
+    // No disk root provides this id, so the integrated module survives dedup.
+    // `manifest_toml` is `&'static str` (registrations are normally
+    // `include_str!` embeds); leak the helper-built manifest in test scope.
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.integrated-infill", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-fixture",
+    };
+
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[(
+            "com.example.integrated-infill".to_string(),
+            SdkLayerInfillModule::__slicer_native_entry(),
+        )],
+    )
+    .expect("integrated module load must succeed (no Component error)");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == "com.example.integrated-infill")
+        .expect("integrated module binding present");
+    assert_eq!(
+        binding.module.provenance(),
+        ModuleProvenance::Integrated,
+        "integrated registration must carry Integrated provenance"
+    );
+    assert!(
+        binding.wasm_component.is_none(),
+        "integrated module must skip component compilation (wasm_component: None)"
+    );
+}
+
+#[test]
+fn integrated_binding_attaches_native_entry() {
+    let dir = TempDir::new().unwrap();
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.integrated-native", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-native",
+    };
+    let module_id = "com.example.integrated-native".to_string();
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[(module_id, SdkLayerInfillModule::__slicer_native_entry())],
+    )
+    .expect("integrated module load must succeed");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == "com.example.integrated-native")
+        .expect("integrated binding present");
+    assert!(binding.native_entry.is_some());
+    assert!(binding.wasm_component.is_none());
+}
+
+#[test]
+fn external_override_forces_wasm_dispatch() {
+    let dir = TempDir::new().unwrap();
+    let id = "com.example.override";
+    write_module_with_wasm(
+        dir.path(),
+        "override",
+        &infill_manifest(id, &[]),
+        &minimal_component_bytes(),
+    );
+    let manifest_toml: &'static str = Box::leak(infill_manifest(id, &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-override",
+    };
+    let out = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[(
+            id.to_string(),
+            SdkLayerInfillModule::__slicer_native_entry(),
+        )],
+    )
+    .expect("external override must load");
+
+    let binding = out
+        .bindings
+        .iter()
+        .find(|b| b.module.id() == id)
+        .expect("override binding present");
+    assert_eq!(binding.module.provenance(), ModuleProvenance::External);
+    assert!(binding.native_entry.is_none());
+    assert!(binding.wasm_component.is_some());
+}
+
+#[test]
+fn integrated_without_native_entry_fails_loud() {
+    let dir = TempDir::new().unwrap();
+    let manifest_toml: &'static str =
+        Box::leak(infill_manifest("com.example.no-native", &[]).into_boxed_str());
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-integrated-no-native",
+    };
+    let error = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[],
+    )
+    .expect_err("integrated module without a native entry must fail at load");
+    let message = error.to_string();
+    assert!(message.contains("com.example.no-native"));
+    assert!(message.contains("Layer::Infill"));
+    assert!(message.contains("no native entry"));
 }
 
 #[test]

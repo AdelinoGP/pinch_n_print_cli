@@ -107,6 +107,16 @@ Include ranges for files over 300 lines.
 - **WIT boundary:** unchanged. No WIT file is edited, so `crates/slicer-schema/wit/**` staleness does not apply — but the pilot `Cargo.toml` edits still invalidate those three guests' fingerprints, which is why `build-guests --check` is a gate command.
 - **Determinism/scheduler constraints:** integrated modules must produce identical scheduling behavior to their wasm twins — claims, DAG position, and IR access are read from the same manifest text, so the scheduler cannot observe the difference (ADR-0056 Decision item 1). DEV-093 run-to-run nondeterminism means a parity test must dispatch both paths within one process on one fixture and must not compare against any stored snapshot.
 
+## Gaps Inherited from Packet 202 (recorded at 202 closure, 2026-08-10)
+
+Packet 202 closed with the native dispatch seam live and the never-silent rule enforced (AC-N2). The following 202-closure gaps bound what this packet's parity gate can and cannot exercise; none blocks the three pilots, but each is a recorded limit:
+
+1. **Stage transports that fail LOUDLY on the native path.** 202's `marshal/native.rs` completes the commit for the layer infill/perimeter/support stages, prepass, finalization, and the postpass **text** variant. The native path returns a fatal error — never a silent skip — for `Layer::SlicePostProcess`, `Layer::PathOptimization`, seam stages, the layer `paint_segmentation` arm, and the postpass **gcode** variant (completing gcode postpass needs a runner-command mutation surface that 202's seam does not expose; that is a later packet). The three pilots dispatch only `Layer::Perimeters` (×2) and `PrePass::SupportGeometry`, which are fully committed — but a parity test must never route a pilot through the loud-error stages, and any future pilot on those stages needs the transport completed first.
+2. **View-leg approximation points to audit in the parity gate.** 202's request builders hardcode values for fields the envelope cannot carry: `effective_layer_height.unwrap_or(0.2)` and `scoring_width: 0.4` in `crates/slicer-wasm-host/src/marshal/native.rs` (the input-view leg is exactly the dual leg this packet's gate audits). If a parity fixture's inputs traverse these fields, divergence at those points is expected and must be triaged as an envelope-coverage gap, not a module defect.
+3. **Instrumentation zeros on native dispatches.** Native calls return empty `last_*`/`take_*` captures (ModuleAccessAudit/profiling see zeros) — documented at 202. AC-8's methodology is unaffected (fuel is a wasm-guest counter by ADR-0055; wall-clock is process-level), but if this packet's evidence needs per-module native reads, that is new work, not a fixture tweak.
+4. **Native log capture deferred.** `slicer_sdk::host::log*` native arms bypass the dispatcher's capture channel (code comment in tree); no AC depends on it. If 204's profiling runs need native module logs, route them into `last_log_messages` as follow-up work.
+5. **Workspace shape change.** The four sdk-* test-guests became workspace members (crate-type `cdylib, rlib`) and `cargo xtask build-guests` discovers test-guests by path pattern, not the old `[workspace]` sentinel. The parity seam file `native_dispatch_parity_seam_tdd.rs` landed and is the reuse template for Steps 4–6 — re-derive its exact construction shape by dispatch (its final form may differ from the authoring-time quote).
+
 ## Locked Assumptions and Invariants
 
 - **Locked:** the Hybrid integrated set lives in `dist/editions.toml` and nowhere else; any consumer (packet 205 included) reads it through `xtask::editions::load_editions`. A second source of truth for edition membership is a design defect.
@@ -128,7 +138,7 @@ Include ranges for files over 300 lines.
 
 - Aggregate: `M`
 - Largest step: `M` (Step 3, the comparator + its self-tests)
-- Highest-risk dispatch and required return format: the packet-202 seam-shape dispatch (`SNIPPETS`, 1 snippet, ≤30 lines). If 202 is unimplemented the file will not exist; the fallback is a `SUMMARY` (≤200 words) of `docs/spec_packets/202-native-adapter-and-dispatch/design.md`, which must not be read by the implementer directly.
+- Highest-risk dispatch and required return format: the packet-202 seam-shape dispatch (`SNIPPETS`, 1 snippet, ≤30 lines). 202 is implemented (2026-08-10) — `crates/slicer-wasm-host/src/marshal/native.rs` and `crates/slicer-runtime/tests/contract/native_dispatch_parity_seam_tdd.rs` exist in the tree; re-derive the seam's exact construction shape from the landed code rather than the authoring-time quote.
 
 ## Open Questions
 

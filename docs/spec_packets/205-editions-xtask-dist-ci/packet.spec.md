@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 205-editions-xtask-dist-ci
 task_ids:
   - ADR-0057

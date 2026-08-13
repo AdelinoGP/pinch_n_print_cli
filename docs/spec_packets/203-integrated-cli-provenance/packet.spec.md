@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 203-integrated-cli-provenance
 task_ids:
   - ADR-0056

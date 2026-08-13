@@ -69,6 +69,7 @@ pub fn run_support_preview(
         config_source,
         module_dirs,
         no_default_module_paths,
+        false,
     )
     .map_err(|e| e.to_string())?;
 

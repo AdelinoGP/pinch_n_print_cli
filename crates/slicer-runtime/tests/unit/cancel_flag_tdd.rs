@@ -36,6 +36,7 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
         output_path: None,
         module_dirs: vec![module_dir],
         no_default_module_paths: true,
+        no_integrated_modules: false,
         thumbnail: None,
         report: None,
         report_verbose: false,

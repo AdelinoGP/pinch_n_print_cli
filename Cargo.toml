@@ -12,6 +12,7 @@ members = [
     "crates/slicer-helpers",
     "crates/slicer-model-io",
     "crates/slicer-wasm-host",
+    "crates/slicer-integrated-modules",
     "crates/pnp-cli-locator",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
@@ -34,6 +35,10 @@ members = [
     "modules/core-modules/overhang-classifier-default",
     "modules/core-modules/machine-gcode-emit",
     "modules/core-modules/arachne-perimeters",
+    "crates/slicer-wasm-host/test-guests/sdk-finalization-guest",
+    "crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest",
+    "crates/slicer-wasm-host/test-guests/sdk-postpass-text-guest",
+    "crates/slicer-wasm-host/test-guests/sdk-prepass-guest",
     "xtask",
 ]
 resolver = "2"

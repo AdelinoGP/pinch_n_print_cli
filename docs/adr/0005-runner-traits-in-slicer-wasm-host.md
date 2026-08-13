@@ -76,7 +76,7 @@ direction. The deconstruction happens inside the runner impl on the wasm-host
 side **before** return; `commit_layer_outputs` on the runtime side consumes
 only `LayerStageCommitData`.
 
-The four `bindgen!` invocations remain co-located in `slicer-wasm-host` (one
+The 15 `bindgen!` invocations remain co-located in `slicer-wasm-host` (one
 file: `host.rs`) so ADR-0002's `with:` remap pattern continues to give all
 four worlds shared Rust type identity. The `pub mod layer` declaration must
 precede the other three modules so the `super::layer::…` paths resolve.
@@ -125,7 +125,7 @@ precede the other three modules so the `super::layer::…` paths resolve.
 ## Verification
 
 - `grep -cE 'wasmtime::component::bindgen!' crates/slicer-wasm-host/src/host.rs`
-  returns 4 (one per world).
+  returns 15 (one per world).
 - `! grep -rE 'fn run.*Blackboard|fn run.*LayerArena|fn run.*PrepassExecutionError|fn run.*HostExecutionContext|HostExecutionContext.*->|->.*HostExecutionContext' crates/slicer-wasm-host/src/`
   returns no matches.
 - `cargo tree -p slicer-runtime --depth 1 --edges normal` does not list
@@ -140,3 +140,13 @@ Tests of the runner-trait contract and dispatcher protocol live in
 (those needing `Blackboard` or `LayerArena`) stay in `slicer-runtime/tests/`.
 Test guests live with the host they exercise, under
 `slicer-wasm-host/test-guests/`.
+
+## Amendment — 2026-08-10 (packet 202)
+
+The contested Decision bullet remains quoted verbatim:
+
+> Module access: `&CompiledModuleLive<'a>` defined in `slicer-wasm-host` with 5 fields (`module_id: &'a ModuleId`, `instance_pool: Arc<WasmInstancePool>`, `wasm_component: Option<Arc<WasmComponent>>`, `claims: &'a [String]`, `config_view: Arc<ConfigView>`). No back-edge dep on `slicer-runtime`.
+
+Packet 202 adds the sixth field: `native_entry: Option<slicer_sdk::native::NativeStageEntry>` (defaults `None` inside `CompiledModuleLive::new`; set via `with_native_entry`) for provenance-routed native dispatch (ADR-0056 Decision item 3). The seam invariants hold unchanged: no `HostExecutionContext` crosses the trait boundary (never constructed on the native path), outputs remain IR-typed, and `NativeStageEntry` lives in `slicer-sdk`, so the “no back-edge dep on `slicer-runtime`” clause is untouched; only the field count and list change.
+
+This amendment also corrects two stale bindgen counts verified wrong at packet-202 authoring: the §Decision co-location sentence is corrected from four to 15, and the §Verification line is corrected from “returns 4” to “returns 15”.

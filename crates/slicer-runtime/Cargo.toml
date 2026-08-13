@@ -15,6 +15,26 @@ slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-wasm-host = { path = "../slicer-wasm-host" }
+slicer-integrated-modules = { path = "../slicer-integrated-modules", features = [
+    "fuzzy-skin",
+    "gyroid-infill",
+    "infill-linker",
+    "layer-planner-default",
+    "lightning-infill",
+    "overhang-classifier-default",
+    "part-cooling",
+    "rectilinear-infill",
+    "seam-placer",
+    "seam-planner-default",
+    "skirt-brim",
+    "support-surface-ironing",
+    "top-surface-ironing",
+    "traditional-support",
+    "tree-support",
+    "wipe-tower",
+    "path-optimization-default",
+    "machine-gcode-emit",
+] }
 slicer-gcode = { path = "../slicer-gcode" }
 toml = "0.8"
 rayon = "1.10"
@@ -41,6 +61,10 @@ serde_json = "1.0"
 base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
 slicer-schema = { path = "../slicer-schema" }
+sdk-layer-infill-guest = { path = "../slicer-wasm-host/test-guests/sdk-layer-infill-guest" }
+sdk-finalization-guest = { path = "../slicer-wasm-host/test-guests/sdk-finalization-guest" }
+sdk-postpass-text-guest = { path = "../slicer-wasm-host/test-guests/sdk-postpass-text-guest" }
+sdk-prepass-guest = { path = "../slicer-wasm-host/test-guests/sdk-prepass-guest" }
 pnp-cli-locator = { path = "../pnp-cli-locator" }
 criterion = { workspace = true }
 toml = "0.8"
@@ -74,6 +98,10 @@ path = "../../modules/core-modules/infill-linker"
 [dev-dependencies.classic-perimeters]
 path = "../../modules/core-modules/classic-perimeters"
 
+# packet 204 (AC-5): integrated_parity_support_planner_tdd drives SupportPlanner
+[dev-dependencies.support-planner]
+path = "../../modules/core-modules/support-planner"
+
 # packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
 # natively (mirroring the module's own canonical tdd tests) instead of
 # substring-matching its source text.
@@ -84,6 +112,45 @@ path = "../../modules/core-modules/arachne-perimeters"
 # seam-placer directly against classic-perimeters output.
 [dev-dependencies.seam-placer]
 path = "../../modules/core-modules/seam-placer"
+
+[dev-dependencies.fuzzy-skin]
+path = "../../modules/core-modules/fuzzy-skin"
+
+[dev-dependencies.layer-planner-default]
+path = "../../modules/core-modules/layer-planner-default"
+
+[dev-dependencies.overhang-classifier-default]
+path = "../../modules/core-modules/overhang-classifier-default"
+
+[dev-dependencies.part-cooling]
+path = "../../modules/core-modules/part-cooling"
+
+[dev-dependencies.seam-planner-default]
+path = "../../modules/core-modules/seam-planner-default"
+
+[dev-dependencies.skirt-brim]
+path = "../../modules/core-modules/skirt-brim"
+
+[dev-dependencies.support-surface-ironing]
+path = "../../modules/core-modules/support-surface-ironing"
+
+[dev-dependencies.top-surface-ironing]
+path = "../../modules/core-modules/top-surface-ironing"
+
+[dev-dependencies.traditional-support]
+path = "../../modules/core-modules/traditional-support"
+
+[dev-dependencies.tree-support]
+path = "../../modules/core-modules/tree-support"
+
+[dev-dependencies.wipe-tower]
+path = "../../modules/core-modules/wipe-tower"
+
+[dev-dependencies.path-optimization-default]
+path = "../../modules/core-modules/path-optimization-default"
+
+[dev-dependencies.machine-gcode-emit]
+path = "../../modules/core-modules/machine-gcode-emit"
 
 [[bench]]
 name = "pipeline"

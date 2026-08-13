@@ -245,10 +245,6 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
                 ));
                 continue;
             }
-            if !has_workspace_sentinel(&tab) {
-                skips.push(format!("SKIP: {rel} (missing [workspace] sentinel)"));
-                continue;
-            }
             if !has_wit_bindgen(&tab) {
                 skips.push(format!("SKIP: {rel} (no wit-bindgen dependency)"));
                 continue;

@@ -175,8 +175,8 @@ fn clip_polygons_union_produces_nonempty_result_for_real_input() {
 #[test]
 fn offset_polygons_shrinks_and_grows() {
     let a = vec![square(0, 100_000)]; // 10mm × 10mm square
-    let grown = host::offset_polygons(&a, 1.0, OffsetJoinType::Miter);
-    let shrunk = host::offset_polygons(&a, -1.0, OffsetJoinType::Miter);
+    let grown = host::offset_polygons(&a, 1.0, OffsetJoinType::Miter, 0.0);
+    let shrunk = host::offset_polygons(&a, -1.0, OffsetJoinType::Miter, 0.0);
     assert!(!grown.is_empty(), "positive offset must produce output");
     assert!(
         !shrunk.is_empty(),

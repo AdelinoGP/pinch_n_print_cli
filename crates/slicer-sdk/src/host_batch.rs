@@ -46,6 +46,8 @@ pub struct OffsetRequest {
     pub delta_mm: f32,
     /// Corner join style.
     pub join: OffsetJoinType,
+    /// Arc approximation tolerance in millimeters.
+    pub arc_tolerance_mm: f32,
 }
 
 /// One `clip-polygons` item in a batch.
@@ -108,6 +110,7 @@ pub struct SurfaceNormalRequest {
 ///     polygons: e.outlines.clone(),
 ///     delta_mm: avoid_inflate,
 ///     join: OffsetJoinType::Miter,
+///     arc_tolerance_mm: 0.0,
 /// }) {
 ///     // `inflated` is this `entry`'s result, always.
 /// }
@@ -140,7 +143,9 @@ pub fn offset_polygons_batch(requests: &[OffsetRequest]) -> Vec<Vec<ExPolygon>> 
     {
         requests
             .iter()
-            .map(|r| crate::host::offset_polygons(&r.polygons, r.delta_mm, r.join))
+            .map(|r| {
+                crate::host::offset_polygons(&r.polygons, r.delta_mm, r.join, r.arc_tolerance_mm)
+            })
             .collect()
     }
     #[cfg(target_arch = "wasm32")]
@@ -152,6 +157,7 @@ pub fn offset_polygons_batch(requests: &[OffsetRequest]) -> Vec<Vec<ExPolygon>> 
                 polygons: r.polygons.iter().map(wit::to_wit_expolygon).collect(),
                 delta_mm: r.delta_mm,
                 join: wit::to_wit_join(r.join),
+                arc_tolerance_mm: r.arc_tolerance_mm,
             })
             .collect();
         svc::offset_polygons_batch(&wit_requests)
@@ -308,7 +314,7 @@ package slicer:common {
         enum clip-operation   { union, intersection, difference, xor }
         enum offset-join-type { miter, round, square }
 
-        record offset-request { polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type }
+        record offset-request { polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32 }
         offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
 
         record clip-request { subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation }
@@ -419,6 +425,7 @@ mod tests {
             polygons: vec![square(0.0, 10.0)],
             delta_mm: *d,
             join: OffsetJoinType::Miter,
+            arc_tolerance_mm: 0.0,
         });
 
         assert_eq!(paired.len(), items.len());
@@ -443,13 +450,16 @@ mod tests {
                 polygons: vec![square(0.0, 10.0 * i as f32)],
                 delta_mm: i as f32 * 0.5,
                 join: OffsetJoinType::Miter,
+                arc_tolerance_mm: 0.0,
             })
             .collect();
 
         let batched = offset_polygons_batch(&requests);
         let one_by_one: Vec<Vec<ExPolygon>> = requests
             .iter()
-            .map(|r| crate::host::offset_polygons(&r.polygons, r.delta_mm, r.join))
+            .map(|r| {
+                crate::host::offset_polygons(&r.polygons, r.delta_mm, r.join, r.arc_tolerance_mm)
+            })
             .collect();
 
         assert_eq!(batched, one_by_one);

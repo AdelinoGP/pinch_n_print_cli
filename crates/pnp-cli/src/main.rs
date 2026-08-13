@@ -35,8 +35,8 @@ use clap::{ArgGroup, Parser, Subcommand};
 use slicer_runtime::{runtime_builtins, SliceRunOptions};
 use slicer_scheduler::dag_cli::{run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages};
 use slicer_scheduler::{
-    assemble_search_roots, build_config_schema_json, load_modules_from_roots, LoadedModule,
-    Producer,
+    assemble_search_roots, build_config_schema_json, load_modules_from_roots_with_integrated,
+    LoadedModule, Producer,
 };
 
 /// Exit status used when a slice is cancelled by a signal or stdin EOF.
@@ -72,6 +72,9 @@ enum Cmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
         /// Path to a PNG thumbnail image to embed in the G-code header.
         #[arg(long)]
         thumbnail: Option<PathBuf>,
@@ -187,6 +190,9 @@ enum ModuleCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
     },
     /// Emit combined config schema JSON from loaded modules.
     ConfigSchema {
@@ -196,6 +202,9 @@ enum ModuleCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
     },
 }
 
@@ -303,6 +312,9 @@ enum DagCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
         /// Optional model file for object-id context.
         #[arg(long, value_name = "PATH")]
         model: Option<PathBuf>,
@@ -317,6 +329,9 @@ enum DagCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
         /// Optional model file.
         #[arg(long, value_name = "PATH")]
         model: Option<PathBuf>,
@@ -331,6 +346,9 @@ enum DagCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
         /// Optional model file.
         #[arg(long, value_name = "PATH")]
         model: Option<PathBuf>,
@@ -343,6 +361,9 @@ enum DagCmd {
         /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
+        /// Disable the integrated-module tier (tier 5) entirely.
+        #[arg(long = "no-integrated-modules")]
+        no_integrated_modules: bool,
         /// Optional model file.
         #[arg(long, value_name = "PATH")]
         model: Option<PathBuf>,
@@ -353,9 +374,26 @@ enum DagCmd {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn load_dag_modules(module_dir: &[PathBuf], no_default_module_paths: bool) -> Vec<LoadedModule> {
+fn cli_integrated_registrations(
+    no_integrated_modules: bool,
+) -> Vec<slicer_scheduler::IntegratedModuleRegistration> {
+    if no_integrated_modules {
+        Vec::new()
+    } else {
+        slicer_integrated_modules::integrated_registrations()
+    }
+}
+
+fn load_dag_modules(
+    module_dir: &[PathBuf],
+    no_default_module_paths: bool,
+    no_integrated_modules: bool,
+) -> Vec<LoadedModule> {
     let search_roots = assemble_search_roots(module_dir, no_default_module_paths);
-    match load_modules_from_roots(&search_roots) {
+    match load_modules_from_roots_with_integrated(
+        &search_roots,
+        &cli_integrated_registrations(no_integrated_modules),
+    ) {
         Ok(r) => r.modules,
         Err(e) => {
             eprintln!("error loading modules: {e:?}");
@@ -424,6 +462,7 @@ fn main() {
             output,
             module_dir,
             no_default_module_paths,
+            no_integrated_modules,
             thumbnail,
             #[cfg(feature = "report")]
             report,
@@ -518,6 +557,7 @@ fn main() {
                 output_path: output,
                 module_dirs: module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
                 thumbnail,
                 report: report_opt,
                 report_verbose: report_verbose_opt,
@@ -618,18 +658,24 @@ fn main() {
             ModuleCmd::Diagnose {
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
             } => {
                 std::process::exit(slicer_runtime::diagnose::run_diagnose(
                     &module_dir,
                     no_default_module_paths,
+                    no_integrated_modules,
                 ));
             }
             ModuleCmd::ConfigSchema {
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
             } => {
                 let search_roots = assemble_search_roots(&module_dir, no_default_module_paths);
-                let report = match load_modules_from_roots(&search_roots) {
+                let report = match load_modules_from_roots_with_integrated(
+                    &search_roots,
+                    &cli_integrated_registrations(no_integrated_modules),
+                ) {
                     Ok(r) => r,
                     Err(e) => {
                         eprintln!("error loading modules: {e:?}");
@@ -709,9 +755,11 @@ fn main() {
             DagCmd::Stages {
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
                 model: _,
             } => {
-                let loaded = load_dag_modules(&module_dir, no_default_module_paths);
+                let loaded =
+                    load_dag_modules(&module_dir, no_default_module_paths, no_integrated_modules);
                 let producers = dag_producers(&loaded);
                 print_json(&run_dag_stages(&producers));
             }
@@ -719,9 +767,11 @@ fn main() {
                 id,
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
                 model: _,
             } => {
-                let loaded = load_dag_modules(&module_dir, no_default_module_paths);
+                let loaded =
+                    load_dag_modules(&module_dir, no_default_module_paths, no_integrated_modules);
                 let producers = dag_producers(&loaded);
                 match run_dag_stage(&producers, &id) {
                     Some(out) => print_json(&out),
@@ -735,9 +785,11 @@ fn main() {
                 module_id,
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
                 model,
             } => {
-                let loaded = load_dag_modules(&module_dir, no_default_module_paths);
+                let loaded =
+                    load_dag_modules(&module_dir, no_default_module_paths, no_integrated_modules);
                 let producers = dag_producers(&loaded);
                 let object_ids = model.as_deref().and_then(object_ids_from_model);
                 match run_dag_depends(&producers, &module_id, object_ids.as_deref()) {
@@ -751,9 +803,11 @@ fn main() {
             DagCmd::Claims {
                 module_dir,
                 no_default_module_paths,
+                no_integrated_modules,
                 model: _,
             } => {
-                let loaded = load_dag_modules(&module_dir, no_default_module_paths);
+                let loaded =
+                    load_dag_modules(&module_dir, no_default_module_paths, no_integrated_modules);
                 let producers = dag_producers(&loaded);
                 print_json(&run_dag_claims(&producers));
             }

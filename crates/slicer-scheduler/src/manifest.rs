@@ -6,7 +6,7 @@
 // complicate call-sites without real performance benefit.
 #![allow(clippy::result_large_err)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -48,6 +48,36 @@ pub enum RegionSplitValueType {
     ToolIndex,
     /// Arbitrary string label defined by the module.
     CustomString,
+}
+
+/// How a module reached the registry (ADR-0056).
+///
+/// `External` modules were discovered on disk from the search-path tiers;
+/// `Integrated` modules were compiled into the host binary and registered
+/// from embedded manifest TOML with no on-disk `.wasm`. Provenance decides
+/// dispatch (native vs WASM instantiation) downstream; scheduling, claims,
+/// and config resolution never inspect it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleProvenance {
+    /// Discovered on disk from a module search root (`.toml` + `.wasm` pair).
+    External,
+    /// Compiled into the host binary; manifest TOML was embedded via
+    /// `include_str!` and registered through tier 5.
+    Integrated,
+}
+
+/// Registration record for an integrated module (ADR-0056 tier 5).
+///
+/// Carries no dispatch information — only the embedded manifest text and an
+/// origin label used in diagnostics and as the synthetic `wasm_path` value.
+#[derive(Debug, Clone, Copy)]
+pub struct IntegratedModuleRegistration {
+    /// Embedded manifest TOML text (typically `include_str!`).
+    pub manifest_toml: &'static str,
+    /// Human-readable origin label (e.g. `"core-integrated"`); used as the
+    /// `wasm_path`/`diagnostics_path` synthetic value and in shadow
+    /// diagnostics.
+    pub origin_label: &'static str,
 }
 
 /// Runtime module record produced by manifest ingestion.
@@ -92,7 +122,14 @@ pub struct LoadedModule {
     /// Effective layer parallel safety used by the runtime.
     pub(crate) layer_parallel_safe: bool,
     /// Companion `.wasm` path for this manifest.
+    ///
+    /// Invariant: this names an on-disk file only when
+    /// `provenance() == ModuleProvenance::External`. For integrated modules
+    /// it carries the registration's origin label (ADR-0056).
     pub(crate) wasm_path: PathBuf,
+    /// How this module reached the registry (ADR-0056). External modules
+    /// were found on disk; integrated modules were compiled into the host.
+    pub(crate) provenance: ModuleProvenance,
     /// True when the companion `.wasm` is a known placeholder (not a valid
     /// component-model binary). Modules with placeholder binaries are
     /// discoverable for manifest validation and plan construction, but
@@ -195,8 +232,16 @@ impl LoadedModule {
     }
 
     /// Companion `.wasm` path for this manifest.
+    ///
+    /// Names an on-disk file only when `provenance() == ModuleProvenance::External`;
+    /// for integrated modules it carries the registration origin label.
     pub fn wasm_path(&self) -> &Path {
         &self.wasm_path
+    }
+
+    /// How this module reached the registry (ADR-0056).
+    pub fn provenance(&self) -> ModuleProvenance {
+        self.provenance
     }
 
     /// True when the companion `.wasm` is a known placeholder (not a valid
@@ -247,6 +292,7 @@ pub struct LoadedModuleBuilder {
     overridable_per_layer: Vec<String>,
     layer_parallel_safe: bool,
     placeholder_wasm: bool,
+    provenance: ModuleProvenance,
     region_splits: Vec<RegionSplitDeclaration>,
     region_split_semantics: std::collections::HashSet<String>,
 }
@@ -279,6 +325,7 @@ impl LoadedModuleBuilder {
             overridable_per_layer: Vec::new(),
             layer_parallel_safe: false,
             placeholder_wasm: false,
+            provenance: ModuleProvenance::External,
             region_splits: Vec::new(),
             region_split_semantics: std::collections::HashSet::new(),
         }
@@ -368,6 +415,13 @@ impl LoadedModuleBuilder {
         self
     }
 
+    /// Set the module provenance (ADR-0056). Defaults to
+    /// [`ModuleProvenance::External`].
+    pub fn provenance(mut self, provenance: ModuleProvenance) -> Self {
+        self.provenance = provenance;
+        self
+    }
+
     /// Set region-split declarations and the pre-computed semantic lookup set.
     pub fn region_splits(
         mut self,
@@ -399,6 +453,7 @@ impl LoadedModuleBuilder {
             overridable_per_layer: self.overridable_per_layer,
             layer_parallel_safe: self.layer_parallel_safe,
             wasm_path: self.wasm_path,
+            provenance: self.provenance,
             placeholder_wasm: self.placeholder_wasm,
             region_splits: self.region_splits,
             region_split_semantics: self.region_split_semantics,
@@ -581,9 +636,28 @@ pub fn load_module_from_paths(
 }
 
 /// Scans search roots and loads all discovered modules.
+///
+/// Equivalent to [`load_modules_from_roots_with_integrated`] with an empty
+/// integrated registry (ADR-0056: tier 5 is appended beneath the disk tiers).
 pub fn load_modules_from_roots(search_roots: &[PathBuf]) -> Result<LoadModulesReport, LoadError> {
+    load_modules_from_roots_with_integrated(search_roots, &[])
+}
+
+/// Scans search roots and loads all discovered modules, then ingests the
+/// integrated (natively compiled) module registry as search tier 5 beneath
+/// the disk tiers (ADR-0056).
+///
+/// The disk loop is identical to the pre-ADR-0056 scan. First-root-wins
+/// dedup by `module.id` is unchanged; when an external module from any disk
+/// tier shadows an integrated module with the same id, a provenance-aware
+/// shadow diagnostic is emitted naming the integrated loser.
+pub fn load_modules_from_roots_with_integrated(
+    search_roots: &[PathBuf],
+    integrated: &[IntegratedModuleRegistration],
+) -> Result<LoadModulesReport, LoadError> {
     let mut report = LoadModulesReport::default();
-    let mut seen_ids = HashSet::new();
+    let mut seen_ids: std::collections::HashMap<ModuleId, ModuleProvenance> =
+        std::collections::HashMap::new();
 
     for root in search_roots {
         let manifest_paths = match discover_manifest_paths(root) {
@@ -602,7 +676,7 @@ pub fn load_modules_from_roots(search_roots: &[PathBuf]) -> Result<LoadModulesRe
             let wasm_path = manifest_path.with_extension("wasm");
             let result = ingest_manifest(&manifest_path, &wasm_path)?;
 
-            if seen_ids.contains(&result.module.id) {
+            if seen_ids.contains_key(&result.module.id) {
                 report.diagnostics.push(LoadDiagnostic {
                     level: DiagnosticLevel::Warning,
                     path: manifest_path,
@@ -616,17 +690,60 @@ pub fn load_modules_from_roots(search_roots: &[PathBuf]) -> Result<LoadModulesRe
                 continue;
             }
 
-            seen_ids.insert(result.module.id.clone());
+            seen_ids.insert(result.module.id.clone(), result.module.provenance);
             report.diagnostics.extend(result.diagnostics);
             report.modules.push(result.module);
         }
+    }
+
+    // Tier 5: integrated modules registered from embedded manifest TOML.
+    // No `.wasm` exists on disk; the synthetic path is the origin label.
+    for registration in integrated {
+        let origin_path = PathBuf::from(registration.origin_label);
+        let result = ingest_manifest_text(
+            registration.manifest_toml,
+            &origin_path,
+            &origin_path,
+            false,
+            ModuleProvenance::Integrated,
+        )?;
+
+        if let Some(winner_provenance) = seen_ids.get(&result.module.id) {
+            if *winner_provenance == ModuleProvenance::External {
+                report.diagnostics.push(LoadDiagnostic {
+                    level: DiagnosticLevel::Warning,
+                    path: origin_path,
+                    field: Some(String::from("module.id")),
+                    message: format!(
+                        "external module {id} shadows integrated module {id}",
+                        id = result.module.id
+                    ),
+                });
+            } else {
+                report.diagnostics.push(LoadDiagnostic {
+                    level: DiagnosticLevel::Warning,
+                    path: origin_path,
+                    field: Some(String::from("module.id")),
+                    message: format!(
+                        "duplicate module id '{}' ignored because an earlier search root already provided it",
+                        result.module.id
+                    ),
+                });
+            }
+            report.diagnostics.extend(result.diagnostics);
+            continue;
+        }
+
+        seen_ids.insert(result.module.id.clone(), result.module.provenance);
+        report.diagnostics.extend(result.diagnostics);
+        report.modules.push(result.module);
     }
 
     Ok(report)
 }
 
 #[derive(Debug)]
-struct IngestedManifest {
+pub(crate) struct IngestedManifest {
     module: LoadedModule,
     diagnostics: Vec<LoadDiagnostic>,
 }
@@ -652,6 +769,32 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
         message: format!("failed to read manifest: {error}"),
     })?;
 
+    let placeholder_wasm = is_placeholder_wasm(wasm_path);
+    ingest_manifest_text(
+        &manifest_text,
+        manifest_path,
+        wasm_path,
+        placeholder_wasm,
+        ModuleProvenance::External,
+    )
+}
+
+/// Core manifest ingestion over in-memory TOML text (ADR-0056).
+///
+/// Holds everything from TOML parse to [`LoadedModuleBuilder::build`]. The
+/// disk wrapper [`ingest_manifest`] handles `ensure_same_stem_wasm_exists`,
+/// `fs::read_to_string`, and `is_placeholder_wasm` before delegating here;
+/// integrated-module ingestion (tier 5) calls this directly with
+/// `placeholder_wasm = false`, `provenance = Integrated`, and the origin
+/// label as both synthetic paths.
+pub(crate) fn ingest_manifest_text(
+    manifest_text: &str,
+    diagnostics_path: &Path,
+    wasm_path: &Path,
+    placeholder_wasm: bool,
+    provenance: ModuleProvenance,
+) -> Result<IngestedManifest, LoadError> {
+    let manifest_path = diagnostics_path;
     let root: Value = manifest_text.parse::<Value>().map_err(|error| LoadError {
         path: manifest_path.to_path_buf(),
         field: None,
@@ -675,7 +818,6 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     validate_region_splits(&region_splits, manifest_path)?;
     let region_split_semantics: std::collections::HashSet<String> =
         region_splits.iter().map(|d| d.semantic.clone()).collect();
-    let placeholder_wasm = is_placeholder_wasm(wasm_path);
     if placeholder_wasm {
         diagnostics.push(LoadDiagnostic {
             level: DiagnosticLevel::Warning,
@@ -754,6 +896,7 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     )?)
     .layer_parallel_safe(layer_parallel_safe)
     .placeholder_wasm(placeholder_wasm)
+    .provenance(provenance)
     .region_splits(region_splits, region_split_semantics)
     .build();
 

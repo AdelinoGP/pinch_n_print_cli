@@ -191,7 +191,8 @@ rendering an empty table that would read as "nothing was slow".
 ## DAG introspection
 
 All `dag` subcommands take `--module-dir <PATH>` (repeatable),
-`--no-default-module-paths`, and optionally `--model <PATH>` (for
+`--no-default-module-paths`, `--no-integrated-modules`, and optionally
+`--model <PATH>` (for
 attaching per-object context to the output). They never compile WASM:
 the loader reads TOML manifests and checks same-stem `.wasm` existence
 only. Response latency is not measured; the design intent is
@@ -252,8 +253,13 @@ pnp_cli dag claims --module-dir modules/core-modules
 ## Diagnose
 
 Run the manifest-loading and DAG-validation passes against a module
-tree and emit `{pass, modules_loaded, stages, diagnostics: [...]}` to
-stdout. Exit codes:
+tree and emit `{pass, modules_loaded, stages, modules: [{id, provenance}],
+diagnostics: [...]}` to stdout. `modules` holds one entry per surviving
+module in report order, with `provenance` ∈ `"integrated"` / `"external"`.
+`--no-integrated-modules` disables the integrated-module tier (tier 5)
+entirely; it composes with `--no-default-module-paths` (neither implies the
+other). A provenance-aware shadow warning appears in `diagnostics` (level
+`warning`): `external module X shadows integrated module X`. Exit codes:
 
 - `0` — `pass: true`, no errors.
 - `1` — at least one `error`-level diagnostic. This includes an unreadable

@@ -180,6 +180,16 @@ construct-a-tiny-GCodeIR-and-serialise example.
 
 The `#[slicer_module]` macro generates the WIT export bindings, validates that the impl matches the declared stage, and wires up the detected stage export.
 
+For native host dispatch, the macro also emits
+`__slicer_native_entry()`: a `#[cfg(not(target_arch = "wasm32"))]` inherent
+`pub fn` returning the `::slicer_sdk::native::NativeStageEntry` family variant
+matching the implemented SDK trait. Its adapter body
+constructs the module with `from_config`, calls the trait stage method, and
+drains the SDK output builder. The adapter is generated from the same
+`slicer_schema::STAGES` table as the wasm32 glue, providing a single-source
+dual-target module model: the same crate compiles both to a WASM component and
+natively into the host.
+
 ```rust
 use slicer_sdk::prelude::*;
 
@@ -595,11 +605,10 @@ host::log_warn(&format!("Density near limit: {density}"));
 let surface_z: Option<f32> = host::raycast_z_down(object_id, x, y, start_z);
 let normal: Option<Point3> = host::surface_normal_at(object_id, x, y, z);
 
-// Geometry (delegates to slicer_core::polygon_ops — clipper2 — in-guest on
-// wasm32; the host bridge is not wired: see ADR-0049 §Amendment 2026-08-05
-// and DEV-094)
+// Geometry is bridged to the host on wasm32; native builds use the local
+// slicer_core::polygon_ops implementation.
 let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOperation::Intersection);
-let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter);
+let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter, arc_tolerance_mm);
 let simple:  Polygon        = host::simplify_polygon(&poly, 0.05);
 
 // Timing
