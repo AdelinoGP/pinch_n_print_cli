@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportAnalysisIR;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
     LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR,
@@ -63,6 +64,7 @@ pub struct Blackboard {
     region_map: Option<Arc<RegionMapIR>>,
     slice_ir: Option<Arc<Vec<SliceIR>>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
+    support_analysis: Option<Arc<SupportAnalysisIR>>,
     lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
@@ -80,6 +82,7 @@ impl Blackboard {
             region_map: None,
             slice_ir: None,
             support_geometry: None,
+            support_analysis: None,
             lightning_tree_ir: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
@@ -122,6 +125,9 @@ impl Blackboard {
         }
         if let Some(arc) = self.support_geometry.as_ref() {
             total = total.saturating_add(estimated_support_geometry_bytes(arc));
+        }
+        if let Some(arc) = self.support_analysis.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
         }
         if let Some(arc) = self.lightning_tree_ir.as_ref() {
             total = total.saturating_add(estimated_lightning_tree_ir_bytes(arc));
@@ -286,6 +292,24 @@ impl Blackboard {
     #[must_use]
     pub fn support_geometry(&self) -> Option<&Arc<SupportGeometryIR>> {
         self.support_geometry.as_ref()
+    }
+
+    /// Commit host support analysis exactly once.
+    pub fn commit_support_analysis(
+        &mut self,
+        ir: Arc<SupportAnalysisIR>,
+    ) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.support_analysis,
+            ir,
+            BlackboardPrepassSlot::SupportAnalysis,
+        )
+    }
+
+    /// Return committed host support analysis.
+    #[must_use]
+    pub fn support_analysis(&self) -> Option<&Arc<SupportAnalysisIR>> {
+        self.support_analysis.as_ref()
     }
 
     /// Commit `LightningTreeIR` exactly once.
