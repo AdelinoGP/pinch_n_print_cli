@@ -1,12 +1,18 @@
 # Task Map: 225-dragon-curve-feasibility-gate
 
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| `TASK-336` | `Step 1` | `docs/specs/community-modules-dragon-curve-plan.md` (Grounding facts) | `Cargo.toml`, `crates/**/Cargo.toml`, `modules/**/Cargo.toml`, `crates/slicer-wasm-host/src/{host,dispatch,instance}.rs`, `crates/slicer-runtime/src/run.rs` | none | `S` | Discovery inventory bounds every later step |
-| `TASK-336` | `Step 2` | `docs/specs/community-modules-dragon-curve-plan.md` (Grounding facts) | `Cargo.toml` | none | `S` | Root wasmtime 47.0.3 + wit-bindgen 0.60.0 pin |
-| `TASK-336` | `Step 3` | Step 1 inventory | `crates/**/Cargo.toml`, `modules/**/Cargo.toml` (stale pins) | none | `S` | No stale 43.0.0/0.57.1 pins remain |
-| `TASK-336` | `Step 4` | `docs/feasibility-probes/go-wasm.md` §8 | wasmtime-API surface (`slicer-wasm-host`, `slicer-runtime`), wit-bindgen consumers (`slicer-sdk`, `slicer-macros`, guests) | none | `M` | Compile+guest-freshness gate green |
-| `TASK-336` | `Step 5` | `docs/feasibility-probes/go-wasm.md` (full brief) | scratchpad probe only (no tree edits) | none | `M` | Go re-run; MoonBit recorded not-re-run |
-| `TASK-336` | `Step 6` | `docs/14_submodule_programming_languages.md` §Community-module context | docs only | none | `S` | Gate verdict recorded; unblocks TASK-338 (packet 227) |
+`TASK-336` is allocated by `docs/specs/community-modules-dragon-curve-plan.md:14`. The canonical `docs/07_implementation_status.md` row does not exist yet; the approved queue states packet 228 creates `TASK-336..TASK-339`. This is an explicit forward backlog mapping, not an invented current row.
 
-Copy costs from `implementation-plan.md`. Split before activation if any row is L or aggregate exceeds M. Aggregate = M.
+| Task ID | Step | Primary authority | Expected surface | Orca refs | Cost | Exit |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-336` | 1 | queue plan + existing WIT/host + local fork | scratch inventory | none | S | pins, seam, provenance grounded |
+| `TASK-336` | 2 | exact packet pins | manifests and compile-selected API fallout | none | M | compile/lint/guests green |
+| `TASK-336` | 2a | landed workspace pins | three current-toolchain docs | none | S | dependency-version docs reconciled |
+| `TASK-336` | 3 | text-postprocess WIT + official tool docs | shared fixtures/README | none | M | reproducible contract and stop protocol |
+| `TASK-336` | 4 | production text-postprocess host seam | integration test + aggregator | none | S | ignored host oracle compiles/rejects invalid input |
+| `TASK-336` | 5 | shared oracle | MoonBit fixture/evidence | none | M | terminal MoonBit result |
+| `TASK-336` | 6 | latest committed clean local AS backend HEAD | AssemblyScript fixture/evidence | none | M | terminal AssemblyScript result |
+| `TASK-336` | 7 | local C++ backend + WASI SDK docs | C++ fixture/evidence | none | M | terminal C++ result |
+| `TASK-336` | 8 | shared oracle + historical Go evidence | Go fixture/evidence | none | M | terminal Go result |
+| `TASK-336` | 9 | fixed priority rule | docs/14 | none | S | one computed language verdict |
+
+No OrcaSlicer behavior is borrowed. Packet 228 must reconcile the eventual `docs/07` row with this same task ID and scope.

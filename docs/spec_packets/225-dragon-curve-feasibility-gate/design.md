@@ -1,96 +1,93 @@
 # Design: 225-dragon-curve-feasibility-gate
 
-## Controlling Code Paths
+## Selected Approach
 
-- Primary code path: the wasmtime host surface in `crates/slicer-wasm-host` (`src/instance.rs` engine/store construction, `src/host.rs` `wasmtime::component::bindgen!` + `add_to_linker` + `ResourceLimiter`, `src/dispatch.rs` linker construction) plus `crates/slicer-runtime/src/run.rs` engine reuse.
-- Neighboring tests/fixtures: `crates/slicer-wasm-host/tests/contract/host_services_tdd.rs` (host-services bindgen smoke), `crates/slicer-runtime/tests/contract/wit_drift_detection_tdd.rs` (WIT/guest drift gate), and the full `test-guests/` + `wit-guest/` tree rebuilt by `cargo xtask build-guests`.
-- OrcaSlicer comparison: n/a (this packet has no OrcaSlicer parity consultation).
+Use the smallest existing string-bearing world as a common language oracle: `slicer:postpass-text-postprocess/text-postprocess-module`. A new ignored integration test accepts a component path through `PNP_FOREIGN_COMPONENT`, instantiates it through the existing production `TextPostprocessModule` slicer-only linker, invokes `run-text-postprocess`, and asserts one exact output. Candidate-specific scripts generate/build/componentize into scratch directories; checked-in records retain the reproducible commands and measured evidence, not generated output.
 
 ## Architecture Constraints
 
-- **Toolchain versions are exact.** wasmtime must be `47.0.3` and wit-bindgen `0.60.0`; no "47.x" or "0.60.x" looseness. The `call-hook` feature must be retained verbatim — it is the fuel-sampling mechanism pinned by ADR-0055 (`docs/adr/0055-*`; the workspace comment at `Cargo.toml:57-60` states this explicitly).
-- **The gate measures, it does not assume.** The Go probe must reproduce pnp_cli's exact `Layer::Infill` linker (slicer interfaces only, zero WASI) against wasmtime 47 and record the instantiation result honestly. The known hypothesis (host still must link WASI preview2, so wasmtime 47 alone likely does not change the blocker) is a prior, not a conclusion — if the linker still lacks `wasi:cli/environment@0.2.6`, the honest result is `INSTANTIATION FAILED` and the fallback is confirmed.
-- **MoonBit is not re-run.** `moon` is absent on this machine; the verdict table must record `not re-run (toolchain absent)` and the Go result is the sole gate-deciding evidence. No fabricated MoonBit re-check.
-- **Guest WASM staleness.** Bumping wit-bindgen invalidates every guest's generated bindings; the mandatory closure is `cargo xtask build-guests` (rebuild) followed by `cargo xtask build-guests --check` (freshness gate green). Do not skip the rebuild or the re-check.
-- No schema/version constant, no WIT change, and no new ADR. This packet changes no IR shape, no WIT identifier, no claim vocabulary, and no manifest contract. ADR-0044 and ADR-0058 are untouched.
+- wasmtime is exactly 47.0.3; workspace wit-bindgen is exactly 0.60.0; `call-hook` remains enabled.
+- The host oracle links slicer interfaces only. It must not add WASI merely to make C++ or Go pass.
+- Candidate success requires both instantiation and exact invocation output. Component validity alone is insufficient.
+- Candidate priority is immutable: MoonBit, AssemblyScript, C++, Go, Rust fallback.
+- Missing tooling is not a result. The worker stops the current step, asks the user to install it, includes exact install and version-verification instructions, and resumes only after confirmation.
+- `D:\wit-bindgen` is read-only. Its latest committed clean HEAD on `feat/assemblyscript-backend` is resolved after explicit user confirmation immediately before generation, then held constant across the AssemblyScript and C++ probes. No workspace path dependency is introduced.
+- AssemblyScript uses UTF-16 canonical embedding; the backend's unsupported async/future/stream/error-context surfaces are irrelevant to the synchronous text world but remain recorded limitations.
+- No WIT/schema/IR version changes and no new ADR.
+<!-- snippet: wasm-staleness -->
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
+
+## Exact Contract
+
+- Existing WIT package: `slicer:postpass-text-postprocess@1.0.0`.
+- Existing world: `text-postprocess-module`.
+- Existing exported interface/function: `text-postprocess.run(gcode-text: string, config: config-view) -> result<string, module-error>`.
+- Input: `; probe input\n`.
+- Expected success output: `;; foreign-language-probe\n; probe input\n`.
+- Host path: `host::postpass_text::TextPostprocessModule`, existing `add_to_linker` registrations, then generated `call_run`.
+- Result vocabulary: `LOADABLE_AND_CORRECT`, `NOT_LOADABLE_OR_CORRECT`, or transient `BLOCKED: TOOLCHAIN`. Only the first two may appear in finalized candidate records.
 
 ## Code Change Surface
 
-- Selected approach: pin bump at the workspace root first, sweep for stale in-tree pins, then drive the compile gate and let `cargo check`/`clippy`/`build-guests` enumerate the API fallout. The fallout fix list is bounded to the wasmtime API surface and the wit-bindgen generated-shape surface; both are grounded below.
-- Exact functions, traits, manifests, tests, and fixtures:
-  - `Cargo.toml:61-62` — `wasmtime = { version = "47.0.3", features = ["call-hook"] }`, `wit-bindgen = "0.60.0"`.
-  - `crates/slicer-wasm-host/src/instance.rs` — `WasmEngine::with_profiling` (`wasmtime::Config::new`, profiling flags, `consume_fuel`), `new_store` (`Store::new`, `set_fuel`, `call_hook`, `get_fuel`, `CallHook::CallingHost`), `WasmEngine` wrapper.
-  - `crates/slicer-wasm-host/src/host.rs` — the `wasmtime::component::bindgen!({ ... with: { ... } })` invocations (all stage worlds), `impl wasmtime::ResourceLimiter for MemTracker` (`memory_growing`, `table_growing`), `ResourceTable`, and the `add_to_linker::<_, wasmtime::component::HasSelf<_>>` wiring.
-  - `crates/slicer-wasm-host/src/dispatch.rs` — every `wasmtime::component::Linker::<HostExecutionContext>::new(engine)` and `add_to_linker` call site (one per stage family).
-  - `crates/slicer-runtime/src/run.rs` — `wasmtime::Engine` reuse (`WasmInstancePool` handle).
-  - wit-bindgen 0.60 generated-shape consumers: `crates/slicer-sdk/src/host.rs` `__sdk_host_services_import` / `__sdk_host_log_import` / `__sdk_host_medial_axis_import` / `__sdk_host_arachne_import` `generate!` blocks, `crates/slicer-macros/src/lib.rs` (`__slicer_path_ir_to_wit` / `__slicer_path_wit_to_ir` / `__slicer_ir_path_to_wit` and the per-world generated glue), and every `modules/*/wit-guest/` + `crates/slicer-wasm-host/test-guests/*/wit-guest/` generated binding.
-- Rejected alternatives and reasons:
-  - **Bump only `slicer-wasm-host`'s local wasmtime dep.** Rejected: `slicer-runtime` also depends on wasmtime through the workspace pin, and a mixed 43/47 graph risks two `wasmtime::Engine` generations with incompatible component compilation; the workspace pin is the single source of truth.
-  - **Fix fallout by reading `host.rs` end-to-end.** Rejected: >5,000 lines; the API surface is enumerable by grep, so a `LOCATIONS` dispatch bounds the read and keeps context cost at M.
-  - **Re-run MoonBit by installing it.** Rejected: out of scope and not present; the plan file (Grounding facts) explicitly forbids treating MoonBit as gate-deciding on this machine.
-
-## Files in Scope (read + edit)
-
-- `Cargo.toml` — role: primary pin bump; expected change: two-line version bump.
-- `crates/**/Cargo.toml`, `modules/**/Cargo.toml` — role: sweep stale pins; expected change: the 24 inline `wit-bindgen = "0.57.1"` manifests become `0.60.0` (21 `test-guests/*/Cargo.toml` + 3 `wit-guest/Cargo.toml`); the `wit-bindgen.workspace = true` crates inherit the root bump with no edit.
-- `crates/slicer-wasm-host/src/instance.rs` — role: wasmtime 47 engine/store API fallout; expected change: config/store/call-hook/fuel surface updates.
-- `crates/slicer-wasm-host/src/host.rs` — role: wasmtime 47 bindgen/resource-limiter fallout; expected change: bindgen/resource-table/limiter signature updates.
-- `crates/slicer-wasm-host/src/dispatch.rs` — role: linker construction fallout; expected change: linker generic-parameter updates if wasmtime 47 changed them.
-- `crates/slicer-runtime/src/run.rs` — role: engine reuse fallout; expected change: none beyond what `cargo check` reports.
-- `docs/14_submodule_programming_languages.md` — role: verdict record; expected change: §Community-module context edits.
-- `docs/feasibility-probes/go-wasm.md` — role: evidence record; expected change: appended dated re-check section.
-
-Justification for >3 files: a workspace toolchain bump is by definition cross-cutting; the scope is bounded to the wasmtime-API surfaces plus two docs, with all fallout enumerated by the compile gate rather than browsed.
+- `Cargo.toml` and stale inline `crates/**/Cargo.toml`, `modules/**/Cargo.toml`: version bump.
+- Compile-error-selected ranges in `crates/slicer-wasm-host/src/{host,dispatch,instance}.rs`, `crates/slicer-runtime/src/run.rs`, `crates/slicer-sdk/src/host.rs`, and `crates/slicer-macros/src/lib.rs`: mechanical API fallout only.
+- `crates/slicer-wasm-host/tests/integration/foreign_language_feasibility_tdd.rs`: new ignored environment-driven host oracle.
+- `crates/slicer-wasm-host/tests/integration/main.rs`: register `mod foreign_language_feasibility_tdd;`.
+- `docs/feasibility-probes/foreign-language-text-postprocess/README.md`: shared world, exact input/output, install/request protocol, and per-language build/run commands.
+- `docs/feasibility-probes/foreign-language-text-postprocess/check-prerequisites.sh`: real command checks plus `--simulate-missing <command>`; exit 42 and print candidate-specific `INSTALL:`/`VERIFY:` instructions.
+- `docs/feasibility-probes/foreign-language-text-postprocess/check-fork-readiness.sh`: user-confirmation, branch, and clean-tree checks plus `--simulate-dirty`; exit 43 before writing `.generation-started`.
+- `docs/feasibility-probes/foreign-language-text-postprocess/wit/**`: checked-in snapshot of the existing package and imported dependencies needed by the world; no WIT identifiers are changed.
+- `docs/feasibility-probes/foreign-language-text-postprocess/{moonbit,assemblyscript,cpp,go}/**`: minimal handwritten source/build scripts. Generated bindings and binaries are excluded.
+- `docs/feasibility-probes/{moonbit,assemblyscript,cpp,go}-text-postprocess.md`: measured evidence.
+- `docs/14_submodule_programming_languages.md`: four-result summary and final language line.
+- `docs/00_project_overview.md`, `docs/05_module_sdk.md`, and current-toolchain statements in `docs/14_submodule_programming_languages.md`: reconcile wasmtime/wit-bindgen versions; do not rewrite historical probe evidence.
 
 ## Read-Only Context
 
-- `crates/slicer-wasm-host/src/host.rs` — grep-delegated ranges only (bindgen blocks near lines 331–600 and 914–1060; `ResourceLimiter` near 1087–1124; `add_to_linker` in dispatch) — purpose: verify the exact wasmtime 47 API surface without a full-file read.
-- `crates/slicer-macros/src/lib.rs` — grep-delegated `__slicer_path_ir_to_wit` / `__slicer_path_wit_to_ir` / `__slicer_ir_path_to_wit` ranges (near 1290–1330, 2599–2603, 2739–2750) — purpose: confirm the generated path converters survive the wit-bindgen 0.60 shape.
-- `docs/feasibility-probes/go-wasm.md` §8 — lines 151–177 only — purpose: the exact probe commands to reproduce.
-- `docs/feasibility-probes/moonbit-wasm.md` §2/§8 — delegated SUMMARY — purpose: original MoonBit verdict/commands (no re-run).
+- `crates/slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit:1-19` and only imported type definitions required to copy a self-contained WIT tree.
+- `crates/slicer-wasm-host/src/host.rs:1048-1070` and `dispatch.rs:1691-1802` for production linker/call shape.
+- `crates/slicer-wasm-host/tests/integration/wasm_instance_tdd.rs:181` and `tests/common/wasm_cache.rs:20-65` for test conventions.
+- Historical `docs/feasibility-probes/{moonbit,go}-wasm.md` for previous commands and failure hypotheses only.
+- `D:\wit-bindgen\README.md:267-439`, generator CLI wiring, and AssemblyScript/C++ test harness ranges cited by requirements.
 
 ## Out-of-Bounds Files
 
-- `target/`, `Cargo.lock`, generated code (everything under `**/wit-guest/` is read-only — regenerated by build-guests, never hand-edited), vendored dependencies.
-- `OrcaSlicerDocumented/` — delegate; never load (no parity obligation here).
-- `docs/specs/community-modules-dragon-curve-infill.md` §1–§5 and §7 — not edited; this packet implements §6 only.
-- `docs/DEVIATION_LOG.md`, `docs/adr/` — no deviation/ADR authored in this packet.
+- `target/`, `Cargo.lock`, generated bindings, component binaries, vendored dependencies.
+- All edits and git mutations under `D:\wit-bindgen`; do not stash, clean, switch, pull, reset, or commit its working tree.
+- Production WIT files under `crates/slicer-schema/wit/**`; fixture copies are edited only if needed to remain self-contained.
+- Production linker behavior beyond mechanical wasmtime API fallout.
+- `OrcaSlicerDocumented/`; no geometry parity obligation.
+- Dragon module files, authored-coloring files, ADRs, and deviation log.
 
-## Expected Sub-Agent Dispatches
+## Tooling Stop Protocol
 
-- Question: list every `wasmtime::component::bindgen!`, `add_to_linker`, `ResourceLimiter`, `call_hook`, `get_fuel`, `Store::new`, `Engine` occurrence with line numbers in `crates/slicer-wasm-host/src/host.rs`, `dispatch.rs`, `instance.rs`, and `crates/slicer-runtime/src/run.rs`; scope: those four files; return: `LOCATIONS`; purpose: Step 4 fallout bounding.
-- Question: confirm the exact reproduction commands and `RESULT:`/`INSTANTIATION FAILED` output shape from `docs/feasibility-probes/go-wasm.md` §8 and §4b; scope: that file; return: `SNIPPETS`; purpose: Step 5 probe brief.
-- Question: confirm §Community-module context line ranges and the three paragraphs to edit in `docs/14_submodule_programming_languages.md`; scope: lines 96–171; return: `SNIPPETS`; purpose: Step 6 doc edit.
-- Question: `go version`, `wasm-tools --version`, `cargo install wit-bindgen-cli --version 0.60.0 --features go` availability, and `moon --version` (expect absence); scope: shell; return: `FACT`; purpose: Step 5 toolchain confirmation.
+The shared README owns concrete installation instructions and version checks for `moon`, `cargo`, local `wit-bindgen`, `node`/`npm`/`npx`, `asc`, WASI SDK `clang++`, `go`, `python3`, and `wasm-tools`; `check-prerequisites.sh` emits those instructions. Each probe step first runs its listed checks. On any miss:
 
-## Data and Contract Notes
+1. Write no candidate `RESULT:` and do not modify the final selection.
+2. Report `BLOCKED: TOOLCHAIN <candidate> <missing-command>` to the user.
+3. Quote the README's platform-appropriate installation steps and version-verification command.
+4. Wait for the user to install/confirm; do not install it agentically and do not continue to a lower-priority candidate.
 
-- IR/manifest contracts: none changed.
-- WIT boundary: none changed (the Go probe's WIT is a scratch re-declaration of the existing `slicer:layer-infill/infill-module@1.0.0` world; the in-tree WIT is untouched).
-- Determinism/scheduler constraints: the gate verdict must be a single recorded line, not a heuristic; reproducibility of the Go build is byte-level (same tool versions in the record).
+## Probe Evidence Contract
 
-## Locked Assumptions and Invariants
-
-- wasmtime target is exactly `47.0.3`; wit-bindgen target is exactly `0.60.0`; `call-hook` feature retained.
-- MoonBit verdict = `not re-run (toolchain absent)`; Go verdict is gate-deciding.
-- The slicer-only linker in the Go probe is byte-for-byte pnp_cli's Layer::Infill linker (no WASI); no WASI is added to the probe to make it "pass".
-- The gate verdict is one of exactly two strings (see requirements §In Scope).
+Each candidate record contains these exact headings/fields: `WIT_WORLD:`, `TOOL_VERSIONS:`, `GENERATION_COMMANDS:`, `BUILD_COMMANDS:`, `COMPONENT_SHA256:`, `HOST_COMMAND:`, `HOST_OUTPUT:`, `FAILURE_DETAIL:` (use `none` on success), and terminal `RESULT:`. AssemblyScript and C++ additionally include the same `WIT_BINDGEN_HEAD:`, `WIT_BINDGEN_BRANCH:`, and `WIT_BINDGEN_STATUS: clean` captured immediately before AssemblyScript generation.
 
 ## Risks and Tradeoffs
 
-- wasmtime 47 may rename/deprecate a config or component-model API used pervasively in `host.rs`/`dispatch.rs`; the fallout could exceed the bounded read. Mitigation: the compile gate enumerates it, and each fix is mechanical; if any single step's fallout balloons to L, the packet is split before activation (context-cost rule).
-- Re-running the Go probe costs a full scratch build (~minutes) and a wit-bindgen-cli 0.60.0 `--features go` install; this is a machine-local step, not committed to the repo. The scratch artifacts live in `$COMMANDCODE_SCRATCHPAD` and are never written into the tree.
-- If the Go verdict still fails, the fallback is confirmed and packet 227 must switch to a Rust `#[slicer_module]` authoring plan; that is a downstream planning change, not a defect in this packet.
+- The imported `config-view` resource makes the text world more representative than a scalar-only toy, but foreign generators may expose resource-lifetime friction. That is valid feasibility evidence.
+- Concurrent work may leave the local fork dirty or advance its HEAD. The clean-tree/user-confirmation gate prevents measuring partial work; the captured SHA makes the eventual result attributable.
+- C++ may import WASI due to its target/toolchain. The slicer-only linker intentionally exposes that incompatibility rather than adapting around it.
+- A tool installation pause can interrupt packet implementation. This is required to avoid silently biasing selection toward an already-installed language.
 
 ## Context Cost Estimate
 
-- Aggregate: `M`
-- Largest step: `M` (Step 4, toolchain fallout absorption — bounded by a LOCATIONS dispatch, not a full read)
-- Highest-risk dispatch and required return format: the `LOCATIONS` grep over `host.rs`/`dispatch.rs`/`instance.rs`/`run.rs` (Step 4) — return `LOCATIONS` with line numbers; a SUMMARY there would fail to bound the read.
+- Aggregate: `M`.
+- Largest steps: candidate fixture authoring and candidate execution, each `M` but serialized and bounded.
+- If any candidate requires redesigning production WIT or linker behavior, stop and split; that is outside this packet.
 
 ## Open Questions
 
-- [FWD] Whether wasmtime 47.0.3 changed `CallHook`, `get_fuel`/`set_fuel`, `ResourceLimiter`, or `Store::new` signatures in a way that ripples beyond the four in-scope files. Resolve at activation via `cargo check --workspace --all-targets`; the fix surface stays within the wasmtime-API files named above.
-- [FWD] Whether the Go 1.26.5 wasip1 runtime still emits the same WASI preview2 import set after `wasm-tools component new --adapt`. The probe measures it; the recorded `RESULT:` is authoritative either way.
+- [FWD] Exact current installation URLs/commands for missing toolchains must be verified against each tool's official documentation when the README is authored; do not guess stale commands.
+- [FWD] The local AssemblyScript backend may require source-layout adjustments after generation. These remain inside its fixture directory if the WIT shape is supported.
 
-None is an activation blocker; the packet's own gate outcome is the measurement this packet exists to produce.
+There are no unresolved activation blockers in the design. Tool availability is an implementation-time user-action gate.
