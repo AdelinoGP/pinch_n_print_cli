@@ -18,3 +18,16 @@ mod dag_cli_integration;
 mod integrated_tier_tdd;
 mod manifest_ingestion_tdd;
 mod manifest_unknown_stage_tdd;
+mod support_family_pairing_rejected;
+mod support_family_selection;
+
+#[test]
+fn support_family_selection() {
+    support_family_selection::support_family_selection();
+    support_family_selection::support_family_candidates_are_retained();
+}
+
+#[test]
+fn support_family_pairing_rejected() {
+    support_family_pairing_rejected::support_family_pairing_rejected();
+}
