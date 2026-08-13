@@ -685,7 +685,7 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
 }
 
 /// Make a minimal SupportPlanEntry at a given layer index with given point width.
-fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry {
+fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry {
     SupportPlanEntry {
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),
