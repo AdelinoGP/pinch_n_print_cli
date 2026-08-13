@@ -12,6 +12,50 @@ interface ir-handles {
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
 
+    /// The declared Z extent of anchored work, in canonical 100 nm units.
+    variant anchored-geometry-contract {
+        planar(s64),
+        z-spanning(tuple<s64, s64>),
+    }
+
+    /// Provenance retained when anchored work moves between execution stages.
+    record anchored-entity-provenance {
+        requesting-feature: string,
+        source-plan-entry: string,
+    }
+
+    /// Printable work assigned to a global-layer execution anchor.
+    record anchored-entity {
+        local-id: u64,
+        anchor-global-layer-index: u32,
+        geometry: anchored-geometry-contract,
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        provenance: anchored-entity-provenance,
+        path-points: list<point3>,
+    }
+
+    /// Capability closure used to derive execution stages without event kinds.
+    record capability-derived-event-closure {
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        derived-capabilities: list<string>,
+    }
+
+    /// Runtime accounting and optimization policies for one anchored event.
+    record anchored-event-runtime-hooks {
+        optimize-paths: bool,
+        account-cooling: bool,
+        account-time: bool,
+    }
+
+    /// Atomically ordered anchored work owned by one global-layer anchor.
+    record ordered-event-collection {
+        anchor-global-layer-index: u32,
+        events: list<anchored-entity>,
+        runtime-hooks: anchored-event-runtime-hooks,
+    }
+
     record region-key {
         layer-index: layer-idx,
         object-id: object-id,

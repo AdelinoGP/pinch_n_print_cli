@@ -983,6 +983,22 @@ the plan — WASM instance pools are owned by the runtime
 (`slicer-wasm-host`), keyed by module, sized by `layer_parallel_safe`
 (N instances for parallel-safe modules, 1 for sequential).
 
+### Anchored invocation closure
+
+An anchored event is scheduled through `AnchoredInvocation`, constructed by
+`ExecutionPlan::anchored_invocation`. Its stage closure is
+**capability-derived**: the scheduler derives the required stages from the
+entity's declared input and output capabilities rather than consulting a
+hardcoded event-kind table or feature-owned stage list. The resulting
+`CapabilityDerivedEventClosure` is carried with the invocation and checked
+as part of the frozen plan.
+
+The invocation also preserves the manifest's `layer_parallel_safe` hint.
+Parallel-safe anchored invocations may run concurrently against immutable
+prepass state; serial modules retain the single-instance execution path.
+Either mode produces the same ordered event collections, while the closure
+keeps capability requirements explicit in the scheduler plan.
+
 ### Runner-Trait Input Borrow Structs (Normative — Packet 83)
 
 Runner trait signatures (`PrepassStageRunner::run_prepass`,

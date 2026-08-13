@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan,
-    StageId,
+    ActiveRegion, AnchoredEntity, CapabilityDerivedEventClosure, ConfigKey, ConfigValue,
+    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId,
 };
 
 use crate::manifest::DiagnosticLevel;
@@ -510,6 +510,34 @@ pub struct ExecutionPlan {
     pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
+/// Scheduler metadata for one anchored invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchoredInvocation {
+    /// Global layer that owns this invocation's execution ordering.
+    pub anchor_global_layer_index: u32,
+    /// Capability-derived stage closure for the invocation.
+    pub closure: CapabilityDerivedEventClosure,
+    /// Provenance retained from the anchored entity.
+    pub provenance: slicer_ir::AnchoredEntityProvenance,
+    /// Whether this invocation may run concurrently with other layer work.
+    pub layer_parallel_safe: bool,
+}
+
+impl AnchoredInvocation {
+    /// Derive scheduling metadata from the entity's declared capabilities.
+    pub fn from_entity(entity: &AnchoredEntity, layer_parallel_safe: bool) -> Self {
+        Self {
+            anchor_global_layer_index: entity.anchor_global_layer_index,
+            closure: CapabilityDerivedEventClosure::derive(
+                &entity.input_capabilities,
+                &entity.output_capabilities,
+            ),
+            provenance: entity.provenance.clone(),
+            layer_parallel_safe,
+        }
+    }
+}
+
 impl Default for ExecutionPlan {
     fn default() -> Self {
         Self {
@@ -526,6 +554,15 @@ impl Default for ExecutionPlan {
 }
 
 impl ExecutionPlan {
+    /// Derive an anchored invocation without an event-kind or feature stage table.
+    pub fn anchored_invocation(
+        &self,
+        entity: &AnchoredEntity,
+        layer_parallel_safe: bool,
+    ) -> AnchoredInvocation {
+        AnchoredInvocation::from_entity(entity, layer_parallel_safe)
+    }
+
     /// Build an ExecutionPlan with a precomputed module_region_index.
     #[cfg(test)]
     #[allow(dead_code)]

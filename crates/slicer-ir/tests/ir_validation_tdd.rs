@@ -10,8 +10,10 @@
 //!     must be rejected with an Err whose diagnostic contains "entity_id" and the ID number.
 
 use slicer_ir::{
-    validate_travel_anchors, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId,
-    Point3WithWidth, PrintEntity, RegionKey, SemVer, TravelMove,
+    validate_travel_anchors, AnchoredEntity, AnchoredEntityProvenance, AnchoredEventRuntimeHooks,
+    AnchoredGeometryContract, CapabilityDerivedEventClosure, ExtrusionPath3D, ExtrusionRole,
+    LayerCollectionIR, ObjectId, OrderedEventCollection, Point3, Point3WithWidth, PrintEntity,
+    RegionKey, SemVer, TravelMove,
 };
 
 // ============================================================================
@@ -114,4 +116,70 @@ fn dangling_travel_anchor_rejected() {
         "error message must contain the offending ID '99', got: {:?}",
         err_str
     );
+}
+
+#[test]
+fn anchored_contracts_construct_round_trip_and_order() {
+    let planar = AnchoredEntity {
+        local_id: 2,
+        anchor_global_layer_index: 4,
+        geometry: AnchoredGeometryContract::Planar { z: 2_000 },
+        input_capabilities: vec!["geometry".into()],
+        output_capabilities: vec!["paths".into()],
+        provenance: AnchoredEntityProvenance {
+            requesting_feature: "support".into(),
+            source_plan_entry: "entry-2".into(),
+        },
+        path_points: vec![Point3 {
+            x: 1.0,
+            y: 2.0,
+            z: 0.2,
+        }],
+    };
+    let spanning = AnchoredEntity {
+        local_id: 1,
+        anchor_global_layer_index: 4,
+        geometry: AnchoredGeometryContract::ZSpanning {
+            min_z: 1_000,
+            max_z: 3_000,
+        },
+        input_capabilities: vec!["geometry".into()],
+        output_capabilities: vec!["paths".into()],
+        provenance: AnchoredEntityProvenance {
+            requesting_feature: "support".into(),
+            source_plan_entry: "entry-1".into(),
+        },
+        path_points: Vec::new(),
+    };
+    assert!(AnchoredGeometryContract::Planar { z: 2_000 }.contains_z(2_000));
+    assert!(!AnchoredGeometryContract::Planar { z: 2_000 }.contains_z(2_001));
+    assert!(spanning.geometry.contains_z(2_500));
+    assert_eq!(planar.path_points[0].z, 0.2);
+
+    let closure = CapabilityDerivedEventClosure::derive(
+        &planar.input_capabilities,
+        &planar.output_capabilities,
+    );
+    assert_eq!(closure.derived_capabilities, vec!["geometry", "paths"]);
+
+    let mut collection = OrderedEventCollection {
+        anchor_global_layer_index: 4,
+        events: vec![planar, spanning],
+        runtime_hooks: AnchoredEventRuntimeHooks::default(),
+    };
+    collection.sort_deterministically();
+    assert_eq!(collection.events[0].local_id, 1);
+    let encoded = serde_json::to_string(&collection).unwrap();
+    assert_eq!(
+        serde_json::from_str::<OrderedEventCollection>(&encoded).unwrap(),
+        collection
+    );
+}
+
+#[test]
+fn flat_layer_contract_remains_unchanged() {
+    let layer = make_layer(vec![make_entity(1, 0.0, 0.0, 0.2)], Vec::new());
+    assert_eq!(layer.global_layer_index, 0);
+    assert_eq!(layer.z, 0.2);
+    assert_eq!(layer.ordered_entities.len(), 1);
 }

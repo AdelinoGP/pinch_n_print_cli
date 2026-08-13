@@ -475,6 +475,9 @@ pub struct LayerArena {
     /// `commit_layer_outputs` call for that stage consumes
     /// guest-emitted GCode overrides and appends them onto this staged IR.
     layer_collection: Option<LayerCollectionIR>,
+    /// Anchored event collections committed through the same arena-side apply
+    /// seam as ordinary layer output.
+    anchored_event_collections: Option<Vec<slicer_ir::OrderedEventCollection>>,
     /// Tool-change entries collected from `Layer::PathOptimization` guest
     /// output and destined for the final `LayerCollectionIR.tool_changes`.
     deferred_tool_changes: Vec<ToolChange>,
@@ -575,6 +578,21 @@ impl LayerArena {
     /// Take ownership of the staged `LayerCollectionIR`, if present.
     pub fn take_layer_collection(&mut self) -> Option<LayerCollectionIR> {
         self.layer_collection.take()
+    }
+
+    /// Stage committed anchored event collections (idempotent replace).
+    pub fn set_anchored_event_collections(
+        &mut self,
+        collections: Vec<slicer_ir::OrderedEventCollection>,
+    ) {
+        self.anchored_event_collections = Some(collections);
+    }
+
+    /// Take ownership of committed anchored event collections, if present.
+    pub fn take_anchored_event_collections(
+        &mut self,
+    ) -> Option<Vec<slicer_ir::OrderedEventCollection>> {
+        self.anchored_event_collections.take()
     }
 
     /// Append a guest-emitted `ToolChange` onto the per-layer deferred queue.

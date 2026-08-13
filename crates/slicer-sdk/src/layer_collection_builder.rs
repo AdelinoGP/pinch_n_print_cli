@@ -25,6 +25,7 @@
 //! docs/03_wit_and_manifest.md.
 
 use crate::views::OrderedEntityView;
+use slicer_ir::OrderedEventCollection;
 
 /// SDK guest builder for `layer-collection-builder`.
 ///
@@ -38,6 +39,8 @@ use crate::views::OrderedEntityView;
 pub struct LayerCollectionBuilder {
     proposal: Option<Vec<(u32, bool)>>,
     ordered_entities: Vec<OrderedEntityView>,
+    anchored_proposal: Option<OrderedEventCollection>,
+    anchored_collection: Option<OrderedEventCollection>,
 }
 
 impl LayerCollectionBuilder {
@@ -47,6 +50,8 @@ impl LayerCollectionBuilder {
         Self {
             proposal: None,
             ordered_entities: Vec::new(),
+            anchored_proposal: None,
+            anchored_collection: None,
         }
     }
 
@@ -93,5 +98,41 @@ impl LayerCollectionBuilder {
     #[doc(hidden)]
     pub fn set_ordered_entities(&mut self, snapshot: Vec<OrderedEntityView>) {
         self.ordered_entities = snapshot;
+    }
+
+    /// Replace an anchored event's ordered collection as one atomic proposal.
+    ///
+    /// Identity, capabilities, provenance, geometry, path points, and runtime
+    /// hooks remain part of the same value. A second proposal in one dispatch
+    /// is rejected rather than partially overwriting the first.
+    pub fn set_anchored_event_collection(
+        &mut self,
+        collection: OrderedEventCollection,
+    ) -> Result<(), String> {
+        if self.anchored_proposal.is_some() {
+            return Err(
+                "set-anchored-event-collection called twice within one run-path-optimization"
+                    .to_string(),
+            );
+        }
+        self.anchored_proposal = Some(collection);
+        Ok(())
+    }
+
+    /// Read the host-staged anchored event snapshot, if this dispatch has one.
+    pub fn get_anchored_event_collection(&self) -> Option<&OrderedEventCollection> {
+        self.anchored_collection.as_ref()
+    }
+
+    /// Read the atomic anchored proposal for WIT drain glue.
+    #[doc(hidden)]
+    pub fn anchored_proposal(&self) -> Option<&OrderedEventCollection> {
+        self.anchored_proposal.as_ref()
+    }
+
+    /// Populate the anchored event snapshot from WIT-facing conversion glue.
+    #[doc(hidden)]
+    pub fn set_anchored_event_snapshot(&mut self, snapshot: OrderedEventCollection) {
+        self.anchored_collection = Some(snapshot);
     }
 }

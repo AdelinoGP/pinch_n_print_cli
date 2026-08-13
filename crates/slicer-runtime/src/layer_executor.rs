@@ -97,6 +97,13 @@ pub enum LayerExecutionError {
         /// Underlying paint-annotation failure.
         source: SlicePostProcessPaintAnnotationError,
     },
+    /// An anchored entity contains a path point outside its declared Z contract.
+    AnchoredGeometry {
+        /// Entity whose committed path failed validation.
+        local_id: u64,
+        /// Stable validation detail.
+        message: String,
+    },
 }
 
 impl fmt::Display for LayerExecutionError {
@@ -130,6 +137,9 @@ impl fmt::Display for LayerExecutionError {
                 f,
                 "built-in paint-annotation failed at layer {layer_index}: {source:?}"
             ),
+            Self::AnchoredGeometry { local_id, message } => {
+                write!(f, "anchored entity {local_id} geometry validation failed: {message}")
+            }
         }
     }
 }
@@ -200,6 +210,162 @@ pub fn execute_per_layer_with_events(
         wasm_handles,
         SupportToolSelection::default(),
     )
+}
+
+/// Execute the ordinary per-layer worker and commit anchored events owned by
+/// the same execution plan. The compatibility wrappers above intentionally do
+/// not expose the additional collections.
+pub fn execute_per_layer_with_anchored_events(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<
+    (
+        Vec<LayerCollectionIR>,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
+    let (committed, audits) = execute_per_layer_with_committed_anchored_events(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        wasm_handles,
+        anchored_entities,
+    )?;
+    let mut layers = Vec::new();
+    let mut collections = Vec::new();
+    for event in committed {
+        match event {
+            CommittedLayerEvent::Anchored(collection) => collections.push(collection),
+            CommittedLayerEvent::Model(layer) => layers.push(layer),
+        }
+    }
+    Ok((layers, audits, collections))
+}
+
+/// One committed item in global-layer execution order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommittedLayerEvent {
+    /// Planar work that executes before its anchor's ordinary model event.
+    Anchored(slicer_ir::OrderedEventCollection),
+    /// The ordinary model event for a global layer.
+    Model(LayerCollectionIR),
+}
+
+/// Execute ordinary layers and return the structurally committed event stream.
+pub fn execute_per_layer_with_committed_anchored_events(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    let (layers, audits) =
+        execute_per_layer_with_events(plan, blackboard, runner, sink, wasm_handles)?;
+    let mut layers = layers;
+    append_same_z_entities(&mut layers, plan, anchored_entities)?;
+    let collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    let mut committed = Vec::with_capacity(layers.len() + collections.len());
+    let mut collections = collections.into_iter().peekable();
+    for layer in layers {
+        while collections.peek().is_some_and(|collection| {
+            collection.anchor_global_layer_index == layer.global_layer_index
+        }) {
+            committed.push(CommittedLayerEvent::Anchored(
+                collections.next().expect("peeked anchored collection"),
+            ));
+        }
+        committed.push(CommittedLayerEvent::Model(layer));
+    }
+    committed.extend(collections.map(CommittedLayerEvent::Anchored));
+    Ok((committed, audits))
+}
+
+fn is_same_z_entity(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> bool {
+    if entity.provenance.requesting_feature != "same-z-support" {
+        return false;
+    }
+    let Some(anchor) = plan
+        .global_layers
+        .iter()
+        .find(|layer| layer.index == entity.anchor_global_layer_index)
+    else {
+        return false;
+    };
+    matches!(
+        entity.geometry,
+        slicer_ir::AnchoredGeometryContract::Planar { z }
+            if (z - slicer_ir::mm_to_units(anchor.z)).abs()
+                <= slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+    )
+}
+
+fn append_same_z_entities(
+    layers: &mut [LayerCollectionIR],
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(), LayerExecutionError> {
+    for entity in entities
+        .iter()
+        .filter(|entity| is_same_z_entity(entity, plan))
+    {
+        validate_anchored_entity(entity).map_err(|message| {
+            LayerExecutionError::AnchoredGeometry {
+                local_id: entity.local_id,
+                message,
+            }
+        })?;
+        let Some(layer) = layers
+            .iter_mut()
+            .find(|layer| layer.global_layer_index == entity.anchor_global_layer_index)
+        else {
+            continue;
+        };
+        let topo_order = layer.ordered_entities.len() as u32;
+        layer.ordered_entities.push(PrintEntity {
+            entity_id: entity.local_id,
+            path: slicer_ir::ExtrusionPath3D {
+                points: entity
+                    .path_points
+                    .iter()
+                    .map(|point| slicer_ir::Point3WithWidth {
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        ..Default::default()
+                    })
+                    .collect(),
+                role: slicer_ir::ExtrusionRole::SupportMaterial,
+                speed_factor: 1.0,
+            },
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
+            region_key: RegionKey::default(),
+            topo_order,
+            tool_index: 0,
+        });
+    }
+    Ok(())
 }
 
 /// Like [`execute_per_layer_with_events`] but selects the filament indices
@@ -2028,6 +2194,19 @@ pub struct OrderedEntityView {
     pub point_count: u32,
 }
 
+/// Per-physical-event accounting recorded while anchored work is committed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnchoredEventAccounting {
+    /// Stable identity of the physical event.
+    pub event_local_id: u64,
+    /// Position assigned by the committed entity-order proposal.
+    pub topo_order: u32,
+    /// Cooling fan speed selected for this event, or zero when not requested.
+    pub cooling_fan_speed: f32,
+    /// Independently estimated execution time, or zero when not requested.
+    pub time_s: f64,
+}
+
 /// Project the host-staged `LayerCollectionIR.ordered_entities` into
 /// a snapshot list of [`OrderedEntityView`] for one
 /// `Layer::PathOptimization` invocation.
@@ -2064,6 +2243,270 @@ pub fn project_ordered_entities(arena: &LayerArena) -> Vec<OrderedEntityView> {
         .collect()
 }
 
+/// Commit the ordered event collections returned by a global-layer worker.
+///
+/// Collections are deliberately kept separate from the ordinary model event
+/// stream. Within an anchored collection, events execute in physical-Z order;
+/// the caller inserts the collection at its anchor's ordinary event boundary.
+pub fn commit_ordered_event_collections(collections: &mut [slicer_ir::OrderedEventCollection]) {
+    for collection in collections {
+        collection.sort_deterministically();
+        if collection.runtime_hooks.optimize_paths {
+            // Anchored execution uses the same proposal core as
+            // Layer::PathOptimization: permutation, reversal, and slot
+            // reassignment happen atomically after full proposal validation.
+            let proposal = (0..collection.events.len())
+                .rev()
+                .map(|index| (index as u32, true))
+                .collect::<Vec<_>>();
+            apply_order_proposal(
+                &mut collection.events,
+                &proposal,
+                |event| event.path_points.reverse(),
+                |_, _| {},
+            )
+            .expect("generated anchored optimization proposal is valid");
+        }
+    }
+}
+
+fn validate_anchored_entity(entity: &slicer_ir::AnchoredEntity) -> Result<(), String> {
+    for point in &entity.path_points {
+        let Some(z) = point.z.is_finite().then(|| slicer_ir::mm_to_units(point.z)) else {
+            return Err(match entity.geometry {
+                slicer_ir::AnchoredGeometryContract::Planar { .. } => {
+                    "anchored entity planar z mismatch: path point Z is not finite".to_string()
+                }
+                slicer_ir::AnchoredGeometryContract::ZSpanning { .. } => {
+                    "anchored entity z-span violation: path point Z is not finite".to_string()
+                }
+            });
+        };
+        match entity.geometry {
+            slicer_ir::AnchoredGeometryContract::Planar { z: plane }
+                if (z - plane).abs()
+                    > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity planar z mismatch: path point Z {z} differs from plane {plane}"
+                ));
+            }
+            slicer_ir::AnchoredGeometryContract::ZSpanning { min_z, max_z }
+                if z < min_z - slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                    || z > max_z
+                        + slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity z-span violation: path point Z {z} is outside [{min_z}, {max_z}]"
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Build and commit the anchored event collections owned by the supplied plan.
+///
+/// Anchored events remain separate from the ordinary model event stream. The
+/// scheduler closure is derived for every event before the collection is
+/// committed, preserving the capability-based execution boundary.
+pub fn execute_anchored_event_collections(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+) -> Result<Vec<slicer_ir::OrderedEventCollection>, LayerExecutionError> {
+    execute_anchored_event_collections_with_accounting(plan, entities, 0.0)
+        .map(|(collections, _accounting)| collections)
+}
+
+/// Build anchored collections and record runtime accounting independently for
+/// each physical event, retaining event boundaries and deterministic order.
+pub fn execute_anchored_event_collections_with_accounting(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    feedrate_mm_s: f64,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    execute_anchored_event_collections_with_mode_and_feedrate(
+        plan,
+        entities,
+        true,
+        true,
+        feedrate_mm_s,
+    )
+}
+
+/// Build anchored collections using the requested execution mode. A parallel
+/// request is honored only when the anchored invocation declares parallel
+/// safety; immutable entity snapshots make both modes deterministic.
+pub fn execute_anchored_event_collections_with_mode(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    force_parallel: bool,
+    module: &slicer_scheduler::manifest::LoadedModule,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    execute_anchored_event_collections_with_mode_and_feedrate(
+        plan,
+        entities,
+        force_parallel,
+        module.layer_parallel_safe(),
+        0.0,
+    )
+}
+
+fn execute_anchored_event_collections_with_mode_and_feedrate(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    force_parallel: bool,
+    layer_parallel_safe: bool,
+    feedrate_mm_s: f64,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    let invoke = |entity: &slicer_ir::AnchoredEntity| {
+        let invocation = plan.anchored_invocation(entity, layer_parallel_safe);
+        let optimize_paths = invocation
+            .closure
+            .derived_capabilities
+            .iter()
+            .any(|capability| capability == "Layer::PathOptimization");
+        let mut executed = entity.clone();
+        executed.input_capabilities = invocation.closure.input_capabilities;
+        executed.output_capabilities = invocation.closure.output_capabilities;
+        (executed, invocation.layer_parallel_safe, optimize_paths)
+    };
+    // Same-plane support belongs to the ordinary model layer. Anchored
+    // collections contain only physically distinct events below that plane.
+    for entity in entities {
+        validate_anchored_entity(entity).map_err(|message| {
+            LayerExecutionError::AnchoredGeometry {
+                local_id: entity.local_id,
+                message,
+            }
+        })?;
+    }
+    let anchored_entities = entities
+        .iter()
+        .filter(|entity| !is_same_z_entity(entity, plan));
+    let anchored_entities = anchored_entities.collect::<Vec<_>>();
+    let invoked: Vec<(slicer_ir::AnchoredEntity, bool, bool)> = if force_parallel
+        && anchored_entities.iter().all(|entity| {
+            plan.anchored_invocation(entity, layer_parallel_safe)
+                .layer_parallel_safe
+        }) {
+        anchored_entities
+            .par_iter()
+            .map(|entity| invoke(entity))
+            .collect()
+    } else {
+        anchored_entities
+            .iter()
+            .map(|entity| invoke(entity))
+            .collect()
+    };
+
+    let mut collections = Vec::new();
+    for (entity, _parallel_safe, optimize_paths) in &invoked {
+        let Some(collection) =
+            collections
+                .iter_mut()
+                .find(|collection: &&mut slicer_ir::OrderedEventCollection| {
+                    collection.anchor_global_layer_index == entity.anchor_global_layer_index
+                })
+        else {
+            collections.push(slicer_ir::OrderedEventCollection {
+                anchor_global_layer_index: entity.anchor_global_layer_index,
+                events: Vec::new(),
+                runtime_hooks: slicer_ir::AnchoredEventRuntimeHooks {
+                    optimize_paths: *optimize_paths,
+                    ..Default::default()
+                },
+            });
+            let collection = collections.last_mut().expect("collection was just pushed");
+            collection.events.push(entity.clone());
+            continue;
+        };
+        collection.runtime_hooks.optimize_paths |= optimize_paths;
+        collection.events.push(entity.clone());
+    }
+    collections.sort_by_key(|collection| collection.anchor_global_layer_index);
+    let mut arena = LayerArena::new();
+    apply(
+        &mut arena,
+        LayerStageCommit::AnchoredEvents(collections),
+        &StageApplyContext {
+            stage_id: "Anchored::Event",
+            module_id: "host:anchored-events",
+            layer_index: 0,
+            seam_plan: None,
+        },
+    )
+    .map_err(|error| LayerExecutionError::AnchoredGeometry {
+        local_id: entities.first().map_or(0, |entity| entity.local_id),
+        message: error.to_string(),
+    })?;
+    let collections = arena
+        .take_anchored_event_collections()
+        .expect("successful anchored apply commits collections to the arena");
+    let accounting = collections
+        .iter()
+        .flat_map(|collection| {
+            collection
+                .events
+                .iter()
+                .enumerate()
+                .map(|(topo_order, event)| AnchoredEventAccounting {
+                    event_local_id: event.local_id,
+                    topo_order: topo_order as u32,
+                    cooling_fan_speed: if collection.runtime_hooks.account_cooling {
+                        // Anchored events do not carry extrusion roles. Use
+                        // their committed geometry as the local cooling-demand
+                        // criterion: longer toolpaths request proportionally
+                        // more fan, capped at the firmware's 8-bit maximum.
+                        event
+                            .path_points
+                            .windows(2)
+                            .map(|segment| {
+                                let dx = segment[1].x - segment[0].x;
+                                let dy = segment[1].y - segment[0].y;
+                                let dz = segment[1].z - segment[0].z;
+                                (dx * dx + dy * dy + dz * dz).sqrt()
+                            })
+                            .sum::<f32>()
+                            .clamp(0.0, 255.0)
+                    } else {
+                        0.0
+                    },
+                    time_s: if collection.runtime_hooks.account_time {
+                        slicer_gcode::estimator::estimate_event_time(
+                            &event.path_points,
+                            feedrate_mm_s,
+                            &slicer_gcode::estimator::EstimatorLimits::default(),
+                        )
+                    } else {
+                        0.0
+                    },
+                })
+        })
+        .collect();
+    Ok((collections, accounting))
+}
+
 /// Validate a `set-entity-order` proposal from a `Layer::PathOptimization`
 /// module and apply it to the arena's staged `LayerCollectionIR.ordered_entities`.
 ///
@@ -2084,11 +2527,31 @@ pub fn apply_entity_order_proposal(
     arena: &mut LayerArena,
     proposal: &[(u32, bool)],
 ) -> Result<(), String> {
-    let n = arena
+    arena
         .layer_collection()
         .ok_or_else(|| "set-entity-order: no LayerCollectionIR staged on arena".to_string())?
         .ordered_entities
         .len();
+    let mut lc = arena
+        .take_layer_collection()
+        .expect("layer_collection presence verified above");
+    let result = apply_order_proposal(
+        &mut lc.ordered_entities,
+        proposal,
+        |entity| entity.path.points.reverse(),
+        |entity, topo_order| entity.topo_order = topo_order,
+    );
+    arena.set_layer_collection(lc);
+    result
+}
+
+fn apply_order_proposal<T>(
+    items: &mut Vec<T>,
+    proposal: &[(u32, bool)],
+    mut reverse_item: impl FnMut(&mut T),
+    mut set_topo_order: impl FnMut(&mut T, u32),
+) -> Result<(), String> {
+    let n = items.len();
     if proposal.len() != n {
         return Err(format!(
             "set-entity-order: expected {} indices, got {}",
@@ -2115,24 +2578,20 @@ pub fn apply_entity_order_proposal(
 
     // Validation passed — apply permutation, per-entity reversal, and
     // topo_order reassignment.
-    let mut lc = arena
-        .take_layer_collection()
-        .expect("layer_collection presence verified above");
-    let original = std::mem::take(&mut lc.ordered_entities);
-    let mut buckets: Vec<Option<slicer_ir::PrintEntity>> = original.into_iter().map(Some).collect();
-    let mut new_entities: Vec<slicer_ir::PrintEntity> = Vec::with_capacity(n);
+    let original = std::mem::take(items);
+    let mut buckets: Vec<Option<T>> = original.into_iter().map(Some).collect();
+    let mut new_entities: Vec<T> = Vec::with_capacity(n);
     for (new_slot, (orig_idx, reverse)) in proposal.iter().enumerate() {
         let mut entity = buckets[*orig_idx as usize]
             .take()
             .expect("uniqueness validated above");
         if *reverse {
-            entity.path.points.reverse();
+            reverse_item(&mut entity);
         }
-        entity.topo_order = new_slot as u32;
+        set_topo_order(&mut entity, new_slot as u32);
         new_entities.push(entity);
     }
-    lc.ordered_entities = new_entities;
-    arena.set_layer_collection(lc);
+    *items = new_entities;
     Ok(())
 }
 
@@ -2208,6 +2667,21 @@ pub(crate) fn apply(
         LayerStageCommit::SeedLayerCollection(lc) => {
             let _ = arena.take_layer_collection(); // clear any auto-assembled one
             arena.set_layer_collection(lc);
+        }
+        LayerStageCommit::AnchoredEvents(mut collections) => {
+            for collection in &collections {
+                for entity in &collection.events {
+                    validate_anchored_entity(entity).map_err(|message| {
+                        slicer_ir::LayerStageError::FatalModule {
+                            stage_id: ctx.stage_id.to_string(),
+                            module_id: ctx.module_id.to_string(),
+                            message,
+                        }
+                    })?;
+                }
+            }
+            commit_ordered_event_collections(&mut collections);
+            arena.set_anchored_event_collections(collections);
         }
         LayerStageCommit::Perimeters(mut ir) => {
             let _ = arena.take_perimeter();

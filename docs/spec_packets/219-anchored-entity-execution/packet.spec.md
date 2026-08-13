@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 219-anchored-entity-execution
 task_ids:
   - TASK-330
@@ -30,13 +30,13 @@ This packet owns the anchored entity data model, per-anchor stage closure, order
 - **AC-2. Given** an anchor whose requested capabilities require `Layer::PathOptimization`, **when** capability closure is computed, **then** the closure includes `Layer::PathOptimization` and does not rely on a hardcoded event-kind table or feature-owned stage list. | `cargo test -p slicer-scheduler --test scheduler_integration capability_derived_anchor_closure -- --exact`
 - **AC-3. Given** a planar anchored event and an ordinary same-Z model event, **when** the global-layer worker commits output, **then** planar events are ordered by physical Z before the upper anchor's model event and same-Z support remains in the ordinary model event ordering. | `cargo test -p slicer-runtime --test integration anchored_event_ordering -- --exact`
 - **AC-4. Given** a Z-spanning entity with declared `min_z` and `max_z`, **when** path commit validation runs, **then** every point is within the declared range and the entity remains one atomic ordered event even when points lie outside the anchor model-layer envelope. | `cargo test -p slicer-runtime --test integration anchored_z_span_validation -- --exact`
-- **AC-5. Given** a planar anchored entity whose point has Z outside its declared plane by more than coordinate tolerance, **when** commit validation runs, **then** the commit is rejected with the exact error fragment `anchored entity planar z mismatch` and no partial event is retained. | `cargo test -p slicer-runtime --test integration anchored_z_validation -- anchored_entity_planar_z_mismatch --exact`
+- **AC-5. Given** a planar anchored entity whose point has Z outside its declared plane by more than coordinate tolerance, **when** commit validation runs, **then** the commit is rejected with the exact error fragment `anchored entity planar z mismatch` and no partial event is retained. | `cargo test -p slicer-runtime --test integration anchored_entity_planar_z_mismatch -- --exact`
 - **AC-6. Given** an anchored event that is path-optimized, **when** optimization completes, **then** the event has an independently optimized ordered entity collection and its cooling/time accounting is recorded without reordering across physical event boundaries. | `cargo test -p slicer-runtime --test integration anchored_event_accounting -- --exact`
 - **AC-7. Given** forced-serial and forced-parallel generation over identical immutable prepass state, **when** both executions complete, **then** ordered event collections and anchored geometry compare equal and the `layer-parallel-safe` hint governs concurrent anchored invocations. | `cargo test -p slicer-runtime --test integration anchored_parallel_determinism -- --exact`
 
 ## Negative Test Cases
 
-- **AC-N1. Given** a Z-spanning entity with a path point outside `[min_z, max_z]`, **when** the host commits the event, **then** it rejects the entity with the exact error fragment `anchored entity z-span violation`, drops the complete entity, and does not silently clip the path. | `cargo test -p slicer-runtime --test integration anchored_z_span_validation -- rejects_out_of_range_point --exact`
+- **AC-N1. Given** a Z-spanning entity with a path point outside `[min_z, max_z]`, **when** the host commits the event, **then** it rejects the entity with the exact error fragment `anchored entity z-span violation`, drops the complete entity, and does not silently clip the path. | `cargo test -p slicer-runtime --test integration rejects_out_of_range_point -- --exact`
 
 ## Verification
 

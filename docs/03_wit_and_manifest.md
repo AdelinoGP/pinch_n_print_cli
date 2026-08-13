@@ -405,6 +405,21 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
 
+### Anchored event contract (additive)
+
+The WIT boundary carries anchored execution through additive records in
+`deps/ir-types.wit`. These records describe anchored entities, their planar or
+Z-spanning geometry, capability declarations, provenance, path points, and
+ordered event collections. The anchor field is named
+`anchor-global-layer-index` in WIT (kebab-case); it identifies the global layer
+whose ordinary model event anchors the collection.
+
+The SDK exposes the corresponding anchored collection builder API in
+`crates/slicer-sdk/src/layer_collection_builder.rs`. Host validation and
+ordering remain authoritative: a collection is committed as one event, and
+the additive WIT records do not change the existing layer collection schema
+version or ordinary builder contract.
+
 ### `lightning-tree-segments` read-view (packet 137)
 
 Available to `Layer::Infill` modules on the `paint-region-layer-view` resource.

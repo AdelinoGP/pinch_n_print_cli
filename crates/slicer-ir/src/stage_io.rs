@@ -569,6 +569,8 @@ pub enum LayerStageCommit {
     /// `Layer::PathOptimization`: apply the entity-order proposal, then
     /// accumulate the g-code side-effects onto the deferred queues.
     PathOptimization(PathOptimizationCommit),
+    /// Commit anchored physical events at their owning model-event boundaries.
+    AnchoredEvents(Vec<crate::OrderedEventCollection>),
     /// Test-only escape hatch: pre-seed a `LayerCollectionIR` into the arena so a
     /// downstream stage consumes a known entity list. Named for its arena effect,
     /// not its caller; never produced by a production runner. See ADR-0020.
@@ -592,6 +594,7 @@ impl LayerStageCommit {
             Self::SupportPostProcess(_) => "Layer::SupportPostProcess",
             Self::SlicePostProcess { .. } => "Layer::SlicePostProcess",
             Self::PathOptimization(_) => "Layer::PathOptimization",
+            Self::AnchoredEvents(_) => "Layer::AnchoredEvents",
             Self::SeedLayerCollection(_) => return None,
         })
     }
