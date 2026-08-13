@@ -5,7 +5,7 @@ task_ids:
   - TASK-334
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Depends on draft tree-support-family and traditional-support-family; inherited TASK-331 activation blockers remain open.
+copy_note: Depends on draft tree-support-family and traditional-support-family; TASK-331 blockers resolved (packet 220 implemented).
 ---
 
 # Packet Contract: mixed-support-family-routing
@@ -17,9 +17,9 @@ Implement deterministic host-owned routing cells and validation so mixed tree/tr
 This packet owns host routing-cell construction, multi-family aggregation validation, rendered swept-path conflict handling, diagnostics, and mixed-family tests. It consumes the draft analysis, structural plan, family pairing, tree, traditional, and anchored-event contracts; it does not implement either family algorithm or closure evidence.
 
 ## Prerequisites and Blockers
-- Depends on: draft `tree-support-family` (TASK-332), draft `traditional-support-family` (TASK-333), and their draft dependency `support-analysis-family-contracts` (TASK-331).
+- Depends on: draft `tree-support-family` (TASK-332), draft `traditional-support-family` (TASK-333), and their dependency `support-analysis-family-contracts` (TASK-331) — now IMPLEMENTED (2026-08-13, status: implemented, TASK-331 closed in docs/07).
 - Unblocks: `support-family-orca-closure` (TASK-335).
-- Activation blockers: [BLOCK] TASK-331 exact-Z seam ownership; [BLOCK] TASK-331 breaking-versus-additive WIT migration. These inherited blockers keep this packet draft.
+- Activation blockers: [RESOLVED] TASK-331 exact-Z seam ownership (`ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs`); [RESOLVED] TASK-331 breaking-versus-additive WIT migration (breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`). The inherited blockers that kept this packet draft are resolved; the packet activates once TASK-332/333 land.
 
 ## Acceptance Criteria
 - **AC-1. Given** deterministic candidates with mixed `family_id` assignments, **when** host routing runs, **then** each routing cell has stable object/region/demand ownership, same-family cells may union, and no cell has positive-area overlap with another family's cell. | `cargo test -p slicer-runtime --test support_family_routing -- routing_cells -- --exact`

@@ -5,7 +5,7 @@ task_ids:
   - TASK-335
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Depends on draft tree-support-family, traditional-support-family, and mixed-support-family-routing; inherited TASK-331 blockers remain open.
+copy_note: Depends on draft tree-support-family, traditional-support-family, and mixed-support-family-routing; TASK-331 blockers resolved (packet 220 implemented).
 ---
 
 # Packet Contract: support-family-orca-closure
@@ -17,9 +17,9 @@ Close the support-family sequence with fixture-driven invariants and inspected v
 This packet owns closure tests against the decisive fixtures, visual-debug manifests/PNGs, final G-code role checks, and packet 213/TASK-329 plus TASK-163b-orca-ref disposition evidence. It consumes all prior anchored, analysis, tree, traditional, and routing contracts and does not alter their algorithms.
 
 ## Prerequisites and Blockers
-- Depends on: draft `tree-support-family` (TASK-332), draft `traditional-support-family` (TASK-333), and draft `mixed-support-family-routing` (TASK-334).
+- Depends on: draft `tree-support-family` (TASK-332), draft `traditional-support-family` (TASK-333), and draft `mixed-support-family-routing` (TASK-334). TASK-331 (packet 220) is implemented (2026-08-13).
 - Unblocks: closure of the support-family remediation sequence.
-- Activation blockers: [BLOCK] TASK-331 exact-Z seam ownership; [BLOCK] TASK-331 breaking-versus-additive WIT migration. The decisive SupportTest model and both Orca reference G-code fixtures exist; closure runs against them. Status remains draft.
+- Activation blockers: [RESOLVED] TASK-331 exact-Z seam ownership and breaking-versus-additive WIT migration (packet 220 implemented 2026-08-13; see design.md). The decisive SupportTest model and both Orca reference G-code fixtures exist; closure runs against them. Status remains draft.
 
 ## Acceptance Criteria
 - **AC-1. Given** `tmp/SupportTest.stl` and support enabled for each built-in family, **when** the real slice fixture test runs, **then** every accepted demand has an attributed body connected to plate/model termination, every body/nozzle sweep is disjoint from exact-Z occupancy within modeled tolerance, and no support-disabled output exists. | `cargo test -p slicer-runtime --test integration support_family_closure -- fixture_invariants -- --exact`

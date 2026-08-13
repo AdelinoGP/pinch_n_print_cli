@@ -11,7 +11,7 @@ The support defect cannot close on typed captures or self-captured goldens. The 
 
 ## In Scope
 - Real-fixture invariants for demand termination, exact-Z collision freedom, routing, overlap rejection, and support-disabled behavior.
-- `Layer::Support` and `PrePass::SupportGeometry` visual-debug taps with manifest-indexed PNG review.
+- `Layer::Support`, `PrePass::SupportAnalysis`, and `PrePass::SupportGeometry` visual-debug taps with manifest-indexed PNG review. Both support stages exist: `PrePass::SupportAnalysis` (host analysis stage carrying candidates, occupancy/termination surfaces, baseline envelope, and deterministic family assignments) and `PrePass::SupportGeometry` (legacy geometry stage, still in STAGE_ORDER).
 - PNP versus standalone Orca tree/normal matched-height differential evidence.
 - Final G-code support/interface role checks.
 - Existing decisive fixtures: `tmp/SupportTest.stl`, `tmp/SupportTest_Tree_Orca.gcode`, and `tmp/SupportTest_Normal_Orca.gcode`.

@@ -7,18 +7,18 @@
 - Aggregate context cost: `M`
 
 ## Problem Statement
-The live `support-planner` is tree-specific (`modules/core-modules/support-planner/support-planner.toml:2-17`) but is globally selected even for traditional support. The live tree renderer is `Layer::Support` with flat support output (`modules/core-modules/tree-support/tree-support.toml:9-18`). This packet gives that algorithm an explicit family boundary and makes geometry structural before rendering.
+The live `support-planner` is tree-specific (`modules/core-modules/support-planner/support-planner.toml:2-17`) but is globally selected even for traditional support; family selection is now per-region via the `support_family` canonical key (`support_type` aliases resolve `normal*`/`classic*` → `traditional`, `tree*`/`hybrid*` → `tree`). The live tree renderer is `Layer::Support`, and the renderer must emit attributed `SupportIR` v2.0.0 (per body/role: family_id, body_id, demand_ids, object/region, role incl. raft+ironing, printable paths) rather than flat support output (`modules/core-modules/tree-support/tree-support.toml:9-18`). This packet gives that algorithm an explicit family boundary and makes geometry structural before rendering.
 
 ## In Scope
 - Rename/split the planner module and claims to `tree-support-planner` with `support-family:tree`.
 - Sample distributed corner, contour, and interior contacts from `SupportAnalysisIR` demands.
-- Use the host exact-Z support query service exported by TASK-331 at every body Z and tighten the envelope for branch radius, clearance, and routing.
+- Use the host exact-Z support query service `ExactZQueryService` (exported by TASK-331, `crates/slicer-wasm-host/src/exact_z_query.rs`) at every body Z and tighten the envelope for branch radius, clearance, and routing.
 - Emit universal structural `SupportPlanIR` body/interface roles, skeleton metadata, anchored heights, provenance, and decline records.
 - Make `tree-support` consume only tree-attributed plan entries and render semantic polygons into structured `SupportIR`.
 - Cover config keys `tree_support_branch_angle`, `tree_support_branch_diameter`, `tree_support_branch_diameter_angle`, `tree_support_branch_distance`, `tree_support_wall_count`, `support_interface_top_layers`, `support_interface_bottom_layers`, `support_layer_height_mm`, and `support_top_z_distance_mm`.
 
 ## Out of Scope
-- Host exact-Z schema ownership and WIT migration decision, TASK-331 blockers.
+- Host exact-Z schema ownership and the WIT migration decision (TASK-331) are resolved; see `packet.spec.md` blockers note. This packet consumes the resulting contracts, not their ownership.
 - Traditional planning, mixed-family routing, final Orca differential closure, and raft scheduling.
 
 ## Authoritative References

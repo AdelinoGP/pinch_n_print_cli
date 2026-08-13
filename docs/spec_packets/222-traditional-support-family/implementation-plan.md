@@ -3,7 +3,7 @@
 ## Execution Rules
 - Work one atomic step at a time; map every step to `TASK-333`.
 - Use TDD, implementation, then the narrowest falsifying validation.
-- Do not activate while TASK-331 blockers remain unresolved.
+- TASK-331 blockers are resolved and TASK-331 is implemented (packet 220, 2026-08-13); activation is pending this packet's own preflight.
 
 ## Steps
 ### Step 1: Establish traditional family package and claims
@@ -24,7 +24,7 @@
 ### Step 2: Implement contact, propagation, interface, obstacle, and termination planning
 - Task IDs: `TASK-333`
 - Objective: plan complete structural traditional bodies from assigned demands and exact-Z host geometry.
-- Precondition: TASK-331 exports `SupportAnalysisIR` and the host exact-Z support query service required by this planner.
+- Precondition: satisfied — TASK-331 exports `SupportAnalysisIR` and the host exact-Z support query service `ExactZQueryService` (in `crates/slicer-wasm-host/src/exact_z_query.rs`) required by this planner.
 - Postcondition: contacts propagate downward, interfaces use configured layers/pattern, obstacles are avoided, and termination is valid.
 - Files allowed to read: `modules/core-modules/traditional-support-planner/src/lib.rs` bounded ranges; delegated region/query locations.
 - Files allowed to edit (at most 3): `modules/core-modules/traditional-support-planner/src/lib.rs`; `modules/core-modules/traditional-support-planner/Cargo.toml`; `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs`.
