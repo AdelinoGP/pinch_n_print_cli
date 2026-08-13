@@ -13,7 +13,7 @@ The integrated-modules effort added a second native IR-to-view translation besid
 
 ## In Scope
 
-- One authoritative view-construction path shared by native and WASM adapters: constructors on the plain SDK view types (`SliceRegionView`/`PerimeterRegionView`, `crates/slicer-sdk/src/views.rs:20,554`); the WASM leg adapts the plain view to its WIT resource type, the native leg consumes the constructors directly.
+- One authoritative view-construction path shared by native and WASM adapters: `SliceRegionView::from_ir` and `PerimeterRegionView::from_ir` in `crates/slicer-sdk/src/views.rs`; the WASM leg adapts the plain views to WIT resource types, the native leg consumes the constructors directly.
 - Removal of the duplicate `resolve_layer_held_claims_map` logic in favor of the scheduler-owned `resolve_held_claims` authority (`crates/slicer-scheduler/src/validation.rs:90`), with per-region held claims preserved.
 - Lossless native response commits for supported prepass, layer, support-origin, and postprocess fields; no silent fallback for supported variants.
 - The support-origin contract: additive `set-current-origin` on the WIT `support-output-builder` resource, SDK `SupportOutputBuilder` origin tracking, host `set_current_origin` implementation, per-region `SupportIR` shape (mirroring `InfillIR`/`PerimeterIR`), and origin-preserving marshal conversion for both legs.

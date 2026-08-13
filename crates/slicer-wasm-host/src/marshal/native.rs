@@ -32,10 +32,10 @@ use crate::marshal::{
     InfillOutputCollected, OriginId, PerimeterOutputCollected, SupportOutputCollected,
 };
 
-fn origin(value: &Option<(String, u64)>) -> Option<OriginId> {
-    value.as_ref().map(|(object_id, region_id)| OriginId {
-        object_id: object_id.clone(),
-        region_id: *region_id,
+fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId> {
+    value.as_ref().map(|origin| OriginId {
+        object_id: origin.object_id.clone(),
+        region_id: origin.region_id,
     })
 }
 
@@ -794,12 +794,10 @@ fn collect_perimeter(builder: &PerimeterOutputBuilder) -> PerimeterOutputCollect
                 seam.wall_index,
             )
         }),
-        resolved_seam_origin: builder
-            .resolved_seam_origin()
-            .map(|(object_id, region_id)| OriginId {
-                object_id: object_id.clone(),
-                region_id: *region_id,
-            }),
+        resolved_seam_origin: builder.resolved_seam_origin().map(|origin| OriginId {
+            object_id: origin.object_id.clone(),
+            region_id: origin.region_id,
+        }),
     }
 }
 

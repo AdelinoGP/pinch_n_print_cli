@@ -93,10 +93,11 @@ fn three_tool_polygon_fragments_into_three_regions() {
     // Group emitted walls by their per-region origin tag.
     let mut walls_per_region: BTreeMap<u64, usize> = BTreeMap::new();
     for (_wall, origin) in output.wall_loops().iter().zip(output.wall_loop_origins()) {
-        let (_obj, region_id) = origin
+        let region_id = origin
             .as_ref()
-            .expect("every emitted wall must carry a (object_id, region_id) origin");
-        *walls_per_region.entry(*region_id).or_default() += 1;
+            .expect("every emitted wall must carry an object/region origin")
+            .region_id;
+        *walls_per_region.entry(region_id).or_default() += 1;
     }
 
     assert_eq!(

@@ -185,11 +185,26 @@ fn multi_region_wall_counts_preserved() {
     assert_eq!(
         output.rotated_wall_loop_origins(),
         &[
-            Some(("obj-a".to_string(), 0)),
-            Some(("obj-a".to_string(), 0)),
-            Some(("obj-a".to_string(), 0)),
-            Some(("obj-b".to_string(), 1)),
-            Some(("obj-b".to_string(), 1)),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "obj-a".to_string(),
+                region_id: 0
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "obj-a".to_string(),
+                region_id: 0
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "obj-a".to_string(),
+                region_id: 0
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "obj-b".to_string(),
+                region_id: 1
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "obj-b".to_string(),
+                region_id: 1
+            }),
         ]
     );
     for (actual, expected) in rotated[1..3].iter().zip(&region_a[1..]) {

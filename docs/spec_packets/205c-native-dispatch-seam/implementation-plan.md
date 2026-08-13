@@ -106,7 +106,7 @@
   - `crates/slicer-ir/tests/ir_tests.rs`
 - Files explicitly out of bounds: module crates, WIT, dist, CLI.
 - Blast-radius discipline (mandatory — `SupportIR` gains a new field shape):
-  - Struct-literal sites: `marshal/out.rs:197,264`; `layer_executor.rs:2494,2545`; `tests/executor/live_layer_support_tdd.rs:71`; `tests/executor/layer_executor_tdd.rs:834`; `tests/contract/parity_invariants_selftest_tdd.rs:753`; `SupportIR::default()` at `tests/unit/blackboard_layer_arena_tdd.rs:295` and `crates/slicer-ir/tests/ir_tests.rs:751`.
+  - Struct-literal sites: `convert_support_output` and `convert_infill_output` in `crates/slicer-wasm-host/src/marshal/out.rs`; support commits in `LayerExecutor` and the focused executor/contract tests; `SupportIR::default()` in the blackboard and IR tests.
   - Consumers: `layer_executor.rs:1906-1933`; `visual_debug_render.rs:467-471, 805-809`; `tests/common/mod.rs:288-303`; `tests/common/parity_invariants.rs:733-747`; `tests/contract/dispatch_identity_tdd.rs:241-299`; `tests/executor/live_layer_support_tdd.rs:91-184`; `tests/contract/parity_invariants_selftest_tdd.rs:764-799`.
 - Expected sub-agent dispatches: targeted cargo test/check; return `FACT` or <=20 failure lines.
 - Context cost: `M`.

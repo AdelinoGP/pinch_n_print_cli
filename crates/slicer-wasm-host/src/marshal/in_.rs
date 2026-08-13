@@ -469,11 +469,12 @@ fn bbox_overlaps(region_bbox: Bbox, poly: &slicer_ir::ExPolygon) -> bool {
 
 /// Convert a `PerimeterRegion` from the IR into a `PerimeterRegionData` WIT resource.
 pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> PerimeterRegionData {
+    let view = slicer_sdk::views::PerimeterRegionView::from_ir(region);
     PerimeterRegionData {
-        object_id: region.object_id.clone(),
-        region_id: region.region_id.to_string(),
-        wall_loops: region.walls.iter().map(ir_to_wit_wall_loop).collect(),
-        infill_areas: ir_to_wit_expolygons(&region.infill_areas),
+        object_id: view.object_id().clone(),
+        region_id: view.region_id().to_string(),
+        wall_loops: view.wall_loops().iter().map(ir_to_wit_wall_loop).collect(),
+        infill_areas: ir_to_wit_expolygons(view.infill_areas()),
         // ADR-0028 fields default empty here; the Layer::InfillPostProcess
         // dispatch arm enriches them from SliceIR/RegionMapIR after
         // construction (crate::dispatch).
@@ -485,7 +486,7 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         wall_source_region_id: None,
         // Note: width and flow_factor are intentionally discarded here;
         // SeamPosition.point is used for diagnostics only.
-        resolved_seam: region.resolved_seam.clone().map(|sp| {
+        resolved_seam: view.resolved_seam().cloned().map(|sp| {
             (
                 Point3 {
                     x: sp.point.x,
@@ -500,8 +501,8 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         // conversion above — the WIT `push-seam-candidate` write contract
         // never carried them (only `pos: point3, score: f32`), so there is
         // nothing to round-trip.
-        seam_candidates: region
-            .seam_candidates
+        seam_candidates: view
+            .seam_candidates()
             .iter()
             .map(|sc| {
                 (

@@ -243,7 +243,11 @@ fn wall_sharing_same_config_union_link() {
         .iter()
         .zip(output.sparse_path_origins())
         .any(|(path, origin)| {
-            origin == &Some(("object".to_string(), 1))
+            origin
+                == &Some(slicer_sdk::builders::RegionOrigin {
+                    object_id: "object".to_string(),
+                    region_id: 1,
+                })
                 && path.points.iter().any(|point| point.x <= 0.1)
                 && path.points.iter().any(|point| point.x >= 14.9)
         }));
@@ -278,7 +282,7 @@ fn wall_sharing_diff_config_no_inset_on_shared_arc() {
             .map(|point| point.x)
             .fold(f32::NEG_INFINITY, f32::max);
         assert!(!(min_x < 9.9 && max_x > 10.1));
-        match origin.as_ref().map(|(_, region_id)| *region_id) {
+        match origin.as_ref().map(|origin| origin.region_id) {
             Some(1) => assert!(max_x >= 10.0 - 0.5 * 0.4),
             Some(2) => assert!(min_x <= 10.0 + 0.5 * 0.8),
             other => panic!("unexpected origin: {other:?}"),

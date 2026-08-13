@@ -2892,8 +2892,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let wall_loops = sdk.wall_loops();
             let wall_loop_origins = sdk.wall_loop_origins();
             for (i, w) in wall_loops.iter().enumerate() {
-                if let Some((obj, reg)) = &wall_loop_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &wall_loop_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_wall_loop(&__slicer_ir_wallloop_to_wit(w));
             }
@@ -2904,8 +2904,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 let areas: ::std::vec::Vec<WitExPolygon> =
                     call_areas.iter().map(__slicer_ir_expolygon_to_wit).collect();
                 if !areas.is_empty() {
-                    if let Some((obj, reg)) = &infill_areas_origins[i] {
-                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    if let Some(origin) = &infill_areas_origins[i] {
+                        let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                     }
                     let _ = wit.set_infill_areas(&areas);
                 }
@@ -2913,8 +2913,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let seam_candidates = sdk.seam_candidates();
             let seam_candidate_origins = sdk.seam_candidate_origins();
             for (i, (pos, score)) in seam_candidates.iter().enumerate() {
-                if let Some((obj, reg)) = &seam_candidate_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &seam_candidate_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 if wit
                     .push_seam_candidate(
@@ -2932,8 +2932,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let rotated_wall_loops = sdk.rotated_wall_loops();
             let rotated_wall_loop_origins = sdk.rotated_wall_loop_origins();
             for (i, (pos, wall_index, loop_)) in rotated_wall_loops.iter().enumerate() {
-                if let Some((obj, reg)) = &rotated_wall_loop_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &rotated_wall_loop_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_reordered_wall_loop(
                     WitPoint3WithWidth {
@@ -2961,24 +2961,24 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let sparse = sdk.sparse_paths();
             let sparse_origins = sdk.sparse_path_origins();
             for (i, p) in sparse.iter().enumerate() {
-                if let Some((obj, reg)) = &sparse_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &sparse_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_sparse_path(&__slicer_ir_path_to_wit(p));
             }
             let solid = sdk.solid_paths();
             let solid_origins = sdk.solid_path_origins();
             for (i, p) in solid.iter().enumerate() {
-                if let Some((obj, reg)) = &solid_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &solid_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_solid_path(&__slicer_ir_path_to_wit(p));
             }
             let ironing = sdk.ironing_paths();
             let ironing_origins = sdk.ironing_path_origins();
             for (i, p) in ironing.iter().enumerate() {
-                if let Some((obj, reg)) = &ironing_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &ironing_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_ironing_path(&__slicer_ir_path_to_wit(p));
             }
@@ -2992,22 +2992,22 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
         ) {
             let support_origins = sdk.support_path_origins();
             for (i, p) in sdk.support_paths().iter().enumerate() {
-                if let Some((obj, reg)) = &support_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &support_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_support_path(&__slicer_ir_path_to_wit(p));
             }
             let interface_origins = sdk.interface_path_origins();
             for (i, (p, top)) in sdk.interface_paths().iter().enumerate() {
-                if let Some((obj, reg)) = &interface_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &interface_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_interface_path(&__slicer_ir_path_to_wit(p), *top);
             }
             let raft_origins = sdk.raft_path_origins();
             for (i, p) in sdk.raft_paths().iter().enumerate() {
-                if let Some((obj, reg)) = &raft_origins[i] {
-                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                if let Some(origin) = &raft_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
                 }
                 let _ = wit.push_raft_path(&__slicer_ir_path_to_wit(p));
             }

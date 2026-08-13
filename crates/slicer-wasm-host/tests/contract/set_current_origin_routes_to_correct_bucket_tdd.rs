@@ -209,3 +209,19 @@ fn support_set_current_origin_routes_to_correct_bucket() {
     assert_eq!(origin.object_id, TEST_UUID);
     assert_eq!(origin.region_id, TEST_REGION_ID);
 }
+
+#[test]
+fn set_current_origin_rejects_noncanonical_region_id() {
+    let mut ctx = HostExecutionContextBuilder::new("com.test.explicit-origin", 0.0, 0.2).build();
+    let handle = ctx
+        .push_support_output_builder()
+        .expect("push support output builder");
+    let result = <slicer_wasm_host::host::HostExecutionContext as HostSupportOutputBuilder>::set_current_origin(
+        &mut ctx,
+        handle,
+        TEST_UUID.to_string(),
+        "01".to_string(),
+    )
+    .expect("host call must succeed");
+    assert!(result.is_err());
+}

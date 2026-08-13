@@ -90,18 +90,33 @@ fn ironing_passthrough_identical() {
     assert_eq!(output.ironing_paths(), expected_ironing.as_slice());
     assert_eq!(
         output.sparse_path_origins(),
-        &[Some(("object-a".to_string(), 7))]
+        &[Some(slicer_sdk::builders::RegionOrigin {
+            object_id: "object-a".to_string(),
+            region_id: 7,
+        })]
     );
     assert_eq!(
         output.solid_path_origins(),
-        &[Some(("object-a".to_string(), 7))]
+        &[Some(slicer_sdk::builders::RegionOrigin {
+            object_id: "object-a".to_string(),
+            region_id: 7,
+        })]
     );
     assert_eq!(
         output.ironing_path_origins(),
         &[
-            Some(("object-a".to_string(), 7)),
-            Some(("object-a".to_string(), 7)),
-            Some(("object-b".to_string(), 11)),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "object-a".to_string(),
+                region_id: 7
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "object-a".to_string(),
+                region_id: 7
+            }),
+            Some(slicer_sdk::builders::RegionOrigin {
+                object_id: "object-b".to_string(),
+                region_id: 11
+            }),
         ]
     );
 }

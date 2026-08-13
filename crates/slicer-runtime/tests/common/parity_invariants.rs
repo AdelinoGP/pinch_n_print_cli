@@ -737,8 +737,7 @@ fn compare_support_ir(
         ));
     }
     for (index, (n, w)) in native.regions.iter().zip(&wasm.regions).enumerate() {
-        let anonymous_native = n.object_id.is_empty() && n.region_id == 0;
-        if (!anonymous_native && n.object_id != w.object_id) || n.region_id != w.region_id {
+        if n.object_id != w.object_id || n.region_id != w.region_id {
             return Err(format!("region[{index}] identity mismatch"));
         }
         let label = format!("region[{index}]");

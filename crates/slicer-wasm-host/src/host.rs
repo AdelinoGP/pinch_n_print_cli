@@ -3504,14 +3504,14 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         region_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
-            Ok(parsed) => {
+            Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
                 });
                 Ok(Ok(()))
             }
-            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
         }
     }
     fn drop(&mut self, rep: Resource<InfillOutputBuilderData>) -> wasmtime::Result<()> {
@@ -3623,14 +3623,14 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         region_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
-            Ok(parsed) => {
+            Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
                 });
                 Ok(Ok(()))
             }
-            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
         }
     }
     fn drop(&mut self, rep: Resource<PerimeterOutputBuilderData>) -> wasmtime::Result<()> {
@@ -3932,14 +3932,14 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         region_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
-            Ok(parsed) => {
+            Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
                 });
                 Ok(Ok(()))
             }
-            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+            _ => Ok(Err(format!("invalid canonical region-id: {region_id}"))),
         }
     }
     fn drop(&mut self, rep: Resource<SupportOutputBuilderData>) -> wasmtime::Result<()> {
