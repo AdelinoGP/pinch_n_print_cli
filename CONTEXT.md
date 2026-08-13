@@ -764,3 +764,34 @@ between pipeline stages — e.g. a per-point overhang distance or speed factor
 stamped by a producer stage and consumed by a later one. A packet may ship a
 carrier alone (no live producer or consumer yet) to unblock later packets;
 until a producer commits values, a carrier changes no output.
+
+### Slicer-only linker
+The production module host's linker, which resolves slicer WIT interfaces only
+and no WASI interfaces. A deliberate sandbox: guests cannot touch the machine
+(no filesystem, env, args, or network). Packet 225 preserves this property;
+ADR-0060 extends it into the accommodating host.
+
+### Accommodating host
+A module host extended with WASI preview2 (wasmtime-wasi) so foreign-language
+guests whose toolchains always link WASI (Go, C++, WASI-SDK-linked guests) can
+instantiate. Capabilities stay default-deny — no preopens, env, args, or
+network — so the sandbox's substance survives the extension. Decided in
+ADR-0060.
+
+### Production-fit
+A feasibility-gate criterion: a candidate component is loadable-and-correct in
+the slicer-only linker as-is, with zero host changes. Packet 225's probe
+records measure this; it is evidence about the host's constraints as much as
+about the languages.
+
+### Language-feasibility
+The feasibility gate's actual criterion: whether a language can produce a
+working component at all, given an accommodating host. Measured by the
+follow-up packet to ADR-0060, which re-runs the candidates with WASI present.
+
+### Foreign-language guest
+A guest component authored in a language other than Rust via its own WIT
+bindings generator (MoonBit, AssemblyScript, C++, Go). Distinct from the
+module-provenance terms (external, community, integrated) — this is the
+authoring-language dimension, not where the module ships from.
+
