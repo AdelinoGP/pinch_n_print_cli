@@ -214,6 +214,7 @@ impl LayerModule for SupportSurfaceIroning {
             if polygons.is_empty() {
                 continue;
             }
+            output.begin_region(region.object_id().as_str(), *region.region_id());
 
             for expoly in polygons {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);

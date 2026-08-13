@@ -106,7 +106,7 @@ fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, M
     support.begin_region("support-object-b", 11);
     support.push_interface_path(support_path(10.0), true)?;
     support.push_raft_path(support_path(20.0))?;
-    Ok(NativeLayerResponse {
+    Ok(NativeLayerResponse { // exhaustive: parity fixture intentionally spells out the response envelope
         infill: None,
         perimeters: None,
         support: Some(support),
@@ -348,7 +348,7 @@ fn native_prepass_commit_preserves_seam_candidate_reason() {
             ..Default::default()
         })
         .unwrap();
-    let response = NativePrepassResponse {
+    let response = NativePrepassResponse { // exhaustive: seam-plan commit fixture
         mesh_analysis: None,
         layer_plan: None,
         paint_segmentation: None,
@@ -376,7 +376,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
             ..Default::default()
         })
         .unwrap();
-    let response = NativePrepassResponse {
+    let response = NativePrepassResponse { // exhaustive: invalid-region validation fixture
         mesh_analysis: None,
         layer_plan: None,
         paint_segmentation: None,
@@ -388,7 +388,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
 }
 
 fn empty_native_prepass_response() -> NativePrepassResponse {
-    NativePrepassResponse {
+    NativePrepassResponse { // exhaustive: empty response fixture
         mesh_analysis: None,
         layer_plan: None,
         paint_segmentation: None,
@@ -486,7 +486,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             branch_segments: vec![vec![Point3WithWidth::default()]],
         })
         .unwrap();
-    let response = NativePrepassResponse {
+    let response = NativePrepassResponse { // exhaustive: layer-plan commit fixture
         mesh_analysis: Some(mesh),
         layer_plan: Some(layers),
         paint_segmentation: None,
