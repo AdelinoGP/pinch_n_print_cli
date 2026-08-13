@@ -14,7 +14,7 @@ reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "Su
 writes = ["SupportPlanIR"]
 
 [claims]
-holds    = ["support-planner"]
+holds    = ["support-planner", "support-family:tree", "support-family:traditional"]
 requires = []
 
 [compatibility]
