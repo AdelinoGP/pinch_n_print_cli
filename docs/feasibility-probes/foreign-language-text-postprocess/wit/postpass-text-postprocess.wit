@@ -1,0 +1,19 @@
+package slicer:postpass-text-postprocess@1.0.0;
+
+interface text-postprocess {
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
+        gcode-text: string,
+        config: config-view,
+    ) -> result<string, module-error>;
+}
+
+world text-postprocess-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+
+    export text-postprocess;
+}

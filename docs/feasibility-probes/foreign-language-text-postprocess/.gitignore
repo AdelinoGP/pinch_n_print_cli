@@ -1,0 +1,7 @@
+bindings/
+out/
+*.wasm
+*.o
+node_modules/
+.generation-started
+scratch/

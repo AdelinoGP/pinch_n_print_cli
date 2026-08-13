@@ -1,0 +1,1 @@
+{"targets":{"release":{"binaryFile":"core.wasm","textFile":"core.wat"}},"options":{"runtime":"incremental"}}
