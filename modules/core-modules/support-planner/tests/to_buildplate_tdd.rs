@@ -508,6 +508,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
                 region_ids: vec!["0".to_string()],
             })
             .collect(),
+        region_support_configs: Vec::new(),
     }
 }
 
