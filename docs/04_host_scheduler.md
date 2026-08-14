@@ -209,6 +209,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::Slice",                // host-built-in
     "PrePass::OverhangAnnotation",   // host-built-in; derives overhang from the committed SliceIR
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
+    "PrePass::SupportAnalysis",      // host-built-in; derives support candidates from the colour-resolved SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
     "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
@@ -240,9 +241,13 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportGeometry` → `LightningTreeGen`) — see
+  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry` →
+  `LightningTreeGen`) — see
   `01_system_architecture.md` §"PrePass Stage Order", which documents the
-  executed chain and the known divergence between the two.
+  executed chain and the known divergence between the two. `PrePass::SupportAnalysis`
+  runs strictly after the Slice/paint stages (it derives support candidates from
+  the committed, colour-resolved `SliceIR`) and before `PrePass::SupportGeometry`
+  (which consumes that analysis), matching its declared `STAGE_ORDER` position.
 
   `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
   stages producing sparse-infill outlines and **before** `Layer::Infill`
@@ -512,36 +517,54 @@ Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):
 the resolved holder must remain constant across every layer for a given object.
 
-### Support-generator selection (`support_type` dedup)
+### Support-generator selection (retained family candidates, per-region pairing)
 
 Both `com.core.traditional-support` and `com.core.tree-support` declare
-`holds = ["support-generator"]`. Like `perimeter-generator`, the claim is
-resolved at module-load dedup time (before `validate_startup_dag` runs) by
+`holds = ["support-generator"]`, and each pairs with its planner by holding a
+shared `support-family:<id>` claim (see `docs/03_wit_and_manifest.md` §
+"Support-family claims" and the Planner-Renderer Pairing section below).
+
+Unlike `perimeter-generator`, `support-generator` is **not** resolved to a
+stable single owner by global startup dedup. It is excluded from
 `dedup_same_claim_modules_with_wall_generator`
-(`crates/slicer-scheduler/src/execution_plan.rs`), so the two support modules
-never trip the startup conflict for each other.
+(`crates/slicer-scheduler/src/execution_plan.rs`), exactly like the fill-role
+claims: every family candidate is **retained** through load and dispatch, and
+the active renderer is selected **per region** at dispatch time via the
+planner-renderer family pairing. There is no global "first winner"
+`support-generator` dedup that drops losing families.
 
 Selection rules:
 
-1. **`support_type` config key** — read directly from the raw config source
-   at module-load time (before `ResolvedConfig` exists) via
-   `SUPPORT_GENERATOR_CONFIG_KEY` (`"support_type"`). Values are OrcaSlicer's
-   raw spellings, carried in the 3MF sidecar next to the raw `enable_support`
-   key: values starting with `tree` (`tree(auto)`, `tree(manual)`) or with
-   `hybrid` (legacy `hybrid(auto)`, which OrcaSlicer itself migrates to
-   `tree(auto)` at config load) select `com.core.tree-support`; absent values
-   and everything else select `com.core.traditional-support`. Falling back to
-   traditional matches the historical alphabetical winner, so configs without
-   the key slice exactly as before. Manual (enforcer-only) variants select the
-   same holder as their auto counterpart — pnp has no enforcer-only concept.
+1. **`support_family` config key** — the canonical per-region selector
+   (`SUPPORT_FAMILY_CONFIG_KEY`). `support_type` (`SUPPORT_GENERATOR_CONFIG_KEY`,
+   `"support_type"`) is a **compatibility alias** that, when present, overrides
+   the canonical value. Values are OrcaSlicer's raw spellings carried in the 3MF
+   sidecar next to the raw `enable_support` key: values starting with `tree`
+   (`tree(auto)`, `tree(manual)`) or with `hybrid` (legacy `hybrid(auto)`,
+   which OrcaSlicer itself migrates to `tree(auto)` at config load) select the
+   tree family; values starting with `normal*` or `classic*` select the
+   traditional family; absent values default to traditional. Manual
+   (enforcer-only) variants select the same family as their auto counterpart —
+   pnp has no enforcer-only concept. Resolution is `select_support_family`
+   (`crates/slicer-scheduler/src/execution_plan.rs`), applied per region, and
+   drives per-region dispatch: `module_receives_slice_region`
+   (`crates/slicer-wasm-host/src/dispatch.rs`) checks a module holds a
+   `support-family:` claim and, if so, only routes it a region when
+   `module_claims_match_active_region`
+   (`crates/slicer-scheduler/src/execution_plan.rs`) confirms the module's
+   `support-family:<id>` matches the region's resolved family. Modules with no
+   `support-family:` claim receive every region unconditionally.
 
-2. **Alphabetical fallback** — when the preferred module is not among the
-   loaded candidates (e.g. a community module reusing the claim name), the
-   first-winner alphabetical default applies, as for `perimeter-generator`.
+2. **Startup pairing validation** — a planner or renderer whose
+   `support-family:<id>` has no matching counterpart holding the same `<id>`
+   fails at startup (`validate_support_family_pairing`); there is no
+   alphabetical fallback that promotes a lone `support-generator` candidate.
 
-Unlike the fill claims, `support-generator` is a stable single-owner claim:
-the resolved holder must remain constant across every layer for a given object
-(see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`).
+Because selection is per region and family-atomic, `support-generator` is
+**not** a stable single-owner claim: the Allowed Claim Transition Matrix in
+`docs/01_system_architecture.md` permits it to transition across geometry
+phases, and the retained-candidate / per-region pairing semantics are
+normative in the Planner-Renderer Pairing section below.
 
 ### Planner-Renderer Pairing (Normative — packet 220)
 
