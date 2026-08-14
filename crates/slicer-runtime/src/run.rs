@@ -81,6 +81,35 @@ use slicer_wasm_host::build_live_execution_plan;
 use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
+fn emit_host_support_diagnostics(
+    sink: &RuntimeProgressSink,
+    slice_id: &str,
+    audits: &[crate::ModuleAccessAudit],
+) {
+    for audit in audits {
+        for diagnostic in &audit.diagnostics {
+            if !matches!(diagnostic.code, 1200..=1202) {
+                continue;
+            }
+            sink.record(ProgressEvent::module_error(
+                slice_id.to_string(),
+                ProgressPhase::Prepass,
+                "PrePass::SupportGeometry".to_string(),
+                diagnostic.layer.and_then(|layer| u32::try_from(layer).ok()),
+                audit.module_id.clone(),
+                now_unix_ms(),
+                ProgressError {
+                    code: diagnostic.code,
+                    message: diagnostic.message.clone(),
+                    fatal: false,
+                    suggestion: None,
+                    reason: None,
+                },
+            ));
+        }
+    }
+}
+
 /// Validated runtime options derived from CLI arguments.
 ///
 /// Hosted in `run` rather than a CLI module because the runtime library — not
@@ -935,6 +964,15 @@ pub fn run_slice_with_collector(
 
     let pipeline_output = pipeline_result?;
 
+    // Host support aggregation diagnostics are collected with the prepass
+    // audit, but must also enter the slice event channel so a successful run
+    // is visibly degraded to progress consumers.
+    emit_host_support_diagnostics(
+        &channel.sink,
+        &channel.slice_id,
+        &pipeline_output.prepass_audits,
+    );
+
     let wallclock_ms = t0.elapsed().as_millis() as u64;
 
     // Derive layer_count: count layer-change markers in gcode (best-effort proxy).
@@ -1203,9 +1241,11 @@ pub fn prepare_prepass_context(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_support_tool_selection;
-    use slicer_ir::ConfigValue;
+    use super::{emit_host_support_diagnostics, parse_support_tool_selection};
+    use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
+    use slicer_scheduler::validation::ModuleAccessAudit;
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn parse_support_tool_selection_rebases_valid_orca_filament_indices() {
@@ -1258,5 +1298,74 @@ mod tests {
         let selection = parse_support_tool_selection(&extreme);
         assert_eq!(selection.support_tool, 0);
         assert_eq!(selection.interface_tool, 0);
+    }
+
+    #[test]
+    fn host_support_warning_reaches_degraded_slice_collector() {
+        let collector = Arc::new(Mutex::new(
+            crate::progress_events::SliceEventCollector::new(),
+        ));
+        let sink = crate::progress_events::RuntimeProgressSink::new(
+            Arc::new(crate::progress_events::NullEmitter),
+            Arc::clone(&collector),
+        );
+        let audit = ModuleAccessAudit {
+            module_id: "support-geometry".into(),
+            runtime_reads: Vec::new(),
+            runtime_writes: Vec::new(),
+            batch_calls: Vec::new(),
+            diagnostics: vec![Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1200,
+                layer: None,
+                object_id: None,
+                message: "support demand unmet".into(),
+            }],
+        };
+
+        emit_host_support_diagnostics(&sink, "slice", &[audit]);
+
+        let collector = collector.lock().unwrap();
+        assert!(collector.is_degraded());
+        assert_eq!(collector.non_fatal_count(), 1);
+        assert_eq!(collector.events()[0].error.as_ref().unwrap().code, 1200);
+        assert_eq!(
+            collector.events()[0].error.as_ref().unwrap().message,
+            "support demand unmet"
+        );
+    }
+
+    #[test]
+    fn host_duplicate_support_diagnostic_reaches_degraded_slice_collector() {
+        let collector = Arc::new(Mutex::new(
+            crate::progress_events::SliceEventCollector::new(),
+        ));
+        let sink = crate::progress_events::RuntimeProgressSink::new(
+            Arc::new(crate::progress_events::NullEmitter),
+            Arc::clone(&collector),
+        );
+        let audit = ModuleAccessAudit {
+            module_id: "support-geometry".into(),
+            runtime_reads: Vec::new(),
+            runtime_writes: Vec::new(),
+            batch_calls: Vec::new(),
+            diagnostics: vec![Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1202,
+                layer: Some(7),
+                object_id: Some("body-1".into()),
+                message: "duplicate support region rejected".into(),
+            }],
+        };
+
+        emit_host_support_diagnostics(&sink, "slice", &[audit]);
+
+        let collector = collector.lock().unwrap();
+        assert!(collector.is_degraded());
+        assert_eq!(collector.non_fatal_count(), 1);
+        let error = collector.events()[0].error.as_ref().unwrap();
+        assert_eq!(error.code, 1202);
+        assert_eq!(error.message, "duplicate support region rejected");
+        assert_eq!(error.fatal, false);
     }
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
-    SupportGeometryIR, Transform3d,
+    SupportGeometryIR, SupportPlanEntry, SupportPlanIR, Transform3d,
 };
 use slicer_runtime::{Blackboard, BlackboardError};
 
@@ -121,4 +121,89 @@ fn support_geometry_slot_roundtrip() {
         matches!(err, BlackboardError::DuplicatePrepassCommit { .. }),
         "second commit must be DuplicatePrepassCommit, got {err:?}"
     );
+}
+
+fn support_entry(family_id: &str, layer: i32) -> SupportPlanEntry {
+    SupportPlanEntry {
+        global_layer_index: layer,
+        object_id: "object".into(),
+        region_id: 0,
+        family_id: family_id.into(),
+        demand_ids: vec![format!("demand-{family_id}")],
+        body_ids: vec![format!("body-{family_id}")],
+        anchor_layer_index: layer as u32,
+        anchor_z: i64::from(layer),
+        roles: vec![],
+        skeleton: None,
+        capabilities: vec!["structural".into()],
+        provenance: vec![family_id.into()],
+        decline_reason: None,
+    }
+}
+
+#[test]
+fn support_plan_family_commits_merge_entries_and_metadata() {
+    let mesh = minimal_mesh();
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
+    let first = Arc::new(SupportPlanIR {
+        schema_version: semver(2, 0, 0),
+        entries: vec![support_entry("tree", 0)],
+        raft_plan: Some(slicer_ir::RaftPlan {
+            raft_layers: 2,
+            raft_first_layer_density: 0.4,
+            base_raft_layers: 1,
+            interface_raft_layers: 1,
+        }),
+    });
+    let second = Arc::new(SupportPlanIR {
+        schema_version: semver(2, 0, 0),
+        entries: vec![support_entry("traditional", 1)],
+        raft_plan: None,
+    });
+
+    blackboard.commit_support_plan(first).unwrap();
+    blackboard.commit_support_plan(second).unwrap();
+
+    let merged = blackboard.support_plan().unwrap();
+    assert_eq!(merged.schema_version, semver(2, 0, 0));
+    assert_eq!(merged.entries.len(), 2);
+    assert_eq!(
+        merged
+            .entries
+            .iter()
+            .map(|entry| entry.family_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["tree", "traditional"]
+    );
+    assert_eq!(merged.raft_plan.as_ref().unwrap().raft_layers, 2);
+}
+
+#[test]
+fn support_plan_merge_rejects_duplicate_region_identity() {
+    let mesh = minimal_mesh();
+    let mut blackboard = Blackboard::new(mesh, 0);
+    let first = Arc::new(SupportPlanIR {
+        schema_version: semver(2, 0, 0),
+        entries: vec![support_entry("tree", 0)],
+        raft_plan: None,
+    });
+    let duplicate = Arc::new(SupportPlanIR {
+        schema_version: semver(2, 0, 0),
+        entries: vec![support_entry("traditional", 0)],
+        raft_plan: None,
+    });
+
+    blackboard.commit_support_plan(first).unwrap();
+    let error = blackboard
+        .commit_support_plan(duplicate)
+        .expect_err("duplicate support region identity must be rejected");
+    assert_eq!(
+        error,
+        BlackboardError::DuplicateSupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "object".into(),
+            region_id: 0,
+        }
+    );
+    assert_eq!(blackboard.support_plan().unwrap().entries.len(), 1);
 }

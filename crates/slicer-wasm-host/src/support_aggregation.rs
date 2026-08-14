@@ -1,8 +1,9 @@
 //! Host-owned support-family aggregation and degraded validation.
 
 use slicer_ir::{
-    units_to_mm, ExPolygon, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR,
+    units_to_mm, ExPolygon, RaftPlan, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR,
 };
+use std::collections::HashMap;
 
 use crate::exact_z_query::ExactZQueryService;
 
@@ -73,6 +74,25 @@ pub struct SupportAggregationResult {
     pub unmet: Vec<UnmetSupportDemand>,
     /// Whether at least one body was rejected.
     pub degraded: bool,
+    /// Duplicate identities rejected in deterministic input order.
+    pub duplicates: Vec<DuplicateSupportPlanEntry>,
+    /// Raft metadata merged from all family plans.
+    pub raft_plan: Option<RaftPlan>,
+}
+
+/// A duplicate `(layer, object, region)` identity found during aggregation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DuplicateSupportPlanEntry {
+    /// Identity of the support region.
+    pub global_layer_index: i32,
+    /// Object owning the support region.
+    pub object_id: String,
+    /// Region inside the object.
+    pub region_id: u64,
+    /// Family of the first entry.
+    pub first_family_id: String,
+    /// Family of the rejected duplicate.
+    pub duplicate_family_id: String,
 }
 
 /// Declined candidates retained as diagnostics, with no renderer/filler output.
@@ -97,8 +117,27 @@ pub struct DeclinedSupportResult {
 /// every body against exact-Z occupancy before it can reach a renderer.
 pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAggregationResult {
     let mut result = SupportAggregationResult::default();
+    let mut identities = HashMap::new();
     for plan in input.plans {
+        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
         for entry in plan.entries {
+            let identity = (
+                entry.global_layer_index,
+                entry.object_id.clone(),
+                entry.region_id,
+            );
+            if let Some(first_family_id) = identities.get(&identity).cloned() {
+                result.degraded = true;
+                result.duplicates.push(DuplicateSupportPlanEntry {
+                    global_layer_index: identity.0,
+                    object_id: identity.1,
+                    region_id: identity.2,
+                    first_family_id,
+                    duplicate_family_id: entry.family_id.clone(),
+                });
+                continue;
+            }
+            identities.insert(identity.clone(), entry.family_id.clone());
             if entry.decline_reason.is_some() {
                 continue;
             }
@@ -142,29 +181,110 @@ pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAgg
     result
 }
 
+fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Option<RaftPlan> {
+    match (current, incoming) {
+        (None, None) => None,
+        (Some(plan), None) | (None, Some(plan)) => Some(plan),
+        (Some(current), Some(incoming)) => Some(RaftPlan {
+            raft_layers: current.raft_layers.min(incoming.raft_layers),
+            raft_first_layer_density: current
+                .raft_first_layer_density
+                .min(incoming.raft_first_layer_density),
+            base_raft_layers: current.base_raft_layers.min(incoming.base_raft_layers),
+            interface_raft_layers: current
+                .interface_raft_layers
+                .min(incoming.interface_raft_layers),
+        }),
+    }
+}
+
 /// Validate one harvested writer result before it is handed to the runtime
-/// blackboard. Declined entries remain in the immutable plan; they are
-/// diagnostics, not renderer input, while invalid bodies are removed.
+/// blackboard. Declined entries are diagnostics only, never renderer input.
 pub fn aggregate_support_plan_ir(
     plan: SupportPlanIR,
     exact_z: &ExactZQueryService,
 ) -> SupportPlanIR {
-    let declined: Vec<_> = plan
-        .entries
-        .iter()
-        .filter(|entry| entry.decline_reason.is_some())
-        .cloned()
-        .collect();
-    let mut aggregate = aggregate_support_plans(SupportAggregationInput {
+    let aggregate = aggregate_support_plans(SupportAggregationInput {
         plans: vec![plan.clone()],
         exact_z,
     });
-    aggregate.retained.extend(declined);
     SupportPlanIR {
         schema_version: plan.schema_version,
         entries: aggregate.retained,
-        raft_plan: plan.raft_plan,
+        raft_plan: aggregate.raft_plan,
     }
+}
+
+/// Production support harvest result, including host-owned degraded diagnostics.
+pub fn aggregate_support_plan_ir_with_diagnostics(
+    plan: SupportPlanIR,
+    exact_z: &ExactZQueryService,
+) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
+    aggregate_support_plan_irs_with_diagnostics(vec![plan], exact_z)
+}
+
+/// Aggregate all harvested family plans at the host multi-writer seam.
+pub fn aggregate_support_plan_irs_with_diagnostics(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
+    let schema_version = plans
+        .first()
+        .map(|plan| plan.schema_version)
+        .unwrap_or_default();
+    let aggregate = aggregate_support_plans(SupportAggregationInput {
+        plans: plans.clone(),
+        exact_z,
+    });
+    let mut diagnostics = aggregate
+        .unmet
+        .into_iter()
+        .map(|demand| slicer_ir::Diagnostic {
+            severity: slicer_ir::DiagnosticSeverity::Warn,
+            code: 1200,
+            layer: None,
+            object_id: None,
+            message: format!(
+                "support demand '{}' unmet for body '{}': {}",
+                demand.demand_id, demand.body_id, demand.reason
+            ),
+        })
+        .collect::<Vec<_>>();
+    diagnostics.extend(aggregate.duplicates.iter().map(|duplicate| slicer_ir::Diagnostic {
+        severity: slicer_ir::DiagnosticSeverity::Warn,
+        code: 1202,
+        layer: Some(duplicate.global_layer_index),
+        object_id: Some(duplicate.object_id.clone()),
+        message: format!(
+            "duplicate support region rejected: layer={}, object='{}', region={}, families '{}' and '{}'",
+            duplicate.global_layer_index,
+            duplicate.object_id,
+            duplicate.region_id,
+            duplicate.first_family_id,
+            duplicate.duplicate_family_id
+        ),
+    }));
+    for entry in plans.iter().flat_map(|plan| &plan.entries) {
+        if let Some(reason) = entry.decline_reason {
+            for demand_id in &entry.demand_ids {
+                diagnostics.push(slicer_ir::Diagnostic {
+                    severity: slicer_ir::DiagnosticSeverity::Warn,
+                    code: 1201,
+                    layer: Some(entry.global_layer_index),
+                    object_id: Some(entry.object_id.clone()),
+                    message: format!("support demand '{}' declined: {:?}", demand_id, reason),
+                });
+            }
+        }
+    }
+    (
+        SupportPlanIR {
+            schema_version,
+            entries: aggregate.retained,
+            raft_plan: aggregate.raft_plan,
+        },
+        diagnostics,
+    )
 }
 
 /// Record planner declines without synthesizing fallback support geometry.

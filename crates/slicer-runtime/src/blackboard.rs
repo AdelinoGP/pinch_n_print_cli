@@ -208,13 +208,49 @@ impl Blackboard {
         self.seam_plan.as_ref()
     }
 
-    /// Commit `SupportPlanIR` exactly once.
+    /// Commit or merge a family-produced `SupportPlanIR`.
+    ///
+    /// Family planners are independent writers of family-attributed entries,
+    /// so their outputs must be combined at this seam before the immutable
+    /// blackboard slot is published.
     pub fn commit_support_plan(&mut self, ir: Arc<SupportPlanIR>) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.support_plan,
-            ir,
-            BlackboardPrepassSlot::SupportPlan,
-        )
+        let Some(existing) = self.support_plan.as_ref() else {
+            if let Some((global_layer_index, object_id, region_id)) = ir.duplicate_region_identity()
+            {
+                return Err(BlackboardError::DuplicateSupportPlanEntry {
+                    global_layer_index,
+                    object_id,
+                    region_id,
+                });
+            }
+            self.support_plan = Some(ir);
+            return Ok(());
+        };
+
+        if existing.schema_version != ir.schema_version {
+            return Err(BlackboardError::DuplicatePrepassCommit {
+                slot: BlackboardPrepassSlot::SupportPlan,
+            });
+        }
+
+        let mut merged = (**existing).clone();
+        merged.entries.extend(ir.entries.iter().cloned());
+        if let Some((global_layer_index, object_id, region_id)) = merged.duplicate_region_identity()
+        {
+            return Err(BlackboardError::DuplicateSupportPlanEntry {
+                global_layer_index,
+                object_id,
+                region_id,
+            });
+        }
+        merged.raft_plan = match (merged.raft_plan.take(), ir.raft_plan.clone()) {
+            (None, None) => None,
+            (Some(current), None) => Some(current),
+            (None, Some(incoming)) => Some(incoming),
+            (Some(current), Some(incoming)) => Some(raft_plan_min(current, incoming)),
+        };
+        self.support_plan = Some(Arc::new(merged));
+        Ok(())
     }
 
     /// Return the committed support plan, if available.
@@ -698,6 +734,24 @@ fn commit_prepass<T>(
 
     *slot = Some(ir);
     Ok(())
+}
+
+/// Pick a stable raft configuration when family writers disagree. Bit-ordering
+/// keeps the decision defined even for malformed NaN density values.
+fn raft_plan_min(a: slicer_ir::RaftPlan, b: slicer_ir::RaftPlan) -> slicer_ir::RaftPlan {
+    let key = |plan: &slicer_ir::RaftPlan| {
+        (
+            plan.raft_layers,
+            plan.raft_first_layer_density.to_bits(),
+            plan.base_raft_layers,
+            plan.interface_raft_layers,
+        )
+    };
+    if key(&a) <= key(&b) {
+        a
+    } else {
+        b
+    }
 }
 
 fn set_arena_slot<T>(
