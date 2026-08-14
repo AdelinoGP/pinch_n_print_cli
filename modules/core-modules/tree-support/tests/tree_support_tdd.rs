@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigView, ExtrusionRole};
+use std::sync::Arc;
+
+use slicer_ir::{ConfigView, ExtrusionRole, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion};
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -27,6 +29,31 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
         .z(z)
         .add_polygon(square_polygon(0.0, 0.0, size_mm))
         .build()
+}
+
+fn paint_with_plan(family_id: &str) -> PaintRegionLayerView {
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: 0,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
 }
 
 /// Test 1: from_config with empty config uses defaults.
@@ -56,7 +83,7 @@ fn square_region_produces_paths() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -76,7 +103,7 @@ fn paths_have_support_role() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -100,7 +127,7 @@ fn disabled_no_paths() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -121,7 +148,7 @@ fn zero_density_no_paths() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -174,7 +201,7 @@ fn paths_at_correct_z() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, z);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -205,7 +232,7 @@ fn branching_pattern_present() {
 
     // Use a large region to get many branches
     let region = make_square_region(20.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -276,7 +303,7 @@ fn density_affects_coverage() {
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output_low = SupportOutputBuilder::new();
     let mut output_high = SupportOutputBuilder::new();
 
@@ -306,7 +333,7 @@ fn width_matches_config() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -324,4 +351,19 @@ fn width_matches_config() {
             );
         }
     }
+}
+
+#[test]
+fn opposite_family_plan_is_ignored() {
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let module = TreeSupport::from_config(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let paint = paint_with_plan("traditional");
+    let mut output = SupportOutputBuilder::new();
+
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+
+    assert!(output.support_paths().is_empty());
 }

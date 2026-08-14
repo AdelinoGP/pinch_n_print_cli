@@ -140,7 +140,6 @@ impl LayerModule for TreeSupport {
         }
 
         let speed_factor = self.support_speed / BASE_SPEED;
-
         for region in regions {
             let z = region.z();
 
@@ -156,6 +155,11 @@ impl LayerModule for TreeSupport {
 
             for expoly in planned_entries
                 .iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        && entry.family_id == "tree"
+                        && entry.decline_reason.is_none()
+                })
                 .flat_map(|entry| entry.roles.iter())
                 .filter(|role| matches!(role.role, slicer_ir::SupportPlanRole::SupportBody))
                 .flat_map(|role| role.regions.iter())

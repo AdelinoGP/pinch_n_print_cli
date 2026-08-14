@@ -136,16 +136,27 @@ impl LayerModule for TraditionalSupport {
         let sin_a = angle_rad.sin();
 
         let speed_factor = self.support_speed / BASE_SPEED;
-
         for region in regions {
-            let polygons = region.polygons();
-            if polygons.is_empty() {
+            let planned_entries =
+                paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
+            let planned_regions: Vec<&ExPolygon> = planned_entries
+                .iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        && entry.family_id == "traditional"
+                        && entry.decline_reason.is_none()
+                })
+                .flat_map(|entry| entry.roles.iter())
+                .filter(|role| matches!(role.role, slicer_ir::SupportPlanRole::SupportBody))
+                .flat_map(|role| role.regions.iter())
+                .collect();
+            if planned_regions.is_empty() {
                 continue;
             }
 
             let z = region.z();
 
-            for expoly in polygons {
+            for expoly in planned_regions {
                 // Eligibility precedence (docs/01 Layer::Support, docs/02
                 // support precedence rules):
                 //   blocker → skip (always wins)
