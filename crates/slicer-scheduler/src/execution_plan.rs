@@ -82,6 +82,21 @@ pub fn bind_module_config_view(
             effective.push(declared_key.clone());
         }
     }
+    // Support-family dispatch is a host-level selection shared by the
+    // planner and renderers. Its keys are not module-specific tuning knobs,
+    // so expose them to paired support modules even when their manifests do
+    // not repeat the common declaration.
+    if module
+        .claims()
+        .iter()
+        .any(|claim| claim.starts_with("support-family:"))
+    {
+        for key in [SUPPORT_GENERATOR_CONFIG_KEY, SUPPORT_FAMILY_CONFIG_KEY] {
+            if source.contains_key(key) && !effective.iter().any(|entry| entry == key) {
+                effective.push(key.to_string());
+            }
+        }
+    }
     Arc::new(ConfigView::from_declared(
         source,
         effective.iter().map(String::as_str),
@@ -261,6 +276,46 @@ pub fn select_support_family(
     } else {
         "traditional"
     }
+}
+
+/// Returns whether a module may receive an active region under support-family
+/// dispatch. Modules without a support-family claim remain region-agnostic.
+pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegion) -> bool {
+    let mut has_support_family_claim = false;
+    for claim in claims {
+        let Some(family) = claim.strip_prefix("support-family:") else {
+            continue;
+        };
+        has_support_family_claim = true;
+        let support_family = region
+            .resolved_config
+            .extensions
+            .get(SUPPORT_FAMILY_CONFIG_KEY)
+            .and_then(|value| match value {
+                ConfigValue::String(value) => Some(value.as_str()),
+                _ => None,
+            });
+        // `support_type` remains a compatibility alias. Traditional is the
+        // default enum value, so only an explicit legacy extension or Tree
+        // enum value overrides the canonical family.
+        let support_type = region
+            .resolved_config
+            .extensions
+            .get(SUPPORT_GENERATOR_CONFIG_KEY)
+            .and_then(|value| match value {
+                ConfigValue::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .or(match region.resolved_config.support_type {
+                slicer_ir::SupportType::Tree => Some("tree"),
+                slicer_ir::SupportType::Traditional => None,
+            });
+        let selected = select_support_family(support_family, support_type);
+        if family == selected {
+            return true;
+        }
+    }
+    !has_support_family_claim
 }
 
 /// Structured startup failure for an incomplete support planner/renderer pair.
@@ -637,7 +692,15 @@ impl ExecutionPlan {
                 for module in &stage.modules {
                     let key = (layer.index, module.module_id.clone());
                     let entry = module_region_index.entry(key).or_default();
-                    entry.extend(layer.active_regions.iter().cloned());
+                    entry.extend(
+                        layer
+                            .active_regions
+                            .iter()
+                            .filter(|region| {
+                                module_claims_match_active_region(module.claims(), region)
+                            })
+                            .cloned(),
+                    );
                 }
             }
         }
@@ -1008,7 +1071,15 @@ pub fn build_execution_plan(
         // upheld by `bind_module_config_view`; enforce it at plan-build
         // time so any caller bypassing the helper still fails closed.
         for key in binding.config_view.keys() {
-            if !config_key_declared(&binding.module.config_schema.entries, &key) {
+            let support_family_module = binding
+                .module
+                .claims()
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"));
+            if !config_key_declared(&binding.module.config_schema.entries, &key)
+                && !(support_family_module
+                    && (key == SUPPORT_GENERATOR_CONFIG_KEY || key == SUPPORT_FAMILY_CONFIG_KEY))
+            {
                 return Err(ExecutionPlanError::UndeclaredConfigKey { module_id, key });
             }
         }
@@ -1125,7 +1196,18 @@ pub fn build_execution_plan(
                     let entry = module_region_index
                         .entry((layer.index, module_id.clone()))
                         .or_default();
-                    entry.extend(layer.active_regions.iter().cloned());
+                    let module = bindings_by_module_id
+                        .get(module_id)
+                        .expect("module binding checked above");
+                    entry.extend(
+                        layer
+                            .active_regions
+                            .iter()
+                            .filter(|region| {
+                                module_claims_match_active_region(module.module.claims(), region)
+                            })
+                            .cloned(),
+                    );
                 }
             }
         }

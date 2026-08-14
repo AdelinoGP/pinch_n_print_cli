@@ -128,7 +128,10 @@ fn live_region_dispatch_retains_paired_family_candidates() {
             object_id: "object-a".into(),
             region_id: 2,
             resolved_config: ResolvedConfig {
-                support_type: slicer_ir::SupportType::Tree,
+                extensions: std::collections::BTreeMap::from([(
+                    "support_family".into(),
+                    slicer_ir::ConfigValue::String("tree".into()),
+                )]),
                 ..Default::default()
             },
             ..Default::default()
@@ -185,13 +188,20 @@ fn live_region_dispatch_retains_paired_family_candidates() {
         .find(|stage| stage.stage_id == "Layer::Support")
         .unwrap();
     assert_eq!(stage.modules.len(), 3);
-    for module in &stage.modules {
-        assert_eq!(
-            plan.resolve_active_regions(&plan.global_layers[0], module)
-                .len(),
-            2
-        );
-    }
+    let regions_for = |module_id: &str| {
+        let module = stage
+            .modules
+            .iter()
+            .find(|module| module.module_id() == module_id)
+            .unwrap();
+        plan.resolve_active_regions(&plan.global_layers[0], module)
+            .iter()
+            .map(|region| region.region_id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(regions_for("com.core.support-planner"), vec![1, 2]);
+    assert_eq!(regions_for("com.core.traditional-support"), vec![1]);
+    assert_eq!(regions_for("com.core.tree-support"), vec![2]);
     assert_eq!(
         select_support_family(Some("traditional"), None),
         "traditional"
