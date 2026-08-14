@@ -51,7 +51,7 @@ Packet 225 measured production fit against a slicer-only linker. Go and C++ ther
 ## Step Completion Expectations
 
 - Run `check-prerequisites.sh` before each probe. A missing tool is `BLOCKED: TOOLCHAIN`: stop and ask the user; it is never a candidate failure.
-- Before AssemblyScript generation, require user confirmation, then run the fork gate and capture clean `feat/assemblyscript-backend` HEAD immediately before generation. A fork failure is `BLOCKED: FORK_NOT_READY` and stops the probe.
+- Before AssemblyScript generation, require user confirmation, then run the fork gate and capture clean `feat/assemblyscript-no-async` HEAD immediately before generation (branch updated from `feat/assemblyscript-backend` per user direction, 2026-08-13). A fork failure is `BLOCKED: FORK_NOT_READY` and stops the probe.
 - The fixed verdict order is MoonBit, AssemblyScript, C++, Go; choose Rust only if all four records are `NOT_LOADABLE_OR_CORRECT`.
 
 ## Context Discipline Notes

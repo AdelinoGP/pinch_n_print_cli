@@ -58,7 +58,7 @@
 ## Locked Assumptions and Invariants
 
 - Use released `wit-bindgen-cli 0.60.0` for MoonBit, C++, and Go. Use only the confirmed, clean AssemblyScript fork and capture its HEAD immediately before generation.
-- Every record has a real component SHA-256 and terminal result; a tooling blocker stops the candidate rather than producing a candidate result.
+- Every record has a real component SHA-256 and terminal result; a tooling blocker stops the candidate rather than producing a candidate result. Deviation (user-authorized, 2026-08-13): Go's released-toolchain incapability (wit-bindgen-go v0.7.0 generated imports rejected by `go:wasmimport` on every viable Go toolchain — tool present but incapable, not absent) was recorded as terminal `NOT_LOADABLE_OR_CORRECT` per explicit user decision; the measured artifact is the only buildable (unwired) component.
 - The selection is the first `LOADABLE_AND_CORRECT` record in MoonBit, AssemblyScript, C++, Go order, otherwise Rust, and docs/14 contains exactly one formatted verdict line.
 
 ## Risks and Tradeoffs

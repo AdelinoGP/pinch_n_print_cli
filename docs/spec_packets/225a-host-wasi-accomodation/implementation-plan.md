@@ -133,7 +133,7 @@
 
 - Task IDs: `TASK-336`
 - Objective: after user confirmation, gate the clean fork, capture its HEAD immediately before generation, generate with its CLI and UTF-16 embedding, then record the terminal oracle result.
-- Precondition: Steps 1-2 are green; prerequisite gate is ready; user confirms; `check-fork-readiness.sh` verifies clean `feat/assemblyscript-backend`.
+- Precondition: Steps 1-2 are green; prerequisite gate is ready; user confirms; `check-fork-readiness.sh` verifies clean `feat/assemblyscript-no-async` (branch updated from `feat/assemblyscript-backend` per user direction, 2026-08-13).
 - Postcondition: AssemblyScript evidence contains clean 40-hex fork provenance, UTF-16/world evidence, real hash, and terminal result.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/feasibility-probes/foreign-language-text-postprocess/README.md` - contract section.

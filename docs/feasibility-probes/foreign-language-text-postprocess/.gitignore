@@ -5,3 +5,7 @@ out/
 node_modules/
 .generation-started
 scratch/
+moonbit/_build/
+moonbit/gen/
+moonbit/interface/
+moonbit/world/
