@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -eu
 cd "$(dirname "$0")/.."
+rm -rf moonbit/gen moonbit/interface moonbit/world
 wit-bindgen moonbit wit/deps/config/config.wit wit/deps/types/types.wit wit/deps/ir-types/ir-types.wit wit/deps/common/common.wit wit/postpass-text-postprocess.wit --out-dir moonbit --derive-show --derive-eq --derive-error -w slicer:postpass-text-postprocess/text-postprocess-module
 cd moonbit
-cp -f main.mbt gen/main.mbt
-sed -i '/config-types/d;/module-errors/d' gen/moon.pkg
-sed -i '4i\  "slicer/postpass-text-postprocess/interface/slicer/config/config-types",\n  "slicer/postpass-text-postprocess/interface/slicer/common/module-errors",' gen/moon.pkg
+# `run` is forward-declared (`declare pub fn run`) in the exported interface
+# package; the definition must live in that same package, NOT in gen/.
+cp -f main.mbt gen/interface/slicer/postpass-text-postprocess/text-postprocess/main.mbt
 MOON_BIN="$(command -v moon || true)"
 if [ -z "$MOON_BIN" ] && [ -x "$HOME/.moon/bin/moon" ]; then
   MOON_BIN="$HOME/.moon/bin/moon"
