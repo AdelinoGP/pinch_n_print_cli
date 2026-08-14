@@ -106,6 +106,8 @@ archived — this doc is the **living record**, so verdicts live here (below), n
 in the spec. No new language is enabled in the host until a probe proves the
 component loads and runs correctly under `pnp_cli`.
 
+The committed `modules/community-modules/dragon-curve/` is a labeled example only; real community modules are authored in forks as pinned submodules and never added to this repository.
+
 ### Go probe — verdict (2026-08-11): not loadable
 
 Go can emit a **byte-valid component** that matches the `Layer::Infill` world
@@ -224,4 +226,3 @@ instance, so there is nothing to time. The Rust baseline exports the same
 world but its output differs from the probe oracle contract; it is included
 for timing only. All figures are wall-clock on a non-isolated Windows machine —
 indicative, not rigorous benchmarking.
-

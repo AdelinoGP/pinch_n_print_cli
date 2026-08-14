@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 228-community-module-docs-banner
 task_ids:
   - TASK-339

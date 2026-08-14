@@ -1,6 +1,6 @@
 # Dragon Curve Infill — first community module (design spec)
 
-Status: grilling complete; ready to be broken into spec packets by a downstream session.
+Status: grilling complete; ready to be broken into spec packets by a downstream session; Packet queue plan: `docs/specs/community-modules-dragon-curve-plan.md`.
 
 ## Purpose
 

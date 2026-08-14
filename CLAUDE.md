@@ -30,6 +30,10 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 - `slicer-cli` crate → deleted (verbs absorbed into `pnp_cli`)
 - `slicer` / `slicer-host` binaries → `pnp_cli`
 
+## Community Modules
+
+Real community modules are authored in forks as pinned submodules and are never added to this repository. The committed dragon-curve module is a labeled example only, not a community module shipped from this repository. See `docs/14_submodule_programming_languages.md` and `docs/specs/community-modules-dragon-curve-infill.md` for the programming and example details.
+
 ## Test Discipline
 
 **Canonical parity correctness is the highest priority.** Leave self-captured-baseline tests red if needed; never weaken the canonical implementation to make them pass. Do not defer parity-audit findings with inconsistent or fabricated justifications — verify canonical equivalents thoroughly before claiming absence, and update test fixtures to match canonical-correct output when the canonical fix changes behaviour.
