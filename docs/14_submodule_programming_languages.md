@@ -97,8 +97,10 @@ possible in principle but requires re-authoring the SDK's host-service surface.
 
 The temporary community-module workflow (before the SDK is authored as a
 dependency) tested **Go** and **MoonBit** as alternative authoring languages;
-both probes are complete and neither is loadable-and-correct in `pnp_cli` (Go:
-WASI blocker; MoonBit: string-encoding mismatch). The design lives in
+the original (2026-08-11) probes found neither loadable-and-correct in `pnp_cli`
+(Go: WASI blocker; MoonBit: string-encoding mismatch). Those verdicts are
+**superseded** for the Dragon Curve module by the accommodating-host
+re-measurement below (packet 225a, 2026-08-13). The design lives in
 `docs/specs/community-modules-dragon-curve-infill.md`, but that spec may be
 archived — this doc is the **living record**, so verdicts live here (below), not
 in the spec. No new language is enabled in the host until a probe proves the
@@ -169,4 +171,57 @@ today. Revisit MoonBit only if it gains a UTF-8 string ABI (or a configurable
 encoding) **or** `wit-bindgen` gains a UTF-16 host encoding option; either would
 make the current route work with zero WIT changes. Evidence: full probe record at
 `docs/feasibility-probes/moonbit-wasm.md`.
+
+### Re-measurement under the accommodating host — packet 225a (2026-08-13)
+
+Packet 225a re-ran the text-postprocess feasibility probes against the
+**accommodating host** (the host-side WASI accommodation work), which removes
+the blockers the 2026-08-11 probes hit. Candidates were re-measured against a
+locked priority order — **MoonBit, AssemblyScript, C++, Go** — with the winner
+being the first candidate whose record shows `RESULT: LOADABLE_AND_CORRECT`
+(Rust if none).
+
+- **MoonBit — LOADABLE_AND_CORRECT.** The earlier trap turned out to be a
+  fixture packaging error (the probe's `build.sh` copied `main.mbt` into the
+  wrong package), not a toolchain defect; with the fixture fixed the component
+  loads, dispatches, and produces correct output. Record:
+  `docs/feasibility-probes/moonbit-text-postprocess.md`.
+- **AssemblyScript — `LOADABLE_AND_CORRECT`.** Generated with the confirmed
+  clean wit-bindgen fork at `feat/assemblyscript-no-async`; passed the oracle
+  after two fixture defects in `build.sh` were fixed (wrong `asc` invocation
+  path; an uncalled `_start` runtime init that trapped the GC). Under the
+  locked priority order it cannot displace MoonBit. Record:
+  `docs/feasibility-probes/assemblyscript-text-postprocess.md`.
+- **C++ — LOADABLE_AND_CORRECT.** Record:
+  `docs/feasibility-probes/cpp-text-postprocess.md`.
+- **Go — NOT_LOADABLE_OR_CORRECT (terminal).** wit-bindgen-go v0.7.0 generates
+  imports rejected by `go:wasmimport` on all viable Go toolchains, so an
+  export-wired build cannot even compile. Record:
+  `docs/feasibility-probes/go-text-postprocess.md`.
+
+**Dragon Curve authoring language: MoonBit**
+
+#### Equal-compute performance (packet 225a addendum, 2026-08-13)
+
+Measured with the ignored harness test
+`foreign_language_text_postprocess_perf`
+(`crates/slicer-wasm-host/tests/integration/foreign_language_feasibility_tdd.rs`):
+single instantiation per run, 10 warmup calls, then 1000 timed calls of the
+exported `run` on the fixed probe input (`"; probe input\n"`), timed with
+`std::time::Instant`. Host: rustc 1.96.0, wasmtime crate 47.0.3, Windows 11,
+cargo `test` profile (unoptimized host; the guest is still Cranelift-compiled
+natively). Two runs per guest so variance is visible.
+
+| Guest | Component sha256 (prefix, verified) | Instantiate ms (r1 / r2) | Mean per-call µs (r1 / r2) |
+|---|---|---|---|
+| MoonBit | `51b06b5f` | 26.796 / 23.593 | 20.196 / 21.636 |
+| AssemblyScript | `1f3dc321` | 29.869 / 24.793 | 20.348 / 19.267 |
+| C++ | `2abdaac1` (rebuilt; matches record) | 214.862 / 208.332 | 18.230 / 21.828 |
+| Rust baseline (`sdk-postpass-text-guest`) | `000e991c` | 88.542 / 95.216 | 30.475 / 29.078 |
+
+Caveats: Go is excluded — its only buildable component exports no callable
+instance, so there is nothing to time. The Rust baseline exports the same
+world but its output differs from the probe oracle contract; it is included
+for timing only. All figures are wall-clock on a non-isolated Windows machine —
+indicative, not rigorous benchmarking.
 
