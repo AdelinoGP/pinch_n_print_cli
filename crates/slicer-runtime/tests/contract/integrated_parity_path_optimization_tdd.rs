@@ -16,7 +16,6 @@ use crate::common::{
     parity_invariants,
 };
 
-
 fn perimeter() -> PerimeterIR {
     let points = vec![
         (0.0, 0.0),

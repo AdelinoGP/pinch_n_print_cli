@@ -109,7 +109,6 @@ fn perimeter() -> PerimeterIR {
     }
 }
 
-
 #[test]
 fn integrated_parity_infill_linker() {
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([

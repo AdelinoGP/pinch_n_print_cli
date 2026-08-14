@@ -15,7 +15,6 @@ use crate::common::{
     prepass_input,
 };
 
-
 #[test]
 fn integrated_parity_layer_planner() {
     let config = Arc::new(ConfigView::from_map(

@@ -29,6 +29,7 @@ fn input(ctx: &PrepassContext) -> PrepassStageInput<'static> {
         layer_plan: ctx.blackboard.layer_plan().map(Arc::clone),
         slice_ir: ctx.blackboard.slice_ir().map(Arc::clone),
         region_map: ctx.blackboard.region_map().map(Arc::clone),
+        support_analysis: ctx.blackboard.support_analysis().map(Arc::clone),
         support_geometry: ctx.blackboard.support_geometry().map(Arc::clone),
         _phantom: std::marker::PhantomData,
     }

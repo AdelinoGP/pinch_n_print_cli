@@ -25,7 +25,6 @@ fn semver() -> SemVer {
     }
 }
 
-
 fn entity(layer: u32, annotated: bool) -> PrintEntity {
     // exhaustive: parity comparison pins every field explicitly
     PrintEntity {
