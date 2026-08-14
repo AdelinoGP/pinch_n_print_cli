@@ -11,9 +11,10 @@
 ### Step 1: Read the recorded 225 verdict and select the authoring branch
 
 - Task IDs: `TASK-338`
-- Objective: Recover the 225 feasibility verdict from the living record and lock the branch (Go vs Rust fallback) before authoring any branch-specific artifact.
+- Objective: Recover the recorded feasibility verdict from the living record and lock the authoring language before writing any language-specific artifact.
+  - **Language corrected 2026-08-14.** This step was written as a Go-vs-Rust branch select. `docs/14_submodule_programming_languages.md` §"Re-measurement under the accommodating host — packet 225a (2026-08-13)" supersedes the probes it branched on: Go is NOT_LOADABLE_OR_CORRECT (terminal), MoonBit is LOADABLE_AND_CORRECT and is the recorded selection. There is no `BRANCH_A`/`BRANCH_B`; the module is MoonBit.
 - Precondition: `docs/14_submodule_programming_languages.md` §Community-module context carries 225's recorded verdict (or a missing-verdict condition is observed and reported).
-- Postcondition: The verdict is recorded verbatim in the step log; the branch selector is `BRANCH_A` (Go loadable-and-correct) or `BRANCH_B` (fallback), with the one-line rationale. The module directory `modules/community-modules/dragon-curve/` is confirmed empty.
+- Postcondition: The verdict is recorded verbatim in the step log and the authoring language is locked to MoonBit, with the one-line rationale. The module directory `modules/community-modules/dragon-curve/` is confirmed empty.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/14_submodule_programming_languages.md` - delegated SUMMARY of §Community-module context only (not a full read).
   - `modules/community-modules/` - directory listing (confirm empty parent).
@@ -40,7 +41,7 @@
 - Task IDs: `TASK-338`
 - Objective: Write the complete manifest mirroring `rectilinear-infill.toml` with the dragon's claims, compatibility, stage, and six config keys.
 - Precondition: Step 1 branch selected (manifest is branch-independent).
-- Postcondition: `dragon-curve.toml` exists with `[module] id = "com.example.dragon-curve"`, `[stage] id = "Layer::Infill"`, `[claims].holds = ["claim:sparse-fill"]`, `[compatibility]` min-host/min-ir/max-ir mirrored from rectilinear, and `[config.schema]` keys `infill_density`, `infill_angle`, `infill_speed`, `line_width`, `tiling_depth`, `color_map` in snake_case. AC-1 and AC-2 green.
+- Postcondition: `dragon-curve.toml` exists with `[module] id = "com.example.dragon-curve"`, `[stage] id = "Layer::Infill"`, `[claims].holds = ["claim:sparse-fill", "claim:authored-coloring"]` (corrected 2026-08-14 to match AC-1 and ADR-0058; see `design.md` §Data and Contract Notes), `[compatibility]` min-host/min-ir/max-ir mirrored from rectilinear, and `[config.schema]` keys `infill_density`, `infill_angle`, `infill_speed`, `line_width`, `tiling_depth`, `color_map` in snake_case. AC-1 and AC-2 green.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` - full read (manifest model).
   - `modules/core-modules/wipe-tower/wipe-tower.toml` - full read (the `float-list` precedent for `color_map`).
@@ -66,89 +67,110 @@
 - Task IDs: `TASK-338`
 - Objective: Implement the deterministic dragon tiling over an `ExPolygon` and the pure `map_tiling_index_to_tool` wrap, TDD-first, with no `tool_count`/`tool_index` dependency.
 - Precondition: Step 2 manifest exists (the config keys it declares are the `from_config` source).
-- Postcondition: `src/lib.rs` exposes the pure helpers (e.g. `tile_dragon_curve(expoly, line_spacing, tiling_depth) -> Vec<(usize, Point2, Point2)>` and `map_tiling_index_to_tool(ordinal, generation, color_map, tool_count) -> Option<u32>`); three test files (`dragon_tiling_tdd.rs`, `dragon_color_map_tdd.rs`, `dragon_config_override_tdd.rs`) are green for AC-3, AC-4, AC-5, AC-6, AC-N1.
+- Postcondition: `src/dragon/dragon.mbt` exposes the pure helpers — `tile_dragon_curve(region : Region, line_spacing : Int64, tiling_depth : Int) -> Array[Seg]`, `map_tiling_index_to_tool(tile_index : Int, color_map : Array[Int], tool_count : Int) -> Int?`, plus `dragon_polyline`, `clip_segment`, `point_in_region`, `point_in_ring`, `generation_of` and the `Pt` / `Seg` / `Ring` / `Region` records — and `src/dragon/dragon_test.mbt` is green for AC-3, AC-4, AC-5, AC-N1.
+  - **Language corrected 2026-08-14.** This step originally named `src/lib.rs` and three `tests/dragon_*_tdd.rs` files. Packet 225a (`docs/14_submodule_programming_languages.md` §"Re-measurement under the accommodating host — packet 225a (2026-08-13)") made Go terminal and selected MoonBit, so there is no Rust crate and no `tests/` directory; all unit tests live in the single file `src/dragon/dragon_test.mbt`.
+  - **Colouring driver corrected.** The signature above is `map_tiling_index_to_tool(tile_index, ...)`, not the originally planned `(ordinal, generation, ...)`. The region is filled by many dragon instances on a rep-tile lattice, so the colour must key on `Seg.tile` — the dragon-instance index — giving one dragon one tool. An ordinal-keyed version was built first, coloured *within* each dragon, made the tiling invisible, and is gone. `ordinal` and `generation` are still carried on `Seg` and asserted by the tests as the curve's defining structure; they no longer drive colour.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-sdk/src/test_prelude.rs` - delegated LOCATIONS for builder names.
-  - `crates/slicer-ir/src/slice_ir.rs` - lines `700-727` (`ConfigValue` variants) and lines `1941-1948` (`ExtrusionPath3D` current fields).
+  - `ConfigValue` (`crates/slicer-ir/src/slice_ir.rs`, near line 700) - the config variants the pure logic must eventually accept.
+  - `modules/community-modules/dragon-curve/wit/deps/types/types.wit` - the geometry and `extrusion-path3d` shapes the pure records adapt to.
 - Files allowed to edit (at most 3):
-  - `modules/community-modules/dragon-curve/src/lib.rs`
-  - `modules/community-modules/dragon-curve/tests/dragon_tiling_tdd.rs`
-  - `modules/community-modules/dragon-curve/tests/dragon_color_map_tdd.rs`
+  - `modules/community-modules/dragon-curve/src/dragon/dragon.mbt`
+  - `modules/community-modules/dragon-curve/src/dragon/dragon_test.mbt`
+  - `modules/community-modules/dragon-curve/src/dragon/moon.pkg.json`
 - Files explicitly out of bounds:
-  - `crates/slicer-sdk/src/host.rs` (the 226 `tool_count` wrapper — not yet referenced in this step).
+  - `crates/slicer-sdk/**` - the guest has no SDK; nothing in this step may link against it.
+  - `modules/community-modules/dragon-curve/{gen,interface,world,_build}/` - generated by `make`, gitignored, destroyed by the `bindings` target.
 - Blast-radius discipline: not applicable.
 - Expected sub-agent dispatches:
-  - Question: which `slicer_sdk::test_prelude` builders construct an `ExPolygon` with holes and a `SliceRegionView` with a per-region `ConfigView`? scope: `crates/slicer-sdk/src/test_prelude.rs`, `crates/slicer-sdk/src/views.rs`; return: `LOCATIONS` (≤20 entries).
+  - Question: what `ConfigValue` variants can cross the WIT `config-types` boundary, so the depth/colour inputs are representable? scope: `ConfigValue` (`crates/slicer-ir/src/slice_ir.rs`) and `modules/community-modules/dragon-curve/wit/deps/config/config.wit`; return: `LOCATIONS` (≤20 entries).
+- Design note: `src/dragon/moon.pkg.json` declares an **empty `import` list**. That is load-bearing, not incidental — the pure package depends on no generated binding, so `moon test` runs it without any host, WIT closure, or component. Adding an import here would make the tiling logic untestable off-component.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/community-modules-dragon-curve-infill.md` §4 - direct read (the tiling semantics + edge cases).
 - OrcaSlicer refs:
   - none.
-- Verification:
-  - `cd modules/community-modules/dragon-curve && cargo test --test dragon_tiling_tdd -- --exact` - FACT pass/fail.
-  - `cd modules/community-modules/dragon-curve && cargo test --test dragon_color_map_tdd -- --exact` - FACT pass/fail.
-- Exit condition: AC-3, AC-4, AC-5, AC-N1 green; `dragon_config_override_tdd` authored and passing in Step 4.
+- Verification (`cargo test` is unrunnable in this directory — there is no `Cargo.toml`):
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'tiling_is_deterministic_across_runs'` - FACT pass/fail (AC-3).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'holes_are_excluded_from_tiling'` - FACT pass/fail (AC-5).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'color_map_wraps_into_tool_count'` - FACT pass/fail (AC-4).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'tool_count_zero_returns_none'` - FACT pass/fail (AC-N1).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon` - FACT: whole pure suite green (equivalently `make test`). `-f` takes a name glob, so a bare run is the way to get the full count.
+- Exit condition: AC-3, AC-4, AC-5, AC-N1 green; the `per_region_tiling_depth_override` test is authored and passing in Step 4.
 
-### Step 4: Wire the module `from_config` + `run_infill` and the per-region override test
+### Step 4: Wire the WIT glue `run` and the per-region override
 
 - Task IDs: `TASK-338`
-- Objective: Wrap the pure helpers in `#[slicer_module] impl LayerModule` (Branch B) or the Go port (Branch A), reading config through `from_config` and per-region overrides through `slicer_sdk::config_resolution::resolve_float`, emitting sparse paths over `sparse_infill_area()` gated by `should_emit(ExtrusionRole::SparseInfill)`.
-- Precondition: Step 3 pure helpers green; Step 1 branch selected.
-- Postcondition: `run_infill` emits `SparseInfill` paths over the sparse polygon only, honors per-region `tiling_depth`, and (in Branch B) the `dragon_config_override_tdd.rs` test is green.
+- Objective: Wrap the pure helpers in the exported WIT `run`, reading module and per-region config through the generated `config-types` bindings, applying the override precedence via `pick_tiling_depth`, and emitting sparse paths gated by `holds_sparse_fill`.
+  - **Language corrected 2026-08-14.** This step originally wrapped the helpers in `#[slicer_module] impl LayerModule` (Branch B) or a Go port (Branch A). Packet 225a selected MoonBit (`docs/14_submodule_programming_languages.md` §"Re-measurement under the accommodating host — packet 225a (2026-08-13)"): Go is `NOT_LOADABLE_OR_CORRECT (terminal)`, MoonBit is `LOADABLE_AND_CORRECT`. There is no `Cargo.toml`, no `#[slicer_module]`, and no `slicer-sdk`, so **two SDK conveniences are reimplemented by hand and unit-tested directly**: `should_emit` becomes `holds_sparse_fill` (`src/glue/main.mbt.in`, fail-closed — an empty held-claims list suppresses every fill role, because emitting anyway would duplicate whichever module actually holds the region), and `slicer_sdk::config_resolution::resolve_float`'s precedence becomes `pick_tiling_depth` (`src/dragon/dragon.mbt`).
+- Precondition: Step 3 pure helpers green.
+- Postcondition: `run` (`src/glue/main.mbt.in`) emits sparse-fill paths over the region's sparse area only, honours a per-region `tiling_depth` override, stamps `tool_index` from `map_tiling_index_to_tool(seg.tile, color_map, tool_count)` unconditionally (ADR-0058: never guard on the grant), and the `per_region_tiling_depth_override` test is green.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/rectilinear-infill/src/lib.rs` - lines `48-287` (module shape + `run_infill` + per-region resolution).
-  - `crates/slicer-sdk/src/config_resolution.rs` - full read (`resolve_float`).
-  - `crates/slicer-sdk/src/views.rs` - lines `440-572` (`sparse_infill_area`, `should_emit`).
+  - `run_infill` (`modules/core-modules/rectilinear-infill/src/lib.rs`) - structural model for role/region discipline **only**; it is a Rust SDK guest and is not a template here.
+  - `resolve_float` (`crates/slicer-sdk/src/config_resolution.rs`) - the precedence rule `pick_tiling_depth` reimplements.
+  - `SliceRegionView::sparse_infill_area` / `SliceRegionView::should_emit` (`crates/slicer-sdk/src/views.rs`) - the gate semantics `holds_sparse_fill` reimplements.
+  - `modules/community-modules/dragon-curve/wit/layer-infill.wit` and `wit/deps/config/config.wit` - the exported `run` signature and `ConfigView` accessors as the guest actually sees them.
 - Files allowed to edit (at most 3):
-  - `modules/community-modules/dragon-curve/src/lib.rs`
-  - `modules/community-modules/dragon-curve/tests/dragon_config_override_tdd.rs`
-  - `modules/community-modules/dragon-curve/Cargo.toml` (Branch B: crate + deps + `[workspace]` sentinel)
+  - `modules/community-modules/dragon-curve/src/glue/main.mbt.in`
+  - `modules/community-modules/dragon-curve/src/glue/moon.pkg.json.in`
+  - `modules/community-modules/dragon-curve/src/dragon/dragon.mbt` (`pick_tiling_depth` + its tests in `dragon_test.mbt`)
 - Files explicitly out of bounds:
-  - `crates/slicer-sdk/src/traits.rs` (delegate the `run_infill` signature if unsure; do not load the 1821-line file).
+  - `crates/slicer-sdk/src/traits.rs` - the guest implements the WIT export directly and never sees `LayerModule`; do not load the file.
+  - `modules/community-modules/dragon-curve/{gen,interface,world}/` - the copy targets, not the sources. Edit the `.in` templates; `make bindings` overwrites everything there.
 - Blast-radius discipline: not applicable.
 - Expected sub-agent dispatches:
-  - Question: exact `LayerModule::run_infill` signature and the `InfillOutputBuilder` sparse-push method? scope: `crates/slicer-sdk/src/traits.rs::run_infill`, `crates/slicer-sdk/src/builders.rs::push_sparse_path`; return: `LOCATIONS` (≤10 entries).
+  - Question: what is the exact exported `run` signature and the sparse-path builder shape in the frozen WIT closure? scope: `modules/community-modules/dragon-curve/wit/layer-infill.wit`, `wit/deps/ir-types/ir-types.wit`; return: `LOCATIONS` (≤10 entries).
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/community-modules-dragon-curve-infill.md` §5 - direct read (minimal scope + per-region overrides).
 - OrcaSlicer refs:
   - none.
-- Verification:
-  - `cd modules/community-modules/dragon-curve && cargo test --test dragon_config_override_tdd per_region_tiling_depth_override -- --exact` - FACT pass/fail (AC-6).
-  - `cd modules/community-modules/dragon-curve && cargo test` - FACT: module suite green (excluding deferred AC-7).
-- Exit condition: AC-6 green and the module suite (non-226) is green.
+- Verification (`cargo test` is unrunnable in this directory — there is no `Cargo.toml`):
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'per_region_tiling_depth_override'` - FACT pass/fail (AC-6).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon -f 'each_dragon_gets_exactly_one_tool'` - FACT pass/fail (the tile-keyed colouring driver).
+  - `cd modules/community-modules/dragon-curve && moon test --target wasm -p slicer/layer-infill/src/dragon` - FACT: whole pure suite green.
+  - `rg -q 'tool_index: tool' modules/community-modules/dragon-curve/src/glue/main.mbt.in` - FACT: the glue stamps `tool_index` unconditionally.
+  - `cd modules/community-modules/dragon-curve && make` - FACT: the glue compiles and componentizes (the only check that the `.in` templates are valid MoonBit against the generated bindings; `moon test` covers the pure package only).
+- Exit condition: AC-6 green, the pure suite green, and `make` produces a component.
 
-### Step 5: Build script, committed `.wasm`, banner README, and the deferred emission wiring
+### Step 5: WIT snapshot, build script, committed `.wasm`, and banner README
 
 - Task IDs: `TASK-338`
-- Objective: Author the `Makefile` (branch-appropriate build + `wasm-tools` componentize), produce the committed `dragon-curve.wasm`, write the banner `README.md`, and (only after 226 lands) wire `tool_index = Some(map_tiling_index_to_tool(...))` into the emitted paths and add `dragon_emission_tdd.rs`.
+- Objective: Freeze the `Layer::Infill` WIT closure under the module's `wit/`, author the `Makefile` (bindgen + glue-template copy + `moon build` + `wasm-tools` componentize), produce the committed `dragon-curve.wasm`, and write the banner `README.md` with the manual slice example.
+  - **Language corrected 2026-08-14.** This step originally described a Rust/Go build (`cargo build --target wasm32-unknown-unknown` + a `wasm-tools strip` of the `slicer-sdk` custom sections, or a `GOOS=wasip1` Go build) and a `tests/dragon_emission_tdd.rs` file deferred behind 226. Packet 225a selected MoonBit; **none of that exists.** The build is `wit-bindgen moonbit` → `moon build --target wasm --release` → `wasm-tools component embed --encoding utf16` → `wasm-tools component new`. There is no strip step (MoonBit emits a bare core module with no SDK custom sections) and no emission test file — 226 has landed and AC-7 is verified end-to-end against a real slice instead (see `packet.spec.md` AC-7).
 - Precondition: Step 4 green; locked assumption L1 (xtask discovery) re-verified via dispatch.
-- Postcondition: `Makefile` + `dragon-curve.wasm` + `README.md` exist; the manual slice command is documented against `resources/regression_wedge.stl`; AC-7's emission test is authored but stays gated behind the 226 FORWARD-DEP.
+- Postcondition: `wit/` + `Makefile` + `dragon-curve.wasm` + `README.md` + `.gitignore` exist; `make` reproduces the artifact from a clean tree; the manual slice command is documented.
 - Files allowed to read, with ranges when over 300 lines:
-  - `xtask/src/build_guests.rs` - lines `509-623` (`build_one_inner` strip + componentize sequence).
-  - `xtask/src/build_guests.rs` - lines `107-287` (`discover_guests` roots, for L1).
-  - `modules/core-modules/rectilinear-infill/Cargo.toml` - full read (dependency path + `[workspace]` sentinel model).
-- Files allowed to edit (at most 3):
+  - `discover_guests` (`xtask/src/build_guests.rs`) - the two hard-coded roots, for L1.
+  - `crates/slicer-schema/wit/` - the canonical `Layer::Infill` closure the module's `wit/` snapshot is taken from (read only; this packet never edits it).
+  - `modules/community-modules/dragon-curve/Makefile` - the recorded toolchain versions the build was verified against.
+- Files allowed to edit (at most 3, plus the `wit/` snapshot which is a mechanical copy):
   - `modules/community-modules/dragon-curve/Makefile`
   - `modules/community-modules/dragon-curve/README.md`
-  - `modules/community-modules/dragon-curve/tests/dragon_emission_tdd.rs` (FORWARD-DEP on 226; authored but deferred)
+  - `modules/community-modules/dragon-curve/.gitignore`
+  - `modules/community-modules/dragon-curve/wit/layer-infill.wit` and `wit/deps/{common,config,ir-types,types}/*.wit` - snapshot copy
 - Files explicitly out of bounds:
-  - `crates/slicer-sdk/src/host.rs` (the `tool_count` wrapper body — read only via 226's packet at activation).
+  - `crates/slicer-schema/wit/**` - the canonical WIT; snapshot from it, never edit it.
+  - `crates/slicer-sdk/src/host.rs` - the guest reaches `tool-count` through its generated `host-services` bindings, not the SDK.
   - `docs/*.md` (packet 228 owns docs).
 - Blast-radius discipline: not applicable.
 - Expected sub-agent dispatches:
-  - Question: does `discover_guests` walk only `modules/core-modules` and `crates/slicer-wasm-host/test-guests`, never `modules/community-modules`? scope: `xtask/src/build_guests.rs::discover_guests`; return: `FACT`.
-  - Question: what is the exact `wasm-tools` strip pattern and `component new` invocation for a core guest? scope: `xtask/src/build_guests.rs::build_one_inner`; return: `SUMMARY` (≤100 words).
+  - Question: does `discover_guests` walk only `modules/core-modules` and `crates/slicer-wasm-host/test-guests`, never `modules/community-modules`? scope: `discover_guests` (`xtask/src/build_guests.rs`); return: `FACT`.
+- Build notes that are load-bearing, not stylistic:
+  - `--encoding utf16` on `component embed` is **mandatory**: MoonBit strings are UTF-16 and the host transcodes at the canonical ABI boundary. Omitting it reproduces the string corruption the 2026-08-11 probe misdiagnosed as a MoonBit defect.
+  - The glue definition of `run` must be copied into the **generated exported-interface package**, not into `gen/`. `wit-bindgen moonbit` forward-declares `run` there; a definition in `gen/` builds cleanly and then traps on dispatch. This is why the glue is a `.in` template.
+  - The build is **not bit-reproducible** — a second clean build yields a different `.wasm` hash. Recorded MoonBit property; do not treat a hash change as a diff.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/community-modules-dragon-curve-infill.md` §1 - direct read (packaging + build/artifact + banner README).
 - OrcaSlicer refs:
   - none.
 - Verification:
-  - `ls modules/community-modules/dragon-curve/{Makefile,README.md,dragon-curve.wasm}` - FACT: all three present.
-  - `rg -q 'pnp_cli slice --module-dir modules/community-modules/dragon-curve --input resources/regression_wedge.stl' modules/community-modules/dragon-curve/README.md` - FACT pass/fail.
-  - `cd modules/community-modules/dragon-curve && cargo test --test dragon_emission_tdd -- --exact` - deferred; note the FORWARD-DEP on 226 in the step log.
-- Exit condition: the module directory is complete and the manual slice command is documented; AC-7 remains deferred by the 226 blocker.
+  - `ls modules/community-modules/dragon-curve/{Makefile,README.md,.gitignore,dragon-curve.wasm,moon.mod.json,dragon-curve.toml}` - FACT: all present.
+  - `ls modules/community-modules/dragon-curve/wit/layer-infill.wit modules/community-modules/dragon-curve/wit/deps/{common/common.wit,config/config.wit,ir-types/ir-types.wit,types/types.wit}` - FACT: the frozen closure is complete.
+  - `rg -q 'module-dir modules/community-modules/dragon-curve' modules/community-modules/dragon-curve/README.md` - FACT: the manual slice command is documented (note the flag is `--model`, not `--input`).
+  - `cd modules/community-modules/dragon-curve && make && wasm-tools component wit dragon-curve.wasm > /dev/null` - FACT: the artifact rebuilds and is a valid component.
+  - `wasm-tools component wit modules/community-modules/dragon-curve/dragon-curve.wasm | rg -q 'tool-index: option<u32>'` - FACT: 226's carrier is present in the component's world (AC-7).
+- Exit condition: the module directory is complete, `make` reproduces the component, and the manual slice command is documented. AC-7 is no longer deferred — 226 has landed and `packet.spec.md` records the end-to-end evidence.
 
 ## Per-Step Budget Roll-Up
 
@@ -156,16 +178,16 @@
 | --- | --- | --- |
 | Step 1 | S | read-only discovery; delegated verdict read |
 | Step 2 | S | manifest + one dispatch |
-| Step 3 | M | tiling + color logic, TDD |
-| Step 4 | M | module wiring + per-region override |
-| Step 5 | M | build + componentize + banner + deferred emission |
+| Step 3 | M | pure tiling + colour logic in `src/dragon/`, TDD |
+| Step 4 | M | WIT glue `run` + per-region override + `tool_index` stamping |
+| Step 5 | M | WIT snapshot + build/componentize + banner |
 
 Split before activation if aggregate cost exceeds M or any step is L.
 
 ## Packet Completion Gate
 
 - All steps and exits complete.
-- Every pipe-suffixed AC command returns PASS (AC-7 excepted — it is gated on the 226 FORWARD-DEP and moves to PASS when 226 lands).
+- Every pipe-suffixed AC command returns PASS. AC-7's 226 FORWARD-DEP has cleared; it is verified end-to-end rather than by a unit test (see `packet.spec.md` AC-7).
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read (packet 228 owns the backlog rows; this packet only touches TASK-338's status if 228 has not yet landed).
 - Reconcile reopened/superseded status transitions.
 - `packet.spec.md` is ready for `status: implemented`.
@@ -176,4 +198,4 @@ Split before activation if aggregate cost exceeds M or any step is L.
 - Record remaining packet-local risk (the two `[FWD]` questions in `design.md`).
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+All `cargo check` and `cargo clippy` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile. Those two gates only prove this packet did not break the workspace — the module is outside the Cargo graph, so no `cargo` command builds or tests it. Its own suite is `moon test --target wasm -p slicer/layer-infill/src/dragon` (or `make test`), run from the module directory; `cargo test` there fails outright, there being no `Cargo.toml`.

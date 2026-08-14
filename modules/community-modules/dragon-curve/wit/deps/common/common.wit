@@ -1,0 +1,169 @@
+package slicer:common;
+
+interface module-errors {
+    record module-error { code: u32, message: string, fatal: bool }
+}
+
+/// Fuel-based module profiling (ADR-0050).
+///
+/// Deliberately a **separate interface** from `host-services` rather than three
+/// more functions on it: profiling is host-gated diagnostic plumbing with a
+/// different lifetime and a different audience than the geometry/mesh services,
+/// and keeping it apart means a world can import one without the other.
+///
+/// A guest cannot read a clock (`wasm32-unknown-unknown` has no WASI) and cannot
+/// read its own fuel. So the guest only says *where* it is; the host samples
+/// *what it costs* at that instant. Because a mark is a host call, it burns no
+/// fuel and therefore cannot pollute the measurement it is taking.
+interface profiling {
+    /// Which side of a scope a mark sits on. Marks nest: the host keeps a
+    /// per-call stack so both self and total cost are recoverable.
+    enum mark-edge { enter, exit }
+
+    /// Whether the host is recording marks at all. Guests are expected to cache
+    /// this once per instance and branch on the cached bool, so the steady-state
+    /// cost with profiling off is a predictable branch rather than a host call.
+    profile-enabled: func() -> bool;
+
+    /// Interns `name` and returns its scope id, allocating one on first sight.
+    ///
+    /// The registry is process-global and append-only, so an id stays valid for
+    /// the whole run even though each dispatch call gets a fresh guest instance
+    /// (and therefore a fresh copy of whatever the guest cached). Re-registering
+    /// a name always returns the same id.
+    ///
+    /// Ids below `slicer_core::profile::ScopeId::USER_BASE` are reserved for
+    /// `slicer-core`'s own scopes and are never handed out by this function.
+    profile-register: func(name: string) -> u32;
+
+    /// Records one scope transition. The host attaches consumed fuel and a
+    /// wall-clock reading taken at this instant.
+    profile-mark: func(scope: u32, edge: mark-edge);
+}
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon, thick-polyline};
+    use slicer:ir-handles/ir-handles.{extrusion-line};
+    type object-id = string;
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+    enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+
+    // ── Batched forms ────────────────────────────────────────────────────
+    //
+    // A guest that calls one of these once, instead of calling the singular
+    // form in a loop, lets the host run the items concurrently on the rayon
+    // pool it already owns. The guest itself stays single-threaded: the whole
+    // batch crosses the boundary in one call, so nothing re-enters the host
+    // concurrently and no host service has to be safe against that.
+    //
+    // Results are returned in **input order**, always — the i-th result
+    // corresponds to the i-th request whether the host ran the batch serially
+    // or in parallel. Output therefore cannot depend on worker count or
+    // scheduling.
+    //
+    // Parameters are per item rather than shared across the batch, so a caller
+    // whose deltas or operations vary does not have to fall back to a loop.
+    //
+    // The host decides serially-or-parallel from an estimated-work model, not
+    // from item count; see `batch` in the host implementation. Callers should
+    // batch whatever is naturally independent and leave that choice alone.
+    //
+    // `medial-axis` and `generate-arachne-walls` deliberately have no batch
+    // form — see ADR-0049.
+
+    record offset-request {
+        polygons: list<ex-polygon>,
+        delta-mm: f32,
+        join:     offset-join-type,
+        arc-tolerance-mm: f32,
+    }
+    offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
+
+    record clip-request {
+        subject: list<ex-polygon>,
+        clip:    list<ex-polygon>,
+        op:      clip-operation,
+    }
+    clip-polygons-batch: func(requests: list<clip-request>) -> list<list<ex-polygon>>;
+
+    record simplify-request {
+        polygon:      polygon,
+        tolerance-mm: f32,
+    }
+    simplify-polygon-batch: func(requests: list<simplify-request>) -> list<polygon>;
+
+    record raycast-request {
+        object-id: object-id,
+        x:         f32,
+        y:         f32,
+        start-z:   f32,
+    }
+    raycast-z-down-batch: func(requests: list<raycast-request>) -> list<option<f32>>;
+
+    record surface-normal-request {
+        object-id: object-id,
+        x:         f32,
+        y:         f32,
+        z:         f32,
+    }
+    surface-normal-at-batch: func(requests: list<surface-normal-request>) -> list<option<point3>>;
+    medial-axis:      func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
+    /// Parameters for `generate-arachne-walls`, mirroring
+    /// `slicer_core::arachne::pipeline::ArachneParams` field-for-field
+    /// (packet 112, Step 9A). Every distance/width field is in millimeters,
+    /// matching `medial-axis`'s `min-width`/`max-width` convention above.
+    record arachne-params {
+        optimal-width: f32,
+        preferred-bead-width-outer: f32,
+        max-bead-count: u32,
+        distribution-count: u32,
+        transition-filter-dist: f32,
+        min-central-distance: f32,
+        min-length-factor: f32,
+        min-width: f32,
+        print-thin-walls: bool,
+        min-feature-size: f32,
+        min-bead-width: f32,
+        wall-transition-length: f32,
+        wall-transition-angle: f32,
+        initial-layer-min-bead-width: f32,
+        outer-wall-offset: f32,
+        is-initial-layer: bool,
+        is-bottom-layer: bool,
+        is-topmost-layer: bool,
+        /// Squared distance gate (mm²) from meshfix_maximum_resolution.
+        smallest-line-segment-squared: f32,
+        /// Squared error distance gate (mm²) from meshfix_maximum_deviation.
+        allowed-error-distance-squared: f32,
+        /// Area deviation threshold (mm²) for near-colinear fast-path guard.
+        maximum-extrusion-area-deviation: f32,
+        wall-sequence: wall-sequence,
+    }
+    /// Runs the full Arachne beading-strategy pipeline
+    /// (`slicer_core::arachne::pipeline::run_arachne_pipeline`) host-side, for
+    /// a WASM guest that cannot itself link the `host-algos` feature
+    /// (rayon + boostvoronoi are native-only) — mirrors the `medial-axis`
+    /// bridge above.
+    ///
+    /// Returns a tuple of (toolpaths, inner_contour):
+    /// - `toolpaths`: printable variable-width wall lines.
+    /// - `inner_contour`: zero-width marker lines defining the wall/infill
+    ///   boundary (consumed by `arachne-perimeters` to set infill areas).
+    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<tuple<list<extrusion-line>, list<extrusion-line>>, string>;
+    now-us: func() -> u64;
+    /// Number of configured tools/filaments for this print, minimum 1.
+    ///
+    /// A module that authors a per-path tool index range-checks it against this
+    /// value (`tool-index` must be `< tool-count`); an out-of-range index is
+    /// rejected rather than clamped.
+    tool-count: func() -> u32;
+}

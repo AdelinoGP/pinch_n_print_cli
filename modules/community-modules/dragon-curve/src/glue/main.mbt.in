@@ -1,0 +1,280 @@
+// Dragon-curve infill guest — WIT glue.
+//
+// This file is COPIED by the Makefile into
+// `gen/interface/slicer/layer-infill/infill/` at build time, because
+// wit-bindgen forward-declares `run` in that package (`declare pub fn run`)
+// and moonc requires the definition to live in the same package. Defining it
+// anywhere else produces a component that builds but traps on dispatch — that
+// exact mistake is what made the earlier MoonBit probe look like a toolchain
+// failure (see docs/spec_packets/225a-host-wasi-accomodation/HANDOFF.md).
+//
+// Everything here is marshalling. All tiling and colour decisions live in
+// `src/dragon/dragon.mbt`, which imports nothing and is unit-tested.
+
+///| Slicer units per millimetre (1 unit = 100 nm).
+let units_per_mm : Double = 10000.0
+
+///| Speed factor denominator, mirroring rectilinear-infill's `BASE_SPEED`.
+let base_speed : Double = 50.0
+
+// Defaults below mirror `dragon-curve.toml`'s `[config.schema]`. They are the
+// values used when the host does not supply a key at all.
+///|
+let default_density : Double = 0.2
+
+///|
+let default_line_width : Double = 0.45
+
+///|
+let default_speed : Double = 60.0
+
+///|
+let default_tiling_depth : Int = 10
+
+///|
+let default_angle : Double = 45.0
+
+///|
+fn cfg_float(config : @config-types.ConfigView, key : String, fallback : Double) -> Double {
+  match config.get_float(key) {
+    Some(v) => v
+    None => fallback
+  }
+}
+
+///|
+fn cfg_int(config : @config-types.ConfigView, key : String, fallback : Int) -> Int {
+  match config.get_int(key) {
+    Some(v) => v.to_int()
+    None => fallback
+  }
+}
+
+///|
+/// Read `color_map` as a list of tool indices.
+///
+/// The manifest declares it `float-list` (the only list type with an in-tree
+/// precedent), so values arrive as doubles and are rounded to the nearest
+/// non-negative integer here. An absent or wrongly-typed key yields an empty
+/// list, which disables authored colouring rather than failing the slice.
+fn cfg_color_map(config : @config-types.ConfigView) -> Array[Int] {
+  let out : Array[Int] = []
+  match config.get("color_map") {
+    Some(@config-types.ConfigValue::FloatList(vals)) =>
+      for i = 0; i < vals.length(); i = i + 1 {
+        let v = vals[i]
+        let r = if v < 0.0 { 0 } else { (v + 0.5).to_int() }
+        out.push(r)
+      }
+    _ => ()
+  }
+  out
+}
+
+///|
+/// The `should_emit` gate, reimplemented.
+///
+/// `should_emit` is a Rust-SDK convenience with no WIT counterpart, so a
+/// foreign guest has to apply the rule itself. It is deliberately fail-closed:
+/// an empty held-claims list suppresses every fill role. Emitting anyway would
+/// duplicate whichever module actually holds the region.
+fn holds_sparse_fill(claims : Array[String]) -> Bool {
+  for i = 0; i < claims.length(); i = i + 1 {
+    if claims[i] == "claim:sparse-fill" {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn to_dragon_ring(poly : @geometry.Polygon) -> @dragon.Ring {
+  let pts : Array[@dragon.Pt] = []
+  for i = 0; i < poly.points.length(); i = i + 1 {
+    let p = poly.points[i]
+    pts.push(@dragon.Pt::{ x: p.x, y: p.y })
+  }
+  @dragon.Ring::{ pts, }
+}
+
+///|
+fn to_dragon_region(ex : @geometry.ExPolygon) -> @dragon.Region {
+  let holes : Array[@dragon.Ring] = []
+  for i = 0; i < ex.holes.length(); i = i + 1 {
+    holes.push(to_dragon_ring(ex.holes[i]))
+  }
+  @dragon.Region::{ contour: to_dragon_ring(ex.contour), holes }
+}
+
+///|
+fn mk_point(
+  p : @dragon.Pt,
+  z : Float,
+  width : Float,
+) -> @geometry.Point3WithWidth {
+  @geometry.Point3WithWidth::{
+    x: (p.x.to_double() / units_per_mm).to_float(),
+    y: (p.y.to_double() / units_per_mm).to_float(),
+    z,
+    width,
+    flow_factor: 1.0,
+    overhang_quartile: None,
+    dist_to_top_mm: 0.0,
+    overhang_distance_mm: None,
+  }
+}
+
+///|
+pub fn run(
+  layer_index : Int,
+  regions : Array[@ir-handles.SliceRegionView],
+  paint : @ir-handles.PaintRegionLayerView,
+  output : @ir-handles.InfillOutputBuilder,
+  config : @config-types.ConfigView,
+) -> Result[Unit, @module-errors.ModuleError] {
+  ignore(layer_index)
+
+  // Module-global config. Per-region overrides are resolved per region below.
+  let density = cfg_float(config, "infill_density", default_density)
+  let module_line_width = cfg_float(config, "line_width", default_line_width)
+  let speed = cfg_float(config, "infill_speed", default_speed)
+  let module_depth = cfg_int(config, "tiling_depth", default_tiling_depth)
+  let angle_deg = cfg_float(config, "infill_angle", default_angle)
+  let color_map = cfg_color_map(config)
+
+  // Zero density means "no sparse infill", not "divide by zero". Fall through
+  // to the drop block rather than returning early - an early return here
+  // leaked every handle the export was given.
+  let disabled = density <= 0.0
+
+  // The tool count is a host service, so it is queried once per dispatch
+  // rather than per segment.
+  // Deferred so every exit path reaches the handle-drop block below.
+  let mut failure : @module-errors.ModuleError? = None
+  let tool_count = @host-services.tool_count().reinterpret_as_int()
+  let speed_factor = (speed / base_speed).to_float()
+
+  for r = 0; r < regions.length(); r = r + 1 {
+    // `disabled` also carries the abort: once a host call fails we stop doing
+    // work entirely rather than continuing to tile and re-issuing host calls,
+    // which is what the old early `return` did. Without this the outer loops
+    // kept running and `failure` ended up holding the LAST error, not the
+    // first.
+    if disabled || failure is Some(_) {
+      break
+    }
+    let region = regions[r]
+    if !holds_sparse_fill(region.held_claims()) {
+      continue
+    }
+    let sparse = region.sparse_infill_area()
+    if sparse.length() == 0 {
+      continue
+    }
+
+    // Per-region overrides, mirroring what `resolve_float` does for the core
+    // Rust modules: the region's own config view wins when it carries the key.
+    let region_config = region.config()
+    let region_density = match region_config.get_float("infill_density") {
+      Some(v) => v
+      None => density
+    }
+    let region_line_width = match region_config.get_float("line_width") {
+      Some(v) => v
+      None => module_line_width
+    }
+    let region_depth_override = match region_config.get_int("tiling_depth") {
+      Some(v) => Some(v.to_int())
+      None => None
+    }
+    region_config.drop()
+
+    // A line_width of 0 is the in-tree *auto* sentinel (see
+    // `modules/core-modules/rectilinear-infill/src/lib.rs::from_config`, which
+    // resolves it through `slicer_core::flow::resolve_role_width`). A foreign
+    // guest has no access to that helper, so fall back to the module default
+    // rather than emitting nothing - a user who sets the documented default of
+    // 0 must not silently get an empty region.
+    let region_line_width = if region_line_width <= 0.0 {
+      default_line_width
+    } else {
+      region_line_width
+    }
+    if region_density <= 0.0 {
+      continue
+    }
+    let depth = @dragon.pick_tiling_depth(region_depth_override, module_depth)
+    let spacing_units = (region_line_width / region_density * units_per_mm).to_int64()
+    let z = region.z()
+    let width = region_line_width.to_float()
+
+    match output.set_current_origin(region.object_id(), region.region_id()) {
+      Err(msg) => {
+        failure = Some(@module-errors.ModuleError::{
+          code: 1,
+          message: "dragon-curve: set_current_origin failed: " + msg,
+          fatal: false,
+        })
+        break
+      }
+      Ok(_) => ()
+    }
+
+    for s = 0; s < sparse.length(); s = s + 1 {
+      if failure is Some(_) {
+        break
+      }
+      let region_geom = to_dragon_region(sparse[s])
+      let segs = @dragon.tile_dragon_curve_rotated(
+        region_geom, spacing_units, depth, angle_deg,
+      )
+      for i = 0; i < segs.length(); i = i + 1 {
+        let seg = segs[i]
+        // Colour by dragon instance: every segment of one dragon gets the
+        // same tool, so the tiling is visible in the finished part.
+        //
+        // Unconditional `Some` when a mapping exists: per ADR-0058 the module
+        // never guards on the grant. The host strips the value at the marshal
+        // boundary when authored colouring is not granted for this region, or
+        // when the index is out of range.
+        let tool = match
+          @dragon.map_tiling_index_to_tool(seg.tile, color_map, tool_count) {
+          Some(t) => Some(t.reinterpret_as_uint())
+          None => None
+        }
+        let path = @geometry.ExtrusionPath3d::{
+          points: [mk_point(seg.a, z, width), mk_point(seg.b, z, width)],
+          role: @geometry.ExtrusionRole::SparseInfill,
+          speed_factor,
+          tool_index: tool,
+        }
+        match output.push_sparse_path(path) {
+          Err(msg) => {
+            failure = Some(@module-errors.ModuleError::{
+              code: 2,
+              message: "dragon-curve: push_sparse_path failed: " + msg,
+              fatal: false,
+            })
+            break
+          }
+          Ok(_) => ()
+        }
+      }
+    }
+  }
+  // `run`'s resource parameters are owned handles (see `wit/layer-infill.wit`:
+  // `regions: list<slice-region-view>`, `paint`, `output`, `config` are all
+  // owned, and the generated shim does not auto-drop). The host builds a fresh
+  // ResourceTable per dispatch so a leak here would be bounded, but this module
+  // is an exemplar for foreign-language guests and must show the right pattern.
+  for r = 0; r < regions.length(); r = r + 1 {
+    regions[r].drop()
+  }
+  paint.drop()
+  output.drop()
+  config.drop()
+  match failure {
+    Some(e) => Err(e)
+    None => Ok(())
+  }
+}

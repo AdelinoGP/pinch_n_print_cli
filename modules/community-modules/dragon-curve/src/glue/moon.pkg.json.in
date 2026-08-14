@@ -1,0 +1,11 @@
+{
+  "warn-list": "-44",
+  "import": [
+    { "path": "slicer/layer-infill/interface/slicer/common/module-errors", "alias": "module-errors" },
+    { "path": "slicer/layer-infill/interface/slicer/common/host-services", "alias": "host-services" },
+    { "path": "slicer/layer-infill/interface/slicer/config/config-types", "alias": "config-types" },
+    { "path": "slicer/layer-infill/interface/slicer/ir-handles/ir-handles", "alias": "ir-handles" },
+    { "path": "slicer/layer-infill/interface/slicer/types/geometry", "alias": "geometry" },
+    { "path": "slicer/layer-infill/src/dragon", "alias": "dragon" }
+  ]
+}

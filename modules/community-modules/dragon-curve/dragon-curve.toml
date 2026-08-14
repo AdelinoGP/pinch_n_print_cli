@@ -1,0 +1,145 @@
+[module]
+id           = "com.example.dragon-curve"
+version      = "0.1.0"
+display-name = "Dragon Curve Infill"
+description  = "Community example: dragon-curve sparse infill tiling with one authored tool per dragon"
+author       = "example"
+license      = "MIT"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = ["SliceIR"]
+writes = ["InfillIR"]
+
+[claims]
+# Two claims, and both are load-bearing:
+#
+#   claim:sparse-fill        the contested fill-role claim. Per-region
+#                            resolution via `ResolvedConfig.sparse_fill_holder`
+#                            selects whether this module emits sparse infill
+#                            for a given region.
+#
+#   claim:authored-coloring  the capability *disclosure* half of ADR-0058's
+#                            two-sided grant. `authored_coloring_granted`
+#                            (`crates/slicer-wasm-host/src/marshal/out.rs`)
+#                            returns false unless this string appears here AND
+#                            the region's `fill_authored_coloring` setting lists
+#                            one of this module's held fill claims. Dropping it
+#                            does not fail the load - it silently strips every
+#                            `tool_index` this module emits.
+holds = [
+    "claim:sparse-fill",
+    "claim:authored-coloring",
+]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema]
+# The four mirrored keys copy `rectilinear-infill.toml`'s exact snake_case
+# spellings so a user swapping sparse-fill holders keeps the same config vocabulary.
+[config.schema.infill_density]
+type    = "float"
+default = 0.2
+min     = 0.0
+max     = 1.0
+display = "Infill Density"
+group   = "Infill"
+
+[config.schema.infill_angle]
+type    = "float"
+default = 45.0
+min     = 0.0
+max     = 360.0
+display = "Infill Angle"
+group   = "Infill"
+
+[config.schema.infill_speed]
+type    = "float"
+default = 60.0
+min     = 1.0
+max     = 300.0
+display = "Infill Speed"
+group   = "Infill"
+
+[config.schema.line_width]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 2.0
+display = "Line Width"
+group   = "Infill"
+
+# Dragon-specific keys.
+# Fold depth of EACH dragon, so it sets the dragon's size. The tiling lattice
+# pitch is sqrt(2) * |e| where |e| = 2 * line_spacing * 2^(depth/2), i.e. about
+# 2.83 * line_spacing * 2^(depth/2).
+#
+# Depth does NOT affect coverage or colour count: four dragons meet at every
+# lattice point at every depth. Measured on resources/20mm_cube.obj, depth 8
+# and depth 12 both emit 283 tool changes across 4 tools (94/94/48/47). Depth
+# only changes how large each dragon is, and therefore how visible its outline
+# is in the finished part.
+#
+# Honoured as given - there is no region-size cap. An earlier version capped it
+# to hide voids left by a translation-only placement; the four-fold rotational
+# tiling covers exactly at every depth, so the cap was removed.
+#
+# max mirrors `max_tiling_depth` in src/dragon/dragon.mbt. They must agree:
+# a larger max here would be accepted by the manifest and then silently
+# clamped by the module, which is worse than rejecting it.
+[config.schema.tiling_depth]
+type    = "int"
+default = 10
+min     = 0
+max     = 16
+display = "Tiling Depth"
+group   = "Dragon Curve"
+
+# A tool-index sequence, indexed by the dragon's ROTATION (0-3): four dragons
+# meet at each lattice point, and each prints in its own tool, which is what
+# makes the tiling visible in the part. Four entries show all four; a shorter
+# list wraps and some dragons share a tool.
+#
+# `float-list` is the only list type with an in-tree precedent
+# (`wipe-tower.toml`); `int-list` is absent from
+# `slicer_schema::VALID_CONFIG_TYPES`. Values are rounded to the nearest
+# non-negative integer and wrapped into `[0, tool_count)` by the module.
+# An empty list disables authored coloring (every path emits tool_index = None).
+[config.schema.color_map]
+type    = "float-list"
+default = [0.0, 1.0, 2.0, 3.0]
+display = "Color Map"
+group   = "Dragon Curve"
+
+# Not read by this module directly, but it MUST be declared here.
+#
+# `derive_tool_count` (`crates/slicer-wasm-host/src/host.rs`) derives the
+# printer's tool count from `filament_density` — the only per-tool-count
+# carrier in ResolvedConfig — and that list only reaches a module's config
+# view when the module declares the key. Undeclared means the host service
+# `tool-count()` returns the single-tool default of 1, every segment maps to
+# tool 0, and authored coloring silently does nothing. Verified: without this
+# entry a three-filament slice produced zero tool changes.
+[config.schema.filament_density]
+type    = "float-list"
+default = [1.24]
+display = "Filament Density"
+group   = "Filament"
+
+[config.overridable-per-region]
+keys = ["infill_density", "line_width", "tiling_depth"]
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 12
+layer-parallel-safe    = true
