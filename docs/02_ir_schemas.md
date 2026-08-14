@@ -716,18 +716,23 @@ Semantics:
   `resolve_region_tool_index` (material paint in the variant chain, else a
   modifier `extruder` delta, else `0`). This is the pre-existing behaviour and is
   unchanged. Perimeter, support, and finalization stages all emit `None`.
-- `Some(t)` — **module-authored coloring**, honored when `t < tool-count` (the
-  host-services function reporting the number of configured tools, minimum 1).
-  When honored, `Some(t)` **overrides** the region-resolved tool, including a
-  material-variant tool.
+- `Some(t)` — **module-authored coloring**, honored only when the two-sided
+  authored-coloring grant holds AND `t < tool-count` (the host-services function
+  reporting the number of configured tools, minimum 1). When honored, `Some(t)`
+  **overrides** the region-resolved tool, including a material-variant tool.
 
-There is no capability claim, no config key, and no grant: a guest that writes an
-in-range tool index gets it. If `t >= tool-count`, the host **ignores** the value
-and resolves the tool per region exactly as for `None` — silent and
-deterministic, never an error, so modules never have to guard. This mirrors
-`speed_factor`, the only other per-path override on `ExtrusionPath3D`, which is
-likewise module-authored with no permission check and only a range clamp at the
-point of consumption. Consequently the
+The grant is two-sided (ADR-0058): the module's manifest must disclose
+`claim:authored-coloring`, **and** the fill-role claim it holds for that region
+must be listed in the region's `fill_authored_coloring` config key
+(`Vec<String>` on `ResolvedConfig`). Either side missing denies the grant, and
+the default is deny — `fill_authored_coloring` defaults to empty, so no module
+authors a tool until an operator opts its fill role in. Ungranted, or
+`t >= tool-count`, the host **strips** the value to `None` at the marshal/commit
+boundary (`convert_infill_output`) and resolves the tool per region exactly as
+for `None` — silent and deterministic, never an error, so modules never have to
+guard. The gate exists because a tool change is not free: it costs a physical
+toolchange and wipe-tower purge volume, so a module that should not be choosing
+tooling must not be able to. Consequently the
 infill linker treats per-path `tool_index` as a chaining-compatibility axis:
 paths whose `tool_index` differs are never chained together.
 
