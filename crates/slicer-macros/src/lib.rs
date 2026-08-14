@@ -300,10 +300,11 @@ fn generate_slicer_module_impl(
                 let objects = req.mesh_objects.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing mesh objects".to_string()))?;
                 let layer_plan = req.layer_plan.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer plan".to_string()))?;
                 let regions = req.region_segmentation.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing region segmentation".to_string()))?;
+                let analysis = req.support_analysis.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing support analysis".to_string()))?;
                 let support = req.support_geometry.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing support geometry".to_string()))?;
                 let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
                 let mut output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
-                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(&module, objects, layer_plan, regions, support, &mut output, &req.config)?;
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(&module, objects, layer_plan, regions, analysis, support, &mut output, &req.config)?;
                 Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: None, layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: Some(output) })
             },
             _ => quote! { unreachable!() },
@@ -1427,6 +1428,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             global_layer_index: wit_layer.layer_index(),
                             z: wit_layer.z(),
                             ordered_entities,
+                            support_entity_identities: ::std::vec::Vec::new(),
                             tool_changes,
                             z_hops,
                             annotations: ::std::vec::Vec::new(),
@@ -2035,6 +2037,13 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 layer_index: e.layer_index,
                 region_ids: e.region_ids.clone(),
             }).collect(),
+            region_support_configs: region_segmentation.region_support_configs.iter().map(|e| ::slicer_sdk::prepass_types::RegionSupportConfig {
+                object_id: e.object_id.clone(),
+                layer_index: e.layer_index,
+                region_id: e.region_id.clone(),
+                support_family: e.support_family.clone(),
+                support_type: e.support_type.clone(),
+            }).collect(),
         };
         let sdk_support_geometry = ::slicer_sdk::prepass_types::SupportGeometryView {
             entries: support_geometry.entries.iter().map(|e| ::slicer_sdk::prepass_types::SupportGeometryViewEntry {
@@ -2044,9 +2053,29 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 outlines: e.outlines.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
+        let sdk_support_analysis = ::slicer_sdk::prepass_types::SupportAnalysisView {
+            candidates: support_analysis.candidates.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisCandidate {
+                id: e.id, geometry: e.geometry.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(), global_layer_index: e.global_layer_index,
+                z_units: e.z_units, enforced: e.enforced, blocked: e.blocked,
+            }).collect(),
+            model_occupancy: support_analysis.model_occupancy.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
+            termination_surfaces: support_analysis.termination_surfaces.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
+            shared_settings: support_analysis.shared_settings.clone(),
+            baseline_feasible_envelope: support_analysis.baseline_feasible_envelope.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
+            }).collect(),
+        };
         let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
-        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(
-            &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_geometry, &mut sdk_output, &ir_config,
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(
+            &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_analysis, &sdk_support_geometry, &mut sdk_output, &ir_config,
         );
         for __slicer_entry in sdk_output.entries() {
             let __slicer_wit_entry = SupportPlanEntry {
@@ -2138,7 +2167,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 Diagnostic, ObjectId, RaftPlan,
                 RegionId, RegionSegmentationView, RegionSegmentationViewEntry,
                 SeverityLevel, SupportGeometryOutput, SupportGeometryView,
-                SupportGeometryViewEntry, SupportPlanEntry, SupportPlanRole,
+                SupportGeometryViewEntry, SupportAnalysisView, SupportPlanEntry, SupportPlanRole,
                 SupportPlanRoleRegion, SupportPlanSkeleton, SupportPlanDeclineReason,
             };
             use slicer::types::geometry::{ExPolygon, Point2, Point3, Point3WithWidth, Polygon};
@@ -2150,6 +2179,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                     objects: Vec<MeshObjectView>,
                     layer_plan: LayerPlanView,
                     region_segmentation: RegionSegmentationView,
+                    support_analysis: SupportAnalysisView,
                     support_geometry: SupportGeometryView,
                     output: SupportGeometryOutput,
                     config: ConfigView,

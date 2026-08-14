@@ -15,6 +15,7 @@ use std::sync::Arc;
 use wasmtime::component::Resource;
 
 use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
+use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
 use slicer_sdk::traits::{EntityMutation, SortKey};
@@ -371,6 +372,8 @@ impl WasmRuntimeDispatcher {
         stage_id: &StageId,
         module_id: &str,
         _module_id_str: &str,
+        module_claims: &[String],
+        layer: &GlobalLayer,
         wasm_component: Option<&Arc<crate::instance::WasmComponent>>,
         instance_pool: &Arc<crate::pool::WasmInstancePool>,
         _config_view: &slicer_ir::ConfigView,
@@ -488,9 +491,15 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles =
-                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
@@ -644,9 +653,15 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles =
-                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
                 let paint = store
                     .data_mut()
@@ -718,9 +733,15 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles =
-                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
                 let paint = store
                     .data_mut()
@@ -860,9 +881,15 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles =
-                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
@@ -939,9 +966,15 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles =
-                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
                     .push_support_output_builder()
@@ -1082,6 +1115,7 @@ impl WasmRuntimeDispatcher {
         layer_plan: Option<Arc<slicer_ir::LayerPlanIR>>,
         slice_ir: Option<Arc<Vec<slicer_ir::SliceIR>>>,
         region_map: Option<Arc<slicer_ir::RegionMapIR>>,
+        support_analysis: Option<Arc<slicer_ir::SupportAnalysisIR>>,
         support_geometry: Option<Arc<slicer_ir::SupportGeometryIR>>,
     ) -> Result<host::HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
@@ -1348,12 +1382,20 @@ impl WasmRuntimeDispatcher {
                     .map(|rm| host::project_region_segmentation_view(rm))
                     .unwrap_or_else(|| host::prepass::RegionSegmentationView {
                         entries: Vec::new(),
+                        region_support_configs: Vec::new(),
                     });
                 let support_geometry_view = support_geometry
                     .as_deref()
                     .map(|sg| host::project_support_geometry_view(sg))
                     .unwrap_or_else(|| host::prepass::SupportGeometryView {
                         entries: Vec::new(),
+                    });
+                let support_analysis_view = support_analysis
+                    .as_deref()
+                    .map(crate::marshal::in_::project_support_analysis_view)
+                    .unwrap_or_else(|| host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
+                        candidates: Vec::new(), model_occupancy: Vec::new(), termination_surfaces: Vec::new(),
+                        shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
                     });
                 let output = store
                     .data_mut()
@@ -1366,6 +1408,7 @@ impl WasmRuntimeDispatcher {
                         &mesh_object_views,
                         &layer_plan_view,
                         &region_segmentation_view,
+                        &support_analysis_view,
                         &support_geometry_view,
                         own(output),
                         own(config_handle),
@@ -1952,6 +1995,8 @@ fn push_slice_regions(
     slice_ir: Option<&slicer_ir::SliceIR>,
     layer_z: f32,
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+    layer: &GlobalLayer,
+    module_claims: &[String],
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
     let slice_ir = match slice_ir {
         Some(ir) => ir,
@@ -1960,6 +2005,9 @@ fn push_slice_regions(
 
     let mut handles = Vec::with_capacity(slice_ir.regions.len());
     for region in &slice_ir.regions {
+        if !module_receives_slice_region(module_claims, layer, region) {
+            continue;
+        }
         // Modifier footprints are host-internal bookkeeping, not printable
         // geometry — see `slicer_ir::MODIFIER_FOOTPRINT_REGION_ID`. Handing one
         // to a module makes it a region like any other: a perimeter generator
@@ -1986,6 +2034,24 @@ fn push_slice_regions(
         handles.push(handle);
     }
     Ok(handles)
+}
+
+fn module_receives_slice_region(
+    module_claims: &[String],
+    layer: &GlobalLayer,
+    region: &slicer_ir::SlicedRegion,
+) -> bool {
+    if !module_claims
+        .iter()
+        .any(|claim| claim.starts_with("support-family:"))
+    {
+        return true;
+    }
+    layer.active_regions.iter().any(|active| {
+        active.object_id == region.object_id
+            && active.region_id == region.region_id
+            && module_claims_match_active_region(module_claims, active)
+    })
 }
 
 /// Resolve the seam-plan entry belonging to one perimeter region.
@@ -2266,14 +2332,9 @@ use crate::marshal::in_::harvest_seam_plan_ir_from;
 fn harvest_support_plan_ir(
     _stage_id: &str,
     _module_id: &str,
-    mesh: &slicer_ir::MeshIR,
     ctx: host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
-    let plan = harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)?;
-    let exact_z = crate::exact_z_query::ExactZQueryService::new(Arc::new(mesh.clone()));
-    Ok(crate::support_aggregation::aggregate_support_plan_ir(
-        plan, &exact_z,
-    ))
+    harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)
 }
 
 // Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
@@ -2417,6 +2478,7 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             input.layer_plan.clone(),
             input.slice_ir.clone(),
             input.region_map.clone(),
+            input.support_analysis.clone(),
             input.support_geometry.clone(),
         ) {
             Ok(ctx) => ctx,
@@ -2468,13 +2530,13 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         }
 
         if stage_id == "PrePass::SupportGeometry" {
-            let ir = harvest_support_plan_ir(stage_id, module_id_str, &input.mesh, ctx).map_err(
-                |msg| slicer_ir::PrepassRunnerError::FatalModule {
+            let ir = harvest_support_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
+                slicer_ir::PrepassRunnerError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: msg,
-                },
-            )?;
+                }
+            })?;
             return Ok(slicer_core::PrepassStageOutput::SupportPlan(
                 std::sync::Arc::new(ir),
             ));
@@ -2530,56 +2592,59 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let (held_claims_map, authored_granted_regions): (
             std::collections::HashMap<(String, String), Vec<String>>,
             std::collections::HashSet<(String, u64)>,
-        ) = input
-            .slice
-            .map(|slice_ir| {
-                let mut held_map = std::collections::HashMap::new();
-                let mut granted = std::collections::HashSet::new();
-                for region in &slice_ir.regions {
-                    // Resolve the per-region config by (layer, object, region) ignoring
-                    // any paint-driven variant_chain entries. The fill-role holders are
-                    // host-resolved and painted variants do not introduce separate
-                    // fill-holder semantics, so the base/per-object/per-paint effective
-                    // config for this region is the right authority.
-                    let config = input
-                        .region_map
-                        .as_deref()
-                        .and_then(|map| {
-                            map.entries
-                                .iter()
-                                .find(|(key, _)| {
-                                    key.global_layer_index == layer.index
-                                        && key.object_id == region.object_id
-                                        && key.region_id == region.region_id
-                                })
-                                .map(|(_, plan)| map.config_for_raw(plan.config).clone())
-                        })
-                        .unwrap_or_default();
-                    let held = resolve_held_claims(
-                        module_id_str,
-                        &module.claims,
-                        &FillHolders {
-                            top: &config.top_fill_holder,
-                            bottom: &config.bottom_fill_holder,
-                            bridge: &config.bridge_fill_holder,
-                            sparse: &config.sparse_fill_holder,
-                        },
-                    );
-                    if crate::marshal::authored_coloring_granted(
-                        &held,
-                        &config.fill_authored_coloring,
-                        module.claims,
-                    ) {
-                        granted.insert((region.object_id.clone(), region.region_id));
+        ) =
+            input
+                .slice
+                .map(|slice_ir| {
+                    let mut held_map = std::collections::HashMap::new();
+                    let mut granted = std::collections::HashSet::new();
+                    for region in slice_ir.regions.iter().filter(|region| {
+                        module_receives_slice_region(&module.claims, layer, region)
+                    }) {
+                        // Resolve the per-region config by (layer, object, region) ignoring
+                        // any paint-driven variant_chain entries. The fill-role holders are
+                        // host-resolved and painted variants do not introduce separate
+                        // fill-holder semantics, so the base/per-object/per-paint effective
+                        // config for this region is the right authority.
+                        let config = input
+                            .region_map
+                            .as_deref()
+                            .and_then(|map| {
+                                map.entries
+                                    .iter()
+                                    .find(|(key, _)| {
+                                        key.global_layer_index == layer.index
+                                            && key.object_id == region.object_id
+                                            && key.region_id == region.region_id
+                                    })
+                                    .map(|(_, plan)| map.config_for_raw(plan.config).clone())
+                            })
+                            .unwrap_or_default();
+                        let held = resolve_held_claims(
+                            module_id_str,
+                            &module.claims,
+                            &FillHolders {
+                                top: &config.top_fill_holder,
+                                bottom: &config.bottom_fill_holder,
+                                bridge: &config.bridge_fill_holder,
+                                sparse: &config.sparse_fill_holder,
+                            },
+                        );
+                        if crate::marshal::authored_coloring_granted(
+                            &held,
+                            &config.fill_authored_coloring,
+                            module.claims,
+                        ) {
+                            granted.insert((region.object_id.clone(), region.region_id));
+                        }
+                        held_map.insert(
+                            (region.object_id.clone(), region.region_id.to_string()),
+                            held,
+                        );
                     }
-                    held_map.insert(
-                        (region.object_id.clone(), region.region_id.to_string()),
-                        held,
-                    );
-                }
-                (held_map, granted)
-            })
-            .unwrap_or_default();
+                    (held_map, granted)
+                })
+                .unwrap_or_default();
         if let Some(entry) = &module.native_entry {
             let stage_export = slicer_schema::stage_by_id(stage_id)
                 .map(|s| s.stage_id)
@@ -2654,6 +2719,9 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                 > = HashMap::new();
                 let mut out = HashMap::new();
                 for region in &slice_ir.regions {
+                    if !module_receives_slice_region(&module.claims, layer, region) {
+                        continue;
+                    }
                     let key = slicer_ir::RegionKey {
                         global_layer_index: layer.index,
                         object_id: region.object_id.clone(),
@@ -2708,6 +2776,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             stage_id,
             module_id_str,
             module_id_str,
+            &module.claims,
+            layer,
             module.wasm_component.as_ref(),
             &module.instance_pool,
             &module.config_view,
@@ -2752,6 +2822,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             stage_id,
             module_id_str,
             layer.index,
+            input.support_plan.as_deref(),
             ctx,
             Some(&authored_coloring_ctx),
         )
@@ -3328,6 +3399,7 @@ fn deconstruct_layer_ctx(
     stage_id: &str,
     module_id: &str,
     layer_index: u32,
+    support_plan: Option<&slicer_ir::SupportPlanIR>,
     ctx: HostExecutionContext,
     authored: Option<&crate::marshal::AuthoredColoringContext>,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
@@ -3366,8 +3438,12 @@ fn deconstruct_layer_ctx(
             {
                 return Ok(None);
             }
-            let ir = crate::marshal::convert_support_output_with_plan(support, layer_index, None)
-                .map_err(|r| mk_fatal("support", r))?;
+            let ir = crate::marshal::convert_support_output_with_plan(
+                support,
+                layer_index,
+                support_plan,
+            )
+            .map_err(|r| mk_fatal("support", r))?;
             Ok(Some(if stage_id == "Layer::SupportPostProcess" {
                 LayerStageCommit::SupportPostProcess(ir)
             } else {
