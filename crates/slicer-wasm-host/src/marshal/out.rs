@@ -272,38 +272,53 @@ pub fn convert_support_output_with_plan(
         .into_regions()
         .into_iter()
         .flat_map(|r| {
-            let plan_entry = plan.and_then(|p| {
-                p.entries.iter().find(|e| {
+            let mut identities: Vec<_> = plan
+                .into_iter()
+                .flat_map(|p| p.entries.iter())
+                .filter(|e| {
                     e.global_layer_index == layer_index as i32
                         && e.object_id == r.object_id
                         && e.region_id == r.region_id
                 })
-            });
-            let (family_id, body_id, demand_ids) = plan_entry
-                .map(|e| {
-                    (
-                        e.family_id.clone(),
-                        e.body_ids.first().cloned().unwrap_or_default(),
-                        e.demand_ids.clone(),
-                    )
+                .flat_map(|e| {
+                    let body_ids = if e.body_ids.is_empty() {
+                        vec![String::new()]
+                    } else {
+                        e.body_ids.clone()
+                    };
+                    body_ids
+                        .into_iter()
+                        .map(move |body_id| (e.family_id.clone(), body_id, e.demand_ids.clone()))
                 })
-                .unwrap_or((r.family_id, r.body_id, r.demand_ids));
-            [
+                .collect();
+            if identities.is_empty() {
+                identities.push((r.family_id, r.body_id, r.demand_ids));
+            }
+            let roles = [
                 (slicer_ir::SupportRole::SupportBody, r.support),
                 (slicer_ir::SupportRole::TopInterface, r.interface),
                 (slicer_ir::SupportRole::Raft, r.raft),
-            ]
-            .into_iter()
-            .filter(move |(_, paths)| !paths.is_empty())
-            .map(move |(role, paths)| slicer_ir::SupportEntry {
-                family_id: family_id.clone(),
-                body_id: body_id.clone(),
-                demand_ids: demand_ids.clone(),
-                object_id: r.object_id.clone(),
-                region_id: r.region_id,
-                role,
-                paths,
-            })
+            ];
+            identities
+                .into_iter()
+                .flat_map(move |(family_id, body_id, demand_ids)| {
+                    roles
+                        .iter()
+                        .filter(|(_, paths)| !paths.is_empty())
+                        .map({
+                            let object_id = r.object_id.clone();
+                            move |(role, paths)| slicer_ir::SupportEntry {
+                                family_id: family_id.clone(),
+                                body_id: body_id.clone(),
+                                demand_ids: demand_ids.clone(),
+                                object_id: object_id.clone(),
+                                region_id: r.region_id,
+                                role: *role,
+                                paths: paths.clone(),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
         })
         .collect();
 

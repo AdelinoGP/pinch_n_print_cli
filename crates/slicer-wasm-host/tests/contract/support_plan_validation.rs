@@ -109,13 +109,13 @@ fn entry(body: &str, x: i64) -> slicer_ir::SupportPlanEntry {
 #[test]
 pub fn support_plan_validation() {
     let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut colliding = entry("colliding", 0);
+    colliding.region_id = 8;
+    let mut spans_cell = entry("spans_cell", 1_048_076);
+    spans_cell.region_id = 9;
     let result = aggregate_support_plans(SupportAggregationInput {
         plans: vec![slicer_ir::SupportPlanIR {
-            entries: vec![
-                entry("valid", 20_000_000),
-                entry("colliding", 0),
-                entry("spans_cell", 1_048_076),
-            ],
+            entries: vec![entry("valid", 20_000_000), colliding, spans_cell],
             ..Default::default()
         }],
         exact_z: &service,
@@ -131,4 +131,63 @@ pub fn support_plan_validation() {
         .unmet
         .iter()
         .any(|d| d.demand_id == "spans_cell" && d.reason.contains("routing cell")));
+}
+
+#[test]
+fn support_plan_aggregation_preserves_distinct_families() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut tree = entry("tree-body", 20_000_000);
+    tree.family_id = "tree".into();
+    let mut traditional = entry("traditional-body", 30_000_000);
+    traditional.family_id = "traditional".into();
+    traditional.region_id = 8;
+
+    let result = aggregate_support_plans(SupportAggregationInput {
+        plans: vec![
+            slicer_ir::SupportPlanIR {
+                entries: vec![tree],
+                ..Default::default()
+            },
+            slicer_ir::SupportPlanIR {
+                entries: vec![traditional],
+                ..Default::default()
+            },
+        ],
+        exact_z: &service,
+    });
+
+    assert_eq!(result.retained.len(), 2);
+    assert_eq!(result.retained[0].family_id, "tree");
+    assert_eq!(result.retained[1].family_id, "traditional");
+    assert!(result.duplicates.is_empty());
+}
+
+#[test]
+fn support_plan_aggregation_diagnoses_duplicate_identity() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut first = entry("tree-body", 20_000_000);
+    first.family_id = "tree".into();
+    let mut duplicate = entry("traditional-body", 30_000_000);
+    duplicate.family_id = "traditional".into();
+
+    let result = aggregate_support_plans(SupportAggregationInput {
+        plans: vec![
+            slicer_ir::SupportPlanIR {
+                entries: vec![first],
+                ..Default::default()
+            },
+            slicer_ir::SupportPlanIR {
+                entries: vec![duplicate],
+                ..Default::default()
+            },
+        ],
+        exact_z: &service,
+    });
+
+    assert_eq!(result.retained.len(), 1);
+    assert_eq!(result.retained[0].family_id, "tree");
+    assert!(result.degraded);
+    assert_eq!(result.duplicates.len(), 1);
+    assert_eq!(result.duplicates[0].first_family_id, "tree");
+    assert_eq!(result.duplicates[0].duplicate_family_id, "traditional");
 }

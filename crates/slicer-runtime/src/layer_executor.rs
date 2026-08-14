@@ -780,19 +780,21 @@ fn execute_single_layer_inner(
     // Otherwise fall back to direct assembly from arena slots (stages without
     // a PathOptimization module, or tests that omit it).
     let mut layer_output = arena.take_layer_collection().unwrap_or_else(|| {
-        let ordered_entities = assemble_ordered_entities(
-            layer.index,
-            arena.perimeter(),
-            arena.infill(),
-            arena.support(),
-            blackboard.region_map().map(|arc| arc.as_ref()),
-            arena.slice(),
-            support_tools,
-        );
+        let (ordered_entities, support_entity_identities) =
+            assemble_ordered_entities_with_support_identities(
+                layer.index,
+                arena.perimeter(),
+                arena.infill(),
+                arena.support(),
+                blackboard.region_map().map(|arc| arc.as_ref()),
+                arena.slice(),
+                support_tools,
+            );
         LayerCollectionIR {
             global_layer_index: layer.index,
             z: layer.z,
             ordered_entities,
+            support_entity_identities,
             ..Default::default()
         }
     });
@@ -941,19 +943,21 @@ fn prestage_layer_collection_if_path_optimization(
     if stage.stage_id != "Layer::PathOptimization" || arena.layer_collection().is_some() {
         return;
     }
-    let ordered_entities = assemble_ordered_entities(
-        layer.index,
-        arena.perimeter(),
-        arena.infill(),
-        arena.support(),
-        blackboard.region_map().map(|arc| arc.as_ref()),
-        arena.slice(),
-        support_tools,
-    );
+    let (ordered_entities, support_entity_identities) =
+        assemble_ordered_entities_with_support_identities(
+            layer.index,
+            arena.perimeter(),
+            arena.infill(),
+            arena.support(),
+            blackboard.region_map().map(|arc| arc.as_ref()),
+            arena.slice(),
+            support_tools,
+        );
     arena.set_layer_collection(LayerCollectionIR {
         global_layer_index: layer.index,
         z: layer.z,
         ordered_entities,
+        support_entity_identities,
         ..Default::default()
     });
 }
@@ -1765,10 +1769,11 @@ fn run_paint_annotation(
 /// `InfillRegion` in committed order, emit sparse / solid / ironing paths in
 /// that order; finally emit `SupportIR` paths (support / interface / raft /
 /// ironing). `region_key` carries `(global_layer_index, object_id, region_id)`
-/// for perimeter and infill entities. `SupportIR` is flat in the current IR
-/// model and has no per-region identity, so support entities use an empty
-/// `object_id` and `region_id = 0` rather than inventing synthetic identity.
-/// `topo_order` is the entity's 0-based position in the emitted sequence.
+/// for perimeter and infill entities. `SupportIR` entries are attributed with
+/// their own `(object_id, region_id)`, so support `PrintEntity`s carry the
+/// owning identity from the `SupportEntry` rather than inventing synthetic
+/// identity. `topo_order` is the entity's 0-based position in the emitted
+/// sequence.
 fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
     let mut counts: HashMap<u64, usize> = HashMap::new();
     for f in flags {
@@ -1779,7 +1784,11 @@ fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
     counts.iter().max_by_key(|(_, c)| **c).map(|(ti, _)| *ti)
 }
 
-pub(crate) fn assemble_ordered_entities(
+/// Assemble ordered entities and their support-attribution side table.
+///
+/// The side table is keyed by the stable `PrintEntity.entity_id`, so a path
+/// optimizer may permute entities without needing to rewrite attribution.
+pub fn assemble_ordered_entities_with_support_identities(
     global_layer_index: u32,
     perimeter: Option<&PerimeterIR>,
     infill: Option<&InfillIR>,
@@ -1787,17 +1796,29 @@ pub(crate) fn assemble_ordered_entities(
     region_map: Option<&RegionMapIR>,
     slice: Option<&SliceIR>,
     support_tools: SupportToolSelection,
-) -> Vec<PrintEntity> {
+) -> (Vec<PrintEntity>, Vec<slicer_ir::SupportEntityIdentity>) {
     let mut out: Vec<PrintEntity> = Vec::new();
+    let mut support_entity_identities = Vec::new();
     let id_gen = LayerEntityIdGen::new();
     let push = |path: slicer_ir::ExtrusionPath3D,
                 role: slicer_ir::ExtrusionRole,
                 tool_index: u32,
                 key: RegionKey,
+                support_identity: Option<&slicer_ir::SupportEntry>,
+                identities: &mut Vec<slicer_ir::SupportEntityIdentity>,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
+        let entity_id = id_gen.next();
+        if let Some(entry) = support_identity {
+            identities.push(slicer_ir::SupportEntityIdentity {
+                entity_id,
+                family_id: entry.family_id.clone(),
+                body_id: entry.body_id.clone(),
+                demand_ids: entry.demand_ids.clone(),
+            });
+        }
         acc.push(PrintEntity {
-            entity_id: id_gen.next(),
+            entity_id,
             path,
             role,
             // Tool is now an explicit SELECTOR; `region_key.region_id` stays a
@@ -2002,6 +2023,8 @@ pub(crate) fn assemble_ordered_entities(
                     role,
                     resolved_tool as u32,
                     entity_key,
+                    None,
+                    &mut support_entity_identities,
                     &mut out,
                 );
             }
@@ -2020,9 +2043,9 @@ pub(crate) fn assemble_ordered_entities(
             // need per-path tool resolution when host bucketing collapsed.
             let infill_region_key = (region.object_id.clone(), region.region_id);
             let infill_region_is_tagged = variant_tool_by_region.contains_key(&infill_region_key);
-            let infill_push = |path: &slicer_ir::ExtrusionPath3D,
-                               role: slicer_ir::ExtrusionRole,
-                               acc: &mut Vec<PrintEntity>| {
+            let mut infill_push = |path: &slicer_ir::ExtrusionPath3D,
+                                   role: slicer_ir::ExtrusionRole,
+                                   acc: &mut Vec<PrintEntity>| {
                 let spatial_tool: Option<u64> = path
                     .points
                     .first()
@@ -2044,7 +2067,15 @@ pub(crate) fn assemble_ordered_entities(
                     region_id: region.region_id,
                     variant_chain: Vec::new(),
                 };
-                push(path.clone(), role, resolved_tool as u32, key, acc);
+                push(
+                    path.clone(),
+                    role,
+                    resolved_tool as u32,
+                    key,
+                    None,
+                    &mut support_entity_identities,
+                    acc,
+                );
             };
             for path in &region.sparse_infill {
                 infill_push(path, path.role.clone(), &mut out);
@@ -2073,12 +2104,20 @@ pub(crate) fn assemble_ordered_entities(
                 _ => support_tools.support_tool,
             };
             for path in &entry.paths {
-                push(path.clone(), path.role.clone(), tool, key.clone(), &mut out);
+                push(
+                    path.clone(),
+                    path.role.clone(),
+                    tool,
+                    key.clone(),
+                    Some(entry),
+                    &mut support_entity_identities,
+                    &mut out,
+                );
             }
         }
     }
 
-    out
+    (out, support_entity_identities)
 }
 
 // ── Runtime-side per-stage commit (ADR-0020) ───────────────────────────────
@@ -2962,7 +3001,7 @@ mod tests {
         raw_config.insert("support_interface_filament", slicer_ir::ConfigValue::Int(3));
         let support_tools = crate::run::parse_support_tool_selection(&raw_config);
 
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             None,
             None,
@@ -2970,7 +3009,8 @@ mod tests {
             None,
             None,
             support_tools,
-        );
+        )
+        .0;
 
         assert_eq!(
             entities
@@ -3023,7 +3063,7 @@ mod tests {
             ..Default::default()
         };
 
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             None,
             None,
@@ -3031,7 +3071,8 @@ mod tests {
             None,
             None,
             super::SupportToolSelection::default(),
-        );
+        )
+        .0;
 
         assert!(entities.iter().all(|entity| entity.tool_index == 0));
     }
@@ -3142,7 +3183,7 @@ mod tests {
 
         // No slice (no variant_tool), no region_map (no modifier_tool),
         // no support — all four resolvers will return None at both sites.
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             Some(&perimeter),
             Some(&infill),
@@ -3150,7 +3191,8 @@ mod tests {
             None, // region_map  → modifier_tool = None
             None, // slice       → variant_tool = None, spatial_tool = None
             super::SupportToolSelection::default(),
-        );
+        )
+        .0;
 
         assert!(
             !entities.is_empty(),

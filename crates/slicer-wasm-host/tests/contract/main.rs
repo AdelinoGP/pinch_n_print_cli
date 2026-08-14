@@ -21,6 +21,7 @@ mod seam_plan_harvest_custom_paint_value_tdd;
 mod set_current_origin_routes_to_correct_bucket_tdd;
 mod slice_region_view_contract_tdd;
 mod support_decline_contract;
+mod support_identity_layer_dispatch_tdd;
 mod support_plan_structural_contract;
 mod support_plan_validation;
 mod surface_group_resolution_tdd;

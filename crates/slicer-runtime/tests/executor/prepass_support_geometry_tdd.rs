@@ -31,7 +31,7 @@ use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
     LayerPlanIR, MeshIR, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    SupportGeometryIR, SupportPlanEntry, SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
@@ -532,18 +532,63 @@ fn support_planner_claim_dedup() {
 fn blackboard_accepts_and_returns_support_plan_ir() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(mesh, 0);
-    let ir = Arc::new(SupportPlanIR::default());
+    let ir = Arc::new(SupportPlanIR {
+        entries: vec![SupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "plate".into(),
+            region_id: 0,
+            family_id: "tree".into(),
+            demand_ids: vec!["demand-tree".into()],
+            body_ids: vec!["body-tree".into()],
+            anchor_layer_index: 0,
+            anchor_z: 0,
+            roles: vec![],
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..SupportPlanIR::default()
+    });
     blackboard
         .commit_support_plan(Arc::clone(&ir))
         .expect("first commit must succeed");
     assert!(blackboard.support_plan().is_some());
 
-    let second = Arc::clone(&ir);
-    match blackboard.commit_support_plan(second) {
-        Err(slicer_runtime::BlackboardError::DuplicatePrepassCommit { slot }) => {
-            assert_eq!(slot, BlackboardPrepassSlot::SupportPlan);
+    let distinct = Arc::new(SupportPlanIR {
+        entries: vec![SupportPlanEntry {
+            global_layer_index: 1,
+            object_id: "plate".into(),
+            region_id: 0,
+            family_id: "traditional".into(),
+            demand_ids: vec!["demand-traditional".into()],
+            body_ids: vec!["body-traditional".into()],
+            anchor_layer_index: 1,
+            anchor_z: 0,
+            roles: vec![],
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..SupportPlanIR::default()
+    });
+    blackboard
+        .commit_support_plan(distinct)
+        .expect("distinct support plan identities must merge");
+    assert_eq!(blackboard.support_plan().unwrap().entries.len(), 2);
+
+    match blackboard.commit_support_plan(ir) {
+        Err(slicer_runtime::BlackboardError::DuplicateSupportPlanEntry {
+            global_layer_index,
+            object_id,
+            region_id,
+        }) => {
+            assert_eq!(global_layer_index, 0);
+            assert_eq!(object_id, "plate");
+            assert_eq!(region_id, 0);
         }
-        other => panic!("expected DuplicatePrepassCommit for SupportPlan; got {other:?}"),
+        other => panic!("expected duplicate support-plan identity; got {other:?}"),
     }
 }
 
