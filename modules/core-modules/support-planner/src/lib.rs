@@ -69,6 +69,8 @@ const MIN_BRANCH_RADIUS: f32 = 0.4;
 #[allow(dead_code)]
 pub struct SupportPlanner {
     enabled: bool,
+    /// Canonical support family selected for the matching renderer.
+    support_family: String,
     branch_angle_deg: f32,
     merge_distance_mm: f32,
     max_branches_per_layer: usize,
@@ -127,10 +129,13 @@ fn structural_body_regions(
     segments: &[Vec<Point3WithWidth>],
     branch_radius_mm: f32,
 ) -> Vec<ExPolygon> {
-    let half = mm_to_units(branch_radius_mm.max(0.4)).max(1);
+    let half = mm_to_units(branch_radius_mm.clamp(0.4, MIN_BRANCH_RADIUS)).max(1);
     segments
         .iter()
-        .flat_map(|segment| segment.iter())
+        // Zero-width points are model-contact tips, not support-body volume.
+        // Keep them in the skeleton while excluding them from exact-Z body
+        // occupancy validation.
+        .flat_map(|segment| segment.iter().filter(|point| point.width > 0.0))
         .map(|point| {
             let x = mm_to_units(point.x);
             let y = mm_to_units(point.y);
@@ -179,6 +184,7 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Bool(b)) => *b,
             _ => true,
         };
+        let support_family = canonical_support_family(config);
         let branch_angle_deg = match config.get("support_branch_angle_deg") {
             Some(ConfigValue::Float(a)) => *a as f32,
             Some(ConfigValue::Int(a)) => *a as f32,
@@ -261,6 +267,7 @@ impl PrepassModule for SupportPlanner {
         };
         Ok(Self {
             enabled,
+            support_family,
             branch_angle_deg,
             merge_distance_mm,
             max_branches_per_layer,
@@ -284,6 +291,27 @@ impl PrepassModule for SupportPlanner {
         objects: &[MeshObjectView],
         layer_plan: &LayerPlanView,
         region_segmentation: &RegionSegmentationView,
+        support_geometry: &SupportGeometryView,
+        output: &mut SupportGeometryOutput,
+        config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        self.run_support_geometry_with_analysis(
+            objects,
+            layer_plan,
+            region_segmentation,
+            &SupportAnalysisView::default(),
+            support_geometry,
+            output,
+            config,
+        )
+    }
+
+    fn run_support_geometry_with_analysis(
+        &self,
+        objects: &[MeshObjectView],
+        layer_plan: &LayerPlanView,
+        region_segmentation: &RegionSegmentationView,
+        support_analysis: &SupportAnalysisView,
         support_geometry: &SupportGeometryView,
         output: &mut SupportGeometryOutput,
         _config: &ConfigView,
@@ -397,6 +425,8 @@ impl PrepassModule for SupportPlanner {
                 obj,
                 layer_plan,
                 region_segmentation,
+                support_analysis,
+                support_geometry,
                 &collision_cache,
                 output,
                 &mut dropped_by_layer,
@@ -435,14 +465,12 @@ impl SupportPlanner {
         obj: &MeshObjectView,
         layer_plan: &LayerPlanView,
         region_segmentation: &RegionSegmentationView,
+        support_analysis: &SupportAnalysisView,
+        _support_geometry: &SupportGeometryView,
         collision_cache: &[LayerCollisionCache],
         output: &mut SupportGeometryOutput,
         dropped_by_layer: &mut std::collections::BTreeMap<u32, usize>,
     ) -> Result<(), ModuleError> {
-        if obj.triangles.is_empty() {
-            return Ok(());
-        }
-
         // ── Layer range from committed layer plan ────────────────────────
         let num_layers = layer_plan.layers.len() as u32;
         if num_layers == 0 {
@@ -458,19 +486,8 @@ impl SupportPlanner {
             return Ok(());
         }
 
-        // Bounds are still needed for build-plate proximity checks.
-        let (bmin, _bmax) = match compute_bounds(&obj.vertices) {
-            Some(b) => b,
-            None => return Ok(()),
-        };
-
-        // ── Step 9: simplified detect_overhangs ──────────────────────────
-        let overhang_facets = detect_overhang_facets(obj, OVERHANG_THRESHOLD_DEG);
-        let enforcer_contacts = collect_paint_enforcer_contacts(obj);
-        let blocker_polys = collect_paint_blocker_polygons(obj);
-
-        // Contact points per origin-layer. A facet whose centroid z falls
-        // into layer L contributes exactly one contact point at L.
+        // Host analysis owns candidate discovery and policy. Geometry remains
+        // an independent compatibility input for collision avoidance below.
         let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
             vec![Vec::new(); num_layers as usize];
 
@@ -481,87 +498,129 @@ impl SupportPlanner {
         // shared map so per-layer totals are merged across all objects
         // before emission.
 
-        for (v0, v1, v2) in &overhang_facets {
-            let centroid = [
-                (v0[0] + v1[0] + v2[0]) / 3.0,
-                (v0[1] + v1[1] + v2[1]) / 3.0,
-                (v0[2] + v1[2] + v2[2]) / 3.0,
-            ];
-            if point_in_any_polygon(&blocker_polys, centroid[0], centroid[1]) {
-                continue;
+        // Keep mesh-derived contacts as the primary, legacy path. Analysis
+        // augments these contacts but never decides whether they are admitted.
+        if let Some((bmin, _)) = compute_bounds(&obj.vertices) {
+            let blockers = collect_paint_blocker_polygons(obj);
+            for (v0, v1, v2) in detect_overhang_facets(obj, OVERHANG_THRESHOLD_DEG) {
+                let (x, y, z) = (
+                    (v0[0] + v1[0] + v2[0]) / 3.0,
+                    (v0[1] + v1[1] + v2[1]) / 3.0,
+                    (v0[2] + v1[2] + v2[2]) / 3.0,
+                );
+                if point_in_any_polygon(&blockers, x, y)
+                    || z <= bmin[2] + layer_plan.layers[0].effective_layer_height * 0.5
+                {
+                    continue;
+                }
+                let layer_idx = layer_plan
+                    .layers
+                    .iter()
+                    .position(|layer| layer.z >= z)
+                    .unwrap_or(layer_plan.layers.len() - 1);
+                push_contact(
+                    &mut contacts_by_layer,
+                    layer_plan,
+                    collision_cache,
+                    layer_idx,
+                    x,
+                    y,
+                    self,
+                    dropped_by_layer,
+                );
             }
-            // Overhangs whose centroid sits on the build plate (layer 0 ±
-            // half a layer) do not need tree supports — OrcaSlicer's
-            // detect_overhangs short-circuits the same case.
-            let first_layer_height = layer_plan.layers[0].effective_layer_height;
-            let rel_z = (centroid[2] - bmin[2]).max(0.0);
-            if rel_z < first_layer_height * 0.5 {
-                continue;
+            for (layer_idx, x, y) in collect_paint_enforcer_contacts(obj) {
+                if !point_in_any_polygon(&blockers, x, y) {
+                    push_contact(
+                        &mut contacts_by_layer,
+                        layer_plan,
+                        collision_cache,
+                        (layer_idx as usize).min(num_layers as usize - 1),
+                        x,
+                        y,
+                        self,
+                        dropped_by_layer,
+                    );
+                }
             }
-            // Find the layer whose Z range contains the centroid Z.
-            // Layer Z values represent the top of each layer, so the first
-            // layer with z >= centroid_z is the one containing the overhang.
+        }
+        // Analysis augments the legacy contacts only for scopes it actually
+        // populated. This preserves the prior behavior for an absent or
+        // partial SupportAnalysisView while consuming host candidates when
+        // available.
+        for candidate in support_analysis.candidates.iter().filter(|candidate| {
+            candidate.object_id == obj.object_id
+                && !candidate.blocked
+                && candidate
+                    .geometry
+                    .iter()
+                    .any(|polygon| polygon.contour.points.len() >= 3)
+                && region_segmentation.entries.iter().any(|entry| {
+                    entry.object_id == obj.object_id
+                        && entry.layer_index == candidate.global_layer_index
+                        && entry
+                            .region_ids
+                            .iter()
+                            .any(|region_id| region_id == &candidate.region_id)
+                })
+        }) {
             let layer_idx = layer_plan
                 .layers
                 .iter()
-                .position(|l| l.z >= centroid[2])
-                .unwrap_or(layer_plan.layers.len() - 1);
-            // Packet 123: `to_buildplate = !point_in_any_expoly(collision_polys, x, y)`
-            // — the contact is build-plate-bound iff its XY lies OUTSIDE
-            // the object's projected footprint at the contact's layer.
-            let global_li = layer_plan.layers[layer_idx].global_layer_index as usize;
-            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
-                collision_cache[global_li].collision_polys.as_slice()
-            } else {
-                &[]
+                .position(|layer| layer.global_layer_index == candidate.global_layer_index)
+                .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
+            let Some((x, y)) = candidate_contact_point(&candidate.geometry) else {
+                continue;
             };
-            let to_buildplate =
-                !point_in_any_expoly(contact_collision_polys, centroid[0], centroid[1]);
-            // Honor `support_on_build_plate_only = true`: reject to-model contacts
-            // (to_buildplate = false) at creation time. Default false → no effect.
-            if self.support_on_build_plate_only && !to_buildplate {
-                continue;
-            }
-            if contacts_by_layer[layer_idx].len() >= self.max_branches_per_layer {
-                let global_li = layer_plan.layers[layer_idx].global_layer_index;
-                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
-                continue;
-            }
-            contacts_by_layer[layer_idx].push(PlannedSupportNode {
-                x: centroid[0],
-                y: centroid[1],
-                dist_to_top: 0,
-                to_buildplate,
-            });
+            push_contact(
+                &mut contacts_by_layer,
+                layer_plan,
+                collision_cache,
+                layer_idx,
+                x,
+                y,
+                self,
+                dropped_by_layer,
+            );
         }
 
-        for (layer_idx, x, y) in &enforcer_contacts {
-            let li = (*layer_idx as usize).min(num_layers as usize - 1);
-            if point_in_any_polygon(&blocker_polys, *x, *y) {
-                continue;
+        // Some host projections provide support geometry but not mesh facets.
+        // Use outlines only as a fallback, so they neither replace nor suppress
+        // contacts from the legacy mesh path.
+        // An empty triangle list is not enough to activate this compatibility
+        // path: projected model outlines are also present for ordinary meshes
+        // whose facets produced no contacts. Only a genuinely mesh-less object
+        // may use outlines as legacy contact geometry.
+        if obj.vertices.is_empty()
+            && obj.triangles.is_empty()
+            && contacts_by_layer.iter().all(|contacts| contacts.is_empty())
+        {
+            for entry in _support_geometry
+                .entries
+                .iter()
+                .filter(|entry| entry.object_id == obj.object_id)
+            {
+                let layer_idx = layer_plan
+                    .layers
+                    .iter()
+                    .position(|layer| layer.global_layer_index == entry.global_support_layer_index)
+                    .unwrap_or_else(|| {
+                        entry.global_support_layer_index.min(num_layers - 1) as usize
+                    });
+                let Some((x, y)) = candidate_contact_point(&entry.outlines) else {
+                    continue;
+                };
+                push_contact(
+                    &mut contacts_by_layer,
+                    layer_plan,
+                    collision_cache,
+                    layer_idx,
+                    x,
+                    y,
+                    self,
+                    dropped_by_layer,
+                );
             }
-            // Packet 123: same `to_buildplate` rule for enforcer contacts.
-            let global_li = layer_plan.layers[li].global_layer_index as usize;
-            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
-                collision_cache[global_li].collision_polys.as_slice()
-            } else {
-                &[]
-            };
-            let to_buildplate = !point_in_any_expoly(contact_collision_polys, *x, *y);
-            if self.support_on_build_plate_only && !to_buildplate {
-                continue;
-            }
-            if contacts_by_layer[li].len() >= self.max_branches_per_layer {
-                let global_li = layer_plan.layers[li].global_layer_index;
-                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
-                continue;
-            }
-            contacts_by_layer[li].push(PlannedSupportNode {
-                x: *x,
-                y: *y,
-                dist_to_top: 0,
-                to_buildplate,
-            });
         }
 
         // Bail out when nothing needs support.
@@ -819,11 +878,38 @@ impl SupportPlanner {
                     .flat_map(|e| e.region_ids.iter())
                     .collect();
                 for region_id in regions_for_this {
+                    let support_family = support_analysis
+                        .family_assignments
+                        .iter()
+                        .find(|assignment| {
+                            assignment.object_id == obj.object_id
+                                && assignment.region_id == *region_id
+                        })
+                        .map(|assignment| assignment.family_id.clone())
+                        .or_else(|| {
+                            region_segmentation
+                                .region_support_configs
+                                .iter()
+                                .find(|config| {
+                                    config.object_id == obj.object_id
+                                        && config.layer_index == current_global_layer_index
+                                        && config.region_id == *region_id
+                                })
+                                .map(|config| {
+                                    canonical_support_family_alias(
+                                        config
+                                            .support_type
+                                            .as_deref()
+                                            .or(config.support_family.as_deref()),
+                                    )
+                                })
+                        })
+                        .unwrap_or_else(|| self.support_family.clone());
                     entries_in_order.push(SupportPlanEntry {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
                         region_id: region_id.clone(),
-                        family_id: "tree-support".to_string(),
+                        family_id: support_family,
                         demand_ids: vec![format!("support-layer-{current_global_layer_index}")],
                         body_ids: vec![format!("support-body-{}", obj.object_id)],
                         anchor_layer_index: current_global_layer_index,
@@ -963,6 +1049,75 @@ impl SupportPlanner {
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
         Ok(())
+    }
+}
+
+fn candidate_contact_point(polygons: &[ExPolygon]) -> Option<(f32, f32)> {
+    let mut count = 0_i64;
+    let mut x = 0_i64;
+    let mut y = 0_i64;
+    for polygon in polygons {
+        for point in &polygon.contour.points {
+            x += point.x;
+            y += point.y;
+            count += 1;
+        }
+    }
+    (count > 0).then(|| (units_to_mm(x / count), units_to_mm(y / count)))
+}
+
+fn push_contact(
+    contacts: &mut [Vec<PlannedSupportNode>],
+    layer_plan: &LayerPlanView,
+    collision_cache: &[LayerCollisionCache],
+    layer_idx: usize,
+    x: f32,
+    y: f32,
+    planner: &SupportPlanner,
+    dropped: &mut std::collections::BTreeMap<u32, usize>,
+) {
+    let global_layer = layer_plan.layers[layer_idx].global_layer_index;
+    let collision = collision_cache
+        .get(global_layer as usize)
+        .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+    let to_buildplate = !point_in_any_expoly(collision, x, y);
+    if planner.support_on_build_plate_only && !to_buildplate {
+        return;
+    }
+    if contacts[layer_idx].len() >= planner.max_branches_per_layer {
+        *dropped.entry(global_layer).or_insert(0) += 1;
+        return;
+    }
+    contacts[layer_idx].push(PlannedSupportNode {
+        x,
+        y,
+        dist_to_top: 0,
+        to_buildplate,
+    });
+}
+
+/// Resolve the global support selection to the family vocabulary shared by
+/// the planner and both renderers. Orca-style `support_type` aliases remain
+/// accepted, with the legacy key taking precedence when both are present.
+fn canonical_support_family(config: &ConfigView) -> String {
+    let value = config
+        .get("support_type")
+        .or_else(|| config.get("support_family"))
+        .and_then(|value| match value {
+            ConfigValue::String(value) => Some(value.as_str()),
+            _ => None,
+        });
+    value
+        .map(|value| canonical_support_family_alias(Some(value)))
+        .unwrap_or_else(|| "tree-support".to_string())
+}
+
+fn canonical_support_family_alias(value: Option<&str>) -> String {
+    let value = value.unwrap_or("traditional");
+    if value.starts_with("tree") || value.starts_with("hybrid") {
+        "tree".to_string()
+    } else {
+        "traditional".to_string()
     }
 }
 
@@ -1558,6 +1713,7 @@ mod tests {
     fn default_planner() -> SupportPlanner {
         SupportPlanner {
             enabled: true,
+            support_family: "tree".to_string(),
             branch_angle_deg: DEFAULT_BRANCH_ANGLE_DEG,
             merge_distance_mm: DEFAULT_MERGE_DISTANCE_MM,
             max_branches_per_layer: DEFAULT_MAX_BRANCHES_PER_LAYER,
@@ -1597,6 +1753,7 @@ mod tests {
                     region_ids: vec!["0".to_string()],
                 })
                 .collect(),
+            region_support_configs: Vec::new(),
         }
     }
 
@@ -1692,7 +1849,26 @@ mod tests {
         };
         let planner = default_planner();
         let lp = default_layer_plan(10, 0.0, 0.2);
-        let rs = default_region_segmentation("plate", 10);
+        let mut rs = default_region_segmentation("plate", 10);
+        for layer_index in 0..10 {
+            rs.entries[layer_index as usize].region_ids = vec!["0".to_string(), "1".to_string()];
+            rs.region_support_configs
+                .push(slicer_sdk::prepass_types::RegionSupportConfig {
+                    object_id: "plate".to_string(),
+                    layer_index,
+                    region_id: "1".to_string(),
+                    support_family: None,
+                    support_type: Some("tree(auto)".to_string()),
+                });
+            rs.region_support_configs
+                .push(slicer_sdk::prepass_types::RegionSupportConfig {
+                    object_id: "plate".to_string(),
+                    layer_index,
+                    region_id: "0".to_string(),
+                    support_family: Some("traditional".to_string()),
+                    support_type: None,
+                });
+        }
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
@@ -1703,6 +1879,12 @@ mod tests {
             "overhanging plate must yield non-empty plan; got {} entries",
             output.entries().len()
         );
+        let families: std::collections::BTreeSet<_> = output
+            .entries()
+            .iter()
+            .map(|entry| entry.family_id.as_str())
+            .collect();
+        assert_eq!(families, ["traditional", "tree"].into_iter().collect());
     }
 
     #[test]
@@ -1876,7 +2058,10 @@ mod tests {
             paint_layers: vec![],
         };
         let lp = LayerPlanView { layers: vec![] };
-        let rs = RegionSegmentationView { entries: vec![] };
+        let rs = RegionSegmentationView {
+            entries: vec![],
+            region_support_configs: vec![],
+        };
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         let result = planner.run_support_geometry(

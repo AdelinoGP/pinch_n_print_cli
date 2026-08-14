@@ -410,6 +410,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
                 region_ids: vec!["0".to_string()],
             })
             .collect(),
+        region_support_configs: Vec::new(),
     }
 }
 
@@ -427,7 +428,10 @@ fn make_region_segmentation_multi(specs: &[(&str, u32)]) -> RegionSegmentationVi
             });
         }
     }
-    RegionSegmentationView { entries }
+    RegionSegmentationView {
+        entries,
+        region_support_configs: Vec::new(),
+    }
 }
 
 /// Build a `cap_overflow_fixture`-style mesh and translate it by `(dx, dy)`
