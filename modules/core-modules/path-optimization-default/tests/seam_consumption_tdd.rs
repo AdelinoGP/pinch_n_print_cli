@@ -22,12 +22,16 @@ use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamPosition, W
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
 use slicer_sdk::views::PerimeterRegionView;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Helper: make a 2-point horizontal wall loop.
 #[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> WallLoop {
     let p = |x, y| Point3WithWidth { x, y, z, width, ..Default::default()};
-    PerimeterRegionViewBuilder::new().add_outer_wall(ExtrusionPath3D { points: vec![p(x1, y1), p(x2, y2)], role: ExtrusionRole::OuterWall, speed_factor: 1.0 }).build().wall_loops()[0].clone()
+    PerimeterRegionViewBuilder::new().add_outer_wall(ExtrusionPath3D {
+    points: vec![p(x1, y1), p(x2, y2)],
+    ..extrusion_path3d_base(ExtrusionRole::OuterWall)
+}).build().wall_loops()[0].clone()
 }
 
 /// Test (AC-4): when PerimeterIR wall loops are already seam-first rotated,

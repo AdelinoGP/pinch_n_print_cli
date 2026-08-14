@@ -38,6 +38,7 @@ use slicer_sdk::traits::PrepassModule;
 // This lets us test tapered_radius() and point_in_polygon() without going
 // through WASM dispatch, verifying the Step-5 algorithmic implementation.
 use support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// AC-2: radius tapering — topmost width = branch_diameter,
 /// bottom > top + tan(diameter_angle) * height_diff.
@@ -703,8 +704,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::SupportMaterial,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
         }],
     }
 }
@@ -724,8 +724,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
                 width: 0.4,
                 ..Default::default()
             }],
-            role: ExtrusionRole::SupportMaterial,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
         }],
     }
 }

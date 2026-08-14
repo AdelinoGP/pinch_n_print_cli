@@ -13,6 +13,7 @@ use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{Blackboard, CompiledModuleBuilder, LayerArena, WasmRuntimeDispatcher};
 
 use crate::common::{wasm_cache, TestModuleBundle};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -42,8 +43,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

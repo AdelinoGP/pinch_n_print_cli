@@ -476,6 +476,7 @@ impl GyroidInfill {
                 points,
                 role: ExtrusionRole::SparseInfill,
                 speed_factor,
+                tool_index: None,
             });
         }
 

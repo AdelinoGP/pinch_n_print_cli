@@ -8,6 +8,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod authored_tool_index_tdd;
 mod config_view_binding_tdd;
 mod config_view_encapsulation_source_tdd;
 mod dispatch_config_tdd;

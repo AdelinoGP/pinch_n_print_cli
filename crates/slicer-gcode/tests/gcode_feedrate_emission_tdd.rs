@@ -5,6 +5,7 @@
 use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[test]
 fn per_role_speed_resolves_to_f_token() {
@@ -49,8 +50,7 @@ fn per_role_speed_resolves_to_f_token() {
                     ..Default::default()
                 },
             ],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         };
         layer.ordered_entities.push(PrintEntity {
             entity_id: *entity_id,
@@ -146,8 +146,8 @@ fn speed_factor_modulates_role_speed() {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::OuterWall,
         speed_factor: 0.5,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     layer.ordered_entities.push(PrintEntity {
         entity_id: 1,
@@ -199,8 +199,7 @@ fn module_supplied_f_wins() {
                 flow_factor: 1.0,
                 ..Default::default()
             }],
-            role: ExtrusionRole::InnerWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::InnerWall)
         },
         region_key: RegionKey {
             region_id: 0,
@@ -273,8 +272,7 @@ fn distinct_feedrates_present() {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         region_key: RegionKey {
             region_id: 0,
@@ -306,8 +304,7 @@ fn distinct_feedrates_present() {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::SparseInfill,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
         },
         region_key: RegionKey {
             region_id: 0,
@@ -377,8 +374,7 @@ fn f_token_within_200_lines() {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         region_key: RegionKey {
             region_id: 0,
@@ -523,8 +519,7 @@ fn p189_entity(entity_id: u64, role: ExtrusionRole, points: Vec<Point3WithWidth>
         entity_id,
         path: ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         region_key: RegionKey {
             region_id: entity_id,
@@ -902,8 +897,7 @@ fn raw_config_source_wires_feedrate_table_into_emitted_f_values() {
                     ..Default::default()
                 },
             ],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         };
         layer.ordered_entities.push(PrintEntity {
             entity_id: *entity_id,
@@ -979,8 +973,7 @@ fn first_layer_volumetric_e_uses_configured_first_layer_height() {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     let layer = LayerCollectionIR {
         global_layer_index: 0,

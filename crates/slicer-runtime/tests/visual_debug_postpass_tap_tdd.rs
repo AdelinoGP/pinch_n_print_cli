@@ -34,6 +34,7 @@ use slicer_ir::{
 };
 use slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS;
 use slicer_runtime::postpass::{execute_postpass_with_capture, PostPassCapture};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     build_wasm_instance_pool, execute_layer_finalization, execute_per_layer_with_events,
     Blackboard, CapturedIr, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
@@ -105,8 +106,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         region_key: RegionKey {

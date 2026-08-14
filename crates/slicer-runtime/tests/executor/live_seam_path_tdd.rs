@@ -28,6 +28,7 @@ use slicer_runtime::wit_host::{
 
 use crate::common::wasm_cache;
 use crate::common::{commit_hec_for_test, layer_input};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Helper: create a minimal SliceIR with regions matching the given
 /// `(object_id, region_id)` pairs, then stage it into the arena.
@@ -108,11 +109,12 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         // feature-flags must be parallel to path.points: 2 points = 2 flags
         feature_flags: vec![
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -120,7 +122,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                 custom: vec![],
             },
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -493,8 +495,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             ..Default::default()
                         },
                     ],
-                    role: slicer_ir::ExtrusionRole::OuterWall,
-                    speed_factor: 1.0,
+                    ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
                 },
                 width_profile: slicer_ir::WidthProfile {
                     widths: vec![0.4; 4],
@@ -655,11 +656,12 @@ fn rotated_points_cardinality_mismatch_rejected() {
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         // Only 2 flags for 3 points â€” cardinality mismatch
         feature_flags: vec![
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -667,7 +669,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
                 custom: vec![],
             },
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -768,10 +770,11 @@ fn seam_z_outside_layer_envelope_rejected() {
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         feature_flags: vec![
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -779,7 +782,7 @@ fn seam_z_outside_layer_envelope_rejected() {
                 custom: vec![],
             },
             WallFeatureFlag {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -1008,8 +1011,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             ..Default::default()
                         },
                     ],
-                    role: ExtrusionRole::OuterWall,
-                    speed_factor: 1.0,
+                    ..extrusion_path3d_base(ExtrusionRole::OuterWall)
                 },
                 width_profile: WidthProfile {
                     widths: vec![0.4; 4],

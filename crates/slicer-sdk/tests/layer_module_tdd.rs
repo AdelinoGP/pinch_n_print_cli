@@ -6,6 +6,7 @@
 use slicer_sdk::prelude::*;
 use slicer_sdk::test_support::fixtures::wall_loop_base;
 use std::collections::HashMap;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Test 1: LayerModule trait exists with from_config
@@ -517,8 +518,7 @@ fn test_21_perimeter_region_view_wall_loops() {
     let wall = WallLoop {
         path: ExtrusionPath3D {
             points: vec![],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: slicer_ir::WidthProfile { widths: vec![] },
         ..wall_loop_base(
@@ -561,8 +561,7 @@ fn test_23_infill_output_builder_push_sparse_path() {
     let mut builder = InfillOutputBuilder::new();
     let path = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     };
     let result = builder.push_sparse_path(path);
     assert!(result.is_ok());
@@ -574,8 +573,7 @@ fn test_24_infill_output_builder_push_solid_path() {
     let mut builder = InfillOutputBuilder::new();
     let path = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::TopSolidInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::TopSolidInfill)
     };
     let result = builder.push_solid_path(path);
     assert!(result.is_ok());
@@ -587,8 +585,7 @@ fn test_25_infill_output_builder_push_ironing_path() {
     let mut builder = InfillOutputBuilder::new();
     let path = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::Ironing,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::Ironing)
     };
     let result = builder.push_ironing_path(path);
     assert!(result.is_ok());
@@ -605,8 +602,7 @@ fn test_26_perimeter_output_builder_push_wall_loop() {
     let wall = WallLoop {
         path: ExtrusionPath3D {
             points: vec![],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: slicer_ir::WidthProfile { widths: vec![] },
         ..wall_loop_base(

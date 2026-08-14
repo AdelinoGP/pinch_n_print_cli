@@ -360,13 +360,32 @@ fn execute_single_layer(
     result
 }
 
-#[derive(Clone, Copy, Default)]
-/// Filament indices selected for support and interface paths.
+#[derive(Clone, Copy)]
+/// Per-run tool selection: the filament indices chosen for support and
+/// interface paths, plus the number of tools the machine has configured.
 pub struct SupportToolSelection {
     /// Filament index used for support paths.
     pub support_tool: u32,
     /// Filament index used for interface paths.
     pub interface_tool: u32,
+    /// Number of configured tools/filaments, minimum 1. Used to range-check a
+    /// guest-authored [`slicer_ir::ExtrusionPath3D::tool_index`]: an authored
+    /// index is honored only when it is `< tool_count`.
+    pub tool_count: u32,
+}
+
+impl Default for SupportToolSelection {
+    /// Tool 0 for support and interface, and a single-tool machine — the
+    /// honest default for a context with no configured filament list. Written
+    /// by hand rather than derived so `tool_count` cannot default to 0, which
+    /// would silently reject every authored tool index.
+    fn default() -> Self {
+        Self {
+            support_tool: 0,
+            interface_tool: 0,
+            tool_count: 1,
+        }
+    }
 }
 
 fn execute_single_layer_inner(
@@ -1861,10 +1880,32 @@ pub(crate) fn assemble_ordered_entities(
                     .points
                     .first()
                     .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
+                // A guest-authored per-path tool wins outright when it names a
+                // configured tool: it is the most specific statement of intent
+                // available, the same way a paint-derived tool already beats
+                // the region default in the wall loop above. Out of range (or
+                // absent) it is ignored and the host resolves as it always has
+                // — silently, never an error.
+                //
+                // Authority note: `tool_index` reaching this point has ALREADY
+                // been validated. The authoritative two-sided permission grant
+                // (module discloses `claim:authored-coloring` AND a fill claim
+                // it holds is listed in `fill_authored_coloring`) and the strip
+                // of every ungranted or out-of-range value live at the
+                // marshal/commit boundary, in `convert_infill_output`
+                // (`crates/slicer-wasm-host/src/marshal/out.rs`, see
+                // `authored_coloring_granted`). This site only consumes an
+                // already-validated value; the range filter below is
+                // defence-in-depth, not the enforcement point.
+                let authored_tool: Option<u64> = path
+                    .tool_index
+                    .filter(|t| *t < support_tools.tool_count)
+                    .map(u64::from);
                 // MMU topology closure: prefer `variant_tool` over the
                 // spatial fallback for tagged regions, matching the wall-loop
                 // resolver above.
-                let resolved_tool = variant_tool
+                let resolved_tool = authored_tool
+                    .or(variant_tool)
                     .or(if infill_region_is_tagged {
                         None
                     } else {
@@ -2486,6 +2527,7 @@ mod tests {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
+                tool_index: None,
             }
         }
 
@@ -2540,6 +2582,7 @@ mod tests {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
+                tool_index: None,
             }
         }
 
@@ -2624,6 +2667,7 @@ mod tests {
             points: vec![pt, pt],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         };
         // feature_flags: tool_index = None  → paint_tool resolver returns None
         let flags = WallFeatureFlags {

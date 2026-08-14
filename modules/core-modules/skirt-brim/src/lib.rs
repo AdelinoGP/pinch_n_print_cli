@@ -289,6 +289,7 @@ impl SkirtBrim {
             ],
             role,
             speed_factor: 1.0,
+            tool_index: None,
         }
     }
 

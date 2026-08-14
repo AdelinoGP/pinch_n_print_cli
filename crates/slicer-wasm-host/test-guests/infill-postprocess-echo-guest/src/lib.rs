@@ -75,6 +75,7 @@ impl Guest for Component {
                     }],
                     role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                     speed_factor: 1.0,
+                    tool_index: None,
                 };
                 output
                     .push_solid_path(&header)
@@ -129,6 +130,7 @@ impl Guest for Component {
                                 points,
                                 role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                                 speed_factor: 1.0,
+                                tool_index: None,
                             })
                             .map_err(|message| builder_error(7, message))?;
                     }

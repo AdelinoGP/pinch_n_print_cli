@@ -13,6 +13,7 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 use seam_placer::SeamPlacer;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // All four tests are expected to pass without an implementation fix, but full-vector assertions make sibling-erasure bugs RED.
 
@@ -52,8 +53,7 @@ fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
     let flags = ir_flags(path_points.len());
     let path = ExtrusionPath3D {
         points: path_points,
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)

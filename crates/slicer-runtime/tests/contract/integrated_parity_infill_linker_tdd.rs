@@ -9,6 +9,7 @@ use slicer_ir::{
     SlicedRegion, StageId,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
@@ -70,8 +71,7 @@ fn segment(start: f32, end: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

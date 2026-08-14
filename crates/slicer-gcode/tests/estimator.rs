@@ -20,6 +20,7 @@ use slicer_ir::{
     RegionKey, ResolvedConfig,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn mv(x: f32, y: f32, e: Option<f32>, f: Option<f32>) -> GCodeCommand {
     GCodeCommand::Move {
@@ -149,8 +150,7 @@ fn entity_fixture(points: Vec<Point3WithWidth>) -> PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         tool_index: 0,
         region_key: RegionKey {

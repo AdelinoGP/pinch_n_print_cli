@@ -298,6 +298,7 @@ impl TreeSupport {
                 ],
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor,
+                tool_index: None,
             }];
         }
 
@@ -353,6 +354,7 @@ impl TreeSupport {
                     ],
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
+                    tool_index: None,
                 });
             }
         }

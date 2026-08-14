@@ -18,6 +18,7 @@ use slicer_ir::{
     SliceIR, SlicedRegion, WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_runtime::{apply_for_test, LayerArena, StageApplyContext};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── minimal fixture helpers (mirror perimeter_postprocess_preserve_tdd) ──────
 
@@ -91,8 +92,7 @@ fn synthetic_wall() -> WallLoop {
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points: vec![pt(0.0, 0.0), pt(1.0, 0.0)],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),
@@ -108,8 +108,7 @@ fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
             entity_id: (i as u64) + 1,
             path: ExtrusionPath3D {
                 points: vec![pt(i as f32, 0.0)],
-                role: ExtrusionRole::SparseInfill,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
             },
             role: ExtrusionRole::SparseInfill,
             tool_index: 0,

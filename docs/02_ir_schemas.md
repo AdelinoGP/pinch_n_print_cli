@@ -697,10 +697,39 @@ maps each `Point2WithWidth` to a `Point3WithWidth` with `z = 0.0`,
 supplied `role` passed through unchanged.
 
 `ExtrusionPath3D` and `Point3WithWidth` are defined in
-`crates/slicer-ir/src/slice_ir.rs`. Paths carry points, role, and a uniform
-speed factor. Point records carry position, width, flow, support distance,
-optional overhang quartile, and optional signed distance to the previous-layer
-boundary; `None` means no boundary measurement.
+`crates/slicer-ir/src/slice_ir.rs`. Paths carry points, role, a uniform
+speed factor, and an optional authored tool index. Point records carry position,
+width, flow, support distance, optional overhang quartile, and optional signed
+distance to the previous-layer boundary; `None` means no boundary measurement.
+
+##### `ExtrusionPath3D.tool_index` — authored coloring carrier (packet 226; ADR-0058)
+
+`ExtrusionPath3D` carries a fourth field, `tool_index: Option<u32>`, declared
+`#[serde(default)]` and positioned after `speed_factor`. It mirrors the
+`tool-index: option<u32>` member of the `extrusion-path3d` WIT record in
+`crates/slicer-schema/wit/deps/types.wit` (the `slicer:types/geometry` package is
+deliberately left unversioned per ADR-0044 — no version tax).
+
+Semantics:
+
+- `None` — **the host resolves the tool per region** via
+  `resolve_region_tool_index` (material paint in the variant chain, else a
+  modifier `extruder` delta, else `0`). This is the pre-existing behaviour and is
+  unchanged. Perimeter, support, and finalization stages all emit `None`.
+- `Some(t)` — **module-authored coloring**, honored when `t < tool-count` (the
+  host-services function reporting the number of configured tools, minimum 1).
+  When honored, `Some(t)` **overrides** the region-resolved tool, including a
+  material-variant tool.
+
+There is no capability claim, no config key, and no grant: a guest that writes an
+in-range tool index gets it. If `t >= tool-count`, the host **ignores** the value
+and resolves the tool per region exactly as for `None` — silent and
+deterministic, never an error, so modules never have to guard. This mirrors
+`speed_factor`, the only other per-path override on `ExtrusionPath3D`, which is
+likewise module-authored with no permission check and only a range clamp at the
+point of consumption. Consequently the
+infill linker treats per-path `tool_index` as a chaining-compatibility axis:
+paths whose `tool_index` differs are never chained together.
 
 #### Arachne extrusion-line geometry (Packet 112 — additive, schema 4.7.0)
 
@@ -785,6 +814,13 @@ while seam-first geometry is represented by the first point of the wall path.
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
 solid, and ironing extrusion paths.
+
+Infill is the only producer that may set `ExtrusionPath3D.tool_index` to
+`Some(t)` (authored coloring, packet 226 / ADR-0058); see the
+`ExtrusionPath3D.tool_index` subsection under IR 7 for the field semantics. An
+out-of-range value is ignored and the host resolves the tool per region, and
+`None` is the serde default, so `InfillIR` consumers that ignore the field see
+exactly the pre-226 behaviour.
 
 ---
 
@@ -1020,7 +1056,7 @@ responsibility. 138/139 inherit this contract.
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`
-**Current schema_version: 1.2.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
+**Current schema_version: 1.3.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 226 added the additive `ExtrusionPath3D.tool_index: Option<u32>` authored-coloring carrier (ADR-0058), bumping 1.2.0→1.3.0 — additive semver-minor, the field is `#[serde(default)]` so pre-1.3.0 serialized fixtures still parse and deserialize to `None` (host-resolved region tool, i.e. unchanged behaviour); packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
 
 **Ownership lifecycle — three phases:**
 

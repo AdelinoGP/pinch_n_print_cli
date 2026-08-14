@@ -23,6 +23,8 @@
 //! `triangle_expolygon`/`seeded_*` helpers (small, deterministic, arbitrary
 //! coordinates) — no new geometry generator is authored here.
 
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+
 use slicer_ir::{
     ActiveRegion, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, GlobalLayer,
     Point2, Point3WithWidth, Polygon, PrintMetadata, RegionKey, RegionMapIR, RegionPlan,
@@ -137,8 +139,7 @@ fn mixed_unit_shared_viewport() {
                     region_id: 7,
                     branch_segments: vec![ExtrusionPath3D {
                         points: vec![point3(50.0, 600.0), point3(60.0, 600.0)],
-                        role: ExtrusionRole::SupportMaterial,
-                        speed_factor: 1.0,
+                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
                     }],
                 }],
                 raft_plan: None,
@@ -272,8 +273,7 @@ fn degenerate_support_branch_renders_as_visible_disk() {
                     region_id: 0,
                     branch_segments: vec![ExtrusionPath3D {
                         points: vec![point3(0.0, 0.0), point3(0.0, 0.0)],
-                        role: ExtrusionRole::SupportMaterial,
-                        speed_factor: 1.0,
+                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
                     }],
                 }],
                 raft_plan: None,
@@ -315,8 +315,7 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
                     region_id: 0,
                     branch_segments: vec![ExtrusionPath3D {
                         points: vec![point3(3.0, 9.557), point3(3.0, 9.808), point3(3.0, 9.808)],
-                        role: ExtrusionRole::SupportMaterial,
-                        speed_factor: 1.0,
+                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
                     }],
                 }],
                 raft_plan: None,
@@ -358,8 +357,7 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
                     region_id: 0,
                     branch_segments: vec![ExtrusionPath3D {
                         points: vec![point3(3.0, 9.808), point3(3.0 + 1e-9, 9.808)],
-                        role: ExtrusionRole::SupportMaterial,
-                        speed_factor: 1.0,
+                        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
                     }],
                 }],
                 raft_plan: None,

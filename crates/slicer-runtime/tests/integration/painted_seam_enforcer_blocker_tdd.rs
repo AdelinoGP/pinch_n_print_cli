@@ -31,6 +31,7 @@ use slicer_sdk::test_support::fixtures::{
 };
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Build a small axis-aligned square `ExPolygon` (paint "coverage box") in mm.
 fn box_poly(cx_mm: f32, cy_mm: f32, half_mm: f32) -> ExPolygon {
@@ -76,8 +77,7 @@ fn quad_path(corners: [(f32, f32); 4], z: f32, width: f32) -> ExtrusionPath3D {
                 ..Default::default()
             })
             .collect(),
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     }
 }
 

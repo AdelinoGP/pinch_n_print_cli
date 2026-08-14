@@ -238,6 +238,7 @@ pub fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionP
             .collect(),
         role: ir_to_wit_extrusion_role(&path.role),
         speed_factor: path.speed_factor,
+        tool_index: path.tool_index,
     }
 }
 
@@ -439,6 +440,7 @@ pub fn convert_extrusion_path(
         points: points?,
         role: convert_extrusion_role(&path.role),
         speed_factor: path.speed_factor,
+        tool_index: path.tool_index,
     })
 }
 

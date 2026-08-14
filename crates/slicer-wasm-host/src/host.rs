@@ -2748,6 +2748,52 @@ impl hs::Host for HostExecutionContext {
         // fresh Instant). This matches the doc requirement for profiling use.
         Ok(self.start_time.elapsed().as_micros() as u64)
     }
+
+    fn tool_count(&mut self) -> wasmtime::Result<u32> {
+        Ok(derive_tool_count(
+            self.config_fields_per_region.values(),
+            &self.default_config_fields,
+        ))
+    }
+}
+
+/// Derive the printer's tool count from stored config fields.
+///
+/// Shared by the `tool-count` host function (`hs::Host::tool_count`) and by the
+/// host-side range check that validates authored `tool_index` values at the
+/// marshal boundary, so guest and host can never disagree about the range.
+pub fn derive_tool_count<'a>(
+    per_region: impl Iterator<Item = &'a HashMap<String, ConfigValueStorage>>,
+    default_fields: &HashMap<String, ConfigValueStorage>,
+) -> u32 {
+    // Source of truth: `filament_density` (Orca `coFloats`, one entry per
+    // filament — see `ResolvedConfig::filament_density_for`, which indexes
+    // it by tool id). It is the only per-tool-count carrier in
+    // `ResolvedConfig`, and it reaches this context through the same config
+    // plumbing every other key uses: `resolved_config_to_map` emits it as a
+    // `ConfigValue::List` of floats, `ConfigView::from_declared` keeps it
+    // when the module declares the key, and `config_view_to_data` stores it
+    // as `ConfigValueStorage::FloatList`.
+    //
+    // Consequence a module author must know: a module that wants a truthful
+    // count MUST declare `filament_density` in its manifest config keys.
+    // Undeclared (or unset) means the list is absent here and the count is
+    // the single-tool default of 1 — never zero.
+    let len = |fields: &HashMap<String, ConfigValueStorage>| -> usize {
+        match fields.get("filament_density") {
+            Some(ConfigValueStorage::FloatList(v)) => v.len(),
+            Some(ConfigValueStorage::StringList(v)) => v.len(),
+            // A single scalar is a one-filament config.
+            Some(_) => 1,
+            None => 0,
+        }
+    };
+    let count = per_region
+        .map(len)
+        .chain(std::iter::once(len(default_fields)))
+        .max()
+        .unwrap_or(0);
+    u32::try_from(count).unwrap_or(u32::MAX).max(1)
 }
 
 // ── WIT ↔ slicer-ir polygon conversion — moved to marshal/leaf.rs ─────
@@ -4312,6 +4358,7 @@ mod finalization_impls {
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),
             speed_factor: p.speed_factor,
+            tool_index: p.tool_index,
         }
     }
 
@@ -4783,6 +4830,7 @@ mod finalization_impls {
                         points: Vec::new(),
                         role: fgeo::ExtrusionRole::OuterWall,
                         speed_factor: 1.0,
+                        tool_index: None,
                     },
                     0,
                     fm::RegionKey {

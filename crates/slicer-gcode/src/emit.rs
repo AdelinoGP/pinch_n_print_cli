@@ -1051,6 +1051,7 @@ mod tests {
                 }],
                 role: slicer_ir::ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
+                tool_index: None,
             },
             tool_index: tool,
             region_key: slicer_ir::RegionKey {

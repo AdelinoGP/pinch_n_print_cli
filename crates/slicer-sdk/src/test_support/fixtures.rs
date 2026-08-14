@@ -564,6 +564,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
         points,
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
+        tool_index: None,
     }
 }
 
@@ -921,11 +922,46 @@ pub fn print_entity(
             points,
             role: role.clone(),
             speed_factor: 1.0,
+            tool_index: None,
         },
         role,
         tool_index: 0,
         region_key,
         topo_order,
+    }
+}
+
+/// Build an [`ExtrusionPath3D`] base suitable for struct-update fixture syntax.
+///
+/// The base has no points, the given `role`, `speed_factor: 1.0`, and
+/// `tool_index: None`. `tool_index: None` means "host resolves the region tool";
+/// tests exercising authored coloring must set it explicitly via struct update.
+///
+/// Use this as the field-defaulting base for path literals so that future
+/// [`ExtrusionPath3D`] fields do not require an edit at every test site. The
+/// higher-level [`rect_path`] helper remains the convenient choice when a
+/// concrete rectangular geometry is wanted.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
+/// use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+///
+/// let path = ExtrusionPath3D {
+///     speed_factor: 0.5,
+///     ..extrusion_path3d_base(ExtrusionRole::OuterWall)
+/// };
+/// assert!(path.points.is_empty());
+/// assert_eq!(path.tool_index, None);
+/// ```
+#[must_use]
+pub fn extrusion_path3d_base(role: ExtrusionRole) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: Vec::new(),
+        role,
+        speed_factor: 1.0,
+        tool_index: None,
     }
 }
 
@@ -954,6 +990,7 @@ pub fn print_entity_base(role: ExtrusionRole) -> PrintEntity {
             points: vec![Point3WithWidth::default()],
             role: role.clone(),
             speed_factor: 1.0,
+            tool_index: None,
         },
         role,
         region_key: RegionKey::default(),
@@ -995,6 +1032,7 @@ pub fn wall_loop_base(loop_type: LoopType, boundary_type: WallBoundaryType) -> W
             points: vec![Point3WithWidth::default()],
             role,
             speed_factor: 1.0,
+            tool_index: None,
         },
         width_profile: WidthProfile { widths: vec![0.0] },
         feature_flags: Vec::new(),

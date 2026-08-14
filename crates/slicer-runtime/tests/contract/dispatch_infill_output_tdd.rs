@@ -469,13 +469,14 @@ fn invalid_nan_output_rejected_with_diagnostic() {
             }],
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
+            tool_index: None,
         }],
         solid_paths: Vec::new(),
         ironing_paths: Vec::new(),
         ..Default::default()
     };
 
-    let result = convert_infill_output(&bad_output, 0);
+    let result = convert_infill_output(&bad_output, 0, None);
     assert!(result.is_err(), "NaN output should be rejected");
     let msg = result.unwrap_err();
     assert!(msg.contains("NaN"), "error should mention NaN: {msg}");

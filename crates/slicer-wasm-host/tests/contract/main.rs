@@ -6,6 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod authored_coloring_grant_and_strip_tdd;
 mod effective_perimeter_origin_integration_tdd;
 mod finalization_role_round_trip_tdd;
 mod host_services_tdd;

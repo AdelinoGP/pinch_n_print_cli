@@ -82,7 +82,7 @@
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: `[module].id = "com.example.dragon-curve"`; `[stage].id = "Layer::Infill"`; `[claims].holds = ["claim:sparse-fill", "claim:authored-coloring"]`; `[compatibility]` mirrors rectilinear's `min-host-version = "0.1.0"`, `min-ir-schema = "1.0.0"`, `max-ir-schema = "5.0.0"`.
+- IR/manifest contracts: `[module].id = "com.example.dragon-curve"`; `[stage].id = "Layer::Infill"`; `[claims].holds = ["claim:sparse-fill"]` (the authored-coloring capability claim was dropped — ADR-0058 §Amendment 2026-08-13); `[compatibility]` mirrors rectilinear's `min-host-version = "0.1.0"`, `min-ir-schema = "1.0.0"`, `max-ir-schema = "5.0.0"`.
 - WIT boundary: the module consumes the 226 `extrusion-path3d.tool-index: option<u32>` field and 226's `tool-count` host service. These are FORWARD-DEPs; the module's own Rust surface is `slicer_ir::ExtrusionPath3D.tool_index: Option<u32>` and `slicer_sdk::host::tool_count() -> u32`.
 - Determinism/scheduler constraints: tiling + color mapping are pure and byte-identical across runs; `layer-parallel-safe = true` in `[hints]` (each region is independent and there is no shared mutable state).
 

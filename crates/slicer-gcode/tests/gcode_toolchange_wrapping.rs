@@ -15,6 +15,7 @@ use slicer_ir::{
     RegionKey, ResolvedConfig, SemVer, ToolChange, TravelRetract,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -35,8 +36,7 @@ fn make_entity(id: u64, x: f32, y: f32, role: ExtrusionRole, tool: u32) -> Print
         entity_id: id,
         path: ExtrusionPath3D {
             points: vec![pt(x, y, 0.2), pt(x + 1.0, y, 0.2)],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         tool_index: tool,
         region_key: RegionKey {
@@ -65,8 +65,7 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
         entity_id: id,
         path: ExtrusionPath3D {
             points: vec![pt(0.0, 0.0, 0.2), pt(x_end, 0.0, 0.2)],
-            role: ExtrusionRole::WipeTower,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::WipeTower)
         },
         tool_index: tool,
         region_key: RegionKey {

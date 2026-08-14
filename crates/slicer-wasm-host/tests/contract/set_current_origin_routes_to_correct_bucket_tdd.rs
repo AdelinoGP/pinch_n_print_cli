@@ -23,7 +23,7 @@ use slicer_wasm_host::host::{
 
 fn make_feature_flag() -> WallFeatureFlag {
     WallFeatureFlag {
-        tool_index: None,
+    tool_index: None,
         fuzzy_skin: false,
         is_bridge: false,
         is_thin_wall: false,
@@ -80,6 +80,7 @@ fn make_wall_loop() -> WallLoopView {
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         feature_flags: vec![make_feature_flag(), make_feature_flag()],
         boundary_type: WitWallBoundaryType::ExteriorSurface,

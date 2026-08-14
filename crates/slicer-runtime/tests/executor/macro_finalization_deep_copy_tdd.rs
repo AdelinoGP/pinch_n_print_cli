@@ -33,6 +33,7 @@ use slicer_runtime::{
 use witness::SdkFinalizationLayerWitness;
 
 use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -135,8 +136,7 @@ fn layer_ir(
             entity_id: (i as u64) + 1,
             path: slicer_ir::ExtrusionPath3D {
                 points: Vec::new(),
-                role: ExtrusionRole::Custom(String::new()),
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::Custom(String::new()))
             },
             role: ExtrusionRole::Custom(String::new()),
             tool_index: 0,

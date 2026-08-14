@@ -16,6 +16,7 @@ use slicer_runtime::{
     WasmInstancePool, WasmRuntimeDispatcher,
 };
 use std::sync::Arc;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn perimeter() -> PerimeterIR {
     let points = vec![
@@ -57,8 +58,7 @@ fn perimeter() -> PerimeterIR {
                 loop_type: LoopType::Outer,
                 path: ExtrusionPath3D {
                     points: points.clone(),
-                    role: ExtrusionRole::OuterWall,
-                    speed_factor: 1.0,
+                    ..extrusion_path3d_base(ExtrusionRole::OuterWall)
                 },
                 width_profile: WidthProfile {
                     widths: points.iter().map(|p| p.width).collect(),

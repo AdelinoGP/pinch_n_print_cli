@@ -9,6 +9,7 @@ use slicer_ir::{
     WidthProfile,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
@@ -50,8 +51,7 @@ fn perimeter() -> PerimeterIR {
                         ..*p
                     })
                     .collect(),
-                role: ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::OuterWall)
             },
             width_profile: WidthProfile {
                 widths: points.iter().map(|point| point.width).collect(),

@@ -116,6 +116,7 @@ impl LayerModule for FuzzySkinModule {
                         points: new_points,
                         role: wall.path.role.clone(),
                         speed_factor: wall.path.speed_factor,
+                        tool_index: None,
                     },
                     width_profile: WidthProfile { widths: new_widths },
                     feature_flags: new_flags,

@@ -26,6 +26,7 @@ use slicer_sdk::prepass_types::{
 use slicer_wasm_host::marshal::native::commit_native_prepass_response;
 
 use crate::common::wasm_cache;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn non_empty_slice() -> SliceIR {
     SliceIR {
@@ -94,8 +95,7 @@ fn support_path(x: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SupportMaterial,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
     }
 }
 
@@ -106,6 +106,7 @@ fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, M
     support.begin_region("support-object-b", 11);
     support.push_interface_path(support_path(10.0), true)?;
     support.push_raft_path(support_path(20.0))?;
+    // exhaustive: test-only native layer response; every stage slot named explicitly by this parity fixture
     Ok(NativeLayerResponse {
         infill: None,
         perimeters: None,
@@ -348,6 +349,7 @@ fn native_prepass_commit_preserves_seam_candidate_reason() {
             ..Default::default()
         })
         .unwrap();
+    // exhaustive: test-only native prepass response; every stage slot named explicitly by this parity fixture
     let response = NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -376,6 +378,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
             ..Default::default()
         })
         .unwrap();
+    // exhaustive: test-only native prepass response; every stage slot named explicitly by this parity fixture
     let response = NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -388,6 +391,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
 }
 
 fn empty_native_prepass_response() -> NativePrepassResponse {
+    // exhaustive: empty native prepass response fixture; every stage slot explicitly None
     NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -486,6 +490,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             branch_segments: vec![vec![Point3WithWidth::default()]],
         })
         .unwrap();
+    // exhaustive: test-only native prepass response; every stage slot named explicitly by this parity fixture
     let response = NativePrepassResponse {
         mesh_analysis: Some(mesh),
         layer_plan: Some(layers),

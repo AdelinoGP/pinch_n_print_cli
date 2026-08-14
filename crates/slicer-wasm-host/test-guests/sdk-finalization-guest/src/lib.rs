@@ -78,6 +78,7 @@ impl FinalizationModule for SdkFinalizationModule {
                 points: w0.encode(&w1),
                 role: ExtrusionRole::Custom("task-109-finalization-witness".into()),
                 speed_factor: 1.0,
+                tool_index: None,
             };
             output
                 .push_entity_to_layer(
@@ -111,6 +112,7 @@ impl FinalizationModule for SdkFinalizationModule {
                 }],
                 role: ExtrusionRole::Custom("task-109-finalization-synth".into()),
                 speed_factor: 1.0,
+                tool_index: None,
             };
             output
                 .insert_synthetic_layer(z as f32, vec![synth])

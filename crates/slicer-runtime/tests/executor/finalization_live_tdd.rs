@@ -28,6 +28,7 @@ use slicer_runtime::{
 };
 
 use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -160,8 +161,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 1,

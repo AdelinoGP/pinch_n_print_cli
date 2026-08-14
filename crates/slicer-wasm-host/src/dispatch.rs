@@ -2508,48 +2508,61 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         input: LayerStageInput<'_>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
         let module_id_str = module.module_id.as_str();
-        let held_claims_map = input
+        // Resolved in one pass: the per-region held fill claims (which gate
+        // emission on both dispatch legs) and the per-region authored-coloring
+        // grant (packet 226), which needs the same per-region config and the
+        // same held-claim set.
+        let (held_claims_map, authored_granted_regions): (
+            std::collections::HashMap<(String, String), Vec<String>>,
+            std::collections::HashSet<(String, u64)>,
+        ) = input
             .slice
             .map(|slice_ir| {
-                slice_ir
-                    .regions
-                    .iter()
-                    .map(|region| {
-                        // Resolve the per-region config by (layer, object, region) ignoring
-                        // any paint-driven variant_chain entries. The fill-role holders are
-                        // host-resolved and painted variants do not introduce separate
-                        // fill-holder semantics, so the base/per-object/per-paint effective
-                        // config for this region is the right authority.
-                        let config = input
-                            .region_map
-                            .as_deref()
-                            .and_then(|map| {
-                                map.entries
-                                    .iter()
-                                    .find(|(key, _)| {
-                                        key.global_layer_index == layer.index
-                                            && key.object_id == region.object_id
-                                            && key.region_id == region.region_id
-                                    })
-                                    .map(|(_, plan)| map.config_for_raw(plan.config).clone())
-                            })
-                            .unwrap_or_default();
-                        let held = resolve_held_claims(
-                            module_id_str,
-                            &module.claims,
-                            &FillHolders {
-                                top: &config.top_fill_holder,
-                                bottom: &config.bottom_fill_holder,
-                                bridge: &config.bridge_fill_holder,
-                                sparse: &config.sparse_fill_holder,
-                            },
-                        );
-                        (
-                            (region.object_id.clone(), region.region_id.to_string()),
-                            held,
-                        )
-                    })
-                    .collect()
+                let mut held_map = std::collections::HashMap::new();
+                let mut granted = std::collections::HashSet::new();
+                for region in &slice_ir.regions {
+                    // Resolve the per-region config by (layer, object, region) ignoring
+                    // any paint-driven variant_chain entries. The fill-role holders are
+                    // host-resolved and painted variants do not introduce separate
+                    // fill-holder semantics, so the base/per-object/per-paint effective
+                    // config for this region is the right authority.
+                    let config = input
+                        .region_map
+                        .as_deref()
+                        .and_then(|map| {
+                            map.entries
+                                .iter()
+                                .find(|(key, _)| {
+                                    key.global_layer_index == layer.index
+                                        && key.object_id == region.object_id
+                                        && key.region_id == region.region_id
+                                })
+                                .map(|(_, plan)| map.config_for_raw(plan.config).clone())
+                        })
+                        .unwrap_or_default();
+                    let held = resolve_held_claims(
+                        module_id_str,
+                        &module.claims,
+                        &FillHolders {
+                            top: &config.top_fill_holder,
+                            bottom: &config.bottom_fill_holder,
+                            bridge: &config.bridge_fill_holder,
+                            sparse: &config.sparse_fill_holder,
+                        },
+                    );
+                    if crate::marshal::authored_coloring_granted(
+                        &held,
+                        &config.fill_authored_coloring,
+                        module.claims,
+                    ) {
+                        granted.insert((region.object_id.clone(), region.region_id));
+                    }
+                    held_map.insert(
+                        (region.object_id.clone(), region.region_id.to_string()),
+                        held,
+                    );
+                }
+                (held_map, granted)
             })
             .unwrap_or_default();
         if let Some(entry) = &module.native_entry {
@@ -2663,6 +2676,19 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         // both dispatch legs gate emission
         // on the same per-region held claims.
 
+        // Authored-coloring authority for the commit boundary (packet 226).
+        // `tool_count` is derived with `host::derive_tool_count` over exactly
+        // the same stored config fields the guest's `tool-count` host function
+        // reads, so the guest's visible range and the host's range check cannot
+        // disagree.
+        let authored_coloring_ctx = crate::marshal::AuthoredColoringContext {
+            tool_count: host::derive_tool_count(
+                config_fields_per_region.values(),
+                &host::config_view_to_data(&effective_config_view).fields,
+            ),
+            granted_regions: authored_granted_regions,
+        };
+
         let ctx = match self.dispatch_layer_call(
             stage_id,
             module_id_str,
@@ -2707,7 +2733,13 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         };
 
         // Deconstruct HostExecutionContext → Option<LayerStageCommit>.
-        deconstruct_layer_ctx(stage_id, module_id_str, layer.index, ctx)
+        deconstruct_layer_ctx(
+            stage_id,
+            module_id_str,
+            layer.index,
+            ctx,
+            Some(&authored_coloring_ctx),
+        )
     }
 
     fn last_wasm_mem_sample(&self) -> (u64, u64) {
@@ -3282,6 +3314,7 @@ fn deconstruct_layer_ctx(
     module_id: &str,
     layer_index: u32,
     ctx: HostExecutionContext,
+    authored: Option<&crate::marshal::AuthoredColoringContext>,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
     // Forward module log messages to the host log facade before the ctx is consumed.
     forward_module_logs(module_id, &ctx.log_messages);
@@ -3302,7 +3335,7 @@ fn deconstruct_layer_ctx(
             {
                 return Ok(None);
             }
-            let ir = crate::marshal::convert_infill_output(infill, layer_index)
+            let ir = crate::marshal::convert_infill_output(infill, layer_index, authored)
                 .map_err(|r| mk_fatal("infill", r))?;
             Ok(Some(if stage_id == "Layer::InfillPostProcess" {
                 LayerStageCommit::InfillPostProcess(ir)

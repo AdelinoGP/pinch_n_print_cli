@@ -58,6 +58,7 @@ package slicer:common {
         offset-polygons: func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
         simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
         now-us: func() -> u64;
+        tool-count: func() -> u32;
     }
 }
 
@@ -1074,6 +1075,35 @@ pub fn now_us() -> u64 {
     #[cfg(target_arch = "wasm32")]
     {
         __sdk_host_services_import::slicer::common::host_services::now_us()
+    }
+}
+
+// ── Tools ───────────────────────────────────────────────────────────────
+
+/// Returns the number of configured tools/filaments for this print, minimum 1.
+///
+/// Use this to range-check an authored per-path tool index: an
+/// `ExtrusionPath3D::tool_index` of `Some(t)` is honored by the host only when
+/// `t < tool_count()` AND the two-sided authored-coloring grant holds
+/// (ADR-0058) — this module's manifest must disclose `claim:authored-coloring`,
+/// and the fill-role claim it holds for the region must be listed in that
+/// region's `fill_authored_coloring` config key. Ungranted or out of range, the
+/// value is stripped and the host falls back to its own per-region resolution
+/// rather than clamping or erroring. Passing this range check is therefore
+/// necessary but not sufficient for the authored tool to survive.
+///
+/// Off-wasm (native unit tests, host-side helper runs) there is no host to ask,
+/// so this returns `1` — a single-tool machine, the honest default for a
+/// context with no configured filament list.
+#[must_use]
+pub fn tool_count() -> u32 {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        1
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        __sdk_host_services_import::slicer::common::host_services::tool_count()
     }
 }
 

@@ -377,6 +377,9 @@ fn compatible_regions(
 fn paths_compatible(first: &ExtrusionPath3D, second: &ExtrusionPath3D) -> bool {
     first.role == second.role
         && first.speed_factor.to_bits() == second.speed_factor.to_bits()
+        // ADR-0058: per-path authored tool is a chaining-compatibility axis.
+        // Paths coloured for different tools must never merge into one path.
+        && first.tool_index == second.tool_index
         && endpoint_widths_compatible(first, second)
 }
 

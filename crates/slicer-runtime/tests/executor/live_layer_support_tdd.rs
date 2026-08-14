@@ -56,8 +56,7 @@ fn make_support_path(
                 ..Default::default()
             },
         ],
-        role: IrExtrusionRole::SupportMaterial,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(IrExtrusionRole::SupportMaterial)
     }
 }
 
@@ -408,6 +407,7 @@ use slicer_runtime::{
     WasmRuntimeDispatcher,
 };
 use std::sync::Arc;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Returns the path to the tree-support.wasm module, panicking if not found.
 fn tree_support_wasm_path() -> std::path::PathBuf {
@@ -894,6 +894,7 @@ fn support_deterministic_across_repeated_runs() {
 /// contract via the WIT `paint-region-layer-view::support-plan-segments`
 /// accessor. No direct Rust trait calls into the modules.
 mod planner_consuming_tier {
+    use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
     use std::sync::Arc;
 
     use crate::common::{run_layer_and_commit_with_bundle, wasm_cache, TestModuleBundle};
@@ -1108,8 +1109,7 @@ mod planner_consuming_tier {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::SupportMaterial,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
         }
     }
 
@@ -1300,8 +1300,7 @@ mod planner_consuming_tier {
                         ..Default::default()
                     },
                 ],
-                role: IrExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(IrExtrusionRole::SupportMaterial)
             }
         };
 

@@ -24,6 +24,7 @@ use crate::common::parity_invariants::{
     assert_prepass_parity_structural, assert_seam_parity_structural, ParityTolerance,
 };
 use crate::common::semver;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn pt(x: f32, y: f32, z: f32, width: f32) -> Point3WithWidth {
     Point3WithWidth {
@@ -58,8 +59,7 @@ fn square_wall(perimeter_index: u32, half: f32, jitter: f32) -> WallLoop {
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile {
             widths: widths.to_vec(),
@@ -169,8 +169,7 @@ fn support_segment(point_count: usize, role: ExtrusionRole, jitter: f32) -> Extr
         points: (0..point_count)
             .map(|i| pt(i as f32 + jitter, jitter, 1.0 + jitter, 0.4))
             .collect(),
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 
@@ -317,8 +316,7 @@ fn finalization_entity(
             points: (0..point_count)
                 .map(|i| pt(i as f32 + jitter, jitter, 1.0 + jitter, 0.4))
                 .collect(),
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         role,
         region_key: RegionKey {

@@ -13,6 +13,7 @@ use slicer_ir::{LayerCollectionIR, PrintEntity, TravelMove};
 use slicer_sdk::prelude::*;
 use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Fixture helpers
@@ -22,8 +23,7 @@ use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
 fn make_path(role: ExtrusionRole) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![],
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 
@@ -48,8 +48,7 @@ fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D
                 ..Default::default()
             },
         ],
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 
@@ -515,13 +514,13 @@ fn ties_preserve_insertion_order() {
     // Push "ironing A" first, then "ironing B" — both at same priority
     let path_a = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::Ironing,
         speed_factor: 0.8, // marker to distinguish A
+        ..extrusion_path3d_base(ExtrusionRole::Ironing)
     };
     let path_b = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::Ironing,
         speed_factor: 0.6, // marker to distinguish B
+        ..extrusion_path3d_base(ExtrusionRole::Ironing)
     };
 
     builder
@@ -722,8 +721,7 @@ fn make_path_with_n_points(role: ExtrusionRole, n: usize) -> ExtrusionPath3D {
                 ..Default::default()
             })
             .collect(),
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 

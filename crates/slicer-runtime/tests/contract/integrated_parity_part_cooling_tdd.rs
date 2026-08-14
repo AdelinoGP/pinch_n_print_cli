@@ -8,6 +8,7 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, StageId,
 };
 use slicer_runtime::{Blackboard, FinalizationStageRunner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     finalization_input,
@@ -48,8 +49,7 @@ fn layer(index: u32, role: ExtrusionRole) -> LayerCollectionIR {
                         ..Default::default()
                     },
                 ],
-                role: role.clone(),
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(role.clone())
             },
             role,
             tool_index: 0,

@@ -24,6 +24,7 @@ use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, WallLoop};
 ///     points: Vec::new(),
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,
+///     tool_index: None,
 /// });
 /// assert_eq!(cap.sparse_paths().len(), 1);
 /// ```
@@ -54,6 +55,7 @@ impl InfillOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::SparseInfill,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// });
     /// assert_eq!(cap.sparse_paths().len(), 1);
     /// ```
@@ -74,6 +76,7 @@ impl InfillOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::TopSolidInfill,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// });
     /// assert_eq!(cap.solid_paths().len(), 1);
     /// ```
@@ -94,6 +97,7 @@ impl InfillOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::Ironing,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// });
     /// assert_eq!(cap.ironing_paths().len(), 1);
     /// ```
@@ -162,7 +166,7 @@ impl PerimeterOutputCapture {
     /// cap.push_wall_loop(WallLoop {
     ///     perimeter_index: 0,
     ///     loop_type: LoopType::Outer,
-    ///     path: ExtrusionPath3D { points: vec![], role: ExtrusionRole::OuterWall, speed_factor: 1.0 },
+    ///     path: ExtrusionPath3D { points: vec![], role: ExtrusionRole::OuterWall, speed_factor: 1.0, tool_index: None },
     ///     width_profile: WidthProfile { widths: vec![] },
     ///     feature_flags: vec![],
     ///     boundary_type: WallBoundaryType::ExteriorSurface,
@@ -267,6 +271,7 @@ impl SupportOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::SupportMaterial,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// });
     /// assert_eq!(cap.support_paths().len(), 1);
     /// ```
@@ -287,6 +292,7 @@ impl SupportOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::SupportInterface,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// }, true);
     /// assert_eq!(cap.interface_paths().len(), 1);
     /// assert!(cap.interface_paths()[0].1);
@@ -308,6 +314,7 @@ impl SupportOutputCapture {
     ///     points: Vec::new(),
     ///     role: ExtrusionRole::SupportMaterial,
     ///     speed_factor: 1.0,
+    ///     tool_index: None,
     /// });
     /// assert_eq!(cap.raft_paths().len(), 1);
     /// ```

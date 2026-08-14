@@ -19,6 +19,7 @@ use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{build_wasm_instance_pool, CompiledModuleBuilder, WasmArtifactMetadata};
 use std::collections::HashMap;
 use std::sync::Arc;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const HEADER_MARKER: f32 = 777.0;
 const FIELD_MARKER: f32 = 888.0;
@@ -125,8 +126,7 @@ fn path(role: ExtrusionRole, pts: &[(f32, f32, f32)]) -> ExtrusionPath3D {
                 }
             })
             .collect(),
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 

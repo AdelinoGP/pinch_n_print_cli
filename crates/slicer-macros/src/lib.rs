@@ -1305,6 +1305,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         .collect(),
                     role: __slicer_role_ir_to_wit(&p.role),
                     speed_factor: p.speed_factor,
+                    tool_index: p.tool_index,
                 }
             }
 
@@ -1326,6 +1327,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         .collect(),
                     role: __slicer_role_wit_to_ir(p.role.clone()),
                     speed_factor: p.speed_factor,
+                    tool_index: p.tool_index,
                 }
             }
 
@@ -2533,6 +2535,7 @@ fn layer_light_helpers() -> TokenStream2 {
                             .collect(),
                         role: ::slicer_ir::ExtrusionRole::SupportMaterial,
                         speed_factor: 1.0,
+                        tool_index: None,
                     })
                     .collect();
                 entries.push(::slicer_ir::SupportPlanEntry {
@@ -2600,6 +2603,7 @@ fn layer_glue_helpers() -> TokenStream2 {
             ::slicer_ir::ExtrusionPath3D {
                 points: p.points.iter().map(__slicer_wit_point3w_to_ir).collect(),
                 role: __slicer_wit_role_to_ir(&p.role), speed_factor: p.speed_factor,
+                tool_index: p.tool_index,
             }
         }
         fn __slicer_wit_looptype_to_ir(lt: WitWallLoopType) -> ::slicer_ir::LoopType {
@@ -2746,6 +2750,7 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 }).collect(),
                 role: __slicer_ir_role_to_wit(&p.role),
                 speed_factor: p.speed_factor,
+                tool_index: p.tool_index,
             }
         }
     };

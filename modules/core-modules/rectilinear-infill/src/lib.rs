@@ -492,6 +492,7 @@ fn scan_expolygon(
                 points: vec![start, end],
                 role: role.clone(),
                 speed_factor,
+                tool_index: None,
             });
 
             i += 2;
@@ -531,6 +532,7 @@ fn scan_expolygon(
                 points: vec![start, end],
                 role: role.clone(),
                 speed_factor,
+                tool_index: None,
             });
         }
     }

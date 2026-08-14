@@ -160,4 +160,10 @@ interface host-services {
     ///   boundary (consumed by `arachne-perimeters` to set infill areas).
     generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<tuple<list<extrusion-line>, list<extrusion-line>>, string>;
     now-us: func() -> u64;
+    /// Number of configured tools/filaments for this print, minimum 1.
+    ///
+    /// A module that authors a per-path tool index range-checks it against this
+    /// value (`tool-index` must be `< tool-count`); an out-of-range index is
+    /// rejected rather than clamped.
+    tool-count: func() -> u32;
 }

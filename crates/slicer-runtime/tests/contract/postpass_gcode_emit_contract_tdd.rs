@@ -74,8 +74,7 @@ fn print_entity_fixture(
         entity_id: 1,
         path: slicer_ir::ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         role,
         tool_index: 1,
@@ -111,6 +110,7 @@ fn layer_with_entity(
 // ============================================================================
 
 use slicer_ir::{GCodeCommand, StageId};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     Blackboard, CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner,
 };

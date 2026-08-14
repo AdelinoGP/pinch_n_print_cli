@@ -8,6 +8,7 @@ use slicer_runtime::{Blackboard, CompiledStage, ExecutionPlan, GCodeEmitter, Lay
 use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, WasmRuntimeDispatcher};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── L. PathOptimization: ordered_entities threading + GCode override commit ──
 
@@ -423,8 +424,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
                 // retain their Default values for this exact fixture.
                 ..Default::default()
             }],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 0,
@@ -866,8 +866,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     overhang_distance_mm: None,
                 },
             ],
-            role: slicer_ir::ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
         },
         width_profile: slicer_ir::WidthProfile {
             widths: vec![0.4; 3],
@@ -875,7 +874,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         feature_flags: vec![
             // exhaustive: fixture preserves all wall feature flags
             slicer_ir::WallFeatureFlags {
-                tool_index: None,
+            tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,

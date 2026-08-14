@@ -30,6 +30,7 @@ use slicer_runtime::{
 };
 
 use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const MUTATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -167,8 +168,8 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
             speed_factor,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 1,

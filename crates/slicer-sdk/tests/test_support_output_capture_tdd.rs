@@ -3,6 +3,8 @@
 //! These tests verify that InfillOutputCapture, PerimeterOutputCapture, and
 //! SupportOutputCapture mirror the SDK output builder shapes for test inspection.
 
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, Point3, Point3WithWidth, Polygon,
     WallBoundaryType, WallLoop, WidthProfile,
@@ -25,8 +27,7 @@ fn dummy_path(role: ExtrusionRole) -> ExtrusionPath3D {
             flow_factor: 1.0,
             ..Default::default()
         }],
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 

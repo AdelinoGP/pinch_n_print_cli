@@ -15,6 +15,7 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 use seam_placer::SeamPlacer;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Helper: create a seam candidate at given position with score and reason.
 fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCandidate {
@@ -42,8 +43,7 @@ fn wall_at_z(z: f32) -> WallLoop {
     };
     let path = ExtrusionPath3D {
         points: vec![p(0.0), p(1.0), p(2.0)],
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     let flags = vec![WallFeatureFlags::default(); 3];
     PerimeterRegionViewBuilder::new()
@@ -76,8 +76,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
     let flags = vec![WallFeatureFlags::default(); points.len()];
     let path = ExtrusionPath3D {
         points,
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
@@ -539,8 +538,7 @@ fn make_wall(z: f32, points: &[(f32, f32)]) -> WallLoop {
     let flags = vec![WallFeatureFlags::default(); path_points.len()];
     let path = ExtrusionPath3D {
         points: path_points,
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)

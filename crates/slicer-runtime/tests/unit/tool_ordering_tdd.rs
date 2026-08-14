@@ -13,6 +13,7 @@ use std::sync::Arc;
 use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
@@ -64,8 +65,7 @@ fn entity_with_tool(
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points: vec![pt(x, y)],
-            role: ExtrusionRole::SparseInfill,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
         },
         role: ExtrusionRole::SparseInfill,
         tool_index,

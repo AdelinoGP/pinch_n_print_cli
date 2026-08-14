@@ -12,6 +12,7 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 use seam_placer::SeamPlacer;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn config_with_mode(mode: &str) -> ConfigView {
     let mut map = HashMap::new();
@@ -43,8 +44,7 @@ fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
         .collect();
     let path = ExtrusionPath3D {
         points: path_points.clone(),
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(

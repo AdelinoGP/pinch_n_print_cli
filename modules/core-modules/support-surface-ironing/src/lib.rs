@@ -144,6 +144,7 @@ impl SupportSurfaceIroning {
                     points: vec![start, end],
                     role: ExtrusionRole::Ironing,
                     speed_factor,
+                    tool_index: None,
                 });
 
                 i += 2;

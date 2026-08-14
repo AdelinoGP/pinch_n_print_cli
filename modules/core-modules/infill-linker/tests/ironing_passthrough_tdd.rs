@@ -4,6 +4,7 @@ use infill_linker::InfillLinker;
 use slicer_ir::{ConfigView, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point3WithWidth};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::traits::LayerModule;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3D {
     ExtrusionPath3D {
@@ -32,8 +33,8 @@ fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3
                 ..Default::default()
             },
         ],
-        role,
         speed_factor,
+        ..extrusion_path3d_base(role)
     }
 }
 

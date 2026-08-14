@@ -489,6 +489,7 @@ pub fn commit_native_prepass_response(
                                         points: segment.clone(),
                                         role: slicer_ir::ExtrusionRole::SupportMaterial,
                                         speed_factor: 1.0,
+                                        tool_index: None,
                                     })
                                     .collect(),
                             })
@@ -847,7 +848,9 @@ pub fn commit_native_layer_response(
             {
                 return Ok(None);
             }
-            let ir = convert_infill_output(&collected, layer_index)?;
+            // Native modules author no per-path tool today; pass `None` so the
+            // authored-coloring grant defaults to deny at this boundary too.
+            let ir = convert_infill_output(&collected, layer_index, None)?;
             Ok(Some(if stage_export.ends_with("PostProcess") {
                 LayerStageCommit::InfillPostProcess(ir)
             } else {

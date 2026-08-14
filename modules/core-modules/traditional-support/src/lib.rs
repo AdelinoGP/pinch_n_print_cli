@@ -273,6 +273,7 @@ impl TraditionalSupport {
                     points: vec![start, end],
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
+                    tool_index: None,
                 });
 
                 i += 2;
@@ -326,6 +327,7 @@ impl TraditionalSupport {
                     ],
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
+                    tool_index: None,
                 });
                 i += 2;
             }

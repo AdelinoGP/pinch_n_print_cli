@@ -19,6 +19,7 @@ use slicer_ir::{
     RegionKey, SemVer, TravelMove,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Helper fixtures (same style as gcode_emit_tdd.rs)
@@ -58,8 +59,7 @@ fn make_entity(entity_id: u64, x_start: f32, x_end: f32, y: f32, z: f32) -> Prin
         entity_id,
         path: ExtrusionPath3D {
             points: vec![point(x_start, y, z), point(x_end, y, z)],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         tool_index: 1,
         region_key: region_key(),

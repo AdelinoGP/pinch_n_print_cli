@@ -857,6 +857,7 @@ mod wall_sequence_reorder_tests {
                     points: vec![],
                     role: ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
+                    tool_index: None,
                 },
                 width_profile: Default::default(),
                 feature_flags: Default::default(),
@@ -870,6 +871,7 @@ mod wall_sequence_reorder_tests {
                 points: vec![],
                 role,
                 speed_factor: 1.0,
+                tool_index: None,
             },
             ..wall_loop_base()
         }

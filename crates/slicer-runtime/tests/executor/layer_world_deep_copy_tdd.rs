@@ -22,6 +22,7 @@ use slicer_runtime::{
 use crate::common::TestModuleBundle;
 
 use crate::common::wasm_cache;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const LAYER_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -135,8 +136,8 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
         loop_type: LoopType::Outer,
         path: slicer_ir::ExtrusionPath3D {
             points: points.clone(),
-            role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor,
+            ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile {
             widths: points.iter().map(|point| point.width).collect(),
@@ -146,7 +147,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             .map(|_| {
                 // exhaustive: WallFeatureFlags deep-copy fixture specifies every flag.
                 WallFeatureFlags {
-                    tool_index: None,
+                tool_index: None,
                     fuzzy_skin: false,
                     is_bridge: false,
                     is_thin_wall: false,

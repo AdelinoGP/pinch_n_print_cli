@@ -12,6 +12,7 @@ use slicer_sdk::test_support::fixtures::{
     square_polygon, ConfigViewBuilder, SliceRegionViewBuilder,
 };
 use slicer_sdk::test_support::mock_host::MockHost;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[test]
 fn prelude_reexports_are_available() {
@@ -87,8 +88,7 @@ fn sample_path(z: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

@@ -14,6 +14,7 @@
 #![allow(missing_docs)]
 
 use std::path::PathBuf;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // paint_region module removed in packet 95 sub-step 16
 use slicer_ir::{
@@ -426,8 +427,7 @@ fn seam_aligned_default_e2e() {
                     point(x0 + 1.0, 1.0),
                     point(x0, 1.0),
                 ],
-                role: slicer_ir::ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
             },
             width_profile: slicer_ir::WidthProfile { widths: vec![] },
             feature_flags: Default::default(),

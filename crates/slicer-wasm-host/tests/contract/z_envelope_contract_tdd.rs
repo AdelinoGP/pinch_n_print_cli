@@ -60,6 +60,7 @@ fn make_path(z: f32) -> ExtrusionPath3d {
         ],
         role: ExtrusionRole::SparseInfill,
         speed_factor: 1.0,
+        tool_index: None,
     }
 }
 
@@ -94,6 +95,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         feature_flags: vec![],
         boundary_type: WitWallBoundaryType::ExteriorSurface,

@@ -747,6 +747,7 @@ pub(crate) fn harvest_support_plan_ir_from(
                 points,
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
+                tool_index: None,
             });
         }
 

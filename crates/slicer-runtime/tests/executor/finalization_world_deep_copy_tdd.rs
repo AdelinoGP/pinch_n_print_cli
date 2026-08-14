@@ -15,6 +15,7 @@ use slicer_runtime::{
 use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
 use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -127,8 +128,8 @@ fn make_entity(
                     ..Default::default()
                 })
                 .collect(),
-            role: ExtrusionRole::OuterWall,
             speed_factor,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: layer_index + 10,

@@ -11,6 +11,7 @@
 //! the emitter is caught immediately.
 
 use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, Point3WithWidth, PrintEntity,
     RegionKey,
@@ -39,8 +40,7 @@ fn closed_square_outer_wall() -> PrintEntity {
                 point(0.0, 10.0),
                 point(0.0, 0.0), // closing repeat
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 0,

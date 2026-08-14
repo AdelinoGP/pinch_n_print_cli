@@ -266,8 +266,7 @@ mod typed_ir {
             entity_id,
             path: ExtrusionPath3D {
                 points: vec![point(from.0, from.1), point(to.0, to.1)],
-                role: ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+                ..slicer_sdk::test_support::fixtures::extrusion_path3d_base(ExtrusionRole::OuterWall)
             },
             tool_index,
             ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)

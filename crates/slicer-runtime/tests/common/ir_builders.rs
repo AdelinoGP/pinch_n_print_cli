@@ -6,6 +6,7 @@
 //! identity-preservation tests.
 
 use slicer_ir::WallLoop;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── slice_ir module ──────────────────────────────────────────────────────────
 
@@ -280,7 +281,7 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
         .collect();
     let feature_flags: Vec<WallFeatureFlags> = (0..point_count)
         .map(|_| WallFeatureFlags {
-            tool_index: None,
+        tool_index: None,
             fuzzy_skin: false,
             is_bridge: false,
             is_thin_wall: false,
@@ -295,8 +296,7 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points: points.clone(),
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile {
             widths: points.iter().map(|p| p.width).collect(),

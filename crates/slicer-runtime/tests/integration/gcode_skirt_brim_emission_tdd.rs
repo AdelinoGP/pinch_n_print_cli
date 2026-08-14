@@ -24,6 +24,7 @@ use slicer_ir::{
     SemVer,
 };
 use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Fixtures
@@ -82,8 +83,7 @@ fn loop_entity(entity_id: u64, role: ExtrusionRole) -> PrintEntity {
                 pt(0.0, 20.0, 0.2),
                 pt(0.0, 0.0, 0.2),
             ],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         role: role.clone(),
         tool_index: 1,
@@ -99,8 +99,7 @@ fn outer_wall_entity() -> PrintEntity {
         entity_id: 100,
         path: ExtrusionPath3D {
             points: vec![pt(5.0, 5.0, 0.2), pt(15.0, 5.0, 0.2)],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 1,

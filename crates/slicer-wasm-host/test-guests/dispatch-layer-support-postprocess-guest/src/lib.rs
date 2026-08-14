@@ -34,6 +34,7 @@ impl Guest for Component {
                 }],
                 role: slicer::types::geometry::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
+                tool_index: None,
             };
             output
                 .push_support_path(&path)

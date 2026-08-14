@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use seam_placer::SeamPlacer;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LoopType, MeshIR,
     PerimeterIR, PerimeterRegion, Point3WithWidth, RegionKey, SeamPlanEntry, SeamPlanIR,
@@ -53,8 +54,7 @@ fn perimeter() -> PerimeterIR {
                 loop_type: LoopType::Outer,
                 path: ExtrusionPath3D {
                     points: points.clone(),
-                    role: ExtrusionRole::OuterWall,
-                    speed_factor: 1.0,
+                    ..extrusion_path3d_base(ExtrusionRole::OuterWall)
                 },
                 width_profile: WidthProfile {
                     widths: points.iter().map(|point| point.width).collect(),

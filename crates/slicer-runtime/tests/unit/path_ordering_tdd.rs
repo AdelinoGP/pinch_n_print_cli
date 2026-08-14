@@ -13,6 +13,7 @@ use std::sync::Arc;
 use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
@@ -776,16 +777,14 @@ impl LayerStageRunner for NoProposalStubRunner {
 fn path_at(x: f32, y: f32) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![pt(x, y)],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 
 fn path_at_explicit(x: f32, y: f32, role: ExtrusionRole) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![pt(x, y)],
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 

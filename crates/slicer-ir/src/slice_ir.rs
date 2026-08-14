@@ -312,9 +312,11 @@ pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// the additive `PrintEntity.tool_index` field (tool/identity split).
 /// 1.2.0 — packet `189-per-point-speed-factor-carrier` added the additive
 /// `LayerCollectionIR.speed_profiles` per-point speed carrier.
+/// 1.3.0 — packet `226-authored-coloring-carrier` added the additive
+/// `ExtrusionPath3D.tool_index` per-path authored-coloring carrier (ADR-0058).
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -1933,6 +1935,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
             .collect(),
         role,
         speed_factor: 1.0,
+        tool_index: None,
     }
 }
 
@@ -1945,6 +1948,16 @@ pub struct ExtrusionPath3D {
     pub role: ExtrusionRole,
     /// Speed factor multiplier
     pub speed_factor: f32,
+    /// Authored per-path tool selection. `None` = host decides the tool per
+    /// region; `Some(t)` = authored coloring, honored only under the two-sided
+    /// authored-coloring grant (ADR-0058): the module must disclose
+    /// `claim:authored-coloring` AND the fill-role claim it holds for the
+    /// region must be listed in that region's `fill_authored_coloring` config
+    /// key. Ungranted, or `t >= tool_count`, the value is stripped to `None` at
+    /// the marshal/commit boundary and the host resolves the region tool as
+    /// before — silently, never an error.
+    #[serde(default)]
+    pub tool_index: Option<u32>,
 }
 
 impl ExtrusionPath3D {
@@ -2031,6 +2044,7 @@ pub fn extrusion_line_to_extrusion_path3d(
         points: line.junctions.iter().map(|j| j.p).collect(),
         role,
         speed_factor: 1.0,
+        tool_index: None,
     }
 }
 

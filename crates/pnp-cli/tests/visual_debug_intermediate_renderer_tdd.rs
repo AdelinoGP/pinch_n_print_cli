@@ -52,6 +52,7 @@ use slicer_runtime::{
     RenderView, StageCapture, ViewportBoundsMm,
 };
 use tempfile::TempDir;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ─────────────────────────── CLI-level fixtures ────────────────────────────
 // Mirrors `visual_debug_typed_tap_capture_tdd.rs`'s helpers exactly (packet
@@ -544,8 +545,7 @@ fn infill_capture_with_extent(from: f32, to: f32) -> StageCapture {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     };
     let region = InfillRegion {
         object_id: "obj".to_string(),
@@ -583,8 +583,7 @@ fn simple_infill_capture(width: f32) -> StageCapture {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     };
     let region = InfillRegion {
         object_id: "obj".to_string(),
@@ -667,8 +666,7 @@ fn layer_collection_capture_with_travel_and_annotation() -> StageCapture {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     };
     let entity = PrintEntity {
         entity_id: 1,

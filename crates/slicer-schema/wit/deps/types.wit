@@ -9,7 +9,14 @@ interface geometry {
     record bounding-box3 { min: point3, max: point3 }
     record polygon       { points: list<point2> }
     record ex-polygon    { contour: polygon, holes: list<polygon> }
-    record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
+    /// tool-index: none = host resolves the tool per region; some(t) = authored
+    /// coloring, honored only under the two-sided authored-coloring grant
+    /// (ADR-0058): the module must disclose `claim:authored-coloring` AND the
+    /// fill-role claim it holds for the region must be listed in that region's
+    /// `fill_authored_coloring` config key. Ungranted, or out of range against
+    /// tool-count(), the value is stripped to none and the host resolves the
+    /// region tool as before — silently, never an error.
+    record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32, tool-index: option<u32> }
     variant extrusion-role {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,

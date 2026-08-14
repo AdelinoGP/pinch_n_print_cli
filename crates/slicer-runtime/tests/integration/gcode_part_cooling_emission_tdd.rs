@@ -23,6 +23,7 @@ use slicer_ir::{
     Point3WithWidth, PrintEntity, RegionKey, SemVer,
 };
 use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Test fixtures
@@ -66,8 +67,7 @@ fn wall_entity() -> PrintEntity {
                 point3_with_width(0.0, 0.0, 0.2),
                 point3_with_width(1.0, 0.0, 0.2),
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 0,

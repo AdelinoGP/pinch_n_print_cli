@@ -9,6 +9,7 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, StageId,
 };
 use slicer_runtime::{Blackboard, FinalizationStageRunner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     finalization_input,
@@ -57,8 +58,7 @@ fn layers() -> Vec<LayerCollectionIR> {
                         ..Default::default()
                     },
                 ],
-                role: ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::OuterWall)
             },
             role: ExtrusionRole::OuterWall,
             tool_index: 0,

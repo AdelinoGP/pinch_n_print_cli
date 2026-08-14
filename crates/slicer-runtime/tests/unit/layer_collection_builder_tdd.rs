@@ -22,6 +22,7 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
     CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LayerArena,
@@ -56,8 +57,7 @@ fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintE
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         role,
         tool_index: 0,
@@ -252,8 +252,7 @@ fn entity_with_points_and_role(
         entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         role,
         tool_index: 0,
@@ -499,8 +498,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points: points.clone(),
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile {
             widths: points.iter().map(|p| p.width).collect(),

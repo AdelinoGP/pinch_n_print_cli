@@ -2,6 +2,7 @@
 
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth, Polygon};
 use slicer_sdk::test_support::assert_paths::*;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -19,8 +20,7 @@ fn pt(x: f32, y: f32, z: f32, width: f32) -> Point3WithWidth {
 fn make_path(points: Vec<Point3WithWidth>) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points,
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

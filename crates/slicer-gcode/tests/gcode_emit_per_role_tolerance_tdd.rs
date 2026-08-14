@@ -19,6 +19,7 @@ use slicer_ir::{
     PrintEntity, RegionKey, ResolvedConfig,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Fixtures
@@ -71,8 +72,7 @@ fn make_entity(id: u64, points: Vec<Point3WithWidth>, role: ExtrusionRole) -> Pr
         entity_id: id,
         path: ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         tool_index: 0,
         region_key: region_key(),

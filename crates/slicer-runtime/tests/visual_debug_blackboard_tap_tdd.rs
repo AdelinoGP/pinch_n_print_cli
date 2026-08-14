@@ -35,6 +35,7 @@ use slicer_runtime::layer_executor::{
     execute_blackboard_taps, CapturedIr, BLACKBOARD_TAP_STAGE_IDS,
 };
 use slicer_runtime::{Blackboard, CaptureExecutionError, CaptureRequest};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// One populated `ExPolygon`: a simple triangle, no holes. Values are
 /// arbitrary but deterministic — only used to prove the captured payload is
@@ -210,8 +211,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
                         ..Point3WithWidth::default()
                     },
                 ],
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
             }],
         }],
         raft_plan: None,

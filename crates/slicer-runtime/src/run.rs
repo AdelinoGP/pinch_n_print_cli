@@ -14,6 +14,15 @@ use slicer_ir::{ConfigValue, MeshIR};
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
 /// retain the default tool 0 behavior.
+///
+/// Also derives [`SupportToolSelection::tool_count`] from the same raw config
+/// map, using the `filament_density` list length. That is the identical source
+/// `ResolvedConfig.filament_density` is extracted from (`resolve_global_config`
+/// reads this map), and `extract_float_list` preserves element count, so the
+/// value here equals `max(1, ResolvedConfig.filament_density.len())` without
+/// needing a resolved config threaded to this call site.
+///
+/// [`SupportToolSelection::tool_count`]: crate::layer_executor::SupportToolSelection::tool_count
 pub fn parse_support_tool_selection<K>(
     config_source: &std::collections::HashMap<K, ConfigValue>,
 ) -> crate::layer_executor::SupportToolSelection
@@ -27,9 +36,18 @@ where
             .unwrap_or(0),
         _ => 0,
     };
+    // `filament_density` is documented "one entry per filament … indexed by
+    // extruder/tool id" and is the repo's only per-tool count carrier. A bare
+    // scalar resolves to a one-element list (same rule as `extract_float_list`),
+    // and an absent key means a single-tool machine.
+    let tool_count = match config_source.get("filament_density") {
+        Some(ConfigValue::List(items)) => u32::try_from(items.len()).unwrap_or(u32::MAX).max(1),
+        _ => 1,
+    };
     crate::layer_executor::SupportToolSelection {
         support_tool: rebase("support_filament"),
         interface_tool: rebase("support_interface_filament"),
+        tool_count,
     }
 }
 

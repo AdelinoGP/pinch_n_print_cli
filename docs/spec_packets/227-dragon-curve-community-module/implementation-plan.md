@@ -40,7 +40,7 @@
 - Task IDs: `TASK-338`
 - Objective: Write the complete manifest mirroring `rectilinear-infill.toml` with the dragon's claims, compatibility, stage, and six config keys.
 - Precondition: Step 1 branch selected (manifest is branch-independent).
-- Postcondition: `dragon-curve.toml` exists with `[module] id = "com.example.dragon-curve"`, `[stage] id = "Layer::Infill"`, `[claims].holds = ["claim:sparse-fill", "claim:authored-coloring"]`, `[compatibility]` min-host/min-ir/max-ir mirrored from rectilinear, and `[config.schema]` keys `infill_density`, `infill_angle`, `infill_speed`, `line_width`, `tiling_depth`, `color_map` in snake_case. AC-1 and AC-2 green.
+- Postcondition: `dragon-curve.toml` exists with `[module] id = "com.example.dragon-curve"`, `[stage] id = "Layer::Infill"`, `[claims].holds = ["claim:sparse-fill"]`, `[compatibility]` min-host/min-ir/max-ir mirrored from rectilinear, and `[config.schema]` keys `infill_density`, `infill_angle`, `infill_speed`, `line_width`, `tiling_depth`, `color_map` in snake_case. AC-1 and AC-2 green.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` - full read (manifest model).
   - `modules/core-modules/wipe-tower/wipe-tower.toml` - full read (the `float-list` precedent for `color_map`).

@@ -470,6 +470,36 @@ pub fn extract_string(key: &str, value: &ConfigValue) -> Result<String, ConfigRe
     }
 }
 
+/// Extract a `Vec<String>` from a `List` of `ConfigValue::String` entries.
+///
+/// A bare `String` is accepted as a one-element list, matching
+/// `extract_float_list`'s scalar tolerance for hand-written CLI/JSON configs.
+#[doc(hidden)]
+pub fn extract_string_list(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<Vec<String>, ConfigResolutionError> {
+    fn element(key: &str, v: &ConfigValue) -> Result<String, ConfigResolutionError> {
+        match v {
+            ConfigValue::String(s) => Ok(s.clone()),
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "String",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        ConfigValue::List(items) => items
+            .iter()
+            .enumerate()
+            .map(|(i, v)| element(&format!("{key}[{i}]"), v))
+            .collect(),
+        other => element(key, other).map(|v| vec![v]),
+    }
+}
+
 /// Extract a `Vec<f64>` from a `List(Vec<ConfigValue::Float>)` `ConfigValue`.
 ///
 /// Each element must be a `Float` (or `Int`, coerced to `f64`). Returns
@@ -873,6 +903,13 @@ declare_resolved_config! {
     cli "bridge_fill_holder"       bridge_fill_holder: String = String::from("rectilinear-infill") => extract_string;
     /// Module ID holding `claim:sparse-fill`.
     cli "sparse_fill_holder"       sparse_fill_holder: String = String::from("rectilinear-infill") => extract_string;
+    /// Fill-role claims (e.g. `claim:sparse-fill`) whose holder is permitted to
+    /// author per-path tool indices (packet 226). This is the config half of the
+    /// two-sided authored-coloring grant; the module half is disclosing
+    /// `claim:authored-coloring` in its manifest. Empty (the default) means no
+    /// module may author tools and every authored `tool_index` is stripped at
+    /// the marshal/commit boundary.
+    cli "fill_authored_coloring"   fill_authored_coloring: Vec<String> = Vec::new() => extract_string_list;
 
     // Precision / resolution
     /// G-code path resolution in mm (OrcaSlicer: gcode_resolution).
@@ -1019,6 +1056,7 @@ impl PartialEq for ResolvedConfig {
             && self.bottom_fill_holder == other.bottom_fill_holder
             && self.bridge_fill_holder == other.bridge_fill_holder
             && self.sparse_fill_holder == other.sparse_fill_holder
+            && self.fill_authored_coloring == other.fill_authored_coloring
             && self.gcode_resolution.to_bits() == other.gcode_resolution.to_bits()
             && self.infill_resolution.to_bits() == other.infill_resolution.to_bits()
             && self.support_resolution.to_bits() == other.support_resolution.to_bits()
@@ -1115,6 +1153,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.bottom_fill_holder.hash(state);
         self.bridge_fill_holder.hash(state);
         self.sparse_fill_holder.hash(state);
+        self.fill_authored_coloring.hash(state);
         self.gcode_resolution.to_bits().hash(state);
         self.infill_resolution.to_bits().hash(state);
         self.support_resolution.to_bits().hash(state);

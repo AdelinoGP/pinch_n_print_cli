@@ -14,6 +14,7 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 use fuzzy_skin::FuzzySkinModule;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Helper: create default WallFeatureFlags with fuzzy_skin set to the given value.
 fn flags(fuzzy: bool) -> WallFeatureFlags {
@@ -60,8 +61,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
     WallLoop {
         path: ExtrusionPath3D {
             points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile { widths },
         feature_flags,
@@ -105,8 +105,7 @@ fn inner_wall(z: f32) -> WallLoop {
         perimeter_index: 1,
         path: ExtrusionPath3D {
             points: points.clone(),
-            role: ExtrusionRole::InnerWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::InnerWall)
         },
         width_profile: WidthProfile {
             widths: vec![0.4; points.len()],

@@ -23,6 +23,7 @@ use slicer_ir::{
     SliceIR, SlicedRegion, WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_runtime::{apply_for_test, LayerArena, StageApplyContext};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── fixture helpers (mirrors region_partition_tdd.rs:24-96) ──────────────────
 
@@ -156,8 +157,7 @@ fn synthetic_wall() -> WallLoop {
                     ..Default::default()
                 },
             ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: Vec::new(),

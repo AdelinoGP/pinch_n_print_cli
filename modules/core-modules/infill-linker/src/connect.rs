@@ -500,6 +500,13 @@ fn compatible_paths(
     };
     first.role == second.role
         && first.speed_factor.to_bits() == second.speed_factor.to_bits()
+        // ADR-0058: per-path authored tool is a chaining-compatibility axis.
+        // Every merge in `connect_infill` originates from a candidate produced
+        // by `nearest_pair_candidates`, whose filter consults this predicate, so
+        // differing-tool paths are never spliced. The merge itself reuses the
+        // `first` path struct (`first.points.extend(second.points)`), so the
+        // surviving path keeps its `tool_index`.
+        && first.tool_index == second.tool_index
         && endpoint_widths_compatible(first, second)
 }
 

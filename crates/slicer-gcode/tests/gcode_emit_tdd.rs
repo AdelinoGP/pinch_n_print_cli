@@ -28,6 +28,7 @@ use slicer_ir::{
     Point3WithWidth, PrintEntity, PrintMetadata, RegionKey, RetractMode, ToolChange, ZHop,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Test fixtures
@@ -74,8 +75,7 @@ fn print_entity_fixture_with_id(
         entity_id,
         path: ExtrusionPath3D {
             points,
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         region_key: region_key_fixture(),
         ..print_entity_base(role.clone())
@@ -1642,8 +1642,7 @@ fn entity_with_region_id(id: u64) -> PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![point3_with_width(0.0, 0.0, 0.0)],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         tool_index: id as u32,

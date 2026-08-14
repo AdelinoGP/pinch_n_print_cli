@@ -54,6 +54,7 @@ fn make_entity(entity_id: u64, x: f32, y: f32, z: f32) -> PrintEntity {
             points: vec![point(x, y, z), point(x + 5.0, y, z)],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
+            tool_index: None,
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 1,

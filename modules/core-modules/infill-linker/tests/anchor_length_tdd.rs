@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use infill_linker::connect::{chain_or_connect_infill, connect_infill, AnchorParams};
 use infill_linker::graph::BoundaryInfillGraph;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
     Polygon,
@@ -36,8 +37,8 @@ fn point(x_mm: f32, y_mm: f32) -> Point3WithWidth {
 fn segment_with_speed(start: (f32, f32), end: (f32, f32), speed_factor: f32) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![point(start.0, start.1), point(end.0, end.1)],
-        role: ExtrusionRole::SparseInfill,
         speed_factor,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

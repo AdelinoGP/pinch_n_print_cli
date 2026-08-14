@@ -26,6 +26,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, IndexedTriangleSet,
@@ -391,8 +392,7 @@ fn real_wall_entity(
         entity_id,
         path: ExtrusionPath3D {
             points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         role: ExtrusionRole::OuterWall,
         region_key: RegionKey::default(),

@@ -27,6 +27,7 @@ use slicer_ir::{
     PrintEntity, RegionKey,
 };
 use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,8 +54,7 @@ fn entity_with_region_id(region_id: u64) -> PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![point3(0.0, 0.0, 0.2), point3(1.0, 0.0, 0.2)],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(ExtrusionRole::OuterWall)
         },
         tool_index: region_id as u32,
         region_key: RegionKey {
@@ -145,8 +145,7 @@ fn entity_with_tool(tool: u32, role: ExtrusionRole) -> PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![point3(0.0, 0.0, 0.2), point3(1.0, 0.0, 0.2)],
-            role: role.clone(),
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(role.clone())
         },
         tool_index: tool,
         region_key: RegionKey {

@@ -12,6 +12,7 @@ use slicer_ir::{
     SemVer, ToolChange, ZHop,
 };
 use slicer_sdk::traits::FinalizationOutputBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,8 +33,7 @@ fn pt() -> Point3WithWidth {
 fn path() -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![pt()],
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::OuterWall)
     }
 }
 

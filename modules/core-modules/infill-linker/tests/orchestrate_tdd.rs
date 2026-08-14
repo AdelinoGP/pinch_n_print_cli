@@ -9,6 +9,7 @@ use slicer_ir::{
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::{ConfigViewBuilder, PerimeterRegionViewBuilder};
 use slicer_sdk::traits::LayerModule;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn square(x_mm: f32, width_mm: f32) -> ExPolygon {
     ExPolygon {
@@ -42,8 +43,7 @@ fn path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPa
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 
@@ -65,8 +65,7 @@ fn vertical_path(x_mm: f32, width_mm: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 

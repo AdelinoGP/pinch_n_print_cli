@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR,
@@ -311,8 +312,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
                     overhang_distance_mm: None,
                     ..Default::default()
                 }],
-                role: ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::OuterWall)
             },
             role: ExtrusionRole::OuterWall,
             tool_index: 0,

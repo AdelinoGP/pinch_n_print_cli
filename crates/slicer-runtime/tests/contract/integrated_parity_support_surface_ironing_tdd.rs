@@ -8,6 +8,7 @@ use slicer_ir::{
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 use support_surface_ironing::SupportSurfaceIroning;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
@@ -40,8 +41,7 @@ fn support_plan() -> SupportPlanIR {
                         ..Default::default()
                     },
                 ],
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
+                ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
             }],
         }],
         raft_plan: None,

@@ -5,6 +5,7 @@
 
 use slicer_sdk::prelude::*;
 use std::collections::HashMap;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Test 1: FinalizationModule trait exists with lifecycle methods
@@ -94,8 +95,7 @@ fn test_04_finalization_output_builder_push_entity() {
     let mut builder = FinalizationOutputBuilder::new();
     let path = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::WipeTower,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::WipeTower)
     };
     let region_key = RegionKey {
         global_layer_index: 0,
@@ -118,8 +118,7 @@ fn test_05_finalization_output_builder_insert_synthetic() {
     let mut builder = FinalizationOutputBuilder::new();
     let path = ExtrusionPath3D {
         points: vec![],
-        role: ExtrusionRole::WipeTower,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::WipeTower)
     };
 
     let result = builder.insert_synthetic_layer(5.0, vec![path]);

@@ -74,6 +74,7 @@ impl LayerModule for SdkLayerInfillModule {
             points: w.encode(layer_index),
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
+            tool_index: None,
         };
         output
             .push_sparse_path(path)
@@ -124,6 +125,7 @@ impl LayerModule for SdkLayerInfillModule {
                     points: fields.encode(r.z()),
                     role: ExtrusionRole::SparseInfill,
                     speed_factor: 1.0,
+                    tool_index: None,
                 };
                 output
                     .push_sparse_path(fpath)

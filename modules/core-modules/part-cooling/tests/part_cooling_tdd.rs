@@ -16,6 +16,7 @@ use slicer_ir::{
 use slicer_sdk::test_prelude::config_with;
 use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -44,11 +45,9 @@ fn entity(role: ExtrusionRole) -> PrintEntity {
 }
 
 fn extrusion_path_base(role: ExtrusionRole) -> ExtrusionPath3D {
-    // exhaustive: ExtrusionPath3D has no Default or shared fixture; this base preserves its required fields.
     ExtrusionPath3D {
         points: vec![Point3WithWidth::default()],
-        role,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(role)
     }
 }
 

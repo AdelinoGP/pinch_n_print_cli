@@ -315,7 +315,12 @@ imports live in `crates/slicer-schema/wit/deps/common.wit`, package
   (`raycast-z-down`, `surface-normal-at`, `object-bounds`), host-side Clipper2
   geometry ops (`clip-polygons`, `offset-polygons`, `simplify-polygon`), the
   host-only-algorithm bridges (`medial-axis`, `generate-arachne-walls`), and
-  `now-us`. Modules import it as `slicer:common/host-services`.
+  `now-us` and `tool-count`. Modules import it as
+  `slicer:common/host-services`.
+  - `tool-count: func() -> u32` — returns the number of configured
+    tools/filaments for the current print (minimum 1), so a module can
+    range-check an authored per-path tool index before emitting it. SDK
+    wrapper: `slicer_sdk::host::tool_count()`.
 - `module-errors` — the shared `module-error` record. Every world imports it as
   `slicer:common/module-errors.{module-error}` rather than redefining it.
 - `profiling` — the optional fuel-based profiling marks and scope registration
@@ -685,6 +690,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
 | `claim:raft-fill`         | Reserved by the SDK's `RaftInfill` role mapping (packet 124; ADR-0009); no current core manifest declares it. |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
+| `claim:authored-coloring` | Capability claim a module discloses to request per-path tool authorship (`ExtrusionPath3D.tool_index`; ADR-0058). Disclosure alone grants nothing: the grant is two-sided, and also requires the fill-role claim the module holds for the region to be listed in that region's `fill_authored_coloring` config key. Ungranted — or out of range against `tool-count` — the authored value is silently stripped to `None` at the infill commit boundary and the host resolves the region tool as before. |
 
 | Claim ID                 | Kind     | Dedup          | Owner                                                                    |
 |--------------------------|----------|----------------|--------------------------------------------------------------------------|

@@ -130,6 +130,7 @@ impl LayerModule for LightningInfill {
                     points,
                     role: ExtrusionRole::SparseInfill,
                     speed_factor,
+                    tool_index: None,
                 });
             }
         }

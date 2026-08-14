@@ -264,7 +264,7 @@ pub fn commit_hec_for_test(
                 || !infill.solid_paths.is_empty()
                 || !infill.ironing_paths.is_empty()
             {
-                let ir = convert_infill_output(infill, layer_index)
+                let ir = convert_infill_output(infill, layer_index, None)
                     .map_err(|r| mk_fatal("infill", r))?;
                 Some(LayerStageCommit::Infill(ir))
             } else {
@@ -277,7 +277,7 @@ pub fn commit_hec_for_test(
                 || !infill.solid_paths.is_empty()
                 || !infill.ironing_paths.is_empty()
             {
-                let ir = convert_infill_output(infill, layer_index)
+                let ir = convert_infill_output(infill, layer_index, None)
                     .map_err(|r| mk_fatal("infill", r))?;
                 Some(LayerStageCommit::InfillPostProcess(ir))
             } else {

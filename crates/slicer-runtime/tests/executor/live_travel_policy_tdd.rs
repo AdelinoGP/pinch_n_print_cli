@@ -20,6 +20,7 @@ use slicer_runtime::wit_host::{
 use slicer_runtime::LayerArena;
 
 use crate::common::commit_hec_for_test;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Helper: make a fresh `HostExecutionContext` for PathOptimization tests.
 fn make_ctx(module_id: &str) -> HostExecutionContext {
@@ -372,8 +373,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
                 flow_factor: 1.0,
                 ..Default::default()
             }],
-            role: slicer_ir::ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
+            ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
         },
         role: slicer_ir::ExtrusionRole::OuterWall,
         tool_index: 0,

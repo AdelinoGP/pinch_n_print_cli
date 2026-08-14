@@ -48,6 +48,97 @@ pub fn infill_ir_to_prior_regions(
         .collect()
 }
 
+// ── authored-coloring grant ──────────────────────────────────────────────
+
+/// The claim a module must disclose in its manifest to be eligible for the
+/// authored-coloring grant.
+pub const AUTHORED_COLORING_CLAIM: &str = "claim:authored-coloring";
+
+/// Pure two-sided grant predicate for authored per-path tool selection.
+///
+/// A module may author `ExtrusionPath3D::tool_index` for a region **only** when
+/// both sides agree:
+///
+/// 1. **Module side (disclosure).** The module's manifest claims include
+///    [`AUTHORED_COLORING_CLAIM`].
+/// 2. **Config side (opt-in).** At least one fill-role claim this module
+///    actually *holds* for the region is listed in the profile's
+///    `fill_authored_coloring` key.
+///
+/// Disclosed-but-not-listed is denied; listed-but-not-disclosed is denied.
+/// Total and panic-free: any empty input yields `false`.
+pub fn authored_coloring_granted(
+    held_fill_claims: &[String],
+    fill_authored_coloring: &[String],
+    disclosed_claims: &[String],
+) -> bool {
+    if !disclosed_claims
+        .iter()
+        .any(|c| c == AUTHORED_COLORING_CLAIM)
+    {
+        return false;
+    }
+    held_fill_claims
+        .iter()
+        .any(|held| fill_authored_coloring.iter().any(|listed| listed == held))
+}
+
+/// Per-dispatch authority for the authored-coloring strip performed at the
+/// commit boundary in [`convert_infill_output`].
+///
+/// `granted_regions` holds `(object_id, region_id)` for every region where
+/// [`authored_coloring_granted`] returned `true` for the dispatching module.
+/// Absence from the set is a denial — the default is deny.
+#[derive(Debug, Clone, Default)]
+pub struct AuthoredColoringContext {
+    /// Number of tools visible to the guest via the `tool-count` host function.
+    /// Authored indices must be strictly less than this.
+    pub tool_count: u32,
+    /// `(object_id, region_id)` pairs the module is granted to color.
+    pub granted_regions: std::collections::HashSet<(String, u64)>,
+}
+
+impl AuthoredColoringContext {
+    /// True when `path_tool` may be kept for the given region.
+    fn allows(&self, object_id: &str, region_id: u64, path_tool: u32) -> bool {
+        path_tool < self.tool_count
+            && self
+                .granted_regions
+                .contains(&(object_id.to_string(), region_id))
+    }
+}
+
+/// Apply the authored-coloring grant to committed infill regions.
+///
+/// Every `tool_index` that is not covered by an active grant (no context, region
+/// not granted, or index out of range) is silently reset to `None`, which means
+/// "host resolves the region tool" — i.e. stripped back to the region tool.
+/// This is never an error: an ungranted module simply has no effect.
+fn enforce_authored_coloring(
+    regions: &mut [slicer_ir::InfillRegion],
+    authored: Option<&AuthoredColoringContext>,
+) {
+    for region in regions.iter_mut() {
+        let object_id = region.object_id.clone();
+        let region_id = region.region_id;
+        for path in region
+            .sparse_infill
+            .iter_mut()
+            .chain(region.solid_infill.iter_mut())
+            .chain(region.ironing.iter_mut())
+        {
+            let keep = match (path.tool_index, authored) {
+                (None, _) => continue,
+                (Some(t), Some(ctx)) => ctx.allows(&object_id, region_id, t),
+                (Some(_), None) => false,
+            };
+            if !keep {
+                path.tool_index = None;
+            }
+        }
+    }
+}
+
 // ── convert_infill_output ────────────────────────────────────────────────
 
 /// Convert collected infill output into a slicer-ir `InfillIR`.
@@ -58,9 +149,16 @@ pub fn infill_ir_to_prior_regions(
 ///
 /// If no origin tags are recorded (legacy callers), all output is emitted as
 /// one synthetic region for backward compatibility.
+///
+/// `authored` carries the authored-coloring authority for this dispatch. It is
+/// the authoritative enforcement point for `ExtrusionPath3D::tool_index`:
+/// any authored tool without an active grant (or out of range) is silently
+/// stripped to `None` here, so downstream consumers see only validated values.
+/// `None` means "no module is granted" — every authored tool is stripped.
 pub fn convert_infill_output(
     collected: &InfillOutputCollected,
     layer_index: u32,
+    authored: Option<&AuthoredColoringContext>,
 ) -> Result<slicer_ir::InfillIR, String> {
     let sparse: Vec<_> = collected
         .sparse_paths
@@ -127,6 +225,9 @@ pub fn convert_infill_output(
         )
         .map_err(|e| infill_untagged_msg(e, "ironing"))?;
 
+    let mut regions = bucket.into_regions();
+    enforce_authored_coloring(&mut regions, authored);
+
     Ok(slicer_ir::InfillIR {
         schema_version: slicer_ir::SemVer {
             major: 1,
@@ -134,7 +235,7 @@ pub fn convert_infill_output(
             patch: 0,
         },
         global_layer_index: layer_index,
-        regions: bucket.into_regions(),
+        regions,
     })
 }
 

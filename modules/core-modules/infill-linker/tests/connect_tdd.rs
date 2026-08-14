@@ -2,6 +2,7 @@
 
 use infill_linker::connect::{connect_infill, AnchorParams};
 use infill_linker::graph::BoundaryInfillGraph;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     point_in_polygon_winding, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
     Polygon,
@@ -39,8 +40,8 @@ fn path(y_mm: f32, role: ExtrusionRole, speed_factor: f32) -> ExtrusionPath3D {
                 ..Default::default()
             },
         ],
-        role,
         speed_factor,
+        ..extrusion_path3d_base(role)
     }
 }
 
@@ -97,6 +98,56 @@ fn connect_deterministic() {
     assert_eq!(linked_paths(), linked_paths());
 }
 
+/// ADR-0058: authored per-path `tool_index` is a chaining-compatibility axis.
+/// Two adjacent infill lines that the linker *does* chain when their tools match
+/// must stay separate when the tools differ.
+#[test]
+fn cross_tool_paths_not_chained() {
+    fn link_with_tools(first_tool: Option<u32>, second_tool: Option<u32>) -> Vec<ExtrusionPath3D> {
+        let boundary = square(10.0);
+        let graph = BoundaryInfillGraph::new(&[boundary]);
+        let mut first = path(1.0, ExtrusionRole::SparseInfill, 1.0);
+        let mut second = path(2.0, ExtrusionRole::SparseInfill, 1.0);
+        first.tool_index = first_tool;
+        second.tool_index = second_tool;
+        connect_infill(
+            vec![first, second],
+            &graph,
+            AnchorParams {
+                anchor_length_mm: 0.0,
+                anchor_length_max_mm: 10.0,
+            },
+        )
+    }
+
+    // Control: identical geometry with a shared tool DOES chain into one path.
+    let same_tool = link_with_tools(Some(0), Some(0));
+    assert_eq!(
+        same_tool.len(),
+        1,
+        "control: same-tool adjacent paths must chain into a single path"
+    );
+    assert_eq!(
+        same_tool[0].tool_index,
+        Some(0),
+        "chained path must carry the shared authored tool, not None"
+    );
+
+    // Same geometry, differing authored tools: must NOT chain.
+    let cross_tool = link_with_tools(Some(0), Some(1));
+    assert_eq!(
+        cross_tool.len(),
+        2,
+        "differing tool_index must prevent chaining"
+    );
+    let mut tools = cross_tool
+        .iter()
+        .map(|path| path.tool_index)
+        .collect::<Vec<_>>();
+    tools.sort();
+    assert_eq!(tools, vec![Some(0), Some(1)]);
+}
+
 // ── contour-routed connectors (ADR-0025 §2 containment) ─────────────────────
 //
 // Canonical `Fill::connect_infill` (`src/libslic3r/Fill/FillBase.cpp`) never
@@ -137,8 +188,7 @@ fn point(x_mm: f32, y_mm: f32) -> Point3WithWidth {
 fn segment(start: (f32, f32), end: (f32, f32)) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![point(start.0, start.1), point(end.0, end.1)],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
     }
 }
 
