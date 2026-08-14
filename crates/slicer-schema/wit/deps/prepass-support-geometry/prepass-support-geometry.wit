@@ -44,6 +44,14 @@ interface support-geometry-types {
     }
     record region-segmentation-view {
         entries: list<region-segmentation-view-entry>,
+        region-support-configs: list<region-support-config>,
+    }
+    record region-support-config {
+        object-id: object-id,
+        layer-index: u32,
+        region-id: region-id,
+        support-family: option<string>,
+        support-type: option<string>,
     }
 
     record support-geometry-view-entry {
@@ -54,6 +62,36 @@ interface support-geometry-types {
     }
     record support-geometry-view {
         entries: list<support-geometry-view-entry>,
+    }
+
+    record support-analysis-candidate {
+        id: u64,
+        geometry: list<ex-polygon>,
+        object-id: object-id,
+        region-id: region-id,
+        global-layer-index: u32,
+        z-units: s64,
+        enforced: bool,
+        blocked: bool,
+    }
+    record support-analysis-geometry-entry {
+        global-support-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        polygons: list<ex-polygon>,
+    }
+    record support-family-assignment {
+        object-id: object-id,
+        region-id: region-id,
+        family-id: string,
+    }
+    record support-analysis-view {
+        candidates: list<support-analysis-candidate>,
+        model-occupancy: list<support-analysis-geometry-entry>,
+        termination-surfaces: list<support-analysis-geometry-entry>,
+        shared-settings: list<tuple<string, string>>,
+        baseline-feasible-envelope: list<ex-polygon>,
+        family-assignments: list<support-family-assignment>,
     }
 
     enum severity-level {
@@ -81,7 +119,7 @@ interface support-geometry-types {
 interface support-geometry {
     use slicer:prepass-types/prepass-types.{mesh-object-view, layer-plan-view};
     use support-geometry-types.{region-segmentation-view, region-segmentation-view-entry,
-        support-geometry-view, support-geometry-view-entry,
+        support-analysis-view, support-geometry-view, support-geometry-view-entry,
         support-geometry-output};
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
@@ -90,6 +128,7 @@ interface support-geometry {
         objects: list<mesh-object-view>,
         layer-plan: layer-plan-view,
         region-segmentation: region-segmentation-view,
+        support-analysis: support-analysis-view,
         support-geometry: support-geometry-view,
         output: support-geometry-output,
         config: config-view,

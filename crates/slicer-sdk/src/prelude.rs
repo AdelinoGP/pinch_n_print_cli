@@ -34,8 +34,9 @@ pub use crate::prepass_types::{
     LayerProposal, MeshObjectView, ObjectId, PaintLayerView, PaintSegmentationObjectView,
     PaintStrokeView, PaintValueView, RaftPlan, RegionId as PrepassRegionId, RegionLayerProposal,
     RegionSegmentationView, RegionSegmentationViewEntry, ScoredSeamCandidate, SeamPlanEntry,
-    SeamPlanningRegionInput, SeamPlanningView, SeamReason, SupportGeometryView,
-    SupportGeometryViewEntry, SupportPlanEntry, SurfaceGroupProposal,
+    SeamPlanningRegionInput, SeamPlanningView, SeamReason, SupportAnalysisCandidate,
+    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportFamilyAssignment,
+    SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry, SurfaceGroupProposal,
 };
 
 // IR re-exports

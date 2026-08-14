@@ -16,7 +16,7 @@ use slicer_sdk::native::{
 };
 use slicer_sdk::postpass_types::GcodeOutputCommand;
 use slicer_sdk::prepass_types::{
-    LayerPlanView, MeshObjectView, RegionSegmentationView, SupportGeometryView,
+    LayerPlanView, MeshObjectView, RegionSegmentationView, SupportAnalysisView, SupportGeometryView,
 };
 use slicer_sdk::traits::LayerCollectionView;
 use slicer_sdk::traits::PaintRegionLayerView;
@@ -279,6 +279,24 @@ pub fn build_native_prepass_request(
                     }
                 })
                 .collect(),
+            region_support_configs: map
+                .entries
+                .iter()
+                .map(|(key, plan)| {
+                    let config = map.config_for_raw(plan.config).to_config_map();
+                    let string_value = |name: &str| match config.get(name) {
+                        Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
+                        _ => None,
+                    };
+                    slicer_sdk::prepass_types::RegionSupportConfig {
+                        object_id: key.object_id.clone(),
+                        layer_index: key.global_layer_index,
+                        region_id: key.region_id.to_string(),
+                        support_family: string_value("support_family"),
+                        support_type: string_value("support_type"),
+                    }
+                })
+                .collect(),
         }
     });
     let support_geometry = input
@@ -298,6 +316,78 @@ pub fn build_native_prepass_request(
                 )
                 .collect(),
         });
+    let support_analysis = input.support_analysis.as_deref().map(|analysis| {
+        let mut candidates: Vec<_> = analysis
+            .candidates
+            .iter()
+            .map(
+                |candidate| slicer_sdk::prepass_types::SupportAnalysisCandidate {
+                    id: candidate.id,
+                    geometry: candidate.geometry.clone(),
+                    object_id: candidate.source.object_id.clone(),
+                    region_id: candidate.source.region_id.to_string(),
+                    global_layer_index: candidate.source.global_layer_index,
+                    z_units: candidate.source.z_units,
+                    enforced: candidate.enforced,
+                    blocked: candidate.blocked,
+                },
+            )
+            .collect();
+        candidates.sort_by_key(|candidate| {
+            (
+                candidate.global_layer_index,
+                candidate.object_id.clone(),
+                candidate.region_id.clone(),
+                candidate.id,
+            )
+        });
+        let project_geometry = |entries: &std::collections::HashMap<
+            slicer_ir::SupportGeometryKey,
+            Vec<slicer_ir::ExPolygon>,
+        >| {
+            let mut entries: Vec<_> = entries
+                .iter()
+                .map(
+                    |(key, polygons)| slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                        global_support_layer_index: key.global_support_layer_index,
+                        object_id: key.object_id.clone(),
+                        region_id: key.region_id.to_string(),
+                        polygons: polygons.clone(),
+                    },
+                )
+                .collect();
+            entries.sort_by_key(|entry| {
+                (
+                    entry.global_support_layer_index,
+                    entry.object_id.clone(),
+                    entry.region_id.clone(),
+                )
+            });
+            entries
+        };
+        SupportAnalysisView {
+            candidates,
+            model_occupancy: project_geometry(&analysis.model_occupancy),
+            termination_surfaces: project_geometry(&analysis.termination_surfaces),
+            shared_settings: analysis
+                .shared_settings
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            baseline_feasible_envelope: analysis.baseline_feasible_envelope.clone(),
+            family_assignments: analysis
+                .family_assignments
+                .iter()
+                .map(|((object_id, region_id), family_id)| {
+                    slicer_sdk::prepass_types::SupportFamilyAssignment {
+                        object_id: object_id.clone(),
+                        region_id: region_id.to_string(),
+                        family_id: family_id.clone(),
+                    }
+                })
+                .collect(),
+        }
+    });
     let seam_regions =
         input
             .slice_ir
@@ -340,6 +430,7 @@ pub fn build_native_prepass_request(
         ),
         layer_plan,
         region_segmentation,
+        support_analysis,
         support_geometry,
         // Unlike the mesh-analysis view, paint segmentation needs the richer
         // object view: facet paint, identity transform, and layer participation.

@@ -24,7 +24,9 @@ use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
-    CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
+    exact_z_query::ExactZQueryService,
+    support_aggregation::aggregate_support_plan_irs_with_diagnostics, CompiledModuleLive,
+    PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
 // PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
@@ -230,6 +232,8 @@ pub fn execute_prepass_with_instrumentation(
 
     for stage in &plan.prepass_stages {
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
+        let mut support_plans = Vec::new();
+        let mut support_plan_audits = Vec::new();
 
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
@@ -254,6 +258,7 @@ pub fn execute_prepass_with_instrumentation(
                 layer_plan: blackboard.layer_plan().cloned(),
                 slice_ir: blackboard.slice_ir().cloned(),
                 region_map: blackboard.region_map().cloned(),
+                support_analysis: blackboard.support_analysis().cloned(),
                 support_geometry: blackboard.support_geometry().cloned(),
                 _phantom: std::marker::PhantomData,
             };
@@ -303,7 +308,19 @@ pub fn execute_prepass_with_instrumentation(
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);
 
-            if let Err(e) =
+            let support_plan_output = matches!(
+                (stage.stage_id.as_str(), &output),
+                (
+                    "PrePass::SupportGeometry",
+                    PrepassStageOutput::SupportPlan(_)
+                )
+            );
+            if support_plan_output {
+                let PrepassStageOutput::SupportPlan(plan) = output else {
+                    unreachable!("matched support plan output")
+                };
+                support_plans.push((*plan).clone());
+            } else if let Err(e) =
                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
                 instrumentation.on_module_error(
@@ -323,6 +340,7 @@ pub fn execute_prepass_with_instrumentation(
             // no IR output still have their reads audited).
             let diagnostics: Vec<slicer_ir::Diagnostic> = runner.last_diagnostics();
             if let Some(ir_path) = ir_path {
+                let audit_index = audits.len();
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
@@ -330,6 +348,9 @@ pub fn execute_prepass_with_instrumentation(
                     batch_calls,
                     diagnostics,
                 });
+                if support_plan_output {
+                    support_plan_audits.push(audit_index);
+                }
             } else if !runtime_reads.is_empty() || !batch_calls.is_empty() {
                 // Module performed reads but produced no output — still record audit.
                 audits.push(ModuleAccessAudit {
@@ -339,6 +360,26 @@ pub fn execute_prepass_with_instrumentation(
                     batch_calls,
                     diagnostics,
                 });
+            }
+        }
+        if !support_plans.is_empty() {
+            let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
+            let (plan, diagnostics) =
+                aggregate_support_plan_irs_with_diagnostics(support_plans, &exact_z);
+            // The aggregate is a host-owned stage result; attach its degraded
+            // diagnostics to the final family writer's existing audit stream.
+            if let Some(&audit_index) = support_plan_audits.last() {
+                audits[audit_index].diagnostics.extend(diagnostics);
+            }
+            let aggregation_module = ModuleId::from("host:support_plan_aggregation");
+            if let Err(e) = commit_stage_output(
+                &stage.stage_id,
+                &aggregation_module,
+                blackboard,
+                PrepassStageOutput::SupportPlan(Arc::new(plan)),
+            ) {
+                instrumentation.on_stage_end(&stage.stage_id, None);
+                return Err(e);
             }
         }
         instrumentation.on_stage_end(&stage.stage_id, None);
@@ -634,24 +675,6 @@ pub fn execute_prepass_with_builtins_configured_instr(
             .map_err(|source| PrepassExecutionError::RegionMapping { source })
         },
     )?;
-    run_builtin_stage(
-        blackboard,
-        instrumentation,
-        "PrePass::SupportAnalysis",
-        "host:support_analysis",
-        |bb| bb.support_analysis().is_none() && bb.slice_ir().is_some(),
-        |bb| {
-            crate::builtins::support_analysis_producer::commit_support_analysis_builtin(
-                bb,
-                default_resolved_config.support_enabled,
-            )
-            .map_err(|source| PrepassExecutionError::Blackboard {
-                stage_id: "PrePass::SupportAnalysis".to_string(),
-                module_id: "host:support_analysis".to_string(),
-                source,
-            })
-        },
-    )?;
     // PrePass::Slice — host built-in. Runs once RegionMap is committed
     // (needs per-region slice_closing_radius / shell counts via RegionPlan).
     run_builtin_stage(
@@ -728,6 +751,28 @@ pub fn execute_prepass_with_builtins_configured_instr(
                     module_id: "host:paint_segmentation".to_string(),
                     source,
                 })
+        },
+    )?;
+    // PrePass::SupportAnalysis — host built-in. Runs strictly AFTER Slice (it
+    // derives candidates from committed SliceIR polygons) and BEFORE
+    // SupportGeometry, matching the declared `STAGE_ORDER` position as closely
+    // as the runtime flow allows.
+    run_builtin_stage(
+        blackboard,
+        instrumentation,
+        "PrePass::SupportAnalysis",
+        "host:support_analysis",
+        |bb| bb.support_analysis().is_none() && bb.slice_ir().is_some(),
+        |bb| {
+            crate::builtins::support_analysis_producer::commit_support_analysis_builtin(
+                bb,
+                default_resolved_config.support_enabled,
+            )
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::SupportAnalysis".to_string(),
+                module_id: "host:support_analysis".to_string(),
+                source,
+            })
         },
     )?;
     // PrePass::SupportGeometry — host built-in. Moved from the pre-RegionMap

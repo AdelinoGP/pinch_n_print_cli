@@ -320,6 +320,17 @@ pub enum BlackboardError {
         /// The first duplicate `RegionKey` encountered, in entry order.
         region_key: crate::slice_ir::RegionKey,
     },
+    /// A merged `SupportPlanIR` contains two entries sharing the same
+    /// `(global_layer_index, object_id, region_id)` identity. Family
+    /// provenance does not make two entries distinct at this seam.
+    DuplicateSupportPlanEntry {
+        /// Global layer index of the duplicate support region.
+        global_layer_index: i32,
+        /// Object ID of the duplicate support region.
+        object_id: crate::slice_ir::ObjectId,
+        /// Region ID of the duplicate support region.
+        region_id: crate::slice_ir::RegionId,
+    },
     /// A requested prepass output has not been committed yet.
     MissingRequiredPrepass {
         /// The missing prepass slot.
@@ -362,6 +373,15 @@ impl fmt::Display for BlackboardError {
                     region_key.global_layer_index, region_key.object_id, region_key.region_id, region_key.variant_chain
                 )
             }
+            Self::DuplicateSupportPlanEntry {
+                global_layer_index,
+                object_id,
+                region_id,
+            } => write!(
+                f,
+                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={})",
+                global_layer_index, object_id, region_id
+            ),
             Self::MissingRequiredPrepass { slot } => {
                 write!(f, "required prepass output missing for {slot}")
             }

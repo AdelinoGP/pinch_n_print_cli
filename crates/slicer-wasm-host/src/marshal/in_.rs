@@ -228,7 +228,33 @@ pub fn project_region_segmentation_view(
             .cmp(&b.layer_index)
             .then_with(|| a.object_id.cmp(&b.object_id))
     });
-    host::prepass::RegionSegmentationView { entries }
+    let mut region_support_configs = Vec::new();
+    for key in region_map_ir.entries.keys() {
+        let config = region_map_ir.config_for(key).to_config_map();
+        let string_value = |name: &str| match config.get(name) {
+            Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
+            _ => None,
+        };
+        region_support_configs.push(
+            crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::RegionSupportConfig {
+            object_id: key.object_id.clone(),
+            layer_index: key.global_layer_index,
+            region_id: key.region_id.to_string(),
+            support_family: string_value("support_family"),
+            support_type: string_value("support_type"),
+            },
+        );
+    }
+    region_support_configs.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then_with(|| a.object_id.cmp(&b.object_id))
+            .then_with(|| a.region_id.cmp(&b.region_id))
+    });
+    host::prepass::RegionSegmentationView {
+        entries,
+        region_support_configs,
+    }
 }
 
 /// Project `SupportGeometryIR` into a deterministic WIT `SupportGeometryView`.
@@ -267,6 +293,76 @@ pub fn project_support_geometry_view(
     });
     host::prepass::SupportGeometryView {
         entries: sorted_entries,
+    }
+}
+
+/// Project host-owned support analysis into the planner's strategy-neutral view.
+pub fn project_support_analysis_view(
+    analysis: &slicer_ir::SupportAnalysisIR,
+) -> host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView{
+    use crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types as types;
+
+    let mut candidates: Vec<_> = analysis
+        .candidates
+        .iter()
+        .map(|candidate| types::SupportAnalysisCandidate {
+            id: candidate.id,
+            geometry: ir_to_wit_expolygons(&candidate.geometry),
+            object_id: candidate.source.object_id.clone(),
+            region_id: candidate.source.region_id.to_string(),
+            global_layer_index: candidate.source.global_layer_index,
+            z_units: candidate.source.z_units,
+            enforced: candidate.enforced,
+            blocked: candidate.blocked,
+        })
+        .collect();
+    candidates.sort_by(|left, right| {
+        left.global_layer_index
+            .cmp(&right.global_layer_index)
+            .then_with(|| left.object_id.cmp(&right.object_id))
+            .then_with(|| left.region_id.cmp(&right.region_id))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let project_geometry = |entries: &std::collections::HashMap<
+        slicer_ir::SupportGeometryKey,
+        Vec<slicer_ir::ExPolygon>,
+    >| {
+        let mut projected: Vec<_> = entries
+            .iter()
+            .map(|(key, polygons)| types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: key.global_support_layer_index,
+                object_id: key.object_id.clone(),
+                region_id: key.region_id.to_string(),
+                polygons: ir_to_wit_expolygons(polygons),
+            })
+            .collect();
+        projected.sort_by(|left, right| {
+            left.global_support_layer_index
+                .cmp(&right.global_support_layer_index)
+                .then_with(|| left.object_id.cmp(&right.object_id))
+                .then_with(|| left.region_id.cmp(&right.region_id))
+        });
+        projected
+    };
+    host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
+        candidates,
+        model_occupancy: project_geometry(&analysis.model_occupancy),
+        termination_surfaces: project_geometry(&analysis.termination_surfaces),
+        shared_settings: analysis
+            .shared_settings
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        baseline_feasible_envelope: ir_to_wit_expolygons(&analysis.baseline_feasible_envelope),
+        family_assignments: analysis
+            .family_assignments
+            .iter()
+            .map(|((object_id, region_id), family_id)| types::SupportFamilyAssignment {
+                object_id: object_id.clone(),
+                region_id: region_id.to_string(),
+                family_id: family_id.clone(),
+            })
+            .collect(),
     }
 }
 

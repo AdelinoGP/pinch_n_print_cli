@@ -367,6 +367,23 @@ pub struct RegionSegmentationViewEntry {
 pub struct RegionSegmentationView {
     /// Ordered list of entries (ascending by (layer_index, object_id)).
     pub entries: Vec<RegionSegmentationViewEntry>,
+    /// Per-region support-family aliases resolved from the region config.
+    pub region_support_configs: Vec<RegionSupportConfig>,
+}
+
+/// Support-family config aliases for one active region.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RegionSupportConfig {
+    /// Object this region belongs to.
+    pub object_id: ObjectId,
+    /// Global layer index.
+    pub layer_index: u32,
+    /// Region identifier.
+    pub region_id: RegionId,
+    /// Canonical family override, when configured.
+    pub support_family: Option<String>,
+    /// Orca-style family alias, when configured.
+    pub support_type: Option<String>,
 }
 
 /// Entry in the support geometry view, listing coarse outlines for one support layer.
@@ -387,6 +404,68 @@ pub struct SupportGeometryViewEntry {
 pub struct SupportGeometryView {
     /// Ordered list of entries (ascending by (global_support_layer_index, object_id, region_id)).
     pub entries: Vec<SupportGeometryViewEntry>,
+}
+
+/// A strategy-neutral support candidate supplied by host analysis.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisCandidate {
+    /// Stable candidate identifier.
+    pub id: u64,
+    /// Candidate geometry.
+    pub geometry: Vec<ExPolygon>,
+    /// Source object identity.
+    pub object_id: ObjectId,
+    /// Source region identity.
+    pub region_id: RegionId,
+    /// Source global layer index.
+    pub global_layer_index: u32,
+    /// Exact source height in canonical units.
+    pub z_units: i64,
+    /// Whether policy requires retaining this candidate.
+    pub enforced: bool,
+    /// Whether geometry blocks this candidate.
+    pub blocked: bool,
+}
+
+/// Analysis geometry keyed by support-layer identity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisGeometryEntry {
+    /// Support layer identity.
+    pub global_support_layer_index: u32,
+    /// Object identity.
+    pub object_id: ObjectId,
+    /// Region identity.
+    pub region_id: RegionId,
+    /// Analysis polygons.
+    pub polygons: Vec<ExPolygon>,
+}
+
+/// Host-selected support family for an object region.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportFamilyAssignment {
+    /// Object identity.
+    pub object_id: ObjectId,
+    /// Region identity.
+    pub region_id: RegionId,
+    /// Canonical family identity.
+    pub family_id: String,
+}
+
+/// Read-only strategy-neutral analysis supplied to support planners.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisView {
+    /// Candidates shared by support families.
+    pub candidates: Vec<SupportAnalysisCandidate>,
+    /// Model occupancy by support-layer identity.
+    pub model_occupancy: Vec<SupportAnalysisGeometryEntry>,
+    /// Termination surfaces by support-layer identity.
+    pub termination_surfaces: Vec<SupportAnalysisGeometryEntry>,
+    /// Shared host-derived settings.
+    pub shared_settings: Vec<(String, String)>,
+    /// Conservative feasible envelope.
+    pub baseline_feasible_envelope: Vec<ExPolygon>,
+    /// Per-object/per-region family assignments.
+    pub family_assignments: Vec<SupportFamilyAssignment>,
 }
 
 /// Severity level for a diagnostic message.

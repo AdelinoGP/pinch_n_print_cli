@@ -1304,7 +1304,7 @@ pub struct SupportPlanRoleRegion {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Optional structural skeleton for a support plan.
 pub struct SupportPlanSkeleton {
-    /// Branch or skeleton points in model coordinates.
+    /// Structural skeleton points in model coordinates.
     pub points: Vec<Point3>,
 }
 
@@ -1325,9 +1325,10 @@ pub enum SupportPlanDeclineReason {
 ///
 /// Produced once per `(global_layer_index, object_id, region_id)` triple
 /// by `PrePass::SupportGeometry` and stored immutably on the blackboard.
-/// Consumed at dispatch time by `Layer::Support` modules (notably
-/// `tree-support`) that emit pre-planned organic branch geometry instead
-/// of running a per-layer filler.
+/// Carries strategy-neutral role-attributed analysis geometry plus an
+/// optional structural skeleton that downstream support families consume
+/// to emit their own printable output. The plan is universal across support
+/// families and carries no family-specific branch geometry.
 ///
 /// `global_layer_index` uses a signed integer to support raft prefix layers:
 /// raft entries carry negative indices (`-1, -2, ..., -raft_layers`) so raft
@@ -1354,7 +1355,7 @@ pub struct SupportPlanEntry {
     pub anchor_z: i64,
     /// Role-attributed analysis polygons.
     pub roles: Vec<SupportPlanRoleRegion>,
-    /// Optional branch skeleton.
+    /// Optional structural skeleton.
     pub skeleton: Option<SupportPlanSkeleton>,
     /// Capabilities required by the downstream renderer.
     pub capabilities: Vec<String>,
@@ -1383,19 +1384,18 @@ pub struct RaftPlan {
 /// Support plan IR — committed once to the blackboard by
 /// `PrePass::SupportGeometry`.
 ///
-/// Carries per-layer organic branch geometry produced by a simplified
-/// OrcaSlicer-style top-down propagation (see the `support-planner`
-/// core module). The per-layer `Layer::Support` tree-support module
-/// consumes the plan when it is committed and emits branch segments
-/// directly; modules whose algorithm is inherently per-layer (e.g.
-/// `traditional-support`) do not read this IR.
+/// Carries strategy-neutral structural geometry — role-attributed analysis
+/// polygons plus an optional structural skeleton — shared universally across
+/// support families. Downstream `Layer::Support` families consume this plan
+/// and derive their own printable output from it. The plan itself no longer
+/// carries family-specific branch extrusion geometry (removed in packet 220).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanIR {
     /// Schema version of this IR.
     pub schema_version: SemVer,
     /// One entry per active `(layer, object, region)` triple that received
-    /// planned branches. Multiple entries may share `(layer, object)` when
-    /// a single object has multiple regions on the same layer.
+    /// planned structural support. Multiple entries may share `(layer, object)`
+    /// when a single object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
     /// Optional raft configuration. Geometry is emitted by a later packet.
     #[serde(default)]
@@ -1409,6 +1409,28 @@ impl Default for SupportPlanIR {
             entries: Vec::new(),
             raft_plan: None,
         }
+    }
+}
+
+impl SupportPlanIR {
+    /// Returns the first duplicate support region identity, preserving entry
+    /// order. `family_id` is producer provenance and is intentionally not part
+    /// of the identity used at the blackboard merge seam.
+    pub fn duplicate_region_identity(&self) -> Option<(i32, ObjectId, RegionId)> {
+        use std::collections::HashSet;
+
+        let mut seen = HashSet::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            let identity = (
+                entry.global_layer_index,
+                entry.object_id.clone(),
+                entry.region_id,
+            );
+            if !seen.insert(identity.clone()) {
+                return Some(identity);
+            }
+        }
+        None
     }
 }
 
@@ -2565,6 +2587,23 @@ pub struct PrintEntity {
     pub tool_index: u32,
 }
 
+/// Support attribution for one assembled print entity.
+///
+/// This is kept in a `LayerCollectionIR` side table keyed by `entity_id` so
+/// non-support entities remain attribution-free while path ordering can move
+/// support entities without losing their family/body/demand provenance.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupportEntityIdentity {
+    /// Stable identifier of the support `PrintEntity` this attribution belongs to.
+    pub entity_id: u64,
+    /// Support family that produced the entity.
+    pub family_id: String,
+    /// Physical support body represented by the entity.
+    pub body_id: String,
+    /// Planner demand identities represented by the body.
+    pub demand_ids: Vec<String>,
+}
+
 /// Kind of a guest-emitted layer annotation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayerAnnotationKind {
@@ -2614,6 +2653,10 @@ pub struct LayerCollectionIR {
     pub z: f32,
     /// Ordered, ready-to-emit extrusion entities
     pub ordered_entities: Vec<PrintEntity>,
+    /// Support-family attribution for support entities, keyed by
+    /// `PrintEntity.entity_id`. Non-support entities have no row here.
+    #[serde(default)]
+    pub support_entity_identities: Vec<SupportEntityIdentity>,
     /// Tool changes in this layer
     pub tool_changes: Vec<ToolChange>,
     /// Z hops in this layer
@@ -2638,6 +2681,7 @@ impl Default for LayerCollectionIR {
             global_layer_index: 0,
             z: 0.0,
             ordered_entities: Vec::new(),
+            support_entity_identities: Vec::new(),
             tool_changes: Vec::new(),
             z_hops: Vec::new(),
             annotations: Vec::new(),

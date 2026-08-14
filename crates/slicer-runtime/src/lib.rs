@@ -152,8 +152,9 @@ pub use layer_executor::{
     StageApplyContext,
 };
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,
-    ir_path_for_layer_stage, LayerExecutionError, LayerProgressSink, NoopLayerProgressSink,
+    execute_per_layer, execute_per_layer_with_anchored_events, execute_per_layer_with_events,
+    execute_per_layer_with_instrumentation, ir_path_for_layer_stage, LayerExecutionError,
+    LayerProgressSink, NoopLayerProgressSink,
 };
 // Typed tap capture (packet 158): request-gated, post-commit IR capture at
 // the executor boundary, consumed by `pnp-cli`'s visual-debug command.

@@ -21,7 +21,7 @@ use crate::prepass_builders::{
 };
 use crate::prepass_types::{
     LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
-    SeamPlanningView, SupportGeometryView,
+    SeamPlanningView, SupportAnalysisView, SupportGeometryView,
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
@@ -678,6 +678,30 @@ pub trait PrepassModule: Sized {
         Err(ModuleError::from_str(
             "run_support_geometry is not implemented",
         ))
+    }
+
+    /// Run support geometry with host-owned strategy-neutral analysis.
+    ///
+    /// The compatibility method above remains available for direct SDK callers
+    /// that have not yet adopted the analysis contract.
+    fn run_support_geometry_with_analysis(
+        &self,
+        objects: &[MeshObjectView],
+        layer_plan: &LayerPlanView,
+        region_segmentation: &RegionSegmentationView,
+        _support_analysis: &SupportAnalysisView,
+        support_geometry: &SupportGeometryView,
+        output: &mut SupportGeometryOutput,
+        config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        self.run_support_geometry(
+            objects,
+            layer_plan,
+            region_segmentation,
+            support_geometry,
+            output,
+            config,
+        )
     }
 }
 

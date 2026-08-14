@@ -138,8 +138,10 @@ pub use slice_ir::{
     SliceIR,
     SlicedRegion,
     StageId,
-    SupportEntry,
     // Support types
+    SupportAnalysisIR,
+    SupportEntityIdentity,
+    SupportEntry,
     SupportGeometryIR,
     SupportGeometryKey,
     SupportIR,
