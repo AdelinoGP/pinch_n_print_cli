@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-331`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
