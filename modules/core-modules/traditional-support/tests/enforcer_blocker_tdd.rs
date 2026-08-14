@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
-    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -86,7 +86,30 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
         z,
         regions: vec![region_with_annotations(vec![enclosing_square()], semantics)],
     };
-    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
+    let plan = SupportPlanIR {
+        entries: vec![slicer_ir::SupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "obj1".into(),
+            region_id: 1,
+            family_id: "traditional".into(),
+            roles: vec![SupportPlanRoleRegion {
+                role: SupportPlanRole::SupportBody,
+                regions: vec![square_expoly()],
+            }],
+            demand_ids: vec!["test-demand".into()],
+            body_ids: vec!["test-body".into()],
+            anchor_layer_index: 0,
+            anchor_z: 0,
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec!["test".into()],
+            decline_reason: None,
+        }],
+        ..Default::default()
+    };
+    PaintRegionLayerView::new(0)
+        .with_slice_ir(Arc::new(slice))
+        .with_support_plan(Arc::new(plan))
 }
 
 /// Test 1: A fully blocked region generates zero support paths.
@@ -170,7 +193,7 @@ fn unpainted_region_keeps_existing_behaviour() {
     let region = square_region(0.3);
 
     // No paint data at all
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_view_with_annotations(0.3, &[]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -194,7 +217,7 @@ fn default_ineligible_region_generates_zero_support() {
     let mut region = square_region(0.3);
     region.set_needs_support(false);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_view_with_annotations(0.3, &[]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -216,7 +239,7 @@ fn default_eligible_region_generates_support() {
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_view_with_annotations(0.3, &[]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -321,7 +344,29 @@ fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerVi
         z,
         regions: vec![l_shape_region_with_annotations(semantics)],
     };
-    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
+    PaintRegionLayerView::new(0)
+        .with_slice_ir(Arc::new(slice))
+        .with_support_plan(Arc::new(SupportPlanIR {
+            entries: vec![slicer_ir::SupportPlanEntry {
+                global_layer_index: 0,
+                object_id: "obj1".into(),
+                region_id: 1,
+                family_id: "traditional".into(),
+                roles: vec![SupportPlanRoleRegion {
+                    role: SupportPlanRole::SupportBody,
+                    regions: vec![l_shape_expoly()],
+                }],
+                demand_ids: vec!["test-demand".into()],
+                body_ids: vec!["test-body".into()],
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                skeleton: None,
+                capabilities: vec![],
+                provenance: vec!["test".into()],
+                decline_reason: None,
+            }],
+            ..Default::default()
+        }))
 }
 
 #[test]
