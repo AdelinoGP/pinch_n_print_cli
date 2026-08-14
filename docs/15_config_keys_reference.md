@@ -627,6 +627,43 @@ Per-region overrides are supported via `RegionMapIR.entries[*].config`.
 
 ---
 
+## Authored coloring (packet 226)
+
+| Key | Type | Default | Range | Source |
+|---|---|---|---|---|
+| `fill_authored_coloring` | string-list | `[]` | — (fill-role claim IDs permitted to author per-path tool indices; ADR-0058) | `resolved_config.rs::ResolvedConfig` |
+
+`fill_authored_coloring` lists fill-role claim IDs — the four `FILL_CLAIM_IDS`
+(`crates/slicer-scheduler/src/validation.rs`): `claim:top-fill`,
+`claim:bottom-fill`, `claim:bridge-fill`, `claim:sparse-fill`, written exactly
+as they appear in a manifest's `[claims] holds` — whose holder module is allowed
+to set `ExtrusionPath3D.tool_index` for that region. It is not in the generated
+**Host-registered config keys** table above, because that table's lock test
+(`host_keys_doc_lock_tdd`) ties every generated host row to a scalar
+`ResolvedConfig` default; it is a `cli` key on `ResolvedConfig` like the
+`*_fill_holder` keys, and per-region overrides are supported via
+`RegionMapIR.entries[*].config` — the same path as `infill_density`.
+
+This key is **one half of a two-sided grant**. The module must *also* disclose
+the capability claim `claim:authored-coloring` in its manifest (see
+`docs/03_wit_and_manifest.md`'s `claim:authored-coloring` row). Either side
+missing denies the grant: an undisclosed module gains nothing from being listed
+here, and a disclosing module gains nothing until an operator lists its fill-role
+claim for the region.
+
+The default is the empty list, which means **deny** — out of the box no module
+can author per-path tooling until an operator opts a fill role in.
+
+The failure mode is a **silent strip, never an error**: when the grant is absent
+— or the authored index is out of range against `tool-count` — the host resets
+`tool_index` to `None` at the marshal/commit boundary and resolves the region
+tool exactly as before. Nothing is logged as a config error and no slice fails.
+
+See `docs/adr/0058-authored-coloring-per-path-tool-carrier.md` for the full
+contract.
+
+---
+
 ## Override namespaces
 
 Two structural namespaces are recognised at runtime (see

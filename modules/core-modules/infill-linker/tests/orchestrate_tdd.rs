@@ -418,3 +418,88 @@ fn absent_anchor_keys_fall_back_to_four_hundred_percent_of_flow_spacing() {
         "infill_density alone must not change the fallback anchor length"
     );
 }
+
+#[test]
+fn cross_tool_paths_not_compatible_in_orchestrate() {
+    // ADR-0058: the per-path authored `tool_index` is a region-compatibility
+    // axis in `paths_compatible`. This is a DIFFERENT axis from the
+    // region-level `RegionRecord.tool_index` covered by
+    // `different_tool_never_connected`: here both regions share region tool 0
+    // and differ only in the authored tool carried by their paths.
+    //
+    // Observable: two wall-sharing regions that are compatible are linked as a
+    // union group against the union boundary, so their paths run all the way to
+    // the shared wall at x = 10 (and can chain into one spanning path). When
+    // `paths_compatible` rejects them, each region is linked against its own
+    // inset boundary instead, so region 1's paths stop short of x = 10.
+    struct Linked {
+        spans_both_regions: bool,
+        max_x_of_first_region_paths: f32,
+    }
+
+    fn link_with_path_tools(first_tool: Option<u32>, second_tool: Option<u32>) -> Linked {
+        let paths_a = (1..=5)
+            .map(|index| {
+                let mut path = path(0.0, 10.0, index as f32, 0.4);
+                path.tool_index = first_tool;
+                path
+            })
+            .collect::<Vec<_>>();
+        let paths_b = (1..=5)
+            .map(|index| {
+                let mut path = path(6.0, 15.0, index as f32, 0.4);
+                path.tool_index = second_tool;
+                path
+            })
+            .collect::<Vec<_>>();
+        let prior = vec![sparse_region(1, paths_a), sparse_region(2, paths_b)];
+        let views = vec![
+            view(1, square(0.0, 10.0), Some(100), 0, 0.4, 0.2),
+            view(2, square(5.0, 10.0), Some(100), 0, 0.4, 0.2),
+            view(100, square(0.0, 15.0), None, 0, 0.4, 0.2),
+        ];
+        let output = run(&prior, &views);
+
+        let spans_both_regions = output.sparse_paths().iter().any(|path| {
+            path.points.iter().any(|point| point.x <= 0.1)
+                && path.points.iter().any(|point| point.x >= 14.9)
+        });
+        let max_x_of_first_region_paths = output
+            .sparse_paths()
+            .iter()
+            .filter(|path| path.tool_index == first_tool)
+            .flat_map(|path| path.points.iter())
+            .map(|point| point.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        Linked {
+            spans_both_regions,
+            max_x_of_first_region_paths,
+        }
+    }
+
+    // Control: identical geometry with a shared authored tool IS compatible, so
+    // the regions union-link across the shared wall.
+    let same_tool = link_with_path_tools(Some(0), Some(0));
+    assert!(
+        same_tool.spans_both_regions,
+        "control: same-tool wall-sharing regions must union-link into one spanning path"
+    );
+    assert!(
+        same_tool.max_x_of_first_region_paths >= 9.99,
+        "control: union linking must run region 1's paths up to the shared wall, got {}",
+        same_tool.max_x_of_first_region_paths
+    );
+
+    // Same geometry, differing authored tools: incompatible, so each region is
+    // linked on its own inset boundary and nothing spans the shared wall.
+    let cross_tool = link_with_path_tools(Some(0), Some(1));
+    assert!(
+        !cross_tool.spans_both_regions,
+        "differing per-path tool_index must prevent cross-region union linking"
+    );
+    assert!(
+        cross_tool.max_x_of_first_region_paths <= 9.95,
+        "incompatible regions must be linked on their own inset boundary, got {}",
+        cross_tool.max_x_of_first_region_paths
+    );
+}
