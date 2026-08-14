@@ -144,6 +144,7 @@ impl LayerModule for TraditionalSupport {
             }
 
             let z = region.z();
+            output.begin_region(region.object_id().as_str(), *region.region_id());
 
             for expoly in polygons {
                 // Eligibility precedence (docs/01 Layer::Support, docs/02

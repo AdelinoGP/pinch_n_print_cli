@@ -148,6 +148,7 @@ impl LayerModule for TreeSupport {
             }
 
             let z = region.z();
+            output.begin_region(region.object_id().as_str(), *region.region_id());
 
             // Planner-consuming tier (TASK-161): when a `SupportPlanIR`
             // is committed on the blackboard and carries an entry for

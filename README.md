@@ -60,7 +60,7 @@ cargo xtask build-guests
 cargo xtask dist --edition <developer|hybrid|integrated>
 
 # Run the slicer
-cargo run --bin pnp_cli --release -- slice --input resources/benchy.stl --output /tmp/out.gcode
+cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --output /tmp/out.gcode
 ```
 
 ## Lineage and Acknowledgments
