@@ -14,13 +14,12 @@
 //! Modifier-volume SupportEnforcer/Blocker land in `segment_annotations` (D14 path,
 //! separate from the PaintLayer/hex-stroke path).
 //!
-//! # Seam consumer gap
+//! # Seam writer and consumer coverage
 //!
-//! Seam paint (Custom("seam_enforcer") / Custom("seam_blocker")) flows into
-//! SlicedRegion.variant_chain — the data reaches SliceIR. However, NO live downstream
-//! module reads variant_chain("seam_enforcer"/"seam_blocker"). The seam-placer module
-//! uses geometric SeamCandidate scores only. This remains a documented seam
-//! consumer gap.
+//! Four seam-paint writer tests cover the end-to-end handoff from
+//! Custom("seam_enforcer") / Custom("seam_blocker") paint through
+//! paint-segmentation annotations to both perimeter consumers. The tests also
+//! retain the channel-isolation checks for support paint and region variants.
 
 #![allow(missing_docs)]
 #![allow(dead_code)]
@@ -740,5 +739,123 @@ fn paint_channel_seam_strokes_do_not_partition_regions() {
          must NOT reach any SlicedRegion.variant_chain — seam painting is a \
          seam-placer hint and never partitions regions.\n\
          facet_value_count={facet_value_count}, stroke_count={stroke_count}."
+    );
+}
+
+#[test]
+fn seam_paint_writer_populates_segment_annotations() {
+    let path = cube_cilindrical_modifier_path();
+    let mesh = Arc::new(load_model(&path).expect("load seam fixture should succeed"));
+    let object_id = &mesh.objects[0].id;
+    let lp = build_layer_plan(object_id, LAYER_COUNT);
+    let initial = build_initial_slice_ir(object_id, &mesh.objects[0].mesh, &lp);
+    let region_map = build_region_map(object_id, LAYER_COUNT);
+
+    let result = execute_paint_segmentation(mesh, Arc::new(initial), region_map)
+        .expect("execute_paint_segmentation must succeed");
+    let seam = PaintSemantic::Custom("seam_enforcer".to_string());
+    let has_seam_annotation = result.iter().any(|layer| {
+        layer.regions.iter().any(|region| {
+            region.segment_annotations.get(&seam).is_some_and(|values| {
+                values
+                    .iter()
+                    .flatten()
+                    .any(|value| matches!(value, Some(PaintValue::Flag(true))))
+            })
+        })
+    });
+    assert!(
+        has_seam_annotation,
+        "expected Custom(\"seam_enforcer\") key in segment_annotations"
+    );
+    assert!(!result.iter().any(|layer| {
+        layer.regions.iter().any(|region| {
+            region
+                .variant_chain
+                .iter()
+                .any(|(semantic, _)| semantic == "seam_enforcer")
+        })
+    }));
+}
+
+#[test]
+fn seam_paint_writer_runs_on_seam_only_mesh() {
+    let object_id = "seam-only";
+    let seam = PaintSemantic::Custom("seam_enforcer".to_string());
+    let mesh = make_single_object_mesh_ir(
+        object_id,
+        vec![PaintLayer {
+            semantic: seam.clone(),
+            facet_values: (0..12)
+                .map(|index| (index == 0).then_some(PaintValue::Flag(true)))
+                .collect(),
+            strokes: vec![],
+        }],
+    );
+    let slice = make_unit_cube_slice_ir(object_id, &mesh.objects[0].mesh);
+    let region_map = make_unit_cube_region_map(object_id);
+
+    let result = execute_paint_segmentation(mesh, slice, region_map)
+        .expect("execute_paint_segmentation must succeed");
+    assert!(
+        result.iter().any(|layer| {
+            layer
+                .regions
+                .iter()
+                .any(|region| region.segment_annotations.contains_key(&seam))
+        }),
+        "expected Custom(\"seam_enforcer\") key in segment_annotations"
+    );
+}
+
+#[test]
+fn seam_paint_annotations_are_index_aligned_per_region() {
+    let path = cube_cilindrical_modifier_path();
+    let mesh = Arc::new(load_model(&path).expect("load seam fixture should succeed"));
+    let object_id = &mesh.objects[0].id;
+    let lp = build_layer_plan(object_id, LAYER_COUNT);
+    let initial = build_initial_slice_ir(object_id, &mesh.objects[0].mesh, &lp);
+    let region_map = build_region_map(object_id, LAYER_COUNT);
+
+    let result = execute_paint_segmentation(mesh, Arc::new(initial), region_map)
+        .expect("execute_paint_segmentation must succeed");
+    let seam = PaintSemantic::Custom("seam_enforcer".to_string());
+    for region in result.iter().flat_map(|layer| &layer.regions) {
+        if let Some(values) = region.segment_annotations.get(&seam) {
+            assert_eq!(values.len(), region.polygons.len());
+            for (polygon_values, polygon) in values.iter().zip(&region.polygons) {
+                assert_eq!(polygon_values.len(), polygon.contour.points.len());
+            }
+        }
+    }
+    assert!(
+        result.iter().any(|layer| {
+            layer
+                .regions
+                .iter()
+                .any(|region| region.segment_annotations.contains_key(&seam))
+        }),
+        "expected Custom(\"seam_enforcer\") key in segment_annotations"
+    );
+}
+
+#[test]
+fn seam_paint_writer_emits_no_key_without_seam_paint() {
+    let object_id = "unpainted";
+    let mesh = make_single_object_mesh_ir(object_id, vec![]);
+    let slice = make_unit_cube_slice_ir(object_id, &mesh.objects[0].mesh);
+    let region_map = make_unit_cube_region_map(object_id);
+
+    let result = execute_paint_segmentation(mesh, slice, region_map)
+        .expect("execute_paint_segmentation must succeed");
+    assert!(
+        !result.iter().any(|layer| {
+            layer.regions.iter().any(|region| {
+                region.segment_annotations.keys().any(|semantic| {
+                matches!(semantic, PaintSemantic::Custom(name) if name.starts_with("seam_"))
+            })
+            })
+        }),
+        "unexpected seam_ key without seam paint"
     );
 }

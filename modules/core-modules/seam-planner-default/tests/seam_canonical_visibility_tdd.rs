@@ -164,16 +164,26 @@ fn determinism_two_runs_bit_identical() {
 #[test]
 fn paint_annotations_set_point_type() {
     let (vertices, triangles, layers, contours) = prism_setup();
-    let seam_values = vec![vec![
-        Some(PaintValue::Custom("enforced".to_string())),
-        Some(PaintValue::Custom("enforced".to_string())),
-        Some(PaintValue::Custom("blocked".to_string())),
-        None,
+    let enforcer_values = vec![vec![
+        Some(PaintValue::Flag(true)),
+        Some(PaintValue::Flag(true)),
     ]];
-    let paint_annotations = [(
-        PaintSemantic::Custom("seam".to_string()),
-        seam_values.as_slice(),
-    )];
+    let blocker_values = vec![vec![None, None, Some(PaintValue::Flag(true)), None]];
+    let empty_values = vec![vec![None, None, None, None]];
+    let paint_annotations = [
+        (
+            PaintSemantic::Custom("seam_enforcer".to_string()),
+            enforcer_values.as_slice(),
+        ),
+        (
+            PaintSemantic::Custom("seam_blocker".to_string()),
+            blocker_values.as_slice(),
+        ),
+        (
+            PaintSemantic::Custom("seam_enforcer".to_string()),
+            empty_values.as_slice(),
+        ),
+    ];
 
     let candidates = build_seam_candidates_with_sample_count(
         &vertices,

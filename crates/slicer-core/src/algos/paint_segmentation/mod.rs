@@ -28,6 +28,8 @@ pub mod painted_line;
 pub mod painted_line_collection;
 /// Phase 1 preprocess — extracts per-layer paint data from mesh objects.
 pub mod preprocess;
+/// Stamps seam-paint annotations onto every emitted region.
+mod seam_annotations;
 /// Phase 6 — top/bottom surface propagation across layers.
 pub mod top_bottom;
 /// Z-plane intersection for triangles.
@@ -536,11 +538,21 @@ pub fn execute_paint_segmentation(
     if mesh.objects.is_empty() {
         return Ok(slice_ir.clone());
     }
+
+    let seam_only_passthrough = || {
+        if !seam_annotations::mesh_has_seam_paint(&mesh) {
+            return slice_ir.clone();
+        }
+        let mut working = Vec::from_iter(slice_ir.iter().cloned());
+        seam_annotations::stamp_seam_paint_annotations(&mesh, &mut working);
+        Arc::new(working)
+    };
+
     if !mesh_has_any_paint(&mesh) {
-        return Ok(slice_ir.clone());
+        return Ok(seam_only_passthrough());
     }
     if region_map.entries.is_empty() {
-        return Ok(slice_ir.clone());
+        return Ok(seam_only_passthrough());
     }
 
     // ---- Working copy --------------------------------------------------------
@@ -1453,6 +1465,10 @@ pub fn execute_paint_segmentation(
     #[cfg(debug_assertions)]
     for s in working.iter() {
         assert_per_object_shell_index_invariant(s);
+    }
+
+    if seam_annotations::mesh_has_seam_paint(&mesh) {
+        seam_annotations::stamp_seam_paint_annotations(&mesh, &mut working);
     }
 
     Ok(Arc::new(working))

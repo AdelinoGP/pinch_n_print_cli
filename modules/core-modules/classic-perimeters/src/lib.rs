@@ -26,8 +26,8 @@ use slicer_core::flow::{
 };
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
-    generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
-    WallSequence, BASE_SPEED,
+    generate_sharp_corner_seam_candidates, point_in_any_polygon, seam_paint_boxes,
+    wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
     offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
@@ -1297,69 +1297,6 @@ impl ClassicPerimeters {
             current_polygons = inset_result;
         }
         Ok(())
-    }
-}
-
-/// Extract small "coverage" boxes around outer-wall vertices painted with
-/// `semantic_name` (packet 108: `seam_enforcer` / `seam_blocker` consumption).
-///
-/// `segment_annotations` values live at `PaintSemantic::Custom(semantic_name)`,
-/// indexed `[poly_idx][vertex_idx]` against the ORIGINAL region contour;
-/// outer-wall vertex ordering/count is preserved from that contour (see
-/// `slicer_core::perimeter_utils::build_wall_flags` doc comment), so index
-/// alignment against `poly.contour.points` is valid. Each painted vertex
-/// becomes a small square `ExPolygon` (1 mm half-size) centered on it, since
-/// `apply_seam_paint_bias` tests candidate positions via point-in-polygon,
-/// not point-to-point proximity.
-fn seam_paint_boxes(
-    poly_idx: usize,
-    poly: &ExPolygon,
-    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
-    semantic_name: &str,
-) -> Vec<ExPolygon> {
-    const HALF_SIZE_MM: f32 = 1.0;
-    let half = slicer_ir::mm_to_units(HALF_SIZE_MM);
-    let semantic = PaintSemantic::Custom(semantic_name.to_string());
-    let Some(vals) = segment_annotations
-        .get(&semantic)
-        .and_then(|per_poly| per_poly.get(poly_idx))
-    else {
-        return Vec::new();
-    };
-    poly.contour
-        .points
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| matches!(vals.get(*i), Some(Some(PaintValue::Flag(true)))))
-        .map(|(_, pt)| seam_paint_box(*pt, half))
-        .collect()
-}
-
-/// Build a small axis-aligned square `ExPolygon` centered on `center` with
-/// `half`-unit half-size (see [`seam_paint_boxes`]).
-fn seam_paint_box(center: slicer_ir::Point2, half: i64) -> ExPolygon {
-    ExPolygon {
-        contour: slicer_ir::Polygon {
-            points: vec![
-                slicer_ir::Point2 {
-                    x: center.x - half,
-                    y: center.y - half,
-                },
-                slicer_ir::Point2 {
-                    x: center.x + half,
-                    y: center.y - half,
-                },
-                slicer_ir::Point2 {
-                    x: center.x + half,
-                    y: center.y + half,
-                },
-                slicer_ir::Point2 {
-                    x: center.x - half,
-                    y: center.y + half,
-                },
-            ],
-        },
-        holes: Vec::new(),
     }
 }
 

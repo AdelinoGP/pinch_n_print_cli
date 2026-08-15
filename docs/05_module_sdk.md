@@ -786,12 +786,15 @@ enforcer_polys, blocker_polys)`:
 
 `slicer_core` cannot depend on `slicer-sdk` (where `PaintRegionLayerView`
 lives), so `apply_seam_paint_bias` is data-driven: it takes plain
-`&[ExPolygon]` slices. The caller (`classic-perimeters`) is responsible for
-extracting `enforcer_polys`/`blocker_polys` from `SliceRegionView::
-segment_annotations()` — per painted outer-wall vertex, a small 1&nbsp;mm
-half-size square `ExPolygon` centered on that vertex (see
-`seam_paint_boxes`/`seam_paint_box` in
-`modules/core-modules/classic-perimeters/src/lib.rs`). Index alignment
+`&[ExPolygon]` slices. The callers (`classic-perimeters` and
+`arachne-perimeters`) are responsible for extracting
+`enforcer_polys`/`blocker_polys` from `SliceRegionView::segment_annotations()`
+— per painted outer-wall vertex, a small 1&nbsp;mm half-size square
+`ExPolygon` centered on that vertex (see the promoted
+`slicer_core::perimeter_utils::seam_paint_boxes` and the private
+`seam_paint_box` helper and the corresponding arachne consumer). The producer is
+`seam_annotations::stamp_seam_paint_annotations` in the paint-segmentation
+prepass. Index alignment
 against the original region contour is valid for outer walls specifically
 because outer-wall vertex ordering/count is preserved from the source
 contour (see the `build_wall_flags` doc comment on the same "outer walls
@@ -895,11 +898,12 @@ module implements `PrePass::SeamPlanning` (`run_seam_planning`), a
 mesh-level, once-per-object stage that runs before per-layer slicing,
 reading `MeshIR`/`SurfaceClassificationIR`/`LayerPlanIR` and writing
 `SeamPlanIR` per its manifest's `[ir-access]` table. It
-does not read `PaintSemantic::Custom("seam_enforcer"/"seam_blocker")` and
-has no dependency on, or interaction with, the per-layer outer-wall
-candidate generation this section describes (`classic-perimeters` +
-`seam-placer`). The two seam mechanisms — PrePass planning and per-layer
-candidate/placement — operate independently. Since packet 179, the
+classifies exactly `PaintSemantic::Custom("seam_enforcer")` and
+`PaintSemantic::Custom("seam_blocker")` via `paint_annotation_type`, while
+remaining independent of per-layer outer-wall candidate generation this
+section describes (`classic-perimeters` + `seam-placer`). The two seam
+mechanisms — PrePass planning and per-layer candidate/placement — operate
+independently. Since packet 179, the
 planner's independence is scoped to *placement mechanics*: seam-planning
 consumes the per-segment paint annotations (enforcer/blocker/central
 enforcer) carried on the region, and the per-layer candidate build applies

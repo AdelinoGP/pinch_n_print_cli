@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 206-seam-paint-delivery
 task_ids:
   - TASK-322

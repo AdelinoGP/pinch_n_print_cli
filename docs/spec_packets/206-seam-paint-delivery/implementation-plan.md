@@ -278,4 +278,4 @@ Split before activation if aggregate cost exceeds M or any step is L. No step is
 - Record remaining packet-local risk: seam bias is live for the first time, so any baseline captured from a seam-painted fixture is invalidated; and `apply_seam_paint_bias` now runs in both generators, moving arachne toolpaths on seam-painted models.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+Gate commands (`cargo check`/`cargo clippy`) use `--all-targets` so the test, bench, and example targets compile; test commands are the narrow filtered runs (`cargo test -p <crate> --test <file> <filter>`) listed per step and in packet.spec.md's AC commands.

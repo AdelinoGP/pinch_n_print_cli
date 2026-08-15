@@ -23,37 +23,14 @@ use crate::comparator::{EnforcedBlockedSeamPoint, SeamCandidate};
 use crate::contours::{signed_distance_to_contours, Contour};
 use slicer_ir::{PaintSemantic, PaintValue};
 
-fn paint_marker(text: &str) -> Option<EnforcedBlockedSeamPoint> {
-    let text = text.to_ascii_lowercase();
-    if text.contains("blocked") || text.contains("blocker") {
-        Some(EnforcedBlockedSeamPoint::Blocked)
-    } else if text.contains("enforced") || text.contains("enforcer") {
-        Some(EnforcedBlockedSeamPoint::Enforced)
-    } else {
-        None
-    }
-}
-
-fn paint_annotation_type(
-    semantic: &PaintSemantic,
-    value: &PaintValue,
-) -> Option<EnforcedBlockedSeamPoint> {
-    let semantic_type = match semantic {
-        PaintSemantic::SupportBlocker => Some(EnforcedBlockedSeamPoint::Blocked),
-        PaintSemantic::SupportEnforcer => Some(EnforcedBlockedSeamPoint::Enforced),
-        PaintSemantic::Custom(name) => paint_marker(name),
-        _ => None,
-    };
-    let value_type = match value {
-        PaintValue::Custom(name) => paint_marker(name),
-        _ => None,
-    };
-
-    match (semantic_type, value_type) {
-        (Some(EnforcedBlockedSeamPoint::Blocked), _)
-        | (_, Some(EnforcedBlockedSeamPoint::Blocked)) => Some(EnforcedBlockedSeamPoint::Blocked),
-        (Some(EnforcedBlockedSeamPoint::Enforced), _)
-        | (_, Some(EnforcedBlockedSeamPoint::Enforced)) => Some(EnforcedBlockedSeamPoint::Enforced),
+fn paint_annotation_type(semantic: &PaintSemantic) -> Option<EnforcedBlockedSeamPoint> {
+    match semantic {
+        PaintSemantic::Custom(name) if name == "seam_blocker" => {
+            Some(EnforcedBlockedSeamPoint::Blocked)
+        }
+        PaintSemantic::Custom(name) if name == "seam_enforcer" => {
+            Some(EnforcedBlockedSeamPoint::Enforced)
+        }
         _ => None,
     }
 }
@@ -70,6 +47,7 @@ fn annotation_at<'a>(
                 .get(contour_idx)
                 .and_then(|vertices| vertices.get(vertex_idx))
                 .and_then(Option::as_ref)
+                .filter(|value| matches!(value, PaintValue::Flag(true)))
                 .map(|value| (semantic, value))
         })
 }
@@ -79,8 +57,8 @@ fn has_enforced_annotation(
     contour_idx: usize,
     vertex_idx: usize,
 ) -> bool {
-    annotation_at(paint_annotations, contour_idx, vertex_idx).any(|(semantic, value)| {
-        paint_annotation_type(semantic, value) == Some(EnforcedBlockedSeamPoint::Enforced)
+    annotation_at(paint_annotations, contour_idx, vertex_idx).any(|(semantic, _)| {
+        paint_annotation_type(semantic) == Some(EnforcedBlockedSeamPoint::Enforced)
     })
 }
 
@@ -127,8 +105,8 @@ fn candidate_paint_classification(
     };
 
     let mut point_type = EnforcedBlockedSeamPoint::Neutral;
-    for (semantic, value) in annotation_at(paint_annotations, contour_idx, vertex_idx) {
-        match paint_annotation_type(semantic, value) {
+    for (semantic, _) in annotation_at(paint_annotations, contour_idx, vertex_idx) {
+        match paint_annotation_type(semantic) {
             Some(EnforcedBlockedSeamPoint::Blocked) => {
                 return (EnforcedBlockedSeamPoint::Blocked, false);
             }

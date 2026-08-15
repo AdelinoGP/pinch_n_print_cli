@@ -65,8 +65,8 @@ use slicer_core::flow::{
     bridging_flow, flow_to_width, line_width_to_spacing, resolve_role_width, RoleWidthContext,
 };
 use slicer_core::perimeter_utils::{
-    build_wall_flags, generate_sharp_corner_seam_candidates, point_in_any_polygon,
-    wall_sequence_reorder,
+    apply_seam_paint_bias, build_wall_flags, generate_sharp_corner_seam_candidates,
+    point_in_any_polygon, seam_paint_boxes, wall_sequence_reorder,
 };
 use slicer_core::polygon_ops::{difference_ex, offset2_ex, OffsetJoinType};
 use slicer_ir::{
@@ -728,12 +728,25 @@ impl LayerModule for ArachnePerimeters {
             let seam_candidate_angle_threshold_deg = config
                 .get_float("seam_candidate_angle_threshold_deg")
                 .unwrap_or(30.0) as f32;
-            for polygon in polygons {
-                let candidates = generate_sharp_corner_seam_candidates(
+            for (poly_idx, polygon) in polygons.iter().enumerate() {
+                let mut candidates = generate_sharp_corner_seam_candidates(
                     &polygon.contour,
                     z,
                     seam_candidate_angle_threshold_deg,
                 );
+                let enforcer_polys = seam_paint_boxes(
+                    poly_idx,
+                    polygon,
+                    region.segment_annotations(),
+                    "seam_enforcer",
+                );
+                let blocker_polys = seam_paint_boxes(
+                    poly_idx,
+                    polygon,
+                    region.segment_annotations(),
+                    "seam_blocker",
+                );
+                apply_seam_paint_bias(&mut candidates, &enforcer_polys, &blocker_polys);
                 for candidate in candidates {
                     output.push_seam_candidate(candidate.position, candidate.score)?;
                 }
