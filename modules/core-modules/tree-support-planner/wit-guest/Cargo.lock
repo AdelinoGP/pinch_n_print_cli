@@ -550,23 +550,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "support-planner"
-version = "0.1.0"
-dependencies = [
- "slicer-ir",
- "slicer-schema",
- "slicer-sdk",
- "wit-bindgen",
-]
-
-[[package]]
-name = "support-planner-guest"
-version = "0.1.0"
-dependencies = [
- "support-planner",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -657,6 +640,23 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "tree-support-planner"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen",
+]
+
+[[package]]
+name = "tree-support-planner-guest"
+version = "0.1.0"
+dependencies = [
+ "tree-support-planner",
+]
 
 [[package]]
 name = "unicode-ident"

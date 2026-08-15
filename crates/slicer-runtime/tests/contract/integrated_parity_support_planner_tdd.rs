@@ -10,7 +10,7 @@ use slicer_core::PrepassStageOutput;
 use slicer_ir::{ConfigView, SemVer, StageId};
 use slicer_runtime::run::PrepassContext;
 use slicer_runtime::{PrepassStageInput, PrepassStageRunner};
-use support_planner::SupportPlanner;
+use tree_support_planner::SupportPlanner;
 
 use crate::common::support_wedge;
 use crate::common::{
@@ -19,7 +19,7 @@ use crate::common::{
 };
 
 fn module_id() -> slicer_ir::ModuleId {
-    "com.core.support-planner".to_string()
+    "com.core.tree-support-planner".to_string()
 }
 
 fn input(ctx: &PrepassContext) -> PrepassStageInput<'static> {
@@ -51,7 +51,7 @@ fn integrated_parity_support_planner_native_matches_wasm() {
         IntegratedParitySpec {
             module_id: module_id(),
             wasm_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../modules/core-modules/support-planner/support-planner.wasm"),
+                .join("../../modules/core-modules/tree-support-planner/tree-support-planner.wasm"),
             stage: stage.to_string(),
             version: SemVer {
                 major: 0,

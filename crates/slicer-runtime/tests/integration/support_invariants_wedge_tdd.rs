@@ -47,8 +47,15 @@ fn support_plan_has_finite_branch_paths() {
 fn branch_endpoints_are_outside_support_collision_outlines() {
     let ctx = prepare_ctx();
     let entries = plan_entries(&ctx);
-    for entry in entries {
-        assert!(entry.roles.iter().all(|role| !role.regions.is_empty()));
+    let structural = entries
+        .iter()
+        .filter(|entry| entry.decline_reason.is_none());
+    assert!(structural.clone().next().is_some());
+    for entry in structural {
+        assert!(entry
+            .skeleton
+            .as_ref()
+            .is_some_and(|skeleton| skeleton.points.len() > 1));
     }
 }
 
@@ -173,9 +180,17 @@ fn support_columns_are_contiguous_and_step_down_through_every_layer() {
 
 #[test]
 fn support_branch_widths_widen_monotonically_toward_the_plate() {
-    assert!(owned_plan_entries()
+    let entries = owned_plan_entries();
+    let mut structural = entries
         .iter()
-        .all(|entry| entry.roles.iter().all(|role| !role.regions.is_empty())));
+        .filter(|entry| entry.decline_reason.is_none());
+    assert!(structural.clone().next().is_some());
+    assert!(structural.all(|entry| {
+        entry
+            .skeleton
+            .as_ref()
+            .is_some_and(|skeleton| skeleton.points.len() > 1)
+    }));
 }
 
 #[test]

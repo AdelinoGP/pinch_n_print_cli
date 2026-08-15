@@ -10,7 +10,7 @@ slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-sdk = { path = "../slicer-sdk" }
 classic-perimeters = { path = "../../modules/core-modules/classic-perimeters", optional = true }
 arachne-perimeters = { path = "../../modules/core-modules/arachne-perimeters", optional = true }
-support-planner = { path = "../../modules/core-modules/support-planner", optional = true }
+tree-support-planner = { path = "../../modules/core-modules/tree-support-planner", optional = true }
 fuzzy-skin = { path = "../../modules/core-modules/fuzzy-skin", optional = true }
 gyroid-infill = { path = "../../modules/core-modules/gyroid-infill", optional = true }
 infill-linker = { path = "../../modules/core-modules/infill-linker", optional = true }
@@ -30,11 +30,11 @@ wipe-tower = { path = "../../modules/core-modules/wipe-tower", optional = true }
 path-optimization-default = { path = "../../modules/core-modules/path-optimization-default", optional = true }
 machine-gcode-emit = { path = "../../modules/core-modules/machine-gcode-emit", optional = true }
 
-[features] # arachne-perimeters and support-planner are optional pilot integrations
+[features] # arachne-perimeters and tree-support-planner are optional pilot integrations
 default = []
 classic-perimeters = ["dep:classic-perimeters"]
 arachne-perimeters = ["dep:arachne-perimeters"]
-support-planner = ["dep:support-planner"]
+tree-support-planner = ["dep:tree-support-planner"]
 fuzzy-skin = ["dep:fuzzy-skin"]
 gyroid-infill = ["dep:gyroid-infill"]
 infill-linker = ["dep:infill-linker"]

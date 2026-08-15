@@ -691,6 +691,72 @@ pub(crate) fn harvest_layer_plan_ir_from(
     })
 }
 
+/// Restore host-only per-region configuration after a WASM layer-plan harvest.
+pub(crate) fn restore_layer_plan_configs(
+    plan: &mut slicer_ir::LayerPlanIR,
+    input_layer_plan: Option<&slicer_ir::LayerPlanIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    module_config: Option<&slicer_ir::ConfigView>,
+) {
+    for layer in &mut plan.global_layers {
+        for region in &mut layer.active_regions {
+            let resolved_config = region_map
+                .and_then(|map| {
+                    map.entries.iter().find_map(|(key, _)| {
+                        (key.object_id == region.object_id && key.region_id == region.region_id)
+                            .then(|| map.config_for(key).clone())
+                    })
+                })
+                .or_else(|| {
+                    input_layer_plan.and_then(|input| {
+                        input.global_layers.iter().find_map(|input_layer| {
+                            input_layer.active_regions.iter().find_map(|candidate| {
+                                (candidate.object_id == region.object_id
+                                    && candidate.region_id == region.region_id)
+                                    .then(|| candidate.resolved_config.clone())
+                            })
+                        })
+                    })
+                })
+                .or_else(|| {
+                    input_layer_plan.and_then(|input| {
+                        input.global_layers.iter().find_map(|input_layer| {
+                            input_layer
+                                .active_regions
+                                .iter()
+                                .find(|candidate| candidate.region_id == region.region_id)
+                                .map(|candidate| candidate.resolved_config.clone())
+                        })
+                    })
+                })
+                .or_else(|| {
+                    region_map.and_then(|map| {
+                        map.entries.iter().find_map(|(key, _)| {
+                            (key.region_id == region.region_id).then(|| map.config_for(key).clone())
+                        })
+                    })
+                })
+                .or_else(|| {
+                    let mut config = slicer_ir::ResolvedConfig::default();
+                    if let Some(value) = module_config.and_then(|view| view.get("support_type")) {
+                        config
+                            .extensions
+                            .insert("support_type".to_string(), value.clone());
+                    }
+                    if let Some(value) = module_config.and_then(|view| view.get("support_family")) {
+                        config
+                            .extensions
+                            .insert("support_family".to_string(), value.clone());
+                    }
+                    (!config.extensions.is_empty()).then_some(config)
+                });
+            if let Some(resolved_config) = resolved_config {
+                region.resolved_config = resolved_config;
+            }
+        }
+    }
+}
+
 #[allow(unreachable_patterns)]
 fn convert_variant_chain(
     wit: &[(String, host::prepass::PaintValue)],

@@ -92,7 +92,7 @@ fn live_region_dispatch_retains_paired_family_candidates() {
         .build()
     };
     let planner = make(
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
         &[
             "support-planner",
             "support-family:traditional",
@@ -199,7 +199,7 @@ fn live_region_dispatch_retains_paired_family_candidates() {
             .map(|region| region.region_id)
             .collect::<Vec<_>>()
     };
-    assert_eq!(regions_for("com.core.support-planner"), vec![1, 2]);
+    assert_eq!(regions_for("com.core.tree-support-planner"), vec![1, 2]);
     assert_eq!(regions_for("com.core.traditional-support"), vec![1]);
     assert_eq!(regions_for("com.core.tree-support"), vec![2]);
     assert_eq!(

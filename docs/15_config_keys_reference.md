@@ -421,10 +421,17 @@ layer's print time falls below `slow_down_layer_time`.
 
 ## Support (packet 31b + packet 28/30)
 
-Keys split across the `support-planner` and `tree-support` core modules.
+Keys split across the `tree-support-planner` and `tree-support` core modules.
 Defaults and ranges are in the generated **Module-owned config keys** table
-above (modules `support-planner`, `tree-support`). Note `support_layer_height_mm
+above (modules `tree-support-planner`, `tree-support`). Note `support_layer_height_mm
 = 0.0` means "use the model layer height".
+
+**Tree support family configuration (packet 221).** `support_family` is the
+canonical per-region family selector: values starting with `tree*` or `hybrid*`
+select the tree family, `normal*`/`classic*` the traditional family (absent
+defaults to traditional). It drives which `tree-support-planner`/`tree-support`
+pair serves each region (see `docs/04_host_scheduler.md` § "Planner-Renderer
+Pairing").
 
 ---
 

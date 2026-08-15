@@ -3222,11 +3222,11 @@ dependencies = [
  "skirt-brim",
  "slicer-scheduler",
  "slicer-sdk",
- "support-planner",
  "support-surface-ironing",
  "top-surface-ironing",
  "traditional-support",
  "tree-support",
+ "tree-support-planner",
  "wipe-tower",
 ]
 
@@ -3316,13 +3316,13 @@ dependencies = [
  "slicer-sdk",
  "slicer-wasm-host",
  "stl_io",
- "support-planner",
  "support-surface-ironing",
  "tempfile",
  "toml 0.8.23",
  "top-surface-ironing",
  "traditional-support",
  "tree-support",
+ "tree-support-planner",
  "wasmtime",
  "wat",
  "wipe-tower",
@@ -3435,16 +3435,6 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
-
-[[package]]
-name = "support-planner"
-version = "0.1.0"
-dependencies = [
- "slicer-ir",
- "slicer-schema",
- "slicer-sdk",
- "wit-bindgen 0.57.1",
-]
 
 [[package]]
 name = "support-surface-ironing"
@@ -3705,6 +3695,18 @@ dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
+ "slicer-wasm-host",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
+name = "tree-support-planner"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "slicer-wasm-host",
  "wit-bindgen 0.57.1",
 ]
 

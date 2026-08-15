@@ -467,7 +467,7 @@ mod tests {
             ("classic-perimeters", "layer-perimeters"),
             ("wipe-tower", "finalization-layer-finalization"),
             ("gyroid-infill", "layer-infill"),
-            ("support-planner", "prepass-support-geometry"),
+            ("tree-support-planner", "prepass-support-geometry"),
         ] {
             let dir = root.join("modules/core-modules").join(module);
             if !dir.join(format!("{module}.toml")).exists() {

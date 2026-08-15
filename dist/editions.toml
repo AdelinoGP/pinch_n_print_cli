@@ -40,7 +40,7 @@ integrated_modules = []
 
 [edition.hybrid]
 integrate_all = false
-integrated_modules = ["classic-perimeters", "arachne-perimeters", "support-planner"]
+integrated_modules = ["classic-perimeters", "arachne-perimeters", "tree-support-planner"]
 
 [edition.integrated]
 integrate_all = true

@@ -33,7 +33,7 @@ use slicer_sdk::prepass_types::{
 };
 use slicer_sdk::traits::PrepassModule;
 
-use support_planner::SupportPlanner;
+use tree_support_planner::SupportPlanner;
 
 // ── AC-2: contact XY outside the per-layer footprint → to_buildplate=true ────
 

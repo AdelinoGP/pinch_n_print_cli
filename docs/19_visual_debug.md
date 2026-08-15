@@ -168,6 +168,14 @@ legend. This makes a missing wall or shifted infill region comparable between
 stages. `filament_lines` shows centerlines; `filled_areas` shows polygons or
 extrusion-width sweeps; `diagnostic_overlay` adds stage-specific labels.
 
+### Support-family visual inspection (packet 221)
+
+For the tree family, `tree-support-planner` is the visual-debug tap capturing
+the structural `SupportPlanIR` (support body / interface roles with family
+attribution) before `tree-support` renders it. Inspect the family's plan tap
+alongside the final `Layer::Support` output to compare planned vs. emitted
+geometry for a given region.
+
 ### Tap Classes And Execution Closure
 
 `visual-debug` supports the full "Stage Tap Inventory" of

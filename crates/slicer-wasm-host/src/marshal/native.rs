@@ -446,6 +446,19 @@ pub fn commit_native_prepass_response(
     response: &NativePrepassResponse,
     stage_export: &str,
 ) -> Result<slicer_core::PrepassStageOutput, String> {
+    commit_native_prepass_response_with_inputs(response, stage_export, None, None, None)
+}
+
+/// Commit a native prepass response while retaining the per-region config from
+/// the already committed plan or region map. Native layer proposals do not
+/// carry this host-only field themselves.
+pub fn commit_native_prepass_response_with_inputs(
+    response: &NativePrepassResponse,
+    stage_export: &str,
+    input_layer_plan: Option<&slicer_ir::LayerPlanIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    module_config: Option<&slicer_ir::ConfigView>,
+) -> Result<slicer_core::PrepassStageOutput, String> {
     use std::sync::Arc;
     match stage_export {
         "PrePass::LayerPlanning" => {
@@ -465,12 +478,45 @@ pub fn commit_native_prepass_response(
                     .active_regions
                     .iter()
                     .map(|region| {
+                        let region_id = region
+                            .region_id
+                            .parse()
+                            .map_err(|e| format!("invalid region id: {e}"))?;
+                        let resolved_config = input_layer_plan
+                            .and_then(|plan| plan.global_layers.get(index))
+                            .and_then(|layer| {
+                                layer.active_regions.iter().find(|candidate| {
+                                    candidate.object_id == region.object_id
+                                        && candidate.region_id == region_id
+                                })
+                            })
+                            .map(|candidate| candidate.resolved_config.clone())
+                            .or_else(|| {
+                                region_map.and_then(|map| {
+                                    map.entries.iter().find_map(|(key, _)| {
+                                        (key.global_layer_index == index as u32
+                                            && key.object_id == region.object_id
+                                            && key.region_id == region_id)
+                                            .then(|| map.config_for(key).clone())
+                                    })
+                                })
+                            })
+                            .unwrap_or_else(|| {
+                                let mut config = slicer_ir::ResolvedConfig::default();
+                                if let Some(slicer_ir::ConfigValue::String(value)) =
+                                    module_config.and_then(|view| view.get("support_type"))
+                                {
+                                    config.extensions.insert(
+                                        "support_type".to_string(),
+                                        slicer_ir::ConfigValue::String(value.clone()),
+                                    );
+                                }
+                                config
+                            });
                         Ok(slicer_ir::ActiveRegion {
                             object_id: region.object_id.clone(),
-                            region_id: region
-                                .region_id
-                                .parse()
-                                .map_err(|e| format!("invalid region id: {e}"))?,
+                            region_id,
+                            resolved_config,
                             effective_layer_height: region.effective_layer_height,
                             is_catchup_layer: region.is_catchup,
                             catchup_z_bottom: region.catchup_z_bottom,

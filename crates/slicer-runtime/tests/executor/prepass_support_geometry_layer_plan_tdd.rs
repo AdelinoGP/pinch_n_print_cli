@@ -48,7 +48,7 @@ fn support_planner_wasm() -> std::path::PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("modules/core-modules/support-planner/support-planner.wasm")
+        .join("modules/core-modules/tree-support-planner/tree-support-planner.wasm")
 }
 
 /// Overhang plate mesh with configurable object ID.
@@ -284,7 +284,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
             .compile_component(&bytes)
             .expect("support-planner.wasm must compile"),
     );
-    let loaded = loaded_support_planner_module("com.core.support-planner", wasm_path);
+    let loaded = loaded_support_planner_module("com.core.tree-support-planner", wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),

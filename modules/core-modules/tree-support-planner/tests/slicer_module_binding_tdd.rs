@@ -3,7 +3,7 @@
 
 #![allow(missing_docs)]
 
-use support_planner::SupportPlanner;
+use tree_support_planner::SupportPlanner;
 
 #[test]
 fn binding_surface_matches_manifest() {

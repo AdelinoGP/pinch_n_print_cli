@@ -41,7 +41,7 @@ fn support_planner_wasm() -> PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("modules/core-modules/support-planner/support-planner.wasm")
+        .join("modules/core-modules/tree-support-planner/tree-support-planner.wasm")
 }
 
 fn identity4() -> [f64; 16] {
@@ -172,7 +172,7 @@ fn compile_support_planner_with_config(
     let wasm_path = support_planner_wasm();
     let component = wasm_cache::compiled_component_at(&wasm_path);
     let loaded = LoadedModuleBuilder::new(
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
         semver(0, 1, 0),
         "PrePass::SupportGeometry",
         slicer_schema::TIER_PREPASS,

@@ -1,5 +1,5 @@
 [module]
-id           = "com.core.support-planner"
+id           = "com.core.tree-support-planner"
 version      = "0.1.0"
 display-name = "Support Planner"
 description  = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
@@ -14,7 +14,7 @@ reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "Su
 writes = ["SupportPlanIR"]
 
 [claims]
-holds    = ["support-planner", "support-family:tree", "support-family:traditional"]
+    holds    = ["support-planner", "support-family:tree"]
 requires = []
 
 [compatibility]

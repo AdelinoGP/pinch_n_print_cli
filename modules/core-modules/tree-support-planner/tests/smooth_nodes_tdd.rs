@@ -146,7 +146,7 @@ fn smoothing_reduces_curvature() {
     let before = max_turn_angle(&before_pts);
 
     let mut entries = build_column(&COLUMN);
-    support_planner::smooth_branches(&mut entries, 100);
+    tree_support_planner::smooth_branches(&mut entries, 100);
 
     let after = max_turn_angle(&read_column(&entries));
     assert!(
@@ -163,7 +163,7 @@ fn endpoints_held_fixed() {
     let before = read_column(&build_column(&COLUMN));
 
     let mut entries = build_column(&COLUMN);
-    support_planner::smooth_branches(&mut entries, 100);
+    tree_support_planner::smooth_branches(&mut entries, 100);
     let after = read_column(&entries);
 
     assert_eq!(before[0], after[0], "tip endpoint must be held fixed");
@@ -183,7 +183,7 @@ fn columns_below_three_points_unchanged() {
     let before = read_column(&build_column(&coords));
 
     let mut entries = build_column(&coords);
-    support_planner::smooth_branches(&mut entries, 100);
+    tree_support_planner::smooth_branches(&mut entries, 100);
     let after = read_column(&entries);
 
     assert_eq!(before, after, "chains with < 3 points must be unchanged");
@@ -195,6 +195,6 @@ fn columns_below_three_points_unchanged() {
 #[test]
 fn empty_entries_no_panic() {
     let mut entries: Vec<SupportPlanEntry> = vec![];
-    support_planner::smooth_branches(&mut entries, 100);
+    tree_support_planner::smooth_branches(&mut entries, 100);
     assert!(entries.is_empty());
 }

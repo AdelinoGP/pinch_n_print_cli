@@ -6,4 +6,4 @@
 //! in the final `.wasm`. No logic lives here.
 
 #[allow(unused_imports)]
-pub use support_planner::SupportPlanner;
+pub use tree_support_planner::SupportPlanner;
