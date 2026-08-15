@@ -1073,6 +1073,93 @@ mod tests {
             .to_path_buf()
     }
 
+    /// The canonical WIT must parse into a non-trivial type set — otherwise
+    /// `verify_embedded_world` would silently verify nothing and the gate would
+    /// be vacuous.
+    #[test]
+    fn canonical_wit_yields_types_including_extrusion_role() {
+        let canonical = canonical_type_blocks(&ws_root(), None);
+        assert!(
+            canonical.len() > 10,
+            "expected canonical WIT to define many types, got {}",
+            canonical.len()
+        );
+        let role = canonical
+            .get("extrusion-role")
+            .expect("canonical WIT must define extrusion-role");
+        assert!(
+            role.contains("raft-infill"),
+            "canonical extrusion-role should carry raft-infill, got: {role}"
+        );
+    }
+
+    /// A stage package's own declaration must shadow a same-named shared one,
+    /// or finalization guests report phantom drift on `region-key`.
+    #[test]
+    fn stage_package_declarations_shadow_shared_ones() {
+        let root = ws_root();
+        // layer-perimeters does not redeclare `region-key`, so the shared
+        // `ir-handles` spelling survives there; finalization does redeclare it.
+        let perimeters = canonical_type_blocks(&root, Some("layer-perimeters"));
+        let finalization = canonical_type_blocks(&root, Some("finalization-layer-finalization"));
+
+        let shared_key = perimeters.get("region-key").expect("ir-handles region-key");
+        let final_key = finalization
+            .get("region-key")
+            .expect("finalization region-key");
+
+        assert!(
+            shared_key.contains("variant-chain"),
+            "ir-handles region-key carries variant-chain: {shared_key}"
+        );
+        assert!(
+            !final_key.contains("variant-chain"),
+            "finalization region-key must shadow it: {final_key}"
+        );
+    }
+
+    /// Packet 164 regression guard. Retiring the `wit-world` manifest key left
+    /// the lookup returning `None` for every core module, which silently
+    /// dropped `region-key` from drift verification for the whole tree. A real
+    /// core module must resolve to its per-stage package directory.
+    #[test]
+    fn core_modules_resolve_their_stage_wit_dir() {
+        let root = ws_root();
+        for (module, expected) in [
+            ("classic-perimeters", "layer-perimeters"),
+            ("wipe-tower", "finalization-layer-finalization"),
+            ("gyroid-infill", "layer-infill"),
+            ("tree-support-planner", "prepass-support-geometry"),
+        ] {
+            let dir = root.join("modules/core-modules").join(module);
+            if !dir.join(format!("{module}.toml")).exists() {
+                continue;
+            }
+            assert_eq!(
+                module_stage_wit_dir(&dir, module),
+                Some(expected),
+                "{module} must resolve its per-stage WIT dir from `[stage] id`; \
+                 None here means the drift check is silently dormant",
+            );
+        }
+    }
+
+    /// With no world to disambiguate (test-guests), a name spelled differently
+    /// in two packages must be dropped rather than compared against an
+    /// arbitrary spelling — while unambiguous names stay covered.
+    #[test]
+    fn unknown_stage_drops_ambiguous_names_but_keeps_the_rest() {
+        let shared = canonical_type_blocks(&ws_root(), None);
+        assert!(
+            !shared.contains_key("region-key"),
+            "region-key is package-ambiguous and must be skipped without a stage package"
+        );
+        assert!(
+            shared.contains_key("extrusion-role"),
+            "unambiguous types must still be verified"
+        );
+    }
+
     /// End-to-end proof that the gate detects real drift, exercising the actual
     /// component-decode path rather than synthetic strings.
     ///

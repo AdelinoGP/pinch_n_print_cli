@@ -727,8 +727,14 @@ paired by holding the **same** `support-family:<id>` claim:
 select the traditional family; values starting with `tree*` or `hybrid*`
 select the tree family. A missing or mismatched planner/renderer pair — a
 planner or renderer whose `support-family:<id>` has no matching counterpart
-holding the same `<id>` — fails at startup (see
-`docs/04_host_scheduler.md` § "Planner-Renderer Pairing").
+holding the same `<id>` — is **not** fatal: it yields a structured warning
+diagnostic at load (see `docs/04_host_scheduler.md` § "Planner-Renderer
+Pairing"), and the affected family's regions simply produce no support plan
+(degraded, not aborted) until the pair is completed. Complete pairs such as
+`support-family:tree` dispatch normally.
+
+The tree family pairs `tree-support-planner` (planner role, `support-family:tree`)
+with `tree-support` (generator role, `support-family:tree`).
 
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 

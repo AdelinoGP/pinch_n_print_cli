@@ -318,7 +318,7 @@ pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegio
     !has_support_family_claim
 }
 
-/// Structured startup failure for an incomplete support planner/renderer pair.
+/// Structured diagnostic for an incomplete support planner/renderer pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupportFamilyPairingError {
     /// Family IDs that have a planner but no renderer.
@@ -339,10 +339,13 @@ impl std::fmt::Display for SupportFamilyPairingError {
 
 impl std::error::Error for SupportFamilyPairingError {}
 
-/// Validate that every declared support planner family has a renderer and vice versa.
+/// Validate support family pairs, returning warnings for incomplete families.
+///
+/// Incomplete families are intentionally non-fatal: their regions simply have
+/// no complete planner/renderer route and therefore produce no support plan.
 pub fn validate_support_family_pairing(
     modules: &[LoadedModule],
-) -> Result<(), SupportFamilyPairingError> {
+) -> Result<Vec<SupportFamilyPairingError>, SupportFamilyPairingError> {
     use std::collections::BTreeSet;
     let mut planners = BTreeSet::new();
     let mut renderers = BTreeSet::new();
@@ -365,9 +368,9 @@ pub fn validate_support_family_pairing(
         missing_planners,
     };
     if error.missing_renderers.is_empty() && error.missing_planners.is_empty() {
-        Ok(())
+        Ok(Vec::new())
     } else {
-        Err(error)
+        Ok(vec![error])
     }
 }
 
@@ -1389,19 +1392,19 @@ mod dedup_tests {
     #[test]
     fn support_type_tree_selects_tree_support_holder() {
         // OrcaSlicer's `support_type` spelling `tree(auto)` — the raw value
-        // the GUI's 3MF sidecar carries — must flip the `support-generator`
-        // holder from `com.core.traditional-support` (the default /
-        // alphabetical winner) to `com.core.tree-support`.
+        // the GUI's 3MF sidecar carries — must resolve the `tree` support
+        // family. Support renderers are selected per region by family claim,
+        // so dedup retains BOTH family holders rather than collapsing to one.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1413,50 +1416,58 @@ mod dedup_tests {
             Some("tree(auto)"),
         );
 
-        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
-        assert_eq!(kept[0].id, "com.core.tree-support");
-        assert_eq!(diagnostics.len(), 1);
-        assert!(diagnostics[0].message.contains("com.core.tree-support"));
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(auto)")),
+            "tree",
+            "tree(auto) resolves the tree family"
+        );
     }
 
     #[test]
     fn support_type_absent_defaults_to_traditional_support_holder() {
-        // No `support_type` config: traditional-support keeps winning — both
-        // because it is the documented default and because it sorts first
-        // alphabetically, so every existing slice is unchanged.
+        // No `support_type` config: the traditional family is the documented
+        // default. Both family holders survive dedup; the absent config
+        // resolves the traditional family for a region.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
 
-        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, None),
+            "traditional",
+            "absent support_type resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_normal_falls_back_to_traditional_support_holder() {
-        // `normal(auto)` — and by extension `normal(manual)` — selects the
-        // traditional holder explicitly.
+        // `normal(auto)` — and by extension `normal(manual)` — resolves the
+        // traditional family explicitly. Both family holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1468,25 +1479,31 @@ mod dedup_tests {
             Some("normal(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("normal(auto)")),
+            "traditional",
+            "normal(auto) resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_tree_manual_selects_tree_support_holder() {
         // Orca's manual variant (enforcer-only mode) carries the same
         // tree/normal geometry prefix; pnp has no enforcer-only concept, so
-        // it selects the same holder as `tree(auto)`.
+        // it resolves the same tree family as `tree(auto)`. Both family
+        // holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1498,8 +1515,13 @@ mod dedup_tests {
             Some("tree(manual)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.tree-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(manual)")),
+            "tree",
+            "tree(manual) resolves the tree family"
+        );
     }
 
     #[test]
@@ -1507,17 +1529,18 @@ mod dedup_tests {
         // Legacy `hybrid(auto)` spellings (old OrcaSlicer files) are
         // migrated by Orca itself to `tree(auto)` at config load; a raw 3MF
         // sidecar may still carry the old spelling, so the resolver honours
-        // Orca's own migration.
+        // Orca's own migration and resolves the tree family. Both family
+        // holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1529,40 +1552,52 @@ mod dedup_tests {
             Some("hybrid(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.tree-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("hybrid(auto)")),
+            "tree",
+            "hybrid(auto) resolves the tree family"
+        );
     }
 
     #[test]
     fn support_type_unrecognized_value_falls_back_to_traditional_support_holder() {
         // An unrecognized `support_type` string (typo, unsupported value)
         // must not panic or drop both candidates — it falls back to the
-        // traditional holder, the same winner alphabetical order would pick.
+        // traditional family. Both family holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let kept =
             dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, Some("bogus"));
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("bogus")),
+            "traditional",
+            "unrecognized support_type resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_preferred_module_not_among_candidates_keeps_alphabetical_default() {
         // A community module reusing the claim name is not in the preferred
-        // set: the config cannot name it, so the alphabetical first-winner
-        // default applies (docs/04 §2).
+        // set. Support renderers are selected per region by family claim, so
+        // dedup retains BOTH candidates; the community module carries no
+        // family claim and is therefore region-agnostic, while the core
+        // traditional holder is selected for traditional regions.
         let mut modules = vec![
             loaded(
                 "com.community.fancy-support",
@@ -1572,7 +1607,7 @@ mod dedup_tests {
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1584,8 +1619,17 @@ mod dedup_tests {
             Some("tree(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.community.fancy-support");
+        assert_eq!(
+            kept.len(),
+            2,
+            "both support-generator candidates survive per claim"
+        );
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(auto)")),
+            "tree",
+            "tree(auto) resolves the tree family"
+        );
     }
 
     #[test]
@@ -1732,12 +1776,12 @@ mod dedup_tests {
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics = Vec::new();
@@ -1745,8 +1789,9 @@ mod dedup_tests {
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // All three infill modules survive — per-region resolution picks the
-        // active holder per (object, region). Perimeters and support collapse
-        // to one holder per stage as before.
+        // active holder per (object, region). Perimeters collapse to one
+        // holder per stage; support renderers are selected per region by
+        // family claim, so BOTH family holders survive.
         assert_eq!(
             ids,
             [
@@ -1755,12 +1800,13 @@ mod dedup_tests {
                 "com.core.lightning-infill",
                 "com.core.rectilinear-infill",
                 "com.core.traditional-support",
+                "com.core.tree-support",
             ]
         );
-        // Two drops: arachne-perimeters (loses to classic, the default
-        // wall_generator) and tree-support (loses to traditional). Fill-role
-        // drops are NOT emitted.
-        assert_eq!(diagnostics.len(), 2);
+        // One drop: arachne-perimeters (loses to classic, the default
+        // wall_generator). tree-support is retained alongside
+        // traditional-support. Fill-role drops are NOT emitted.
+        assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics.iter().all(|d| !d.message.contains("fill")));
     }
 }

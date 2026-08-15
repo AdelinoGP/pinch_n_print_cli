@@ -36,7 +36,7 @@ use slicer_sdk::traits::PrepassModule;
 // Import the planner's pub fns directly (dev-dependency on support-planner).
 // This lets us test tapered_radius() and point_in_polygon() without going
 // through WASM dispatch, verifying the Step-5 algorithmic implementation.
-use support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
+use tree_support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
 
 /// AC-2: radius tapering — topmost width = branch_diameter,
 /// bottom > top + tan(diameter_angle) * height_diff.
@@ -375,7 +375,7 @@ fn benchy_orca_parity_within_tolerance() {
     if !branch_count_path.exists() || !endpoints_path.exists() {
         panic!(
             "AC-6: golden files missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
-             cargo test -p support-planner -- benchy_orca_parity_within_tolerance"
+             cargo test -p tree-support-planner -- benchy_orca_parity_within_tolerance"
         );
     }
     let count_raw = std::fs::read_to_string(&branch_count_path)

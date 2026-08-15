@@ -35,3 +35,44 @@ pub use out::{
     infill_ir_to_prior_regions, merge_slice_postprocess_into, AuthoredColoringContext,
     AUTHORED_COLORING_CLAIM,
 };
+
+/// Convert a native SDK support builder through the same host-side join used
+/// for renderer output, preserving origin-based plan identity.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn convert_native_support_output_with_plan(
+    builder: &slicer_sdk::builders::SupportOutputBuilder,
+    layer_index: u32,
+    plan: &slicer_ir::SupportPlanIR,
+) -> Result<slicer_ir::SupportIR, String> {
+    let origin = |value: &Option<slicer_sdk::builders::RegionOrigin>| {
+        value.as_ref().map(|value| OriginId {
+            object_id: value.object_id.clone(),
+            region_id: value.region_id,
+        })
+    };
+    let collected = SupportOutputCollected {
+        support_paths: builder
+            .support_paths()
+            .iter()
+            .map(ir_to_wit_extrusion_path)
+            .collect(),
+        interface_paths: builder
+            .interface_paths()
+            .iter()
+            .map(|(path, top)| (ir_to_wit_extrusion_path(path), *top))
+            .collect(),
+        raft_paths: builder
+            .raft_paths()
+            .iter()
+            .map(ir_to_wit_extrusion_path)
+            .collect(),
+        support_path_origins: builder.support_path_origins().iter().map(origin).collect(),
+        interface_path_origins: builder
+            .interface_path_origins()
+            .iter()
+            .map(origin)
+            .collect(),
+        raft_path_origins: builder.raft_path_origins().iter().map(origin).collect(),
+    };
+    convert_support_output_with_plan(&collected, layer_index, Some(plan))
+}

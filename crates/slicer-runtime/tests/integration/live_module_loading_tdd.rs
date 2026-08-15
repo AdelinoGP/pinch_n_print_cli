@@ -271,13 +271,10 @@ fn integrated_without_native_entry_fails_loud() {
     assert!(message.contains("no native entry"));
 }
 
-/// AC-N1 (packet 220): the production live loader must invoke
-/// `validate_support_family_pairing` before execution, so an unpaired
-/// support planner/renderer family fails startup with the structured
-/// `LiveModuleLoadError::SupportFamilyPairing` variant rather than
-/// proceeding to dispatch.
+/// An unpaired support family is diagnosed but does not abort module loading;
+/// its regions safely degrade because no complete planner/renderer route exists.
 #[test]
-fn live_loader_rejects_unpaired_support_family() {
+fn live_loader_degrades_unpaired_support_family() {
     let dir = TempDir::new().unwrap();
     let manifest_toml: &'static str = r#"
 [module]
@@ -330,15 +327,8 @@ layer-parallel-safe = false
         std::slice::from_ref(&registration),
         &[],
     )
-    .expect_err("unpaired support family must fail live module loading");
-
-    match *error {
-        LiveModuleLoadError::SupportFamilyPairing(e) => {
-            assert_eq!(e.missing_renderers, vec!["missing".to_string()]);
-            assert!(e.missing_planners.is_empty());
-        }
-        other => panic!("expected SupportFamilyPairing, got {other:?}"),
-    }
+    .expect_err("fixture must fail later on its missing native entry");
+    assert!(matches!(*error, LiveModuleLoadError::NativeEntry { .. }));
 }
 
 #[test]

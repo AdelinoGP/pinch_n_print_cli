@@ -36,7 +36,7 @@ use slicer_sdk::prepass_types::{
 };
 use slicer_sdk::traits::PrepassModule;
 
-use support_planner::SupportPlanner;
+use tree_support_planner::SupportPlanner;
 
 // ── AC-5: cap exceeded emits one code-1001 diagnostic per affected layer ─────
 

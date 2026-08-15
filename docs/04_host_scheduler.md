@@ -555,10 +555,14 @@ Selection rules:
    `support-family:<id>` matches the region's resolved family. Modules with no
    `support-family:` claim receive every region unconditionally.
 
-2. **Startup pairing validation** — a planner or renderer whose
+2. **Pairing validation is warning-only** — a planner or renderer whose
    `support-family:<id>` has no matching counterpart holding the same `<id>`
-   fails at startup (`validate_support_family_pairing`); there is no
-   alphabetical fallback that promotes a lone `support-generator` candidate.
+   produces a structured warning diagnostic at load
+   (`validate_support_family_pairing`); it does not abort startup. The
+   incomplete family's regions simply have no complete planner/renderer route
+   and produce no support plan (degraded) until the pair is completed. There
+   is no alphabetical fallback that promotes a lone `support-generator`
+   candidate.
 
 Because selection is per region and family-atomic, `support-generator` is
 **not** a stable single-owner claim: the Allowed Claim Transition Matrix in
@@ -578,14 +582,22 @@ given region, the selected `support_family` determines both the
 "Support-family claims"). There is no global "first winner" `support-generator`
 dedup that drops losing families.
 
+**Tree family dispatch (packet 221).** When `support_family` resolves to the
+tree family for a region, the host dispatches the tree pair —
+`tree-support-planner` (PrePass) + `tree-support` (renderer) — via the shared
+`support-family:tree` claim, per region.
+
 - **Per-region candidate retention.** All family candidates are retained
   through load and dispatch. The host does not globally dedup away a
   `support-generator`; each region keeps its own candidate set so a family
   can be selected per region.
-- **Startup pairing validation.** A planner or renderer whose
+- **Pairing validation is warning-only.** A planner or renderer whose
   `support-family:<id>` has no matching counterpart holding the same `<id>`
-  fails at startup (missing or mismatched pair). This is a fatal startup
-  validation error, not a runtime fallback.
+  (missing or mismatched pair) yields a structured warning diagnostic at load,
+  not a fatal startup error and not a runtime fallback. The incomplete
+  family's regions produce no support plan (degraded) until the pair is
+  completed; complete pairs such as `tree-support-planner` + `tree-support`
+  dispatch normally.
 - **Host aggregation as the sole multi-writer merge point.** The host is the
   only place that merges output from multiple family writers. Aggregation
   assigns each body to a deterministic routing cell, so the merged result is

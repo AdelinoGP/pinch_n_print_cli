@@ -120,16 +120,18 @@ struct PlannedSupportNode {
     /// multi-neighbour aggregation (any contributor that is `false`
     /// demotes the merged node to `false`).
     to_buildplate: bool,
+    /// Stable analysis demands represented by this routed node.
+    demand_ids: Vec<String>,
 }
 
 /// Convert planned centerline nodes into semantic, unit-space support-body
 /// regions. Width belongs to rendering, while the plan carries only a
 /// conservative structural footprint.
-fn structural_body_regions(
+pub fn structural_body_regions(
     segments: &[Vec<Point3WithWidth>],
-    branch_radius_mm: f32,
+    _branch_radius_mm: f32,
 ) -> Vec<ExPolygon> {
-    let half = mm_to_units(branch_radius_mm.clamp(0.4, MIN_BRANCH_RADIUS)).max(1);
+    // Emit the complete local-radius footprint, not a centerline surrogate.
     segments
         .iter()
         // Zero-width points are model-contact tips, not support-body volume.
@@ -137,28 +139,21 @@ fn structural_body_regions(
         // occupancy validation.
         .flat_map(|segment| segment.iter().filter(|point| point.width > 0.0))
         .map(|point| {
+            let radius = (point.width * 0.5).max(MIN_BRANCH_RADIUS);
+            let radius_units = mm_to_units(radius).max(1);
             let x = mm_to_units(point.x);
             let y = mm_to_units(point.y);
             ExPolygon {
                 contour: Polygon {
-                    points: vec![
-                        Point2 {
-                            x: x - half,
-                            y: y - half,
-                        },
-                        Point2 {
-                            x: x + half,
-                            y: y - half,
-                        },
-                        Point2 {
-                            x: x + half,
-                            y: y + half,
-                        },
-                        Point2 {
-                            x: x - half,
-                            y: y + half,
-                        },
-                    ],
+                    points: (0..16)
+                        .map(|i| {
+                            let a = std::f32::consts::TAU * i as f32 / 16.0;
+                            Point2 {
+                                x: x + (radius_units as f32 * a.cos()).round() as i64,
+                                y: y + (radius_units as f32 * a.sin()).round() as i64,
+                            }
+                        })
+                        .collect(),
                 },
                 holes: Vec::new(),
             }
@@ -548,6 +543,27 @@ impl SupportPlanner {
         // populated. This preserves the prior behavior for an absent or
         // partial SupportAnalysisView while consuming host candidates when
         // available.
+        for candidate in support_analysis
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.object_id == obj.object_id && candidate.blocked)
+        {
+            let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
+                global_layer_index: candidate.global_layer_index as i32,
+                object_id: obj.object_id.clone(),
+                region_id: candidate.region_id.clone(),
+                family_id: "tree".to_string(),
+                demand_ids: vec![format!("demand-{}", candidate.id)],
+                body_ids: Vec::new(),
+                anchor_layer_index: candidate.global_layer_index,
+                anchor_z: candidate.z_units,
+                roles: Vec::new(),
+                skeleton: None,
+                capabilities: Vec::new(),
+                provenance: vec!["support-planner".to_string()],
+                decline_reason: Some(slicer_ir::SupportPlanDeclineReason::Blocked),
+            });
+        }
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
@@ -569,19 +585,22 @@ impl SupportPlanner {
                 .iter()
                 .position(|layer| layer.global_layer_index == candidate.global_layer_index)
                 .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
-            let Some((x, y)) = candidate_contact_point(&candidate.geometry) else {
-                continue;
-            };
-            push_contact(
-                &mut contacts_by_layer,
-                layer_plan,
-                collision_cache,
-                layer_idx,
-                x,
-                y,
-                self,
-                dropped_by_layer,
-            );
+            for (sample_idx, (x, y)) in candidate_contact_points(&candidate.geometry)
+                .into_iter()
+                .enumerate()
+            {
+                push_contact_with_demand(
+                    &mut contacts_by_layer,
+                    layer_plan,
+                    collision_cache,
+                    layer_idx,
+                    x,
+                    y,
+                    self,
+                    dropped_by_layer,
+                    format!("demand-{}-{}", candidate.id, sample_idx),
+                );
+            }
         }
 
         // Some host projections provide support geometry but not mesh facets.
@@ -681,6 +700,13 @@ impl SupportPlanner {
             for (a, b, d) in &mst_edges {
                 if *d < self.merge_distance_mm {
                     drop[*a.max(b)] = true;
+                    let (keep, removed) = if a < b { (*a, *b) } else { (*b, *a) };
+                    let ids = active_nodes[removed].demand_ids.clone();
+                    for id in ids {
+                        if !active_nodes[keep].demand_ids.contains(&id) {
+                            active_nodes[keep].demand_ids.push(id);
+                        }
+                    }
                 }
             }
 
@@ -729,9 +755,17 @@ impl SupportPlanner {
                     effective_height,
                 );
 
-                if point_in_any_expoly(collision_polys, na.x, na.y)
-                    || point_in_any_expoly(collision_polys, nb.x, nb.y)
+                if body_intersects(collision_polys, na.x, na.y, radius_a)
+                    || body_intersects(collision_polys, nb.x, nb.y, radius_b)
                 {
+                    let _ = output.push_diagnostic(Diagnostic {
+                        severity: DiagnosticSeverity::Warn,
+                        code: 1203,
+                        layer: Some(current_global_layer_index as i32),
+                        object_id: Some(obj.object_id.clone()),
+                        message: "tree body rejected: complete radius intersects model occupancy"
+                            .into(),
+                    });
                     continue;
                 }
 
@@ -801,15 +835,16 @@ impl SupportPlanner {
                     continue;
                 }
                 if node.dist_to_top > 0 {
-                    if point_in_any_expoly(collision_polys, node.x, node.y) {
-                        continue;
-                    }
-                    let width = tapered_radius(
+                    let radius = tapered_radius(
                         branch_radius,
                         tan_diameter_angle,
                         node.dist_to_top,
                         effective_height,
-                    ) * 2.0;
+                    );
+                    if body_intersects(collision_polys, node.x, node.y, radius) {
+                        continue;
+                    }
+                    let width = radius * 2.0;
                     let dist_mm = node.dist_to_top as f32 * effective_height;
                     let point = Point3WithWidth {
                         x: node.x,
@@ -910,8 +945,14 @@ impl SupportPlanner {
                         object_id: obj.object_id.clone(),
                         region_id: region_id.clone(),
                         family_id: support_family,
-                        demand_ids: vec![format!("support-layer-{current_global_layer_index}")],
-                        body_ids: vec![format!("support-body-{}", obj.object_id)],
+                        demand_ids: active_nodes
+                            .iter()
+                            .flat_map(|node| node.demand_ids.iter().cloned())
+                            .collect(),
+                        body_ids: vec![format!(
+                            "tree-body-{}-{}",
+                            obj.object_id, current_global_layer_index
+                        )],
                         anchor_layer_index: current_global_layer_index,
                         // SupportPlanIR stores physical Z in canonical slicer
                         // units (1 unit = 100 nm), not a WIT-specific scale.
@@ -968,6 +1009,7 @@ impl SupportPlanner {
                         y: node.y,
                         dist_to_top: node.dist_to_top.saturating_add(1),
                         to_buildplate: node.to_buildplate,
+                        demand_ids: node.demand_ids.clone(),
                     }
                 } else {
                     // Build the parallel slices for the aggregate helper.
@@ -1026,6 +1068,7 @@ impl SupportPlanner {
                         // dist_to_top increments as we move down
                         dist_to_top: node.dist_to_top.saturating_add(1),
                         to_buildplate: node.to_buildplate,
+                        demand_ids: node.demand_ids.clone(),
                     }
                 };
                 next_nodes.push(moved);
@@ -1066,6 +1109,52 @@ fn candidate_contact_point(polygons: &[ExPolygon]) -> Option<(f32, f32)> {
     (count > 0).then(|| (units_to_mm(x / count), units_to_mm(y / count)))
 }
 
+/// Deterministic nine-point sampling over each candidate bounding box. Samples
+/// are retained only when they lie in the candidate polygon, so corners,
+/// contour points, and interior points all contribute without centroid bias.
+fn candidate_contact_points(polygons: &[ExPolygon]) -> Vec<(f32, f32)> {
+    let mut result = Vec::new();
+    for polygon in polygons {
+        let points = &polygon.contour.points;
+        if points.len() < 3 {
+            continue;
+        }
+        let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+        let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+        let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+        let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+        for point in points {
+            result.push((units_to_mm(point.x), units_to_mm(point.y)));
+        }
+        for (a, b) in points
+            .iter()
+            .zip(points.iter().cycle().skip(1))
+            .take(points.len())
+        {
+            result.push((units_to_mm((a.x + b.x) / 2), units_to_mm((a.y + b.y) / 2)));
+        }
+        for iy in 0..=2 {
+            for ix in 0..=2 {
+                let x = min_x as f32 + (max_x - min_x) as f32 * ix as f32 / 2.0;
+                let y = min_y as f32 + (max_y - min_y) as f32 * iy as f32 / 2.0;
+                let xy = (units_to_mm(x as i64), units_to_mm(y as i64));
+                if point_in_any_expoly(std::slice::from_ref(polygon), xy.0, xy.1)
+                    && !result.iter().any(|p: &(f32, f32)| {
+                        (p.0 - xy.0).abs() < 1e-5 && (p.1 - xy.1).abs() < 1e-5
+                    })
+                {
+                    result.push(xy);
+                }
+            }
+        }
+    }
+    if result.is_empty() {
+        candidate_contact_point(polygons).into_iter().collect()
+    } else {
+        result
+    }
+}
+
 fn push_contact(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
@@ -1075,6 +1164,34 @@ fn push_contact(
     y: f32,
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
+) {
+    push_contact_with_demand(
+        contacts,
+        layer_plan,
+        collision_cache,
+        layer_idx,
+        x,
+        y,
+        planner,
+        dropped,
+        format!(
+            "mesh-demand-{}-{}",
+            layer_plan.layers[layer_idx].global_layer_index,
+            contacts[layer_idx].len()
+        ),
+    );
+}
+
+fn push_contact_with_demand(
+    contacts: &mut [Vec<PlannedSupportNode>],
+    layer_plan: &LayerPlanView,
+    collision_cache: &[LayerCollisionCache],
+    layer_idx: usize,
+    x: f32,
+    y: f32,
+    planner: &SupportPlanner,
+    dropped: &mut std::collections::BTreeMap<u32, usize>,
+    demand_id: String,
 ) {
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
     let collision = collision_cache
@@ -1093,6 +1210,7 @@ fn push_contact(
         y,
         dist_to_top: 0,
         to_buildplate,
+        demand_ids: vec![demand_id],
     });
 }
 
@@ -1369,6 +1487,44 @@ fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
                 )
             })
     })
+}
+
+/// Conservative full-footprint collision test. A center-only test is unsafe
+/// for tapered branches because the radius can cross a model boundary while
+/// the center remains outside it.
+/// Return whether the complete circular body at `(x, y)` overlaps occupancy.
+/// This is the same predicate used before branch-body emission.
+pub fn body_overlaps_occupancy(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bool {
+    if point_in_any_expoly(polygons, x, y) {
+        return true;
+    }
+    let qx = x * SCALING_FACTOR as f32;
+    let qy = y * SCALING_FACTOR as f32;
+    let radius = mm_to_units(radius_mm.max(MIN_BRANCH_RADIUS)) as f32;
+    polygons.iter().any(|ex| {
+        let poly: Vec<[f32; 2]> = ex
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
+        if poly.len() < 3 {
+            return false;
+        }
+        let (closest, distance) = closest_point_on_polygon(&poly, qx, qy);
+        distance <= radius
+            || poly.iter().any(|p| {
+                let dx = p[0] - qx;
+                let dy = p[1] - qy;
+                dx * dx + dy * dy <= radius * radius
+            })
+            || point_in_polygon(&poly, qx, qy)
+            || point_in_polygon(&poly, closest[0], closest[1])
+    })
+}
+
+fn body_intersects(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bool {
+    body_overlaps_occupancy(polygons, x, y, radius_mm)
 }
 
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.
@@ -2033,12 +2189,14 @@ mod tests {
                 y: 0.0,
                 dist_to_top: 0,
                 to_buildplate: true,
+                demand_ids: Vec::new(),
             },
             PlannedSupportNode {
                 x: 3.0,
                 y: 4.0,
                 dist_to_top: 0,
                 to_buildplate: true,
+                demand_ids: Vec::new(),
             },
         ];
         let edges = prim_mst(&nodes);

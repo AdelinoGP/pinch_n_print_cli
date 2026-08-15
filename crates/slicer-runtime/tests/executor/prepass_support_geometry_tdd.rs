@@ -62,7 +62,7 @@ fn support_planner_wasm() -> std::path::PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("modules/core-modules/support-planner/support-planner.wasm")
+        .join("modules/core-modules/tree-support-planner/tree-support-planner.wasm")
 }
 
 /// Construct a mesh containing an overhanging plate (downward-facing
@@ -231,7 +231,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
             .compile_component(&bytes)
             .expect("support-planner.wasm must compile"),
     );
-    let loaded = loaded_support_planner_module("com.core.support-planner", wasm_path);
+    let loaded = loaded_support_planner_module("com.core.tree-support-planner", wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
@@ -490,12 +490,12 @@ fn prepass_support_geometry_fails_without_layer_plan() {
 fn support_planner_claim_dedup() {
     let mut modules = vec![
         loaded_support_planner_module(
-            "com.core.support-planner-b",
-            PathBuf::from("fixtures/com.core.support-planner-b.wasm"),
+            "com.core.tree-support-planner-b",
+            PathBuf::from("fixtures/com.core.tree-support-planner-b.wasm"),
         ),
         loaded_support_planner_module(
-            "com.core.support-planner-a",
-            PathBuf::from("fixtures/com.core.support-planner-a.wasm"),
+            "com.core.tree-support-planner-a",
+            PathBuf::from("fixtures/com.core.tree-support-planner-a.wasm"),
         ),
     ];
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -508,7 +508,7 @@ fn support_planner_claim_dedup() {
     );
     assert_eq!(
         kept[0].id(),
-        "com.core.support-planner-a",
+        "com.core.tree-support-planner-a",
         "alphabetical first winner (support-planner-a) must be kept"
     );
     assert_eq!(diagnostics.len(), 1);

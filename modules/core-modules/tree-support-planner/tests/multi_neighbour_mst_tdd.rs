@@ -31,7 +31,7 @@ fn symmetric_3_neighbour_centroid() {
     ];
     let distances: [f32; 3] = [r, r, r];
 
-    let (cx, cy) = support_planner::aggregate_neighbour_targets(&positions, &distances)
+    let (cx, cy) = tree_support_planner::aggregate_neighbour_targets(&positions, &distances)
         .expect("non-empty input must produce a target");
 
     let expected_x = (positions[0].0 + positions[1].0 + positions[2].0) / 3.0;
@@ -58,7 +58,7 @@ fn asymmetric_neighbours_weighted_by_reciprocal_squared() {
     let positions: [(f32, f32); 3] = [(1.0, 0.0), (-5.0, 0.5), (-5.0, -0.5)];
     let distances: [f32; 3] = [1.0, 5.0, 5.0];
 
-    let (cx, _cy) = support_planner::aggregate_neighbour_targets(&positions, &distances)
+    let (cx, _cy) = tree_support_planner::aggregate_neighbour_targets(&positions, &distances)
         .expect("non-empty input must produce a target");
 
     // Centroid of the far cluster is at (-5, 0). The close neighbour is at
@@ -81,7 +81,7 @@ fn single_neighbour_degenerate_case_matches_old() {
     let positions: [(f32, f32); 1] = [(3.5, -7.25)];
     let distances: [f32; 1] = [2.0];
 
-    let (cx, cy) = support_planner::aggregate_neighbour_targets(&positions, &distances)
+    let (cx, cy) = tree_support_planner::aggregate_neighbour_targets(&positions, &distances)
         .expect("single-element input must produce a target");
 
     assert!(
@@ -103,7 +103,7 @@ fn zero_distance_neighbour_does_not_panic() {
     let positions: [(f32, f32); 2] = [(0.0, 0.0), (10.0, 10.0)];
     let distances: [f32; 2] = [0.0, 5.0];
 
-    let (cx, cy) = support_planner::aggregate_neighbour_targets(&positions, &distances)
+    let (cx, cy) = tree_support_planner::aggregate_neighbour_targets(&positions, &distances)
         .expect("non-empty input must produce a target");
 
     assert!(

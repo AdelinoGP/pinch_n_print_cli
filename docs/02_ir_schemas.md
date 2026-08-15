@@ -992,12 +992,18 @@ plan-aware module must:
 2. If at least one entry's `roles` is non-empty: emit those structural regions
    directly with `ExtrusionRole::SupportMaterial` and skip the per-layer filler
    for that region.
-3. Otherwise: fall back to the module's own per-layer filler (e.g. tree-support's
-   grid-MST sample-and-merge path).
+3. Otherwise: emit no output for that region. `tree-support` skips regions with
+   no plan entries — a missing entry means the demand was declined, and it is not
+   resurrected with the legacy grid-MST filler.
 
-This ordering preserves byte-for-byte fallback behavior when no `support-planner`
-module is installed, while enabling organic multi-layer branch geometry when
-one is loaded.
+**Tree family roles (packet 221).** For the tree family, `tree-support-planner`
+emits structural `SupportPlanIR` roles — support body / interface — carrying
+`family_id` attribution, which the `tree-support` renderer consumes for
+plan-aware `Layer::Support` output.
+
+This ordering means regions without plan entries produce no tree-support output;
+organic multi-layer branch geometry is emitted only where the planner supplies
+entries.
 
 **Determinism:** Identical PrePass inputs must produce byte-identical
 `SupportPlanIR` (`entries.len()`, every entry's `roles.len()`, every

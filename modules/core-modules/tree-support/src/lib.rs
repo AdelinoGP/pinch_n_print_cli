@@ -70,6 +70,8 @@ pub struct TreeSupport {
     support_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Number of perimeter passes used to represent a support body.
+    wall_count: usize,
 }
 
 impl TreeSupport {
@@ -117,6 +119,11 @@ impl LayerModule for TreeSupport {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
         };
+        let wall_count = match config.get("tree_support_wall_count") {
+            Some(ConfigValue::Int(value)) => (*value).max(1) as usize,
+            Some(ConfigValue::Float(value)) => (*value).max(1.0) as usize,
+            _ => 2,
+        };
 
         Ok(Self {
             enabled,
@@ -124,6 +131,7 @@ impl LayerModule for TreeSupport {
             base_angle,
             support_speed,
             line_width,
+            wall_count,
         })
     }
 
@@ -154,35 +162,58 @@ impl LayerModule for TreeSupport {
                 continue;
             }
 
-            for expoly in planned_entries
-                .iter()
-                .filter(|entry| {
-                    entry.global_layer_index == layer_index as i32
-                        && entry.family_id == "tree"
-                        && entry.decline_reason.is_none()
-                })
-                .flat_map(|entry| entry.roles.iter())
-                .filter(|role| matches!(role.role, slicer_ir::SupportPlanRole::SupportBody))
-                .flat_map(|role| role.regions.iter())
-            {
-                // Eligibility precedence (docs/01 Layer::Support, docs/02
-                // support precedence rules):
-                //   blocker → skip; enforcer → generate;
-                //   default → consult SurfaceClassificationIR.needs_support.
-                let _ = layer_index;
-                match paint.paint_policy_for(expoly) {
-                    SupportPaintPolicy::Blocked => continue,
-                    SupportPaintPolicy::Enforced => {}
-                    SupportPaintPolicy::DefaultEligible => {
-                        if !region.needs_support() {
-                            continue;
+            for entry in planned_entries.iter().filter(|entry| {
+                entry.global_layer_index == layer_index as i32 && entry.decline_reason.is_none()
+            }) {
+                if entry.family_id != "tree" {
+                    return Err(ModuleError::non_fatal(
+                        332,
+                        format!(
+                            "tree support family-attribution mismatch: {}",
+                            entry.family_id
+                        ),
+                    ));
+                }
+                output.begin_region(region.object_id(), *region.region_id());
+                for role_region in entry.roles.iter() {
+                    for expoly in &role_region.regions {
+                        // Eligibility precedence (docs/01 Layer::Support, docs/02
+                        // support precedence rules):
+                        //   blocker → skip; enforcer → generate;
+                        //   default → consult SurfaceClassificationIR.needs_support.
+                        let _ = layer_index;
+                        match paint.paint_policy_for(expoly) {
+                            SupportPaintPolicy::Blocked => continue,
+                            SupportPaintPolicy::Enforced => {}
+                            SupportPaintPolicy::DefaultEligible => {
+                                if !region.needs_support() {
+                                    continue;
+                                }
+                            }
+                        }
+
+                        let mut paths = self.render_polygon(expoly, z, speed_factor);
+                        // Keep the existing branching skeleton alongside the
+                        // printable polygon representation until downstream
+                        // consumers stop relying on branch-direction density.
+                        if matches!(role_region.role, slicer_ir::SupportPlanRole::SupportBody) {
+                            paths.extend(self.fill_expolygon_tree(expoly, z, speed_factor));
+                        }
+                        for path in paths {
+                            match role_region.role {
+                                slicer_ir::SupportPlanRole::SupportBody => {
+                                    let _ = output.push_support_path(path);
+                                }
+                                slicer_ir::SupportPlanRole::TopInterface => {
+                                    let _ = output.push_interface_path(path, true);
+                                }
+                                slicer_ir::SupportPlanRole::BottomInterface => {
+                                    let _ = output.push_interface_path(path, false);
+                                }
+                                slicer_ir::SupportPlanRole::RaftRelated => {}
+                            }
                         }
                     }
-                }
-
-                let paths = self.fill_expolygon_tree(expoly, z, speed_factor);
-                for path in paths {
-                    let _ = output.push_support_path(path);
                 }
             }
         }
@@ -196,6 +227,92 @@ impl LayerModule for TreeSupport {
 // the same query implementation through `PaintRegionLayerView::paint_policy_for`.
 
 impl TreeSupport {
+    /// Render a semantic support polygon as perimeter passes and scan-fill.
+    fn render_polygon(
+        &self,
+        expoly: &ExPolygon,
+        z: f32,
+        speed_factor: f32,
+    ) -> Vec<ExtrusionPath3D> {
+        let mut paths = Vec::new();
+        let points = &expoly.contour.points;
+        if points.len() < 3 {
+            return paths;
+        }
+        for _ in 0..self.wall_count {
+            let mut wall = points
+                .iter()
+                .map(|point| Point3WithWidth {
+                    x: slicer_ir::units_to_mm(point.x),
+                    y: slicer_ir::units_to_mm(point.y),
+                    z,
+                    width: self.line_width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                })
+                .collect::<Vec<_>>();
+            wall.push(wall[0]);
+            paths.push(ExtrusionPath3D {
+                points: wall,
+                role: ExtrusionRole::SupportMaterial,
+                speed_factor,
+            });
+        }
+
+        let (min_x, min_y, max_x, max_y) = polygon_bbox_mm(expoly);
+        let line_width = self.line_width as f64;
+        let mut y = min_y + line_width * 0.5;
+        while y < max_y {
+            let mut intersections = Vec::new();
+            for i in 0..points.len() {
+                let a = &points[i];
+                let b = &points[(i + 1) % points.len()];
+                let ay = slicer_ir::units_to_mm(a.y) as f64;
+                let by = slicer_ir::units_to_mm(b.y) as f64;
+                if (ay > y) != (by > y) {
+                    let ax = slicer_ir::units_to_mm(a.x) as f64;
+                    let bx = slicer_ir::units_to_mm(b.x) as f64;
+                    intersections.push(ax + (y - ay) * (bx - ax) / (by - ay));
+                }
+            }
+            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            for pair in intersections.chunks_exact(2) {
+                if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
+                    paths.push(ExtrusionPath3D {
+                        points: vec![
+                            Point3WithWidth {
+                                x: pair[0] as f32,
+                                y: y as f32,
+                                z,
+                                width: self.line_width,
+                                flow_factor: 1.0,
+                                overhang_quartile: None,
+                                dist_to_top_mm: 0.0,
+                                overhang_distance_mm: None,
+                            },
+                            Point3WithWidth {
+                                x: pair[1] as f32,
+                                y: y as f32,
+                                z,
+                                width: self.line_width,
+                                flow_factor: 1.0,
+                                overhang_quartile: None,
+                                dist_to_top_mm: 0.0,
+                                overhang_distance_mm: None,
+                            },
+                        ],
+                        role: ExtrusionRole::SupportMaterial,
+                        speed_factor,
+                    });
+                }
+            }
+            y += line_width;
+        }
+        paths
+    }
+
     /// Generate tree-style branching fill for a single ExPolygon.
     ///
     /// Algorithm:

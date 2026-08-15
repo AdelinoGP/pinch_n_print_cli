@@ -2459,12 +2459,18 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                     e.code, e.fatal, e.message
                 ),
             })?;
-            return crate::marshal::native::commit_native_prepass_response(&response, stage_export)
-                .map_err(|message| slicer_ir::PrepassRunnerError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message,
-                });
+            return crate::marshal::native::commit_native_prepass_response_with_inputs(
+                &response,
+                stage_export,
+                input.layer_plan.as_deref(),
+                input.region_map.as_deref(),
+                Some(module.config_view.as_ref()),
+            )
+            .map_err(|message| slicer_ir::PrepassRunnerError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message,
+            });
         }
         let module_id_str = module.module_id.as_str();
 
@@ -2504,13 +2510,19 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 
         // Deconstruct HostExecutionContext → PrepassStageOutput based on stage.
         if stage_id == "PrePass::LayerPlanning" {
-            let ir = harvest_layer_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
+            let mut ir = harvest_layer_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
                 slicer_ir::PrepassRunnerError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: msg,
                 }
             })?;
+            crate::marshal::in_::restore_layer_plan_configs(
+                &mut ir,
+                input.layer_plan.as_deref(),
+                input.region_map.as_deref(),
+                Some(module.config_view.as_ref()),
+            );
             return Ok(slicer_core::PrepassStageOutput::LayerPlan(
                 std::sync::Arc::new(ir),
             ));

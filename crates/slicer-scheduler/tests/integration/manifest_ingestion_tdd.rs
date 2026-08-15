@@ -756,7 +756,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.part-cooling",
         "com.core.seam-placer",
         "com.core.seam-planner-default",
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
         "com.core.fuzzy-skin",
         "com.core.machine-gcode-emit",
         "com.core.support-surface-ironing",

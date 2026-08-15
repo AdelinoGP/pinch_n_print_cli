@@ -609,6 +609,32 @@ fn execute_single_layer_inner(
             if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
                 continue;
             }
+            if module
+                .claims()
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"))
+                && !layer.active_regions.iter().any(|region| {
+                    let mut region_for_match = region.clone();
+                    if let Some(region_map) = blackboard.region_map() {
+                        let key = RegionKey {
+                            global_layer_index: layer.index,
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                            variant_chain: Vec::new(),
+                        };
+                        if let Some(region_plan) = region_map.entries.get(&key) {
+                            region_for_match.resolved_config =
+                                region_map.config_for_raw(region_plan.config).clone();
+                        }
+                    }
+                    slicer_scheduler::execution_plan::module_claims_match_active_region(
+                        module.claims(),
+                        &region_for_match,
+                    )
+                })
+            {
+                continue;
+            }
 
             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), module.module_id());
 
