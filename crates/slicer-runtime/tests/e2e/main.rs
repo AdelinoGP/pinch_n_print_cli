@@ -15,6 +15,7 @@ mod cube_painted_overrides_e2e_tdd;
 mod infill_overlap_changes_gcode_tdd;
 mod mm_real_fixture_gcode_tdd;
 mod modifier_infill_tdd;
+mod painted_fixture_parity_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;
 mod slice_end_to_end_tdd;

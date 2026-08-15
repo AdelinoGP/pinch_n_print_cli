@@ -1,0 +1,8 @@
+{
+  "line_width": 0.4,
+  "initial_layer_line_width": 0.4,
+  "bridge_line_width": 0.4,
+  "top_shell_layers": 3,
+  "bottom_shell_layers": 3,
+  "paint_config:material:top_shell_layers": 7
+}
