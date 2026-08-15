@@ -324,17 +324,7 @@ fn aligned_seam_target(
     wall_loops: &[slicer_sdk::prelude::WallLoop],
 ) -> Option<slicer_ir::Point3WithWidth> {
     let injected = region.resolved_seam()?.point;
-    let snapped = region
-        .seam_candidates()
-        .iter()
-        .map(|candidate| candidate.position)
-        .min_by(|left, right| {
-            dist2_xy(left, &injected)
-                .total_cmp(&dist2_xy(right, &injected))
-                .then_with(|| left.y.total_cmp(&right.y))
-                .then_with(|| left.x.total_cmp(&right.x))
-        });
-    snapped.or_else(|| project_onto_wall_segment(&injected, wall_loops).map(|p| p.point))
+    project_onto_wall_segment(&injected, wall_loops).map(|p| p.point)
 }
 
 fn find_seam_location(
@@ -506,20 +496,15 @@ impl LayerModule for SeamPlacer {
                             .position
                         } else {
                             let point = aligned_seam_target(region, &wall_loops)?;
-                            if region.seam_candidates().is_empty() {
-                                if let Some(injected) =
-                                    region.resolved_seam().map(|seam| seam.point)
+                            if let Some(injected) = region.resolved_seam().map(|seam| seam.point) {
+                                if let Some(projection) =
+                                    project_onto_wall_segment(&injected, &wall_loops)
                                 {
-                                    if let Some(projection) =
-                                        project_onto_wall_segment(&injected, &wall_loops)
-                                    {
-                                        if projection.t > 0.0 && projection.t < 1.0 {
-                                            wall_loops[projection.wall_index] =
-                                                insert_projected_point(
-                                                    &wall_loops[projection.wall_index],
-                                                    projection,
-                                                );
-                                        }
+                                    if projection.t > 0.0 && projection.t < 1.0 {
+                                        wall_loops[projection.wall_index] = insert_projected_point(
+                                            &wall_loops[projection.wall_index],
+                                            projection,
+                                        );
                                     }
                                 }
                             }

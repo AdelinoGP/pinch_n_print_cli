@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamPosition,
-    WallBoundaryType, WallFeatureFlags, WallLoop,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamCandidate,
+    SeamPosition, WallBoundaryType, WallFeatureFlags, WallLoop,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
@@ -68,6 +68,19 @@ fn aligned_region(walls: Vec<WallLoop>, resolved: Option<Point3WithWidth>) -> Pe
     region
 }
 
+fn aligned_region_with_candidate(
+    walls: Vec<WallLoop>,
+    resolved: Point3WithWidth,
+) -> PerimeterRegionView {
+    let mut region = aligned_region(walls, Some(resolved));
+    region.set_seam_candidates(vec![SeamCandidate {
+        position: ir_point(0.0, 0.0, resolved.z),
+        score: 1.0,
+        reason: slicer_ir::SeamReason::Aligned,
+    }]);
+    region
+}
+
 #[test]
 fn projects_onto_nearest_segment_point() {
     let config = config_with_mode("aligned");
@@ -100,6 +113,26 @@ fn projects_onto_nearest_segment_point() {
         emitted.path.points.len()
     );
     assert_eq!(emitted.path.points.last(), emitted.path.points.first());
+}
+
+#[test]
+fn projects_with_existing_candidates() {
+    let config = config_with_mode("aligned");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
+    let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
+    let regions = vec![aligned_region_with_candidate(
+        vec![wall],
+        ir_point(1.5, 0.8, 0.2),
+    )];
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &config)
+        .expect("wall postprocess must succeed");
+
+    let first = output.rotated_wall_loops()[0].2.path.points[0];
+    assert!((first.x - 1.5).abs() < 0.001);
+    assert!(first.y.abs() < 0.001);
 }
 
 #[test]

@@ -1174,16 +1174,13 @@ pub fn prepare_prepass_context(
     let engine = Arc::clone(&loaded.engine);
     let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let mut blackboard = crate::Blackboard::new(Arc::clone(&mesh_ir), 0);
-    let empty_raw: std::collections::HashMap<slicer_ir::ConfigKey, ConfigValue> =
-        std::collections::HashMap::new();
-
     crate::prepass::execute_prepass_with_builtins_configured(
         &plan,
         &mut blackboard,
         &prepass_runner,
         &resolved_configs_map,
         &default_resolved_config,
-        &empty_raw,
+        &config_source,
         &config_bounds,
         &wasm_handles,
     )
