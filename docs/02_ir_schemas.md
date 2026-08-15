@@ -526,6 +526,11 @@ on the internal pool layout.
 - `RegionMapIR.entries` cardinality is bounded by `DEFAULT_REGION_MAP_CAP`
   (currently `750_000`). Overflow surfaces `RegionMappingError::CapExceeded`
   naming the top-contributing `ObjectId`.
+- `configs.first()` / `configs[0]` is **never a production config source**:
+  because `ResolvedConfig`'s hand-written `PartialEq` compares `extensions`,
+  and `run_slice` injects `slice_has_paint` into every painted job's config
+  source, real configs intern at `ConfigId(1)` and above and `configs[0]`
+  stays the untouched `ResolvedConfig::default()` placeholder (Packet 207).
 
 ### `RegionMappingPlanProjection` (Internal Decoupling Type — Packet 87)
 

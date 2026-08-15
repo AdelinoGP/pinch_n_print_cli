@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 207-paint-segmentation-per-region-shell-config
 task_ids:
   - TASK-323

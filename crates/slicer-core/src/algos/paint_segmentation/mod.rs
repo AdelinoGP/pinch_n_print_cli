@@ -897,74 +897,6 @@ pub fn execute_paint_segmentation(
                 }
             }
 
-            // Fix 1 cell-tiling diagnostic (Step 19 / Option B′):
-            // Verify that the union of all painted-chain polygons covers the
-            // BASE polygon area within 1% relative error. If a gap is observed,
-            // the arc-walk cell decomposition has left holes — tracked as a
-            // follow-up in the closure-log. The diagnostic is gated behind
-            // env var `PNP_PAINTSEG_CELL_TILING_DEBUG=1` to keep debug-build
-            // tests quiet by default.
-            #[cfg(feature = "host-algos")]
-            if std::env::var("PNP_PAINTSEG_CELL_TILING_DEBUG")
-                .map(|v| v == "1")
-                .unwrap_or(false)
-            {
-                use crate::polygon_ops::union_ex;
-                fn expoly_area_signed_sum(polys: &[slicer_ir::ExPolygon]) -> f64 {
-                    let mut a = 0.0_f64;
-                    for ep in polys {
-                        let pts = &ep.contour.points;
-                        if pts.len() >= 3 {
-                            let mut acc = 0i128;
-                            for i in 0..pts.len() {
-                                let j = (i + 1) % pts.len();
-                                acc += (pts[i].x as i128) * (pts[j].y as i128)
-                                    - (pts[j].x as i128) * (pts[i].y as i128);
-                            }
-                            a += (acc as f64) * 0.5;
-                            for hole in &ep.holes {
-                                let hpts = &hole.points;
-                                if hpts.len() < 3 {
-                                    continue;
-                                }
-                                let mut hacc = 0i128;
-                                for i in 0..hpts.len() {
-                                    let j = (i + 1) % hpts.len();
-                                    hacc += (hpts[i].x as i128) * (hpts[j].y as i128)
-                                        - (hpts[j].x as i128) * (hpts[i].y as i128);
-                                }
-                                a -= (hacc as f64).abs() * 0.5;
-                            }
-                        }
-                    }
-                    a.abs()
-                }
-                let mut painted_polys: Vec<slicer_ir::ExPolygon> = Vec::new();
-                for r in &new_regions {
-                    if !r.variant_chain.is_empty() {
-                        painted_polys.extend(r.polygons.iter().cloned());
-                    }
-                }
-                if !painted_polys.is_empty() {
-                    let unioned = union_ex(&painted_polys);
-                    let union_area = expoly_area_signed_sum(&unioned);
-                    let base_area = expoly_area_signed_sum(&layer_total_contours);
-                    let diff = (base_area - union_area).abs();
-                    let rel = if base_area > 0.0 {
-                        diff / base_area
-                    } else {
-                        0.0
-                    };
-                    if rel > 0.01 {
-                        eprintln!(
-                            "[paint-seg cell-tiling] layer {global_layer_index}: \
-                             base_area={base_area}, union_area={union_area}, \
-                             diff={diff}, rel_diff={rel:.4}"
-                        );
-                    }
-                }
-            }
-
             // Fix (diagnose 2026-06-24, gap #1): `PrePass::ShellClassification`
             // runs BEFORE `PrePass::PaintSegmentation` and writes top/bottom solid
             // fill into the pre-segmentation BASE region. The wholesale
@@ -1085,7 +1017,7 @@ pub fn execute_paint_segmentation(
         // SET of source object_ids so the Phase 6/7 None arm can stamp the
         // correct object_id on a newly-created region (packet 128 invariant).
         let mut painted_subsets: BTreeMap<
-            (String, slicer_ir::PaintValue),
+            (String, String, slicer_ir::PaintValue),
             (
                 slicer_ir::PaintSemantic,
                 slicer_ir::IndexedTriangleSet,
@@ -1216,7 +1148,7 @@ pub fn execute_paint_segmentation(
                     if is_seam_paint_semantic(&layer.semantic) {
                         continue;
                     }
-                    let key = (sem_name(&layer.semantic), value.clone());
+                    let key = (obj.id.clone(), sem_name(&layer.semantic), value.clone());
                     let entry = painted_subsets
                         .entry(key)
                         .or_insert_with(|| (layer.semantic.clone(), new_set(), BTreeSet::new()));
@@ -1236,7 +1168,11 @@ pub fn execute_paint_segmentation(
                     if is_seam_paint_semantic(&stroke.semantic) {
                         continue;
                     }
-                    let key = (sem_name(&stroke.semantic), stroke.value.clone());
+                    let key = (
+                        obj.id.clone(),
+                        sem_name(&stroke.semantic),
+                        stroke.value.clone(),
+                    );
                     let entry = painted_subsets
                         .entry(key)
                         .or_insert_with(|| (stroke.semantic.clone(), new_set(), BTreeSet::new()));
@@ -1247,39 +1183,6 @@ pub fn execute_paint_segmentation(
                 }
             }
         }
-
-        // Shell-window counts come from the BASE ResolvedConfig (configs[0]).
-        // RegionMapIR pre-seeds configs[0] with `ResolvedConfig::default()`, so
-        // the fallback for missing keys is OrcaSlicer's default (top=3, bottom=3).
-        let (top_shell_layers, bottom_shell_layers, shell_line_width, shell_layer_height): (
-            usize,
-            usize,
-            f32,
-            f32,
-        ) = match region_map.configs.first() {
-            Some(cfg) => (
-                cfg.top_shell_layers as usize,
-                cfg.bottom_shell_layers as usize,
-                crate::flow::resolve_role_width(
-                    slicer_ir::ExtrusionRole::OuterWall,
-                    false,
-                    false,
-                    &crate::flow::RoleWidthContext {
-                        line_width: cfg.line_width,
-                        nozzle_diameter: DEFAULT_NOZZLE_DIAMETER_MM,
-                        ..Default::default()
-                    },
-                ),
-                // `cfg.layer_height` is `f64` (Z-formula precision); cast to
-                // `f32` here — shell-window math uses it as a thickness, not
-                // as a Z-plane coordinate, so f32 precision is sufficient.
-                cfg.layer_height as f32,
-            ),
-            // TODO: when per-object/per-region paint configs are wired through
-            // execute_paint_segmentation, prefer the region-specific config
-            // here instead of the BASE default.
-            None => (3, 3, 0.4, 0.2),
-        };
 
         if !painted_subsets.is_empty() && !working.is_empty() {
             // layer_zs already computed above for modifier volumes.
@@ -1307,25 +1210,27 @@ pub fn execute_paint_segmentation(
                 })
                 .collect();
 
-            // Run Phase 6 for each (semantic, value) and merge into working.
-            for ((sname, value), (semantic, painted_mesh, source_objects)) in &painted_subsets {
+            // Run Phase 6 for each (object, semantic, value) and merge into working.
+            for ((object_id, sname, value), (semantic, painted_mesh, source_objects)) in
+                &painted_subsets
+            {
                 if painted_mesh.indices.is_empty() {
                     continue;
                 }
+                let chain_key: Vec<(String, slicer_ir::PaintValue)> =
+                    vec![(sname.clone(), value.clone())];
+                let params = resolve_shell_params(&region_map, object_id, &chain_key);
                 let phase6 = top_bottom::propagate_top_bottom(
                     painted_mesh,
                     semantic.clone(),
                     value.clone(),
                     &layer_zs,
                     &layer_input_polygons,
-                    top_shell_layers,
-                    bottom_shell_layers,
-                    shell_line_width,
-                    shell_layer_height,
+                    params.top,
+                    params.bottom,
+                    params.width_mm,
+                    params.layer_height_mm,
                 )?;
-
-                let chain_key: Vec<(String, slicer_ir::PaintValue)> =
-                    vec![(sname.clone(), value.clone())];
 
                 for (l, polys) in phase6.per_layer.iter().enumerate() {
                     if polys.is_empty() || l >= working.len() {
@@ -1354,6 +1259,9 @@ pub fn execute_paint_segmentation(
                     let mut top_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
                     let mut bot_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
                     for region in working[l].regions.iter_mut() {
+                        if region.object_id != *object_id {
+                            continue;
+                        }
                         if region.variant_chain == chain_key {
                             continue;
                         }
@@ -1375,7 +1283,7 @@ pub fn execute_paint_segmentation(
                     let existing_idx = working[l]
                         .regions
                         .iter()
-                        .position(|r| r.variant_chain == chain_key);
+                        .position(|r| r.object_id == *object_id && r.variant_chain == chain_key);
                     match existing_idx {
                         Some(idx) => {
                             let region = &mut working[l].regions[idx];
@@ -1394,13 +1302,6 @@ pub fn execute_paint_segmentation(
                             }
                         }
                         None => {
-                            // Source the new region's `object_id` from the painted
-                            // color's owning object (not from
-                            // `working[l].regions.first()` which is layer-global).
-                            // For multi-object prints, the same color painted on
-                            // multiple objects would have multiple source objects;
-                            // BTreeSet yields a deterministic order — pick the
-                            // first. The vast majority of cases have exactly one.
                             let source_object_id = source_objects.iter().next().cloned();
                             if let Some(object_id) = source_object_id {
                                 // Find a same-object region on this layer to
@@ -1675,6 +1576,124 @@ fn run_phase5_width_limit(
     }
 
     Ok(true)
+}
+
+// ---------------------------------------------------------------------------
+// Per-variant-chain shell-config resolution (packet 207)
+// ---------------------------------------------------------------------------
+//
+// Placeholder-behaviour stubs (Step 1 / TDD RED). These reproduce today's
+// behaviour so the crate compiles while the six unit ACs fail on an assertion.
+// Step 2 replaces the bodies with the real per-`variant_chain` resolution.
+
+/// Resolved shell parameters for one painted variant chain.
+#[allow(dead_code)]
+struct ShellParams {
+    top: usize,
+    bottom: usize,
+    width_mm: f32,
+    layer_height_mm: f32,
+}
+
+/// Find the `RegionKey` whose `object_id` matches and whose `variant_chain`
+/// equals `chain_key`. `entries` is a `HashMap`, so the selection is an
+/// explicit `min_by_key` on `(global_layer_index, region_id)` — never a
+/// first-iteration pick (which would be non-deterministic).
+#[allow(dead_code)]
+fn region_key_for_chain(
+    region_map: &slicer_ir::RegionMapIR,
+    object_id: &str,
+    chain_key: &[(String, slicer_ir::PaintValue)],
+) -> Option<slicer_ir::RegionKey> {
+    region_map
+        .entries
+        .keys()
+        .filter(|k| k.object_id == object_id && k.variant_chain == chain_key)
+        .min_by_key(|k| (k.global_layer_index, k.region_id))
+        .cloned()
+}
+
+/// Resolve an extension width value to absolute millimetres, mirroring
+/// [`slicer_ir::ConfigView::get_abs_value`] clause for clause over the seven
+/// `ConfigValue` variants. `Percent` and percent-form `FloatOrPercent` resolve
+/// against `base` only when `base > 0.0`; `Float` and literal-form
+/// `FloatOrPercent` are already absolute. `Bool`/`Int`/`String`/`List` and a
+/// missing key yield `None` (canonical `get_abs_value` deliberately does not
+/// coerce `Int`). Result is cast to `f32` at the boundary.
+#[allow(dead_code)]
+fn ext_abs_mm(cfg: &slicer_ir::ResolvedConfig, key: &str, base: f32) -> Option<f32> {
+    let base = base as f64;
+    match cfg.extensions.get(key)? {
+        slicer_ir::ConfigValue::Percent(p) => {
+            if base > 0.0 {
+                Some((p / 100.0 * base) as f32)
+            } else {
+                None
+            }
+        }
+        slicer_ir::ConfigValue::FloatOrPercent { value, is_percent } => {
+            if *is_percent {
+                if base > 0.0 {
+                    Some((value / 100.0 * base) as f32)
+                } else {
+                    None
+                }
+            } else {
+                Some(*value as f32)
+            }
+        }
+        slicer_ir::ConfigValue::Float(f) => Some(*f as f32),
+        _ => None,
+    }
+}
+
+/// Derive shell parameters from a single `ResolvedConfig`.
+#[allow(dead_code)]
+fn shell_params_from_config(cfg: &slicer_ir::ResolvedConfig) -> ShellParams {
+    // Nozzle diameter: read from the extension bucket, falling back to the
+    // file-local machine default when absent or non-positive (preserving
+    // today's behaviour rather than silently substituting `0.0`).
+    let nozzle_diameter = ext_abs_mm(cfg, "nozzle_diameter", 0.0)
+        .filter(|v| *v > 0.0)
+        .unwrap_or(DEFAULT_NOZZLE_DIAMETER_MM);
+    let ctx = crate::flow::RoleWidthContext {
+        line_width: cfg.line_width,
+        nozzle_diameter,
+        initial_layer_line_width: cfg.initial_layer_line_width,
+        outer_wall_line_width: ext_abs_mm(cfg, "outer_wall_line_width", nozzle_diameter)
+            .unwrap_or(0.0),
+        inner_wall_line_width: ext_abs_mm(cfg, "inner_wall_line_width", nozzle_diameter)
+            .unwrap_or(0.0),
+        bridge_line_width: ext_abs_mm(cfg, "bridge_line_width", nozzle_diameter).unwrap_or(0.0),
+        ..Default::default()
+    };
+    let width_mm =
+        crate::flow::resolve_role_width(slicer_ir::ExtrusionRole::OuterWall, false, false, &ctx);
+    ShellParams {
+        top: cfg.top_shell_layers as usize,
+        bottom: cfg.bottom_shell_layers as usize,
+        width_mm,
+        // `cfg.layer_height` is `f64` (Z-formula precision); cast to `f32`
+        // here — shell-window math uses it as a thickness, not as a Z-plane
+        // coordinate, so f32 precision is sufficient.
+        layer_height_mm: cfg.layer_height as f32,
+    }
+}
+
+/// Resolve shell parameters for a painted variant chain. Ladder: the painted
+/// chain's interned config → the object's BASE chain (`&[]`) → the terminal
+/// `ResolvedConfig::default()` (top=3, bottom=3, width=1.125*0.4=0.45,
+/// layer_height=0.2). Both lookup tiers go through `region_key_for_chain`.
+#[allow(dead_code)]
+fn resolve_shell_params(
+    region_map: &slicer_ir::RegionMapIR,
+    object_id: &str,
+    chain_key: &[(String, slicer_ir::PaintValue)],
+) -> ShellParams {
+    region_key_for_chain(region_map, object_id, chain_key)
+        .or_else(|| region_key_for_chain(region_map, object_id, &[]))
+        .map(|k| shell_params_from_config(region_map.config_for(&k)))
+        .unwrap_or_else(|| shell_params_from_config(&slicer_ir::ResolvedConfig::default()))
 }
 
 // ---------------------------------------------------------------------------
@@ -3838,5 +3857,192 @@ mod arc_walk_tiling_tests {
              {total_sq_area:.0} units² — walk produced slivers instead of area polygons \
              (from_colored_lines connectivity fix missing or incomplete)"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-variant-chain shell-config resolution tests (packet 207, Step 1)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod shell_config_resolver_tests {
+    use super::*;
+    use slicer_ir::{ConfigValue, PaintValue, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig};
+    use std::collections::BTreeMap;
+
+    fn material_chain(tool: u32) -> Vec<(String, PaintValue)> {
+        vec![("material".to_string(), PaintValue::ToolIndex(tool))]
+    }
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    /// AC-1: the resolver must read the painted chain's interned config
+    /// (top=7, bottom=5, line_width=0.6, layer_height=0.3), never the BASE
+    /// chain's top=3 nor the placeholder's 3/3/0.2.
+    #[test]
+    fn resolver_reads_painted_chain_config_not_base_or_placeholder() {
+        let mut region_map = RegionMapIR::default();
+        let base_cfg_id = region_map.intern_config(ResolvedConfig {
+            top_shell_layers: 3,
+            ..ResolvedConfig::default()
+        });
+        let painted_cfg_id = region_map.intern_config(ResolvedConfig {
+            top_shell_layers: 7,
+            bottom_shell_layers: 5,
+            line_width: 0.6,
+            layer_height: 0.3,
+            ..ResolvedConfig::default()
+        });
+        assert_ne!(
+            base_cfg_id, painted_cfg_id,
+            "fixture must intern two distinct configs"
+        );
+
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "obj-a".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan {
+                config: base_cfg_id,
+                ..RegionPlan::default()
+            },
+        );
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "obj-a".to_string(),
+                region_id: 0,
+                variant_chain: material_chain(1),
+            },
+            RegionPlan {
+                config: painted_cfg_id,
+                ..RegionPlan::default()
+            },
+        );
+
+        let chain = material_chain(1);
+        let params = resolve_shell_params(&region_map, "obj-a", &chain);
+        assert_eq!(params.top, 7);
+        assert_eq!(params.bottom, 5);
+        assert_close(params.width_mm, 0.6);
+        assert_close(params.layer_height_mm, 0.3);
+    }
+
+    /// AC-4: `extensions["outer_wall_line_width"] = Float(0.62)` with
+    /// `line_width = 0.45` must resolve the width to 0.62, not 0.45.
+    #[test]
+    fn outer_wall_line_width_is_honoured() {
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "outer_wall_line_width".to_string(),
+            ConfigValue::Float(0.62),
+        );
+        let cfg = ResolvedConfig {
+            line_width: 0.45,
+            extensions,
+            ..ResolvedConfig::default()
+        };
+        let params = shell_params_from_config(&cfg);
+        assert_close(params.width_mm, 0.62);
+    }
+
+    /// AC-5: `extensions["nozzle_diameter"] = Float(0.8)` with `line_width = 0.0`
+    /// must resolve the width to 1.125 * 0.8 = 0.9.
+    #[test]
+    fn nozzle_diameter_comes_from_config() {
+        let mut extensions = BTreeMap::new();
+        extensions.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.8));
+        let cfg = ResolvedConfig {
+            line_width: 0.0,
+            extensions,
+            ..ResolvedConfig::default()
+        };
+        let params = shell_params_from_config(&cfg);
+        assert_close(params.width_mm, 0.9);
+    }
+
+    /// AC-N1: an object with no RegionKey at all falls back to the documented
+    /// terminal defaults (top=3, bottom=3, width=1.125*0.4=0.45, layer=0.2).
+    #[test]
+    fn missing_region_key_uses_single_documented_fallback() {
+        let region_map = RegionMapIR::default();
+        let chain = material_chain(1);
+        let params = resolve_shell_params(&region_map, "obj-a", &chain);
+        assert_eq!(params.top, 3);
+        assert_eq!(params.bottom, 3);
+        assert_close(params.width_mm, 0.45);
+        assert_close(params.layer_height_mm, 0.2);
+    }
+
+    /// AC-N3: `ext_abs_mm` resolves the four `outer_wall_line_width` forms.
+    #[test]
+    fn percent_widths_resolve_against_nozzle_base() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.extensions.insert(
+            "outer_wall_line_width".to_string(),
+            ConfigValue::Percent(150.0),
+        );
+        assert_eq!(ext_abs_mm(&cfg, "outer_wall_line_width", 0.4), Some(0.6));
+
+        let mut cfg2 = ResolvedConfig::default();
+        cfg2.extensions.insert(
+            "outer_wall_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 150.0,
+                is_percent: true,
+            },
+        );
+        assert_eq!(ext_abs_mm(&cfg2, "outer_wall_line_width", 0.4), Some(0.6));
+
+        let mut cfg3 = ResolvedConfig::default();
+        cfg3.extensions.insert(
+            "outer_wall_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 0.62,
+                is_percent: false,
+            },
+        );
+        assert_eq!(ext_abs_mm(&cfg3, "outer_wall_line_width", 0.4), Some(0.62));
+
+        let mut cfg4 = ResolvedConfig::default();
+        cfg4.extensions.insert(
+            "outer_wall_line_width".to_string(),
+            ConfigValue::Percent(150.0),
+        );
+        assert_eq!(ext_abs_mm(&cfg4, "outer_wall_line_width", 0.0), None);
+    }
+
+    /// AC-N4: an object with a BASE RegionKey (top=6) but no painted-chain key
+    /// must fall back to the BASE chain's top=6, not the terminal default 3.
+    #[test]
+    fn missing_chain_falls_back_to_base_chain_not_default() {
+        let mut region_map = RegionMapIR::default();
+        let base_cfg_id = region_map.intern_config(ResolvedConfig {
+            top_shell_layers: 6,
+            ..ResolvedConfig::default()
+        });
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "obj-a".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan {
+                config: base_cfg_id,
+                ..RegionPlan::default()
+            },
+        );
+        let chain = material_chain(1);
+        let params = resolve_shell_params(&region_map, "obj-a", &chain);
+        assert_eq!(params.top, 6);
     }
 }
