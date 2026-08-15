@@ -95,7 +95,7 @@ fn is_central_enforcer_vertex(
     vertex_idx - segment_start < (segment_end - segment_start).div_ceil(3).max(1)
 }
 
-fn candidate_paint_classification(
+pub(crate) fn candidate_paint_classification(
     paint_annotations: Option<&[(PaintSemantic, &[Vec<Option<PaintValue>>])]>,
     contour_idx: usize,
     vertex_idx: usize,

@@ -247,7 +247,36 @@
   - `cargo check --workspace --all-targets` - FACT pass/fail
   - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT: clean
-- Exit condition: all three gates green and all nine positive plus three negative ACs re-dispatched `PASS`.
+- Exit condition: all three gates green and all ten positive plus three negative ACs re-dispatched `PASS`.
+
+## Step 9 — Wire the discriminator into the planner driver (AC-10)
+
+Added after the packet's first implementation passed every AC while delivering nothing on default settings. Step 6 fixes `paint_annotation_type` but leaves it unreachable; this step makes the fix live.
+
+- Precondition: Step 6 complete (`paint_annotation_type` matches the two seam names exactly); `region_candidates` (`modules/core-modules/seam-planner-default/src/lib.rs`) reads no annotations.
+- Postcondition: `region_candidates` classifies each contour vertex through `candidate_paint_classification`, drops `Blocked` vertices, and scores `Enforced` above `Neutral`; `choose_region_candidate` restricts to the top score before mode dispatch; `candidate_paint_classification` is `pub(crate)`.
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/seam-planner-default/src/lib.rs` - `region_candidates`, `choose_region_candidate`, `run_region_planning_entries` windows only
+  - `modules/core-modules/seam-planner-default/src/visibility.rs` - `candidate_paint_classification` window only
+- Files allowed to edit (at most 3):
+  - `modules/core-modules/seam-planner-default/src/lib.rs`
+  - `modules/core-modules/seam-planner-default/src/visibility.rs` (visibility qualifier only)
+  - `modules/core-modules/seam-planner-default/tests/seam_region_aware_planning_tdd.rs`
+- Files explicitly out of bounds:
+  - `modules/core-modules/seam-placer/**` — the placer's `resolved_seam`-vs-candidates precedence is read-only context here, not an edit target
+- Blast-radius discipline: `region.segment_annotations` is indexed against `region.ex_polygons`, which `project_seam_planning_view` builds 1:1 from `SlicedRegion.polygons` (`ir_to_wit_expolygons`), so `contour_idx` is the annotation `poly_idx`. Hole vertices have no slots and must classify `Neutral` rather than index into a contour's slot list.
+- Expected sub-agent dispatches:
+  - Question: does any production path in `modules/core-modules/seam-planner-default/src/` call `candidate_paint_classification`?; scope: that crate's `src/`; return: `LOCATIONS`; purpose: prove the wiring is live, not merely present
+  - Question: `cargo test -p seam-planner-default` — pass/fail; scope: cargo; return: `FACT` pass/fail
+- Context cost: `S`
+- Authoritative docs:
+  - `docs/05_module_sdk.md` §"Paint-seam consumption" - the two-consumer split and which one decides under each `seam_mode`
+- OrcaSlicer refs:
+  - `SeamPlacer.cpp` `gather_enforcers_blockers` — establishes that enforcer/blocker handling is generator-independent and applies to the placement decision itself, not only to candidate shaping
+- Verification:
+  - `cargo test -p seam-planner-default --test seam_region_aware_planning_tdd` - FACT pass/fail
+  - AC-10's pipe-suffixed command - FACT `PASS`
+- Exit condition: AC-10 passes, and it fails when the `candidate_paint_classification` call in `region_candidates` is removed (the test asserts a change against an unpainted baseline arm, so this is structural rather than a manual check).
 
 ## Per-Step Budget Roll-Up
 
@@ -261,6 +290,7 @@
 | Step 6 | M | Discriminator rewrite plus one existing-test re-expression |
 | Step 7 | S | Docs and deviation rows |
 | Step 8 | S | Gates only |
+| Step 9 | S | Planner driver wiring; added post-hoc, see step body |
 
 Split before activation if aggregate cost exceeds M or any step is L. No step is rated L.
 
@@ -274,7 +304,8 @@ Split before activation if aggregate cost exceeds M or any step is L. No step is
 
 ## Acceptance Ceremony
 
-- Re-dispatch every pipe-suffixed AC (AC-1 … AC-9, AC-N1 … AC-N3) and the three packet-level gate commands.
+- Re-dispatch every pipe-suffixed AC (AC-1 … AC-11, AC-N1 … AC-N3) and the three packet-level gate commands.
+- AC-10 is not optional at closure and is not substitutable by AC-4/AC-5/AC-N1: those three pass on a tree where the discriminator has no production caller, which is how this packet was first closed.
 - Record remaining packet-local risk: seam bias is live for the first time, so any baseline captured from a seam-painted fixture is invalidated; and `apply_seam_paint_bias` now runs in both generators, moving arachne toolpaths on seam-painted models.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 

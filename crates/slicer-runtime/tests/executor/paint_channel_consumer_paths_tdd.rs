@@ -859,3 +859,86 @@ fn seam_paint_writer_emits_no_key_without_seam_paint() {
         "unexpected seam_ key without seam paint"
     );
 }
+
+/// The writer must stamp only the vertices the paint actually covers.
+///
+/// AC-1 asserts that *some* seam annotation exists and AC-3 asserts the index
+/// arity; neither constrains *which* vertices are stamped, so a writer that
+/// flagged every vertex of every region would satisfy both. The AC-1 fixture
+/// cannot close that gap either — `cube_cilindrical_modifier.3mf` paints 2709
+/// triangles whose XY bounds (112.5..137.5, 92.5..117.5) are exactly the
+/// object's own bounds, so on that model stamping the whole contour is the
+/// correct answer and any extent-based check is vacuous.
+///
+/// This uses the unit cube instead, where the painted set is authored here and
+/// therefore known independently. Facets 4 and 5 (`0,1,5` / `0,5,4`) are the
+/// y = 0 face. Its XY projection is the degenerate segment (0,0)-(1,0), so the
+/// two contour vertices at y = 0 must be stamped via the degenerate-sliver
+/// fallback, and the two at y = 1 — a full 1 mm away, 100x the 0.01 mm
+/// tolerance — must not be.
+#[test]
+fn seam_paint_stamps_only_vertices_the_paint_covers() {
+    let object_id = "one-face-painted";
+    let seam = PaintSemantic::Custom("seam_enforcer".to_string());
+    let mesh = make_single_object_mesh_ir(
+        object_id,
+        vec![PaintLayer {
+            semantic: seam.clone(),
+            // Facets 4 and 5 only: the y = 0 face.
+            facet_values: (0..12)
+                .map(|index| matches!(index, 4 | 5).then_some(PaintValue::Flag(true)))
+                .collect(),
+            strokes: Vec::new(),
+        }],
+    );
+    let its = unit_cube_its();
+    let initial = make_unit_cube_slice_ir(object_id, &its);
+    let region_map = make_unit_cube_region_map(object_id);
+
+    let result = execute_paint_segmentation(mesh, initial, region_map)
+        .expect("execute_paint_segmentation must succeed");
+
+    let mut stamped_at_y0 = 0usize;
+    let mut stamped_at_y1 = 0usize;
+    let mut inspected_layers = 0usize;
+
+    for layer in result.iter() {
+        for region in &layer.regions {
+            let Some(per_polygon) = region.segment_annotations.get(&seam) else {
+                continue;
+            };
+            inspected_layers += 1;
+            for (poly_idx, slots) in per_polygon.iter().enumerate() {
+                let polygon = &region.polygons[poly_idx];
+                for (vertex_idx, slot) in slots.iter().enumerate() {
+                    if !matches!(slot, Some(PaintValue::Flag(true))) {
+                        continue;
+                    }
+                    let point = polygon.contour.points[vertex_idx];
+                    let y = slicer_ir::units_to_mm(point.y);
+                    if y.abs() < 0.05 {
+                        stamped_at_y0 += 1;
+                    } else if (y - 1.0).abs() < 0.05 {
+                        stamped_at_y1 += 1;
+                    } else {
+                        panic!("unexpected stamped vertex at y = {y}");
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        inspected_layers > 0,
+        "no layer carried a seam_enforcer key; the writer stamped nothing"
+    );
+    assert!(
+        stamped_at_y0 > 0,
+        "the painted y = 0 face produced no stamped vertices"
+    );
+    assert_eq!(
+        stamped_at_y1, 0,
+        "the writer stamped {stamped_at_y1} vertex/vertices on the unpainted \
+         y = 1 face — the footprint is over-broad"
+    );
+}

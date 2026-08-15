@@ -784,6 +784,28 @@ enforcer_polys, blocker_polys)`:
   score makes an enforced candidate strictly more likely to win, even against
   an unpainted candidate with a numerically higher geometric score.
 
+**Two consumers, and which one decides.** The same two semantics are consumed
+independently by the seam-planning prepass (`seam-planner-default`), whose
+`region_candidates` classifies each region *contour* vertex through
+`candidate_paint_classification`, drops `Blocked` vertices outright, and ranks
+`Enforced` above `Neutral`; `choose_region_candidate` then restricts to the
+top score before dispatching on the planning mode, so an enforcer is never
+overridden by a geometric preference. Which consumer actually determines the
+seam depends on `seam_mode`: under the default `aligned` (and `aligned_back`),
+`seam-placer` takes the planner's injected `resolved_seam` and only falls back
+to the perimeter-emitted `seam_candidates` when it is absent — so on default
+settings the **planner** decides and the perimeter bias merely shapes the
+fallback. Under `nearest`/`rear`/`random` the perimeter candidates decide.
+Both paths must therefore stay wired; wiring only the perimeter side leaves
+seam paint with no effect on a default slice.
+
+Both consumers read the annotations at **contour-vertex resolution only**:
+the planner emits one candidate per contour vertex, and `seam_paint_boxes`
+builds one box per painted vertex. A stroke falling strictly between two
+vertices affects neither. Hole vertices carry no annotation slots (the index
+contract covers `polygons[p].contour.points` only) and always classify
+`Neutral`.
+
 `slicer_core` cannot depend on `slicer-sdk` (where `PaintRegionLayerView`
 lives), so `apply_seam_paint_bias` is data-driven: it takes plain
 `&[ExPolygon]` slices. The callers (`classic-perimeters` and

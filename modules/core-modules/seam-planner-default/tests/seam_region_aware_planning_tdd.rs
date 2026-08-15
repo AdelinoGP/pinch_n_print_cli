@@ -129,6 +129,117 @@ fn chosen_position_uses_supplied_layer_z() {
     assert_eq!(entries[0].chosen_position.z, 7.25);
 }
 
+/// Regression guard for packet 206's delivery gap.
+///
+/// `paint_annotation_type` / `candidate_paint_classification` shipped correct
+/// but with **zero production callers** — the whole of `src/visibility.rs` was
+/// unreachable from `run_seam_planning`, so seam paint could not move the seam
+/// on the default `seam_mode = "aligned"` (where `seam-placer` consumes the
+/// planner's `resolved_seam` rather than the perimeter-side candidates). The
+/// exactness tests passed anyway because they `#[path]`-include the module
+/// source. This test drives the production entry point instead.
+///
+/// Both arms are load-bearing: the unpainted arm pins the plain aligned
+/// tie-break so the painted arm proves a *change*, not a coincidence.
+#[test]
+fn seam_paint_moves_planner_resolved_seam() {
+    // `region(…, 0.0, …)` supplies polygon(0,0,10): vertices (0,0), (10,0),
+    // (10,10), (0,10). Aligned mode is min-y then min-x.
+    let unpainted = SeamPlanningView {
+        regions: vec![region(0, 0.2, 0.0, Vec::new())],
+    };
+    let baseline = run_aligned_planning_entries(&unpainted, false);
+    assert_eq!(
+        (baseline[0].chosen_position.x, baseline[0].chosen_position.y),
+        (0.0, 0.0),
+        "unpainted aligned planning must pick the min-y/min-x vertex"
+    );
+
+    // Enforce vertex 2 — (10,10), the vertex the unpainted tie-break ranks
+    // last — so only a live classifier can produce it.
+    let painted = SeamPlanningView {
+        regions: vec![SeamPlanningRegionInput {
+            segment_annotations: vec![(
+                PaintSemantic::Custom("seam_enforcer".to_string()),
+                vec![vec![None, None, Some(PaintValue::Flag(true)), None]],
+            )],
+            ..region(0, 0.2, 0.0, Vec::new())
+        }],
+    };
+    let entries = run_aligned_planning_entries(&painted, false);
+
+    assert_eq!(
+        (entries[0].chosen_position.x, entries[0].chosen_position.y),
+        (10.0, 10.0),
+        "seam_enforcer paint must move the planner's chosen seam to the \
+         enforced vertex"
+    );
+    assert!(entries[0]
+        .scored_candidates
+        .iter()
+        .any(|candidate| candidate.reason.tag == "enforced"));
+}
+
+/// `seam_blocker` must remove a vertex from planning entirely, not merely
+/// deprioritise it.
+#[test]
+fn seam_blocker_paint_excludes_vertex_from_planner_candidates() {
+    let view = SeamPlanningView {
+        regions: vec![SeamPlanningRegionInput {
+            // Block vertex 0 — (0,0) — which unpainted planning would choose.
+            segment_annotations: vec![(
+                PaintSemantic::Custom("seam_blocker".to_string()),
+                vec![vec![Some(PaintValue::Flag(true)), None, None, None]],
+            )],
+            ..region(0, 0.2, 0.0, Vec::new())
+        }],
+    };
+
+    let entries = run_aligned_planning_entries(&view, false);
+
+    assert_eq!(entries[0].scored_candidates.len(), 3, "blocked vertex dropped");
+    assert!(
+        !entries[0]
+            .scored_candidates
+            .iter()
+            .any(|candidate| candidate.position.x == 0.0 && candidate.position.y == 0.0),
+        "blocked vertex must not appear among the reported candidates"
+    );
+    // Next-best under min-y-then-min-x is (10,0).
+    assert_eq!(
+        (entries[0].chosen_position.x, entries[0].chosen_position.y),
+        (10.0, 0.0)
+    );
+}
+
+/// A region whose every vertex is blocked yields no candidates at all.
+/// `seam-placer` degrades gracefully on this (it emits the walls pristine with
+/// no resolved seam), so the planner must not panic or invent a seam.
+#[test]
+fn fully_blocked_region_yields_no_planner_candidates() {
+    let view = SeamPlanningView {
+        regions: vec![SeamPlanningRegionInput {
+            segment_annotations: vec![(
+                PaintSemantic::Custom("seam_blocker".to_string()),
+                vec![vec![
+                    Some(PaintValue::Flag(true)),
+                    Some(PaintValue::Flag(true)),
+                    Some(PaintValue::Flag(true)),
+                    Some(PaintValue::Flag(true)),
+                ]],
+            )],
+            ..region(0, 0.2, 0.0, Vec::new())
+        }],
+    };
+
+    let entries = run_aligned_planning_entries(&view, false);
+
+    assert!(
+        entries.is_empty() || entries[0].scored_candidates.is_empty(),
+        "a fully-blocked region must produce no seam candidates"
+    );
+}
+
 #[test]
 fn nonuniform_layer_z_chosen_position_uses_supplied_z() {
     let view = SeamPlanningView {
