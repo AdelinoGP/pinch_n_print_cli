@@ -117,7 +117,7 @@ pub fn commit_support_analysis_builtin(
             // SliceIR has no facet classification, so the highest observed
             // cross-section is the narrowest truthful model-termination
             // approximation. The exact-Z service uses the same fallback.
-            for (object_id, (_top_layer, top_polygons)) in object_tops {
+            for (object_id, (top_layer, top_polygons)) in object_tops {
                 let Some(plate) = object_bounds
                     .get(&object_id)
                     .and_then(|bounds| rectangle_from_bounds(*bounds))
@@ -125,7 +125,7 @@ pub fn commit_support_analysis_builtin(
                     continue;
                 };
                 for key in ir.model_occupancy.keys() {
-                    if key.object_id == object_id {
+                    if key.object_id == object_id && key.global_support_layer_index == top_layer {
                         ir.termination_surfaces.insert(
                             key.clone(),
                             top_polygons
@@ -266,9 +266,15 @@ mod tests {
         assert_eq!(analysis.candidates[0].source.region_id, 3);
         assert!(!analysis.candidates[0].enforced);
         assert!(!analysis.candidates[0].blocked);
-        assert_eq!(analysis.termination_surfaces.len(), 2);
-        assert_eq!(analysis.termination_surfaces[&key].len(), 2);
-        assert_eq!(analysis.termination_surfaces[&key][0], polygon);
+        let termination_key = SupportGeometryKey {
+            global_support_layer_index: 1,
+            object_id: "object".to_string(),
+            region_id: 3,
+        };
+        assert_eq!(analysis.termination_surfaces.len(), 1);
+        assert_eq!(analysis.termination_surfaces[&termination_key].len(), 2);
+        assert_eq!(analysis.termination_surfaces[&termination_key][0], polygon);
+        assert!(!analysis.termination_surfaces.contains_key(&key));
         assert_eq!(analysis.baseline_feasible_envelope.len(), 1);
         assert_eq!(
             analysis.baseline_feasible_envelope[0].contour.points.len(),

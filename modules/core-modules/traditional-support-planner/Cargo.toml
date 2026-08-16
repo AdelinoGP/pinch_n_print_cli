@@ -1,23 +1,18 @@
 [package]
-name = "traditional-support"
+name = "traditional-support-planner"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Traditional rectilinear support fill generator implementing LayerModule for Layer::Support stage"
+description = "Plans cross-layer contact, base, interface, obstacle, and termination geometry for traditional support"
 
 [dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
-slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
 slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
-
-[[test]]
-name = "traditional_family_tdd"
-path = "tests/traditional_family_tdd.rs"
 
 # Required by the `#[slicer_module]` macro's wasm32-only component export
 # glue. On native builds the emitted `wit_bindgen::generate!` call is
@@ -27,3 +22,7 @@ wit-bindgen.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "traditional_family_tdd"
+path = "tests/traditional_family_tdd.rs"

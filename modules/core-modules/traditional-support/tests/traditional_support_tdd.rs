@@ -291,16 +291,16 @@ fn zero_density_no_output() {
 }
 
 #[test]
-fn opposite_family_plan_is_ignored() {
+fn opposite_family_plan_is_rejected() {
     let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
+    let result = module.run_support(0, &[region], &paint, &mut output, &config);
 
+    assert!(result.is_err(), "non-traditional family must be rejected");
     assert!(output.support_paths().is_empty());
+    assert!(output.interface_paths().is_empty());
 }

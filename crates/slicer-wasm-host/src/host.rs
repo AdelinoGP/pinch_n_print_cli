@@ -305,12 +305,16 @@ pub struct PaintRegionLayerData {
     /// Custom regions by module ID.
     pub custom_regions:
         HashMap<String, Vec<layer_perimeters::slicer::ir_handles::ir_handles::SemanticRegion>>,
-    /// Pre-planned support-branch segments indexed by `(object_id, region_id)`,
-    /// projected from `SupportPlanIR.entries` filtered to this layer index.
-    /// Empty when no `SupportPlanIR` is committed on the blackboard.
+    /// Legacy segment carrier retained empty; structural plans use view entries.
     pub support_plan_segments: HashMap<
         (String, String),
         Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+    >,
+    /// Structural support plan entries indexed by `(object_id, region_id)`,
+    /// projected from `SupportPlanIR.entries` filtered to this layer index.
+    pub support_plan_entries: HashMap<
+        (String, String),
+        Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>,
     >,
     /// Pre-planned lightning tree-edge segments indexed by
     /// `(object_id, region_id)`, projected from `LightningTreeIR.entries`
@@ -2835,6 +2839,7 @@ pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionL
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        support_plan_entries: HashMap::new(),
         lightning_tree_segments: HashMap::new(),
     }
 }
@@ -4071,6 +4076,21 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         let data = self.table.get(&self_)?;
         Ok(data
             .support_plan_segments
+            .get(&(object_id, region_id))
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn support_plan_entries(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>>
+    {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let data = self.table.get(&self_)?;
+        Ok(data
+            .support_plan_entries
             .get(&(object_id, region_id))
             .cloned()
             .unwrap_or_default())

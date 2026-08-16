@@ -3686,19 +3686,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-<<<<<<< HEAD
-name = "support-planner"
-version = "0.1.0"
-dependencies = [
- "slicer-ir",
- "slicer-schema",
- "slicer-sdk",
- "wit-bindgen 0.60.0",
-]
-
-[[package]]
-=======
->>>>>>> 9d50a138 (implement tree-support-family (TASK-332, packet 221))
 name = "support-surface-ironing"
 version = "0.1.0"
 dependencies = [
@@ -4012,6 +3999,18 @@ dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
+ "slicer-wasm-host",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "traditional-support-planner"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "slicer-wasm-host",
  "wit-bindgen 0.60.0",
 ]
 
@@ -4023,11 +4022,8 @@ dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
-<<<<<<< HEAD
- "wit-bindgen 0.60.0",
-=======
  "slicer-wasm-host",
- "wit-bindgen 0.57.1",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]
@@ -4038,8 +4034,7 @@ dependencies = [
  "slicer-schema",
  "slicer-sdk",
  "slicer-wasm-host",
- "wit-bindgen 0.57.1",
->>>>>>> 9d50a138 (implement tree-support-family (TASK-332, packet 221))
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]

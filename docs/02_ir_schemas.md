@@ -1001,6 +1001,13 @@ emits structural `SupportPlanIR` roles — support body / interface — carrying
 `family_id` attribution, which the `tree-support` renderer consumes for
 plan-aware `Layer::Support` output.
 
+**Traditional family roles (packet 222).** For the traditional family,
+`traditional-support-planner` emits structural `SupportPlanIR` roles — support
+body / interface — carrying `family_id` attribution, which the
+`traditional-support` renderer consumes for plan-aware `Layer::Support` output.
+The renderer emits only the planner's polygons; disabled or declined inputs
+produce no fallback support paths.
+
 This ordering means regions without plan entries produce no tree-support output;
 organic multi-layer branch geometry is emitted only where the planner supplies
 entries.

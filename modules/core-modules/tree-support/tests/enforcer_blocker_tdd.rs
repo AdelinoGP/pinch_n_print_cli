@@ -123,9 +123,6 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
 }
 
 /// Test 1: A fully blocked region generates zero support paths.
-///
-/// D14 contract: SliceIR carries a SupportBlocker annotation covering the
-/// region.  `paint_policy_for` returns `Blocked`; the support module skips.
 #[test]
 fn fully_blocked_region_generates_zero_support() {
     let config = enabled_config();
@@ -169,8 +166,7 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
     );
 }
 
-/// Test 3: A region that is both blocked and enforced generates zero support
-/// (blocker takes precedence over enforcer, per docs/10 §"Scenario Trace 2").
+/// Test 3: A region that is both blocked and enforced generates zero support.
 #[test]
 fn blocked_plus_enforced_resolves_to_zero_support() {
     let config = enabled_config();

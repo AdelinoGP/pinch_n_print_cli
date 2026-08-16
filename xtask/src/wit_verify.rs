@@ -1130,6 +1130,7 @@ mod tests {
             ("wipe-tower", "finalization-layer-finalization"),
             ("gyroid-infill", "layer-infill"),
             ("tree-support-planner", "prepass-support-geometry"),
+            ("traditional-support-planner", "prepass-support-geometry"),
         ] {
             let dir = root.join("modules/core-modules").join(module);
             if !dir.join(format!("{module}.toml")).exists() {

@@ -543,11 +543,11 @@ impl SupportPlanner {
         // populated. This preserves the prior behavior for an absent or
         // partial SupportAnalysisView while consuming host candidates when
         // available.
-        for candidate in support_analysis
-            .candidates
-            .iter()
-            .filter(|candidate| candidate.object_id == obj.object_id && candidate.blocked)
-        {
+        for candidate in support_analysis.candidates.iter().filter(|candidate| {
+            candidate.object_id == obj.object_id
+                && candidate.blocked
+                && candidate_family(candidate, support_analysis) == "tree"
+        }) {
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
                 object_id: obj.object_id.clone(),
@@ -567,6 +567,7 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
+                && candidate_family(candidate, support_analysis) == "tree"
                 && candidate
                     .geometry
                     .iter()
@@ -920,26 +921,13 @@ impl SupportPlanner {
                             assignment.object_id == obj.object_id
                                 && assignment.region_id == *region_id
                         })
-                        .map(|assignment| assignment.family_id.clone())
-                        .or_else(|| {
-                            region_segmentation
-                                .region_support_configs
-                                .iter()
-                                .find(|config| {
-                                    config.object_id == obj.object_id
-                                        && config.layer_index == current_global_layer_index
-                                        && config.region_id == *region_id
-                                })
-                                .map(|config| {
-                                    canonical_support_family_alias(
-                                        config
-                                            .support_type
-                                            .as_deref()
-                                            .or(config.support_family.as_deref()),
-                                    )
-                                })
+                        .map(|assignment| {
+                            canonical_support_family_alias(Some(&assignment.family_id))
                         })
-                        .unwrap_or_else(|| self.support_family.clone());
+                        .unwrap_or_else(|| "tree".to_string());
+                    if support_family != "tree" {
+                        continue;
+                    }
                     entries_in_order.push(SupportPlanEntry {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
@@ -1237,6 +1225,26 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
     } else {
         "traditional".to_string()
     }
+}
+
+/// Resolve the canonical support family for a candidate from the host's
+/// per-region family assignments, falling back to the tree planner's own
+/// canonical identity. A tree planner never plans a non-tree candidate, so
+/// the fallback is the fixed `"tree"` identity rather than the config-resolved
+/// global family (which may select the traditional family).
+fn candidate_family(
+    candidate: &SupportAnalysisCandidate,
+    analysis: &SupportAnalysisView,
+) -> String {
+    analysis
+        .family_assignments
+        .iter()
+        .find(|assignment| {
+            assignment.object_id == candidate.object_id
+                && assignment.region_id == candidate.region_id
+        })
+        .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
+        .unwrap_or_else(|| "tree".to_string())
 }
 
 /// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
@@ -2040,7 +2048,12 @@ mod tests {
             .iter()
             .map(|entry| entry.family_id.as_str())
             .collect();
-        assert_eq!(families, ["traditional", "tree"].into_iter().collect());
+        // The tree planner resolves family from the analysis layer's
+        // `family_assignments`, falling back to its own canonical "tree"
+        // identity. Per-region `region_support_configs` are not consulted, so
+        // a region configured "traditional" still plans as "tree" here (the
+        // analysis layer owns the family split).
+        assert_eq!(families, ["tree"].into_iter().collect());
     }
 
     #[test]

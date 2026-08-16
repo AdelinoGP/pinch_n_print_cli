@@ -1947,6 +1947,7 @@ fn build_paint_layer_data_with_plan(
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        support_plan_entries: HashMap::new(),
         lightning_tree_segments: HashMap::new(),
     };
     if let Some(plan) = support_plan_ir {
@@ -1955,7 +1956,35 @@ fn build_paint_layer_data_with_plan(
                 continue;
             }
             let key = (entry.object_id.clone(), entry.region_id.to_string());
-            let _ = key;
+            data.support_plan_entries.entry(key).or_default().push(
+                host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView {
+                    global_layer_index: entry.global_layer_index,
+                    object_id: entry.object_id.clone(),
+                    region_id: entry.region_id.to_string(),
+                    family_id: entry.family_id.clone(),
+                    demand_ids: entry.demand_ids.clone(),
+                    body_ids: entry.body_ids.clone(),
+                    anchor_layer_index: entry.anchor_layer_index,
+                    anchor_z: entry.anchor_z,
+                    roles: entry.roles.iter().map(|role| host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRoleRegion {
+                        role: match role.role {
+                            slicer_ir::SupportPlanRole::SupportBody => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::SupportBody,
+                            slicer_ir::SupportPlanRole::TopInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::TopInterface,
+                            slicer_ir::SupportPlanRole::BottomInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::BottomInterface,
+                            slicer_ir::SupportPlanRole::RaftRelated => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::RaftRelated,
+                        },
+                        regions: host::ir_to_wit_expolygons(&role.regions),
+                    }).collect(),
+                    skeleton: entry.skeleton.as_ref().map(|s| host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewSkeleton { points: s.points.iter().map(|p| host::layer_perimeters::slicer::types::geometry::Point3 { x: p.x, y: p.y, z: p.z }).collect() }),
+                    capabilities: entry.capabilities.clone(),
+                    provenance: entry.provenance.clone(),
+                    decline_reason: entry.decline_reason.map(|reason| match reason {
+                        slicer_ir::SupportPlanDeclineReason::DeclinedPolicy => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::DeclinedPolicy,
+                        slicer_ir::SupportPlanDeclineReason::NoRoute => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::NoRoute,
+                        slicer_ir::SupportPlanDeclineReason::Blocked => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::Blocked,
+                        slicer_ir::SupportPlanDeclineReason::UnsupportedMode => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::UnsupportedMode,
+                    }),
+                });
         }
     }
     if let Some(ir) = lightning_tree_ir {

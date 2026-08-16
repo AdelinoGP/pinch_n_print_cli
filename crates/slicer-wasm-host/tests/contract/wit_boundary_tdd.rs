@@ -101,6 +101,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )
@@ -220,6 +221,7 @@ fn guest_reads_region_z_from_ir_view() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )
@@ -317,6 +319,7 @@ fn guest_emits_output_via_infill_builder() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )
@@ -422,6 +425,7 @@ fn guest_logs_via_host_services() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )
@@ -524,6 +528,7 @@ fn repeated_calls_produce_independent_outputs() {
                     regions_by_semantic: HashMap::new(),
                     custom_regions: HashMap::new(),
                     support_plan_segments: HashMap::new(),
+                    support_plan_entries: HashMap::new(),
                     lightning_tree_segments: HashMap::new(),
                 },
             )
@@ -605,6 +610,7 @@ fn empty_region_list_handled_gracefully() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )
