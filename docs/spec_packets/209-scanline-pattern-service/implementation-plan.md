@@ -35,7 +35,11 @@
   `number_of_intervals == 0 -> return distance` guard as a fourth axis: PnP's opening
   `let count = width / distance; if count < 1 { return distance; }` is that same guard, both sides
   return `distance`, and claiming otherwise writes a fabricated canonical claim into a permanent
-  artifact. In the two test files, re-baseline the two self-captured fixtures and rename/strengthen the
+  artifact. In the two test files, re-baseline the four self-captured fixture counts:
+  `square_10mm_density_20_emits_n_raw_segments` 6 → 5,
+  `polygon_with_hole_segments_split_around_hole` 8 → 7,
+  `solid_spacing_adjusted_for_solid_role` 5 → 4 with its y-set losing the 10.0 mm top-boundary line,
+  and `very_small_polygon_emits_no_paths_without_panic` → `very_small_polygon_emits_one_scan_row_without_panic` 0 → 1; rename/strengthen the
   vertex test per AC-1, AC-3 and AC-4.
 - Precondition: Working tree clean of packet-209 changes.
   `rg -c 'while scan_y <= rmax_y' modules/core-modules/rectilinear-infill/src/lib.rs` returns 1, and
@@ -94,7 +98,11 @@
   - `cargo clippy -p rectilinear-infill --all-targets -- -D warnings` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT: clean or `STALE:` list; rebuild without `--check` if stale
 - Exit condition: All five infill binaries green at their pinned counts, both static greps pass, and
-  the grid change accounts for **exactly** the two re-baselined counts and nothing else.
+  the grid change accounts for **exactly** these four re-baselined counts and nothing else:
+  `square_10mm_density_20_emits_n_raw_segments` 6 → 5,
+  `polygon_with_hole_segments_split_around_hole` 8 → 7,
+  `solid_spacing_adjusted_for_solid_role` 5 → 4 with its y-set losing the 10.0 mm top-boundary line,
+  and `very_small_polygon_emits_no_paths_without_panic` → `very_small_polygon_emits_one_scan_row_without_panic` 0 → 1.
   `square_10mm_density_20_emits_n_raw_segments` must see **5** — the five main-loop rows at
   `rmin_y + k*2mm` for `k in 0..5`, with no row at `rmax_y` and no post-pass segment.
   `very_small_polygon_emits_one_scan_row_without_panic` must see **1**. If any of

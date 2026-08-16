@@ -74,7 +74,7 @@ fn single_region_generates_support() {
 /// Test 3: All output paths have role SupportMaterial.
 #[test]
 fn extrusion_role_is_support_material() {
-    let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -98,7 +98,7 @@ fn extrusion_role_is_support_material() {
 /// Test 4: Speed factor derived from config support_speed / BASE_SPEED.
 #[test]
 fn speed_factor_from_config() {
-    let config = make_config(true, 0.2, 0.0, 80.0, 0.4);
+    let config = make_config(true, 20.0, 0.0, 80.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -156,7 +156,7 @@ fn density_affects_line_count() {
 /// Test 6: Alternating angle — layer 0 vs layer 1 rotated by 90 degrees.
 #[test]
 fn alternating_angle() {
-    let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region0 = make_square_region(10.0, 0.3);
@@ -208,7 +208,7 @@ fn alternating_angle() {
 /// Test 7: Empty regions produce no output.
 #[test]
 fn empty_regions_no_output() {
-    let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     // Region with empty polygons

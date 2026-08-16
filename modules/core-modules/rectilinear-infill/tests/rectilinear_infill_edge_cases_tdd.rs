@@ -90,9 +90,9 @@ fn non_convex_polygon_emits_finite_sparse_paths_without_panic() {
 }
 
 #[test]
-fn very_small_polygon_emits_no_paths_without_panic() {
+fn very_small_polygon_emits_one_scan_row_without_panic() {
     // 0.1mm square is smaller than the 0.8mm line spacing (line_width/density),
-    // so the scan-line loop never produces a row → empty output, no panic.
+    // but the canonical half-open grid always emits its first scan row.
     let cfg = config(0.5);
     let module = RectilinearInfill::from_config(&cfg).unwrap();
     let tiny = square_polygon(0.0, 0.0, 0.1);
@@ -103,8 +103,9 @@ fn very_small_polygon_emits_no_paths_without_panic() {
         .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
         .expect("run_infill must not panic on a sub-spacing polygon");
 
-    assert!(
-        output.sparse_paths().is_empty(),
-        "a polygon smaller than the line spacing must yield no paths"
+    assert_eq!(
+        output.sparse_paths().len(),
+        1,
+        "a sub-spacing polygon must yield exactly one scan row"
     );
 }

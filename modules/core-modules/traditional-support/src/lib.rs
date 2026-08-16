@@ -197,12 +197,26 @@ impl TraditionalSupport {
             collect_edges(&hole.points, &mut edges);
         }
 
-        // Rotate all edge endpoints by -angle into working space
+        // Compute the unrotated bounding-box centre and rotate around it.
+        let (mut min_x, mut max_x) = (i64::MAX, i64::MIN);
+        let (mut min_y, mut max_y) = (i64::MAX, i64::MIN);
+        for &(x1, y1, x2, y2) in &edges {
+            min_x = min_x.min(x1).min(x2);
+            max_x = max_x.max(x1).max(x2);
+            min_y = min_y.min(y1).min(y2);
+            max_y = max_y.max(y1).max(y2);
+        }
+        if min_x >= max_x || min_y >= max_y || line_spacing <= 0 {
+            return Vec::new();
+        }
+        let refpt_x = min_x + (max_x - min_x) / 2;
+        let refpt_y = min_y + (max_y - min_y) / 2;
+
         let rotated_edges: Vec<(i64, i64, i64, i64)> = edges
             .iter()
             .map(|&(x1, y1, x2, y2)| {
-                let (rx1, ry1) = rotate_point(x1, y1, cos_a, -sin_a);
-                let (rx2, ry2) = rotate_point(x2, y2, cos_a, -sin_a);
+                let (rx1, ry1) = rotate_point(x1 - refpt_x, y1 - refpt_y, cos_a, -sin_a);
+                let (rx2, ry2) = rotate_point(x2 - refpt_x, y2 - refpt_y, cos_a, -sin_a);
                 (rx1, ry1, rx2, ry2)
             })
             .collect();
@@ -214,27 +228,29 @@ impl TraditionalSupport {
             max_y = max_y.max(ry1).max(ry2);
         }
 
-        if min_y >= max_y || line_spacing <= 0 {
+        if min_y >= max_y {
             return Vec::new();
         }
 
         // Generate scan lines
         let mut paths = Vec::new();
-        let mut scan_y = min_y + line_spacing;
+        let mut scan_y = min_y;
 
         while scan_y < max_y {
             // Find intersections with all edges
             let mut x_intersections: Vec<i64> = Vec::new();
 
             for &(rx1, ry1, rx2, ry2) in &rotated_edges {
-                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
-
-                // Strictly between
-                if scan_y > edge_min_y && scan_y < edge_max_y {
-                    let x = rx1 as f64
-                        + (scan_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
-                    x_intersections.push(x.round() as i64);
+                if ry1 == ry2 {
+                    continue;
                 }
+                let (lo, hi) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
+                if scan_y < lo || scan_y >= hi {
+                    continue;
+                }
+                let x =
+                    rx1 as f64 + (scan_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
+                x_intersections.push(x.round() as i64);
             }
 
             x_intersections.sort();
@@ -245,13 +261,18 @@ impl TraditionalSupport {
                 let x_start = x_intersections[i];
                 let x_end = x_intersections[i + 1];
 
+                if x_start == x_end {
+                    i += 2;
+                    continue;
+                }
+
                 // Rotate back by +angle
                 let (start_x, start_y) = rotate_point(x_start, scan_y, cos_a, sin_a);
                 let (end_x, end_y) = rotate_point(x_end, scan_y, cos_a, sin_a);
 
                 let start = Point3WithWidth {
-                    x: slicer_ir::units_to_mm(start_x),
-                    y: slicer_ir::units_to_mm(start_y),
+                    x: slicer_ir::units_to_mm(start_x + refpt_x),
+                    y: slicer_ir::units_to_mm(start_y + refpt_y),
                     z,
                     width: self.line_width,
                     flow_factor: 1.0,
@@ -260,8 +281,8 @@ impl TraditionalSupport {
                     overhang_distance_mm: None,
                 };
                 let end = Point3WithWidth {
-                    x: slicer_ir::units_to_mm(end_x),
-                    y: slicer_ir::units_to_mm(end_y),
+                    x: slicer_ir::units_to_mm(end_x + refpt_x),
+                    y: slicer_ir::units_to_mm(end_y + refpt_y),
                     z,
                     width: self.line_width,
                     flow_factor: 1.0,
@@ -281,57 +302,6 @@ impl TraditionalSupport {
             }
 
             scan_y += line_spacing;
-        }
-
-        // Centroid fallback: when the polygon is smaller than `line_spacing`
-        // along the scan axis, the scan-line loop emits nothing. Drop a
-        // single horizontal segment across the polygon's centroid so any
-        // non-empty support polygon yields at least one fill path.
-        if paths.is_empty() {
-            let centroid_y = (min_y + max_y) / 2;
-            let mut centroid_xs: Vec<i64> = Vec::new();
-            for &(rx1, ry1, rx2, ry2) in &rotated_edges {
-                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
-                if centroid_y > edge_min_y && centroid_y < edge_max_y {
-                    let x = rx1 as f64
-                        + (centroid_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
-                    centroid_xs.push(x.round() as i64);
-                }
-            }
-            centroid_xs.sort();
-            let mut i = 0;
-            while i + 1 < centroid_xs.len() {
-                let (start_x, start_y) = rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
-                let (end_x, end_y) = rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
-                paths.push(ExtrusionPath3D {
-                    points: vec![
-                        Point3WithWidth {
-                            x: slicer_ir::units_to_mm(start_x),
-                            y: slicer_ir::units_to_mm(start_y),
-                            z,
-                            width: self.line_width,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
-                        },
-                        Point3WithWidth {
-                            x: slicer_ir::units_to_mm(end_x),
-                            y: slicer_ir::units_to_mm(end_y),
-                            z,
-                            width: self.line_width,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
-                        },
-                    ],
-                    role: ExtrusionRole::SupportMaterial,
-                    speed_factor,
-                    tool_index: None,
-                });
-                i += 2;
-            }
         }
 
         paths

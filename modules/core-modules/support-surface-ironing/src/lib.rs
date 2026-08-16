@@ -83,32 +83,39 @@ impl SupportSurfaceIroning {
         }
 
         // Compute bounding box
+        let (mut min_x, mut max_x) = (i64::MAX, i64::MIN);
         let (mut min_y, mut max_y) = (i64::MAX, i64::MIN);
-        for &(_, y1, _, y2) in &edges {
+        for &(x1, y1, x2, y2) in &edges {
+            min_x = min_x.min(x1).min(x2);
+            max_x = max_x.max(x1).max(x2);
             min_y = min_y.min(y1).min(y2);
             max_y = max_y.max(y1).max(y2);
         }
 
-        if min_y >= max_y || line_spacing <= 0 {
+        if min_x >= max_x || min_y >= max_y || line_spacing <= 0 {
             return Vec::new();
         }
 
         // Generate horizontal scan lines
         let mut paths = Vec::new();
-        let mut scan_y = min_y + line_spacing;
+        let mut scan_y = min_y;
 
         while scan_y < max_y {
             // Find intersections with all edges
             let mut x_intersections: Vec<i64> = Vec::new();
 
             for &(x1, y1, x2, y2) in &edges {
+                if y1 == y2 {
+                    continue;
+                }
                 let (edge_min_y, edge_max_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
 
-                // Strictly between
-                if scan_y > edge_min_y && scan_y < edge_max_y {
-                    let x = x1 as f64 + (scan_y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64;
-                    x_intersections.push(x.round() as i64);
+                // Include the lower endpoint and exclude the upper endpoint.
+                if scan_y < edge_min_y || scan_y >= edge_max_y {
+                    continue;
                 }
+                let x = x1 as f64 + (scan_y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64;
+                x_intersections.push(x.round() as i64);
             }
 
             x_intersections.sort();
@@ -118,6 +125,11 @@ impl SupportSurfaceIroning {
             while i + 1 < x_intersections.len() {
                 let x_start = x_intersections[i];
                 let x_end = x_intersections[i + 1];
+
+                if x_start == x_end {
+                    i += 2;
+                    continue;
+                }
 
                 let start = Point3WithWidth {
                     x: slicer_ir::units_to_mm(x_start),

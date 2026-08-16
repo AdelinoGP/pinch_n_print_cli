@@ -9,7 +9,7 @@
 //!   4. `angle_45_rotated_output_matches_unrotated_after_inverse`  — AC-4
 //!   5. `solid_spacing_adjusted_for_solid_role`                    — AC-5
 //!   6. `pattern_shift_interleaves_layers`                         — AC-7
-//!   7. `half_open_vertex_test_no_double_count`                    — AC-N1
+//!   7. `vertex_event_test_no_double_count`                         — AC-N1
 //!
 //! Authoritative semantics: per the ACs above (packet 134 digest). The packet's
 //! reference doc (`docs/specs/infill-parity-rectilinear-gyroid-linker.md`
@@ -161,7 +161,7 @@ fn point_in_rect(pt: &Point3WithWidth, x0: f32, y0: f32, x1: f32, y1: f32) -> bo
 // Test 1 — AC-1
 // ---------------------------------------------------------------------------
 /// AC-1: A 10mm×10mm square at density 0.2 emits exactly
-/// `floor(bb_h / spacing) + 1` raw 2-pt segments, every endpoint lies
+/// `ceil(bb_h / spacing)` raw 2-pt segments, every endpoint lies
 /// on the square boundary (within 2 units), and no two paths share an
 /// endpoint.
 #[test]
@@ -178,14 +178,14 @@ fn square_10mm_density_20_emits_n_raw_segments() {
 
     let paths = output.sparse_paths();
     // AC-1 exact count: spacing = 0.4/0.2 = 2.0mm, bb_h = 10mm.
-    // floor(10/2) + 1 = 6.
+    // ceil(10/2) = 5.
     let bb_h_mm = 10.0_f32;
     let spacing_mm = 0.4_f32 / 0.2_f32;
-    let expected = (bb_h_mm / spacing_mm).floor() as usize + 1;
+    let expected = (bb_h_mm / spacing_mm).ceil() as usize;
     assert_eq!(
         paths.len(),
         expected,
-        "AC-1: expected exactly floor(bb_h/spacing)+1 = {} raw segments, got {}",
+        "AC-1: expected exactly ceil(bb_h/spacing) = {} raw segments, got {}",
         expected,
         paths.len()
     );
@@ -318,21 +318,18 @@ fn polygon_with_hole_segments_split_around_hole() {
         }
     }
 
-    // AC-2 secondary invariant: the segment count must match what the
-    // half-open + top-boundary-post-pass geometry produces. With
+    // AC-2 secondary invariant: the segment count must match the
+    // half-open grid. With
     // spacing=2mm on a 10mm-tall square centered at y=5 and a 4mm
     // central hole at y=3..7:
     //   - scan lines that don't cross the hole: y=0,2 (bottom) and
     //     y=8 (top) → 1 segment each = 3
     //   - scan lines that cross the hole: y=4, y=6 → 2 segments each = 4
-    //   - top boundary post-pass: 1 segment (the top edge of the square)
-    //   Total: 3 + 4 + 1 = 8 segments.
-    // The baseline (no post-pass, no half-open) produces 6. So this
-    // test discriminates baseline from production.
+    //   Total: 3 + 4 = 7 segments.
     assert_eq!(
         paths.len(),
-        8,
-        "AC-2: expected 8 segments (3 outer rows + 4 hole-crossing + 1 top boundary), got {}",
+        7,
+        "AC-2: expected 7 segments (3 outer rows + 4 hole-crossing), got {}",
         paths.len()
     );
 }
@@ -523,9 +520,8 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
 fn solid_spacing_adjusted_for_solid_role() {
     // density=0.18, line_width=0.4 → raw spacing=2.222mm. On a 10mm
     // width, adjust_solid_spacing(10mm, 2.222mm): count=4, new spacing=
-    // round(10/4)=2.5mm. 2.5 ≤ 2.222*1.2=2.667, so no clamp. Adjusted
-    // scan lines at y = 0, 2.5, 5.0, 7.5, 10.0 (the top is a
-    // horizontal-contour post-pass edge, separate from the scan loop).
+    // round(10/4)=2.5mm. 2.5 ≤ 2.222*1.2=2.667, so no clamp. Half-open
+    // scan lines are at y = 0, 2.5, 5.0, 7.5.
     let config = make_config(0.18, 0.0, 50.0, 0.4);
     let module = RectilinearInfill::from_config(&config).unwrap();
 
@@ -554,13 +550,11 @@ fn solid_spacing_adjusted_for_solid_role() {
         .unwrap();
 
     let solid = output.solid_paths();
-    // AC-5: 4 scan lines (intervals 0, 2.5, 5.0, 7.5) + top boundary
-    // edge = 5 segments total. The post-pass emits the top contour
-    // edge at y=10 as a separate path; the scan loop emits 4.
+    // AC-5: 4 scan lines (intervals 0, 2.5, 5.0, 7.5).
     assert_eq!(
         solid.len(),
-        5,
-        "AC-5: expected 5 adjusted lines (4 scan intervals + top boundary), got {}",
+        4,
+        "AC-5: expected 4 adjusted scan lines, got {}",
         solid.len()
     );
 
@@ -571,10 +565,10 @@ fn solid_spacing_adjusted_for_solid_role() {
         .iter()
         .flat_map(|p| p.points.iter().map(|pt| slicer_ir::mm_to_units(pt.y)))
         .collect();
-    let expected: BTreeSet<i64> = [0, 25000, 50000, 75000, 100000].iter().copied().collect();
+    let expected: BTreeSet<i64> = [0, 25000, 50000, 75000].iter().copied().collect();
     assert_eq!(
         y_vals, expected,
-        "AC-5: adjusted solid lines should be at y = 0, 2.5, 5.0, 7.5, 10.0 mm (units), got {:?}",
+        "AC-5: adjusted solid lines should be at y = 0, 2.5, 5.0, 7.5 mm (units), got {:?}",
         y_vals
     );
 
@@ -776,7 +770,7 @@ fn pattern_shift_interleaves_layers() {
 /// exclude at max_y) prevents emitting the vertex intersection
 /// twice. Segment count matches the analytic parity, not 2× parity.
 #[test]
-fn half_open_vertex_test_no_double_count() {
+fn vertex_event_test_no_double_count() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
     let module = RectilinearInfill::from_config(&config).unwrap();
 
@@ -817,15 +811,33 @@ fn half_open_vertex_test_no_double_count() {
         .unwrap();
 
     let paths = output.sparse_paths();
-    // AC-N1: 9 segments expected with half-open vertex test + inclusive
-    // scan-line iteration (y=0 included, apex counted once, max_y
-    // excluded). Closed-closed would emit 2× at the apex → 10+ (the
+    // AC-N1: 9 segments expected with half-open vertex test (y=0's
+    // tangential touch is degenerate, apex counted once, max_y excluded).
+    // Closed-closed would emit 2× at the apex → 10+ (the
     // parity bug). With a correct half-open test, the count is 9.
     assert_eq!(
         paths.len(),
         9,
         "AC-N1: expected 9 segments for triangle with apex on scan line, got {}",
         paths.len()
+    );
+    let apex_rows = paths
+        .iter()
+        .filter(|path| (path.points[0].y - 10.0).abs() < 0.001)
+        .count();
+    assert_eq!(
+        apex_rows, 1,
+        "AC-3 crossing vertex: apex scan row must emit exactly one segment, got {}",
+        apex_rows
+    );
+    let base_rows = paths
+        .iter()
+        .filter(|path| (path.points[0].y - 0.0).abs() < 0.001)
+        .count();
+    assert_eq!(
+        base_rows, 0,
+        "AC-3 tangential touch: degenerate base touch must emit no segment, got {}",
+        base_rows
     );
     for path in paths {
         assert_eq!(

@@ -132,14 +132,15 @@ inclusion, rotation reference, scan start, scan grid extent. The rationale for e
 
 ### 3. Fixture re-baselining (canonical corrections, owned)
 
-Two self-captured `rectilinear-infill` fixtures encode the non-canonical inclusive grid and are
-re-baselined to canonical-correct output, per `CLAUDE.md` §Test Discipline. The full statement is in
-`packet.spec.md` §"Shipped infill geometry moves"; in brief,
-`square_10mm_density_20_emits_n_raw_segments` goes from `floor(bb_h/spacing)+1` (6) to
-`ceil(bb_h/spacing)` (5), and `very_small_polygon_emits_no_paths_without_panic` is renamed to
-`very_small_polygon_emits_one_scan_row_without_panic` and asserts one path instead of zero. **No
-assertion may be weakened, narrowed or deleted in either file** — only these two counts change, and
-each is justified by a quoted canonical formula.
+Four self-captured `rectilinear-infill` fixture counts encode the non-canonical inclusive grid and are
+re-baselined to canonical-correct output, per `CLAUDE.md` §Test Discipline: in
+`rectilinear_raw_emit_tdd.rs`, `square_10mm_density_20_emits_n_raw_segments` 6 → 5,
+`polygon_with_hole_segments_split_around_hole` 8 → 7, and `solid_spacing_adjusted_for_solid_role`
+5 → 4 with its y-set losing the 10.0 mm top-boundary line; in
+`rectilinear_infill_edge_cases_tdd.rs`, `very_small_polygon_emits_no_paths_without_panic` is renamed
+to `very_small_polygon_emits_one_scan_row_without_panic` and changes 0 → 1. **No assertion may be
+weakened, narrowed or deleted in either file** — each count change is justified by the quoted
+canonical formula.
 
 `rectilinear_raw_emit_tdd.rs`'s `half_open_vertex_test_no_double_count` is renamed to
 `vertex_event_test_no_double_count` at **both** occurrences (the module doc-comment index at the top

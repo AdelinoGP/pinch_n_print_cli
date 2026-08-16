@@ -302,7 +302,12 @@ fn solid_fill_role(shell_index: Option<u8>, exposed: ExtrusionRole) -> Extrusion
 /// Adjust solid infill line spacing so that the polygon width is divided
 /// evenly, producing uniform scan lines that exactly span the polygon.
 ///
-/// Ported from OrcaSlicer FillBase.cpp::adjust_solid_spacing.
+/// D-209-ADJUST-SOLID-SPACING-DIVERGENCE: differs from OrcaSlicer's
+/// `Fill::_adjust_solid_spacing` (`FillBase.cpp`) in three ways: PnP uses bare
+/// `width` instead of canonical `(width - EPSILON)` as the numerator of both
+/// divisions; PnP rounds where canonical truncates; and PnP returns the
+/// unmodified `distance` on the over-cap branch where canonical returns
+/// `floor(distance * 1.2 + 0.5)`.
 fn adjust_solid_spacing(width: i64, distance: i64) -> i64 {
     let count = width / distance;
     if count < 1 {
@@ -318,9 +323,11 @@ fn adjust_solid_spacing(width: i64, distance: i64) -> i64 {
 /// Scan a single ExPolygon and produce fill segments.
 ///
 /// Each ExPolygon is scanned independently using its own bounding-box center
-/// as the reference point (AC-3 invariant). The half-open vertex test
-/// (include at min_y, exclude at max_y) prevents double-counting at
-/// polygon vertices (AC-N1).
+/// as the reference point (AC-3 invariant). Scan rows use a half-open grid:
+/// `scan_y` starts at `rmin_y`, advances by the effective spacing, and emits
+/// while `scan_y < rmax_y`, yielding `ceil(height / spacing)` rows. The
+/// half-open vertex test (include at min_y, exclude at max_y) prevents
+/// double-counting at polygon vertices (AC-N1).
 ///
 /// When `adjust_for_solid` is true, the line spacing is adjusted via
 /// `adjust_solid_spacing` so that the polygon is divided evenly.
@@ -344,7 +351,6 @@ fn scan_expolygon(
     // Collect edges from contour and holes. Inlined per the packet 134 design
     // (replaces the previous `collect_edges` free function).
     let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
-    let mut contour_edges: Vec<(i64, i64, i64, i64)> = Vec::new();
     let contour_pts = &expoly.contour.points;
     let n = contour_pts.len();
     if n >= 2 {
@@ -353,7 +359,6 @@ fn scan_expolygon(
             let p_i = &contour_pts[i];
             let p_j = &contour_pts[j];
             edges.push((p_i.x, p_i.y, p_j.x, p_j.y));
-            contour_edges.push((p_i.x, p_i.y, p_j.x, p_j.y));
         }
     }
     for hole in &expoly.holes {
@@ -391,16 +396,10 @@ fn scan_expolygon(
     let cos_neg = cos_a;
     let sin_neg = -sin_a;
     let mut rotated_edges: Vec<(i64, i64, i64, i64)> = Vec::with_capacity(edges.len());
-    let mut rotated_contour: Vec<(i64, i64, i64, i64)> = Vec::with_capacity(contour_edges.len());
     for &(x1, y1, x2, y2) in &edges {
         let (rx1, ry1) = rotate_point(x1 - refpt_x, y1 - refpt_y, cos_neg, sin_neg);
         let (rx2, ry2) = rotate_point(x2 - refpt_x, y2 - refpt_y, cos_neg, sin_neg);
         rotated_edges.push((rx1, ry1, rx2, ry2));
-    }
-    for &(x1, y1, x2, y2) in &contour_edges {
-        let (rx1, ry1) = rotate_point(x1 - refpt_x, y1 - refpt_y, cos_neg, sin_neg);
-        let (rx2, ry2) = rotate_point(x2 - refpt_x, y2 - refpt_y, cos_neg, sin_neg);
-        rotated_contour.push((rx1, ry1, rx2, ry2));
     }
 
     // Bbox in rotated space.
@@ -420,16 +419,10 @@ fn scan_expolygon(
         line_spacing
     };
 
-    // Skip both the main scan-line loop and the post-pass when the polygon
-    // is too small for the line spacing.
-    if rmax_y - rmin_y < effective_spacing {
-        return Vec::new();
-    }
-
     let mut paths = Vec::new();
     let mut scan_y = rmin_y;
 
-    while scan_y <= rmax_y {
+    while scan_y < rmax_y {
         let mut x_intersections: Vec<i64> = Vec::new();
 
         for &(rx1, ry1, rx2, ry2) in &rotated_edges {
@@ -499,42 +492,6 @@ fn scan_expolygon(
         }
 
         scan_y += effective_spacing;
-    }
-
-    // Post-pass: emit horizontal contour edges at the top boundary (rmax_y).
-    // The half-open vertex test excludes the top boundary from scan lines, so
-    // we add it here to ensure the top edge of the polygon is filled.
-    for &(rx1, ry1, rx2, ry2) in &rotated_contour {
-        if ry1 == ry2 && ry1 == rmax_y {
-            let (sx, sy) = rotate_point(rx1, ry1, cos_a, sin_a);
-            let (ex, ey) = rotate_point(rx2, ry2, cos_a, sin_a);
-            let start = Point3WithWidth {
-                x: slicer_ir::units_to_mm(sx + refpt_x + x_shift),
-                y: slicer_ir::units_to_mm(sy + refpt_y),
-                z,
-                width: line_width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            };
-            let end = Point3WithWidth {
-                x: slicer_ir::units_to_mm(ex + refpt_x + x_shift),
-                y: slicer_ir::units_to_mm(ey + refpt_y),
-                z,
-                width: line_width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            };
-            paths.push(ExtrusionPath3D {
-                points: vec![start, end],
-                role: role.clone(),
-                speed_factor,
-                tool_index: None,
-            });
-        }
     }
 
     paths

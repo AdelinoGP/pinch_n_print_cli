@@ -196,8 +196,12 @@ half-open vertex test excluded `rmax_y`. Under canonical there is no scan line a
 the post-pass would emit an **extra**, non-canonical segment. Delete it together with the
 `contour_edges` / `rotated_contour` vectors that feed it.
 
-**This moves shipped `rectilinear-infill` output.** Two self-captured fixtures are re-baselined; the
-statement, the arithmetic and the "no assertion may be weakened" rule are in `packet.spec.md`
+**This moves shipped `rectilinear-infill` output.** Four self-captured fixture counts are re-baselined:
+`square_10mm_density_20_emits_n_raw_segments` 6 → 5,
+`polygon_with_hole_segments_split_around_hole` 8 → 7,
+`solid_spacing_adjusted_for_solid_role` 5 → 4 with its y-set losing the 10.0 mm top-boundary line,
+and `very_small_polygon_emits_no_paths_without_panic` →
+`very_small_polygon_emits_one_scan_row_without_panic` 0 → 1. The statement, the arithmetic and the "no assertion may be weakened" rule are in `packet.spec.md`
 §"Shipped infill geometry moves". The two struck justifications for deferring the grid instead —
 "the bound is inseparable from the `full_infill()` inset **and** the `align_to_grid` anchor" and
 "re-baselining would weaken an AC" (**inverts** `CLAUDE.md` §Test Discipline) — must not reappear in
@@ -475,8 +479,11 @@ edits more than three files.**
 
 - **Shipped infill geometry moves, and it is the highest-blast-radius module.**
   `rectilinear-infill` feeds sparse, top-solid, bottom-solid, internal-solid and bridge roles. Two
-  changes compound: the grid loses its top line, and sub-spacing regions gain one. Expect exactly two
-  fixture re-baselines and nothing else. **A count change in any of `rectilinear_infill_tdd`,
+  changes compound: the grid loses its top line, and sub-spacing regions gain one. Expect exactly four
+  fixture count re-baselines: `square_10mm_density_20_emits_n_raw_segments` 6 → 5,
+  `polygon_with_hole_segments_split_around_hole` 8 → 7,
+  `solid_spacing_adjusted_for_solid_role` 5 → 4 with its y-set losing the 10.0 mm top-boundary line,
+  and `very_small_polygon_emits_no_paths_without_panic` → `very_small_polygon_emits_one_scan_row_without_panic` 0 → 1. **A count change in any of `rectilinear_infill_tdd`,
   `top_bottom_fill_tdd` or `bridge_infill_emission_tdd` is a defect, not a re-baseline candidate** —
   those three assert relations, not absolute counts, and must pass untouched (AC-12).
 - **Support and ironing output moves more.** Each gains a scan line at the bbox min and shifts every
