@@ -106,5 +106,6 @@ mod support_invariants_wedge_tdd;
 mod thin_wall_emission_tdd;
 mod threemf_paint_drop_on_modifier_tdd;
 mod threemf_transform_tdd;
+mod traditional_support_family;
 mod tree_support_family;
 mod wasm_instance_pool_tdd;

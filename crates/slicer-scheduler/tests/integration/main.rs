@@ -25,6 +25,7 @@ mod support_family_selection;
 fn support_family_selection() {
     support_family_selection::support_family_selection();
     support_family_selection::support_family_candidates_are_retained();
+    support_family_selection::support_family_selection_two_planners_coexist();
 }
 
 #[test]

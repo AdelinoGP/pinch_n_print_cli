@@ -176,11 +176,6 @@ impl LayerModule for TreeSupport {
                 output.begin_region(region.object_id(), *region.region_id());
                 for role_region in entry.roles.iter() {
                     for expoly in &role_region.regions {
-                        // Eligibility precedence (docs/01 Layer::Support, docs/02
-                        // support precedence rules):
-                        //   blocker → skip; enforcer → generate;
-                        //   default → consult SurfaceClassificationIR.needs_support.
-                        let _ = layer_index;
                         match paint.paint_policy_for(expoly) {
                             SupportPaintPolicy::Blocked => continue,
                             SupportPaintPolicy::Enforced => {}

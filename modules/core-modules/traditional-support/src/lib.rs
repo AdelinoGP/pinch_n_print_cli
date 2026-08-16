@@ -13,18 +13,16 @@
 //! Implements `LayerModule::run_support` for the `Layer::Support` stage.
 //! Generates parallel scan-line fill patterns for support material areas
 //! with per-layer 90-degree angle alternation.
-//! Depends entirely on upstream SliceRegionView::needs_support().
 //!
-//! # Per-layer scan-line nature
+//! # Planned-polygon renderer
 //!
-//! This module is intentionally a per-layer scan-line filler. Its fill is a set of independent
-//! horizontal passes with no cross-layer dependency — each layer is a fresh
-//! scan at a rotated angle, deterministic from the layer index alone. It
-//! therefore does **not** declare `SupportPlanIR` as a read in its manifest
-//! and does **not** consume `PrePass::SupportGeometry` output. The
-//! planner-consuming tier is limited to `tree-support`, whose organic
-//! branches require multi-layer top-down propagation; see packet
-//! `28_tree-support-multi-layer-propagation` and docs/01 §Layer::Support.
+//! This module is a narrow polygon scan-fill adapter. It consumes validated
+//! structural plan entries for the `traditional` support family via the
+//! anchored support events (`PaintRegionLayerView::support_plan_entries_for`)
+//! and scan-fills only the planned body/interface polygons into attributed
+//! `SupportIR`. It never reads `region.polygons()` or derives support
+//! eligibility independently; eligibility is resolved upstream by the
+//! `traditional-support-planner`.
 //!
 //! # Speed normalization
 //!
@@ -42,7 +40,7 @@ use slicer_ir::{
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
@@ -64,6 +62,12 @@ pub struct TraditionalSupport {
     support_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Interface scan-fill line spacing in millimeters.
+    interface_spacing_mm: f32,
+    /// Raw Orca-style support filament selection (rebased by the runtime).
+    support_filament: u32,
+    /// Raw Orca-style interface filament selection (rebased by the runtime).
+    support_interface_filament: u32,
 }
 
 #[slicer_module]
@@ -95,12 +99,32 @@ impl LayerModule for TraditionalSupport {
             _ => 0.4,
         };
 
+        let interface_spacing_mm = match config.get("support_interface_spacing_mm") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => 0.4,
+        };
+
+        // Keep the authored 1-based selections intact. The runtime applies the
+        // shared zero-based rebasing convention when it emits path entities.
+        let support_filament = match config.get("support_filament") {
+            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
+            _ => 0,
+        };
+        let support_interface_filament = match config.get("support_interface_filament") {
+            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
+            _ => 0,
+        };
+
         Ok(Self {
             enabled,
             density,
             base_angle,
             support_speed,
             line_width,
+            interface_spacing_mm,
+            support_filament,
+            support_interface_filament,
         })
     }
 
@@ -116,12 +140,18 @@ impl LayerModule for TraditionalSupport {
             return Ok(());
         }
 
+        // Tool selection is applied by the runtime when SupportIR paths become
+        // entities; reading these keeps the renderer-side authored selections
+        // attached to this configured module without adding IR fields.
+        let _ = (self.support_filament, self.support_interface_filament);
+
         // `support_density` is declared in traditional-support.toml as a
         // 0-100 percentage (matching OrcaSlicer's UI convention). Convert
         // to a 0-1 ratio before using it as the spacing divisor.
         let density_ratio = (self.density / 100.0).max(f32::EPSILON);
         let line_spacing_mm = self.line_width / density_ratio;
         let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
+        let interface_line_spacing = slicer_ir::mm_to_units(self.interface_spacing_mm);
 
         // Compute angle: base + 90 degree alternation per layer
         let layer_rotation = if layer_index.is_multiple_of(2) {
@@ -137,46 +167,62 @@ impl LayerModule for TraditionalSupport {
 
         let speed_factor = self.support_speed / BASE_SPEED;
         for region in regions {
+            let z = region.z();
+
+            // Structural support plans carry semantic regions, not printable
+            // paths. A missing entry means this demand was declined; do not
+            // resurrect it with a legacy filler.
             let planned_entries =
                 paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
-            let planned_regions: Vec<&ExPolygon> = planned_entries
-                .iter()
-                .filter(|entry| {
-                    entry.global_layer_index == layer_index as i32
-                        && entry.family_id == "traditional"
-                        && entry.decline_reason.is_none()
-                })
-                .flat_map(|entry| entry.roles.iter())
-                .filter(|role| matches!(role.role, slicer_ir::SupportPlanRole::SupportBody))
-                .flat_map(|role| role.regions.iter())
-                .collect();
-            if planned_regions.is_empty() {
+
+            if planned_entries.is_empty() {
                 continue;
             }
 
-            let z = region.z();
-
-            for expoly in planned_regions {
-                // Eligibility precedence (docs/01 Layer::Support, docs/02
-                // support precedence rules):
-                //   blocker → skip (always wins)
-                //   enforcer → generate (overrides needs_support)
-                //   default → consult SurfaceClassificationIR.needs_support
-                let _ = layer_index;
-                match paint.paint_policy_for(expoly) {
-                    SupportPaintPolicy::Blocked => continue,
-                    SupportPaintPolicy::Enforced => {}
-                    SupportPaintPolicy::DefaultEligible => {
-                        if !region.needs_support() {
-                            continue;
+            for entry in planned_entries.iter().filter(|entry| {
+                entry.global_layer_index == layer_index as i32 && entry.decline_reason.is_none()
+            }) {
+                if entry.family_id != "traditional" {
+                    return Err(ModuleError::non_fatal(
+                        333,
+                        format!(
+                            "traditional support family-attribution mismatch: {}",
+                            entry.family_id
+                        ),
+                    ));
+                }
+                if !entry.roles.iter().any(|role| !role.regions.is_empty()) {
+                    return Err(ModuleError::non_fatal(
+                        334,
+                        "traditional support plan-required: no planned polygon",
+                    ));
+                }
+                output.begin_region(region.object_id(), *region.region_id());
+                for role_region in entry.roles.iter() {
+                    let spacing = match role_region.role {
+                        slicer_ir::SupportPlanRole::SupportBody => line_spacing,
+                        slicer_ir::SupportPlanRole::TopInterface
+                        | slicer_ir::SupportPlanRole::BottomInterface => interface_line_spacing,
+                        slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
+                    };
+                    for expoly in &role_region.regions {
+                        let paths =
+                            self.fill_expolygon(expoly, spacing, cos_a, sin_a, z, speed_factor);
+                        for path in paths {
+                            match role_region.role {
+                                slicer_ir::SupportPlanRole::SupportBody => {
+                                    let _ = output.push_support_path(path);
+                                }
+                                slicer_ir::SupportPlanRole::TopInterface => {
+                                    let _ = output.push_interface_path(path, true);
+                                }
+                                slicer_ir::SupportPlanRole::BottomInterface => {
+                                    let _ = output.push_interface_path(path, false);
+                                }
+                                slicer_ir::SupportPlanRole::RaftRelated => {}
+                            }
                         }
                     }
-                }
-
-                let paths =
-                    self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor);
-                for path in paths {
-                    let _ = output.push_support_path(path);
                 }
             }
         }
@@ -184,10 +230,6 @@ impl LayerModule for TraditionalSupport {
         Ok(())
     }
 }
-
-// SupportPaintPolicy was moved to `slicer_sdk::traits::SupportPaintPolicy`
-// (packet 95 closure) so that tree-support and traditional-support both consume
-// the same query implementation through `PaintRegionLayerView::paint_policy_for`.
 
 impl TraditionalSupport {
     /// Generate fill lines for a single ExPolygon.
@@ -382,5 +424,23 @@ mod tests {
         assert!(!module.enabled);
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
+        assert!((module.interface_spacing_mm - 0.4).abs() < 0.001);
+        assert_eq!(module.support_filament, 0);
+        assert_eq!(module.support_interface_filament, 0);
+    }
+
+    #[test]
+    fn from_config_retains_support_filament_selections() {
+        let config = ConfigView::from_map(std::collections::HashMap::from([
+            ("support_filament".to_string(), ConfigValue::Int(2)),
+            (
+                "support_interface_filament".to_string(),
+                ConfigValue::Int(3),
+            ),
+        ]));
+        let module = TraditionalSupport::from_config(&config).unwrap();
+
+        assert_eq!(module.support_filament, 2);
+        assert_eq!(module.support_interface_filament, 3);
     }
 }

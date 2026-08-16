@@ -2277,6 +2277,11 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
         _ => quote! {
             use self::slicer::ir_handles::ir_handles::{
                 InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                SupportPlanEntryView as WitSupportPlanEntryView,
+                SupportPlanViewRole as WitSupportPlanViewRole,
+                SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
+                SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
+                SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 PerimeterOutputBuilder, PerimeterRegionView,
                 QuartileBand as WitQuartileBand,
@@ -2412,6 +2417,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_infill_areas(infill);
                 sdk_view.set_effective_layer_height(r.effective_layer_height());
                 sdk_view.set_z(r.z());
+                sdk_view.set_needs_support(r.needs_support());
                 sdk_view.set_has_nonplanar(r.has_nonplanar());
                 sdk_view.set_segment_annotations(segment_annotations);
                 let variant_chain: ::std::vec::Vec<(
@@ -2495,7 +2501,8 @@ fn layer_light_helpers() -> TokenStream2 {
             keys: &[(::std::string::String, ::slicer_ir::RegionId)],
         ) -> ::slicer_sdk::traits::PaintRegionLayerView {
             let layer_idx = paint.layer_index() as u32;
-            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx);
+            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys));
             match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
                 Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
                 None => sdk_paint,
@@ -2549,14 +2556,47 @@ fn layer_light_helpers() -> TokenStream2 {
         }
 
         fn __slicer_support_plan_from_view(
-            _wit_paint: &PaintRegionLayerView,
-            _layer_idx: u32,
-            _keys: &::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)>,
+            wit_paint: &PaintRegionLayerView,
+            layer_idx: u32,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
         ) -> ::std::sync::Arc<::slicer_ir::SupportPlanIR> {
-            // Structural support plans no longer cross the layer paint-view
-            // boundary. The guest receives an empty plan; native dispatch
-            // attaches the committed structural plan directly.
-            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR::default())
+            let mut entries = ::std::vec::Vec::new();
+            for (object_id, region_id) in keys.iter() {
+                let region_id_str = region_id.to_string();
+                for entry in wit_paint.support_plan_entries(object_id, &region_id_str) {
+                    entries.push(::slicer_ir::SupportPlanEntry {
+                        global_layer_index: entry.global_layer_index,
+                        object_id: entry.object_id,
+                        region_id: entry.region_id.parse().unwrap_or(*region_id),
+                        family_id: entry.family_id,
+                        demand_ids: entry.demand_ids,
+                        body_ids: entry.body_ids,
+                        anchor_layer_index: entry.anchor_layer_index,
+                        anchor_z: entry.anchor_z,
+                        roles: entry.roles.into_iter().map(|role| ::slicer_ir::SupportPlanRoleRegion {
+                            role: match role.role {
+                                WitSupportPlanViewRole::SupportBody => ::slicer_ir::SupportPlanRole::SupportBody,
+                                WitSupportPlanViewRole::TopInterface => ::slicer_ir::SupportPlanRole::TopInterface,
+                                WitSupportPlanViewRole::BottomInterface => ::slicer_ir::SupportPlanRole::BottomInterface,
+                                WitSupportPlanViewRole::RaftRelated => ::slicer_ir::SupportPlanRole::RaftRelated,
+                            },
+                            regions: role.regions.iter().map(__slicer_wit_expolygon_to_ir).collect(),
+                        }).collect(),
+                        skeleton: entry.skeleton.map(|s| ::slicer_ir::SupportPlanSkeleton {
+                            points: s.points.into_iter().map(|p| ::slicer_ir::Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                        }),
+                        capabilities: entry.capabilities,
+                        provenance: entry.provenance,
+                        decline_reason: entry.decline_reason.map(|reason| match reason {
+                            WitSupportPlanViewDeclineReason::DeclinedPolicy => ::slicer_ir::SupportPlanDeclineReason::DeclinedPolicy,
+                            WitSupportPlanViewDeclineReason::NoRoute => ::slicer_ir::SupportPlanDeclineReason::NoRoute,
+                            WitSupportPlanViewDeclineReason::Blocked => ::slicer_ir::SupportPlanDeclineReason::Blocked,
+                            WitSupportPlanViewDeclineReason::UnsupportedMode => ::slicer_ir::SupportPlanDeclineReason::UnsupportedMode,
+                        }),
+                    });
+                }
+            }
+            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, ..::core::default::Default::default() })
         }
 
     }
@@ -3427,8 +3467,6 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
                 ..::core::default::Default::default()
             }).collect(),
         }));
-        let support_keys = sdk_regions.iter().map(|r| (r.object_id().clone(), *r.region_id())).collect();
-        let sdk_paint = sdk_paint.with_support_plan(__slicer_support_plan_from_view(&paint, layer_index, &support_keys));
         let mut sdk_output = ::slicer_sdk::builders::SupportOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,

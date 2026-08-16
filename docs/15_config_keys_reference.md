@@ -433,6 +433,11 @@ defaults to traditional). It drives which `tree-support-planner`/`tree-support`
 pair serves each region (see `docs/04_host_scheduler.md` § "Planner-Renderer
 Pairing").
 
+**Traditional support base pattern (packet 222).** `support_base_pattern`
+selects the traditional family's base fill pattern (e.g. `rectilinear`); it is
+owned by `traditional-support-planner` and recorded in each plan entry's
+`capabilities` as `traditional-base-pattern`.
+
 ---
 
 ## Extrusion mode (packet 54)

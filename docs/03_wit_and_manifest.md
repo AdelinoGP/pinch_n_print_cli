@@ -730,6 +730,10 @@ Pairing"), and the affected family's regions simply produce no support plan
 The tree family pairs `tree-support-planner` (planner role, `support-family:tree`)
 with `tree-support` (generator role, `support-family:tree`).
 
+The traditional family pairs `traditional-support-planner` (planner role,
+`support-family:traditional`) with `traditional-support` (generator role,
+`support-family:traditional`).
+
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 
 ### Holder identifier matching

@@ -13,7 +13,7 @@ use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
     RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisView,
-    SupportGeometryView, SupportGeometryViewEntry,
+    SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -714,4 +714,73 @@ fn invalid_body_rejected() {
         .iter()
         .flat_map(|entry| entry.roles.iter())
         .all(|role| role.regions.is_empty()));
+}
+
+#[test]
+fn non_tree_family_candidates_are_skipped() {
+    // A global `support_type = "normal(auto)"` selection resolves to the
+    // traditional family. The tree planner must not plan candidates whose
+    // resolved family is not "tree", even though its config-resolved
+    // `support_family` would be "traditional".
+    let mut values = HashMap::<ConfigKey, ConfigValue>::new();
+    values.insert("enable_support".into(), ConfigValue::Bool(true));
+    values.insert(
+        "support_type".into(),
+        ConfigValue::String("normal(auto)".into()),
+    );
+    values.insert("support_raft_layers".into(), ConfigValue::Int(0));
+    let config = ConfigView::from_map(values);
+
+    let planner = tree_support_planner::SupportPlanner::from_config(&config).expect("from_config");
+    // Mesh-less object so only the analysis candidate path (not the legacy
+    // mesh overhang path) contributes contacts.
+    let object = MeshObjectView {
+        object_id: "non-tree".into(),
+        vertices: vec![],
+        triangles: vec![],
+        paint_layers: vec![],
+    };
+    let candidate_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(4.0, 0.0),
+                Point2::from_mm(4.0, 4.0),
+                Point2::from_mm(0.0, 4.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &SupportAnalysisView {
+                candidates: vec![SupportAnalysisCandidate {
+                    id: 1,
+                    object_id: "non-tree".into(),
+                    region_id: "0".into(),
+                    global_layer_index: 8,
+                    z_units: slicer_ir::mm_to_units(1.8),
+                    geometry: vec![candidate_region],
+                    ..Default::default()
+                }],
+                family_assignments: vec![SupportFamilyAssignment {
+                    object_id: "non-tree".into(),
+                    region_id: "0".into(),
+                    family_id: "traditional".into(),
+                }],
+                ..Default::default()
+            },
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    assert!(
+        output.entries().is_empty(),
+        "tree planner must not emit entries for a traditional-family candidate"
+    );
 }

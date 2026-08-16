@@ -250,6 +250,7 @@ pub const SUPPORT_GENERATOR_CONFIG_KEY: &str = "support_type";
 pub const SUPPORT_FAMILY_CONFIG_KEY: &str = "support_family";
 
 const SUPPORT_GENERATOR_CLAIM: &str = "support-generator";
+const SUPPORT_PLANNER_CLAIM: &str = "support-planner";
 
 /// Resolve a raw `support_type` config value (`config_source.get("support_type")`,
 /// e.g. `Some("tree(auto)")` — OrcaSlicer's spelling) to the module id it
@@ -476,7 +477,9 @@ fn dedup_same_claim_modules(
     let mut candidates_for: BTreeMap<(StageId, String), Vec<ModuleId>> = BTreeMap::new();
     for module in &sorted {
         for claim in &module.claims {
-            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+                || claim.starts_with("support-family:")
+            {
                 continue;
             }
             candidates_for
@@ -491,6 +494,19 @@ fn dedup_same_claim_modules(
     // can be resolved by `wall_generator` config rather than by iteration
     // order (packet 112 Step 10 — see this function's doc comment).
     let mut winner_for: BTreeMap<(StageId, String), ModuleId> = BTreeMap::new();
+    // Family-scoped support planners coexist per family (mirroring how
+    // `support-generator` is retained per region); only planners without a
+    // `support-family:` claim fall back to global alphabetical resolution.
+    let family_scoped: std::collections::HashSet<ModuleId> = sorted
+        .iter()
+        .filter(|module| {
+            module
+                .claims
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"))
+        })
+        .map(|module| module.id.clone())
+        .collect();
     for ((stage, claim), candidate_ids) in &candidates_for {
         if candidate_ids.len() < 2 {
             continue; // sole holder; nothing to resolve
@@ -518,6 +534,20 @@ fn dedup_same_claim_modules(
             // candidate here is required for atomic planner/renderer dispatch.
             continue;
         }
+        if claim == SUPPORT_PLANNER_CLAIM {
+            // Support planners are selected per family, exactly like renderers
+            // are selected per region. Family-scoped planners coexist; only
+            // non-family planners are deduplicated alphabetically (fallback).
+            let global_candidates: Vec<&ModuleId> = candidate_ids
+                .iter()
+                .filter(|id| !family_scoped.contains(*id))
+                .collect();
+            if global_candidates.len() < 2 {
+                continue;
+            }
+            winner_for.insert((stage.clone(), claim.clone()), global_candidates[0].clone());
+            continue;
+        }
         // Default: alphabetically-first candidate wins (docs/04 §2 "Global
         // claim conflicts").
         winner_for.insert((stage.clone(), claim.clone()), candidate_ids[0].clone());
@@ -539,6 +569,7 @@ fn dedup_same_claim_modules(
             // top/bottom/bridge — see DEV-065 and docs/04 §"Validation Passes".
             if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
                 || claim == SUPPORT_GENERATOR_CLAIM
+                || (claim == SUPPORT_PLANNER_CLAIM && family_scoped.contains(&module.id))
             {
                 continue;
             }

@@ -587,6 +587,13 @@ tree family for a region, the host dispatches the tree pair —
 `tree-support-planner` (PrePass) + `tree-support` (renderer) — via the shared
 `support-family:tree` claim, per region.
 
+**Traditional family dispatch (packet 222).** When `support_family` resolves to
+the traditional family for a region, the host dispatches the traditional pair —
+`traditional-support-planner` (PrePass) + `traditional-support` (renderer) — via
+the shared `support-family:traditional` claim, per region. The renderer emits
+only the planner's polygons; disabled or declined inputs produce no fallback
+support paths.
+
 - **Per-region candidate retention.** All family candidates are retained
   through load and dispatch. The host does not globally dedup away a
   `support-generator`; each region keeps its own candidate set so a family

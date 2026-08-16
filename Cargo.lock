@@ -3684,6 +3684,18 @@ dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
+ "slicer-wasm-host",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
+name = "traditional-support-planner"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "slicer-wasm-host",
  "wit-bindgen 0.57.1",
 ]
 
