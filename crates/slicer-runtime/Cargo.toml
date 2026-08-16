@@ -156,6 +156,10 @@ path = "../../modules/core-modules/machine-gcode-emit"
 name = "integration"
 path = "tests/integration/main.rs"
 
+[[test]]
+name = "support_family_routing"
+path = "tests/integration/support_family_routing.rs"
+
 [[bench]]
 name = "pipeline"
 harness = false

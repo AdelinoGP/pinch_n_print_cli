@@ -815,6 +815,12 @@ Packet 172 routing: support-body and raft paths are emitted on the support
 tool; interface paths and ironing paths are emitted on the interface tool.
 Selection is region-scoped through `object_id` and `region_id`.
 
+Packet 334 mixed-family routing: each demand is tracked by a
+`support_demand_id`; the host's routing-cell ownership assignment records
+which routing cell owns which `support_demand_id` (or drops a cross-family
+demand whose positive-area overlap is rejected), so per-demand family
+attribution is preserved end-to-end.
+
 ---
 
 ## IR 9a — SupportGeometryIR

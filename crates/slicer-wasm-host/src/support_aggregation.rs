@@ -3,7 +3,7 @@
 use slicer_ir::{
     units_to_mm, ExPolygon, RaftPlan, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::exact_z_query::ExactZQueryService;
 
@@ -65,6 +65,21 @@ pub struct UnmetSupportDemand {
     pub reason: String,
 }
 
+/// Structured host-owned routing diagnostic identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportRoutingDiagnostics {
+    /// Family that produced the rejected body.
+    pub family_id: String,
+    /// Rejected complete body identity.
+    pub body_id: String,
+    /// Demand made unmet by the rejection.
+    pub demand_id: String,
+    /// Stable routing rejection reason.
+    pub reason: String,
+}
+
+const SUPPORT_OVERLAP_TOLERANCE: i64 = 0;
+
 /// Validated aggregate. Invalid bodies are removed as complete entries.
 #[derive(Debug, Default)]
 pub struct SupportAggregationResult {
@@ -78,6 +93,23 @@ pub struct SupportAggregationResult {
     pub duplicates: Vec<DuplicateSupportPlanEntry>,
     /// Raft metadata merged from all family plans.
     pub raft_plan: Option<RaftPlan>,
+    /// Structured diagnostics for rejected bodies and declined demands.
+    pub diagnostics: Vec<SupportRoutingDiagnostics>,
+}
+
+/// Fatal identity conflict between support families.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportAggregationError {
+    /// Colliding layer identity.
+    pub global_layer_index: i32,
+    /// Colliding object identity.
+    pub object_id: String,
+    /// Colliding region identity.
+    pub region_id: u64,
+    /// Family selected by the first writer.
+    pub expected_family_id: String,
+    /// Family attempting the conflicting write.
+    pub conflicting_family_id: String,
 }
 
 /// A duplicate `(layer, object, region)` identity found during aggregation.
@@ -116,69 +148,220 @@ pub struct DeclinedSupportResult {
 /// Aggregate all family plans, preserving family attribution and validating
 /// every body against exact-Z occupancy before it can reach a renderer.
 pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAggregationResult {
+    try_aggregate_support_plans(input).unwrap_or_else(|error| {
+        let mut result = SupportAggregationResult {
+            degraded: true,
+            ..SupportAggregationResult::default()
+        };
+        result.diagnostics.push(SupportRoutingDiagnostics {
+            family_id: String::new(),
+            body_id: String::new(),
+            demand_id: String::new(),
+            reason: format!("fatal support family routing mismatch: {error:?}"),
+        });
+        result
+    })
+}
+
+/// Fallible aggregate used by the prepass commit seam, which must not publish
+/// a plan when two families claim the same source region.
+pub fn try_aggregate_support_plans(
+    input: SupportAggregationInput<'_>,
+) -> Result<SupportAggregationResult, SupportAggregationError> {
     let mut result = SupportAggregationResult::default();
     let mut identities = HashMap::new();
+    let mut entries = input
+        .plans
+        .iter()
+        .flat_map(|plan| plan.entries.iter().cloned())
+        .collect::<Vec<_>>();
+    entries.sort_by(compare_entries);
     for plan in input.plans {
         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
-        for entry in plan.entries {
-            let identity = (
-                entry.global_layer_index,
-                entry.object_id.clone(),
-                entry.region_id,
-            );
-            if let Some(first_family_id) = identities.get(&identity).cloned() {
-                result.degraded = true;
-                result.duplicates.push(DuplicateSupportPlanEntry {
+    }
+    for entry in entries {
+        let identity = (
+            entry.global_layer_index,
+            entry.object_id.clone(),
+            entry.region_id,
+        );
+        if let Some(first_family_id) = identities.get(&identity).cloned() {
+            if first_family_id != entry.family_id {
+                return Err(SupportAggregationError {
                     global_layer_index: identity.0,
                     object_id: identity.1,
                     region_id: identity.2,
-                    first_family_id,
-                    duplicate_family_id: entry.family_id.clone(),
+                    expected_family_id: first_family_id,
+                    conflicting_family_id: entry.family_id.clone(),
                 });
-                continue;
             }
-            identities.insert(identity.clone(), entry.family_id.clone());
-            if entry.decline_reason.is_some() {
-                continue;
+            result.degraded = true;
+            result.duplicates.push(DuplicateSupportPlanEntry {
+                global_layer_index: identity.0,
+                object_id: identity.1,
+                region_id: identity.2,
+                first_family_id,
+                duplicate_family_id: entry.family_id.clone(),
+            });
+            continue;
+        }
+        identities.insert(identity.clone(), entry.family_id.clone());
+        if let Some(decline_reason) = entry.decline_reason {
+            let reason = format!("declined: {decline_reason:?}");
+            for body_id in &entry.body_ids {
+                for demand_id in &entry.demand_ids {
+                    result.diagnostics.push(SupportRoutingDiagnostics {
+                        family_id: entry.family_id.clone(),
+                        body_id: body_id.clone(),
+                        demand_id: demand_id.clone(),
+                        reason: reason.clone(),
+                    });
+                }
             }
-            let valid = input
-                .exact_z
-                .query(
-                    &entry.object_id,
-                    entry.region_id,
-                    units_to_mm(entry.anchor_z),
-                )
-                .map(|query| {
-                    // The whole body must stay inside the deterministic routing
-                    // cell derived from its own geometry, and must not collide
-                    // with exact-Z model occupancy.
-                    in_routing_cell(&entry) && {
-                        entry.roles.iter().all(|role| {
-                            role.regions
-                                .iter()
-                                .all(|body| !overlaps_any(body, &query.occupancy))
-                        })
-                    }
-                })
-                .unwrap_or(false);
-            if valid {
-                result.retained.push(entry);
-            } else {
+            continue;
+        }
+        let rejection_reason = validate_entry(&entry, input.exact_z);
+        if rejection_reason.is_none() {
+            result.retained.push(entry);
+        } else {
+            result.degraded = true;
+            let reason = rejection_reason.unwrap_or("body rejected");
+            for body_id in &entry.body_ids {
+                for demand_id in &entry.demand_ids {
+                    result.unmet.push(UnmetSupportDemand {
+                        demand_id: demand_id.clone(),
+                        body_id: body_id.clone(),
+                        reason: reason.into(),
+                    });
+                    result.diagnostics.push(SupportRoutingDiagnostics {
+                        family_id: entry.family_id.clone(),
+                        body_id: body_id.clone(),
+                        demand_id: demand_id.clone(),
+                        reason: reason.into(),
+                    });
+                }
+            }
+        }
+    }
+    union_same_family_entries(&mut result.retained);
+    let retained = std::mem::take(&mut result.retained);
+    for entry in retained {
+        if let Some(reason) = validate_entry(&entry, input.exact_z) {
+            result.degraded = true;
+            record_rejection(&mut result, &entry, reason);
+        } else {
+            result.retained.push(entry);
+        }
+    }
+    let mut rejected = vec![false; result.retained.len()];
+    for left in 0..result.retained.len() {
+        for right in (left + 1)..result.retained.len() {
+            let a = &result.retained[left];
+            let b = &result.retained[right];
+            if a.family_id != b.family_id && entries_overlap(a, b) {
+                rejected[left] = true;
+                rejected[right] = true;
+            }
+        }
+    }
+    if rejected.iter().any(|value| *value) {
+        let retained = std::mem::take(&mut result.retained);
+        for (index, entry) in retained.into_iter().enumerate() {
+            if rejected[index] {
                 result.degraded = true;
                 for body_id in &entry.body_ids {
                     for demand_id in &entry.demand_ids {
                         result.unmet.push(UnmetSupportDemand {
                             demand_id: demand_id.clone(),
                             body_id: body_id.clone(),
-                            reason: "body rejected: exact-Z occupancy or routing cell collision"
-                                .into(),
+                            reason: "body rejected: cross-family positive-area overlap".into(),
+                        });
+                        result.diagnostics.push(SupportRoutingDiagnostics {
+                            family_id: entry.family_id.clone(),
+                            body_id: body_id.clone(),
+                            demand_id: demand_id.clone(),
+                            reason: "body rejected: cross-family positive-area overlap".into(),
                         });
                     }
                 }
+            } else {
+                result.retained.push(entry);
             }
         }
     }
-    result
+    Ok(result)
+}
+
+fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cmp::Ordering {
+    let left_candidate = left
+        .body_ids
+        .iter()
+        .min()
+        .or_else(|| left.demand_ids.iter().min());
+    let right_candidate = right
+        .body_ids
+        .iter()
+        .min()
+        .or_else(|| right.demand_ids.iter().min());
+    (
+        left.global_layer_index,
+        &left.object_id,
+        left.region_id,
+        left_candidate,
+        &left.family_id,
+        &left.demand_ids,
+        &left.body_ids,
+    )
+        .cmp(&(
+            right.global_layer_index,
+            &right.object_id,
+            right.region_id,
+            right_candidate,
+            &right.family_id,
+            &right.demand_ids,
+            &right.body_ids,
+        ))
+}
+
+fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Option<&'static str> {
+    exact_z
+        .query(
+            &entry.object_id,
+            entry.region_id,
+            units_to_mm(entry.anchor_z),
+        )
+        .map(|query| {
+            if !in_routing_cell(entry) {
+                Some("body rejected: routing-cell collision")
+            } else if entry.roles.iter().any(|role| {
+                role.regions
+                    .iter()
+                    .any(|body| overlaps_any(body, &query.occupancy))
+            }) {
+                Some("body rejected: exact-Z occupancy")
+            } else {
+                None
+            }
+        })
+        .unwrap_or(Some("body rejected: exact-Z query unavailable"))
+}
+
+fn record_rejection(result: &mut SupportAggregationResult, entry: &SupportPlanEntry, reason: &str) {
+    for body_id in &entry.body_ids {
+        for demand_id in &entry.demand_ids {
+            result.unmet.push(UnmetSupportDemand {
+                demand_id: demand_id.clone(),
+                body_id: body_id.clone(),
+                reason: reason.into(),
+            });
+            result.diagnostics.push(SupportRoutingDiagnostics {
+                family_id: entry.family_id.clone(),
+                body_id: body_id.clone(),
+                demand_id: demand_id.clone(),
+                reason: reason.into(),
+            });
+        }
+    }
 }
 
 fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Option<RaftPlan> {
@@ -198,21 +381,85 @@ fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Op
     }
 }
 
+/// Combine validated entries that are owned by one family and route through
+/// the same body/cell. The first entry supplies scalar attribution; geometry,
+/// body identities, and demands are accumulated without duplicates.
+fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
+    let mut merged: Vec<SupportPlanEntry> = Vec::new();
+    for entry in entries.drain(..) {
+        let entry_cell = routing_cell(&entry);
+        let matching = merged.iter().position(|existing| {
+            existing.family_id == entry.family_id
+                && existing.global_layer_index == entry.global_layer_index
+                && existing.object_id == entry.object_id
+                && (same_body(existing, &entry) || routing_cell(existing) == entry_cell)
+        });
+        let Some(index) = matching else {
+            merged.push(entry);
+            continue;
+        };
+        let existing = &mut merged[index];
+        existing.demand_ids.extend(entry.demand_ids);
+        existing.body_ids.extend(entry.body_ids);
+        for incoming_role in entry.roles {
+            if let Some(role) = existing
+                .roles
+                .iter_mut()
+                .find(|role| role.role == incoming_role.role)
+            {
+                role.regions.extend(incoming_role.regions);
+            } else {
+                existing.roles.push(incoming_role);
+            }
+        }
+        existing.capabilities.extend(entry.capabilities);
+        existing.provenance.extend(entry.provenance);
+        dedup_sorted(&mut existing.demand_ids);
+        dedup_sorted(&mut existing.body_ids);
+        dedup_sorted(&mut existing.capabilities);
+        dedup_sorted(&mut existing.provenance);
+    }
+    *entries = merged;
+}
+
+fn same_body(left: &SupportPlanEntry, right: &SupportPlanEntry) -> bool {
+    left.body_ids
+        .iter()
+        .any(|body| right.body_ids.contains(body))
+}
+
+fn routing_cell(entry: &SupportPlanEntry) -> Option<RoutingCell> {
+    let regions: Vec<&ExPolygon> = entry
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .collect();
+    body_bounds(&regions).map(|(minx, maxx, miny, maxy)| {
+        RoutingCell::from_centroid((minx + maxx) / 2, (miny + maxy) / 2)
+    })
+}
+
+fn dedup_sorted(values: &mut Vec<String>) {
+    let mut unique = HashSet::new();
+    values.retain(|value| unique.insert(value.clone()));
+    values.sort();
+}
+
 /// Validate one harvested writer result before it is handed to the runtime
 /// blackboard. Declined entries are diagnostics only, never renderer input.
 pub fn aggregate_support_plan_ir(
     plan: SupportPlanIR,
     exact_z: &ExactZQueryService,
-) -> SupportPlanIR {
-    let aggregate = aggregate_support_plans(SupportAggregationInput {
+) -> Result<SupportPlanIR, SupportAggregationError> {
+    let aggregate = try_aggregate_support_plans(SupportAggregationInput {
         plans: vec![plan.clone()],
         exact_z,
-    });
-    SupportPlanIR {
+    })?;
+    Ok(SupportPlanIR {
         schema_version: plan.schema_version,
         entries: aggregate.retained,
         raft_plan: aggregate.raft_plan,
-    }
+    })
 }
 
 /// Production support harvest result, including host-owned degraded diagnostics.
@@ -220,7 +467,26 @@ pub fn aggregate_support_plan_ir_with_diagnostics(
     plan: SupportPlanIR,
     exact_z: &ExactZQueryService,
 ) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
-    aggregate_support_plan_irs_with_diagnostics(vec![plan], exact_z)
+    try_aggregate_support_plan_ir_with_diagnostics(plan, exact_z).unwrap_or_else(|error| {
+        (
+            SupportPlanIR::default(),
+            vec![slicer_ir::Diagnostic {
+                severity: slicer_ir::DiagnosticSeverity::Error,
+                code: 1204,
+                layer: None,
+                object_id: None,
+                message: format!("support family routing mismatch: {error:?}"),
+            }],
+        )
+    })
+}
+
+/// Fallible form used by the runtime prepass commit seam.
+pub fn try_aggregate_support_plan_ir_with_diagnostics(
+    plan: SupportPlanIR,
+    exact_z: &ExactZQueryService,
+) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
+    try_aggregate_support_plan_irs_with_diagnostics(vec![plan], exact_z)
 }
 
 /// Aggregate all harvested family plans at the host multi-writer seam.
@@ -228,17 +494,36 @@ pub fn aggregate_support_plan_irs_with_diagnostics(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
 ) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
+    try_aggregate_support_plan_irs_with_diagnostics(plans, exact_z).unwrap_or_else(|error| {
+        (
+            SupportPlanIR::default(),
+            vec![slicer_ir::Diagnostic {
+                severity: slicer_ir::DiagnosticSeverity::Error,
+                code: 1204,
+                layer: None,
+                object_id: None,
+                message: format!("support family routing mismatch: {error:?}"),
+            }],
+        )
+    })
+}
+
+/// Fallible aggregation used when a caller must prevent publication on error.
+pub fn try_aggregate_support_plan_irs_with_diagnostics(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
     let schema_version = plans
         .first()
         .map(|plan| plan.schema_version)
         .unwrap_or_default();
-    let aggregate = aggregate_support_plans(SupportAggregationInput {
+    let aggregate = try_aggregate_support_plans(SupportAggregationInput {
         plans: plans.clone(),
         exact_z,
-    });
+    })?;
     let mut diagnostics = aggregate
         .unmet
-        .into_iter()
+        .iter()
         .map(|demand| slicer_ir::Diagnostic {
             severity: slicer_ir::DiagnosticSeverity::Warn,
             code: 1200,
@@ -250,6 +535,16 @@ pub fn aggregate_support_plan_irs_with_diagnostics(
             ),
         })
         .collect::<Vec<_>>();
+    diagnostics.extend(aggregate.diagnostics.iter().map(|d| slicer_ir::Diagnostic {
+        severity: slicer_ir::DiagnosticSeverity::Warn,
+        code: 1203,
+        layer: None,
+        object_id: None,
+        message: format!(
+            "support routing: family='{}', body='{}', demand='{}': {}",
+            d.family_id, d.body_id, d.demand_id, d.reason
+        ),
+    }));
     diagnostics.extend(aggregate.duplicates.iter().map(|duplicate| slicer_ir::Diagnostic {
         severity: slicer_ir::DiagnosticSeverity::Warn,
         code: 1202,
@@ -277,14 +572,14 @@ pub fn aggregate_support_plan_irs_with_diagnostics(
             }
         }
     }
-    (
+    Ok((
         SupportPlanIR {
             schema_version,
             entries: aggregate.retained,
             raft_plan: aggregate.raft_plan,
         },
         diagnostics,
-    )
+    ))
 }
 
 /// Record planner declines without synthesizing fallback support geometry.
@@ -336,15 +631,46 @@ fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
 }
 
 fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {
-    let Some((aminx, amaxx, aminy, amaxy)) = bounds(a) else {
-        return false;
-    };
-    others
-        .iter()
-        .filter_map(bounds)
-        .any(|(bminx, bmaxx, bminy, bmaxy)| {
-            aminx < bmaxx && amaxx > bminx && aminy < bmaxy && amaxy > bminy
+    others.iter().any(|other| {
+        let overlap = slicer_core::polygon_ops::intersection(
+            std::slice::from_ref(a),
+            std::slice::from_ref(other),
+        );
+        overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
+    })
+}
+
+fn entries_overlap(a: &SupportPlanEntry, b: &SupportPlanEntry) -> bool {
+    let a_regions = a.roles.iter().flat_map(|role| role.regions.iter());
+    let b_regions = b.roles.iter().flat_map(|role| role.regions.iter());
+    a_regions.clone().any(|left| {
+        b_regions.clone().any(|right| {
+            let overlap = slicer_core::polygon_ops::intersection(
+                std::slice::from_ref(left),
+                std::slice::from_ref(right),
+            );
+            overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
         })
+    })
+}
+
+fn expolygon_area(poly: &ExPolygon) -> f64 {
+    fn ring_area(points: &[slicer_ir::Point2]) -> f64 {
+        if points.len() < 3 {
+            return 0.0;
+        }
+        points
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let b = &points[(i + 1) % points.len()];
+                (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64)
+            })
+            .sum::<f64>()
+            .abs()
+            * 0.5
+    }
+    ring_area(&poly.contour.points) - poly.holes.iter().map(|h| ring_area(&h.points)).sum::<f64>()
 }
 
 fn bounds(poly: &ExPolygon) -> Option<(i64, i64, i64, i64)> {

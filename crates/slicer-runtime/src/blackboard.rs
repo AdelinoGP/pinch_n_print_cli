@@ -14,6 +14,20 @@ use slicer_ir::{
     SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
+/// Structured diagnostic emitted when a cross-family support body is dropped
+/// at the per-layer swept-path commit seam.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportRoutingDiagnostic {
+    /// Family that produced the rejected body.
+    pub family_id: String,
+    /// Rejected complete body identity.
+    pub body_id: String,
+    /// Demand made unmet by the rejection.
+    pub demand_id: String,
+    /// Stable rejection explanation.
+    pub reason: String,
+}
+
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
 ///
 /// Stored in the per-layer deferred queue and verified by travel-policy tests.
@@ -530,6 +544,8 @@ pub struct LayerArena {
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
+    /// Structured diagnostics emitted while committing support entries.
+    support_routing_diagnostics: Vec<SupportRoutingDiagnostic>,
     /// Pre-assembled `LayerCollectionIR` staged by the executor immediately
     /// before `Layer::PathOptimization` runs. Once present, any subsequent
     /// `commit_layer_outputs` call for that stage consumes
@@ -622,6 +638,17 @@ impl LayerArena {
     /// Take ownership of the staged `SupportIR`, if present.
     pub fn take_support(&mut self) -> Option<SupportIR> {
         self.support.take()
+    }
+
+    /// Borrow diagnostics emitted by the support commit seam.
+    #[must_use]
+    pub fn support_routing_diagnostics(&self) -> &[SupportRoutingDiagnostic] {
+        &self.support_routing_diagnostics
+    }
+
+    /// Record a support routing diagnostic.
+    pub(crate) fn push_support_routing_diagnostic(&mut self, diagnostic: SupportRoutingDiagnostic) {
+        self.support_routing_diagnostics.push(diagnostic);
     }
 
     /// Stage a pre-assembled `LayerCollectionIR` (idempotent replace).

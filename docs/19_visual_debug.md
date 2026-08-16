@@ -176,6 +176,12 @@ attribution) before `tree-support` renders it. Inspect the family's plan tap
 alongside the final `Layer::Support` output to compare planned vs. emitted
 geometry for a given region.
 
+Packet 334 adds cross-family routing diagnostics: overlapping demands from
+different families are reported with their family, body, demand, and rejection
+reason, and the host's routing-cell ownership (same-family union vs.
+cross-family positive-area overlap rejection) is structured into these
+diagnostics.
+
 ### Tap Classes And Execution Closure
 
 `visual-debug` supports the full "Stage Tap Inventory" of
