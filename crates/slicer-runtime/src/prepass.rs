@@ -25,7 +25,7 @@ use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
-    support_aggregation::aggregate_support_plan_irs_with_diagnostics, CompiledModuleLive,
+    support_aggregation::try_aggregate_support_plan_irs_with_diagnostics, CompiledModuleLive,
     PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
@@ -365,7 +365,13 @@ pub fn execute_prepass_with_instrumentation(
         if !support_plans.is_empty() {
             let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
             let (plan, diagnostics) =
-                aggregate_support_plan_irs_with_diagnostics(support_plans, &exact_z);
+                try_aggregate_support_plan_irs_with_diagnostics(support_plans, &exact_z).map_err(
+                    |error| PrepassExecutionError::FatalModule {
+                        stage_id: stage.stage_id.clone(),
+                        module_id: ModuleId::from("host:support_plan_aggregation"),
+                        message: format!("support family routing mismatch: {error:?}"),
+                    },
+                )?;
             // The aggregate is a host-owned stage result; attach its degraded
             // diagnostics to the final family writer's existing audit stream.
             if let Some(&audit_index) = support_plan_audits.last() {

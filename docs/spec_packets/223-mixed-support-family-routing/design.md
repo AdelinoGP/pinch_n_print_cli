@@ -63,7 +63,7 @@
 ## Open Questions
 - [RESOLVED] TASK-331 exact-Z seam owner and result shape: `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs`, injected into `HostExecutionContext`, normalized to repo units, immutable per-(object,region,Z) caching.
 - [RESOLVED] TASK-331 breaking-versus-additive WIT migration: breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`; `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` 1.0.0; new `PrePass::SupportAnalysis` + `SupportAnalysisIR` contracts live.
-- [FWD] TASK-331 must expose structural identity fields consumed by routing and diagnostics.
+- [RESOLVED] TASK-331 exposed the structural identity fields consumed by routing and diagnostics (implemented in packet 220; consumed here).
 
 ## Scope Boundary vs Packet 220
 Packet 220 (TASK-331) implemented the BASE routing-cell attribution contract: internal deterministic `RoutingCell` territory in `crates/slicer-wasm-host/src/support_aggregation.rs` (fixed grid, per-body cell derived from geometry centroid) and complete-body validation against exact-Z occupancy + routing cells, with degraded continuation. Packet 220 deliberately did NOT implement cross-family positive-area overlap rejection. THIS packet (TASK-334) owns cross-family positive-area overlap rejection and the full mixed-family routing conflict policy.

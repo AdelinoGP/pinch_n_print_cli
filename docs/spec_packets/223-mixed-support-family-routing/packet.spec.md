@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 223-mixed-support-family-routing
 task_ids:
   - TASK-334

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 222-traditional-support-family
 task_ids:
   - TASK-333

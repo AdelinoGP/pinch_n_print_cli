@@ -12,10 +12,10 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
-    ConfigValue, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
-    LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR,
-    SeamPlanIR, SliceIR, StageId, SupportGeometryIR, SupportIR, SupportPlanIR,
-    SurfaceClassificationIR, WallFeatureFlags,
+    ConfigValue, ExPolygon, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
+    LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point2, Polygon, PrintEntity,
+    RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId, SupportGeometryIR, SupportIR,
+    SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -2676,6 +2676,81 @@ fn backfill_resolved_seam(
     }
 }
 
+fn support_entries_overlap(
+    left: &slicer_ir::SupportEntry,
+    right: &slicer_ir::SupportEntry,
+) -> bool {
+    fn swept(entry: &slicer_ir::SupportEntry) -> Vec<ExPolygon> {
+        let mut out = Vec::new();
+        for path in &entry.paths {
+            for pair in path.points.windows(2) {
+                let a = &pair[0];
+                let b = &pair[1];
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let length = (dx * dx + dy * dy).sqrt();
+                if length <= f32::EPSILON {
+                    continue;
+                }
+                let half = a.width.max(b.width).max(0.0) * 0.5;
+                let nx = -dy / length * half;
+                let ny = dx / length * half;
+                out.push(ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2 {
+                                x: slicer_ir::mm_to_units(a.x + nx),
+                                y: slicer_ir::mm_to_units(a.y + ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(b.x + nx),
+                                y: slicer_ir::mm_to_units(b.y + ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(b.x - nx),
+                                y: slicer_ir::mm_to_units(b.y - ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(a.x - nx),
+                                y: slicer_ir::mm_to_units(a.y - ny),
+                            },
+                        ],
+                    },
+                    holes: Vec::new(),
+                });
+            }
+        }
+        out
+    }
+    let left = swept(left);
+    let right = swept(right);
+    left.iter().any(|a| {
+        right.iter().any(|b| {
+            let overlap = slicer_core::polygon_ops::intersection(
+                std::slice::from_ref(a),
+                std::slice::from_ref(b),
+            );
+            overlap
+                .iter()
+                .map(|p| {
+                    p.contour
+                        .points
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| {
+                            let y = &p.contour.points[(i + 1) % p.contour.points.len()];
+                            (x.x as f64) * (y.y as f64) - (y.x as f64) * (x.y as f64)
+                        })
+                        .sum::<f64>()
+                        .abs()
+                        * 0.5
+                })
+                .sum::<f64>()
+                > 0.0
+        })
+    })
+}
+
 /// Apply one module invocation's [`LayerStageCommit`] to the per-layer arena,
 /// including the stage's own pre/post hooks (ADR-0020).
 ///
@@ -2807,8 +2882,65 @@ pub(crate) fn apply(
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
         LayerStageCommit::Support(ir) => {
+            let mut incoming = ir;
+            if let Some(mut existing) = arena.take_support() {
+                let mut drop_existing = vec![false; existing.entries.len()];
+                let mut drop_incoming = vec![false; incoming.entries.len()];
+                for (incoming_index, incoming_entry) in incoming.entries.iter().enumerate() {
+                    for (existing_index, existing_entry) in existing.entries.iter().enumerate() {
+                        if incoming_entry.family_id != existing_entry.family_id
+                            && support_entries_overlap(incoming_entry, existing_entry)
+                        {
+                            drop_incoming[incoming_index] = true;
+                            drop_existing[existing_index] = true;
+                        }
+                    }
+                }
+                for (index, entry) in existing.entries.iter().enumerate() {
+                    if drop_existing[index] {
+                        for demand_id in &entry.demand_ids {
+                            arena.push_support_routing_diagnostic(
+                                crate::blackboard::SupportRoutingDiagnostic {
+                                    family_id: entry.family_id.clone(),
+                                    body_id: entry.body_id.clone(),
+                                    demand_id: demand_id.clone(),
+                                    reason: "cross-family swept-path overlap".to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                for (index, entry) in incoming.entries.iter().enumerate() {
+                    if drop_incoming[index] {
+                        for demand_id in &entry.demand_ids {
+                            arena.push_support_routing_diagnostic(
+                                crate::blackboard::SupportRoutingDiagnostic {
+                                    family_id: entry.family_id.clone(),
+                                    body_id: entry.body_id.clone(),
+                                    demand_id: demand_id.clone(),
+                                    reason: "cross-family swept-path overlap".to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                existing.entries = existing
+                    .entries
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| (!drop_existing[index]).then_some(entry))
+                    .collect();
+                incoming.entries = incoming
+                    .entries
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| (!drop_incoming[index]).then_some(entry))
+                    .collect();
+                existing.entries.extend(incoming.entries);
+                incoming = existing;
+            }
             arena
-                .set_support(ir)
+                .set_support(incoming)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
         LayerStageCommit::SupportPostProcess(ir) => {
