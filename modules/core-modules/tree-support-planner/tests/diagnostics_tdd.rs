@@ -7,18 +7,18 @@
 //!   diagnostic per affected global layer, with `dropped_count=<n>` and
 //!   `kept_count=<cap>` in the message. Below-cap runs emit zero.
 //! - AC-6 / AC-N3: code 1003 (`support_interface_bottom_layers` is not yet
-//!   implemented) — exactly one diagnostic, emitted before the layer loop
-//!   when the config value is not `-1`; absent key or `-1` emits zero.
+//!   implemented) — **retired by packet 224.** The key is implemented and drives
+//!   the `BottomInterface` band, so no value of it may be reported as
+//!   unsupported.
 //!
 //! The node-clamped code 1002 path is covered by
-//! `orca_parity_tdd::node_dropped_when_avoidance_rejects_all_moves`.
+//! `orca_parity_tdd::node_rejected_when_model_occupies_every_destination`.
 //!
 //! ## Acceptance Criteria
 //!
 //! - AC-5: cap exceeded → exactly one code 1001 warning per affected layer.
-//! - AC-6: `support_interface_bottom_layers=3` → exactly one code 1003 warning
-//!   with `layer=None` and a `support_interface_bottom_layers is not yet
-//!   implemented` message.
+//! - AC-6: `support_interface_bottom_layers=3` → zero code 1003 warnings, and a
+//!   branch landing on the model carries a `BottomInterface` role.
 //! - AC-N1: every layer below cap → zero cap diagnostics.
 //! - AC-N3: `support_interface_bottom_layers=-1` or absent → zero
 //!   `support_interface_bottom_layers is not yet implemented` diagnostics.
@@ -28,11 +28,12 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigKey, ConfigValue, ConfigView};
+use slicer_ir::{ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     Diagnostic, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
     RegionSegmentationView, RegionSegmentationViewEntry, SupportGeometryView,
+    SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 
@@ -236,11 +237,20 @@ fn below_cap_emits_no_cap_diagnostic() {
 
 // ── AC-6: planner-owned code 1003 for support_interface_bottom_layers ─────
 
-/// `support_interface_bottom_layers = 3` → exactly one code 1003 warning
-/// with `layer == None` and a `support_interface_bottom_layers is not yet
-/// implemented` message, regardless of the layer loop.
+/// `support_interface_bottom_layers = 3` is a supported setting and must not be
+/// reported as unimplemented.
+///
+/// **Replaced by packet 224.** This previously asserted exactly one code 1003
+/// warning carrying `support_interface_bottom_layers is not yet implemented`.
+/// The key is now implemented: it drives the `BottomInterface` band (canonical
+/// `floor_areas`) where branches land on the model, so the warning was retired.
+/// Continuing to emit it would report a working config key as unsupported.
+///
+/// That the band is actually produced is gated by
+/// `branch_landing_on_model_emits_bottom_interface`; this test's remaining job
+/// is to pin that configuring the key is not itself an error.
 #[test]
-fn interface_bottom_layers_emits_one_typed_diagnostic() {
+fn interface_bottom_layers_is_supported_and_warns_nothing() {
     let config = make_planner_config(&[
         ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
@@ -270,30 +280,16 @@ fn interface_bottom_layers_emits_one_typed_diagnostic() {
     let diagnostics = output.diagnostics();
     let ibl_diags: Vec<&Diagnostic> = diagnostics.iter().filter(|d| d.code == 1003).collect();
 
-    assert_eq!(
-        ibl_diags.len(),
-        1,
-        "AC-6: expected exactly one code-1003 diagnostic; got {} (codes: {:?})",
-        ibl_diags.len(),
-        diagnostics.iter().map(|d| d.code).collect::<Vec<_>>()
-    );
-
-    let d = ibl_diags[0];
     assert!(
-        matches!(d.severity, DiagnosticSeverity::Warn),
-        "AC-6: code 1003 must be warn severity; got {:?}",
-        d.severity
-    );
-    assert_eq!(
-        d.layer, None,
-        "AC-6: code 1003 must have layer=None; got {:?}",
-        d.layer
+        ibl_diags.is_empty(),
+        "AC-6: support_interface_bottom_layers is implemented, so no code-1003 \
+         'not yet implemented' diagnostic may be emitted; got {ibl_diags:?}"
     );
     assert!(
-        d.message
-            .contains("support_interface_bottom_layers is not yet implemented"),
-        "AC-6: message must contain 'support_interface_bottom_layers is not yet implemented'; got '{}'",
-        d.message
+        !diagnostics
+            .iter()
+            .any(|d| d.message.contains("is not yet implemented")),
+        "no diagnostic may describe a supported key as unimplemented; got {diagnostics:?}"
     );
 }
 
@@ -483,6 +479,84 @@ fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
 
 /// A tiny fixture (2 triangles) just enough to drive the planner; used by
 /// the code-1003 emission tests where the cap is not exercised.
+/// A branch that comes down onto the model rather than the build plate carries a
+/// `BottomInterface` role — canonical's `floor_areas`, anchored to the true
+/// support-to-model contact surface.
+///
+/// Gates the feature that replaced the retired code 1003 "not yet implemented"
+/// warning. `support_interface_bottom_layers` is left at its `-1` default here
+/// on purpose: canonical mirrors the top interface count when it is negative
+/// (`number_of_support_interface_bottom_layers`), which is the path PnP takes by
+/// default, so it is the path most worth pinning.
+#[test]
+fn branch_landing_on_model_emits_bottom_interface() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
+        ("support_on_build_plate_only", ConfigValue::Bool(false)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = small_overhang_fixture("floor");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("floor", 11);
+
+    // Model occupancy on the low layers, directly beneath the overhang's XY
+    // footprint, so descending branches meet the model instead of the plate.
+    let shelf = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-2.0, -2.0),
+                Point2::from_mm(6.0, -2.0),
+                Point2::from_mm(6.0, 6.0),
+                Point2::from_mm(-2.0, 6.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let sg = SupportGeometryView {
+        entries: (0..=2)
+            .map(|i| SupportGeometryViewEntry {
+                global_support_layer_index: i,
+                object_id: "floor".to_string(),
+                region_id: "0".to_string(),
+                outlines: vec![shelf.clone()],
+            })
+            .collect(),
+    };
+
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &config)
+        .expect("run_support_geometry");
+
+    let has_bottom_interface = output.entries().iter().any(|entry| {
+        entry.roles.iter().any(|role| {
+            role.role == slicer_ir::SupportPlanRole::BottomInterface && !role.regions.is_empty()
+        })
+    });
+    assert!(
+        has_bottom_interface,
+        "a branch landing on the model must carry a BottomInterface role; roles seen: {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| e.roles.iter().map(|r| r.role).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    );
+}
+
 fn small_overhang_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],

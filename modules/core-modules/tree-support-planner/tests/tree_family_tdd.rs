@@ -507,10 +507,21 @@ fn anchored_heights_and_termination() {
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
         assert!(entry.skeleton.as_ref().is_some());
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == slicer_ir::SupportPlanRole::SupportBody));
+        // Every entry must carry printable geometry under some role. Since
+        // packet 224 that role is not always `SupportBody`: canonical subtracts
+        // roof and floor areas out of `base_areas`, so on a layer inside the
+        // interface band the body can be fully carved away, leaving only
+        // `TopInterface` or `BottomInterface`. Requiring `SupportBody` on every
+        // entry would forbid that, which is why this assertion was widened.
+        assert!(
+            entry
+                .roles
+                .iter()
+                .any(|role| !role.regions.is_empty()),
+            "entry at layer {} carries no printable geometry under any role: {:?}",
+            entry.global_layer_index,
+            entry.roles
+        );
         let skeleton = entry.skeleton.as_ref().unwrap();
         assert!(!skeleton.points.is_empty());
     }
@@ -707,7 +718,7 @@ fn invalid_body_rejected() {
         "complete crossing body is dropped"
     );
     assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing cell")
+        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing-cell")
     }));
     assert!(aggregated
         .entries

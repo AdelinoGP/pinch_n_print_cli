@@ -466,14 +466,30 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
         .fold(0.0_f32, f32::max)
 }
 
-/// AC-N3: node dropped when avoidance rejects all moves → warn diagnostic.
-/// When the planner's MST move pass clamps a node into avoidance and the
-/// clamped target lies inside the collision_polys (i.e. the only valid
-/// destination is occupied by the model), the node is dropped and a
-/// typed code 1002 warn-level `Diagnostic` is emitted via the
-/// `SupportGeometryOutput::push_diagnostic` channel.
+/// AC-N3: when the model occupies every destination a branch could move to, the
+/// branch is rejected and a typed warn-level `Diagnostic` records it, rather
+/// than support being emitted through the model.
+///
+/// **Strengthened by packet 224.** The drop trigger changed, and the test gained
+/// a check that the original was missing.
+///
+/// Previously code 1002 fired when a node's clamped *centre* landed inside
+/// `collision_polys`, and it only ever fired because `clamp_to_avoidance`'s
+/// guard was inverted: nodes safely outside avoidance were snapped onto the
+/// avoidance boundary, dragging branches into the model. Correcting that guard
+/// alone was not enough — pushing a node to the *nearest* point outside
+/// avoidance can move it arbitrarily far, so this fixture began planning
+/// support bodies metres away from the overhang they were meant to support.
+///
+/// The trigger is now the branch-angle budget: a branch may travel at most
+/// `max_move_xy` per layer, escaping avoidance included. When no legal
+/// destination is within budget the node is dropped with code 1002.
+///
+/// The added assertion is that nothing is planned at all. A diagnostic without
+/// an actual drop is a warning that support was printed through the object,
+/// which is precisely what the earlier version of this test failed to catch.
 #[module_test]
-fn node_dropped_when_avoidance_rejects_all_moves() {
+fn node_rejected_when_model_occupies_every_destination() {
     // Note: #[module_test] already drains and reinstalls log capture via
     // reset_global_state() + mock_host_setup(). No explicit install needed here.
 
@@ -532,7 +548,7 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
-    let clamped: Vec<&Diagnostic> = diagnostics
+    let rejected: Vec<&Diagnostic> = diagnostics
         .iter()
         .filter(|d| {
             d.code == 1002
@@ -541,12 +557,27 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         })
         .collect();
     assert!(
-        !clamped.is_empty(),
+        !rejected.is_empty(),
         "AC-N3: expected at least one code 1002 warn diagnostic containing \
          'node-clamped-out'; got {} diagnostics: {:?}",
         diagnostics.len(),
         diagnostics
     );
+
+    // The rejection must be total: nothing may be planned inside a region the
+    // model occupies entirely. A diagnostic without an actual drop would be a
+    // warning that support was printed through the object.
+    assert!(
+        output
+            .entries()
+            .iter()
+            .all(|entry| entry.decline_reason.is_some()
+                || entry.roles.iter().all(|role| role.regions.is_empty())),
+        "AC-N3: no support body may be planned where the model occupies every \
+         destination; got {:?}",
+        output.entries()
+    );
+
 }
 
 // RC-1 lone-node column mid-air: a propagated node must still emit its segment.
