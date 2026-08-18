@@ -60,6 +60,10 @@ name = "overhang_annotation_no_overhang_case"
 required-features = ["host-algos"]
 
 [[test]]
+name = "support_overhang_detection_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "medial_axis_golden_tdd"
 required-features = ["host-algos"]
 
