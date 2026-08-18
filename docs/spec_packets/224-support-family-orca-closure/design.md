@@ -44,11 +44,16 @@ Measured on 2026-08-18 against **regenerated** OrcaSlicer references, with `carg
 | `;TYPE:Support` blocks | 123 | 122 | 122 | 121 |
 | `;TYPE:Support interface` blocks | 2 | 2 | 1 | 3 |
 | distinct Z carrying support | 125 | 124 | 123 | 124 |
-| support filament (mm) | 486.33 | 1538.36 | 852.02 | 1158.87 |
+| deposited support + interface filament (mm) | 388.73 | 683.96 | not re-measured | not re-measured |
+| support + interface XY path length (mm) | 11,687.5 | 22,774.9 | not re-measured | not re-measured |
+
+**Support filament must be measured as DEPOSITED material (corrected 2026-08-18).** The earlier row read PnP tree 486.33 / Orca tree 1538.36 / PnP normal 852.02 / Orca normal 1158.87, and the "31.6%" derived from it. Those sums are the total of every positive `E` delta inside a support block, **including de-retraction prime `E`**, which deposits no material and travels zero distance. Orca carries ~853 mm of prime against PnP's ~96 mm precisely *because* it prints ~58 short separate loops per top layer and retracts between them — so the naive metric penalises PnP twice for the same defect (once for printing less, once for the granularity that is itself the finding). **Do not quote 486.33 / 1538.36 / 852.02 / 1158.87 or the 31.6% derived from them.** The normal-family cells are left `not re-measured` rather than restated, because only the tree pair was re-derived on deposited material; see `tree-density-diagnosis.md` for the parser and its anchoring against each file's own `; filament used [mm]` footer.
+
+The corrected tree deficit is **56.8%** of Orca's deposited material — a **1.76x** deficit, **not 3.2x**. It decomposes cleanly: PnP lays down 11,687.5 mm of support XY path against Orca's 22,774.9 mm (**1.949x short**), while PnP's flow per mm of path is **1.107x higher** than Orca's, and 1.949 / 1.107 = 1.76. The path-length row is the honest coverage metric; the filament row is path length scaled by a flow discrepancy that is a separate defect (see the gap register).
 
 **Extruding-move counts are NOT a parity metric.** Orca's tree segments are roughly 15x shorter than PnP's, so a move count measures polygon granularity, not deposited material. Never gate on it, and never quote it as evidence of coverage.
 
-Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and tree support filament at **31.6%** of Orca's over an identical Z range and layer count (locked decision 5 — root-cause diagnosis is blocking; bug-versus-gap classification comes after).
+Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and the tree coverage deficit — 1.949x short on support XY path length, 1.76x short on deposited material — over an identical Z range and layer count (locked decision 5). Root-cause diagnosis was blocking and is now recorded as RC-15; bug-versus-gap classification follows from it.
 
 ### Orca reference profile (normal), regenerated 2026-08-18
 
@@ -56,7 +61,7 @@ Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (lock
 
 ### HANDOFF-224.md numbers are void
 
-`HANDOFF-224.md`'s **STRUCTURAL** findings (RC-6..RC-12, the `body_overlaps_occupancy` floating-point defect, the droppable termination layer) **stand** and are recorded below. Every **measured number** in that document is **void**: it was captured against the previous Orca references, which were regenerated on 2026-08-18 with many settings disabled. This includes its interface-count match claim ("tree 2 vs 2, normal 3 vs 3"), its 125/90/89 tree entry counts, its 205-distinct-print-Z figure, and any filament or move-count figure. Requote nothing from it; the table above is the only current baseline.
+`HANDOFF-224.md`'s **STRUCTURAL** findings (RC-6..RC-12, the `body_overlaps_occupancy` floating-point defect, the droppable termination layer) **stand** and are recorded below. Every **measured number** in that document is **void**: it was captured against the previous Orca references, which were regenerated on 2026-08-18 with many settings disabled. This includes its interface-count match claim ("tree 2 vs 2, normal 3 vs 3"), its 125/90/89 tree entry counts, its 205-distinct-print-Z figure (the regenerated references disable `independent_support_layer_height`; both now emit 150 distinct Z — see `requirements.md` §Out of Scope), and any filament or move-count figure. Requote nothing from it; the table above is the only current baseline.
 
 ## Root Causes (recorded 2026-08-17)
 
@@ -107,7 +112,7 @@ Renderer-side relaxation (`continue` on a foreign family) was attempted previous
 
 ### RC-4 — the support family never reaches region routing (FIXED 2026-08-18)
 
-**Fixed 2026-08-18 by the backfill described below, and covered by `family_reaches_region_routing`.** The open work in this packet is now RC-11 (tree top-Z), the interface layer counts, and the tree-density diagnosis — see §Measured Baseline.
+**Fixed 2026-08-18 by the backfill described below, and covered by `family_reaches_region_routing`.** RC-11 (tree top-Z) is likewise fixed (`d97fb2b8`). The open work in this packet is now the interface layer counts and RC-15 (tree contact-point derivation) — see §Measured Baseline.
 
 `tree(auto)` publishes a full 126-entry tree `SupportPlanIR` and `run_slice` emits no `;TYPE:Support` at all.
 
@@ -153,13 +158,15 @@ Recorded from `HANDOFF-224.md` §"Defects found and fixed". The `;TYPE:Support i
 
 The tree interface was synthesised from bounding-box scan lines (`push_interface_scan_lines`) rather than from the node's own area. It is now the node's own area classified as roof/floor (`InterfaceRole`) and **carved out of** the body, matching the canonical rule that roof geometry is subtracted from `base_areas` (§RC-2). `push_interface_scan_lines` is deleted. The `is_roof` band includes the contact layer (`dist_to_top < top_n`), so the topmost support layer is interface rather than bare body.
 
-### RC-11 — tree ignores `support_top_z_distance_mm` (OPEN — corrected 2026-08-18)
+### RC-11 — tree ignores `support_top_z_distance_mm` (FIXED 2026-08-18, commit `d97fb2b8`)
 
-**True root cause: the key is never read.** `tree-support-planner`'s `from_config` reads 17 other keys and does not read `support_top_z_distance_mm` at all, while the module declares the key in two manifests. The key is also absent from `crates/slicer-schema/wit/` entirely. Tree's top interface therefore lands at the overhang underside with a **zero** gap; traditional is fixed and Orca-matching.
+**FIXED in commit `d97fb2b8`** (`fix(tree-support): honour support_top_z_distance_mm (RC-11)`). Recorded below because the root cause was misdiagnosed twice before it was found.
+
+**True root cause: the key was never read.** `tree-support-planner`'s `from_config` reads 17 other keys and does not read `support_top_z_distance_mm` at all, while the module declares the key in two manifests. The key is also absent from `crates/slicer-schema/wit/` entirely. Tree's top interface therefore lands at the overhang underside with a **zero** gap; traditional is fixed and Orca-matching.
 
 **The earlier "unexplained contradiction" is closed, not open.** A prior session recorded that a shift implemented in `push_contact_with_demand` had no effect while the config *value* still moved the result by 35 layers (125 entries at `0`, 90 at `0.2`, 89 at `0.4`), and declined to ship on that basis. Those measurements were **stale-guest artifacts** — the guest `.wasm` did not contain the edited planner. Do not carry the contradiction framing forward; there is nothing anomalous to explain. Run `cargo xtask build-guests --check` before trusting any tree-planner measurement.
 
-**Fix shape.** Read the key in `from_config`, then shift the contact layer by **walking actual layer Z**, the technique `traditional-support-planner::plan_for_object` already uses. Dividing by `LayerPlanViewEntry.effective_layer_height` is prohibited — the field is unreliable in the guest view (it produced a zero-layer gap in traditional and a 35-layer gap in tree) and should be separately investigated or documented as untrustworthy.
+**Fix as landed.** The key is read in `from_config`, and the contact layer is shifted the contact layer by **walking actual layer Z**, the technique `traditional-support-planner::plan_for_object` already uses. Dividing by `LayerPlanViewEntry.effective_layer_height` remains prohibited — the field is unreliable in the guest view (it produced a zero-layer gap in traditional and a 35-layer gap in tree) and should be separately investigated or documented as untrustworthy.
 
 Note: `eprintln!` from guest code does not reach the test harness. Use `push_diagnostic`.
 
@@ -170,6 +177,60 @@ Note: `eprintln!` from guest code does not reach the test harness. Use `push_dia
 ### RC-13 — `body_overlaps_occupancy` decided overlap by floating-point accident
 
 The helper ended with `point_in_polygon(closest_boundary_point)`, so the verdict depended on which side of the boundary a floating-point rounding landed; it reported "overlapping" for a body 8 mm clear of occupancy. Pinned by `body_clear_of_occupancy_does_not_overlap`.
+
+### RC-14 — `in_routing_cell` rejected any body straddling an absolute grid line (FIXED 2026-08-18, commit `2afa4cf9`)
+
+`in_routing_cell` (`crates/slicer-wasm-host/src/support_aggregation.rs`) required a support body's bounding box to fall inside a single cell of an **absolute** grid keyed by `ROUTING_CELL_SIZE = 1 << 20` units — 104.8576 mm at this repo's 100 nm unit. A body was therefore accepted or rejected by *where it sat on the world grid*, not by how large it was.
+
+The decisive fixture's bbox edge sits exactly on `y = 0`, which is a grid line. A 0.4 mm tip disc at a model corner reaches `y = -0.4 mm`, crossing it, and was dropped. Measured: **528 rejections at `support_top_z_distance = 0.2`, zero at `0.0`** — the gap moves the tip across the line. The rejections took layers 90..124 with them and destroyed **both** `TopInterface` layers, which is why the interface counts and the top-of-branch coverage looked like planner defects.
+
+**Fix.** `2afa4cf9` bounds a body by its **extent** (`maxx - minx` and `maxy - miny` against `ROUTING_CELL_SIZE`) rather than by absolute cell containment. Size is the property the guard was ever meant to check.
+
+**Canonical hits the same case and does not guard against it.** `TreeSupport::generate_contact_points` (`TreeSupport.cpp`) emits overhang **contour vertices directly** as contact points, so contacts land on the model's outer boundary as a matter of course — including on axis-aligned bbox edges. Any containment test keyed to an absolute grid is wrong for that input by construction.
+
+### RC-15 — tree contact points come from mesh overhang-triangle centroids (GAP; in scope for 224)
+
+**This is the dominant cause of the tree coverage deficit in §Measured Baseline.**
+
+`tree-support-planner` derives contact points from **mesh overhang-triangle centroids, one per triangle**. A ~400 mm² overhang made of two triangles therefore yields **two** contact points, and the branch set can never be denser than the mesh tessellation — a property of the input file, not of the support settings.
+
+Canonical `TreeSupport::generate_contact_points` (`TreeSupport.cpp`) never touches triangles. It samples the **per-layer overhang `ExPolygon`** three independent ways and unions the results:
+
+1. **Contour corners** — a vertex is taken when its two incident edge directions satisfy `v1.dot(v2) > -0.7`, i.e. the contour turns sharply enough to need its own branch.
+2. **Arc walk** — an `EdgeCache` walk emits points at `point_spread = tree_support_branch_distance` along the contour **and along every hole**.
+3. **Interior grid** — points on a global grid rotated 22 degrees, at `sample_step = max(point_spread, max_bridge_length / 2)`, kept when they fall inside the overhang eroded by `base_radius`.
+
+All three streams are deduped through a hash-bucket grid of cell size `base_radius`. The rotation and the global (not per-island) grid origin are what keep the sampling from aliasing with axis-aligned model features.
+
+**Measured consequence.** PnP produces **2 closed loops at every Z**, with a footprint no larger than **8.2 mm**. Orca fans out with height: **2 → 3 → 4 → 14 → 58 loops**, reaching a **19.1 × 20.3 mm** footprint at `z = 24`. That is the same shape as the 1.949x XY-path-length deficit, and it explains the interface deficit too — with two tips there is almost nothing to roof.
+
+**Classification: GAP** (a canonical sampling algorithm PnP has never had, not a regression). **Agreed to be implemented in 224**, because every other tree parity claim in this packet — coverage, interface placement, footprint — is unmeasurable until contact derivation is 2D and slice-based. It is not routed to the gap register.
+
+### RC-16 — three tests passed only because RC-14 was broken (REPAIRED, commit `4d1848eb`)
+
+`invalid_body_degraded` and `invalid_body_rejected` (the latter in **both** the tree-family and traditional-family planner test files) asserted rejection, and got it — but from `in_routing_cell`'s absolute-grid bug (RC-14), not from the invariant each test names. Fixing RC-14 correctly turned them red. They were wrong-reason passes, not regressions.
+
+`invalid_body_degraded`'s occupancy path was dead for two further, independent reasons, both in the fixture rather than the assertion:
+
+- the mesh was a **single coplanar triangle at `z = 100`**, which produces no occupancy at any layer the test inspects; and
+- it was built with `..ObjectMesh::default()`, whose `Transform3d::default()` is an **all-zeros matrix** — so every vertex collapses to the origin regardless of the coordinates written above it.
+
+An all-zeros default transform is a silent geometry eraser: it never errors, it just yields a degenerate mesh. Any fixture using `..ObjectMesh::default()` must set the transform explicitly. All three tests were repaired in `4d1848eb` to fail for the reason they name.
+
+### RC-17 — commit `9f4540bd` introduced eight tree-family regressions
+
+The tree renderer rewrite (`9f4540bd`, RC-8/RC-9/RC-10) took the two tree modules from **3 failures at `5a38fdce`** to **11 at `9f4540bd`**, and **10 at HEAD**. Seven of the eight introduced failures are in test files that are **byte-identical** across the window, so they cannot be new-test-against-old-source artefacts. Full per-test attribution, method, and its stated limitation: `tree-failure-attribution.md` in this packet directory.
+
+**Process finding, recorded so it is not repeated.** `HANDOFF-224.md` called this work "Completed and verified". That verification rested on narrow `cargo test` runs that **stopped at the first failing binary** and consequently never built three of the eight relevant test binaries. A run that aborts early is not a green run; a binary that was never built cannot have passed. Compare binary counts before trusting any narrow run (see `CLAUDE.md` §Test Discipline).
+
+### Recorded deviation — top-Z gap structure differs from canonical
+
+Both implementations produce a one-layer gap at `support_top_z_distance = 0.2`, so the printed outcome matches; the **structures** do not, and the difference will matter to anyone porting further tree behaviour.
+
+- **Canonical.** `TreeSupport::generate_contact_points` seeds `distance_to_top = -gap_layers`, creating a **virtual gap node** at `obj_layer_nr = layer_nr - 1`. That node is not printed as body: negative `distance_to_top` routes it to `roof_gap_areas` in the `generate_toolpaths` area pass (see §RC-2). The gap is a first-class node in the tree.
+- **PnP.** `tree-support-planner` instead moves the **contact layer itself** down, by walking actual layer Z (RC-11). There is no gap node; the layers simply start lower.
+
+Consequence: PnP has no object on which to hang gap-band behaviour, so anything canonical does with `roof_gap_areas` is currently inexpressible. Recorded as a deviation, not a defect.
 
 ## Read-Only Context
 - `crates/pnp-cli/src/visual_debug.rs` lines 743-761, 1500-1680 - manifest and typed capture fields.
