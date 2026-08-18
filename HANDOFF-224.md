@@ -1,155 +1,130 @@
-# Handoff — packet 224 `support-family-orca-closure` (2026-08-18)
+# Handoff — packet 224 `support-family-orca-closure` (2026-08-18, session 2)
 
-Branch `parity/support-planners`, last commit `5a38fdce`. **Nothing is committed** — all work
-below is uncommitted in the working tree (20 modified files; see `git status`).
+Branch `parity/support-planners`, HEAD `6f983b56`. **Working tree clean; everything below is
+committed.** Packet status remains `draft`.
 
-## What this session was
+## How to read this document
 
-A grilling review of packet 224 followed by execution of an agreed 6-step re-plan. Steps 1 and 2
-are complete and verified; Step 3 is complete except one recorded defect. Steps 4–6 are not started.
+The previous handoff recorded work as "Completed and verified" that was not. Its measurements were
+taken against Orca references that have since been regenerated, and against narrow `cargo test`
+runs that stop at the first failing binary. **Nothing here is called verified unless it names the
+command, the commit, and — for module crates — a `--no-fail-fast` run.**
+
+Four measurement traps, each of which cost this packet real time:
+
+1. `cargo test -p tree-support-planner` builds **8** test binaries. Without `--no-fail-fast` it
+   stops at the first failure and reports a false, smaller failure set.
+2. `cargo test -p slicer-runtime --test integration support_family_closure` runs **ZERO** tests.
+   The closure tests are bare `#[test] fn` wrappers with no module prefix, so that filter matches
+   nothing. Every AC command in the packet used it. Use `-- <name> --exact`.
+3. Guest WASM is not rebuilt by cargo. Run `cargo xtask build-guests --check` before **every**
+   measurement. One stale-guest measurement already produced a completely wrong conclusion.
+4. `eprintln!` from guest code does not reach the test harness. Use `push_diagnostic`, or a
+   temporary `ModuleError` — fatal-error text does reach the harness.
+
+## Commits this session
+
+```
+6f983b56  docs: punch-list audit, corrected plan, Steps 3a/3b
+289a2056  docs: correct void figures, record RC-14..RC-17, amend ACs, add gap register
+647a7d0a  docs: attribute tree-family failures to 9f4540bd
+4d1848eb  fix: reconcile config keys; repair three wrong-reason tests
+2afa4cf9  fix: routing cells bounded by extent, not absolute grid position
+4c67ccd9  wip: honest tests + tree density diagnosis (2 open failures)
+d97fb2b8  fix: tree honours support_top_z_distance_mm (RC-11)
+4d245486  test+docs: closure tests, matched Orca config, re-authored packet
+437176d4  fix(traditional-support): carve interface from body, plate-aware bottom interface
+9f4540bd  fix(tree-support): render geometry, swept capsules, interface roles   <-- SEE RC-17
+a62b5de9  fix(support): carry interface role end-to-end through marshal
+e85f2517  fix(support): route support family to region config at plan promotion
+```
+
+`e85f2517..437176d4` are the previous session's uncommitted work, committed unchanged.
 
 ## Decisions locked with the human (do not relitigate)
 
 | Topic | Decision |
 |---|---|
-| 224 scope | Closes on correctness + honest tests. Feature gaps route to existing packets/issues |
-| RC-4 fix site | Backfill `ActiveRegion.resolved_config` from `RegionMapIR` at plan promotion |
-| RC-5 | Consolidate in 224: delete planner self-defaults, de-duplicate the alias table |
-| Interface role | Fix in the renderers + restore `is_top_interface` through marshal |
-| Tree defects in 224 | double-extrusion, contact tips, swept capsules, and *wire* `smooth_branches` |
-| AC-2 | Amend to inspection-only; delete the three dead manifest helpers |
-| AC-3 / AC-6 | Amend to invariant test + recorded `/visual-debug` inspection write-up |
-| Fixtures | Reuse the OrcaSlicer models already tracked in `resources/`; prefer invariants |
-| Orca G-code | Stays inspection-only in gitignored `tmp/`, read by no test |
-| AGG rasterizer | Packet **224a**, after 224 closes. Key `support_area_algorithm = grid \| direct`, default `grid` |
-| Gap routing | Register `TASK-322`..`TASK-328`; annotate existing drafts/issues; new packets only for the uncovered |
-| Packet structure | One packet; re-author `implementation-plan.md` into ~6 S/M steps |
+| 224 scope | Closes on correctness + honest tests. Feature gaps route via the gap register |
+| Parity gate | Structural invariants + human/LLM `/visual-debug` inspection with side-by-side Orca renders. **No test reads Orca G-code** |
+| Orca references | Regenerated 2026-08-18 with many settings disabled. Inspection aids only, gitignored in `tmp/` |
+| RC-15 contact sampling | Classified GAP, **implemented in 224** anyway (it is the dominant cause) |
+| Bug cluster | Fixed together with RC-15, measured **once** at the end. Fixing them separately makes parity look worse — two errors currently cancel |
+| RC-17 regressions | **Fix forward** as a punch list; do not revert `9f4540bd` |
+| Benchy golden | Regenerate **last**, after all fixes, renamed off `orca_parity`, with a provenance header saying it is a PnP self-capture and not parity evidence |
+| Baseline metric | Deposited material + XY path length. Never total E — it counts de-retraction primes |
+| Gap routing | `docs/specs/support-parity-gap-register.md` plus packets 224a / 225 / 226 / 227 |
 
-## Completed and verified
+## Closed this session, with evidence
 
-### Step 1 — family routing (RC-4 + RC-5)
+- **RC-11 tree top-Z gap** (`d97fb2b8`). The root cause was **not** the "unexplained contradiction"
+  the last handoff described: `from_config` never read `support_top_z_distance_mm`, and the key is
+  absent from `crates/slicer-schema/wit/` entirely. The 125/90/89 measurements behind the mystery
+  were stale-guest artifacts. Red-first test in `orca_parity_tdd.rs`.
+- **RC-14 host routing-cell defect** (`2afa4cf9`). `in_routing_cell` rejected any body whose bbox
+  crossed an absolute 104.8576 mm grid line. The fixture's edge sits on y=0, so a 0.4 mm tip disc
+  reached y = -0.4 mm: 528 rejections at gap 0.2 against zero at gap 0.0, destroying both
+  TopInterface layers. Canonical `generate_contact_points` emits contour vertices directly, so it
+  hits the same case — the validator would have rejected canonical's own output.
+- **Config-key reconciliation** (`4d1848eb`), including `support_layer_height_mm`, whose
+  `default = 0.0` violated its own `min = 0.05` and blocked two tests.
+- **RC-16, three wrong-reason tests** (`4d1848eb`). `invalid_body_degraded`'s occupancy path was
+  dead three ways: a coplanar triangle at z=100; `..ObjectMesh::default()`, whose
+  `Transform3d::default()` is an all-zeros matrix collapsing every vertex to the origin; and then a
+  winding that still produced an empty cross-section.
+- **Test theatre deleted, four invariants added** (`4c67ccd9`). One found a real defect on its
+  first run.
+- **All AC commands de-vacuumed** (`289a2056`, `6f983b56`).
 
-- `promote_global_layers` + `backfill_active_region_configs`
-  (`crates/slicer-runtime/src/layer_executor.rs`) backfill each `ActiveRegion.resolved_config`
-  from `RegionMapIR` at the three plan-promotion sites (`pipeline.rs` x2, `run.rs` x1).
-- The layer-stage gate's local clone-patch is deleted.
-- `canonical_support_family` now lives once in `slicer-ir`; `slicer-scheduler`'s
-  `select_support_family` and both planners delegate to it.
-- Both planners' self-defaulting family fallbacks are deleted: a planner plans nothing for a
-  region the host did not assign it.
-- New test `family_reaches_region_routing` (in `support_family_closure.rs`), red first with the
-  diagnosed cause, green after.
+## Open work, in the order to do it
 
-### Step 2 — interface role end-to-end (RC-6 + RC-7)
+1. **Step 3a — RC-17 punch list.** See `tree-regression-punch-list.md`. Five of the eight
+   regressions are ONE bug: `plan_for_object`'s family lookup became
+   `let Some(..) else { continue }`, so an empty `family_assignments` discards every entry with no
+   diagnostic. The fix distinguishes *no assignments at all* (fall back to the module's configured
+   `support_family`, plus a diagnostic) from *assigned to another family* (skip, as RC-5 intends).
+   Do **not** migrate the fixtures — that deletes the only coverage of the no-assignment path.
+   Re-measure afterwards: several of the five may already be green.
+2. **Step 2 — interface layer counts.** PnP normal emits 1 `;TYPE:Support interface` block against
+   Orca's 3 at `support_interface_top_layers = 2` / `bottom_layers = 2`.
+3. **The orphan-interface defect.** `interface_is_topmost_and_carved_out` is RED: tree emits a
+   TopInterface at layer 119 for a column whose geometry ends at layer 79.
+4. **Step 3b — RC-15 contact-sampling port.** Canonical spec is in `design.md` RC-15.
+   **Read the port hazard first**: all six planner fixtures are coplanar plates with an empty
+   cross-section at every Z, and pass only because the planner never slices
+   (`detect_overhang_facets` reads triangles directly). A naive port turns five green tests red in
+   a way that looks like the port is wrong.
+   Also answer the punch list's UNKNOWN on canonical tree-base infill — it claims no OrcaSlicer
+   checkout is available, which is **false**; `OrcaSlicerDocumented/` is present in this checkout.
+5. **Steps 6, 7 (remainder), 8** — inspection checklist, `docs/07` rows, golden regeneration,
+   acceptance ceremony.
 
-- Both renderers stamp `ExtrusionRole::SupportInterface` on interface paths.
-- `convert_support_output_with_plan` (`crates/slicer-wasm-host/src/marshal/out.rs`) carries
-  `is_top_interface` through the drain, so `SupportRole::BottomInterface` is produced in
-  production for the first time.
+## Current test state (measured at `4d1848eb`, `--no-fail-fast`, guests clean)
 
-### Step 3 — geometry (RC-8, RC-9, RC-11 traditional, RC-12, plus two found in flight)
+- 10 failures in the tree family: 8 introduced by `9f4540bd`, 2 inherited. The baseline at
+  `5a38fdce` was 3. **The tree family is worse than before this packet began.**
+- `interface_is_topmost_and_carved_out` RED (genuine defect, assertion not weakened).
+- `final_gcode_roles` PASSES. `invalid_body_degraded` and both `invalid_body_rejected` PASS, now
+  testing what they claim.
+- `slicer-wasm-host` contract: 97 passed / 1 failed
+  (`support_plan_aggregation_diagnoses_duplicate_identity`, pre-existing, unrelated).
+- `cargo check --workspace --all-targets` clean; clippy clean on every touched crate.
+- `cargo xtask check-literals` exits 1 on **61 inherited violations across 34 files, 0 attributable
+  to this branch** — verified two ways: no added line opens a watched-type literal, and the
+  watchlist did not grow. The human approved committing over it.
 
-- `tree-support` `render_polygon` rewritten: walls inset half a line width each, fill inset clear
-  of them, pitch honours `support_density`, holes respected. The duplicate `fill_expolygon_tree`
-  overlay is gone, and the now-dead grid-MST code deleted.
-- `structural_body_regions` builds **swept capsules** (convex hull of endpoint circles, unioned)
-  instead of detached 16-gon discs; zero-width contact tips now carry a real radius.
-- Tree interface is now the node's own area classified as roof/floor (`InterfaceRole`), carved out
-  of the body — replacing the bounding-box scan-line hack. `push_interface_scan_lines` deleted.
-- `is_roof` band now includes the contact layer (`dist_to_top < top_n`), so the topmost support
-  layer is interface rather than bare body.
-- `smooth_branches` now translates role regions, not just `skeleton.points[0]`.
-- Traditional: interface is carved out of the body instead of duplicating it; `BottomInterface`
-  only where the column terminates on the **model** (never the plate); the termination layer
-  always prints; top-Z gap derived by walking layer Z.
+## Measured baseline (2026-08-18, regenerated references, guests clean)
 
-### Verified end to end through `pnp_cli` (not only tests)
+|  | PnP tree | Orca tree |
+|---|---|---|
+| deposited support filament | 388.73 mm | 683.96 mm (PnP = 56.8%, a **1.76x** deficit) |
+| support XY path length | 11,687.5 mm | 22,774.9 mm (1.949x short) |
 
-Traditional top interface lands at **Z = 24.8**, exactly OrcaSlicer's contact height in
-`tmp/SupportTest_Normal_Orca.gcode`. Interface is now the topmost support with body beneath.
-At the Step-2 measurement the `;TYPE:Support interface` count matched Orca exactly for both
-families (tree 2 vs 2, normal 3 vs 3).
+PnP over-extrudes 1.107x per mm; 1.949 / 1.107 = 1.76. **Do not quote 31.6% / 486.33 / 1538.36** —
+those summed de-retraction primes, which penalises PnP twice for the same defect (Orca's prime
+count scales with its loop count). Extruding-move counts are not a parity metric either: Orca's
+segments are ~15x shorter, so the count measures polygon granularity, not material.
 
-All 13 support closure + family integration tests pass:
-
-```
-cargo test -p slicer-runtime --test integration -- family_reaches_region_routing fixture_invariants \
-  final_gcode_roles invalid_geometry_fails matched_height_evidence tree_support_family \
-  traditional_support_family support_disabled differential_evidence task_163b supersedes
-```
-
-`cargo clippy` clean on all edited crates. **Re-run `cargo xtask build-guests --check` first thing** —
-a guest + release rebuild was in flight when this session paused.
-
-## Defects found and fixed that were NOT in the packet
-
-- **RC-6** no production code constructed `ExtrusionRole::SupportInterface`; the marker was
-  unreachable and `support_interface_speed` was never applied.
-- **RC-7** `is_top_interface` was discarded in marshal; `SupportRole::BottomInterface` never existed.
-- **RC-8** tree renderer emitted `wall_count` *coincident* walls + 100% fill + a second grid-MST fill.
-- **RC-9** contact tips were created with `width = 0.0` and filtered out — the layer meeting the
-  overhang printed nothing.
-- **RC-12** traditional emitted bottom interface on the build plate.
-- **`body_overlaps_occupancy`** ended with `point_in_polygon(closest_boundary_point)`, decided by
-  floating-point accident, reporting "overlapping" for a body 8 mm clear. Pinned by the new
-  `body_clear_of_occupancy_does_not_overlap`.
-- **Termination layer was droppable** when it failed the support-layer-height modulo, so columns
-  stopped short of the plate.
-
-## Open — pick up here
-
-1. **RC-11 tree top-Z gap (OPEN, precisely characterised).** Tree still ignores
-   `support_top_z_distance_mm`; its top interface lands at Z = 25.0 with the overhang underside also
-   at 25.0 — zero gap. Traditional is fixed and Orca-matching; tree is not.
-   I implemented a shift in `push_contact_with_demand` and **reverted it**, because it demonstrably
-   had no effect (identical output with and without) while the config *value* still changed the
-   result by 35 layers. That contradiction is unexplained and I would not ship it.
-   Measured, deterministic across repeat runs: with `support_top_z_distance_mm = 0` tree yields 125
-   entries, top layers 124/123 = `TopInterface` (correct shape); with 0.2 it yields 90 entries
-   topping at 89, all `SupportBody`; with 0.4, 89 entries topping at 88. An unrelated key does not
-   perturb it. **Find the real consumer of that key in the tree path before changing anything.**
-   Note `eprintln!` from guest code does not reach the test harness — use `push_diagnostic`, which does.
-
-2. **`LayerPlanViewEntry.effective_layer_height` is unreliable in the guest view.** Dividing by it
-   produced a zero-layer gap in traditional and a 35-layer gap in tree. Both planners now avoid it;
-   the field itself should be investigated or documented as untrustworthy.
-
-3. **`benchy_orca_parity_within_tolerance` is RED on purpose** (Hausdorff 1.2998 mm vs 0.5 tolerance).
-   It compares against a golden whose own header says "Source: Pinch 'n Print self-capture ... Replace
-   with real OrcaSlicer reference data". Per `CLAUDE.md` I left it red rather than regenerating.
-   `SUPPORT_PLANNER_REGEN_GOLDEN=1` is the sanctioned regeneration path **if the human approves**.
-
-4. **RC-3 is unverified.** No host code filters `SupportPlanIR` *entries* by family — region routing
-   is the only guard. `design.md` is corrected; the `n:<family>` qualifier it described never existed.
-
-5. **Step 4 not started** — delete the theatre tests (`differential_evidence` and
-   `task_163b_disposition` still contain empty `if` blocks; `missing_fixture_is_blocking` still tests
-   `std::fs`; the three `#[allow(dead_code)]` manifest helpers still have zero callers) and add
-   invariant tests on `resources/` models: `cube_with_concave_hole_enlarged_standing.obj` (wall
-   leakage), `two_hollow_squares.obj` (multi-island), `V_standing.obj` (branch merging),
-   `A_upsidedown.obj` (sharp tail).
-
-6. **Step 5 not started** — amend AC-2/AC-3/AC-6 in `packet.spec.md` with the amendment recorded
-   verbatim (as AC-N2 was), record RC-6..RC-12 in `design.md`, and correct the false claim that
-   `missing_fixture_is_blocking` was deleted. `design.md` sections RC-3 and RC-4 are already corrected.
-
-7. **Step 6 not started** — `cargo xtask check-literals`, then
-   `cargo xtask test --summary --workspace` dispatched to a sub-agent for a FACT pass/fail.
-
-8. **Ledger** — `TASK-322`..`TASK-328` are declared in packets 213–218 front matter but do not exist
-   in `docs/07_implementation_status.md`. `TASK-335` stays unchecked.
-
-## Known-unrelated, do not attribute to this work
-
-`ERR_MALFORMED_LAYER_MARKER` (code 12) from `machine-gcode-emit` fires **107 times with support
-disabled** on the decisive fixture, 118 with tree support. Pre-existing, outside 224's scope, untouched.
-
-`tree_support_family` also trips a `boostvoronoi` assertion (`rhs.fpv_.is_finite()`) in a worker
-thread; the test passes regardless. Not investigated.
-
-## Still true after all this work
-
-224 will close as *correct*, not as *canonically complete*. `support_bottom_z_distance`,
-`support_expansion`, base patterns, interface patterns and raft geometry remain unimplemented.
-The Orca `normal` reference emits **205 distinct print Z** for a 150-layer print (55 support-only
-layers at independent Z); PnP emits 150. That gap belongs to the follow-up packets.
+Both families and both references now sit on the same 150-layer grid. The old "205 distinct print Z"
+divergence is gone from the reference and is no longer a 224 concern; independent support-layer Z
+remains a feature PnP lacks, routed to packet 225.
