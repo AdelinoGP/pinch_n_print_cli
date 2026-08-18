@@ -839,3 +839,151 @@ fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisV
         ..Default::default()
     }
 }
+
+// ── RC-11: `support_top_z_distance_mm` must hold the tree top gap ──────────
+//
+// The tree planner declared `support_top_z_distance_mm` in its manifest and
+// read it nowhere, so its top interface printed flush against the overhang
+// with zero gap while `traditional-support-planner` honoured the key. This
+// test pins the asymmetry closed.
+//
+// The gap is measured by walking actual layer Z. It must NOT be derived by
+// dividing by `LayerPlanViewEntry.effective_layer_height`: the host's two
+// producers of that field disagree (one takes a max over participating
+// objects, the other takes the first match), and a previous attempt to divide
+// by it opened a 35-layer gap.
+
+/// Plan the fixture at a given `support_top_z_distance_mm` and return the
+/// highest model-layer index carrying planned support geometry.
+fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("support_top_z_distance_mm", ConfigValue::Float(gap_mm)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture("gap");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("gap", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("gap"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry");
+
+    output
+        .entries()
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .max()
+        .expect("expected at least one planned model-layer support entry")
+}
+
+#[test]
+fn top_z_distance_lowers_the_tree_contact_layer() {
+    // The fixture's overhang underside sits at z = 1.8mm on a 0.2mm layer
+    // stack, so the flush (zero-gap) contact belongs on the layer whose top
+    // plane is 1.8mm — index 8.
+    let flush_top = top_support_layer_for_gap(0.0);
+    assert_eq!(
+        flush_top, 8,
+        "with support_top_z_distance_mm = 0.0 the tree column must reach the \
+         overhang underside at z=1.8mm (layer 8); got layer {flush_top}"
+    );
+
+    // One 0.2mm layer of clearance must drop the column by exactly one layer.
+    let gapped_top = top_support_layer_for_gap(0.2);
+    assert!(
+        gapped_top < flush_top,
+        "RC-11: with support_top_z_distance_mm = 0.2 the topmost tree support \
+         layer must sit at least one 0.2mm layer below the flush contact layer \
+         {flush_top}; got layer {gapped_top} (the key is declared in \
+         tree-support-planner.toml but read nowhere)"
+    );
+
+    // The gap must track actual layer Z, not collapse to zero and not blow out
+    // to tens of layers (the effective_layer_height division failure mode).
+    let dropped_layers = flush_top - gapped_top;
+    assert_eq!(
+        dropped_layers, 1,
+        "RC-11: a 0.2mm gap on a 0.2mm layer stack must drop the contact by \
+         exactly one layer; got {dropped_layers} layers (flush={flush_top}, \
+         gapped={gapped_top})"
+    );
+}
+
+#[test]
+fn top_z_distance_defaults_to_traditional_two_tenths() {
+    // `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM` is 0.2 and
+    // matches OrcaSlicer's `support_top_z_distance`. An absent key must give
+    // the tree family the same gap, not a flush contact.
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        // support_top_z_distance_mm deliberately absent.
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture("gap-default");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("gap-default", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("gap-default"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry");
+
+    let default_top = output
+        .entries()
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .max()
+        .expect("expected at least one planned model-layer support entry");
+
+    assert_eq!(
+        default_top,
+        top_support_layer_for_gap(0.2),
+        "RC-11: the tree default for support_top_z_distance_mm must equal \
+         traditional's DEFAULT_TOP_Z_DISTANCE_MM (0.2mm); got top layer \
+         {default_top}"
+    );
+}

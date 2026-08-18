@@ -64,6 +64,11 @@ const OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 /// `TreeSupportData::max_radius` hard upper bound (6.0 mm).
 const MAX_BRANCH_RADIUS_MM: f32 = 6.0;
 const MIN_BRANCH_RADIUS: f32 = 0.4;
+/// Default vertical clearance between the top of a support column and the
+/// overhang it supports. Matches OrcaSlicer's `support_top_z_distance` default
+/// and `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM`, so both
+/// families leave the same gap when the key is absent.
+const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 
 /// Multi-layer organic tree-support planner.
 #[allow(dead_code)]
@@ -104,6 +109,11 @@ pub struct SupportPlanner {
     /// emitted. Default `false`: to-model contacts are admitted and
     /// propagated like before. Packet 123.
     support_on_build_plate_only: bool,
+    /// Vertical clearance in mm between the top of a support column and the
+    /// overhang plane that demanded it. Packet 224 RC-11: this key was
+    /// declared in the manifest but read nowhere, so tree support printed its
+    /// top interface fused to the model.
+    support_top_z_distance_mm: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -436,6 +446,13 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
+        // Packet 224 RC-11: honour the top-Z gap the manifest already declared.
+        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => DEFAULT_TOP_Z_DISTANCE_MM,
+        }
+        .max(0.0);
         Ok(Self {
             enabled,
             support_family,
@@ -455,6 +472,7 @@ impl PrepassModule for SupportPlanner {
             support_interface_bottom_layers,
             tree_support_interface_spacing_mm,
             support_on_build_plate_only,
+            support_top_z_distance_mm,
         })
     }
 
@@ -1386,6 +1404,38 @@ fn candidate_contact_points(polygons: &[ExPolygon]) -> Vec<(f32, f32)> {
     }
 }
 
+/// Lower a flush contact layer by `support_top_z_distance_mm`, measured along
+/// actual layer Z.
+///
+/// `contact_layer` is the layer whose top plane the support would touch with a
+/// zero gap — i.e. the overhang plane. The column must instead stop at the
+/// highest layer whose top plane is at or below `overhang_plane_z - gap`.
+///
+/// The walk is over `LayerPlanViewEntry.z` on purpose. Do **not** reimplement
+/// this as `gap / effective_layer_height`: the host's two producers of that
+/// field disagree (`project_layer_plan_view` takes a max over participating
+/// objects, `build_native_prepass_request` takes the first match), so it is not
+/// a dependable per-layer thickness in the guest view. Dividing by it opened a
+/// 35-layer gap here. `traditional-support-planner::plan_candidate` walks Z for
+/// the same reason.
+fn contact_layer_after_top_gap(
+    layer_plan: &LayerPlanView,
+    contact_layer: usize,
+    support_top_z_distance_mm: f32,
+) -> usize {
+    if support_top_z_distance_mm <= 0.0 || layer_plan.layers.is_empty() {
+        return contact_layer;
+    }
+    let contact_layer = contact_layer.min(layer_plan.layers.len() - 1);
+    let overhang_plane_z = layer_plan.layers[contact_layer].z;
+    let target_top_z = overhang_plane_z - support_top_z_distance_mm;
+    let mut emit_top_layer = contact_layer;
+    while emit_top_layer > 0 && layer_plan.layers[emit_top_layer].z > target_top_z {
+        emit_top_layer -= 1;
+    }
+    emit_top_layer
+}
+
 fn push_contact(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
@@ -1396,6 +1446,10 @@ fn push_contact(
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
 ) {
+    // Name the demand after the layer the contact will actually land on, so
+    // the id stays stable against the gap shift applied below.
+    let target_idx =
+        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
     push_contact_with_demand(
         contacts,
         layer_plan,
@@ -1407,8 +1461,8 @@ fn push_contact(
         dropped,
         format!(
             "mesh-demand-{}-{}",
-            layer_plan.layers[layer_idx].global_layer_index,
-            contacts[layer_idx].len()
+            layer_plan.layers[target_idx].global_layer_index,
+            contacts[target_idx].len()
         ),
     );
 }
@@ -1426,6 +1480,8 @@ fn push_contact_with_demand(
 ) {
     // Hold the top Z gap: a contact belongs `support_top_z_distance_mm` BELOW
     // the overhang that demanded it, not flush against it.
+    let layer_idx =
+        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
     let collision = collision_cache
         .get(global_layer as usize)
@@ -2116,6 +2172,7 @@ mod tests {
             support_interface_bottom_layers: -1,
             tree_support_interface_spacing_mm: 0.4,
             support_on_build_plate_only: false,
+            support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
         }
     }
 
@@ -2310,7 +2367,16 @@ mod tests {
             triangles,
             paint_layers: vec![],
         };
-        let planner = default_planner();
+        // This test is about tip *emission* on the contact's own layer, not
+        // about the top-Z gap, so pin the gap to zero and keep the authored
+        // fixture coordinates (layer 8, z = 1.8mm) exactly as-is. Packet 224
+        // RC-11 gave `SupportPlanner` a default gap of
+        // `DEFAULT_TOP_Z_DISTANCE_MM`; RC-11's own coverage lives in
+        // `tests/orca_parity_tdd.rs::top_z_distance_lowers_the_tree_contact_layer`.
+        let planner = SupportPlanner {
+            support_top_z_distance_mm: 0.0,
+            ..default_planner()
+        };
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("lone-contact", 10);
         // Model occupancy placed clear of the contact centroid (~2.67, 1.33).
