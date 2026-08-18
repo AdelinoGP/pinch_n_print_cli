@@ -1,13 +1,21 @@
 //! Support-family closure tests and their acceptance-criteria mapping:
 //!
-//! - `missing_fixture_is_blocking`: AC-1, decisive fixture gate.
 //! - `fixture_invariants`: AC-1, fixture identity and non-empty evidence.
 //! - `invalid_geometry_fails`: AC-2, invalid geometry is rejected.
 //! - `matched_height_evidence`: AC-2, matched physical-layer evidence.
-//! - `differential_evidence`: AC-3, tree/normal differential evidence.
+//! - `differential_evidence`: AC-3, PnP-side two-family invariants (no Orca claim).
 //! - `final_gcode_roles`: AC-4, final G-code role evidence.
 //! - `supersedes_packet_213_and_task_329`: AC-5, closure supersession.
-//! - `task_163b_disposition`: AC-6, task disposition evidence.
+//! - `task_163b_disposition`: AC-6, PnP-side decline-reason invariants (no Orca claim).
+//! - `support_never_intersects_model_at_exact_z`: invariant 1, over tracked `resources/` models.
+//! - `accepted_demands_terminate_on_plate_or_model`: invariant 2.
+//! - `interface_is_topmost_and_carved_out`: invariant 3.
+//! - `no_overhang_mesh_produces_zero_support`: invariant 4, negative guard.
+//!
+//! The `missing_fixture_is_blocking` gate was removed: it asserted that
+//! `std::fs::read` returns `NotFound` for a path it had just constructed to not
+//! exist, which tests `std::fs` and nothing about this closure. The real gate is
+//! the panic in [`support_test_path`].
 
 use std::collections::HashMap;
 use std::fs;
@@ -36,15 +44,106 @@ fn support_test_path() -> std::path::PathBuf {
     );
 }
 
+/// Tracked path of the Orca-matched config fixture. Mirrors [`support_test_path`]:
+/// a missing fixture panics naming the authoritative tracked path rather than
+/// silently degrading to an in-process default config.
+fn matched_config_path() -> std::path::PathBuf {
+    let tracked = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/support-family/orca-matched-config.json");
+    if tracked.exists() {
+        return tracked;
+    }
+    panic!(
+        "required support-family config fixture is missing at {} (tracked authoritative path); tmp/* is not authoritative",
+        tracked.display()
+    );
+}
+
+/// Loads the tracked Orca-matched config fixture as the config base.
+///
+/// Before this existed, the closure suite built a two-key `HashMap` in-process
+/// (`enable_support` + `support_type`) and left every support tuning key at its
+/// module default, so the fixture was tracked but never read by anything.
+fn matched_config_base() -> HashMap<String, ConfigValue> {
+    let path = matched_config_path();
+    let raw = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .unwrap_or_else(|error| panic!("parse {}: {error}", path.display()));
+    let object = parsed
+        .as_object()
+        .unwrap_or_else(|| panic!("{} is not a JSON object", path.display()));
+    object
+        .iter()
+        .map(|(key, value)| {
+            let converted = json_to_config_value(value).unwrap_or_else(|| {
+                panic!(
+                    "{}: key `{key}` has unsupported JSON value {value}",
+                    path.display()
+                )
+            });
+            (key.clone(), converted)
+        })
+        .collect()
+}
+
+fn json_to_config_value(value: &serde_json::Value) -> Option<ConfigValue> {
+    match value {
+        serde_json::Value::Bool(flag) => Some(ConfigValue::Bool(*flag)),
+        serde_json::Value::String(text) => Some(ConfigValue::String(text.clone())),
+        serde_json::Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                Some(ConfigValue::Int(integer))
+            } else {
+                number.as_f64().map(ConfigValue::Float)
+            }
+        }
+        serde_json::Value::Array(items) => items
+            .iter()
+            .map(json_to_config_value)
+            .collect::<Option<Vec<_>>>()
+            .map(ConfigValue::List),
+        _ => None,
+    }
+}
+
+/// The matched config with the family selection applied as an override on top.
+fn matched_config_for(support_enabled: bool, support_type: &str) -> HashMap<String, ConfigValue> {
+    let mut config = matched_config_base();
+    config.insert(
+        "enable_support".to_string(),
+        ConfigValue::Bool(support_enabled),
+    );
+    config.insert(
+        "support_type".to_string(),
+        ConfigValue::String(support_type.to_string()),
+    );
+    config
+}
+
+fn core_module_dirs() -> Vec<std::path::PathBuf> {
+    vec![Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("modules/core-modules")]
+}
+
+/// Shared prepass driver: runs the real prepass over `model` with `config`.
+fn prepare_model_support(
+    model: &Path,
+    config: HashMap<String, ConfigValue>,
+) -> Result<slicer_runtime::run::PrepassContext, String> {
+    if !model.exists() {
+        return Err(format!("model is missing at {}", model.display()));
+    }
+    let mesh = cached_load_model(model);
+    slicer_runtime::run::prepare_prepass_context(mesh, config, &core_module_dirs(), true, false)
+        .map_err(|error| format!("{} prepass failed: {error:?}", model.display()))
+}
+
 fn prepare_support_test(
     support_enabled: bool,
     support_type: &str,
 ) -> Result<slicer_runtime::run::PrepassContext, String> {
-    let model = support_test_path();
-    if !model.exists() {
-        return Err(format!("SupportTest.stl is missing at {}", model.display()));
-    }
-    let mesh = cached_load_model(&model);
     let mut config = HashMap::new();
     config.insert(
         "enable_support".to_string(),
@@ -54,35 +153,17 @@ fn prepare_support_test(
         "support_type".to_string(),
         ConfigValue::String(support_type.to_string()),
     );
-    slicer_runtime::run::prepare_prepass_context(
-        mesh,
-        config,
-        &[Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("modules/core-modules")],
-        true,
-        false,
-    )
-    .map_err(|error| format!("SupportTest prepass failed: {error:?}"))
+    prepare_model_support(&support_test_path(), config)
 }
 
 fn run_slice_for_family(support_type: &str) -> Result<String, String> {
     let mesh = cached_load_model(&support_test_path());
-    let mut overrides = HashMap::new();
-    overrides.insert(
-        "enable_support".to_string(),
-        ConfigValue::Bool(true),
-    );
-    overrides.insert(
-        "support_type".to_string(),
-        ConfigValue::String(support_type.to_string()),
-    );
+    // Tracked Orca-matched config is the base; the family selection is an override.
+    let overrides = matched_config_for(true, support_type);
     let opts = slicer_runtime::run::SliceRunOptions {
         mesh,
         config_overrides: overrides,
-        module_dirs: vec![Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("modules/core-modules")],
+        module_dirs: core_module_dirs(),
         ..Default::default()
     };
     let outcome = slicer_runtime::run::run_slice(opts)
@@ -399,58 +480,6 @@ fn square() -> ExPolygon {
     }
 }
 
-pub fn missing_fixture_is_blocking() -> Result<(), String> {
-    // Authoritative fixture must exist and be non-empty.
-    let tracked = support_test_path();
-    let non_empty = |candidate: &std::path::Path| {
-        candidate
-            .metadata()
-            .map(|metadata| metadata.len() > 0)
-            .unwrap_or(false)
-    };
-    if !non_empty(&tracked) {
-        panic!(
-            "required support-family fixture is missing or empty: {}",
-            tracked.display()
-        );
-    }
-    // Deliberately missing copy path: exercise error path, not ghost-absence.
-    let missing_copy = workspace_path("crates/slicer-runtime/tests/fixtures/support-family/MISSING_SupportTest_Copy.stl");
-    // Attempt to load the missing path via cached_load_model would panic; instead prove
-    // the gate exercises a missing-file error via prepare_prepass_context with that path.
-    // We use a direct file existence check as the blocking gate (prepare_prepass would fail similarly).
-    if missing_copy.exists() {
-        return Err(format!(
-            "missing-fixture gate is not blocking: copy still exists at {}",
-            missing_copy.display()
-        ));
-    }
-    // Prove that attempting to prepare with a missing file would fail:
-    let missing_mesh_path = missing_copy.clone();
-    if missing_mesh_path.exists() {
-        return Err("missing-fixture gate precondition failed: missing file unexpectedly exists".into());
-    }
-    // Simulate the error path: loading a non-existent STL must produce a precise missing error.
-    let err = std::fs::read(&missing_mesh_path).err();
-    match err {
-        Some(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-        Some(e) => {
-            return Err(format!(
-                "missing-fixture gate reports imprecise error for {}: {e}",
-                missing_mesh_path.display()
-            ));
-        }
-        None => {
-            return Err(format!(
-                "missing-fixture gate is not blocking: {} unexpectedly readable",
-                missing_mesh_path.display()
-            ));
-        }
-    }
-    // Existing decisive fixture remains primary; parity never from missing copy.
-    Ok(())
-}
-
 fn workspace_path(relative: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -518,35 +547,6 @@ pub fn family_reaches_region_routing() -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-#[allow(dead_code)]
-fn read_manifest(relative: &str) -> Result<serde_json::Value, String> {
-    let path = workspace_path(relative);
-    let raw =
-        fs::read_to_string(&path).map_err(|error| format!("read {}: {error}", path.display()))?;
-    serde_json::from_str(&raw).map_err(|error| format!("parse {}: {error}", path.display()))
-}
-
-#[allow(dead_code)]
-fn manifest_images<'a>(
-    manifest: &'a serde_json::Value,
-) -> Result<&'a Vec<serde_json::Value>, String> {
-    manifest["images"]
-        .as_array()
-        .ok_or_else(|| "manifest images is not an array".into())
-}
-
-#[allow(dead_code)]
-fn layer_indices(images: &[serde_json::Value]) -> Result<Vec<i64>, String> {
-    images
-        .iter()
-        .map(|image| {
-            image["layer_index"]
-                .as_i64()
-                .ok_or_else(|| "image layer_index is not an integer".to_string())
-        })
-        .collect()
 }
 
 fn pnp_support_evidence(family: &str, support_type: &str) -> Result<slicer_ir::SupportPlanIR, String> {
@@ -635,32 +635,74 @@ pub fn matched_height_evidence() -> Result<(), String> {
     Ok(())
 }
 
+/// AC-3 (amended to invariant-plus-recorded-inspection): asserts only what this
+/// process can honestly observe — that BOTH families produce a non-empty plan
+/// whose every entry is attributed to at least one body and one demand, and that
+/// every declined entry records a reason.
+///
+/// It asserts NOTHING about OrcaSlicer. The previous body computed
+/// `has_orca` from the presence of two `tmp/*.gcode` files and then ran an empty
+/// `if` block, so it could not fail on any Orca-side condition; Orca comparison
+/// is a recorded manual inspection, not an assertion in this suite.
 pub fn differential_evidence() -> Result<(), String> {
-    // PNP vs standalone Orca differential: validate both families have height evidence
-    // and Orca visual-debug bundles exist for inspection (tmp Orca G-codes are visual proof, not test fixtures).
-    let tree_plan = pnp_support_evidence("tree", "tree(auto)")?;
-    let trad_plan = pnp_support_evidence("traditional", "normal(auto)")?;
-    let tree_heights: std::collections::BTreeSet<_> = tree_plan
-        .entries
-        .iter()
-        .map(|e| e.anchor_z)
-        .collect();
-    let trad_heights: std::collections::BTreeSet<_> = trad_plan
-        .entries
-        .iter()
-        .map(|e| e.anchor_z)
-        .collect();
-    if tree_heights.is_empty() || trad_heights.is_empty() {
-        return Err("one family has no height evidence".into());
+    let mut per_family_heights = Vec::new();
+    for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
+        let plan = pnp_support_evidence(family, support_type)?;
+        assert_attribution_and_decline_reasons(family, &plan)?;
+        let heights: std::collections::BTreeSet<_> =
+            plan.entries.iter().map(|entry| entry.anchor_z).collect();
+        if heights.is_empty() {
+            return Err(format!("{family}: plan carries no anchor heights"));
+        }
+        per_family_heights.push((family, heights.len(), plan.entries.len()));
     }
-    // Orca G-code visual-debug proofs: verify existence for differential inspection, not as test fixtures.
-    let orca_tree = workspace_path("tmp/SupportTest_Tree_Orca.gcode");
-    let orca_normal = workspace_path("tmp/SupportTest_Normal_Orca.gcode");
-    let has_orca = orca_tree.exists() && orca_normal.exists();
-    // Record disposition: source, layer, tap. Behavioral parity limited to termination/coverage/collision/interfaces/heights.
-    if !has_orca {
-        // Orca proof missing -> not a test-fixture failure, record as external observation (AC-3 allows inspection).
-        // Still pass gate if PNP evidence is solid; Orca inspection is visual-debug proof, not fixture.
+    if per_family_heights.len() != 2 {
+        return Err(format!(
+            "expected evidence from both families, got {per_family_heights:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// Shared PnP-side attribution invariant used by AC-3 and AC-6.
+///
+/// Every entry is either accepted — in which case it must name at least one body
+/// and one demand — or declined with a recorded reason. An entry that is empty,
+/// unattributed AND undeclined is the silent-drop failure mode this guards.
+fn assert_attribution_and_decline_reasons(
+    family: &str,
+    plan: &slicer_ir::SupportPlanIR,
+) -> Result<(), String> {
+    if plan.entries.is_empty() {
+        return Err(format!("{family}: plan has no entries"));
+    }
+    for entry in &plan.entries {
+        match &entry.decline_reason {
+            Some(_) => {
+                let has_geometry = entry.roles.iter().any(|role| !role.regions.is_empty());
+                if has_geometry {
+                    return Err(format!(
+                        "{family}: declined entry still carries printable geometry: layer={} obj={} region={} reason={:?}",
+                        entry.global_layer_index,
+                        entry.object_id,
+                        entry.region_id,
+                        entry.decline_reason
+                    ));
+                }
+            }
+            None => {
+                if entry.body_ids.is_empty() || entry.demand_ids.is_empty() {
+                    return Err(format!(
+                        "{family}: accepted entry is unattributed and records no decline reason: layer={} obj={} region={} bodies={:?} demands={:?}",
+                        entry.global_layer_index,
+                        entry.object_id,
+                        entry.region_id,
+                        entry.body_ids,
+                        entry.demand_ids
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -790,19 +832,380 @@ pub fn supersedes_packet_213_and_task_329() -> Result<(), String> {
     Ok(())
 }
 
+/// AC-6 (amended to invariant-plus-recorded-inspection): asserts the PnP-side
+/// disposition invariants only — both families plan geometry, every entry is
+/// attributed, and every declined entry records a reason.
+///
+/// The previous body probed two `tmp/*.gcode` paths and ran an empty `if`, so no
+/// Orca-side condition could fail it. Exact-path parity with OrcaSlicer is never
+/// claimed here; termination, coverage, collision and interface structure are
+/// covered by the invariant tests below.
 pub fn task_163b_disposition() -> Result<(), String> {
-    // Validate PNP families produce evidence; Orca visual proof is inspected via bundles, not asserted as test fixture.
     for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
-        pnp_support_evidence(family, support_type)?;
+        let plan = pnp_support_evidence(family, support_type)?;
+        assert_attribution_and_decline_reasons(family, &plan)?;
     }
-    // Orca tree/normal G-codes are visual-debug proofs (tmp/*) — inspect if present, otherwise external visual proof.
-    let orca_tree = workspace_path("tmp/SupportTest_Tree_Orca.gcode");
-    let orca_normal = workspace_path("tmp/SupportTest_Normal_Orca.gcode");
-    let orca_present = orca_tree.exists() && orca_tree.metadata().map(|m| m.len() > 0).unwrap_or(false)
-        && orca_normal.exists() && orca_normal.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    if !orca_present {
-        // Visual proof missing is not a fixture failure; disposition records external observation.
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Structural support invariants over tracked `resources/` models.
+//
+// Each test runs the real prepass pipeline (`prepare_model_support`) with the
+// tracked Orca-matched config as its base, for BOTH families, and fails on
+// violation. Models are chosen for the geometric hazard each exercises.
+// ---------------------------------------------------------------------------
+
+/// `(relative path, hazard exercised)`. All four paths are tracked in `resources/`.
+const INVARIANT_MODELS: &[(&str, &str)] = &[
+    (
+        "resources/cube_with_concave_hole_enlarged_standing.obj",
+        "wall leakage",
+    ),
+    ("resources/two_hollow_squares.obj", "multi-island"),
+    ("resources/V_standing.obj", "branch merging"),
+    ("resources/A_upsidedown.obj", "sharp tail"),
+];
+
+const FAMILIES: &[(&str, &str)] = &[("tree", "tree(auto)"), ("traditional", "normal(auto)")];
+
+/// Real-pipeline evidence for one (model, family) pair.
+struct InvariantEvidence {
+    mesh: Arc<MeshIR>,
+    plan: SupportPlanIR,
+    /// `global_layer_index` -> physical Z (mm), read from the committed `LayerPlanIR`.
+    layer_z_mm: std::collections::BTreeMap<i32, f32>,
+    /// First-layer height (mm); the basis for the build-plate tolerance.
+    first_layer_height_mm: f32,
+}
+
+fn invariant_evidence(model_rel: &str, support_type: &str) -> Result<InvariantEvidence, String> {
+    let model = workspace_path(model_rel);
+    let mesh = cached_load_model(&model);
+    let context = prepare_model_support(&model, matched_config_for(true, support_type))?;
+    let layer_plan = context
+        .blackboard
+        .layer_plan()
+        .ok_or_else(|| format!("{model_rel}/{support_type}: LayerPlanIR missing"))?;
+    let layer_z_mm: std::collections::BTreeMap<i32, f32> = layer_plan
+        .global_layers
+        .iter()
+        .map(|layer| (layer.index as i32, layer.z))
+        .collect();
+    let first_layer_height_mm = layer_z_mm.values().cloned().fold(f32::INFINITY, f32::min);
+    if !first_layer_height_mm.is_finite() {
+        return Err(format!(
+            "{model_rel}/{support_type}: layer plan has no layers"
+        ));
     }
-    // Never claim exact path parity — structural invariants already cover termination/coverage/collision.
+    let plan = context
+        .blackboard
+        .support_plan()
+        .map(|plan| plan.as_ref().clone())
+        .unwrap_or_default();
+    Ok(InvariantEvidence {
+        mesh,
+        plan,
+        layer_z_mm,
+        first_layer_height_mm,
+    })
+}
+
+fn accepted_entries(plan: &SupportPlanIR) -> impl Iterator<Item = &SupportPlanEntry> {
+    plan.entries
+        .iter()
+        .filter(|entry| entry.decline_reason.is_none())
+}
+
+fn is_interface(role: SupportPlanRole) -> bool {
+    matches!(
+        role,
+        SupportPlanRole::TopInterface | SupportPlanRole::BottomInterface
+    )
+}
+
+/// Invariant 1: no support geometry may intersect model occupancy at the exact
+/// physical Z of the layer the geometry is printed on.
+///
+/// The Z used is the entry's own `global_layer_index` Z from the committed
+/// `LayerPlanIR` — not `anchor_z`, which is where the column *lands*, one or
+/// more layers below the geometry being checked.
+pub fn support_never_intersects_model_at_exact_z() -> Result<(), String> {
+    let mut families_with_geometry = 0usize;
+    for (family, support_type) in FAMILIES {
+        let mut geometry_seen = false;
+        for (model_rel, hazard) in INVARIANT_MODELS {
+            let evidence = invariant_evidence(model_rel, support_type)?;
+            let exact_z = ExactZQueryService::new(Arc::clone(&evidence.mesh));
+            for entry in accepted_entries(&evidence.plan) {
+                let z_mm = *evidence
+                    .layer_z_mm
+                    .get(&entry.global_layer_index)
+                    .ok_or_else(|| {
+                        format!(
+                            "{model_rel} [{hazard}] {family}: entry references global layer {} absent from LayerPlanIR",
+                            entry.global_layer_index
+                        )
+                    })?;
+                let query = exact_z
+                    .query(entry.object_id.as_str(), entry.region_id, z_mm)
+                    .map_err(|error| {
+                        format!(
+                            "{model_rel} [{hazard}] {family}: exact-Z query at z={z_mm:.4}mm failed: {error}"
+                        )
+                    })?;
+                for role in &entry.roles {
+                    if role.regions.is_empty() {
+                        continue;
+                    }
+                    geometry_seen = true;
+                    let overlap = intersection_ex(&role.regions, &query.occupancy);
+                    if !overlap.is_empty() {
+                        return Err(format!(
+                            "{model_rel} [{hazard}] {family}: role {:?} at layer {} (z={z_mm:.4}mm) intersects model occupancy \
+                             ({} overlapping region(s)); obj={} region={}",
+                            role.role,
+                            entry.global_layer_index,
+                            overlap.len(),
+                            entry.object_id,
+                            entry.region_id
+                        ));
+                    }
+                }
+            }
+        }
+        if geometry_seen {
+            families_with_geometry += 1;
+        }
+    }
+    if families_with_geometry == 0 {
+        return Err(
+            "no family produced any support geometry on any invariant model; the exact-Z \
+             non-intersection check was vacuous"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Invariant 2: every accepted demand must terminate on the build plate or on
+/// the model — never in mid-air.
+///
+/// "On the model" is witnessed by non-empty model occupancy at the anchor Z.
+/// This is the weaker of the two possible forms (it does not require the
+/// occupancy to sit under the column footprint, because a tree branch's XY
+/// footprint at its anchor is not its footprint at its tip); it still fails on
+/// an anchor floating in empty space, which is the failure mode being guarded.
+pub fn accepted_demands_terminate_on_plate_or_model() -> Result<(), String> {
+    let mut checked_entries = 0usize;
+    for (family, support_type) in FAMILIES {
+        for (model_rel, hazard) in INVARIANT_MODELS {
+            let evidence = invariant_evidence(model_rel, support_type)?;
+            let exact_z = ExactZQueryService::new(Arc::clone(&evidence.mesh));
+            // Three first-layer heights of slack, matching `fixture_invariants`.
+            let plate_tolerance_mm = evidence.first_layer_height_mm * 3.0;
+            for entry in accepted_entries(&evidence.plan) {
+                if entry.demand_ids.is_empty() {
+                    return Err(format!(
+                        "{model_rel} [{hazard}] {family}: accepted entry at layer {} carries no demand",
+                        entry.global_layer_index
+                    ));
+                }
+                checked_entries += 1;
+                let anchor_z_mm = slicer_ir::units_to_mm(entry.anchor_z);
+                if anchor_z_mm <= plate_tolerance_mm {
+                    continue; // terminates on the build plate
+                }
+                let query = exact_z
+                    .query(entry.object_id.as_str(), entry.region_id, anchor_z_mm)
+                    .map_err(|error| {
+                        format!(
+                            "{model_rel} [{hazard}] {family}: exact-Z query at anchor z={anchor_z_mm:.4}mm failed: {error}"
+                        )
+                    })?;
+                if query.occupancy.is_empty() {
+                    return Err(format!(
+                        "{model_rel} [{hazard}] {family}: demand {:?} terminates in mid-air — anchor z={anchor_z_mm:.4}mm \
+                         is above the plate tolerance {plate_tolerance_mm:.4}mm and the model has no occupancy there; \
+                         layer={} obj={} region={}",
+                        entry.demand_ids,
+                        entry.global_layer_index,
+                        entry.object_id,
+                        entry.region_id
+                    ));
+                }
+            }
+        }
+    }
+    if checked_entries == 0 {
+        return Err(
+            "no accepted support entry on any invariant model for either family; the termination \
+             check was vacuous"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Invariant 3: the interface is topmost and is carved OUT of the body.
+///
+/// Three assertions per support column, keyed by `(object_id, region_id)`:
+/// 1. interface and `SupportBody` regions are disjoint within an entry (carved
+///    out, not layered on top — the pre-224 additive model extruded both over
+///    the same area);
+/// 2. the topmost geometry-bearing layer of a column carries a `TopInterface`;
+/// 3. no interface layer floats above a gap — an interface layer above the
+///    column's own bottom must have support geometry on the layer below it.
+pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
+    let mut columns_checked = 0usize;
+    for (family, support_type) in FAMILIES {
+        for (model_rel, hazard) in INVARIANT_MODELS {
+            let evidence = invariant_evidence(model_rel, support_type)?;
+            // Disjointness is per entry.
+            for entry in accepted_entries(&evidence.plan) {
+                let body: Vec<ExPolygon> = entry
+                    .roles
+                    .iter()
+                    .filter(|role| role.role == SupportPlanRole::SupportBody)
+                    .flat_map(|role| role.regions.iter().cloned())
+                    .collect();
+                let interface: Vec<ExPolygon> = entry
+                    .roles
+                    .iter()
+                    .filter(|role| is_interface(role.role))
+                    .flat_map(|role| role.regions.iter().cloned())
+                    .collect();
+                if body.is_empty() || interface.is_empty() {
+                    continue;
+                }
+                let overlap = intersection_ex(&interface, &body);
+                if !overlap.is_empty() {
+                    return Err(format!(
+                        "{model_rel} [{hazard}] {family}: interface is not carved out of the body — \
+                         {} overlapping region(s) at layer {} obj={} region={}",
+                        overlap.len(),
+                        entry.global_layer_index,
+                        entry.object_id,
+                        entry.region_id
+                    ));
+                }
+            }
+
+            // Topmost / no-floating-interface are per column.
+            let mut columns: std::collections::BTreeMap<
+                (String, u64),
+                (
+                    std::collections::BTreeSet<i32>,
+                    std::collections::BTreeSet<i32>,
+                ),
+            > = std::collections::BTreeMap::new();
+            for entry in accepted_entries(&evidence.plan) {
+                let has_geometry = entry.roles.iter().any(|role| !role.regions.is_empty());
+                if !has_geometry {
+                    continue;
+                }
+                let has_top_interface = entry.roles.iter().any(|role| {
+                    role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()
+                });
+                let column = columns
+                    .entry((entry.object_id.to_string(), entry.region_id))
+                    .or_default();
+                column.0.insert(entry.global_layer_index);
+                if has_top_interface {
+                    column.1.insert(entry.global_layer_index);
+                }
+            }
+            for ((object_id, region_id), (geometry_layers, top_interface_layers)) in &columns {
+                columns_checked += 1;
+                let top_layer = *geometry_layers
+                    .iter()
+                    .next_back()
+                    .expect("column has at least one geometry layer");
+                if !top_interface_layers.contains(&top_layer) {
+                    return Err(format!(
+                        "{model_rel} [{hazard}] {family}: topmost support layer {top_layer} of column \
+                         obj={object_id} region={region_id} carries no TopInterface; interface layers={top_interface_layers:?}"
+                    ));
+                }
+                let bottom_layer = *geometry_layers
+                    .iter()
+                    .next()
+                    .expect("column has at least one geometry layer");
+                for layer in top_interface_layers {
+                    if *layer == bottom_layer {
+                        continue;
+                    }
+                    if !geometry_layers.contains(&layer.saturating_sub(1)) {
+                        return Err(format!(
+                            "{model_rel} [{hazard}] {family}: interface layer {layer} of column \
+                             obj={object_id} region={region_id} sits above a layer with no support \
+                             (layer {} absent); geometry layers={geometry_layers:?}",
+                            layer.saturating_sub(1)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if columns_checked == 0 {
+        return Err(
+            "no support column with geometry on any invariant model for either family; the \
+             interface-topology check was vacuous"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Invariant 4 (negative guard): a NON-EMPTY mesh with no overhang must produce
+/// ZERO support entries, for both families.
+///
+/// `resources/20mm_cube.obj` is the substitution here: none of the four hazard
+/// models is overhang-free, and a cube's walls are vertical, so no facet can
+/// exceed the 30 degree `support_overhang_angle` in the matched config.
+///
+/// This guards a specific retracted regression: a planner fallback that
+/// fabricated support for every candidate layer of any non-empty mesh. Its own
+/// regression test passed an EMPTY mesh, so it exercised only the `is_empty`
+/// guard and never the fallback. The mesh non-emptiness assertion below is
+/// therefore load-bearing, not a sanity check.
+pub fn no_overhang_mesh_produces_zero_support() -> Result<(), String> {
+    let model_rel = "resources/20mm_cube.obj";
+    for (family, support_type) in FAMILIES {
+        let evidence = invariant_evidence(model_rel, support_type)?;
+        let triangle_count: usize = evidence
+            .mesh
+            .objects
+            .iter()
+            .map(|object| object.mesh.indices.len() / 3)
+            .sum();
+        if triangle_count == 0 {
+            return Err(format!(
+                "{model_rel}: mesh is empty ({} object(s)); this test must exercise a NON-EMPTY \
+                 overhang-free mesh, not the is_empty guard",
+                evidence.mesh.objects.len()
+            ));
+        }
+        let offending: Vec<String> = accepted_entries(&evidence.plan)
+            .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+            .take(8)
+            .map(|entry| {
+                format!(
+                    "(layer={} obj={} region={} roles={})",
+                    entry.global_layer_index,
+                    entry.object_id,
+                    entry.region_id,
+                    entry.roles.len()
+                )
+            })
+            .collect();
+        if !offending.is_empty() {
+            return Err(format!(
+                "{model_rel} {family}: overhang-free mesh ({triangle_count} triangles) produced \
+                 support geometry; entries={} sample={offending:?}",
+                evidence.plan.entries.len()
+            ));
+        }
+    }
     Ok(())
 }

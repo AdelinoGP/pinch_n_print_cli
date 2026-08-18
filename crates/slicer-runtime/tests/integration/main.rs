@@ -25,11 +25,6 @@ fn support_disabled_no_output() {
 }
 
 #[test]
-fn missing_fixture_is_blocking() {
-    support_family_closure::missing_fixture_is_blocking().expect("required fixtures must exist");
-}
-
-#[test]
 fn fixture_invariants() {
     support_family_closure::fixture_invariants().expect("SupportTest fixture invariants must hold");
 }
@@ -158,3 +153,23 @@ mod threemf_transform_tdd;
 mod traditional_support_family;
 mod tree_support_family;
 mod wasm_instance_pool_tdd;
+
+#[test]
+fn support_never_intersects_model_at_exact_z() {
+    support_family_closure::support_never_intersects_model_at_exact_z().unwrap();
+}
+
+#[test]
+fn accepted_demands_terminate_on_plate_or_model() {
+    support_family_closure::accepted_demands_terminate_on_plate_or_model().unwrap();
+}
+
+#[test]
+fn interface_is_topmost_and_carved_out() {
+    support_family_closure::interface_is_topmost_and_carved_out().unwrap();
+}
+
+#[test]
+fn no_overhang_mesh_produces_zero_support() {
+    support_family_closure::no_overhang_mesh_produces_zero_support().unwrap();
+}
