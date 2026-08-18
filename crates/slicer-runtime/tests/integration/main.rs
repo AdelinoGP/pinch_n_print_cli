@@ -16,11 +16,53 @@ mod anchored_z_span_validation;
 mod anchored_z_validation;
 mod structured_support_identity;
 mod support_disabled_no_output;
+mod support_family_closure;
 mod support_family_routing;
 
 #[test]
 fn support_disabled_no_output() {
     support_disabled_no_output::support_disabled_no_output();
+}
+
+#[test]
+fn missing_fixture_is_blocking() {
+    support_family_closure::missing_fixture_is_blocking().expect("required fixtures must exist");
+}
+
+#[test]
+fn fixture_invariants() {
+    support_family_closure::fixture_invariants().expect("SupportTest fixture invariants must hold");
+}
+
+#[test]
+fn invalid_geometry_fails() {
+    support_family_closure::invalid_geometry_fails()
+        .expect("invalid support geometry must be rejected");
+}
+
+#[test]
+fn matched_height_evidence() {
+    support_family_closure::matched_height_evidence().unwrap();
+}
+
+#[test]
+fn differential_evidence() {
+    support_family_closure::differential_evidence().unwrap();
+}
+
+#[test]
+fn final_gcode_roles() {
+    support_family_closure::final_gcode_roles().unwrap();
+}
+
+#[test]
+fn supersedes_packet_213_and_task_329() {
+    support_family_closure::supersedes_packet_213_and_task_329().unwrap();
+}
+
+#[test]
+fn task_163b_disposition() {
+    support_family_closure::task_163b_disposition().unwrap();
 }
 
 #[test]
