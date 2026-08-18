@@ -25,10 +25,20 @@ use crate::common::support_wedge;
 pub fn tree_support_family() {
     let ctx = support_wedge::prepare_wedge_context_with_overrides(
         true,
-        &[(
-            "support_type",
-            ConfigValue::String("tree(auto)".to_string()),
-        )],
+        &[
+            (
+                "support_type",
+                ConfigValue::String("tree(auto)".to_string()),
+            ),
+            // The wedge column is only a few layers tall. With the default
+            // 2-layer interface band every layer would be roof, and interface
+            // is now carved OUT of the body rather than added on top of it, so
+            // no `SupportBody` would remain to assert the trunk's wall+fill
+            // construction against. Interface placement is covered by
+            // `final_gcode_roles` and the planners' own suites.
+            ("support_interface_top_layers", ConfigValue::Int(0)),
+            ("support_interface_bottom_layers", ConfigValue::Int(0)),
+        ],
     );
     let plan = ctx
         .blackboard
@@ -57,11 +67,18 @@ pub fn tree_support_family() {
     let structural_entry = plan
         .entries
         .iter()
+        // Pick a *body* layer specifically. Any non-empty role used to be
+        // enough because every layer carried `SupportBody`; interface is now
+        // carved out of the body, so the topmost layers carry `TopInterface`
+        // alone and this fixture asserts the trunk's wall+fill construction.
         .find(|entry| {
             entry.decline_reason.is_none()
-                && entry.roles.iter().any(|role| !role.regions.is_empty())
+                && entry.roles.iter().any(|role| {
+                    role.role == slicer_ir::SupportPlanRole::SupportBody
+                        && !role.regions.is_empty()
+                })
         })
-        .expect("tree fixture must contain a structural overhang entry");
+        .expect("tree fixture must contain a structural support-body entry");
     let core_modules = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -73,6 +90,20 @@ pub fn tree_support_family() {
     config_source.insert(
         "support_type".to_string(),
         ConfigValue::String("tree(auto)".to_string()),
+    );
+    // This fixture's column is only a few layers tall. With the default
+    // 2-layer interface band every layer would be roof, and interface is now
+    // carved OUT of the body rather than added on top of it, so there would be
+    // no `SupportBody` left to assert the trunk's wall+fill construction
+    // against. Interface placement itself is covered by `final_gcode_roles`
+    // and the planner's own suite.
+    config_source.insert(
+        "support_interface_top_layers".to_string(),
+        ConfigValue::Int(0),
+    );
+    config_source.insert(
+        "support_interface_bottom_layers".to_string(),
+        ConfigValue::Int(0),
     );
     let target_z = structural_entry
         .skeleton
@@ -95,6 +126,20 @@ pub fn tree_support_family() {
         .cloned()
         .into_iter()
         .collect::<Vec<_>>();
+    // Production promotes `global_layers` out of the committed `LayerPlanIR`
+    // and backfills each region's resolved config from `RegionMapIR` first
+    // (`promote_global_layers`). Without it every `ActiveRegion` still carries
+    // `ResolvedConfig::default()`, so `module_claims_match_active_region`
+    // resolves the traditional fallback for every region and the wrong family
+    // renderer is handed this family's plan entries.
+    let mut global_layers = global_layers;
+    if let Some(region_map) = ctx.blackboard.region_map() {
+        slicer_runtime::layer_executor::backfill_active_region_configs(
+            &mut global_layers,
+            region_map,
+        );
+    }
+    let global_layers = global_layers;
     let mut layer_plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
@@ -176,14 +221,32 @@ pub fn tree_support_family() {
             .any(|module_id| module_id == "com.core.traditional-support"),
         "traditional-support module must not be dispatched for the tree region; observed: {support_dispatches:?}"
     );
-    // The tree fixture retains its existing live-output boundary coverage;
-    // packet 222 closes that boundary for the traditional family.
+    // The tree renderer must actually commit attributed output. This used to
+    // assert `is_none()` — that the tree family committed nothing — which was
+    // only true because the family never reached region routing, so the tree
+    // renderer was dispatched on every layer and handed zero regions. A
+    // renderer with nothing to render is not an error, which is exactly why the
+    // defect stayed invisible.
+    let committed = renderer_commit
+        .lock()
+        .expect("tree renderer commit lock must not be poisoned")
+        .clone()
+        .expect("tree renderer must commit SupportIR for the tree region");
     assert!(
-        renderer_commit
-            .lock()
-            .expect("tree renderer commit lock must not be poisoned")
-            .is_none(),
-        "tree fixture must not depend on packet 222's traditional transport"
+        !committed.entries.is_empty(),
+        "committed tree SupportIR must carry entries"
+    );
+    assert!(
+        committed
+            .entries
+            .iter()
+            .all(|entry| entry.family_id.is_empty() || entry.family_id == "tree"),
+        "committed SupportIR must be attributed to the tree family; got {:?}",
+        committed
+            .entries
+            .iter()
+            .map(|e| e.family_id.clone())
+            .collect::<Vec<_>>()
     );
 
     let committed = native_commit
@@ -201,9 +264,22 @@ pub fn tree_support_family() {
     assert_eq!(rendered.role, SupportRole::SupportBody);
     assert_eq!(rendered.object_id, structural_entry.object_id);
     assert_eq!(rendered.region_id, 0);
+    // A trunk is rendered as inset wall loops plus a density-pitched fill of
+    // whatever area the walls leave. This used to require >= 3 paths on the
+    // grounds of "two wall passes plus fill", which only held because the
+    // renderer emitted `wall_count` *coincident* copies of the same contour and
+    // then filled the whole polygon at 100% density regardless of
+    // `support_density` — three passes over one area. The wedge trunk is
+    // roughly one line width across, so it correctly yields a single loop.
+    // Non-overlap of walls and fill is asserted directly in
+    // `modules/core-modules/tree-support`'s own suite.
     assert!(
-        rendered.paths.len() >= 3,
-        "tree trunk must have two wall passes plus fill paths"
+        !rendered.paths.is_empty(),
+        "tree trunk must render at least one extrusion path"
+    );
+    assert!(
+        rendered.paths.iter().any(|path| path.points.len() > 2),
+        "tree trunk must render at least one closed wall loop"
     );
     assert!(rendered
         .paths

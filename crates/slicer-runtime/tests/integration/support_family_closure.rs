@@ -457,6 +457,69 @@ fn workspace_path(relative: &str) -> std::path::PathBuf {
         .join(relative)
 }
 
+/// AC-1 / RC-4: the selected support family must survive into region routing.
+///
+/// `PrePass::LayerPlanning` runs before `PrePass::RegionMapping`, so
+/// `restore_layer_plan_configs` has neither a region map nor a prior layer plan
+/// to read and every `ActiveRegion.resolved_config` is committed as
+/// `ResolvedConfig::default()`. `module_claims_match_active_region` then
+/// resolves `select_support_family(None, None)` == `"traditional"` for every
+/// region, so a `support-family:tree` module is dispatched on every layer and
+/// handed zero regions — silently, because a renderer with nothing to render is
+/// not an error.
+///
+/// This test reads the promoted `ExecutionPlan.global_layers` (the exact value
+/// `module_receives_slice_region` and `module_region_index` consume) and
+/// requires the routing predicate to select the configured family.
+pub fn family_reaches_region_routing() -> Result<(), String> {
+    for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
+        let claims = vec![
+            "support-generator".to_string(),
+            format!("support-family:{family}"),
+        ];
+        let context = prepare_support_test(true, support_type)?;
+        let layers = &context.plan.global_layers;
+        if layers.is_empty() {
+            return Err(format!(
+                "{support_type}: promoted execution plan has no global layers"
+            ));
+        }
+        let matched = layers
+            .iter()
+            .filter(|layer| {
+                layer.active_regions.iter().any(|region| {
+                    slicer_scheduler::execution_plan::module_claims_match_active_region(
+                        &claims, region,
+                    )
+                })
+            })
+            .count();
+        if matched == 0 {
+            let sample = layers
+                .iter()
+                .find(|layer| !layer.active_regions.is_empty())
+                .and_then(|layer| layer.active_regions.first())
+                .map(|region| {
+                    format!(
+                        "object={} region={} support_type_enum={:?} ext.support_type={:?} ext.support_family={:?}",
+                        region.object_id,
+                        region.region_id,
+                        region.resolved_config.support_type,
+                        region.resolved_config.extensions.get("support_type"),
+                        region.resolved_config.extensions.get("support_family"),
+                    )
+                })
+                .unwrap_or_else(|| "no active regions on any layer".to_string());
+            return Err(format!(
+                "{support_type}: no global layer routes any region to `support-family:{family}`; \
+                 layers={} first_active_region[{sample}]",
+                layers.len(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn read_manifest(relative: &str) -> Result<serde_json::Value, String> {
     let path = workspace_path(relative);
@@ -514,15 +577,35 @@ fn pnp_support_evidence(family: &str, support_type: &str) -> Result<slicer_ir::S
         if entry.body_ids.is_empty() || entry.demand_ids.is_empty() {
             return Err(format!("{family}: missing body/demand {:?}", entry));
         }
-        let has_body = entry
+        // Interface is carved OUT of the body rather than layered on top of
+        // it, so an interface layer legitimately carries no `SupportBody`
+        // role. Requiring one on every entry encoded the pre-224 additive
+        // model, where body and interface held identical regions and both
+        // were extruded over the same area.
+        let has_printable = entry
             .roles
             .iter()
-            .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty());
+            .any(|role| !role.regions.is_empty());
         let is_tip = entry.skeleton.is_some()
             && entry.roles.iter().all(|role| role.regions.is_empty());
-        if !has_body && !is_tip {
-            return Err(format!("{family}: no SupportBody polygon {:?}", entry));
+        if !has_printable && !is_tip {
+            return Err(format!("{family}: entry carries no printable role {:?}", entry));
         }
+    }
+    // A column is not all interface: below the interface band there must be
+    // body geometry, or the plan is interface-only and something has gone
+    // wrong with the band width.
+    if !plan
+        .entries
+        .iter()
+        .any(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty())
+        })
+    {
+        return Err(format!("{family}: plan carries no SupportBody geometry at any layer"));
     }
     Ok(plan)
 }

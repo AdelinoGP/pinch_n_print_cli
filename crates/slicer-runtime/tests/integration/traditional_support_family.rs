@@ -89,6 +89,20 @@ pub fn traditional_support_family() {
         .cloned()
         .into_iter()
         .collect::<Vec<_>>();
+    // Production promotes `global_layers` out of the committed `LayerPlanIR`
+    // and backfills each region's resolved config from `RegionMapIR` first
+    // (`promote_global_layers`). Without it every `ActiveRegion` still carries
+    // `ResolvedConfig::default()`, so `module_claims_match_active_region`
+    // resolves the traditional fallback for every region and the wrong family
+    // renderer is handed this family's plan entries.
+    let mut global_layers = global_layers;
+    if let Some(region_map) = ctx.blackboard.region_map() {
+        slicer_runtime::layer_executor::backfill_active_region_configs(
+            &mut global_layers,
+            region_map,
+        );
+    }
+    let global_layers = global_layers;
     let mut layer_plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),

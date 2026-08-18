@@ -35,6 +35,12 @@ fn fixture_invariants() {
 }
 
 #[test]
+fn family_reaches_region_routing() {
+    support_family_closure::family_reaches_region_routing()
+        .expect("selected support family must reach region routing");
+}
+
+#[test]
 fn invalid_geometry_fails() {
     support_family_closure::invalid_geometry_fails()
         .expect("invalid support geometry must be rejected");

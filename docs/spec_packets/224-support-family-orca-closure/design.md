@@ -28,8 +28,35 @@
 - `modules/core-modules/traditional-support-planner/src/` - contact/base-layer split (see §Root Causes, RC-1).
 - `modules/core-modules/tree-support-planner/src/` - distinct interface roles (see §Root Causes, RC-2).
 - Host support-view marshalling in `crates/slicer-wasm-host/` - per-family plan-entry routing (see §Root Causes, RC-3).
+- `modules/core-modules/tree-support/src/` - **renderer, in scope.** Already modified in this packet (RC-8, RC-9, and the interface carve-out); further interface-layer-count work under Step 2 touches it.
+- `modules/core-modules/traditional-support/src/` - **renderer, in scope.** Already modified in this packet (RC-12 and the interface carve-out); further interface-layer-count work under Step 2 touches it.
+- The four support modules' manifests (`tree-support-planner.toml`, `traditional-support-planner.toml`, `tree-support.toml`, `traditional-support.toml`) - config-key reconciliation only (Step 4).
 
 `tmp/SupportTest_Tree_Orca.gcode` and `tmp/SupportTest_Normal_Orca.gcode` are **inspection aids, not fixtures.** They exist to let a human or agent close this family of packets against a proven OrcaSlicer comparison. No test may read them, and no Orca-derived constant may be hardcoded into a test. The differential is performed by inspection and recorded in §Orca Differential Evidence below.
+
+## Measured Baseline (2026-08-18)
+
+Measured on 2026-08-18 against **regenerated** OrcaSlicer references, with `cargo xtask build-guests --check` reporting clean. Decisive fixture: `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl`.
+
+| metric | PnP tree | Orca tree | PnP normal | Orca normal |
+| --- | --- | --- | --- | --- |
+| distinct `;Z:` | 150 | 150 | 150 | 150 |
+| `;TYPE:Support` blocks | 123 | 122 | 122 | 121 |
+| `;TYPE:Support interface` blocks | 2 | 2 | 1 | 3 |
+| distinct Z carrying support | 125 | 124 | 123 | 124 |
+| support filament (mm) | 486.33 | 1538.36 | 852.02 | 1158.87 |
+
+**Extruding-move counts are NOT a parity metric.** Orca's tree segments are roughly 15x shorter than PnP's, so a move count measures polygon granularity, not deposited material. Never gate on it, and never quote it as evidence of coverage.
+
+Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and tree support filament at **31.6%** of Orca's over an identical Z range and layer count (locked decision 5 — root-cause diagnosis is blocking; bug-versus-gap classification comes after).
+
+### Orca reference profile (normal), regenerated 2026-08-18
+
+`support_threshold_angle=30`, `support_object_xy_distance=0.35`, `support_top_z_distance=0.2`, `support_bottom_z_distance=0.2`, `support_interface_top_layers=2`, `support_interface_bottom_layers=2`, `support_interface_spacing=0.4`, `support_base_pattern=rectilinear`, `support_base_pattern_spacing=2`, `support_line_width=80%`, `support_on_build_plate_only=1`, `support_expansion=0`, `support_style=default`, `layer_height=0.2`, `initial_layer_print_height=0.2`.
+
+### HANDOFF-224.md numbers are void
+
+`HANDOFF-224.md`'s **STRUCTURAL** findings (RC-6..RC-12, the `body_overlaps_occupancy` floating-point defect, the droppable termination layer) **stand** and are recorded below. Every **measured number** in that document is **void**: it was captured against the previous Orca references, which were regenerated on 2026-08-18 with many settings disabled. This includes its interface-count match claim ("tree 2 vs 2, normal 3 vs 3"), its 125/90/89 tree entry counts, its 205-distinct-print-Z figure, and any filament or move-count figure. Requote nothing from it; the table above is the only current baseline.
 
 ## Root Causes (recorded 2026-08-17)
 
@@ -74,13 +101,13 @@ Floors exist as `ts_layer->floor_areas`, gated on `!support_on_build_plate_only 
 
 ### RC-3 — foreign family entries reach the wrong renderer
 
-Both family renderers are always in the DAG, so each sees the other family's plan entries and returns `ModuleError::non_fatal(332)` / `(333)`. The fix is host-side: each support module declares its family via the `n:<family>` qualifier on its `support-generator` claim (`tree-support.toml` → `n:tree`, `traditional-support.toml` → `n:traditional`), and the host filters `SupportPlanIR` entries by that qualifier when building the per-module support view. The renderers keep their hard errors, which become genuinely unreachable invariants. No manifest schema change and no WIT change.
+Both family renderers are always in the DAG, so each sees the other family's plan entries and returns `ModuleError::non_fatal(332)` / `(333)`. **Correction (2026-08-18).** The `n:<family>` qualifier described here does not exist and never did. `rg 'n:tree|strip_prefix\("n:"\)|qualifier'` over `crates/` returns nothing. The real mechanism is a separate `support-family:<id>` claim in each module manifest (`tree-support.toml` and `traditional-support.toml` both list it under `[claims] holds`), consumed by `module_claims_match_active_region` (`crates/slicer-scheduler/src/execution_plan.rs`). No host code filters `SupportPlanIR` *entries* by family — **region routing is the only guard**, which is why RC-4 alone was enough to hand a whole tree plan to `traditional-support`. The renderers keep their hard errors, which become genuinely unreachable invariants. No manifest schema change and no WIT change.
 
 Renderer-side relaxation (`continue` on a foreign family) was attempted previously and is explicitly rejected: it silences genuine mis-routing.
 
-### RC-4 — the support family never reaches region routing (OPEN)
+### RC-4 — the support family never reaches region routing (FIXED 2026-08-18)
 
-**This is the one open defect. Everything else in this section is fixed and covered by tests.**
+**Fixed 2026-08-18 by the backfill described below, and covered by `family_reaches_region_routing`.** The open work in this packet is now RC-11 (tree top-Z), the interface layer counts, and the tree-density diagnosis — see §Measured Baseline.
 
 `tree(auto)` publishes a full 126-entry tree `SupportPlanIR` and `run_slice` emits no `;TYPE:Support` at all.
 
@@ -90,7 +117,9 @@ Renderer-side relaxation (`continue` on a foreign family) was attempted previous
 
 **Why the obvious fix does not work.** Both sites read the family from `module_config`, which is the *layer planner's* config view, and module config views are filtered to the module's declared `config.schema`. `modules/core-modules/layer-planner-default/layer-planner-default.toml` declares only `layer_height` and `first_layer_height`, so `module_config.get("support_type")` returns `None`. The existing fallback has therefore never worked either. Stamping the keys in the earlier branches was attempted during this session and reverted, because it is inert for the same reason.
 
-**Chosen fix (agreed, not yet implemented).** Pass the run's effective/global resolved config into `restore_layer_plan_configs` rather than the layer planner's schema-filtered view, and stamp the support family onto every `ActiveRegion` from there. The family is a run-level routing fact; `layer-planner-default` should not have to declare a key it never uses in order to smuggle it across the boundary. Apply the same change to the native transport. Do **not** overwrite an `ActiveRegion`'s config wholesale — the current code leaves it untouched when no source matches, and preserving that is required.
+**Superseded fix (2026-08-18).** The recorded plan — thread the run's effective config into `restore_layer_plan_configs` — cannot be correct. `PrePass::LayerPlanning` runs *before* `PrePass::RegionMapping` (the latter's slot dependency requires `LayerPlan`), so at that point no region map exists and only the **global default** config could be stamped. Per-object `support_type` would still be wrong, which is exactly the mixed-family case packet 223 exists for.
+
+**Implemented fix.** `promote_global_layers` (`crates/slicer-runtime/src/layer_executor.rs`) backfills each `ActiveRegion.resolved_config` from the committed `RegionMapIR` at plan promotion — after prepass, so the authoritative *per-region* config exists. Applied at all three promotion sites (`pipeline.rs` ×2, `run.rs` ×1). The layer-stage gate's local clone-patch is deleted, since every consumer now reads a backfilled region. Regions with no region-map entry are left untouched. The family is a run-level routing fact; `layer-planner-default` should not have to declare a key it never uses in order to smuggle it across the boundary. Apply the same change to the native transport. 
 
 **Traditional was never correct here either.** It appeared to work only because `"traditional"` is the family the failed resolution happens to fall back to.
 
@@ -104,6 +133,44 @@ Found while diagnosing RC-4, and the reason RC-4 stayed invisible. Three sites d
 
 On the decisive fixture with `tree(auto)`, (2) said tree and planned 126 entries while (3) said traditional and starved the tree renderer. The RC-4 fix makes (3) agree with the others; consolidating the three onto a single source of truth was considered and deferred as a larger change to the scheduler's routing contract.
 
+### RC-6 — no production code ever constructed `ExtrusionRole::SupportInterface`
+
+Recorded from `HANDOFF-224.md` §"Defects found and fixed". The `;TYPE:Support interface` marker was unreachable in production: no production code path constructed the role, so `support_interface_speed` was never applied either. Both renderers now stamp the role on interface paths. Structural finding; the handoff's accompanying counts are void (see §Measured Baseline).
+
+### RC-7 — `is_top_interface` was discarded in marshal
+
+`convert_support_output_with_plan` (`crates/slicer-wasm-host/src/marshal/out.rs`) dropped `is_top_interface` during the drain, so `SupportRole::BottomInterface` had never been produced in production. The flag is now carried through.
+
+### RC-8 — tree renderer emitted coincident walls plus 100% fill plus a duplicate grid-MST fill
+
+`tree-support`'s `render_polygon` emitted `wall_count` **coincident** walls (all at the same offset), a fill at 100% density regardless of `support_density`, and a second overlaid fill from the grid-MST path. Rewritten: walls inset half a line width each, fill inset clear of the walls, pitch honours `support_density`, holes respected; the duplicate overlay and the now-dead grid-MST code are deleted.
+
+### RC-9 — contact tips were created with `width = 0.0` and filtered out
+
+`structural_body_regions` built detached 16-gon discs and gave contact tips `width = 0.0`, so the downstream width filter removed them and the layer meeting the overhang printed nothing. Bodies are now **swept capsules** (convex hull of endpoint circles, unioned) and tips carry a real radius.
+
+### RC-10 — tree interface was a bounding-box scan-line hack
+
+The tree interface was synthesised from bounding-box scan lines (`push_interface_scan_lines`) rather than from the node's own area. It is now the node's own area classified as roof/floor (`InterfaceRole`) and **carved out of** the body, matching the canonical rule that roof geometry is subtracted from `base_areas` (§RC-2). `push_interface_scan_lines` is deleted. The `is_roof` band includes the contact layer (`dist_to_top < top_n`), so the topmost support layer is interface rather than bare body.
+
+### RC-11 — tree ignores `support_top_z_distance_mm` (OPEN — corrected 2026-08-18)
+
+**True root cause: the key is never read.** `tree-support-planner`'s `from_config` reads 17 other keys and does not read `support_top_z_distance_mm` at all, while the module declares the key in two manifests. The key is also absent from `crates/slicer-schema/wit/` entirely. Tree's top interface therefore lands at the overhang underside with a **zero** gap; traditional is fixed and Orca-matching.
+
+**The earlier "unexplained contradiction" is closed, not open.** A prior session recorded that a shift implemented in `push_contact_with_demand` had no effect while the config *value* still moved the result by 35 layers (125 entries at `0`, 90 at `0.2`, 89 at `0.4`), and declined to ship on that basis. Those measurements were **stale-guest artifacts** — the guest `.wasm` did not contain the edited planner. Do not carry the contradiction framing forward; there is nothing anomalous to explain. Run `cargo xtask build-guests --check` before trusting any tree-planner measurement.
+
+**Fix shape.** Read the key in `from_config`, then shift the contact layer by **walking actual layer Z**, the technique `traditional-support-planner::plan_for_object` already uses. Dividing by `LayerPlanViewEntry.effective_layer_height` is prohibited — the field is unreliable in the guest view (it produced a zero-layer gap in traditional and a 35-layer gap in tree) and should be separately investigated or documented as untrustworthy.
+
+Note: `eprintln!` from guest code does not reach the test harness. Use `push_diagnostic`.
+
+### RC-12 — traditional emitted bottom interface on the build plate
+
+`traditional-support` produced `BottomInterface` for columns terminating on the **plate**. Bottom interface now appears only where a column terminates on the **model**. Related and fixed in the same pass: the termination layer was **droppable** when it failed the support-layer-height modulo, so columns stopped short of the plate; it now always prints.
+
+### RC-13 — `body_overlaps_occupancy` decided overlap by floating-point accident
+
+The helper ended with `point_in_polygon(closest_boundary_point)`, so the verdict depended on which side of the boundary a floating-point rounding landed; it reported "overlapping" for a body 8 mm clear of occupancy. Pinned by `body_clear_of_occupancy_does_not_overlap`.
+
 ## Read-Only Context
 - `crates/pnp-cli/src/visual_debug.rs` lines 743-761, 1500-1680 - manifest and typed capture fields.
 - `crates/slicer-runtime/src/visual_debug_render.rs` lines 1082-1142 - current support geometry tap renderer.
@@ -111,16 +178,24 @@ On the decisive fixture with `tree(auto)`, (2) said tree and planned 126 entries
 
 ## Out-of-Bounds Files
 - Orca source (delegated sub-agent reads only), target bundles, generated bindings, and packet 213 files.
-- Support renderer implementations (`modules/core-modules/tree-support/src/`, `modules/core-modules/traditional-support/src/`) — RC-3 is fixed host-side; the renderers' family-mismatch errors stay as they are.
+- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (224a/225/226/227). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
 - `docs/07_implementation_status.md` is updated only through delegated status work.
 
 ## Orca Differential Evidence
 
 Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/SupportTest_Normal_Orca.gcode`. Parity claims are limited to termination, coverage, collision freedom, interfaces, and independent heights. Exact path identity is never claimed.
 
-**Not yet performed.** It is blocked on RC-4: tree currently emits no support G-code, so there is nothing to compare on the tree side. Do this after RC-4 lands.
+**Gate shape (locked 2026-08-18).** Parity is gated by (a) structural invariants in the test suite and (b) a written human/LLM `/visual-debug` inspection checklist with **side-by-side Orca renders at matched physical heights**. No test may read the Orca G-code; no Orca-derived constant may be hardcoded into a test. Extruding-move counts are excluded as a metric.
 
-## Session Handoff (2026-08-17)
+**Current state.** RC-4 has landed, so both families now emit support G-code and the differential is unblocked. The quantitative side is recorded in §Measured Baseline (2026-08-18). The inspection checklist itself is written into §Orca Inspection Checklist by implementation Step 6.
+
+## Orca Inspection Checklist
+
+*To be written by Step 6.* It must name, per family: the two per-family visual-debug requests, the matched physical heights inspected, the Orca G-code render placed beside each PnP render, and — for each of termination, coverage, collision freedom, interface placement/count, and independent heights — the inspected verdict with the layer and tap it was read from. Exact path identity is never claimed.
+
+## Session Handoff (2026-08-17) — superseded
+
+**Superseded by §Measured Baseline (2026-08-18) and §Root Causes RC-6..RC-13.** Retained for provenance only. Its state claims (notably RC-4 open and `final_gcode_roles` red) and every number in it are stale; do not requote them.
 
 ### Decisive fixture geometry (measured from the tracked STL)
 
