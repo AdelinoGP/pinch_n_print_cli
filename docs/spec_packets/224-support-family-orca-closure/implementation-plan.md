@@ -2,12 +2,14 @@
 
 ## Execution Rules
 - Work one atomic step at a time; map every step to `TASK-335`.
+- **Sequencing for the two steps added 2026-08-18:** Steps 3a and 3b are written beside the Step 3 diagnosis they descend from, but they **execute after Step 5 and before Step 6**, and **3a precedes 3b** (RC-A discards plan entries downstream of contact generation, so the RC-15 port cannot be measured until it is fixed).
 - Use TDD, then implementation, then narrow falsifying validation.
 - Never claim parity from uninspected or self-captured goldens.
 - **No test may read `tmp/SupportTest_Tree_Orca.gcode` or `tmp/SupportTest_Normal_Orca.gcode`**, and no Orca-derived constant may be hardcoded into a test. Parity gating is structural invariants plus the written inspection checklist.
 - **Extruding-move counts are not a parity metric** (Orca tree segments are ~15x shorter). Do not gate on them or quote them as evidence.
 - Run `cargo xtask build-guests --check` after editing any `modules/core-modules/*/src/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**`, or `crates/slicer-core/**` path, and rebuild before trusting any measurement. Stale-guest artifacts already caused one recorded false diagnosis (see `design.md` §Root Causes RC-11).
 - `eprintln!` from guest code does not reach the test harness; use `push_diagnostic`.
+- **Never filter the closure suite with the bare token `support_family_closure`.** The closure tests are bare `#[test] fn` wrappers in `crates/slicer-runtime/tests/integration/main.rs` with no module prefix, so that filter matches **zero** tests and reports a green run with everything filtered out. Always name the tests explicitly with `-- <name> ... --exact`.
 - Every canonical feature gap discovered mid-flight is **registered and routed** (`docs/specs/support-parity-gap-register.md`, packets 224a/225/226/227), never implemented here.
 
 ## Steps
@@ -22,8 +24,10 @@
 - Files explicitly out of bounds: all `modules/core-modules/**/src/**`; all `crates/**/src/**`; `packet.spec.md`.
 - Expected sub-agent dispatches: Question: re-measure the five baseline metrics for both families from freshly emitted PnP G-code and the two Orca references; scope: `target/**`, `tmp/*.gcode`; return: `FACT` table only.
 - Context cost: `S`
-- Verification: `cargo xtask build-guests --check`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo xtask check-literals`; `cargo test -p slicer-runtime --test integration support_family_closure`.
+- Verification: `cargo xtask build-guests --check`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo xtask check-literals`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition --exact`.
 - Exit condition: a commit exists containing the prior verified work, the guest check is clean, and the baseline table is dated and reproducible.
+
+**Status 2026-08-18 — DONE (`4d245486`).** Gates were run, the prior uncommitted work was committed, and a matched Orca config fixture was derived under `crates/slicer-runtime/tests/fixtures/support-family/`. Carry-forward: that fixture is now wired into `run_slice_for_family` (`crates/slicer-runtime/tests/integration/support_family_closure.rs`) by `4c67ccd9`, so both families slice against the matched profile rather than defaults.
 
 ### Step 1: Tree top-Z gap (RC-11)
 - Task IDs: `TASK-335`
@@ -35,8 +39,10 @@
 - Files explicitly out of bounds: `modules/core-modules/traditional-support-planner/src/**` (read-only); `crates/slicer-schema/wit/**`; both renderers.
 - Expected sub-agent dispatches: Question: describe canonical tree contact-gap placement; scope: `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`; return: `SUMMARY`.
 - Context cost: `M`
-- Verification: `cargo test -p tree-support-planner`; then `cargo xtask build-guests --check` (rebuild if stale) and `cargo test -p slicer-runtime --test integration support_family_closure`.
+- Verification: `cargo test -p tree-support-planner`; then `cargo xtask build-guests --check` (rebuild if stale) and `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition --exact`.
 - Exit condition: the red-first test is green, the gap changes with the config value, and every measurement was taken after a clean guest check.
+
+**Status 2026-08-18 — DONE (`d97fb2b8`).** `tree-support-planner` now reads and honours `support_top_z_distance_mm`, shifting the contact layer by walking actual layer Z.
 
 ### Step 2: Interface layer counts in both families
 - Task IDs: `TASK-335`
@@ -48,14 +54,17 @@
 - Files explicitly out of bounds: `crates/slicer-schema/wit/**`; interface **pattern** generation (packet 226); `support_bottom_z_distance` (packet 226).
 - Expected sub-agent dispatches: Question: canonical roof/floor layer-count semantics, including the negative-`bottom_interface_layers` fallback to `support_interface_top_layers`; scope: `TreeSupport.cpp`, `SupportMaterial.cpp`, `SupportCommon.cpp`; return: `SUMMARY`.
 - Context cost: `M`
-- Verification: `cargo test -p slicer-runtime --test integration support_family_closure`; `cargo xtask build-guests --check`.
+- Verification: `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition --exact`; `cargo xtask build-guests --check`.
 - Exit condition: configured interface layer counts are produced by both families and pinned by a test that fails when the keys are ignored.
+
+**Status 2026-08-18 — NOT STARTED.** The measured blocker still stands: PnP normal emits **1** `;TYPE:Support interface` block against Orca's **3** at `support_interface_top_layers = 2` / `support_interface_bottom_layers = 2`.
 
 ### Step 3: Tree density diagnosis (read-only)
 - Task IDs: `TASK-335`
-- Objective: produce a written, evidence-backed root cause for tree support filament at **31.6%** of Orca's (486.33 mm vs 1538.36 mm) over an identical Z range and layer count.
+- Objective: produce a written, evidence-backed root cause for the tree coverage deficit measured on **deposited** material: PnP tree **388.73 mm** against Orca tree **683.96 mm** = **56.8%**, a **1.76x** deficit, over an identical Z range and layer count. (The superseded figures 31.6% / 486.33 mm / 1538.36 mm are **void** — they summed de-retraction prime `E`, which deposits nothing; see `design.md` §Measured Baseline and `tree-density-diagnosis.md`. Do not requote them.)
 - Precondition: Steps 1-2 landed and re-measured. This step is **read-only** and changes no production code.
 - Postcondition: a root-cause write-up in `design.md` that explicitly eliminates or convicts each of: fill pitch versus `support_base_pattern_spacing`; wall count; branch radius; branch count. Only after the cause is known is the finding classified **bug** (fixed in a follow-up step of this packet) or **gap** (registered in Step 7). Classifying before diagnosis is prohibited.
+- **Outcome (2026-08-18): diagnosis COMPLETE.** Root cause is **RC-15** — `tree-support-planner` derives contact points from **mesh overhang-triangle centroids, one per triangle**, so a ~400 mm² overhang made of two triangles yields **2** contact points and branch density is bounded by the input file's tessellation. Canonical `TreeSupport::generate_contact_points` (`TreeSupport.cpp`) never touches triangles: it samples the per-layer overhang `ExPolygon` three independent ways (contour corners, arc walk along contour and holes, rotated interior grid) and unions them. Classified **GAP**, agreed to be implemented in this packet (Step 3b), not routed to the gap register. See `design.md` §Root Causes RC-15 and `tree-density-diagnosis.md`.
 - Files allowed to read: `modules/core-modules/tree-support/src/**`; `modules/core-modules/tree-support-planner/src/**`; emitted PnP G-code and the two Orca references under `tmp/` (inspection only, via sub-agent).
 - Files allowed to edit (1): `docs/spec_packets/224-support-family-orca-closure/design.md`.
 - Files explicitly out of bounds: every `src/**` path (this step edits no code); `packet.spec.md`.
@@ -63,6 +72,35 @@
 - Context cost: `M`
 - Verification: no cargo change required; re-measure only with `cargo xtask build-guests --check` clean before quoting any number.
 - Exit condition: each of the four candidate causes is eliminated or convicted with a measurement, and a bug-versus-gap classification is recorded with its basis.
+
+**Status 2026-08-18 — DONE (`4c67ccd9`), diagnosis only.** The diagnosis is complete; the root cause is **RC-15** (tree contacts derived from mesh overhang-triangle centroids), classified **GAP** and **agreed to be implemented in packet 224** (Step 3b). The port itself is **not yet implemented**.
+
+### Step 3a: RC-17 tree-regression punch list (added 2026-08-18)
+- Task IDs: `TASK-335`
+- Objective: clear the eight tree-family regressions introduced by commit `9f4540bd`, in the order established by the read-only audit in `tree-regression-punch-list.md`: RC-A (family-assignment gate, 5 tests, one fix) first, then RC-B (renderer fill/density/direction, 2 tests), then RC-C (self-captured golden drift, 1 test), then the two inherited failures recorded there as RC-D/RC-E.
+- Precondition: Steps 0-5 landed. `tree-support-planner` and `tree-support` went from **3 failures at `5a38fdce`** to **11 at `9f4540bd`** and **10 at HEAD**; seven of the eight introduced failures sit in test files that are byte-identical across that window. Reproduce with `--no-fail-fast` - without it Cargo stops after `orca_parity_tdd` and only 2 of the 10 are visible.
+- Postcondition: RC-A's silent drop is fixed **in production** (`SupportPlanner::plan_for_object` falls back to the module's own configured `support_family` when no assignment matches, and emits a diagnostic when the fallback fires) - the fixtures are **not** migrated, because they are the only coverage of the no-assignment path; RC-B's percent-versus-fraction bug is fixed (`support_density` is read without a `/100.0` and then clamped by `.min(1.0)`, saturating every percent value to a solid fill); each remaining item carries the audit's verdict (TEST-IS-RIGHT / TEST-IS-STALE / TEST-IS-WRONG) and either a code fix or a recorded retarget. **No assertion is weakened** - the audit found zero tests requiring it.
+- Files allowed to read: `tree-regression-punch-list.md`; `tree-failure-attribution.md`; `modules/core-modules/tree-support-planner/**`; `modules/core-modules/tree-support/**`.
+- Files allowed to edit (3): `modules/core-modules/tree-support-planner/src/lib.rs`; `modules/core-modules/tree-support/src/lib.rs`; the owning tree test file for each retargeted assertion.
+- Files explicitly out of bounds: `resources/golden/**` (regenerated only in Step 8, after Step 3b lands - regenerating now bakes in a second wrong algorithm); `crates/slicer-schema/wit/**`; the traditional family.
+- Expected sub-agent dispatches: Question: re-run both tree crates with `--no-fail-fast` and report per-binary pass/fail counts before and after the RC-A fix; scope: `modules/core-modules/tree-support*`; return: `FACT` counts only.
+- Context cost: `M`
+- Verification: `cargo test -p tree-support-planner --tests --no-fail-fast`; `cargo test -p tree-support --tests --no-fail-fast`; `cargo xtask build-guests --check`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`.
+- Exit condition: RC-A is fixed once and the five tests it masked are re-run **before** any of them is separately "fixed"; every remaining punch-list item is green or carries a written verdict; binary counts are compared across runs, so no failure is hidden by an early abort.
+
+### Step 3b: RC-15 contact-point-sampling port (added 2026-08-18)
+- Task IDs: `TASK-335`
+- Objective: replace `tree-support-planner`'s mesh-overhang-triangle-centroid contact derivation with the 2D, slice-based sampling recorded in `design.md` Root Causes RC-15, so branch density is a function of the support settings rather than of the input file's tessellation.
+- Precondition: Step 3 recorded RC-15, and Step 3a's RC-A fix has landed (RC-A discards plan entries downstream of contact generation, so the port is unmeasurable until it is fixed). Measured today: PnP emits **2** closed loops at every Z within an **8.2 mm** footprint, while Orca fans out **2 -> 3 -> 4 -> 14 -> 58** loops to a **19.1 x 20.3 mm** footprint at `z = 24`.
+- Postcondition: contacts are derived from the per-layer overhang `ExPolygon` by the three canonical streams of `TreeSupport::generate_contact_points` (`TreeSupport.cpp`), unioned and deduped through a hash-bucket grid of cell size `base_radius`: (1) contour corners, taken where the two incident edge directions satisfy `v1.dot(v2) > -0.7`; (2) an `EdgeCache` arc walk emitting points at `point_spread = tree_support_branch_distance` along the contour **and along every hole**; (3) an interior grid rotated 22 degrees at `sample_step = max(point_spread, max_bridge_length / 2)`, kept where the point falls inside the overhang eroded by `base_radius`. The global (not per-island) grid origin and the rotation are load-bearing - they are what keep the sampling from aliasing with axis-aligned model features. A red-first test pins contact count growing with overhang area rather than with triangle count.
+- **Blocking hazard (from `tree-regression-punch-list.md`; read before writing code).** All six planner fixtures are **flat coplanar horizontal plates at `z = 1.8`** with an unreferenced `[0,0,0]` vertex present only to set `bmin[2]`; they have an **empty cross-section at every Z**. They work today only because the planner never slices (`detect_overhang_facets` reads `MeshObjectView.triangles` directly). If the port derives its `ExPolygon` by slicing (canonical `curr_layer - offset(prev_layer)`), every fixture yields an empty polygon, the port produces zero contacts, and five green tests go red for a reason that looks like the port is wrong. Either project the downward-facing triangles onto the layer plane, or rebuild the fixtures as closed solids first - decide this before writing code.
+- Files allowed to read: `modules/core-modules/tree-support-planner/src/**`; `design.md` RC-15; `tree-density-diagnosis.md`; `tree-regression-punch-list.md`.
+- Files allowed to edit (3): `modules/core-modules/tree-support-planner/src/lib.rs`; `modules/core-modules/tree-support-planner/tests/orca_parity_tdd.rs`; one further tree-planner test file if the red-first test belongs there.
+- Files explicitly out of bounds: both renderers' `src/**`; `resources/golden/**` (the port raises contacts from 2 to tens on the same fixture and will move the branch count - regenerate once, in Step 8); `crates/slicer-schema/wit/**`.
+- Expected sub-agent dispatches: Question: describe `generate_contact_points`' three sampling streams, their dedup grid, and the grid rotation and origin; scope: `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`; return: `SUMMARY`.
+- Context cost: `M`
+- Verification: `cargo test -p tree-support-planner --tests --no-fail-fast`; `cargo xtask build-guests --check`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`; then re-measure the deposited-material and support XY-path-length rows in `design.md` Measured Baseline.
+- Exit condition: contact count is driven by overhang area and `tree_support_branch_distance` rather than by triangle count, the loop-count and footprint fan-out move measurably toward the Orca figures above, and every number was taken after a clean guest check.
 
 ### Step 4: Config-key reconciliation (four support modules)
 - Task IDs: `TASK-335`
@@ -76,6 +114,8 @@
 - Context cost: `S`
 - Verification: `cargo xtask build-guests --check`; `cargo test -p tree-support-planner`; `cargo test -p traditional-support-planner`.
 - Exit condition: the declared/read/dead classification is complete for all four modules and every dead key names its routing packet.
+
+**Status 2026-08-18 — DONE (`4d1848eb`).** Config keys reconciled across the four support modules (`tree-support-planner`, `traditional-support-planner`, `tree-support`, `traditional-support`).
 
 ### Step 5: Honest tests
 - Task IDs: `TASK-335`
@@ -91,8 +131,10 @@
 - Files explicitly out of bounds: all `src/**`; `tmp/*.gcode` (no test may read them).
 - Expected sub-agent dispatches: Question: confirm the four `resources/` models are tracked and load through the real slice path; scope: `resources/**`; return: `FACT`.
 - Context cost: `M`
-- Verification: `cargo test -p slicer-runtime --test integration support_family_closure`; `cargo xtask check-literals`.
+- Verification: `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`; `cargo xtask check-literals`.
 - Exit condition: no closure test contains an assertion-free branch or a dead helper, and each of the four invariants fails when its guard is inverted.
+
+**Status 2026-08-18 — PARTIAL (`4c67ccd9`, `4d1848eb`).** The assertion-free theatre was deleted and the four invariants were added. `interface_is_topmost_and_carved_out` is **RED**, on a genuine tree-planner defect: an interface region is planned at layer 119 above a column whose geometry ends at layer 79. The red is a real defect, not a fixture problem — do not weaken the assertion to clear it.
 
 ### Step 6: Inspection gate
 - Task IDs: `TASK-335`
@@ -104,7 +146,7 @@
 - Files explicitly out of bounds: `packet.spec.md` (AC text is amended in Step 7); generated PNGs as source edits; any test reading the Orca G-code.
 - Expected sub-agent dispatches: Question: inspect matched-height PNGs for both families against the Orca renders and report per-axis verdicts; scope: `target/vd-support-family-*`; return: `FACT` plus manifest paths.
 - Context cost: `M`
-- Verification: `cargo run -q -p pnp-cli --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-tree.json --output target/vd-support-family-tree --overwrite`; the same for the `-normal` request into `target/vd-support-family-normal`; `cargo test -p slicer-runtime --test integration support_family_closure`.
+- Verification: `cargo run -q -p pnp-cli --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-tree.json --output target/vd-support-family-tree --overwrite`; the same for the `-normal` request into `target/vd-support-family-normal`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`.
 - Exit condition: two per-family requests exist and render distinct output, side-by-side Orca renders were inspected, and the checklist records a verdict per axis.
 
 ### Step 7: Paperwork — ACs, gap register, packet stubs, docs/07
@@ -140,6 +182,8 @@
 | Step 1 | M | tree `support_top_z_distance_mm` (RC-11) |
 | Step 2 | M | interface layer counts, both families |
 | Step 3 | M | tree density diagnosis (read-only) |
+| Step 3a | M | RC-17 tree-regression punch list (8 regressions from `9f4540bd`) |
+| Step 3b | M | RC-15 contact-point-sampling port |
 | Step 4 | S | config-key reconciliation, four modules |
 | Step 5 | M | honest tests on tracked `resources/` models |
 | Step 6 | M | inspection gate plus checklist |
@@ -149,7 +193,7 @@
 No step is rated `L`.
 
 ## Packet Completion Gate
-- All nine steps complete with their exit conditions met.
+- All eleven steps complete with their exit conditions met (Steps 0-8 plus Steps 3a and 3b, added 2026-08-18).
 - **Correctness closure, not canonical completeness.** The packet closes when tree honours `support_top_z_distance_mm`, both families honour the interface layer-count keys, the tree-density root cause is written down and classified, the four support modules' config keys are reconciled, and the closure suite contains no assertion-free test or dead helper.
 - **Parity gate:** structural invariants plus the written `/visual-debug` inspection checklist with side-by-side Orca renders, recorded in `design.md` §Orca Inspection Checklist. No test reads the Orca G-code. Extruding-move counts are not evidence.
 - Every routed gap (base/interface patterns, `support_expansion`, `support_bottom_z_distance`, raft, independent support-layer Z, the AGG rasterizer, and the dead raft/`support_base_pattern` keys) appears in `docs/specs/support-parity-gap-register.md` against packet 224a/225/226/227.
