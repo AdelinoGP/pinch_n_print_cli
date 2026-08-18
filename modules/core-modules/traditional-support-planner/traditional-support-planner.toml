@@ -55,6 +55,14 @@ max     = 90.0
 display = "Support Overhang Angle"
 group   = "Support"
 
+[config.schema.support_object_xy_distance]
+type    = "float"
+default = 0.35
+min     = 0.0
+max     = 10.0
+display = "Support/Object XY Distance"
+group   = "Support"
+
 [config.schema.support_top_z_distance_mm]
 type    = "float"
 default = 0.0

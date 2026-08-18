@@ -173,14 +173,12 @@ fn regions(object_id: &str) -> RegionSegmentationView {
     }
 }
 
-fn minimal_object(object_id: &str) -> MeshObjectView {
-    MeshObjectView {
-        object_id: object_id.into(),
-        vertices: vec![],
-        triangles: vec![],
-        paint_layers: vec![],
-    }
-}
+// `minimal_object` (an empty mesh: no vertices, no triangles) was removed by
+// packet 224. Its only remaining caller relied on the planner's mesh-facet
+// contact derivation declining any mesh with no downward facets — a code path
+// that no longer exists, since contact detection moved to
+// `PrePass::SupportAnalysis`. An empty-mesh fixture can no longer express
+// anything about this planner's behaviour.
 
 fn overhang_object(object_id: &str) -> MeshObjectView {
     MeshObjectView {
@@ -689,7 +687,7 @@ fn invalid_body_rejected() {
         "complete crossing body is dropped"
     );
     assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing cell")
+        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing-cell")
     }));
     assert!(aggregated
         .entries
@@ -698,27 +696,50 @@ fn invalid_body_rejected() {
         .all(|role| role.regions.is_empty()));
 }
 
+/// A candidate whose downward route is closed by the model records a structured
+/// `NoRoute` decline rather than vanishing from the plan.
+///
+/// **Retargeted by packet 224.** This test was `fully_covered_candidate_is_declined`
+/// and placed its occupancy at layer 9 — *above* the layer-8 contact — asserting
+/// the planner declines a contact covered from above. The planner never
+/// implemented that rule. It passed because its fixture is `minimal_object`, an
+/// empty mesh with no vertices or triangles, and the planner's since-removed
+/// mesh-facet contact derivation declined any mesh with no downward facets. The
+/// name described coverage; the mechanism was "empty mesh".
+///
+/// Judging whether a region is an overhang at all now belongs to
+/// `PrePass::SupportAnalysis` — a region covered by the layer above is not an
+/// overhang, so `detect_support_overhangs` never emits a candidate for it. That
+/// is gated by `straight_column_yields_no_support_candidates` and
+/// `support_analysis_populates_all_derivable_inputs` in
+/// `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`.
+///
+/// What the planner owns is routing: given a real contact, does a route to a
+/// termination surface exist? This test now pins that, with occupancy *below*
+/// the contact where the planner can actually act on it.
 #[test]
-fn fully_covered_candidate_is_declined() {
-    let object = minimal_object("covered");
+fn candidate_with_no_downward_route_is_declined() {
+    let object = overhang_object("blocked-route");
     let full_region = contact_region();
     let analysis = SupportAnalysisView {
         candidates: vec![SupportAnalysisCandidate {
             id: 1,
-            object_id: "covered".into(),
+            object_id: "blocked-route".into(),
             region_id: "0".into(),
             global_layer_index: 8,
             z_units: slicer_ir::mm_to_units(1.8),
             geometry: vec![full_region.clone()],
             ..Default::default()
         }],
+        // Model occupancy BELOW the contact, covering the whole contact area, so
+        // no descending route survives the per-layer trim.
         model_occupancy: vec![SupportAnalysisGeometryEntry {
-            global_support_layer_index: 9,
-            object_id: "covered".into(),
+            global_support_layer_index: 4,
+            object_id: "blocked-route".into(),
             region_id: "0".into(),
             polygons: vec![full_region],
         }],
-        family_assignments: vec![traditional_assignment("covered")],
+        family_assignments: vec![traditional_assignment("blocked-route")],
         ..Default::default()
     };
     let output = run_planner_with_analysis(true, object, analysis);
@@ -727,7 +748,8 @@ fn fully_covered_candidate_is_declined() {
             .entries()
             .iter()
             .any(|entry| entry.decline_reason == Some(SupportPlanDeclineReason::NoRoute)),
-        "fully-covered candidate must record a structured decline"
+        "a candidate with no downward route must record a structured decline, got {:?}",
+        output.entries()
     );
     assert!(
         !output
@@ -735,7 +757,7 @@ fn fully_covered_candidate_is_declined() {
             .iter()
             .any(|entry| entry.decline_reason.is_none()
                 && entry.roles.iter().any(|role| !role.regions.is_empty())),
-        "fully-covered candidate must not emit a non-declined entry with roles"
+        "a blocked candidate must not emit a non-declined entry with roles"
     );
 }
 

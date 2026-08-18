@@ -14,6 +14,8 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use std::collections::BTreeMap;
+
 use slicer_ir::SupportPlanDeclineReason;
 use slicer_sdk::prelude::*;
 
@@ -24,8 +26,9 @@ const DEFAULT_INTERFACE_TOP_LAYERS: i32 = 2;
 const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = -1;
 /// Default base fill pattern.
 const DEFAULT_BASE_PATTERN: &str = "rectilinear";
-/// Default mesh-facet overhang threshold, matching OrcaSlicer.
-const DEFAULT_OVERHANG_ANGLE_DEG: f32 = 45.0;
+/// Default XY clearance between support and object, matching OrcaSlicer's
+/// `support_object_xy_distance` default of 0.35 mm.
+const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
 
 /// Multi-layer traditional support planner.
 #[allow(dead_code)]
@@ -44,8 +47,9 @@ pub struct SupportPlanner {
     support_top_z_distance_mm: f32,
     /// Support layer height in mm (0.0 = use model layer height).
     support_layer_height_mm: f32,
-    /// Downward normal threshold for mesh-facet overhang detection.
-    support_overhang_angle: f32,
+    /// XY clearance in mm held between support and the object during base-layer
+    /// trimming, mirroring canonical `SupportParameters::gap_xy`.
+    support_object_xy_distance: f32,
 }
 
 #[slicer_module]
@@ -80,10 +84,13 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(v)) => *v as f32,
             _ => 0.0,
         };
-        let support_overhang_angle = match config.get("support_overhang_angle") {
+        // `support_overhang_angle` is no longer read here. Contact detection
+        // moved to `PrePass::SupportAnalysis`, which consumes that key from the
+        // resolved config and hands this planner finished contacts.
+        let support_object_xy_distance = match config.get("support_object_xy_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_OVERHANG_ANGLE_DEG,
+            _ => DEFAULT_OBJECT_XY_DISTANCE_MM,
         };
         Ok(Self {
             enabled,
@@ -93,7 +100,7 @@ impl PrepassModule for SupportPlanner {
             support_base_pattern,
             support_top_z_distance_mm,
             support_layer_height_mm,
-            support_overhang_angle,
+            support_object_xy_distance,
         })
     }
 
@@ -224,48 +231,23 @@ impl SupportPlanner {
 
         let contact_layer = candidate.global_layer_index.min(num_layers - 1);
 
-        // Candidate geometry is the full region cross-section. Derive contact
-        // from downward-facing mesh facets whose Z span crosses this layer.
-        let layer = &layer_plan.layers[contact_layer as usize];
-        let slab_bottom = layer.z - layer.effective_layer_height;
-        let contact_facets = overhang_facets(obj, self.support_overhang_angle)
-            .into_iter()
-            .filter(|(vertices, _)| {
-                let min_z = vertices
-                    .iter()
-                    .map(|vertex| vertex[2])
-                    .fold(f32::INFINITY, f32::min);
-                let max_z = vertices
-                    .iter()
-                    .map(|vertex| vertex[2])
-                    .fold(f32::NEG_INFINITY, f32::max);
-                max_z >= slab_bottom && min_z <= layer.z
-            })
-            .filter_map(|(_vertices, polygon)| {
-                let facet = ExPolygon {
-                    contour: polygon,
-                    holes: vec![],
-                };
-                let clipped =
-                    host::clip_polygons(&candidate_geometry, &[facet], ClipOperation::Intersection);
-                if clipped.is_empty() {
-                    None
-                } else {
-                    Some(clipped)
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>();
-        let contact_geometry = contact_facets;
-        if contact_geometry.is_empty() {
-            return push_declined(
-                output,
-                obj,
-                candidate,
-                demand_id,
-                SupportPlanDeclineReason::NoRoute,
-            );
-        }
+        // The candidate *is* the contact. `PrePass::SupportAnalysis` derives it
+        // with canonical `detect_overhangs` semantics — the angle-thresholded
+        // 2D difference between this layer's slice and the grown layer below —
+        // so there is nothing further to detect here.
+        //
+        // This planner previously re-derived contact geometry from downward-
+        // facing mesh facets, filtered by whether each facet's Z span crossed
+        // this layer's slab. That was wrong twice over: canonical contact
+        // detection is 2D over slices rather than 3D over facets, and a step
+        // overhang (whose facets are coplanar) crosses at most one slab, so
+        // every other candidate was declined `NoRoute`. On the decisive
+        // SupportTest fixture that rejected 150 of 150 candidates.
+        //
+        // Do not reintroduce a second overhang algorithm here. If contact
+        // geometry looks wrong, fix `detect_support_overhangs`, which both
+        // families share.
+        let contact_geometry = candidate_geometry.clone();
 
         let model_layer_height = layer_plan.layers[contact_layer as usize].effective_layer_height;
         let top_offset = if model_layer_height > 0.0 {
@@ -290,32 +272,14 @@ impl SupportPlanner {
             .max()
             .unwrap_or(0);
 
-        // Non-termination occupancy still rejects the complete body. The
-        // selected termination layer is intentionally permitted to touch its
-        // model surface.
-        for layer in termination_layer..contact_layer {
-            if layer == termination_layer {
-                continue;
-            }
-            let occupancy = occupancy_at(
-                support_analysis,
-                &obj.object_id,
-                &candidate.region_id,
-                layer,
-            );
-            if !occupancy.is_empty() && expolygons_overlap(&contact_geometry, &occupancy) {
-                let _ = output.push_diagnostic(Diagnostic {
-                    severity: DiagnosticSeverity::Warn,
-                    code: 1203,
-                    layer: Some(layer as i32),
-                    object_id: Some(obj.object_id.clone()),
-                    message: format!(
-                        "traditional body rejected: complete body intersects model occupancy at layer {layer}"
-                    ),
-                });
-                return Ok(());
-            }
-        }
+        // Occupancy rejection is handled by the propagation carry below, which
+        // subtracts the object (plus `support_object_xy_distance` clearance)
+        // from the carried area layer by layer. A separate pre-pass used to
+        // reject the whole body on any overlap and `return Ok(())` — a silent
+        // drop that recorded a diagnostic but no declined entry, so the demand
+        // vanished from `SupportPlanIR` with nothing marking it unmet. It also
+        // rejected on mere overlap rather than shrinking the body around the
+        // obstacle, which is what canonical's per-layer `diff` does.
 
         let top_layers = self.support_interface_top_layers.max(0) as u32;
         let bottom_layers = if self.support_interface_bottom_layers < 0 {
@@ -331,6 +295,85 @@ impl SupportPlanner {
         } else {
             1
         };
+        // Canonical downward propagation (`generate_base_layers` /
+        // `bottom_contact_layers_and_layer_support_areas`). Two properties
+        // matter and both were missing before packet 224, when this loop emitted
+        // the unmodified contact polygon at every layer:
+        //
+        // 1. **The carry does not grow.** Canonical propagates a *smaller* area
+        //    than it prints (`extract_support(expansion_to_propagate)` versus
+        //    `(expansion_to_slice)`) precisely so base areas do not swell with
+        //    depth. Propagating the contact area unexpanded is that semantic.
+        //    The printed-area expansion is deliberately not applied here — it
+        //    exists to snap the zig-zag onto `SupportGridPattern`'s grid lines,
+        //    and without the grid it would only fatten support by an arbitrary
+        //    amount. See the needs-research deviation on the grid pattern.
+        //
+        // 2. **Each layer is trimmed against the object.** Canonical trims in
+        //    `trim_support_layers_by_object` using `gap_xy`
+        //    (`support_object_xy_distance`), holding a real XY clearance rather
+        //    than merely avoiding overlap.
+        //
+        // The carry is stateful across layers, so it is built top-down here and
+        // consumed by the emit loop below.
+        let mut propagated_by_layer: BTreeMap<u32, Vec<ExPolygon>> = BTreeMap::new();
+        let mut carry = contact_geometry.clone();
+        // The contact layer itself is not trimmed: a contact exists precisely
+        // because it meets the model there, and canonical establishes contacts
+        // separately from the base-layer trim. The termination layer is
+        // likewise permitted to touch the surface it lands on.
+        propagated_by_layer.insert(emit_top_layer, carry.clone());
+        for layer in (termination_layer..emit_top_layer).rev() {
+            if layer != termination_layer {
+                let occupancy = occupancy_at(
+                    support_analysis,
+                    &obj.object_id,
+                    &candidate.region_id,
+                    layer,
+                );
+                if !occupancy.is_empty() {
+                    let trimming = if self.support_object_xy_distance > 0.0 {
+                        let clearance = host::offset_polygons(
+                            &occupancy,
+                            self.support_object_xy_distance,
+                            OffsetJoinType::Miter,
+                            0.0,
+                        );
+                        if clearance.is_empty() {
+                            occupancy
+                        } else {
+                            clearance
+                        }
+                    } else {
+                        occupancy
+                    };
+                    carry = host::clip_polygons(&carry, &trimming, ClipOperation::Difference);
+                }
+            }
+            if carry.is_empty() {
+                // The object closes off every route below this layer. The demand
+                // is unmet and must be recorded as such — never silently
+                // dropped, and never tunnelled through the model.
+                let _ = output.push_diagnostic(Diagnostic {
+                    severity: DiagnosticSeverity::Warn,
+                    code: 1203,
+                    layer: Some(layer as i32),
+                    object_id: Some(obj.object_id.clone()),
+                    message: format!(
+                        "traditional body rejected: complete body intersects model occupancy at layer {layer}"
+                    ),
+                });
+                return push_declined(
+                    output,
+                    obj,
+                    candidate,
+                    demand_id,
+                    SupportPlanDeclineReason::NoRoute,
+                );
+            }
+            propagated_by_layer.insert(layer, carry.clone());
+        }
+
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_layers > 0
                 && layer >= emit_top_layer.saturating_sub(top_layers - 1))
@@ -338,20 +381,23 @@ impl SupportPlanner {
             if (emit_top_layer - layer) % support_step != 0 && !is_interface_layer {
                 continue;
             }
+            let Some(layer_geometry) = propagated_by_layer.get(&layer) else {
+                continue;
+            };
             let mut roles = vec![slicer_ir::SupportPlanRoleRegion {
                 role: slicer_ir::SupportPlanRole::SupportBody,
-                regions: contact_geometry.clone(),
+                regions: layer_geometry.clone(),
             }];
             if top_layers > 0 && layer >= emit_top_layer.saturating_sub(top_layers - 1) {
                 roles.push(slicer_ir::SupportPlanRoleRegion {
                     role: slicer_ir::SupportPlanRole::TopInterface,
-                    regions: contact_geometry.clone(),
+                    regions: layer_geometry.clone(),
                 });
             }
             if bottom_layers > 0 && layer < termination_layer + bottom_layers {
                 roles.push(slicer_ir::SupportPlanRoleRegion {
                     role: slicer_ir::SupportPlanRole::BottomInterface,
-                    regions: contact_geometry.clone(),
+                    regions: layer_geometry.clone(),
                 });
             }
             let z = layer_plan.layers[layer as usize].z;
@@ -379,45 +425,6 @@ impl SupportPlanner {
 
         Ok(())
     }
-}
-
-fn overhang_facets(obj: &MeshObjectView, threshold_deg: f32) -> Vec<([[f32; 3]; 3], Polygon)> {
-    let threshold_nz = -(threshold_deg.to_radians().sin());
-    let mut result = Vec::new();
-    for triangle in &obj.triangles {
-        let vertices = [
-            obj.vertices[triangle[0] as usize],
-            obj.vertices[triangle[1] as usize],
-            obj.vertices[triangle[2] as usize],
-        ];
-        let e1 = [
-            vertices[1][0] - vertices[0][0],
-            vertices[1][1] - vertices[0][1],
-            vertices[1][2] - vertices[0][2],
-        ];
-        let e2 = [
-            vertices[2][0] - vertices[0][0],
-            vertices[2][1] - vertices[0][1],
-            vertices[2][2] - vertices[0][2],
-        ];
-        let nz = e1[0] * e2[1] - e1[1] * e2[0];
-        let nx = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny = e1[2] * e2[0] - e1[0] * e2[2];
-        let len = (nx * nx + ny * ny + nz * nz).sqrt();
-        if len < 1e-8 || nz / len > threshold_nz {
-            continue;
-        }
-        result.push((
-            vertices,
-            Polygon {
-                points: vertices
-                    .iter()
-                    .map(|vertex| Point2::from_mm(vertex[0], vertex[1]))
-                    .collect(),
-            },
-        ));
-    }
-    result
 }
 
 fn push_declined(
