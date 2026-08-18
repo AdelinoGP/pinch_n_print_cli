@@ -302,6 +302,84 @@ pub fn execute_per_layer_with_committed_anchored_events(
     Ok((committed, audits))
 }
 
+/// Promote the `LayerPlanIR` committed by prepass into the execution plan.
+///
+/// The plan is built before prepass runs (`global_layers` is empty) because the
+/// layer schedule is decided by modules such as `layer-planner-default` during
+/// prepass itself. Promotion also backfills each region's resolved config from
+/// the committed `RegionMapIR` — see [`backfill_active_region_configs`] for why
+/// the configs are not already present.
+///
+/// No-op when prepass committed no layer plan.
+pub fn promote_global_layers(plan: &mut ExecutionPlan, blackboard: &Blackboard) {
+    let Some(layer_plan) = blackboard.layer_plan() else {
+        return;
+    };
+    let mut global_layers = layer_plan.global_layers.clone();
+    if let Some(region_map) = blackboard.region_map() {
+        backfill_active_region_configs(&mut global_layers, region_map);
+    }
+    plan.global_layers = Arc::new(global_layers);
+}
+
+/// Backfill every `ActiveRegion.resolved_config` from the committed `RegionMapIR`.
+///
+/// `PrePass::LayerPlanning` runs before `PrePass::RegionMapping` (the latter's
+/// slot dependency requires `LayerPlan`), so when `restore_layer_plan_configs`
+/// reconstructs the configs the WIT proposal dropped, it has neither a region
+/// map nor a prior layer plan to read. Every `ActiveRegion` is therefore
+/// committed carrying `ResolvedConfig::default()`.
+///
+/// That default is what `module_claims_match_active_region` reads when routing
+/// a region to a `support-family:<id>` module, so without this backfill every
+/// region resolves to the `select_support_family(None, None)` fallback and only
+/// the traditional family is ever routed anything.
+///
+/// This runs at plan promotion — after prepass, so `RegionMapIR` exists and
+/// carries the authoritative *per-region* config, which is what the mixed
+/// per-object family case needs. Threading the run config into
+/// `PrePass::LayerPlanning` instead could only ever supply the global default.
+///
+/// Regions with no matching region-map entry are left untouched.
+pub fn backfill_active_region_configs(
+    global_layers: &mut [slicer_ir::slice_ir::GlobalLayer],
+    region_map: &slicer_ir::RegionMapIR,
+) {
+    for layer in global_layers.iter_mut() {
+        for region in layer.active_regions.iter_mut() {
+            let exact = RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: Vec::new(),
+            };
+            // Painted regions are keyed by a non-empty `variant_chain`, so the
+            // exact empty-chain lookup misses them. Fall back to the smallest
+            // matching chain rather than an arbitrary `HashMap` hit, so the
+            // choice is deterministic across runs.
+            let config_id = region_map
+                .entries
+                .get(&exact)
+                .map(|plan| plan.config)
+                .or_else(|| {
+                    region_map
+                        .entries
+                        .iter()
+                        .filter(|(key, _)| {
+                            key.global_layer_index == layer.index
+                                && key.object_id == region.object_id
+                                && key.region_id == region.region_id
+                        })
+                        .min_by(|(a, _), (b, _)| a.variant_chain.cmp(&b.variant_chain))
+                        .map(|(_, plan)| plan.config)
+                });
+            if let Some(config_id) = config_id {
+                region.resolved_config = region_map.config_for_raw(config_id).clone();
+            }
+        }
+    }
+}
+
 fn is_same_z_entity(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> bool {
     if entity.provenance.requesting_feature != "same-z-support" {
         return false;
@@ -594,23 +672,16 @@ fn execute_single_layer_inner(
                 .claims()
                 .iter()
                 .any(|claim| claim.starts_with("support-family:"))
+                // `resolved_config` is backfilled from `RegionMapIR` at plan
+                // promotion (`promote_global_layers`), so the region can be
+                // matched as-is. This gate used to patch a local clone here,
+                // which left every other consumer of `layer.active_regions`
+                // — `module_receives_slice_region`, `module_region_index` —
+                // reading defaults and resolving the wrong family.
                 && !layer.active_regions.iter().any(|region| {
-                    let mut region_for_match = region.clone();
-                    if let Some(region_map) = blackboard.region_map() {
-                        let key = RegionKey {
-                            global_layer_index: layer.index,
-                            object_id: region.object_id.clone(),
-                            region_id: region.region_id,
-                            variant_chain: Vec::new(),
-                        };
-                        if let Some(region_plan) = region_map.entries.get(&key) {
-                            region_for_match.resolved_config =
-                                region_map.config_for_raw(region_plan.config).clone();
-                        }
-                    }
                     slicer_scheduler::execution_plan::module_claims_match_active_region(
                         module.claims(),
-                        &region_for_match,
+                        region,
                     )
                 })
             {
