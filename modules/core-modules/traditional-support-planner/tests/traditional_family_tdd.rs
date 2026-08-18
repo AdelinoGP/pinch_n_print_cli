@@ -265,11 +265,22 @@ fn contact_area_planning() {
         assert_eq!(entry.family_id, "traditional");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == SupportPlanRole::SupportBody));
+        // Interface is carved OUT of the body rather than layered on top of
+        // it, so an interface layer carries no SupportBody role. Requiring one
+        // on every entry encoded the pre-224 additive model, in which body and
+        // interface held byte-identical regions and were both extruded.
+        assert!(
+            entry.roles.iter().any(|r| !r.regions.is_empty()),
+            "every entry must carry at least one non-empty role"
+        );
     }
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|e| e.roles.iter().any(|r| r.role == SupportPlanRole::SupportBody)),
+        "a multi-layer column must carry body geometry below its interface band"
+    );
     assert!(
         output.entries().len() >= 2,
         "contact area must derive body/interface roles across layers"
@@ -305,6 +316,15 @@ fn base_interface_obstacle() {
             object_id: "base".into(),
             region_id: "0".into(),
             polygons: vec![obstacle_region()],
+        }],
+        // A bottom interface exists only where the column lands ON the model.
+        // Without a termination surface this column runs to the build plate,
+        // and a floor there would be dense interface against bare plate.
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "base".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
         }],
         family_assignments: vec![traditional_assignment("base")],
         ..Default::default()
@@ -348,6 +368,47 @@ fn base_interface_obstacle() {
                 && e.roles.is_empty()
         }),
         "obstacle candidate must be structurally declined"
+    );
+}
+
+/// A column that lands on the build plate carries no bottom interface: there
+/// is no model surface beneath to interface with. Before packet 224 the floor
+/// band was applied unconditionally, so a plate-terminated column printed dense
+/// interface on its first layers — visible as `;TYPE:Support interface` at
+/// Z 0.2 and 0.4 on the decisive fixture.
+#[test]
+fn plate_termination_emits_no_bottom_interface() {
+    let object = overhang_object("plate-term");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "plate-term".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        // No termination surfaces: the column runs to the plate.
+        family_assignments: vec![traditional_assignment("plate-term")],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+    assert!(
+        !output.entries().is_empty(),
+        "plate-terminated column must still be planned"
+    );
+    assert!(
+        !output.entries().iter().any(|e| e
+            .roles
+            .iter()
+            .any(|r| r.role == SupportPlanRole::BottomInterface)),
+        "a plate-terminated column must carry no BottomInterface role; got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| e.roles.iter().map(|r| r.role).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -404,10 +465,14 @@ fn anchored_termination() {
             slicer_ir::mm_to_units((entry.global_layer_index as f32 + 1.0) * 0.2)
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == SupportPlanRole::SupportBody));
+        // Interface is carved OUT of the body rather than layered on top of
+        // it, so an interface layer carries no SupportBody role. Requiring one
+        // on every entry encoded the pre-224 additive model, in which body and
+        // interface held byte-identical regions and were both extruded.
+        assert!(
+            entry.roles.iter().any(|r| !r.regions.is_empty()),
+            "every entry must carry at least one non-empty role"
+        );
     }
 }
 
@@ -513,7 +578,24 @@ fn top_z_distance_lowers_contact_start() {
         .map(|entry| entry.global_layer_index)
         .max()
         .unwrap();
-    assert_eq!(highest, 5, "ceil(0.5 / 0.2) lowers layer 8 by 3 layers");
+    // The candidate's layer is the first layer that *contains* the overhang,
+    // so the overhanging surface is at the bottom of layer 8 — the top of
+    // layer 7, z = 1.6. A 0.5 mm gap requires the topmost support layer's own
+    // top to sit at or below 1.1, which is layer 4 (top z = 1.0); layer 5's top
+    // is 1.2 and would leave only 0.4 mm.
+    //
+    // This asserted `8 - ceil(0.5/0.2) = 5`, which measured the gap from the
+    // overhang layer itself rather than from the surface, and divided by
+    // `effective_layer_height` — a field that is unreliable in the guest view
+    // and evaluated such that the production gap came out as ZERO. Measured on
+    // the decisive fixture: support fused to the model at Z=25.0 with the
+    // overhang underside also at 25.0. With the Z-walk the top contact lands at
+    // 24.8, which is exactly where OrcaSlicer puts it in
+    // `tmp/SupportTest_Normal_Orca.gcode`.
+    assert_eq!(
+        highest, 4,
+        "a 0.5 mm gap below the overhang surface (z=1.6) admits layer 4 (top z=1.0), not layer 5 (top z=1.2)"
+    );
 }
 
 #[test]
@@ -540,10 +622,16 @@ fn support_layer_height_controls_body_spacing() {
         .map(|entry| entry.global_layer_index)
         .collect();
     layers.sort_unstable_by(|a, b| b.cmp(a));
+    // Shifted down one layer from the previous `[8, 7, 5, 2, 0]`: layer 8 is
+    // the layer that *contains* the overhang, so support may not print there
+    // even at a zero top gap. Layer 0 is the termination layer, which now
+    // always prints — it used to be dropped whenever it failed the
+    // support-layer-height modulo, leaving the column stopping short of the
+    // plate.
     assert_eq!(
         layers,
-        vec![8, 7, 5, 2, 0],
-        "support body layers use every third model layer and interfaces retain their bands"
+        vec![7, 6, 4, 1, 0],
+        "support body layers use every third model layer, interfaces retain their bands,          and the termination layer always prints"
     );
 }
 

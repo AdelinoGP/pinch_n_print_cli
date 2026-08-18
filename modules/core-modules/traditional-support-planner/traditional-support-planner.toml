@@ -65,7 +65,7 @@ group   = "Support"
 
 [config.schema.support_top_z_distance_mm]
 type    = "float"
-default = 0.0
+default = 0.2
 min     = 0.0
 max     = 5.0
 display = "Support Top Z Distance"

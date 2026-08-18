@@ -29,6 +29,10 @@ const DEFAULT_BASE_PATTERN: &str = "rectilinear";
 /// Default XY clearance between support and object, matching OrcaSlicer's
 /// `support_object_xy_distance` default of 0.35 mm.
 const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
+/// Default vertical gap between a support contact and the model above it.
+/// Matches OrcaSlicer's `support_top_z_distance` default of 0.2 mm. This was
+/// `0.0`, so support was printed flush against the overhang with no gap.
+const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 
 /// Multi-layer traditional support planner.
 #[allow(dead_code)]
@@ -77,7 +81,7 @@ impl PrepassModule for SupportPlanner {
         let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
             Some(ConfigValue::Float(v)) => *v as f32,
             Some(ConfigValue::Int(v)) => *v as f32,
-            _ => 0.0,
+            _ => DEFAULT_TOP_Z_DISTANCE_MM,
         };
         let support_layer_height_mm = match config.get("support_layer_height_mm") {
             Some(ConfigValue::Float(v)) => *v as f32,
@@ -141,9 +145,7 @@ impl PrepassModule for SupportPlanner {
                     .iter()
                     .filter(|candidate| candidate.object_id == obj.object_id)
                 {
-                    if candidate_family(candidate, support_analysis, &self.support_family)
-                        == "traditional"
-                    {
+                    if candidate_family(candidate, support_analysis).as_deref() == Some("traditional") {
                         push_policy_declined(output, obj, candidate)?;
                     }
                 }
@@ -181,8 +183,7 @@ impl SupportPlanner {
             .iter()
             .filter(|candidate| candidate.object_id == obj.object_id)
         {
-            let family = candidate_family(candidate, support_analysis, &self.support_family);
-            if family != "traditional" {
+            if candidate_family(candidate, support_analysis).as_deref() != Some("traditional") {
                 continue;
             }
             self.plan_candidate(obj, layer_plan, support_analysis, candidate, output)?;
@@ -250,16 +251,27 @@ impl SupportPlanner {
         let contact_geometry = candidate_geometry.clone();
 
         let model_layer_height = layer_plan.layers[contact_layer as usize].effective_layer_height;
-        let top_offset = if model_layer_height > 0.0 {
-            (self.support_top_z_distance_mm / model_layer_height).ceil() as u32
-        } else {
-            0
-        };
-        let emit_top_layer = contact_layer.saturating_sub(top_offset);
+
+        // The candidate's layer is the first layer that *contains* the
+        // overhang, so the overhanging surface sits at the bottom of that
+        // layer — i.e. at the top of the layer below it. Support must stop
+        // `support_top_z_distance_mm` below that plane.
+        //
+        // The gap is measured by walking actual layer Z rather than dividing by
+        // `effective_layer_height`: that field is derived per global layer from
+        // object participation and is not a dependable per-layer thickness in
+        // the guest view. Dividing by it yielded an offset of zero here (so
+        // support fused to the model) and tens of layers in the tree planner.
+        let overhang_plane_z = layer_plan.layers[contact_layer.saturating_sub(1) as usize].z;
+        let target_top_z = overhang_plane_z - self.support_top_z_distance_mm;
+        let mut emit_top_layer = contact_layer.saturating_sub(1);
+        while emit_top_layer > 0 && layer_plan.layers[emit_top_layer as usize].z > target_top_z {
+            emit_top_layer -= 1;
+        }
 
         // Prefer the highest eligible model termination reached during descent.
         // An empty analysis list preserves the plate fallback contract.
-        let termination_layer = support_analysis
+        let model_termination_layer = support_analysis
             .termination_surfaces
             .iter()
             .filter(|surface| {
@@ -269,8 +281,12 @@ impl SupportPlanner {
                     && expolygons_overlap(&contact_geometry, &surface.polygons)
             })
             .map(|surface| surface.global_support_layer_index)
-            .max()
-            .unwrap_or(0);
+            .max();
+        // `None` means the column runs to the build plate. The plate is not a
+        // model surface, so it carries no bottom interface: there is nothing
+        // beneath to interface with. Collapsing both cases into a bare `u32`
+        // put dense interface on the first layers off the plate.
+        let termination_layer = model_termination_layer.unwrap_or(0);
 
         // Occupancy rejection is handled by the propagation carry below, which
         // subtracts the object (plus `support_object_xy_distance` clearance)
@@ -377,26 +393,48 @@ impl SupportPlanner {
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_layers > 0
                 && layer >= emit_top_layer.saturating_sub(top_layers - 1))
-                || (bottom_layers > 0 && layer < termination_layer + bottom_layers);
-            if (emit_top_layer - layer) % support_step != 0 && !is_interface_layer {
+                || (bottom_layers > 0
+                    && model_termination_layer.is_some()
+                    && layer < termination_layer + bottom_layers);
+            // The termination layer always prints: it is where the column
+            // actually lands. Skipping it because it failed the support-layer-
+            // height modulo left the support stopping short of the plate.
+            let is_termination_layer = layer == termination_layer;
+            if !(emit_top_layer - layer).is_multiple_of(support_step)
+                && !is_interface_layer
+                && !is_termination_layer
+            {
                 continue;
             }
             let Some(layer_geometry) = propagated_by_layer.get(&layer) else {
                 continue;
             };
-            let mut roles = vec![slicer_ir::SupportPlanRoleRegion {
-                role: slicer_ir::SupportPlanRole::SupportBody,
-                regions: layer_geometry.clone(),
-            }];
-            if top_layers > 0 && layer >= emit_top_layer.saturating_sub(top_layers - 1) {
+            // Canonical keeps interface geometry distinct from the base and
+            // subtracts it out (`SupportCommon.cpp`'s interface generation), so
+            // a layer is either interface or body over any given area — never
+            // both. These three roles previously carried byte-identical
+            // regions, so an interface layer was extruded twice: once dense as
+            // interface and again underneath as body.
+            let is_top_interface =
+                top_layers > 0 && layer >= emit_top_layer.saturating_sub(top_layers - 1);
+            // A floor exists only where the column lands on the model.
+            let is_bottom_interface = bottom_layers > 0
+                && model_termination_layer.is_some()
+                && layer < termination_layer + bottom_layers;
+            let mut roles = Vec::new();
+            if is_top_interface {
                 roles.push(slicer_ir::SupportPlanRoleRegion {
                     role: slicer_ir::SupportPlanRole::TopInterface,
                     regions: layer_geometry.clone(),
                 });
-            }
-            if bottom_layers > 0 && layer < termination_layer + bottom_layers {
+            } else if is_bottom_interface {
                 roles.push(slicer_ir::SupportPlanRoleRegion {
                     role: slicer_ir::SupportPlanRole::BottomInterface,
+                    regions: layer_geometry.clone(),
+                });
+            } else {
+                roles.push(slicer_ir::SupportPlanRoleRegion {
+                    role: slicer_ir::SupportPlanRole::SupportBody,
                     regions: layer_geometry.clone(),
                 });
             }
@@ -481,11 +519,18 @@ fn push_policy_declined(
 
 /// Resolve the canonical support family for a candidate from the host's
 /// per-region family assignments, falling back to the planner's own family.
+/// Resolve the canonical support family for a candidate from the host's
+/// per-region family assignments.
+///
+/// Returns `None` when the host made no assignment for this region, in which
+/// case the planner plans nothing for it. `PrePass::SupportAnalysis` is the
+/// single authority; a planner that falls back to its own family can publish
+/// entries for regions region routing assigned elsewhere, and the resulting
+/// disagreement is silent (see the tree planner's `candidate_family`).
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
-    default_family: &str,
-) -> String {
+) -> Option<String> {
     analysis
         .family_assignments
         .iter()
@@ -494,7 +539,6 @@ fn candidate_family(
                 && assignment.region_id == candidate.region_id
         })
         .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
-        .unwrap_or_else(|| default_family.to_string())
 }
 
 /// Resolve the global support selection to the family vocabulary shared by
@@ -514,12 +558,7 @@ fn canonical_support_family(config: &ConfigView) -> String {
 }
 
 fn canonical_support_family_alias(value: Option<&str>) -> String {
-    let value = value.unwrap_or("traditional");
-    if value.starts_with("tree") || value.starts_with("hybrid") {
-        "tree".to_string()
-    } else {
-        "traditional".to_string()
-    }
+    slicer_ir::canonical_support_family(value).to_string()
 }
 
 /// Return the model-occupancy polygons for one (object, region, layer) triple.

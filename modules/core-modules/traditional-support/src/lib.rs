@@ -208,15 +208,24 @@ impl LayerModule for TraditionalSupport {
                     for expoly in &role_region.regions {
                         let paths =
                             self.fill_expolygon(expoly, spacing, cos_a, sin_a, z, speed_factor);
-                        for path in paths {
+                        for mut path in paths {
                             match role_region.role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
+                                // The extrusion role must be stamped here, not
+                                // left as `SupportMaterial`: `;TYPE:Support
+                                // interface` and `support_interface_speed` are
+                                // both selected from `ExtrusionRole` in
+                                // `crates/slicer-gcode/src/emit.rs`, so an
+                                // interface path that keeps the body role is
+                                // emitted and fed as plain support.
                                 slicer_ir::SupportPlanRole::TopInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
                                 }
                                 slicer_ir::SupportPlanRole::BottomInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, false);
                                 }
                                 slicer_ir::SupportPlanRole::RaftRelated => {}
