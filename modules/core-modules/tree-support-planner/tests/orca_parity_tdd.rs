@@ -41,6 +41,8 @@ use tree_support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
 /// AC-2: radius tapering — topmost width = branch_diameter,
 /// bottom > top + tan(diameter_angle) * height_diff.
 #[test]
+
+
 fn radius_tapers_with_distance_to_top() {
     // Test the actual tapered_radius() function from the planner (Step 5).
     // Formula: radius(dist_to_top) = branch_radius + tan(diameter_angle) * dist_to_top * layer_height
@@ -189,7 +191,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("col"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -203,34 +205,81 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         "AC-4: raft plan must not emit raft geometry entries"
     );
 
-    // Group model-layer entries by global_layer_index and count total
-    // branch_segments at each layer.
-    let mut segs_by_layer: BTreeMap<i32, usize> = BTreeMap::new();
-    for e in entries.iter().filter(|e| e.global_layer_index >= 0) {
-        *segs_by_layer.entry(e.global_layer_index).or_insert(0) +=
-            e.skeleton.as_ref().map_or(0, |s| s.points.len());
-    }
+    // Canonical builds roof as an area *distinct* from `base_areas` and
+    // subtracts it out of the body (`TreeSupport::generate_toolpaths`' area
+    // pass), so an interface layer does not carry extra geometry on top of the
+    // body — it carries the same footprint under a different role.
+    //
+    // This assertion used to require interface layers to hold MORE skeleton
+    // points than the contact layer, which only held because the pre-224
+    // planner *added* bounding-box scan lines on top of the body instead of
+    // carving the interface out of it.
+    let interface_layers: BTreeMap<i32, Vec<slicer_ir::SupportPlanRole>> = entries
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .map(|e| {
+            (
+                e.global_layer_index,
+                e.roles.iter().map(|r| r.role).collect::<Vec<_>>(),
+            )
+        })
+        .collect();
     assert!(
-        !segs_by_layer.is_empty(),
+        !interface_layers.is_empty(),
         "AC-4: expected non-empty model-layer plan; got 0 entries"
     );
-    // The top of the column has dist_to_top=0 (no interface fill);
-    // layers below it (dist_to_top=1..=top_n) carry interface fill.
-    // Identify the topmost (max) global_layer_index that received segments
-    // — it should have FEWER segments than at least one interface layer.
-    let &top_layer = segs_by_layer.keys().max().unwrap();
-    let top_segs = segs_by_layer[&top_layer];
-    let interface_max = segs_by_layer
+    let top_interface_layers: Vec<i32> = interface_layers
         .iter()
-        .filter(|(&k, _)| k < top_layer)
-        .map(|(_, &v)| v)
-        .max()
-        .unwrap_or(0);
+        .filter(|(_, roles)| roles.contains(&slicer_ir::SupportPlanRole::TopInterface))
+        .map(|(&layer, _)| layer)
+        .collect();
     assert!(
-        interface_max > top_segs,
-        "AC-4: expected interface layers to carry more branch_segments than \
-         the contact layer={top_layer} (segs={top_segs}); got max interface segs={interface_max}"
+        !top_interface_layers.is_empty(),
+        "AC-4: expected at least one layer carrying a TopInterface role; got {interface_layers:?}"
     );
+    // The interface band sits at the top of the column: `support_interface_top_layers`
+    // is 2 here, so at most two layers may carry it.
+    assert!(
+        top_interface_layers.len() <= 2,
+        "AC-4: interface band wider than support_interface_top_layers=2; got {top_interface_layers:?}"
+    );
+    let &highest = interface_layers.keys().max().unwrap();
+    assert!(
+        top_interface_layers.contains(&highest),
+        "AC-4: the topmost support layer must be interface, not bare body;          highest={highest} interface={top_interface_layers:?}"
+    );
+    // Interface must be carved out of the body, never printed on top of it.
+    for (&layer, roles) in interface_layers.iter() {
+        if roles.contains(&slicer_ir::SupportPlanRole::TopInterface) {
+            let entry = entries
+                .iter()
+                .find(|e| e.global_layer_index == layer)
+                .unwrap();
+            let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+                .roles
+                .iter()
+                .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody)
+                .collect();
+            let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+                .roles
+                .iter()
+                .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface)
+                .collect();
+            for b in &body {
+                for r in &roof {
+                    let overlap = slicer_sdk::host::clip_polygons(
+                        &b.regions,
+                        &r.regions,
+                        slicer_sdk::host::ClipOperation::Intersection,
+                    );
+                    assert!(
+                        overlap.is_empty(),
+                        "AC-4: body and interface overlap at layer {layer};                          interface must be subtracted out of the body"
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * wall_count.
@@ -310,7 +359,7 @@ fn benchy_orca_parity_within_tolerance() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("benchy-stand-in"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -544,7 +593,7 @@ fn node_rejected_when_model_occupies_every_destination() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("blocked"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -603,7 +652,7 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("lone-node"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -769,4 +818,24 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
 /// Make a SupportPlanEntry with a positive layer index.
 fn make_entry_with_index(index: u32) -> SupportPlanEntry {
     make_support_entry(index as i32, index as f32 * 0.2, 0.4)
+}
+
+/// Assign every region of `object_id` to the tree family.
+///
+/// Packet 224 made `PrePass::SupportAnalysis` the single authority for a
+/// region's family; the planner no longer defaults to its own identity.
+fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisView {
+    slicer_sdk::prepass_types::SupportAnalysisView {
+        family_assignments: ["0", "1"]
+            .iter()
+            .map(
+                |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
+                    object_id: object_id.to_string(),
+                    region_id: region_id.to_string(),
+                    family_id: "tree".to_string(),
+                },
+            )
+            .collect(),
+        ..Default::default()
+    }
 }

@@ -30,6 +30,7 @@ use std::collections::HashMap;
 
 use slicer_ir::{ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
+use slicer_sdk::prepass_types::SupportAnalysisView;
 use slicer_sdk::prepass_types::{
     Diagnostic, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
     RegionSegmentationView, RegionSegmentationViewEntry, SupportGeometryView,
@@ -68,7 +69,7 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("cap"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -221,7 +222,7 @@ fn below_cap_emits_no_cap_diagnostic() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("nocap"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -274,7 +275,7 @@ fn interface_bottom_layers_is_supported_and_warns_nothing() {
     // The 1003 diagnostic reads the config at run_support_geometry time,
     // so the same config must be passed in here.
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl"), &sg, &mut output, &config)
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -320,7 +321,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl-neg"), &sg, &mut output, &config)
             .expect("run_support_geometry");
         let count = output
             .diagnostics()
@@ -358,7 +359,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl-absent"), &sg, &mut output, &config)
             .expect("run_support_geometry");
         let count = output
             .diagnostics()
@@ -376,6 +377,27 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
 }
 
 // ── Test fixtures ──────────────────────────────────────────────────────────
+
+/// Assign every region of `object_id` to the tree family.
+///
+/// `PrePass::SupportAnalysis` is the single authority for a region's family.
+/// Packet 224 removed the planner's fallback to its own identity, so a test
+/// that supplies no assignment now correctly plans nothing.
+fn tree_analysis(object_id: &str) -> SupportAnalysisView {
+    SupportAnalysisView {
+        family_assignments: ["0", "1"]
+            .iter()
+            .map(
+                |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
+                    object_id: object_id.to_string(),
+                    region_id: region_id.to_string(),
+                    family_id: "tree".to_string(),
+                },
+            )
+            .collect(),
+        ..Default::default()
+    }
+}
 
 fn make_planner_config(entries: &[(&str, ConfigValue)]) -> ConfigView {
     let mut map: HashMap<ConfigKey, ConfigValue> = HashMap::new();
@@ -538,7 +560,7 @@ fn branch_landing_on_model_emits_bottom_interface() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("floor"), &sg, &mut output, &config)
         .expect("run_support_geometry");
 
     let has_bottom_interface = output.entries().iter().any(|entry| {
