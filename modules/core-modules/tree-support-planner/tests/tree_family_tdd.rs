@@ -117,7 +117,7 @@ fn planner_config(enabled: bool) -> ConfigView {
         ConfigValue::Float(1.0),
     );
     values.insert("tree_support_wall_count".into(), ConfigValue::Int(1));
-    values.insert("support_branch_angle_deg".into(), ConfigValue::Float(45.0));
+    values.insert("tree_support_branch_angle".into(), ConfigValue::Float(45.0));
     ConfigView::from_map(values)
 }
 
@@ -660,6 +660,14 @@ fn invalid_body_rejected() {
 
     // The host gate owns routing-cell validation. This complete body crosses
     // the 1 << 20-unit cell boundary and must not be clipped or filled.
+    // Genuinely oversized: one unit wider AND taller than ROUTING_CELL_SIZE
+    // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
+    // (Before packet 224 this fixture was a 1_000-unit body parked across the
+    // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
+    // the size contract; the extent-based `in_routing_cell` now retains such a
+    // body, as it should.) It is also kept clear of the validation mesh's
+    // 0..100_000-unit footprint so occupancy cannot be the cause of the drop.
+    const OVERSIZE: i64 = (1 << 20) + 1;
     let crossing = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -668,16 +676,16 @@ fn invalid_body_rejected() {
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
+                    x: 1_048_076 + OVERSIZE,
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
-                    y: 6_000,
+                    x: 1_048_076 + OVERSIZE,
+                    y: 5_000 + OVERSIZE,
                 },
                 Point2 {
                     x: 1_048_076,
-                    y: 6_000,
+                    y: 5_000 + OVERSIZE,
                 },
             ],
         },

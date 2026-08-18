@@ -39,6 +39,14 @@ max     = 75.0
 display = "Tree Support Branch Angle"
 group   = "Support"
 
+[config.schema.line_width]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 2.0
+display = "Line Width"
+group   = "Support"
+
 [config.schema.tree_support_branch_diameter]
 type    = "float"
 default = 5.0
@@ -120,18 +128,13 @@ max     = 10
 display = "Support Interface Bottom Layers"
 group   = "Support"
 
-[config.schema.tree_support_interface_spacing_mm]
-type    = "float"
-default = 0.4
-min     = 0.1
-max     = 2.0
-display = "Tree Support Interface Spacing"
-group   = "Support"
-
+# `0.0` is the documented "same as the model layer height" sentinel, so the
+# declared range must admit it. A `min` of 0.05 made the declared default
+# illegal and rejected any config that stated the key explicitly.
 [config.schema.support_layer_height_mm]
 type    = "float"
 default = 0.0
-min     = 0.05
+min     = 0.0
 max     = 1.0
 display = "Support Layer Height"
 group   = "Support"

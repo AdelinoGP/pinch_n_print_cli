@@ -64,10 +64,6 @@ pub struct TraditionalSupport {
     line_width: f32,
     /// Interface scan-fill line spacing in millimeters.
     interface_spacing_mm: f32,
-    /// Raw Orca-style support filament selection (rebased by the runtime).
-    support_filament: u32,
-    /// Raw Orca-style interface filament selection (rebased by the runtime).
-    support_interface_filament: u32,
 }
 
 #[slicer_module]
@@ -105,17 +101,6 @@ impl LayerModule for TraditionalSupport {
             _ => 0.4,
         };
 
-        // Keep the authored 1-based selections intact. The runtime applies the
-        // shared zero-based rebasing convention when it emits path entities.
-        let support_filament = match config.get("support_filament") {
-            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
-            _ => 0,
-        };
-        let support_interface_filament = match config.get("support_interface_filament") {
-            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
-            _ => 0,
-        };
-
         Ok(Self {
             enabled,
             density,
@@ -123,8 +108,6 @@ impl LayerModule for TraditionalSupport {
             support_speed,
             line_width,
             interface_spacing_mm,
-            support_filament,
-            support_interface_filament,
         })
     }
 
@@ -139,11 +122,6 @@ impl LayerModule for TraditionalSupport {
         if !self.enabled || self.density <= 0.0 {
             return Ok(());
         }
-
-        // Tool selection is applied by the runtime when SupportIR paths become
-        // entities; reading these keeps the renderer-side authored selections
-        // attached to this configured module without adding IR fields.
-        let _ = (self.support_filament, self.support_interface_filament);
 
         // `support_density` is declared in traditional-support.toml as a
         // 0-100 percentage (matching OrcaSlicer's UI convention). Convert
@@ -434,22 +412,5 @@ mod tests {
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.interface_spacing_mm - 0.4).abs() < 0.001);
-        assert_eq!(module.support_filament, 0);
-        assert_eq!(module.support_interface_filament, 0);
-    }
-
-    #[test]
-    fn from_config_retains_support_filament_selections() {
-        let config = ConfigView::from_map(std::collections::HashMap::from([
-            ("support_filament".to_string(), ConfigValue::Int(2)),
-            (
-                "support_interface_filament".to_string(),
-                ConfigValue::Int(3),
-            ),
-        ]));
-        let module = TraditionalSupport::from_config(&config).unwrap();
-
-        assert_eq!(module.support_filament, 2);
-        assert_eq!(module.support_interface_filament, 3);
     }
 }

@@ -57,7 +57,6 @@ pub struct TreeSupport {
     density: f32,
     /// Base support angle in degrees (reserved for future use).
     #[allow(dead_code)]
-    base_angle: f32,
     /// Support print speed in mm/s.
     support_speed: f32,
     /// Extrusion line width in millimeters.
@@ -96,10 +95,6 @@ impl LayerModule for TreeSupport {
             _ => 0.2,
         };
 
-        let base_angle = match config.get("support_angle") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
-        };
 
         let support_speed = match config.get("support_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
@@ -120,7 +115,6 @@ impl LayerModule for TreeSupport {
         Ok(Self {
             enabled,
             density,
-            base_angle,
             support_speed,
             line_width,
             wall_count,

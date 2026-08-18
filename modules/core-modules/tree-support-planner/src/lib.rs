@@ -102,7 +102,6 @@ pub struct SupportPlanner {
     /// `-1` mirrors the top interface count (OrcaSlicer convention).
     support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
-    tree_support_interface_spacing_mm: f32,
     /// When true, contacts whose XY lies inside the object's projected
     /// footprint at the contact's layer (`to_buildplate = false`) are
     /// rejected at creation time — only build-plate-bound branches are
@@ -361,7 +360,7 @@ impl PrepassModule for SupportPlanner {
             _ => true,
         };
         let support_family = canonical_support_family(config);
-        let branch_angle_deg = match config.get("support_branch_angle_deg") {
+        let branch_angle_deg = match config.get("tree_support_branch_angle") {
             Some(ConfigValue::Float(a)) => *a as f32,
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
@@ -432,12 +431,6 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 2,
         };
-        let tree_support_interface_spacing_mm =
-            match config.get("tree_support_interface_spacing_mm") {
-                Some(ConfigValue::Float(w)) => *w as f32,
-                Some(ConfigValue::Int(w)) => *w as f32,
-                _ => 0.4,
-            };
         // Packet 123: `support_on_build_plate_only` config — when true,
         // contacts whose `to_buildplate` would be `false` are rejected
         // at creation time (no to-model branches). Default `false` to
@@ -470,7 +463,6 @@ impl PrepassModule for SupportPlanner {
             interface_raft_layers,
             support_interface_top_layers,
             support_interface_bottom_layers,
-            tree_support_interface_spacing_mm,
             support_on_build_plate_only,
             support_top_z_distance_mm,
         })
@@ -2170,7 +2162,6 @@ mod tests {
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
             support_interface_bottom_layers: -1,
-            tree_support_interface_spacing_mm: 0.4,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
         }

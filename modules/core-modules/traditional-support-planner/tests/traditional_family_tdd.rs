@@ -717,6 +717,14 @@ fn invalid_body_rejected() {
         "colliding demand must emit no body/interface polygons"
     );
 
+    // Genuinely oversized: one unit wider AND taller than ROUTING_CELL_SIZE
+    // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
+    // (Before packet 224 this fixture was a 1_000-unit body parked across the
+    // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
+    // the size contract; the extent-based `in_routing_cell` now retains such a
+    // body, as it should.) It is also kept clear of the validation mesh's
+    // 0..100_000-unit footprint so occupancy cannot be the cause of the drop.
+    const OVERSIZE: i64 = (1 << 20) + 1;
     let crossing = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -725,16 +733,16 @@ fn invalid_body_rejected() {
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
+                    x: 1_048_076 + OVERSIZE,
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
-                    y: 6_000,
+                    x: 1_048_076 + OVERSIZE,
+                    y: 5_000 + OVERSIZE,
                 },
                 Point2 {
                     x: 1_048_076,
-                    y: 6_000,
+                    y: 5_000 + OVERSIZE,
                 },
             ],
         },
