@@ -177,13 +177,24 @@ impl LayerModule for TreeSupport {
                 for role_region in entry.roles.iter() {
                     for expoly in &role_region.regions {
                         match paint.paint_policy_for(expoly) {
+                            // Painted "no support here" still overrides the plan.
                             SupportPaintPolicy::Blocked => continue,
-                            SupportPaintPolicy::Enforced => {}
-                            SupportPaintPolicy::DefaultEligible => {
-                                if !region.needs_support() {
-                                    continue;
-                                }
-                            }
+                            // Painted "support here", and the default case, both
+                            // render what the planner planned.
+                            //
+                            // `DefaultEligible` previously additionally required
+                            // `region.needs_support()`. That re-litigated the
+                            // plan at render time: a `SupportPlanIR` entry *is*
+                            // the determination that support is needed, made by
+                            // the planner from `PrePass::SupportAnalysis`
+                            // contacts. When the flag disagreed, every planned
+                            // polygon was skipped silently — no paths, no
+                            // diagnostic — so the tree family emitted a full
+                            // 126-entry plan and no `;TYPE:Support` at all.
+                            // `traditional-support` never had this gate, so the
+                            // two families also disagreed on what a plan means.
+                            SupportPaintPolicy::Enforced
+                            | SupportPaintPolicy::DefaultEligible => {}
                         }
 
                         let mut paths = self.render_polygon(expoly, z, speed_factor);
