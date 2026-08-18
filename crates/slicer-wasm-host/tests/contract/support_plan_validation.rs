@@ -111,8 +111,13 @@ pub fn support_plan_validation() {
     let service = ExactZQueryService::new(Arc::new(mesh()));
     let mut colliding = entry("colliding", 0);
     colliding.region_id = 8;
-    let mut spans_cell = entry("spans_cell", 1_048_076);
+    // Genuinely oversized: one unit wider than ROUTING_CELL_SIZE (1 << 20), so
+    // it fits in no cell-sized territory. (Before packet 224 this fixture was a
+    // 1_000-unit body parked across the x = 1 << 20 grid line, which pinned the
+    // absolute-grid defect rather than the size contract.)
+    let mut spans_cell = entry("spans_cell", 30_000_000);
     spans_cell.region_id = 9;
+    spans_cell.roles[0].regions = vec![square(30_000_000, 5_000, (1 << 20) + 1)];
     let result = aggregate_support_plans(SupportAggregationInput {
         plans: vec![slicer_ir::SupportPlanIR {
             entries: vec![entry("valid", 20_000_000), colliding, spans_cell],
@@ -130,7 +135,7 @@ pub fn support_plan_validation() {
     assert!(result
         .unmet
         .iter()
-        .any(|d| d.demand_id == "spans_cell" && d.reason.contains("routing cell")));
+        .any(|d| d.demand_id == "spans_cell" && d.reason.contains("routing-cell")));
 }
 
 #[test]
@@ -190,4 +195,36 @@ fn support_plan_aggregation_diagnoses_duplicate_identity() {
     assert_eq!(result.duplicates.len(), 1);
     assert_eq!(result.duplicates[0].first_family_id, "tree");
     assert_eq!(result.duplicates[0].duplicate_family_id, "traditional");
+}
+
+/// Regression (packet 224): routing cells partition space to bound how much
+/// territory one body may claim, not to forbid particular world coordinates.
+/// A small, perfectly printable body whose bbox straddles an absolute cell
+/// boundary (here y = 0, a multiple of `ROUTING_CELL_SIZE`) must be retained.
+/// Measured defect: tree contact tips at the model edge extend to y = -0.4 mm,
+/// which rejected every straddling layer as "routing-cell collision".
+#[test]
+fn support_body_straddling_absolute_cell_boundary_is_retained() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    // 4 mm square well clear of the 0..10 mm mesh footprint in x, spanning
+    // y = -0.4 mm .. +3.6 mm so it crosses the y = 0 cell boundary.
+    let mut straddling = entry("straddles_boundary", 200_000);
+    straddling.region_id = 11;
+    straddling.roles[0].regions = vec![square(200_000, -4_000, 40_000)];
+
+    let result = aggregate_support_plans(SupportAggregationInput {
+        plans: vec![slicer_ir::SupportPlanIR {
+            entries: vec![straddling],
+            ..Default::default()
+        }],
+        exact_z: &service,
+    });
+
+    assert!(
+        result.unmet.is_empty(),
+        "straddling body must not be rejected, got: {:?}",
+        result.unmet
+    );
+    assert_eq!(result.retained.len(), 1);
+    assert_eq!(result.retained[0].body_ids, vec!["straddles_boundary"]);
 }

@@ -8,8 +8,10 @@ use std::collections::{HashMap, HashSet};
 use crate::exact_z_query::ExactZQueryService;
 
 /// Edge length of one deterministic host routing cell, in canonical
-/// coordinate units. Routing cells partition feasible space into a fixed grid;
-/// the cell containing a body's centroid is its permitted territory.
+/// coordinate units. Routing cells partition feasible space into a fixed grid
+/// and bound the territory a single support body may claim: a body must fit
+/// within one cell-sized envelope, and the grid cell containing its centroid
+/// is its stable routing identity for same-family union.
 const ROUTING_CELL_SIZE: i64 = 1 << 20;
 
 /// Deterministic routing cell territory assigned to one support body. The
@@ -27,22 +29,6 @@ impl RoutingCell {
             x: cx.div_euclid(ROUTING_CELL_SIZE),
             y: cy.div_euclid(ROUTING_CELL_SIZE),
         }
-    }
-
-    fn min_x(&self) -> i64 {
-        self.x * ROUTING_CELL_SIZE
-    }
-
-    fn max_x(&self) -> i64 {
-        self.x * ROUTING_CELL_SIZE + ROUTING_CELL_SIZE
-    }
-
-    fn min_y(&self) -> i64 {
-        self.y * ROUTING_CELL_SIZE
-    }
-
-    fn max_y(&self) -> i64 {
-        self.y * ROUTING_CELL_SIZE + ROUTING_CELL_SIZE
     }
 }
 
@@ -596,9 +582,13 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
     result
 }
 
-/// True when a body's full geometry stays inside the routing cell derived from
-/// its centroid. Bodies spanning more than one cell exceed their permitted
-/// territory and are rejected as a routing-cell violation.
+/// True when a body fits inside *some* routing-cell-sized territory, i.e. its
+/// envelope is no larger than one cell on either axis. Routing cells bound how
+/// much territory a single body may claim; the body is assigned to the cell
+/// that contains it rather than being measured against the absolute grid, so a
+/// small body that merely straddles a grid line (notably x = 0 or y = 0, which
+/// are cell boundaries) keeps its territory. Only bodies genuinely larger than
+/// one cell exceed their permitted territory and are rejected.
 fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
     let regions: Vec<&ExPolygon> = entry
         .roles
@@ -608,8 +598,7 @@ fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
     let Some((minx, maxx, miny, maxy)) = body_bounds(&regions) else {
         return true;
     };
-    let cell = RoutingCell::from_centroid((minx + maxx) / 2, (miny + maxy) / 2);
-    minx >= cell.min_x() && maxx <= cell.max_x() && miny >= cell.min_y() && maxy <= cell.max_y()
+    maxx.saturating_sub(minx) <= ROUTING_CELL_SIZE && maxy.saturating_sub(miny) <= ROUTING_CELL_SIZE
 }
 
 /// Envelope union across all role regions of a support body.
