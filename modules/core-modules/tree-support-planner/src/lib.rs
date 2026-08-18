@@ -659,6 +659,7 @@ impl SupportPlanner {
         // an independent compatibility input for collision avoidance below.
         let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
             vec![Vec::new(); num_layers as usize];
+        let mut fallback_family_emitted = false;
 
         // Per-affected-layer drop count for the code 1001 cap diagnostic.
         // Keyed by global_layer_index so the message carries the right value
@@ -720,7 +721,8 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
-                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                    == Some("tree")
         }) {
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
@@ -741,7 +743,8 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
-                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                    == Some("tree")
                 && candidate
                     .geometry
                     .iter()
@@ -1151,22 +1154,27 @@ impl SupportPlanner {
                 for region_id in regions_for_this {
                     // No self-default: a region the host did not assign to this
                     // family is not this planner's to plan. See `candidate_family`.
-                    let Some(support_family) = support_analysis
-                        .family_assignments
-                        .iter()
-                        .find(|assignment| {
-                            assignment.object_id == obj.object_id
-                                && assignment.region_id == *region_id
-                        })
-                        .map(|assignment| {
-                            canonical_support_family_alias(Some(&assignment.family_id))
-                        })
-                    else {
+                    let assignments_empty = support_analysis.family_assignments.is_empty();
+                    let Some(support_family) = (if assignments_empty {
+                        Some(canonical_support_family_alias(Some(&self.support_family)))
+                    } else {
+                        support_analysis
+                            .family_assignments
+                            .iter()
+                            .find(|assignment| {
+                                assignment.object_id == obj.object_id
+                                    && assignment.region_id == *region_id
+                            })
+                            .map(|assignment| {
+                                canonical_support_family_alias(Some(&assignment.family_id))
+                            })
+                    }) else {
                         continue;
                     };
                     if support_family != "tree" {
                         continue;
                     }
+                    fallback_family_emitted |= assignments_empty;
                     entries_in_order.push(SupportPlanEntry {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
@@ -1331,6 +1339,16 @@ impl SupportPlanner {
             output
                 .push_support_plan_entry(entry)
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
+        }
+        if fallback_family_emitted {
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1004,
+                layer: None,
+                object_id: Some(obj.object_id.clone()),
+                message: "support-planner: no family assignments; using configured support family"
+                    .to_string(),
+            });
         }
         Ok(())
     }
@@ -1518,17 +1536,17 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
 /// Resolve the canonical support family for a candidate from the host's
 /// per-region family assignments.
 ///
-/// Returns `None` when the host made no assignment for this region. The
-/// planner then plans nothing for it. Defaulting to the planner's own family
-/// here is what let this planner publish a full plan for regions that region
-/// routing had assigned elsewhere: on the decisive fixture it produced 126
-/// tree entries while routing resolved traditional, and the disagreement was
-/// invisible because a renderer handed zero regions is not an error.
-/// `PrePass::SupportAnalysis` is the single authority for the assignment.
+/// Returns the planner's configured family only when the host supplied no
+/// assignments at all. When assignments exist, an unmatched region remains
+/// unassigned so another family can own it.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
+    fallback: &str,
 ) -> Option<String> {
+    if analysis.family_assignments.is_empty() {
+        return Some(canonical_support_family_alias(Some(fallback)));
+    }
     analysis
         .family_assignments
         .iter()
@@ -2134,11 +2152,13 @@ mod tests {
         SupportAnalysisView {
             family_assignments: region_ids
                 .iter()
-                .map(|region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
-                    object_id: object_id.to_string(),
-                    region_id: region_id.to_string(),
-                    family_id: "tree".to_string(),
-                })
+                .map(
+                    |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
+                        object_id: object_id.to_string(),
+                        region_id: region_id.to_string(),
+                        family_id: "tree".to_string(),
+                    },
+                )
                 .collect(),
             ..Default::default()
         }
@@ -2419,9 +2439,16 @@ mod tests {
                     output
                         .entries()
                         .iter()
-                        .map(|e| (e.global_layer_index, e.roles.iter().map(|r| r.role).collect::<Vec<_>>()))
+                        .map(|e| (
+                            e.global_layer_index,
+                            e.roles.iter().map(|r| r.role).collect::<Vec<_>>()
+                        ))
                         .collect::<Vec<_>>(),
-                    output.diagnostics().iter().map(|d| (d.code, d.layer, d.message.clone())).collect::<Vec<_>>()
+                    output
+                        .diagnostics()
+                        .iter()
+                        .map(|d| (d.code, d.layer, d.message.clone()))
+                        .collect::<Vec<_>>()
                 )
             });
         let segment = &origin_entry.skeleton.as_ref().unwrap().points;
