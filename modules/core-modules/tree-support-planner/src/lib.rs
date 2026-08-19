@@ -156,11 +156,19 @@ fn build_roles(
     let floor = structural_body_regions(floor_segments, branch_radius);
 
     // Subtract interface geometry out of the body, per canonical.
+    let original_body = body.clone();
     let mut carved = body;
     for cut in [&roof, &floor] {
         if !carved.is_empty() && !cut.is_empty() {
             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
         }
+    }
+    // Keep a printable structural role for a branch whose interface carving
+    // consumes its entire body. The interface remains distinct for consumers
+    // that use the semantic roles, while a plan entry never becomes geometry-
+    // empty merely because its top layer is also an interface layer.
+    if carved.is_empty() && !original_body.is_empty() {
+        carved = original_body;
     }
 
     let mut roles = Vec::new();
@@ -216,13 +224,39 @@ pub fn structural_body_regions(
             }
         }
     }
-    if regions.len() < 2 {
-        return regions;
+    let mut regions = if regions.len() < 2 {
+        regions
+    } else {
+        // Union so merged branches and consecutive segments form one body
+        // rather than a pile of overlapping capsules that would each be
+        // walled and filled.
+        let (first, rest) = regions.split_at(1);
+        host::clip_polygons(first, rest, ClipOperation::Union)
+    };
+    for region in &mut regions {
+        limit_contour_vertices(&mut region.contour.points, BRANCH_CIRCLE_SEGMENTS);
     }
-    // Union so merged branches and consecutive segments form one body rather
-    // than a pile of overlapping capsules that would each be walled and filled.
-    let (first, rest) = regions.split_at(1);
-    host::clip_polygons(first, rest, ClipOperation::Union)
+    regions
+}
+
+fn limit_contour_vertices(points: &mut Vec<Point2>, limit: usize) {
+    while points.len() > limit {
+        let mut remove = 0;
+        let mut smallest = i128::MAX;
+        for index in 0..points.len() {
+            let previous = points[(index + points.len() - 1) % points.len()];
+            let current = points[index];
+            let next = points[(index + 1) % points.len()];
+            let area = ((current.x - previous.x) as i128 * (next.y - current.y) as i128
+                - (current.y - previous.y) as i128 * (next.x - current.x) as i128)
+                .abs();
+            if area < smallest {
+                smallest = area;
+                remove = index;
+            }
+        }
+        points.remove(remove);
+    }
 }
 
 /// Which semantic role a planned node's own area carries on its layer.
@@ -767,7 +801,7 @@ impl SupportPlanner {
                 .into_iter()
                 .enumerate()
             {
-                push_contact_with_demand(
+                push_analysis_contact(
                     &mut contacts_by_layer,
                     layer_plan,
                     collision_cache,
@@ -1175,6 +1209,36 @@ impl SupportPlanner {
                         continue;
                     }
                     fallback_family_emitted |= assignments_empty;
+                    let mut roles = build_roles(
+                        &branch_segments,
+                        &interface_segments,
+                        &floor_segments,
+                        branch_radius,
+                    );
+                    if !roles
+                        .iter()
+                        .any(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+                        && support_analysis.candidates.iter().any(|candidate| {
+                            candidate.object_id == obj.object_id
+                                && !candidate.blocked
+                                && !candidate.geometry.is_empty()
+                        })
+                    {
+                        if let Some(region) = roles
+                            .iter()
+                            .flat_map(|role| role.regions.iter())
+                            .next()
+                            .cloned()
+                        {
+                            roles.push(slicer_ir::SupportPlanRoleRegion {
+                                role: slicer_ir::SupportPlanRole::SupportBody,
+                                regions: vec![region],
+                            });
+                        }
+                    }
+                    if roles.is_empty() {
+                        continue;
+                    }
                     entries_in_order.push(SupportPlanEntry {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
@@ -1192,12 +1256,7 @@ impl SupportPlanner {
                         // SupportPlanIR stores physical Z in canonical slicer
                         // units (1 unit = 100 nm), not a WIT-specific scale.
                         anchor_z: mm_to_units(z_current),
-                        roles: build_roles(
-                            &branch_segments,
-                            &interface_segments,
-                            &floor_segments,
-                            branch_radius,
-                        ),
+                        roles,
                         skeleton: Some(slicer_ir::SupportPlanSkeleton {
                             points: branch_segments
                                 .iter()
@@ -1492,6 +1551,39 @@ fn push_contact_with_demand(
     // the overhang that demanded it, not flush against it.
     let layer_idx =
         contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
+    let global_layer = layer_plan.layers[layer_idx].global_layer_index;
+    let collision = collision_cache
+        .get(global_layer as usize)
+        .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+    let to_buildplate = !point_in_any_expoly(collision, x, y);
+    if planner.support_on_build_plate_only && !to_buildplate {
+        return;
+    }
+    if contacts[layer_idx].len() >= planner.max_branches_per_layer {
+        *dropped.entry(global_layer).or_insert(0) += 1;
+        return;
+    }
+    contacts[layer_idx].push(PlannedSupportNode {
+        x,
+        y,
+        dist_to_top: 0,
+        to_buildplate,
+        demand_ids: vec![demand_id],
+    });
+}
+
+fn push_analysis_contact(
+    contacts: &mut [Vec<PlannedSupportNode>],
+    layer_plan: &LayerPlanView,
+    collision_cache: &[LayerCollisionCache],
+    layer_idx: usize,
+    x: f32,
+    y: f32,
+    planner: &SupportPlanner,
+    dropped: &mut std::collections::BTreeMap<u32, usize>,
+    demand_id: String,
+) {
+    let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
     let collision = collision_cache
         .get(global_layer as usize)
