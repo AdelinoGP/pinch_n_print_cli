@@ -184,8 +184,20 @@ impl LayerModule for TraditionalSupport {
                         slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
                     };
                     for expoly in &role_region.regions {
-                        let paths =
-                            self.fill_expolygon(expoly, spacing, cos_a, sin_a, z, speed_factor);
+                        let interface = matches!(
+                            role_region.role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        );
+                        let paths = self.fill_expolygon(
+                            expoly,
+                            spacing,
+                            cos_a,
+                            sin_a,
+                            z,
+                            speed_factor,
+                            interface,
+                        );
                         for mut path in paths {
                             match role_region.role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
@@ -228,6 +240,7 @@ impl TraditionalSupport {
         sin_a: f64,
         z: f32,
         speed_factor: f32,
+        interface: bool,
     ) -> Vec<ExtrusionPath3D> {
         // Collect all edges (contour + holes)
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
@@ -369,6 +382,33 @@ impl TraditionalSupport {
                 });
                 i += 2;
             }
+        }
+
+        // Contact polygons can have no scan-line span. Keep the
+        // contact-inclusive interface layer printable without restoring body
+        // geometry that was carved out by the planner.
+        if interface && paths.is_empty() && expoly.contour.points.len() >= 2 {
+            let mut points = expoly
+                .contour
+                .points
+                .iter()
+                .map(|point| Point3WithWidth {
+                    x: slicer_ir::units_to_mm(point.x),
+                    y: slicer_ir::units_to_mm(point.y),
+                    z,
+                    width: self.line_width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                })
+                .collect::<Vec<_>>();
+            points.push(points[0]);
+            paths.push(ExtrusionPath3D {
+                points,
+                role: ExtrusionRole::SupportMaterial,
+                speed_factor,
+            });
         }
 
         paths

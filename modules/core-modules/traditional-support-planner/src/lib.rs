@@ -145,7 +145,9 @@ impl PrepassModule for SupportPlanner {
                     .iter()
                     .filter(|candidate| candidate.object_id == obj.object_id)
                 {
-                    if candidate_family(candidate, support_analysis).as_deref() == Some("traditional") {
+                    if candidate_family(candidate, support_analysis).as_deref()
+                        == Some("traditional")
+                    {
                         push_policy_declined(output, obj, candidate)?;
                     }
                 }
@@ -311,6 +313,11 @@ impl SupportPlanner {
         } else {
             1
         };
+        let interface_top_layer = if support_step == 1 {
+            emit_top_layer.saturating_sub(1)
+        } else {
+            emit_top_layer
+        };
         // Canonical downward propagation (`generate_base_layers` /
         // `bottom_contact_layers_and_layer_support_areas`). Two properties
         // matter and both were missing before packet 224, when this loop emitted
@@ -392,7 +399,7 @@ impl SupportPlanner {
 
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_layers > 0
-                && layer >= emit_top_layer.saturating_sub(top_layers - 1))
+                && layer >= interface_top_layer.saturating_sub(top_layers - 1))
                 || (bottom_layers > 0
                     && model_termination_layer.is_some()
                     && layer < termination_layer + bottom_layers);
@@ -416,7 +423,7 @@ impl SupportPlanner {
             // regions, so an interface layer was extruded twice: once dense as
             // interface and again underneath as body.
             let is_top_interface =
-                top_layers > 0 && layer >= emit_top_layer.saturating_sub(top_layers - 1);
+                top_layers > 0 && layer >= interface_top_layer.saturating_sub(top_layers - 1);
             // A floor exists only where the column lands on the model.
             let is_bottom_interface = bottom_layers > 0
                 && model_termination_layer.is_some()

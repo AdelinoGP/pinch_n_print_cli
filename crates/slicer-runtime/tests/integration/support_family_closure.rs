@@ -157,9 +157,26 @@ fn prepare_support_test(
 }
 
 fn run_slice_for_family(support_type: &str) -> Result<String, String> {
+    run_slice_for_family_with_interface_layers(support_type, 2, 2)
+}
+
+fn run_slice_for_family_with_interface_layers(
+    support_type: &str,
+    top_layers: i64,
+    bottom_layers: i64,
+) -> Result<String, String> {
     let mesh = cached_load_model(&support_test_path());
     // Tracked Orca-matched config is the base; the family selection is an override.
     let overrides = matched_config_for(true, support_type);
+    let mut overrides = overrides;
+    overrides.insert(
+        "support_interface_top_layers".to_string(),
+        ConfigValue::Int(top_layers),
+    );
+    overrides.insert(
+        "support_interface_bottom_layers".to_string(),
+        ConfigValue::Int(bottom_layers),
+    );
     let opts = slicer_runtime::run::SliceRunOptions {
         mesh,
         config_overrides: overrides,
@@ -169,6 +186,13 @@ fn run_slice_for_family(support_type: &str) -> Result<String, String> {
     let outcome = slicer_runtime::run::run_slice(opts)
         .map_err(|e| format!("run_slice({support_type}) failed: {e}"))?;
     Ok(outcome.gcode_text)
+}
+
+fn interface_block_count(gcode: &str) -> usize {
+    gcode
+        .lines()
+        .filter(|line| line.trim_end() == ";TYPE:Support interface")
+        .count()
 }
 
 /// AC-1: runs both real support families on SupportTest.stl and records
@@ -191,12 +215,11 @@ pub fn fixture_invariants() -> Result<(), String> {
         if analysis.candidates.is_empty() {
             return Err(format!("{family}: SupportAnalysisIR has no candidates"));
         }
-        let has_family = analysis
-            .family_assignments
-            .values()
-            .any(|v| v == family);
+        let has_family = analysis.family_assignments.values().any(|v| v == family);
         if !has_family {
-            return Err(format!("{family}: SupportAnalysisIR missing family assignment for {family}"));
+            return Err(format!(
+                "{family}: SupportAnalysisIR missing family assignment for {family}"
+            ));
         }
         let plan = context
             .blackboard
@@ -213,7 +236,11 @@ pub fn fixture_invariants() -> Result<(), String> {
             .layer_plan()
             .ok_or_else(|| format!("{family}: LayerPlanIR missing"))?;
         let effective_height_for = |layer_idx: u32| -> f32 {
-            if let Some(layer) = global_layers.global_layers.iter().find(|l| l.index == layer_idx) {
+            if let Some(layer) = global_layers
+                .global_layers
+                .iter()
+                .find(|l| l.index == layer_idx)
+            {
                 let prev_z = global_layers
                     .global_layers
                     .iter()
@@ -245,11 +272,10 @@ pub fn fixture_invariants() -> Result<(), String> {
             }
             let eff_h = effective_height_for(entry.global_layer_index as u32);
             let tolerance_mm = eff_h * 3.0;
-            let skeleton_at_plate = entry.skeleton.as_ref().is_some_and(|s| {
-                s.points
-                    .iter()
-                    .any(|point| point.z <= tolerance_mm)
-            });
+            let skeleton_at_plate = entry
+                .skeleton
+                .as_ref()
+                .is_some_and(|s| s.points.iter().any(|point| point.z <= tolerance_mm));
             let anchor_at_plate = entry.anchor_z <= slicer_ir::mm_to_units(tolerance_mm);
             if skeleton_at_plate || anchor_at_plate {
                 plate_terminated = true;
@@ -451,7 +477,11 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
             if !has_overlap_diag && !retained.entries.is_empty() {
                 return Err(format!(
                     "cross-family overlap not rejected: retained={:?}, diagnostics={:?}",
-                    retained.entries.iter().map(|e| &e.body_ids).collect::<Vec<_>>(),
+                    retained
+                        .entries
+                        .iter()
+                        .map(|e| &e.body_ids)
+                        .collect::<Vec<_>>(),
                     overlap_diagnostics
                 ));
             }
@@ -549,7 +579,10 @@ pub fn family_reaches_region_routing() -> Result<(), String> {
     Ok(())
 }
 
-fn pnp_support_evidence(family: &str, support_type: &str) -> Result<slicer_ir::SupportPlanIR, String> {
+fn pnp_support_evidence(
+    family: &str,
+    support_type: &str,
+) -> Result<slicer_ir::SupportPlanIR, String> {
     let context = prepare_support_test(true, support_type)?;
     let analysis = context
         .blackboard
@@ -582,30 +615,28 @@ fn pnp_support_evidence(family: &str, support_type: &str) -> Result<slicer_ir::S
         // role. Requiring one on every entry encoded the pre-224 additive
         // model, where body and interface held identical regions and both
         // were extruded over the same area.
-        let has_printable = entry
-            .roles
-            .iter()
-            .any(|role| !role.regions.is_empty());
-        let is_tip = entry.skeleton.is_some()
-            && entry.roles.iter().all(|role| role.regions.is_empty());
+        let has_printable = entry.roles.iter().any(|role| !role.regions.is_empty());
+        let is_tip =
+            entry.skeleton.is_some() && entry.roles.iter().all(|role| role.regions.is_empty());
         if !has_printable && !is_tip {
-            return Err(format!("{family}: entry carries no printable role {:?}", entry));
+            return Err(format!(
+                "{family}: entry carries no printable role {:?}",
+                entry
+            ));
         }
     }
     // A column is not all interface: below the interface band there must be
     // body geometry, or the plan is interface-only and something has gone
     // wrong with the band width.
-    if !plan
-        .entries
-        .iter()
-        .any(|entry| {
-            entry
-                .roles
-                .iter()
-                .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty())
-        })
-    {
-        return Err(format!("{family}: plan carries no SupportBody geometry at any layer"));
+    if !plan.entries.iter().any(|entry| {
+        entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty())
+    }) {
+        return Err(format!(
+            "{family}: plan carries no SupportBody geometry at any layer"
+        ));
     }
     Ok(plan)
 }
@@ -614,8 +645,16 @@ pub fn matched_height_evidence() -> Result<(), String> {
     let tree_plan = pnp_support_evidence("tree", "tree(auto)")?;
     let trad_plan = pnp_support_evidence("traditional", "normal(auto)")?;
     // Physical height overlap (mm), not global_layer_index overlap.
-    let tree_zs: Vec<f32> = tree_plan.entries.iter().map(|e| slicer_ir::units_to_mm(e.anchor_z)).collect();
-    let trad_zs: Vec<f32> = trad_plan.entries.iter().map(|e| slicer_ir::units_to_mm(e.anchor_z)).collect();
+    let tree_zs: Vec<f32> = tree_plan
+        .entries
+        .iter()
+        .map(|e| slicer_ir::units_to_mm(e.anchor_z))
+        .collect();
+    let trad_zs: Vec<f32> = trad_plan
+        .entries
+        .iter()
+        .map(|e| slicer_ir::units_to_mm(e.anchor_z))
+        .collect();
     if tree_zs.is_empty() || trad_zs.is_empty() {
         return Err("one family has no height evidence".into());
     }
@@ -794,6 +833,46 @@ pub fn final_gcode_roles() -> Result<(), String> {
             return Err(format!(
                 "{family}: PNP G-code missing ;TYPE:Support interface; gcode_len={} types={types_seen:?}",
                 gcode.len()
+            ));
+        }
+    }
+    interface_layer_count_follows_config()
+}
+
+/// Interface coverage must respond to the configured top band rather than to a
+/// renderer default. SupportTest terminates on the plate, so its bottom band is
+/// intentionally not expected to add interface blocks.
+pub fn interface_layer_count_follows_config() -> Result<(), String> {
+    for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
+        let one = interface_block_count(&run_slice_for_family_with_interface_layers(
+            support_type,
+            1,
+            0,
+        )?);
+        let two = interface_block_count(&run_slice_for_family_with_interface_layers(
+            support_type,
+            2,
+            0,
+        )?);
+        let three = interface_block_count(&run_slice_for_family_with_interface_layers(
+            support_type,
+            3,
+            0,
+        )?);
+        if (one, two, three) != (1, 2, 3) {
+            return Err(format!(
+                "{family}: interface block count must equal configured top_layers: 1->{one}, 2->{two}, 3->{three}"
+            ));
+        }
+
+        let fallback = interface_block_count(&run_slice_for_family_with_interface_layers(
+            support_type,
+            2,
+            -1,
+        )?);
+        if fallback != two {
+            return Err(format!(
+                "{family}: negative bottom_layers did not fall back to top_layers: top=2,bottom=0->{two}, top=2,bottom=-1->{fallback}"
             ));
         }
     }
