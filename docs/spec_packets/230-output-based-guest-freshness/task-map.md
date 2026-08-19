@@ -1,0 +1,15 @@
+# Task Map: 230-output-based-guest-freshness
+
+Single-task packet, mapped here because the task row is **net-new** and because the packet carries a forward dependency: `TASK-341` does not yet exist in `docs/07_implementation_status.md` (no `TASK-341` row exists on disk; packet 229 claims `TASK-340`) and must be created by Step 6 under "Workstream 5 — Governance and closure drift". Re-derive the highest id at write time with `rg -o 'TASK-[0-9]{3}' docs/07_implementation_status.md | sort -u | tail -1` and renumber on collision.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-341` | `Step 0` (gate) | `docs/spec_packets/229-wit-verify-declaration-model/packet.spec.md` | `xtask/src/wit_verify.rs` (read only) | none — no parity surface | `S` | Blocks the packet until 229 is `status: implemented` and every consumed signature is re-verified |
+| `TASK-341` | `Step 1` | `docs/specs/guest-freshness-artifact-verification-plan.md` §C4, R5-4 | `xtask/src/wit_verify.rs` `resolve_stage_from_world`, `StageResolutionError` | none | `S` | AC-1..AC-3: resolution from the artifact, `PrePass::PaintSegmentation` excluded |
+| `TASK-341` | `Step 2` | `docs/21_data_defaults_and_fixtures.md`; plan §C4/C10, R5-4 | `xtask/src/build_guests.rs` `StaleReason`, `CheckContext`, `stale_reason`, `is_stale` | none | `M` | AC-4, AC-5, AC-15, AC-18, AC-N1, AC-N3: manifest `[stage] id` retained as an independent expectation; `is_stale`'s third parameter retyped to `&CheckContext` (3 call sites) |
+| `TASK-341` | `Step 3` | `docs/specs/guest-freshness-artifact-verification-plan.md` §C11, R5-3, R5-7 | `xtask/src/build_guests.rs` `CheckOutcome` + exit-code consts; `xtask/src/main.rs`; `xtask/src/test.rs` | none | `M` | AC-6..AC-8, AC-13, AC-N2: exit-code contract, both call sites migrated |
+| `TASK-341` | `Step 4` | `docs/specs/guest-freshness-artifact-verification-plan.md` §C6, C9 | `xtask/src/build_guests.rs` `build_stale_command`; `xtask/src/test.rs` `test_command` seam | none | `S` | AC-9, AC-10, AC-N4: stale-only rebuild; infra error aborts without rebuilding |
+| `TASK-341` | `Step 5` | `docs/specs/guest-freshness-artifact-verification-plan.md` §C5, R5-2; `CLAUDE.md` §"Guest WASM Staleness" | `xtask/src/build_guests.rs` `build_one`, `fingerprint_entries`, `FINGERPRINT_VERSION`; `xtask/src/wit_verify.rs` (`module_stage_wit_dir` deletion) | none | `M` | AC-11, AC-12, AC-14: write-last lifecycle, `v2-` content, fail-open retired |
+| `TASK-341` | `Step 6` | `CLAUDE.md` §"No Unverified Metrics", §"Ledger Facts Must Be Re-derived"; `docs/07_implementation_status.md` §"Workstream 5 — Governance and closure drift" | `docs/spec_packets/230-output-based-guest-freshness/requirements.md`, `docs/07_implementation_status.md` | none | `S` | AC-16, AC-17: measured before/after `--check` timing and the backlog row |
+
+Costs copied from `implementation-plan.md` §Per-Step Budget Roll-Up. Aggregate `M`; no row is `L`, so no split is required before activation. The `Step 0` row is a gate, not a work step, and contributes no code surface.
