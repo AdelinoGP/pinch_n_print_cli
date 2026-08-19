@@ -361,6 +361,30 @@ fn distributed_contacts() {
         classes.iter().filter(|count| **count >= 2).count() >= 2,
         "contacts must span at least two corner/contour/interior classes: {classes:?}"
     );
+
+    let angles: Vec<f32> = output
+        .entries()
+        .iter()
+        .filter_map(|entry| entry.skeleton.as_ref())
+        .flat_map(|skeleton| skeleton.points.windows(2))
+        .filter_map(|segment| {
+            let dx = segment[1].x - segment[0].x;
+            let dy = segment[1].y - segment[0].y;
+            (dx.abs() > 0.001 || dy.abs() > 0.001).then(|| dy.atan2(dx))
+        })
+        .collect();
+    assert!(
+        angles.windows(2).any(|pair| {
+            let diff = (pair[0] - pair[1]).abs();
+            let diff = if diff > std::f32::consts::PI {
+                2.0 * std::f32::consts::PI - diff
+            } else {
+                diff
+            };
+            diff > 10.0_f32.to_radians()
+        }),
+        "planned skeleton must contain branching directions, got {angles:?}"
+    );
 }
 
 #[test]
@@ -514,10 +538,7 @@ fn anchored_heights_and_termination() {
         // `TopInterface` or `BottomInterface`. Requiring `SupportBody` on every
         // entry would forbid that, which is why this assertion was widened.
         assert!(
-            entry
-                .roles
-                .iter()
-                .any(|role| !role.regions.is_empty()),
+            entry.roles.iter().any(|role| !role.regions.is_empty()),
             "entry at layer {} carries no printable geometry under any role: {:?}",
             entry.global_layer_index,
             entry.roles

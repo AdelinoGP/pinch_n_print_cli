@@ -36,8 +36,8 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
-use slicer_sdk::host::{self, OffsetJoinType};
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::host::{self, OffsetJoinType};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
@@ -91,10 +91,10 @@ impl LayerModule for TreeSupport {
         };
 
         let density = match config.get("support_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
+            // The manifest and user-facing config express density as a percent.
+            Some(ConfigValue::Float(d)) => (*d as f32) / 100.0,
             _ => 0.2,
         };
-
 
         let support_speed = match config.get("support_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
@@ -179,8 +179,7 @@ impl LayerModule for TreeSupport {
                             // 126-entry plan and no `;TYPE:Support` at all.
                             // `traditional-support` never had this gate, so the
                             // two families also disagreed on what a plan means.
-                            SupportPaintPolicy::Enforced
-                            | SupportPaintPolicy::DefaultEligible => {}
+                            SupportPaintPolicy::Enforced | SupportPaintPolicy::DefaultEligible => {}
                         }
 
                         // `render_polygon` already covers the whole region
@@ -369,7 +368,6 @@ impl TreeSupport {
         }
         paths
     }
-
 }
 
 // expolygon_centroid was an artifact of the deleted local support_paint_policy
@@ -431,16 +429,15 @@ mod tests {
             holes: vec![],
         };
         let paths = module.render_polygon(&square, 1.0, 1.0);
-        let closed: Vec<&ExtrusionPath3D> = paths
-            .iter()
-            .filter(|path| path.points.len() > 2)
-            .collect();
+        let closed: Vec<&ExtrusionPath3D> =
+            paths.iter().filter(|path| path.points.len() > 2).collect();
         assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
 
         // Each wall must sit at its own inset, not on top of the previous one.
         let extent = |path: &ExtrusionPath3D| {
             let xs: Vec<f32> = path.points.iter().map(|p| p.x).collect();
-            xs.iter().cloned().fold(f32::MIN, f32::max) - xs.iter().cloned().fold(f32::MAX, f32::min)
+            xs.iter().cloned().fold(f32::MIN, f32::max)
+                - xs.iter().cloned().fold(f32::MAX, f32::min)
         };
         let outer = extent(closed[0]);
         let inner = extent(closed[1]);
@@ -489,11 +486,11 @@ mod tests {
                 .filter(|path| path.points.len() == 2)
                 .count()
         };
-        let sparse = count(&build(0.2));
-        let solid = count(&build(1.0));
+        let sparse = count(&build(20.0));
+        let solid = count(&build(100.0));
         assert!(
             solid > sparse * 3,
-            "support_density is ignored: {sparse} lines at 0.2 vs {solid} at 1.0"
+            "support_density is ignored: {sparse} lines at 20% vs {solid} at 100%"
         );
     }
 }
