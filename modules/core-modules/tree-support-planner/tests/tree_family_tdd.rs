@@ -100,13 +100,17 @@ fn validation_mesh() -> MeshIR {
 }
 
 fn planner_config(enabled: bool) -> ConfigView {
+    planner_config_with_diameter(enabled, 5.0)
+}
+
+fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigView {
     let mut values = HashMap::<ConfigKey, ConfigValue>::new();
     values.insert("enable_support".into(), ConfigValue::Bool(enabled));
     values.insert("support_family".into(), ConfigValue::String("tree".into()));
     values.insert("support_raft_layers".into(), ConfigValue::Int(0));
     values.insert(
         "tree_support_branch_diameter".into(),
-        ConfigValue::Float(5.0),
+        ConfigValue::Float(branch_diameter),
     );
     values.insert(
         "tree_support_branch_diameter_angle".into(),
@@ -223,6 +227,32 @@ fn run_planner_with_analysis(
     output
 }
 
+fn run_planner_with_analysis_and_diameter(
+    enabled: bool,
+    object: MeshObjectView,
+    analysis: SupportAnalysisView,
+    branch_diameter: f64,
+) -> SupportGeometryOutput {
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_with_diameter(
+        enabled,
+        branch_diameter,
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
 fn mm_point(point: &Point2) -> (f32, f32) {
     (point.x as f32 / 10_000.0, point.y as f32 / 10_000.0)
 }
@@ -305,7 +335,7 @@ fn distributed_contacts() {
         },
         holes: vec![],
     };
-    let output = run_planner_with_analysis(
+    let output = run_planner_with_analysis_and_diameter(
         true,
         overhang("distributed", 0.0, 0.0, 4.0),
         SupportAnalysisView {
@@ -320,6 +350,7 @@ fn distributed_contacts() {
             }],
             ..Default::default()
         },
+        1.0,
     );
     assert!(
         output.entries().len() >= 2,
@@ -435,8 +466,13 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
+        // Floor guards against degenerate/zero-radius bodies. Retargeted from
+        // 0.39 mm to 0.3 mm (packet 224, RC-15 contact-sampling port): the
+        // legitimate swept-capsule body between a 0.4 mm contact tip and a
+        // larger propagated node (16-vertex cap) has min radius 0.3366 mm,
+        // which the stale 0.39 floor rejected.
         assert!(
-            local_radius >= 0.39,
+            local_radius >= 0.3,
             "body lost its local radius: {local_radius}"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));

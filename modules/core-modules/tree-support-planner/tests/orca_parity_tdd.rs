@@ -42,7 +42,6 @@ use tree_support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
 /// bottom > top + tan(diameter_angle) * height_diff.
 #[test]
 
-
 fn radius_tapers_with_distance_to_top() {
     // Test the actual tapered_radius() function from the planner (Step 5).
     // Formula: radius(dist_to_top) = branch_radius + tan(diameter_angle) * dist_to_top * layer_height
@@ -191,7 +190,15 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("col"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("col"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -359,7 +366,15 @@ fn benchy_orca_parity_within_tolerance() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("benchy-stand-in"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("benchy-stand-in"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -593,7 +608,15 @@ fn node_rejected_when_model_occupies_every_destination() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("blocked"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("blocked"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -626,7 +649,6 @@ fn node_rejected_when_model_occupies_every_destination() {
          destination; got {:?}",
         output.entries()
     );
-
 }
 
 // RC-1 lone-node column mid-air: a propagated node must still emit its segment.
@@ -652,7 +674,15 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("lone-node"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("lone-node"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -675,6 +705,74 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
             first.x == second.x && first.y == second.y && first.z == second.z
         }),
         "a lone propagated node must emit a degenerate two-point segment below the contact layer"
+    );
+}
+
+#[test]
+fn contact_count_follows_overhang_area_not_triangle_count() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("tree_support_branch_diameter", ConfigValue::Float(1.0)),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+    let layer_plan = make_layer_plan(11, 0.0, 0.2);
+    let region_small = make_region_segmentation("small", 11);
+    let region_large = make_region_segmentation("large", 11);
+    let support_geometry = SupportGeometryView { entries: vec![] };
+
+    let mut small_output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[overhang_plate_fixture("small")],
+            &layer_plan,
+            &region_small,
+            &support_geometry,
+            &mut small_output,
+            &ConfigView::new(),
+        )
+        .expect("small overhang planning");
+
+    let mut large = overhang_plate_fixture("large");
+    for vertex in large.vertices.iter_mut().skip(2) {
+        vertex[0] *= 3.0;
+        vertex[1] *= 3.0;
+    }
+    let mut large_output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[large],
+            &layer_plan,
+            &region_large,
+            &support_geometry,
+            &mut large_output,
+            &ConfigView::new(),
+        )
+        .expect("large overhang planning");
+
+    let top_points = |output: &SupportGeometryOutput| {
+        let top_layer = output
+            .entries()
+            .iter()
+            .map(|entry| entry.global_layer_index)
+            .max()
+            .expect("contact layer");
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index == top_layer)
+            .filter_map(|entry| entry.skeleton.as_ref())
+            .map(|skeleton| skeleton.points.len())
+            .sum::<usize>()
+    };
+    let small_count = top_points(&small_output);
+    let large_count = top_points(&large_output);
+    assert!(
+        large_count > small_count,
+        "same two-triangle overhangs must sample by area: small={small_count}, large={large_count}"
     );
 }
 
@@ -726,7 +824,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
 
 /// Build a single-overhang fixture: an anchor at the origin (so bounds span
 /// z=0..2.0 across ≥10 layers at 0.2mm height) plus a downward-facing quad
-/// plate floating at z=2.0 covering [0..4]×[0..4]. The two plate triangles
+/// plate floating at z=1.8 covering [0..0.2]×[0..0.2]. The two plate triangles
 /// register as overhang facets and seed a contact point near the top of the
 /// layer stack.
 fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
@@ -752,9 +850,9 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],
         [0.0, 0.0, 1.8],
-        [4.0, 0.0, 1.8],
-        [4.0, 4.0, 1.8],
-        [0.0, 4.0, 1.8],
+        [0.2, 0.0, 1.8],
+        [0.2, 0.2, 1.8],
+        [0.0, 0.2, 1.8],
     ];
     let triangles = vec![[1, 3, 2]];
     MeshObjectView {

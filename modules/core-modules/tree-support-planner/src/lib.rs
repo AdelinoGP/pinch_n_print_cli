@@ -13,7 +13,7 @@
 //! Port of OrcaSlicer's `TreeSupport::detect_overhangs` +
 //! `TreeSupport::drop_nodes` (see `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`):
 //! the planner walks each object's mesh, classifies overhang/bridge facets
-//! via triangle normals, emits contact points at their centroids, and
+//! via triangle normals, samples overhang polygons for contact points, and
 //! propagates the contact-point set top-down through the object's layer
 //! range. Per-layer merging uses a Prim minimum spanning tree — the same
 //! O(V²) complexity class as OrcaSlicer's `MinimumSpanningTree::prim`.
@@ -69,6 +69,8 @@ const MIN_BRANCH_RADIUS: f32 = 0.4;
 /// and `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM`, so both
 /// families leave the same gap when the key is absent.
 const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
+/// Canonical fallback because this module does not declare `max_bridge_length`.
+const DEFAULT_MAX_BRIDGE_LENGTH_MM: f32 = 10.0;
 
 /// Multi-layer organic tree-support planner.
 #[allow(dead_code)]
@@ -704,19 +706,20 @@ impl SupportPlanner {
         // shared map so per-layer totals are merged across all objects
         // before emission.
 
-        // Keep mesh-derived contacts as the primary, legacy path. Analysis
+        // Keep projected mesh contacts as the primary legacy path. Analysis
         // augments these contacts but never decides whether they are admitted.
         if let Some((bmin, _)) = compute_bounds(&obj.vertices) {
             let blockers = collect_paint_blocker_polygons(obj);
+            let (mesh_min, mesh_max) = compute_bounds(&obj.vertices).expect("bounds checked");
+            let origin = (
+                (mesh_min[0] + mesh_max[0]) * 0.5,
+                (mesh_min[1] + mesh_max[1]) * 0.5,
+            );
+            let mut polygons_by_layer: std::collections::BTreeMap<usize, Vec<ExPolygon>> =
+                std::collections::BTreeMap::new();
             for (v0, v1, v2) in detect_overhang_facets(obj, OVERHANG_THRESHOLD_DEG) {
-                let (x, y, z) = (
-                    (v0[0] + v1[0] + v2[0]) / 3.0,
-                    (v0[1] + v1[1] + v2[1]) / 3.0,
-                    (v0[2] + v1[2] + v2[2]) / 3.0,
-                );
-                if point_in_any_polygon(&blockers, x, y)
-                    || z <= bmin[2] + layer_plan.layers[0].effective_layer_height * 0.5
-                {
+                let z = (v0[2] + v1[2] + v2[2]) / 3.0;
+                if z <= bmin[2] + layer_plan.layers[0].effective_layer_height * 0.5 {
                     continue;
                 }
                 let layer_idx = layer_plan
@@ -724,16 +727,54 @@ impl SupportPlanner {
                     .iter()
                     .position(|layer| layer.z >= z)
                     .unwrap_or(layer_plan.layers.len() - 1);
-                push_contact(
-                    &mut contacts_by_layer,
-                    layer_plan,
-                    collision_cache,
-                    layer_idx,
-                    x,
-                    y,
-                    self,
-                    dropped_by_layer,
-                );
+                // Legacy-path compatibility shim: canonical input is the
+                // host-computed per-layer overhang polygon. These fixtures are
+                // coplanar plates, so project downward triangles instead of
+                // slicing an otherwise empty closed-solid cross-section.
+                polygons_by_layer
+                    .entry(layer_idx)
+                    .or_default()
+                    .push(ExPolygon {
+                        contour: Polygon {
+                            points: vec![
+                                Point2::from_mm(v0[0], v0[1]),
+                                Point2::from_mm(v1[0], v1[1]),
+                                Point2::from_mm(v2[0], v2[1]),
+                            ],
+                        },
+                        holes: Vec::new(),
+                    });
+            }
+            for (layer_idx, polygons) in polygons_by_layer {
+                let polygons = if polygons.len() > 1 {
+                    let (first, rest) = polygons.split_at(1);
+                    host::clip_polygons(first, rest, ClipOperation::Union)
+                } else {
+                    polygons
+                };
+                let sampled: Vec<(f32, f32)> = sample_contact_points(
+                    &polygons,
+                    origin,
+                    Some((mesh_min[0], mesh_max[0], mesh_min[1], mesh_max[1])),
+                    self.tree_support_branch_distance,
+                    MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0),
+                )
+                .into_iter()
+                .collect();
+                for (x, y) in sampled {
+                    if !point_in_any_polygon(&blockers, x, y) {
+                        push_contact(
+                            &mut contacts_by_layer,
+                            layer_plan,
+                            collision_cache,
+                            layer_idx,
+                            x,
+                            y,
+                            self,
+                            dropped_by_layer,
+                        );
+                    }
+                }
             }
             for (layer_idx, x, y) in collect_paint_enforcer_contacts(obj) {
                 if !point_in_any_polygon(&blockers, x, y) {
@@ -799,9 +840,23 @@ impl SupportPlanner {
                 .iter()
                 .position(|layer| layer.global_layer_index == candidate.global_layer_index)
                 .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
-            for (sample_idx, (x, y)) in candidate_contact_points(&candidate.geometry)
-                .into_iter()
-                .enumerate()
+            let (origin, grid_bounds) = compute_bounds(&obj.vertices)
+                .map(|(min, max)| {
+                    (
+                        ((min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5),
+                        Some((min[0], max[0], min[1], max[1])),
+                    )
+                })
+                .unwrap_or(((0.0, 0.0), None));
+            for (sample_idx, (x, y)) in sample_contact_points(
+                &candidate.geometry,
+                origin,
+                grid_bounds,
+                self.tree_support_branch_distance,
+                MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0),
+            )
+            .into_iter()
+            .enumerate()
             {
                 push_analysis_contact(
                     &mut contacts_by_layer,
@@ -1505,50 +1560,125 @@ fn candidate_contact_point(polygons: &[ExPolygon]) -> Option<(f32, f32)> {
     (count > 0).then(|| (units_to_mm(x / count), units_to_mm(y / count)))
 }
 
-/// Deterministic nine-point sampling over each candidate bounding box. Samples
-/// are retained only when they lie in the candidate polygon, so corners,
-/// contour points, and interior points all contribute without centroid bias.
-fn candidate_contact_points(polygons: &[ExPolygon]) -> Vec<(f32, f32)> {
+/// Sample overhangs using canonical corner, arc, and rotated-interior streams.
+///
+/// `grid_bounds` is the object bounding box in mm `(min_x, max_x, min_y,
+/// max_y)`. Canonical `TreeSupport::generate_contact_points` builds the
+/// interior grid once per object over the whole-object bounding box, rotated
+/// 22 degrees about the object bbox center, and filters per overhang. Deriving
+/// the index span from the overhang bbox instead would drop lattice points
+/// whose rotated images fall inside the overhang near corners. `None` falls
+/// back to the overhang bbox (mesh-less objects).
+fn sample_contact_points(
+    polygons: &[ExPolygon],
+    origin: (f32, f32),
+    grid_bounds: Option<(f32, f32, f32, f32)>,
+    point_spread: f32,
+    base_radius: f32,
+) -> Vec<(f32, f32)> {
     let mut result = Vec::new();
+    let mut buckets = std::collections::HashSet::new();
+    let cell = mm_to_units(base_radius).max(1) + 1;
+    let mut add = |x: f32, y: f32| {
+        let key = (
+            mm_to_units(x).div_euclid(cell),
+            mm_to_units(y).div_euclid(cell),
+        );
+        if buckets.insert(key) {
+            result.push((x, y));
+        }
+    };
+
     for polygon in polygons {
         let points = &polygon.contour.points;
         if points.len() < 3 {
             continue;
         }
-        let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
-        let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
-        let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
-        let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
-        for point in points {
-            result.push((units_to_mm(point.x), units_to_mm(point.y)));
+        for i in 0..points.len() {
+            let previous = points[(i + points.len() - 1) % points.len()];
+            let current = points[i];
+            let next = points[(i + 1) % points.len()];
+            let a = (
+                (previous.x - current.x) as f32,
+                (previous.y - current.y) as f32,
+            );
+            let b = ((next.x - current.x) as f32, (next.y - current.y) as f32);
+            let lengths = (a.0 * a.0 + a.1 * a.1).sqrt() * (b.0 * b.0 + b.1 * b.1).sqrt();
+            if lengths > 0.0 && (a.0 * b.0 + a.1 * b.1) / lengths > -0.7 {
+                add(units_to_mm(current.x), units_to_mm(current.y));
+            }
         }
-        for (a, b) in points
-            .iter()
-            .zip(points.iter().cycle().skip(1))
-            .take(points.len())
-        {
-            result.push((units_to_mm((a.x + b.x) / 2), units_to_mm((a.y + b.y) / 2)));
-        }
-        for iy in 0..=2 {
-            for ix in 0..=2 {
-                let x = min_x as f32 + (max_x - min_x) as f32 * ix as f32 / 2.0;
-                let y = min_y as f32 + (max_y - min_y) as f32 * iy as f32 / 2.0;
-                let xy = (units_to_mm(x as i64), units_to_mm(y as i64));
-                if point_in_any_expoly(std::slice::from_ref(polygon), xy.0, xy.1)
-                    && !result.iter().any(|p: &(f32, f32)| {
-                        (p.0 - xy.0).abs() < 1e-5 && (p.1 - xy.1).abs() < 1e-5
-                    })
-                {
-                    result.push(xy);
+
+        for ring in std::iter::once(&polygon.contour).chain(polygon.holes.iter()) {
+            let mut cumulative = 0.0;
+            let mut edges = Vec::with_capacity(ring.points.len());
+            for i in 0..ring.points.len() {
+                let a = ring.points[i];
+                let b = ring.points[(i + 1) % ring.points.len()];
+                let length = (((b.x - a.x) as f32).powi(2) + ((b.y - a.y) as f32).powi(2)).sqrt();
+                edges.push((a, b, cumulative, length));
+                cumulative += length;
+            }
+            if cumulative > 0.0 && point_spread > 0.0 {
+                let mut distance = 0.0;
+                while distance < cumulative {
+                    if let Some((a, b, start, length)) = edges
+                        .iter()
+                        .find(|(_, _, start, length)| distance < *start + *length)
+                    {
+                        let t = (distance - *start) / *length;
+                        add(
+                            units_to_mm((a.x as f32 + (b.x - a.x) as f32 * t) as i64),
+                            units_to_mm((a.y as f32 + (b.y - a.y) as f32 * t) as i64),
+                        );
+                    }
+                    distance += mm_to_units(point_spread) as f32;
                 }
             }
         }
     }
-    if result.is_empty() {
-        candidate_contact_point(polygons).into_iter().collect()
-    } else {
-        result
+
+    let eroded = host::offset_polygons(polygons, -base_radius, OffsetJoinType::Miter, 0.0);
+    let (min_x, max_x, min_y, max_y) = match grid_bounds {
+        Some(bounds) => bounds,
+        None => {
+            let (min_x, max_x, min_y, max_y) =
+                polygons.iter().flat_map(|p| p.contour.points.iter()).fold(
+                    (i64::MAX, i64::MIN, i64::MAX, i64::MIN),
+                    |(min_x, max_x, min_y, max_y), point| {
+                        (
+                            min_x.min(point.x),
+                            max_x.max(point.x),
+                            min_y.min(point.y),
+                            max_y.max(point.y),
+                        )
+                    },
+                );
+            (
+                units_to_mm(min_x),
+                units_to_mm(max_x),
+                units_to_mm(min_y),
+                units_to_mm(max_y),
+            )
+        }
+    };
+    let step = point_spread.max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
+    let cos = 22.0_f32.to_radians().cos();
+    let sin = 22.0_f32.to_radians().sin();
+    let ix_min = (((min_x - origin.0) / step).floor() as i32) - 1;
+    let ix_max = (((max_x - origin.0) / step).ceil() as i32) + 1;
+    let iy_min = (((min_y - origin.1) / step).floor() as i32) - 1;
+    let iy_max = (((max_y - origin.1) / step).ceil() as i32) + 1;
+    for iy in iy_min..=iy_max {
+        for ix in ix_min..=ix_max {
+            let x = origin.0 + (ix as f32 * step) * cos - (iy as f32 * step) * sin;
+            let y = origin.1 + (ix as f32 * step) * sin + (iy as f32 * step) * cos;
+            if point_in_any_expoly(&eroded, x, y) {
+                add(x, y);
+            }
+        }
     }
+    result
 }
 
 /// Lower a flush contact layer by `support_top_z_distance_mm`, measured along
@@ -2581,8 +2711,8 @@ mod tests {
         let vertices = vec![
             [0.0, 0.0, 0.0],
             [0.0, 0.0, 1.8],
-            [4.0, 0.0, 1.8],
-            [4.0, 4.0, 1.8],
+            [0.2, 0.0, 1.8],
+            [0.2, 0.2, 1.8],
         ];
         let triangles = vec![[1, 3, 2]];
         let obj = MeshObjectView {
@@ -2603,7 +2733,7 @@ mod tests {
         };
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("lone-contact", 10);
-        // Model occupancy placed clear of the contact centroid (~2.67, 1.33).
+        // Model occupancy placed clear of the contact centroid (~0.13, 0.07).
         // It used to span the whole plane, which put the contact *inside* the
         // model; a zero-width tip contributed no body geometry so nothing
         // noticed, but now that tips carry real area they are collision-checked

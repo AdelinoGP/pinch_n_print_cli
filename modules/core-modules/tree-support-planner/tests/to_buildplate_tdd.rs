@@ -150,9 +150,9 @@ fn unreachable_buildplate_node_pruned() {
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // A 2x2 grid of overhang triangles at z=1.8 → 4 contact centroids
-    // forming a tight cluster. The MST has 3 edges; each node has at
+    // separated into distinct dedup buckets. The MST has 3 edges; each node has at
     // least one neighbour, so the propagation's move path runs.
-    let obj = multi_overhang_grid("ac3", 2, 2, 0.4);
+    let obj = multi_overhang_grid("ac3", 2, 2, 4.0);
     let lp = make_layer_plan(10, 0.0, 0.2);
     let rs = make_region_segmentation("ac3", 10);
 
@@ -425,9 +425,9 @@ fn to_model_node_with_collision_not_pruned_by_new_rule() {
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // A 2x2 grid of overhang triangles at z=1.8 → 4 contact centroids
-    // forming a tight cluster. The MST has 3 edges; the propagation's
+    // separated into distinct dedup buckets. The MST has 3 edges; the propagation's
     // move path runs.
-    let obj = multi_overhang_grid("ac-n2", 2, 2, 0.4);
+    let obj = multi_overhang_grid("ac-n2", 2, 2, 4.0);
     let lp = make_layer_plan(10, 0.0, 0.2);
     let rs = make_region_segmentation("ac-n2", 10);
 
