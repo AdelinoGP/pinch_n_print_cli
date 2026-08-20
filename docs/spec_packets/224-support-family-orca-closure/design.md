@@ -254,7 +254,33 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 
 ## Orca Inspection Checklist
 
-*To be written by Step 6.* It must name, per family: the two per-family visual-debug requests, the matched physical heights inspected, the Orca G-code render placed beside each PnP render, and — for each of termination, coverage, collision freedom, interface placement/count, and independent heights — the inspected verdict with the layer and tap it was read from. Exact path identity is never claimed.
+*Written by Step 6, 2026-08-20, after the RC-15 port (`ad9019ee`) and the Step 2 interface-count fix (`ee27ac94`). All four bundles were rendered with `cargo xtask build-guests --check` clean; `matched_height_evidence` passed.*
+
+**Requests and bundles.** Per family, the PnP render is a model-source request and the Orca render is a standalone-G-code request over the regenerated reference, both at the same five layer indices:
+
+| family | PnP request | PnP bundle | Orca request | Orca bundle |
+| --- | --- | --- | --- | --- |
+| tree | `tmp/visual-debug-support-family-tree.json` | `target/vd-support-family-tree` | `tmp/visual-debug-orca-tree.json` (`tmp/SupportTest_Tree_Orca.gcode`) | `target/vd-orca-tree-compare` |
+| traditional | `tmp/visual-debug-support-family-normal.json` | `target/vd-support-family-normal` | `tmp/visual-debug-orca-normal.json` (`tmp/SupportTest_Normal_Orca.gcode`) | `target/vd-orca-normal-compare` |
+
+**Matched physical heights.** Layers 10, 30, 79, 119, 123 on the shared 150-layer / 0.2 mm schedule = z 2.0, 6.0, 15.8, 23.8, 24.8 mm. Layer 123 (z 24.8) is the topmost support-carrying layer in all four files; the originally authored layer 124 (z 25.0) was dropped because PnP traditional and both Orca references carry no support there (only PnP tree prints a small interface remnant at z 25.0 — see the independent-heights verdict).
+
+**Request-fixture notes (recorded so the evidence is not misread).** The tree request uses `filament_lines` only: the `PrePass::SupportGeometry` tap's skeleton paths carry no `Point3WithWidth.width`, and the renderer fails closed on `filled_areas` for width-less paths (`MissingWidth`, `crates/slicer-runtime/src/visual_debug_render.rs` — read-only context for this packet). The traditional request keeps both visualizations. Both Orca G-code requests carry `gcode_line_width_mm: 0.4` (the reference profile's support line width), which the G-code `filled_areas` renderer requires.
+
+**Verdicts.** Each verdict names the layer and tap it was read from. Exact path identity is never claimed.
+
+| family | axis | verdict | layer | tap | what was seen |
+| --- | --- | --- | --- | --- | --- |
+| tree | termination | PASS | 123 | `Layer::Support` | Support is visible from the low layers through the top interface layer; no floating islands. |
+| tree | coverage | PASS | 79 | `Layer::Support` | PnP support spans the positive-x overhang footprint seen at the matched Orca height. |
+| tree | collision freedom | PASS | 79 | `Layer::Support` | The support footprint stays on the positive-x side and does not enter the model wall (x ∈ [-10, 0]). |
+| tree | interface placement/count | PASS | 123 | `Layer::Support` | Interface is the topmost support and is carved out of the body; 2 `;TYPE:Support interface` blocks, matching Orca's 2. |
+| tree | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. PnP tree additionally prints a small interface remnant at z 25.0 that Orca does not — the recorded top-Z gap-structure deviation (`design.md` §Recorded deviation). |
+| traditional | termination | PASS | 123 | `Layer::Support` | Support is present from the low layers through the top interface layer; no floating islands. |
+| traditional | coverage | PASS | 79 | `Layer::Support` | PnP support spans the positive-x cantilever footprint corresponding to the matched Orca layer. |
+| traditional | collision freedom | PASS | 79 | `Layer::Support` | Support remains offset from the model wall and does not visibly intersect it. |
+| traditional | interface placement/count | DIVERGENT (count) | 123 | `Layer::Support` | Placement is correct (topmost, carved out of the body). Count: PnP emits **2** `;TYPE:Support interface` blocks at `top_layers=2`/`bottom_layers=2` (the count follows the configured top band, pinned by `interface_layer_count_follows_config`), Orca emits **3** at the same config. The difference is canonical roof/floor layer-count semantics, registered as a gap (see the gap register). |
+| traditional | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. |
 
 ## Session Handoff (2026-08-17) — superseded
 
