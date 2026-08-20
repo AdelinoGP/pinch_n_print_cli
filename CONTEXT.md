@@ -795,3 +795,6 @@ bindings generator (MoonBit, AssemblyScript, C++, Go). Distinct from the
 module-provenance terms (external, community, integrated) — this is the
 authoring-language dimension, not where the module ships from.
 
+### Artifact-verified freshness
+The property that a guest artifact's embedded WIT world matches the canonical WIT for its stage, established by decoding the artifact (`wasm-tools component wit`) and comparing declarations package-qualified, rather than by fingerprinting WIT input files. The fingerprint covers code inputs only; WIT staleness is answered by the artifact itself.
+

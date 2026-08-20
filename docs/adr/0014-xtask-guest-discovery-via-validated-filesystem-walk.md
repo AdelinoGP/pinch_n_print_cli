@@ -31,7 +31,7 @@ Additionally, the xtask is invoked from the agentic build hook. Hook latency mat
 
 - **Discovery works correctly with the `[workspace]` sentinel pattern.** The pattern stays in place; the xtask sees the guests; nothing leaks into the parent build graph.
 - **Hook latency stays low.** Cold xtask builds finish in single digits of seconds.
-- **Freshness is precise without being conservative.** Touching `slicer-core` does not trigger a guest rebuild storm; touching the WIT files does.
+- **Freshness is precise without being conservative (revised — see Amendment — 2026-08-20 (packet 231)).** [Historical: touching `slicer-core` did not trigger a guest rebuild storm under the `shared_crates` model; touching the WIT files did — retained as record, superseded by per-guest dependency closure and artifact-verified WIT freshness.]
 - **Layout changes require xtask updates.** Moving the test-guests directory or renaming a tree-root requires editing `build_guests.rs`. This is a deliberate trade — `cargo_metadata` would be more flexible but unusable.
 - **A path drift exists between the original packet 70 spec and the on-disk layout.** The packet spec referenced a top-level `test-guests/` tree-root that was never materialised; the actual location is `crates/slicer-wasm-host/test-guests/`. The discrepancy was resolved 2026-06-17 (see git history); the on-disk layout is authoritative.
 
@@ -56,3 +56,16 @@ Packet 185's current freshness rule tracks `slicer-core` as a universal guest
 dependency in `xtask/src/build_guests.rs::shared_crates` (since 2026-07-25).
 Packet 185 edits `slicer-core` and requires `cargo xtask build-guests --check`
 to catch stale guests. Reference: the corresponding deviation-log amendment row.
+
+### Amendment — 2026-08-20 (packet 231): dependency closure replaces shared_crates
+
+Packet 231 retired the hardcoded `shared_crates` list and replaced it with a
+per-guest dependency closure walk, and moved WIT freshness from file-mtime
+fingerprinting to artifact verification (see packets 229/230). Under the new
+model a guest is stale only when its dependency closure (including `slicer-core`
+only when the guest's manifest actually path-depends on it) is out of date or
+its embedded WIT world — established by decoding the artifact and comparing
+package-qualified declarations against canonical — disagrees; WIT staleness no
+longer rebuilds all guests. The Consequences claim that touching `slicer-core`
+avoids a rebuild storm is superseded. The `shared_crates` / mtime language is
+retained as historical record.

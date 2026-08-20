@@ -162,7 +162,7 @@ took a breaking change and a major bump: `sha256` byte-identical before and afte
 never rebuilt, instantiates fine.
 
 **But "doesn't even rebuild" is false in-tree, and not because of packaging.**
-`xtask/src/build_guests.rs::compute_shared_mtime` walks *all* of
+`xtask/src/build_guests.rs::compute_shared_freshness` [retired — deleted by packets 229/230/231; WIT freshness is now artifact-verified] walks *all* of
 `crates/slicer-schema/wit`, takes the `.max()`, and applies that one mtime to **every**
 guest. So a one-stage `.wit` bump marks all 32 guests STALE however the packages are
 cut. Splitting the packages does not fix that; charging WIT mtime per stage does, and
@@ -172,7 +172,7 @@ pilots. Separate the two claims:
 | claim | in-tree | prebuilt / out-of-tree |
 |---|---|---|
 | an unrelated stage's change **breaks** the module | no (proven) | no (proven) |
-| it **rebuilds** the module | yes, until `compute_shared_mtime` is per-stage | no — nobody rebuilds it |
+| it **rebuilds** the module | yes, until `compute_shared_freshness` [retired] is per-stage | no — nobody rebuilds it |
 
 The ecosystem case — the one that justifies this ADR — is the second column, where the
 benefit is complete and needs no xtask change: a third-party `.wasm` simply keeps
@@ -231,7 +231,7 @@ The refactor follows a seam that already exists: `dispatch.rs` already does
 |---|---|---|
 | `docs/05`'s additive-compat promise | structurally impossible | true, via wasmtime's `@1` alternate key |
 | infill change **breaks** perimeters modules | yes | no — proven at the engine, both in-tree and prebuilt |
-| infill change **rebuilds** perimeters modules | yes | in-tree: yes, until `compute_shared_mtime` charges WIT mtime per stage (see §"Verified empirically"). Prebuilt/out-of-tree: no — nobody rebuilds it. Not breaking is the benefit; not rebuilding is hygiene |
+| infill change **rebuilds** perimeters modules | yes | in-tree: yes, until `compute_shared_freshness` [retired] charges WIT mtime per stage (see §"Verified empirically"). Prebuilt/out-of-tree: no — nobody rebuilds it. Not breaking is the benefit; not rebuilding is hygiene |
 | version enforced | not at all (erased) | by wasmtime, free, at instantiate |
 | the 9 lying `Ok(())` stubs | required as padding | gone |
 | manifest `wit-world` + allowlist | unfalsifiable ceremony | deletable — binary carries the truth |
@@ -372,3 +372,17 @@ and wasmtime checks that qualified export against the guest component at
 instantiate time — the exact mechanism §"Why this works" describes, with no
 manifest claim involved (docs/11_operational_governance_and_acceptance_gate.md
 compatibility dimension 2, docs/03 startup checks).
+
+## Amendment — 2026-08-20 (packets 229/230/231)
+
+Packets 229/230/231 retired mtime-carried WIT freshness and deleted
+`xtask/src/build_guests.rs::compute_shared_freshness`. Guest WIT freshness is
+now artifact-verified: `cargo xtask build-guests --check` decodes each built
+artifact's embedded WIT world (`wasm-tools component wit`) and compares it
+package-qualified against canonical, reporting staleness by exit code; the
+fingerprint covers code inputs only (per-guest dependency closure). The
+`compute_shared_*` / "WIT mtime per stage" language in §"Verified empirically,
+not just read" and its two tables is retained as historical record — the
+deleted symbol was a mis-pin for `compute_shared_freshness`.
+WIT staleness no longer rebuilds all guests: only guests whose embedded world
+disagrees with canonical are stale.

@@ -435,8 +435,9 @@ Contract (matches the WIT contract in `03_wit_and_manifest.md` §
   method; any pre-built guest WASM that imports the world will fail typed
   instantiation at runtime. After `cargo build` of `slicer-schema` /
   `slicer-sdk` / `slicer-macros`, run `cargo xtask build-guests` (drop
-  `--check`) and re-run the full test suite. The freshness check
-  `cargo xtask build-guests --check` is the canonical pre-test gate.
+  `--check`) and re-run the full test suite. The enforced pre-test entry
+  point is `cargo xtask test`; `cargo xtask build-guests --check` reports
+  freshness by exit code (`0` fresh / `1` stale / `3` infrastructure error).
 
 #### PrePass Config-View Plumbing (Normative — Packet 73)
 

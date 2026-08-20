@@ -128,25 +128,17 @@ Module manifest TOML section headers already use snake_case. Runtime key strings
 
 Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-wasm-host/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not. Test-guests all build into one shared target dir at `crates/slicer-wasm-host/test-guests/target/` (one `CARGO_TARGET_DIR`, not one `target/` per guest); per-guest `[workspace]` sentinels are retained.
 
+This is **Artifact-verified freshness** as defined in CONTEXT.md: `cargo xtask build-guests --check` decodes each existing artifact (`wasm-tools component wit`) and compares its embedded WIT world against the canonical WIT. The fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies via `Cargo.toml` walk; never `dev-dependencies`); WIT staleness is answered by the artifact itself, not by fingerprinting WIT files.
+
 **You MUST run the freshness check before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
 
 ```bash
 cargo xtask build-guests --check
 ```
 
-If it reports `STALE:`, rebuild (drop `--check`) and re-run the failing test before drawing any conclusion.
+The answer is an **exit code** — `0` (`EXIT_FRESH`) means every artifact is fresh, `1` (`EXIT_STALE`) means at least one guest is stale (one `STALE: <name>` line per stale guest), and `3` (`EXIT_INFRA_ERROR`) is a distinct non-zero for missing `wasm-tools` (infrastructure error, not staleness; do not treat as clean). Do not grep for `STALE:` to decide freshness — a `wasm-tools`-missing run prints no `STALE:` lines and would otherwise read as clean. If the check reports stale (exit `1`), rebuild (drop `--check`) and re-run the failing test before drawing any conclusion.
 
-**You MUST run `--check` (and rebuild if stale) after editing any of these paths** (build scripts treat them as guest-WASM inputs):
-
-- `crates/slicer-schema/wit/**/*.wit` — invalidates every guest's bindgen (canonical single source; old top-level `wit/` deleted in packet 72)
-- `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**`, `crates/slicer-core/**` — universal guest deps baked into every guest `.wasm`
-
-  `slicer-core` was missing from this list *and* from `shared_input_paths`' `shared_crates` in `xtask/src/build_guests.rs` until 2026-07-25, so `--check` reported clean after a `slicer-core` edit while every guest still ran the previous copy. Measured: adding two scope marks to `polygon_ops` left `--check` green; adding `slicer-core` to `shared_crates` immediately reported all 34 guests `STALE:`. This failure mode is worse than the usual one — a stale guest normally fails typed instantiation loudly, but a stale `slicer-core` just silently runs old geometry code.
-- `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — `#[slicer_module]` impl bodies
-- `modules/core-modules/*/wit-guest/**` — per-module guest shim
-- `crates/slicer-wasm-host/test-guests/*/src/**` and `crates/slicer-wasm-host/test-guests/*/Cargo.toml` — test guest sources
-
-**Prohibited claims unless `--check` was just run and returned clean:** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise.
+**Prohibited claims unless `--check` was just run and returned clean (exit `0`):** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise (exit `0`).
 
 ## WIT/Type Changes Checklist
 

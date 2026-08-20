@@ -1086,8 +1086,7 @@ mod tests {
         let dir = root.join("modules/core-modules/classic-perimeters");
         let artifact = dir.join("classic-perimeters.wasm");
         if !artifact.exists() {
-            eprintln!("skipping: {} not built", artifact.display());
-            return;
+            panic!("FAILED: {} not built", artifact.display());
         }
 
         let stage_id = slicer_schema::STAGES
@@ -1154,7 +1153,7 @@ mod tests {
                 mismatches.iter().any(|m| m.name == "extrusion-role"),
                 "gate must flag extrusion-role drift against a real artifact"
             ),
-            Err(e) => eprintln!("skipping: {e}"),
+            Err(e) => panic!("{e}"),
         }
     }
 
@@ -1179,10 +1178,8 @@ mod tests {
         );
 
         let modules_dir = root.join("modules/core-modules");
-        let Ok(entries) = std::fs::read_dir(&modules_dir) else {
-            eprintln!("skipping: {} not readable", modules_dir.display());
-            return;
-        };
+        let entries = std::fs::read_dir(&modules_dir)
+            .unwrap_or_else(|_| panic!("FAILED: {} not readable", modules_dir.display()));
 
         let mut checked = 0usize;
         for entry in entries.flatten() {
@@ -1213,12 +1210,8 @@ mod tests {
                 sid.and_then(slicer_schema::stage_by_id).map(|s| s.stage_id)
             };
             let expect = stage_id.and_then(stage_expectation);
-            let canonical = canonical_world_model(&root, expect.as_ref()).unwrap_or_else(|e| {
-                eprintln!("skipping '{name}': {e}");
-                WorldModel {
-                    packages: std::collections::BTreeMap::new(),
-                }
-            });
+            let canonical = canonical_world_model(&root, expect.as_ref())
+                .unwrap_or_else(|e| panic!("FAILED '{name}': {e}"));
 
             match verify_embedded_world(&artifact, &canonical, expect.as_ref()) {
                 Ok(mismatches) => {
@@ -1236,13 +1229,13 @@ mod tests {
                 }
                 // wasm-tools absent: verification is unavailable, not failing.
                 Err(e) => {
-                    eprintln!("skipping '{name}': {e}");
+                    panic!("FAILED '{name}': {e}");
                 }
             }
         }
 
         if checked == 0 {
-            eprintln!("skipping: no built core-module components found");
+            panic!("FAILED: no built core-module components found: run cargo xtask build-guests");
         }
     }
 
@@ -2094,14 +2087,10 @@ package root:component { world root {} }
 
     #[test]
     fn real_core_module_artifacts_verify_clean() {
-        if Command::new("wasm-tools")
+        Command::new("wasm-tools")
             .arg("--version")
             .output()
-            .is_err()
-        {
-            eprintln!("skipping: wasm-tools not available");
-            return;
-        }
+            .unwrap_or_else(|_| panic!("FAILED: wasm-tools not available"));
         let ws_root = ws_root();
         let artifacts: [(std::path::PathBuf, &str); 2] = [
             (

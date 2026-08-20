@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 232-freshness-gate-docs
 task_ids:
   - TASK-343

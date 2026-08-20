@@ -179,7 +179,7 @@ What actually enforces compatibility today:
 | Guard | Catches |
 |---|---|
 | wasmtime typed instantiation (`crates/slicer-wasm-host/src/dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
-| `cargo xtask build-guests --check` | Stale in-tree guest (mtime-based) |
+| `cargo xtask build-guests --check` | Stale in-tree guest (artifact verification — decodes embedded WIT world and compares against canonical) |
 | `[compatibility]` min/max-ir-schema (`crates/slicer-scheduler/src/validation.rs`) | IR range, fatal at startup |
 
 The package version is therefore load-bearing for `bindgen!`/`generate!` resolution and
@@ -1653,30 +1653,21 @@ guests against `crates/slicer-schema/wit/`.
 
 ### Build & Freshness Contract (Normative)
 
-> **Note (packet 230, 2026-08-20):** the contract described below is the
-> pre-packet input-timestamp gate. Since packet 230
-> (`docs/spec_packets/230-output-based-guest-freshness/`), `cargo xtask
-> build-guests --check` decodes each artifact and compares its embedded WIT
-> world against canonical, with exit codes `0` fresh / `1` stale /
-> `3` infrastructure error. The normative prose below is rewritten by packet
-> 232 (`docs/spec_packets/232-freshness-gate-docs/`), which replaces this
-> note together with the section.
-
 Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
 followed by `wasm-tools component new` to produce the `.component.wasm` artifact.
 
 - `cargo xtask build-guests` — build any stale guests.
-- `cargo xtask build-guests --check` — verify only; exit 1
-  if any source is newer than its artifact.
+- `cargo xtask build-guests --check` — verify only; decodes each
+  `.component.wasm` artifact and compares its embedded WIT world against the
+  canonical WIT for its stage, answering freshness by exit code: `0` fresh,
+  `1` stale (embedded world drift), `3` infrastructure error when
+  `wasm-tools` is unavailable.
 
-Freshness is enforced from the host workspace by
-`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`, which fails
-when:
+There are two independent gates that enforce freshness, each with its own owner and rule:
 
-- An expected `.component.wasm` is missing.
-- An artifact is suspiciously small (< 100 bytes — i.e. not a real
-  component).
-- A guest's `src/lib.rs` is newer than its artifact.
+- **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure.
+
+- **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is), and is documented in `docs/spec_packets/232-freshness-gate-docs/requirements.md` §"Reported, not fixed" rather than fixed here. See that section (heading `## Reported, not fixed`).
 
 Prerequisites for rebuilding (`rustup target add wasm32-unknown-unknown`
 and `cargo install wasm-tools`) are required only when modifying a guest.
