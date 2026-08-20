@@ -164,7 +164,7 @@
 ### Step 6: CI wiring and non-vacuous verifier tests
 
 - Task IDs: `TASK-343`
-- Objective: add `cargo test -p xtask` to `.github/workflows/ci.yml`'s `test` job after the `Install wasm-tools` step; and, only if a skip-on-present path survived packets 229/230, convert it to a hard failure in `xtask/src/wit_verify.rs`.
+- Objective: add `cargo test -p xtask` to `.github/workflows/ci.yml`'s `test` job after both the `Install wasm-tools` step and the `Build guest WASMs` step (`cargo xtask build-guests`) — the verifier's real-artifact tests hard-fail when the guest artifacts are absent, and a fresh checkout contains none (`.gitignore` line 11 `*.wasm`) — and, only if a skip-on-present path survived packets 229/230, convert it to a hard failure in `xtask/src/wit_verify.rs`.
 - Precondition: Step 5 complete; AC-16 reports FAIL (no `-p xtask` in CI).
 - Postcondition: AC-16 and AC-17 report PASS.
 - Files allowed to read, with ranges when over 300 lines:
@@ -186,10 +186,10 @@
 - OrcaSlicer refs:
   - None.
 - Verification:
-  - `mkdir -p target && awk '/^  test:/{f=1;next} f && /^  [a-z][a-z0-9-]*:/{f=0} f' .github/workflows/ci.yml > target/ci-test-job.txt && rg -q 'cargo test -p xtask' target/ci-test-job.txt && rg -n 'tool: wasm-tools|cargo test -p xtask' target/ci-test-job.txt | head -1 | rg -q 'wasm-tools' && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-16; the awk slice restricts the assertion to the `test` job, so a step added to `dist-editions` cannot satisfy it).
+  - `mkdir -p target && awk '/^  test:/{f=1;next} f && /^  [a-z][a-z0-9-]*:/{f=0} f' .github/workflows/ci.yml > target/ci-test-job.txt && rg -q 'cargo test -p xtask' target/ci-test-job.txt && rg -n 'tool: wasm-tools|cargo test -p xtask' target/ci-test-job.txt | head -1 | rg -q 'wasm-tools' && bg=$(rg -n 'run: cargo xtask build-guests$' target/ci-test-job.txt | head -1 | cut -d: -f1) && xt=$(rg -n 'cargo test -p xtask' target/ci-test-job.txt | head -1 | cut -d: -f1) && test -n "$bg" && test -n "$xt" && test "$xt" -gt "$bg" && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-16; the awk slice restricts the assertion to the `test` job, so a step added to `dist-editions` cannot satisfy it, and the line-number comparison forces `cargo test -p xtask` to follow `run: cargo xtask build-guests`).
   - `if rg -q 'skipping' xtask/src/wit_verify.rs; then echo FAIL; else mkdir -p target && cargo test -p xtask wit_verify 2>&1 | tee target/test-output.log | rg -q '^test result: ok\.' && echo PASS || echo FAIL; fi` — FACT PASS/FAIL (AC-17).
   - `git diff --name-only $(git merge-base HEAD master) | rg '^(crates/|xtask/src/)' | rg -v '^xtask/src/wit_verify\.rs$' | rg . && echo FAIL || echo PASS` — FACT PASS/FAIL (AC-N2).
-- Exit condition: AC-16, AC-17 and AC-N2 PASS. If the `LOCATIONS` dispatch returns zero skip-on-present paths, record "verified no-op: packet 229 left `xtask/src/wit_verify.rs` free of skip-on-present early returns" as the exit note and leave the file unedited — do not manufacture an edit. Falsified if AC-17 is reported PASS from a run in which the real-artifact tests silently skipped.
+- Exit condition: AC-16, AC-17 and AC-N2 PASS, with AC-16's line-number comparison placing the `Test xtask` step after the `run: cargo xtask build-guests` line in the sliced `test` job. If the `LOCATIONS` dispatch returns zero skip-on-present paths, record "verified no-op: packet 229 left `xtask/src/wit_verify.rs` free of skip-on-present early returns" as the exit note and leave the file unedited — do not manufacture an edit. Falsified if AC-17 is reported PASS from a run in which the real-artifact tests silently skipped.
 
 ### Step 7: Ledger row, cross-file sweep, closure gates
 
@@ -249,7 +249,8 @@ Aggregate: `M`. No step is L; no split is required before activation.
 
 - Re-dispatch every pipe-suffixed AC command and the three packet-level gate commands.
 - Record `cargo xtask build-guests --check`'s exit code as evidence; quote no timing figure that was not measured in the session, including any CI-duration claim for the added `cargo test -p xtask` step.
-- Record remaining packet-local risk: doc greps verify text and not truth; the six frozen packets keep unsound grep-form ACs by user ruling; `AC-16`'s ordering check is positional and would need revisiting if the CI jobs are reordered; `build_script_check_mode_reports_freshness` remains vacuous and is reported, not fixed.
+- Record remaining packet-local risk: doc greps verify text and not truth; the six frozen packets keep unsound grep-form ACs by user ruling; `AC-16`'s ordering checks are positional (they read the first `tool: wasm-tools` line and the first `run: cargo xtask build-guests` line in the sliced `test` job) and would need revisiting if the CI jobs are reordered — review-fix 2026-08-20 already tightened AC-16 to require the xtask step to follow the guest build, since the first-shipped ordering ran it before any artifact existed; `build_script_check_mode_reports_freshness` remains vacuous and is reported, not fixed.
+- AC-N1/N2/N3's `git diff --name-only $(git merge-base HEAD master)` is vacuous once this packet is merged to master (merge-base == HEAD → empty diff). On trunk, re-verify the negative criteria against the packet commits instead (`git show --stat <packet-commit>`), as the closure review of 2026-08-20 did.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` where the subcommand supports it, so the test, bench, and example targets compile.

@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-343`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -25,13 +25,13 @@ This is one coherent slice because the nine statements are the same statement, a
 - **The 2026-07-25 `slicer-core` anecdote** — remove, or reframe explicitly as history with the year stated and a note that the hand-maintained list no longer exists. It must not read as a live instruction.
 - **`docs/03_wit_and_manifest.md`** — the staleness-guard table row (drop "(mtime-based)"), and "### Build & Freshness Contract (Normative)" (artifact-verified `--check`; exit-code contract). Reconcile the section's presentation of the second gate: state that there are **two independent gates**, the xtask artifact gate and the host-side contract test `crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`, and that the latter hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact), is independent of xtask, and keeps working unchanged.
 - **`docs/05_module_sdk.md`** — the "**Guest rebuild obligation.**" bullet: name `cargo xtask test` as the enforced pre-test entry point and state that `--check` reports freshness by exit code.
-- **`docs/07_implementation_status.md`** — repin the TASK-146b row (`stage_wit_mtime` -> `stage_wit_snapshot`, retired; `compute_shared_mtime` -> `compute_shared_freshness`, retired), and add the `TASK-343` row under "### Workstream 5 — Governance and closure drift" in that section's terser local format.
+- **`docs/07_implementation_status.md`** — repin the TASK-146b row (`stage_wit_mtime` -> `stage_wit_snapshot`, retired; `compute_shared_mtime` -> `compute_shared_freshness`, retired), and add the `TASK-343` row under "### Workstream 5 — Governance and closure drift" in that section's terser local format. Provenance note: the packet's ledger commit also appended packet 231's `TASK-342` row, which 231's own commits did not add; it is recorded here because 231's files are frozen by user ruling.
 - **`docs/adr/0014-...md`** — a new nested `###` entry under the existing `## Amendments` heading recording that packet 231 replaced `shared_crates` with a per-guest dependency closure; correct the Consequences claim about `slicer-core` so it is not asserted as current fact.
 - **`docs/adr/0045-...md`** — repin all three `compute_shared_mtime` occurrences and add a `## Amendment — <YYYY-MM-DD> (packets 229/230/231)` section in the file's existing house style (compare `## Amendment — 2026-08-05 (packets 163/164)`), recording that per-stage WIT mtime charging is retired in favour of artifact verification.
 - **`.claude/skills/spec-packet-generator/references/snippets/wasm-staleness.md`** — rewrite the copy-exactly block to an exit-code contract, preserving the `<!-- snippet: wasm-staleness -->` marker and the "copy exactly, do not paraphrase" framing. State that the grep form is forbidden and why.
 - **`.claude/skills/spec-review/SKILL.md`** — "Known traps" item 4: judge by exit code, not by `STALE:`.
 - **`CONTEXT.md`** — append `### Artifact-verified freshness` under `## Terms`, using the wording fixed by `docs/specs/guest-freshness-artifact-verification-plan.md` §"CONTEXT.md term (packet 4 owns the wording)".
-- **`.github/workflows/ci.yml`** — add `cargo test -p xtask` to the `test` job, positioned after the `Install wasm-tools` step.
+- **`.github/workflows/ci.yml`** — add `cargo test -p xtask` to the `test` job, positioned after the `Install wasm-tools` step **and** after the `Build guest WASMs` step (`cargo xtask build-guests`), so the verifier's real-artifact tests run against freshly built artifacts rather than hard-failing on a fresh checkout.
 - **`xtask/src/wit_verify.rs`** — only if, after packets 229/230 land, any real-artifact test still short-circuits with a `skipping` message on a machine where `wasm-tools` and the artifact are both present: convert that path to a hard failure (R5-10). If packet 229 already left the file clean, this is a verified no-op and must be recorded as such.
 
 ## Out of Scope
@@ -88,7 +88,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only 3 gate comman
 | `rg -q '<!-- snippet: wasm-staleness -->' .claude/skills/spec-packet-generator/references/snippets/wasm-staleness.md && echo PASS \|\| echo FAIL` | AC-13 marker integrity | FACT PASS/FAIL |
 | `rg -q 'if .STALE:., rebuild and re-run' .claude/skills/spec-review/SKILL.md && echo FAIL \|\| echo PASS` | AC-14 | FACT PASS/FAIL |
 | `rg -q '^### Artifact-verified freshness' CONTEXT.md && echo PASS \|\| echo FAIL` | AC-15 | FACT PASS/FAIL |
-| `mkdir -p target && awk '/^  test:/{f=1;next} f && /^  [a-z][a-z0-9-]*:/{f=0} f' .github/workflows/ci.yml > target/ci-test-job.txt && rg -q 'cargo test -p xtask' target/ci-test-job.txt && rg -n 'tool: wasm-tools\|cargo test -p xtask' target/ci-test-job.txt \| head -1 \| rg -q 'wasm-tools' && echo PASS \|\| echo FAIL` | AC-16, anchored to the `test` job block so a step landing in `dist-editions` cannot satisfy it | FACT PASS/FAIL |
+| `mkdir -p target && awk '/^  test:/{f=1;next} f && /^  [a-z][a-z0-9-]*:/{f=0} f' .github/workflows/ci.yml > target/ci-test-job.txt && rg -q 'cargo test -p xtask' target/ci-test-job.txt && rg -n 'tool: wasm-tools\|cargo test -p xtask' target/ci-test-job.txt \| head -1 \| rg -q 'wasm-tools' && bg=$(rg -n 'run: cargo xtask build-guests$' target/ci-test-job.txt \| head -1 \| cut -d: -f1) && xt=$(rg -n 'cargo test -p xtask' target/ci-test-job.txt \| head -1 \| cut -d: -f1) && test -n "$bg" && test -n "$xt" && test "$xt" -gt "$bg" && echo PASS \|\| echo FAIL` | AC-16, anchored to the `test` job block (so a step landing in `dist-editions` cannot satisfy it) and requiring the xtask step to follow both `Install wasm-tools` and `run: cargo xtask build-guests` — its real-artifact tests hard-fail on a fresh checkout with no built guests | FACT PASS/FAIL |
 | `if rg -q 'skipping' xtask/src/wit_verify.rs; then echo FAIL; else mkdir -p target && cargo test -p xtask wit_verify 2>&1 \| tee target/test-output.log \| rg -q '^test result: ok\.' && echo PASS \|\| echo FAIL; fi` | AC-17 | FACT pass/fail |
 | `rg -q '^- \[.\] TASK-343 ' docs/07_implementation_status.md && echo PASS \|\| echo FAIL` | AC-18 | FACT PASS/FAIL |
 | `git diff --name-only $(git merge-base HEAD master) \| rg '^docs/spec_packets/' \| rg -v '^docs/spec_packets/232-freshness-gate-docs/' \| rg . && echo FAIL \|\| echo PASS` | AC-N1 | FACT PASS/FAIL |

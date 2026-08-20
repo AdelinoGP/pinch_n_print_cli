@@ -75,10 +75,10 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-tools
-      - name: Test xtask
-        run: cargo test -p xtask
       - name: Build guest WASMs
         run: cargo xtask build-guests
+      - name: Test xtask
+        run: cargo test -p xtask
       - name: Check guest freshness
         run: cargo xtask build-guests --check
       - name: Test Core (narrow)

@@ -30,7 +30,7 @@ Edits, by file and anchor:
 7. `.claude/skills/spec-packet-generator/references/snippets/wasm-staleness.md` — rewrite the copy-exactly block to an exit-code contract; keep the marker, the front-matter `when:`/`keywords:` shape, and the applies-to list (updated to include `crates/slicer-core/**`, which the tree treats as a universal guest input and which the snippet's list currently omits).
 8. `.claude/skills/spec-review/SKILL.md` — "Known traps" item 4, "**Stale guest WASM**".
 9. `CONTEXT.md` — append `### Artifact-verified freshness` under `## Terms`, in the file's `### <Term>` + plain-prose form.
-10. `.github/workflows/ci.yml` — the `test` job: add a step running `cargo test -p xtask`, placed after `Install wasm-tools` and before or beside "Test All Crates (not workspace)".
+10. `.github/workflows/ci.yml` — the `test` job: add a step running `cargo test -p xtask`, placed after `Install wasm-tools` and after the `Build guest WASMs` step (`cargo xtask build-guests`) — the verifier's real-artifact tests assert (never skip) against `modules/core-modules/<name>/<name>.wasm`, which neither `cargo build --workspace` nor any earlier step produces on a fresh checkout — and before or beside "Test All Crates (not workspace)".
 11. `xtask/src/wit_verify.rs` — conditional. At authoring time the file's test module carried five `eprintln!("skipping…")` early-returns; packet 229 rewrites the file and its AC-11 requires the real-artifact test to assert whenever `wasm-tools` resolves and the artifact exists. If any skip-on-present path survives 229, convert it to a hard failure here. If none survives, record the verified no-op in the step's exit condition rather than editing the file.
 
 Rejected alternatives:
@@ -90,7 +90,7 @@ Eleven files, which exceeds the "at most 3 primary" target. The justification is
 - IR/manifest contracts: none changed. No config key, no manifest section, no snake_case key is touched.
 - WIT boundary: none crossed. This packet describes how WIT freshness is verified; it neither reads nor edits any `.wit` file.
 - Determinism/scheduler constraints: none. The only executable change is a CI step and, conditionally, a test skip-guard.
-- CI contract: the new `cargo test -p xtask` step must sit after `Install wasm-tools` in the `test` job. Both the `test` and `dist-editions` jobs install `wasm-tools` via `taiki-e/install-action`, so `tool: wasm-tools` occurs twice in the file; AC-16's ordering check reads the **first** match, which is the `test` job's. If a future edit reorders the jobs, that check needs revisiting — state this in the step's exit condition.
+- CI contract: the new `cargo test -p xtask` step must sit after `Install wasm-tools` **and** after `Build guest WASMs` (`cargo xtask build-guests`) in the `test` job — its real-artifact tests hard-panic on a missing artifact (see `xtask/src/wit_verify.rs`'s test guards), and a fresh checkout contains none (`.gitignore` line 11 `*.wasm`). Both the `test` and `dist-editions` jobs install `wasm-tools` via `taiki-e/install-action`, so `tool: wasm-tools` occurs twice in the file; AC-16's ordering check reads the **first** match, which is the `test` job's, and compares the `cargo test -p xtask` line number against the first `run: cargo xtask build-guests` line. If a future edit reorders the jobs or the steps, that check needs revisiting — state this in the step's exit condition.
 
 ## Locked Assumptions and Invariants
 
@@ -106,7 +106,7 @@ Eleven files, which exceeds the "at most 3 primary" target. The justification is
 - **Eleven files exceed the three-file target.** Accepted and justified above; contained by per-step caps and anchor-bounded edits.
 - **Prose may be written before the behaviour lands.** Guarded by the activation blocker: packets 230 and 231 must be `status: implemented` first.
 - **CI cost.** Adding `cargo test -p xtask` lengthens the `test` job. **Unmeasured**; `xtask` is a small bin-only crate with no heavy dependencies (`walkdir`, `toml`, `syn`, `proc-macro2`, `slicer-schema`, plus `wit-parser` from packet 229), and it is already compiled by the job's `cargo build --workspace` step. Do not quote a figure that was not measured on a real run.
-- **`AC-16`'s ordering check is positional.** It reads the first `tool: wasm-tools` occurrence, which is the `test` job's today. A job reorder would silently change what it proves.
+- **`AC-16`'s ordering checks are positional.** They read the first `tool: wasm-tools` occurrence and the first `run: cargo xtask build-guests` line, which are the `test` job's today. A job reorder would silently change what they prove. Measured in closure review (2026-08-20): the originally shipped step sat between `Install wasm-tools` and `Build guest WASMs`, so on any fresh runner `cargo test -p xtask` would have hard-failed — three real-artifact tests panic on absent artifacts (`xtask/src/wit_verify.rs`). Fixed by moving the step after the guest build and tightening AC-16's command to assert both orderings.
 
 ## Context Cost Estimate
 
