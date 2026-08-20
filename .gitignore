@@ -27,3 +27,4 @@ tmp/
 # Local settings and worktrees for LLM development
 .claude/settings.local.json
 .claude/worktrees/
+.commandcode/*
