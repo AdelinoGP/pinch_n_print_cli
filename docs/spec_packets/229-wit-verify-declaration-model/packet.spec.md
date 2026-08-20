@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 229-wit-verify-declaration-model
 task_ids:
   - TASK-340

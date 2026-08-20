@@ -340,7 +340,12 @@ pub enum BuildError {
     /// WIT, and a forced rebuild did not reconcile it. See `wit_verify`.
     StaleEmbeddedWorld {
         guest: String,
-        mismatches: Vec<crate::wit_verify::TypeMismatch>,
+        mismatches: Vec<crate::wit_verify::Drift>,
+    },
+    /// The canonical WIT could not be loaded or parsed.
+    CanonicalWitUnavailable {
+        guest: String,
+        reason: String,
     },
     /// The embedded world could not be decoded for verification.
     EmbeddedWorldUndecodable {
@@ -399,6 +404,9 @@ impl fmt::Display for BuildError {
                 }
                 Ok(())
             }
+            BuildError::CanonicalWitUnavailable { guest, reason } => {
+                write!(f, "canonical WIT unavailable for '{guest}': {reason}")
+            }
             BuildError::EmbeddedWorldUndecodable { guest, reason } => {
                 write!(
                     f,
@@ -445,28 +453,31 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     build_one_inner(spec, ws_root)?;
 
     let artifact = ws_root.join(&spec.artifact_path);
-    // The guest's own world shadows shared declarations — a name can denote
-    // different types in different packages (see `wit_verify`).
-    let wit_dir = spec.guest_dir.parent().and_then(|module_dir| {
-        module_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|name| crate::wit_verify::module_stage_wit_dir(module_dir, name))
-    });
-    let canonical = crate::wit_verify::canonical_type_blocks(ws_root, wit_dir);
-    if canonical.is_empty() {
-        // No canonical types readable — nothing to verify against.
-        return Ok(());
-    }
-
-    let mismatches =
-        crate::wit_verify::verify_embedded_world(&artifact, &canonical).map_err(|e| {
-            BuildError::EmbeddedWorldUndecodable {
+    let expect = spec
+        .stage_id
+        .as_deref()
+        .and_then(crate::wit_verify::stage_expectation);
+    let canonical =
+        crate::wit_verify::canonical_world_model(ws_root, expect.as_ref()).map_err(|e| {
+            BuildError::CanonicalWitUnavailable {
                 guest: spec.crate_name.clone(),
                 reason: e.to_string(),
             }
         })?;
-    if mismatches.is_empty() {
+    if canonical.is_empty() {
+        // Unreachable: `canonical_world_model` fails closed on an empty
+        // canonical set (`VerifyError::CanonicalEmpty`). Retained per packet
+        // 229's design; packet 230 deletes it as part of the fail-open
+        // retirement.
+        return Ok(());
+    }
+
+    let drifts = crate::wit_verify::verify_embedded_world(&artifact, &canonical, expect.as_ref())
+        .map_err(|e| BuildError::EmbeddedWorldUndecodable {
+        guest: spec.crate_name.clone(),
+        reason: e.to_string(),
+    })?;
+    if drifts.is_empty() {
         return Ok(());
     }
 
@@ -477,20 +488,18 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     force_rebuild_wit_bindings(spec);
     build_one_inner(spec, ws_root)?;
 
-    let mismatches =
-        crate::wit_verify::verify_embedded_world(&artifact, &canonical).map_err(|e| {
-            BuildError::EmbeddedWorldUndecodable {
-                guest: spec.crate_name.clone(),
-                reason: e.to_string(),
-            }
-        })?;
-    if mismatches.is_empty() {
+    let drifts = crate::wit_verify::verify_embedded_world(&artifact, &canonical, expect.as_ref())
+        .map_err(|e| BuildError::EmbeddedWorldUndecodable {
+        guest: spec.crate_name.clone(),
+        reason: e.to_string(),
+    })?;
+    if drifts.is_empty() {
         return Ok(());
     }
 
     Err(BuildError::StaleEmbeddedWorld {
         guest: spec.crate_name.clone(),
-        mismatches,
+        mismatches: drifts,
     })
 }
 
