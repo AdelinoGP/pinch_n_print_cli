@@ -911,6 +911,74 @@ pub fn supersedes_packet_213_and_task_329() -> Result<(), String> {
     Ok(())
 }
 
+/// Recursively collect Rust source file paths under `dir`.
+///
+/// Only `.rs` files are collected: they are the test sources that could
+/// reference an Orca-derived G-code path, and they are the only files under
+/// `tests/` guaranteed to be UTF-8 (binary fixtures like `.stl` are not).
+fn collect_test_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+    let entries =
+        fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read_dir entry {}: {error}", dir.display()))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("file_type {}: {error}", path.display()))?;
+        if file_type.is_dir() {
+            collect_test_files(&path, out)?;
+        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// AC-6 amendment, second half: no test may read the Orca-derived G-code
+/// references. Orca comparison is a recorded manual inspection, not something
+/// the automated suite may depend on, so no test source under `tests/` may
+/// reference `SupportTest_*_Orca.gcode` (nor the bare `Orca.gcode`).
+///
+/// The scan uses a recursive `read_dir` over `tests/` rather than `include_str!`
+/// of known files so that a new test file reading an Orca reference is caught
+/// without this assertion being updated. The assertion's own file is excluded:
+/// it must name the literals it searches for, so it would otherwise trip its own
+/// gate.
+fn assert_no_test_reads_orca_gcode() -> Result<(), String> {
+    const FORBIDDEN: &[&str] = &[
+        "SupportTest_Tree_Orca.gcode",
+        "SupportTest_Normal_Orca.gcode",
+        "Orca.gcode",
+    ];
+    let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut files = Vec::new();
+    collect_test_files(&tests_dir, &mut files)?;
+    let mut offenders: Vec<String> = Vec::new();
+    for path in files {
+        // The assertion's own source necessarily contains the literals it scans
+        // for; exclude it from the scan.
+        if path.file_name().and_then(|name| name.to_str()) == Some("support_family_closure.rs") {
+            continue;
+        }
+        let contents = fs::read_to_string(&path)
+            .map_err(|error| format!("read {}: {error}", path.display()))?;
+        for needle in FORBIDDEN {
+            if contents.contains(needle) {
+                offenders.push(format!("{} references `{needle}`", path.display()));
+                break;
+            }
+        }
+    }
+    if !offenders.is_empty() {
+        return Err(format!(
+            "AC-6: a test reads an Orca-derived G-code reference — no test may read \
+             SupportTest_*_Orca.gcode: {}",
+            offenders.join("; ")
+        ));
+    }
+    Ok(())
+}
+
 /// AC-6 (amended to invariant-plus-recorded-inspection): asserts the PnP-side
 /// disposition invariants only — both families plan geometry, every entry is
 /// attributed, and every declined entry records a reason.
@@ -918,12 +986,15 @@ pub fn supersedes_packet_213_and_task_329() -> Result<(), String> {
 /// The previous body probed two `tmp/*.gcode` paths and ran an empty `if`, so no
 /// Orca-side condition could fail it. Exact-path parity with OrcaSlicer is never
 /// claimed here; termination, coverage, collision and interface structure are
-/// covered by the invariant tests below.
+/// covered by the invariant tests below. The amendment's second half is the
+/// static self-check [`assert_no_test_reads_orca_gcode`]: no test source under
+/// `tests/` may read the Orca-derived G-code references.
 pub fn task_163b_disposition() -> Result<(), String> {
     for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
         let plan = pnp_support_evidence(family, support_type)?;
         assert_attribution_and_decline_reasons(family, &plan)?;
     }
+    assert_no_test_reads_orca_gcode()?;
     Ok(())
 }
 

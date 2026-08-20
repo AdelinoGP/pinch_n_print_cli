@@ -269,6 +269,8 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 
 **Request-fixture notes (recorded so the evidence is not misread).** The tree request uses `filament_lines` only: the `PrePass::SupportGeometry` tap's skeleton paths carry no `Point3WithWidth.width`, and the renderer fails closed on `filled_areas` for width-less paths (`MissingWidth`, `crates/slicer-runtime/src/visual_debug_render.rs` — read-only context for this packet). The traditional request keeps both visualizations. Both Orca G-code requests carry `gcode_line_width_mm: 0.4` (the reference profile's support line width), which the G-code `filled_areas` renderer requires.
 
+**`PrePass::SupportAnalysis` evidence.** AC-2 names `PrePass::SupportAnalysis` as a tap; the implementation's tap inventory does not expose it (it is a host built-in writing `SupportAnalysisIR` to the blackboard — see the packet's Notes, "AC-2 tap-contract wording discrepancy"). Its intent is met by asserting the `SupportAnalysisIR` blackboard slot directly: `fixture_invariants` asserts non-empty candidates, per-family assignments, and empty candidates under support-disabled config (`crates/slicer-runtime/tests/integration/support_family_closure.rs`), and `family_reaches_region_routing` asserts the family survives into region routing. Those assertions are the SupportAnalysis candidates/occupancy/envelope/routing-cell evidence for this checklist.
+
 **Verdicts.** Each verdict names the layer and tap it was read from. Exact path identity is never claimed.
 
 | family | axis | verdict | layer | tap | what was seen |
@@ -339,8 +341,17 @@ The open research question is therefore: **does grid-snapping and contour simpli
 - `TASK-163b-orca-ref` may remain externally blocked only if provenance/authority cannot be established; the existing references must still be used for primary differential review.
 - Visual evidence is human-inspected and therefore cannot be reduced to a grep-only AC.
 
-## Inherited debt (recorded 2026-08-20, bisect-verified)
+## Final review dispositions (2026-08-20)
 
+The final packet-scope review returned CHANGES REQUESTED with five findings. Dispositions:
+
+- **AC-1 (per-demand termination).** The review noted `fixture_invariants` asserts one plate-terminated entry per family rather than per-demand termination. The per-demand termination invariant is pinned by `accepted_demands_terminate_on_plate_or_model` (every accepted demand terminates on plate or model, four tracked `resources/` models, both families); `fixture_invariants` pins per-entry attribution (body/demand/family), per-role exact-Z disjointness, plate termination, and support-disabled output. Together they cover AC-1 as written. No code change.
+- **AC-2 (SupportAnalysis capture).** The review noted the requests carry no `PrePass::SupportAnalysis` tap. The packet's Notes already adjudicate this (the tap does not exist in the implementation's inventory; the intent is met by asserting the `SupportAnalysisIR` blackboard slot directly). The checklist now names where that evidence lives (§Orca Inspection Checklist, "PrePass::SupportAnalysis evidence"). Doc fix applied.
+- **AC-6 (no-Orca-read assertion + docs/07 conflict).** Valid on both counts. The no-Orca-read static self-check was added to `task_163b_disposition` (recursive scan of `crates/slicer-runtime/tests/`, self-file excluded), and the `docs/07` TASK-163b-orca-ref row was reconciled with the recorded disposition. Fixed.
+- **AC-N1 (fatal conflict without diagnostic).** The review noted the cross-family-overlap branch accepts a fatal error without a structured diagnostic. The fatal same-identity family conflict is the packet-223 aggregation contract's documented behavior; the test accepts either drop-plus-code-1200-diagnostic or the fatal error naming `conflicting_family_id` — both are loud rejections, never a golden or fallback path. Recorded, no code change.
+- **AC-N2 (absence panic not exercised).** Rejected: the 2026-08-17 amendment deliberately deleted the dedicated missing-fixture test (`4c67ccd9`) and made the `support_test_path` resolver's panic contract the gate, exercised by every closure test. The review's finding contradicts the amendment, which is authoritative.
+
+## Inherited debt (recorded 2026-08-20, bisect-verified)
 - **32 pre-existing workspace test failures at `ed62090d`** — `cargo test --workspace` fails 32 tests (wedge plan-structure invariants, e2e support evidence, integrated-parity contracts, live-dispatch tests, tool-selection tests, `support_plan_validation`). A bisect at the pre-port baseline `ed62090d` (guests rebuilt, `cargo xtask build-guests --check` clean) shows all 32 fail there too: **0 attributable to this branch's work**. Registered as G-19; human-approved 2026-08-20 to record rather than fix in 224. The packet's own gates (closure 12/12, planner crate 8/8, clippy) are green.
 - `cargo xtask check-literals` exits 1 on 61 inherited violations across 34 files, 0 attributable to this branch (re-derived 2026-08-20; the port's diff adds no watched-type literal). Human-approved to commit over. Registered as G-15.
 - `cargo xtask test --summary --workspace` cannot run while the check-literals preflight fails: the wrapper hard-aborts before the test phase. The guest-WASM freshness gate was therefore verified separately (`cargo xtask build-guests --check`, exit 0) before the direct `cargo test --workspace` run.
