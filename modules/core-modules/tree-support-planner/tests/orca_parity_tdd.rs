@@ -325,16 +325,16 @@ fn wall_count_scales_max_move_distance() {
     );
 }
 
-/// AC-6: Tree-support stability vs. self-captured golden.
+/// PnP self-capture regression tripwire for tree-support stability.
 ///
 /// ## Golden files (self-captured)
-/// The golden files at `resources/golden/benchy_tree_support_orca_*` are
+/// The golden files at `resources/golden/benchy_tree_support_regression_*` are
 /// **self-captured snapshots** of this planner's own output against a fixed
 /// synthetic overhang fixture, frozen to detect regressions. They prove
 /// determinism and stability across runs but do **not** prove parity with
-/// OrcaSlicer's reference output. A follow-up TASK in `docs/07` tracks
-/// replacing these with real OrcaSlicer reference data extracted from
-/// `resources/test_models/regression_wedge.stl` + `resources/test_config/benchy-tree-support.json`.
+/// OrcaSlicer's reference output. This test was renamed off `orca_parity` in
+/// packet 224 Step 8 (2026-08-20) and regenerated after the RC-15
+/// contact-sampling port.
 ///
 /// To regenerate the goldens after an intentional algorithm change, set
 /// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
@@ -342,7 +342,7 @@ fn wall_count_scales_max_move_distance() {
 ///
 /// Acceptance: branch count within ±10% of golden AND Hausdorff ≤ 0.5mm.
 #[test]
-fn benchy_orca_parity_within_tolerance() {
+fn benchy_tree_support_regression_tripwire() {
     // ── 1. Run the planner against a fixed synthetic fixture ──────────────
     let config = make_planner_config(&[
         ("enable_support", ConfigValue::Bool(true)),
@@ -405,15 +405,13 @@ fn benchy_orca_parity_within_tolerance() {
         .parent()
         .unwrap();
     let golden_dir = repo_root.join("resources/golden");
-    let branch_count_path = golden_dir.join("benchy_tree_support_orca_branch_count.txt");
-    let endpoints_path = golden_dir.join("benchy_tree_support_orca_endpoints.txt");
+    let branch_count_path = golden_dir.join("benchy_tree_support_regression_branch_count.txt");
+    let endpoints_path = golden_dir.join("benchy_tree_support_regression_endpoints.txt");
 
     let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
 
     // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# Source: Pinch 'n Print self-capture (synthetic overhang fixture, packet 31b)\n\
-                  # Replace with real OrcaSlicer reference data for regression_wedge.stl before promoting to status: implemented.\n\
-                  # Tracked by: docs/07 follow-up to packet 31b_support-planner-algorithmic-parity.\n";
+    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-20 after the RC-15 contact-sampling port (packet 224 Step 3b).\n";
 
     if regen {
         std::fs::create_dir_all(&golden_dir).expect("create golden dir");
@@ -438,12 +436,12 @@ fn benchy_orca_parity_within_tolerance() {
     // ── 3. Parse goldens (skip comment / empty lines) ────────────────────────
     if !branch_count_path.exists() || !endpoints_path.exists() {
         panic!(
-            "AC-6: golden files missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
-             cargo test -p tree-support-planner -- benchy_orca_parity_within_tolerance"
+            "Regression goldens missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
+             cargo test -p tree-support-planner -- benchy_tree_support_regression_tripwire"
         );
     }
     let count_raw = std::fs::read_to_string(&branch_count_path)
-        .expect("benchy_tree_support_orca_branch_count.txt must be readable");
+        .expect("benchy_tree_support_regression_branch_count.txt must be readable");
     let golden_branch_count: usize = count_raw
         .lines()
         .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
@@ -453,7 +451,7 @@ fn benchy_orca_parity_within_tolerance() {
         .expect("golden branch count must be a valid integer");
 
     let endpoints_raw = std::fs::read_to_string(&endpoints_path)
-        .expect("benchy_tree_support_orca_endpoints.txt must be readable");
+        .expect("benchy_tree_support_regression_endpoints.txt must be readable");
     let golden_endpoints: Vec<[f32; 3]> = endpoints_raw
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
@@ -478,7 +476,7 @@ fn benchy_orca_parity_within_tolerance() {
         ((golden_branch_count as f32 * (1.0 + tolerance_fraction)).ceil()) as usize;
     assert!(
         output_branch_count >= branch_count_min && output_branch_count <= branch_count_max,
-        "AC-6 FAILED: branch count {output_branch_count} outside ±10% of golden {golden_branch_count} \
+        "Regression tripwire FAILED: branch count {output_branch_count} outside ±10% of golden {golden_branch_count} \
          (range: {branch_count_min}–{branch_count_max}). Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate \
          after intentional algorithm changes."
     );
@@ -490,7 +488,7 @@ fn benchy_orca_parity_within_tolerance() {
     let tolerance_mm = 0.5_f32;
     assert!(
         hausdorff <= tolerance_mm,
-        "AC-6 FAILED: Hausdorff distance {hausdorff:.4}mm exceeds tolerance {tolerance_mm}mm. \
+        "Regression tripwire FAILED: Hausdorff distance {hausdorff:.4}mm exceeds tolerance {tolerance_mm}mm. \
          Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate after intentional algorithm changes."
     );
 }
