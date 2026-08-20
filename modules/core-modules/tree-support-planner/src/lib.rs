@@ -150,27 +150,29 @@ fn build_roles(
     interface_segments: &[Vec<Point3WithWidth>],
     floor_segments: &[Vec<Point3WithWidth>],
     branch_radius: f32,
+    collision_polys: &[ExPolygon],
 ) -> Vec<slicer_ir::SupportPlanRoleRegion> {
-    let body = structural_body_regions(branch_segments, branch_radius);
-    let roof = structural_body_regions(interface_segments, branch_radius);
-    let floor = structural_body_regions(floor_segments, branch_radius);
+    let clip_collision = |regions: Vec<ExPolygon>| {
+        if collision_polys.is_empty() || regions.is_empty() {
+            regions
+        } else {
+            host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+        }
+    };
+    let body = clip_collision(structural_body_regions(branch_segments, branch_radius));
+    let roof = clip_collision(structural_body_regions(interface_segments, branch_radius));
+    let floor = clip_collision(structural_body_regions(floor_segments, branch_radius));
 
     // Subtract interface geometry out of the body, per canonical.
-    let original_body = body.clone();
     let mut carved = body;
     for cut in [&roof, &floor] {
         if !carved.is_empty() && !cut.is_empty() {
             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
         }
     }
-    // Keep a printable structural role for a branch whose interface carving
-    // consumes its entire body. The interface remains distinct for consumers
-    // that use the semantic roles, while a plan entry never becomes geometry-
-    // empty merely because its top layer is also an interface layer.
-    if carved.is_empty() && !original_body.is_empty() {
-        carved = original_body;
+    if !roof.is_empty() || !floor.is_empty() {
+        carved.clear();
     }
-
     let mut roles = Vec::new();
     if !carved.is_empty() {
         roles.push(slicer_ir::SupportPlanRoleRegion {
@@ -873,6 +875,7 @@ impl SupportPlanner {
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
         let mut active_nodes: Vec<PlannedSupportNode> = Vec::new();
+        let mut roof_band_layers_emitted = 0u32;
 
         // Accumulate entries bottom-up so the plan keeps a deterministic,
         // top-to-bottom layer order in output.
@@ -939,6 +942,23 @@ impl SupportPlanner {
             } else {
                 (&[][..], &[][..])
             };
+            // Host analysis carries the exact per-layer occupancy used by the
+            // closure gate. Prefer it for emission checks when present; the
+            // support-outline cache remains the compatibility fallback.
+            let model_collision: Vec<ExPolygon> = support_analysis
+                .model_occupancy
+                .iter()
+                .filter(|entry| {
+                    entry.object_id == obj.object_id
+                        && entry.global_support_layer_index == current_global_layer_index
+                })
+                .flat_map(|entry| entry.polygons.iter().cloned())
+                .collect();
+            let collision_polys = if model_collision.is_empty() {
+                collision_polys
+            } else {
+                model_collision.as_slice()
+            };
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
@@ -983,9 +1003,8 @@ impl SupportPlanner {
                     // Roof: the top `top_n` layers of the column, counting the
                     // contact layer itself. `dist_to_top` is canonical's
                     // per-node `support_roof_layers_below` counter. The contact
-                    // layer used to be excluded, which left the topmost support
-                    // layer as bare body directly under the model.
-                    let is_roof = top_n > 0 && node.dist_to_top < top_n;
+                    // layer must remain interface geometry under the model.
+                    let is_roof = top_n > roof_band_layers_emitted && node.dist_to_top < top_n;
                     if is_floor {
                         InterfaceRole::Floor
                     } else if is_roof {
@@ -1020,9 +1039,17 @@ impl SupportPlanner {
                     effective_height,
                 );
 
-                if body_intersects(collision_polys, na.x, na.y, radius_a)
-                    || body_intersects(collision_polys, nb.x, nb.y, radius_b)
-                {
+                // Interface nodes are allowed to meet the model, but that
+                // exemption is per endpoint. A mixed body/interface edge must
+                // still reject its body endpoint; exempting the whole edge
+                // lets body geometry leak into exact-Z model occupancy.
+                let body_endpoint_collides = (node_roles[*a_idx] == InterfaceRole::Body
+                    && body_intersects(collision_polys, na.x, na.y, radius_a))
+                    || (node_roles[*b_idx] == InterfaceRole::Body
+                        && body_intersects(collision_polys, nb.x, nb.y, radius_b));
+                let segment_collides =
+                    body_segment_intersects(collision_polys, na, nb, radius_a, radius_b);
+                if body_endpoint_collides || segment_collides {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -1091,9 +1118,6 @@ impl SupportPlanner {
                     node.dist_to_top,
                     effective_height,
                 );
-                // Now that a tip occupies real area it must clear the model,
-                // exactly like an MST endpoint. A zero-width tip contributed no
-                // body geometry, so it never needed this check.
                 if body_intersects(collision_polys, node.x, node.y, radius) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
@@ -1127,6 +1151,10 @@ impl SupportPlanner {
                     &mut floor_segments,
                 )
                 .push(vec![point, point]);
+            }
+
+            if top_n > roof_band_layers_emitted && !interface_segments.is_empty() {
+                roof_band_layers_emitted += 1;
             }
 
             // A surviving lone propagated node (dist_to_top > 0) with no surviving
@@ -1209,33 +1237,43 @@ impl SupportPlanner {
                         continue;
                     }
                     fallback_family_emitted |= assignments_empty;
+                    let model_occupancy: Vec<ExPolygon> = support_analysis
+                        .model_occupancy
+                        .iter()
+                        .filter(|entry| {
+                            entry.object_id == obj.object_id
+                                && entry.global_support_layer_index == current_global_layer_index
+                                && entry.region_id == *region_id
+                        })
+                        .flat_map(|entry| entry.polygons.iter().cloned())
+                        .collect();
+                    let role_collision = if model_occupancy.is_empty() {
+                        collision_polys
+                    } else {
+                        model_occupancy.as_slice()
+                    };
                     let mut roles = build_roles(
                         &branch_segments,
                         &interface_segments,
                         &floor_segments,
                         branch_radius,
+                        role_collision,
                     );
-                    if !roles
-                        .iter()
-                        .any(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
-                        && support_analysis.candidates.iter().any(|candidate| {
-                            candidate.object_id == obj.object_id
-                                && !candidate.blocked
-                                && !candidate.geometry.is_empty()
-                        })
-                    {
-                        if let Some(region) = roles
-                            .iter()
-                            .flat_map(|role| role.regions.iter())
-                            .next()
-                            .cloned()
-                        {
-                            roles.push(slicer_ir::SupportPlanRoleRegion {
-                                role: slicer_ir::SupportPlanRole::SupportBody,
-                                regions: vec![region],
-                            });
-                        }
+                    // Keep the emitted IR subject to the same exact-Z
+                    // occupancy contract as the runtime closure gate. This
+                    // final guard is needed for concave occupancy where a
+                    // preserved clamp position can evade the centerline test.
+                    for role in &mut roles {
+                        role.regions.retain(|region| {
+                            host::clip_polygons(
+                                std::slice::from_ref(region),
+                                role_collision,
+                                ClipOperation::Intersection,
+                            )
+                            .is_empty()
+                        });
                     }
+                    roles.retain(|role| !role.regions.is_empty());
                     if roles.is_empty() {
                         continue;
                     }
@@ -1367,16 +1405,54 @@ impl SupportPlanner {
                                 node.to_buildplate
                             ),
                         });
-                        continue;
-                    }
-
-                    PlannedSupportNode {
-                        x: cx,
-                        y: cy,
-                        // dist_to_top increments as we move down
-                        dist_to_top: node.dist_to_top.saturating_add(1),
-                        to_buildplate: node.to_buildplate,
-                        demand_ids: node.demand_ids.clone(),
+                        // Preserve the last legal position when the avoidance
+                        // escape is over budget, unless that position is in
+                        // the next layer's occupancy. This prevents orphaned
+                        // lower layers without leaking into exact-Z occupancy.
+                        let next_cache_idx = current_global_layer_index.saturating_sub(1) as usize;
+                        let next_collision = collision_cache
+                            .get(next_cache_idx)
+                            .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+                        let next_model_collision: Vec<ExPolygon> = support_analysis
+                            .model_occupancy
+                            .iter()
+                            .filter(|entry| {
+                                entry.object_id == obj.object_id
+                                    && entry.global_support_layer_index
+                                        == current_global_layer_index.saturating_sub(1)
+                            })
+                            .flat_map(|entry| entry.polygons.iter().cloned())
+                            .collect();
+                        let next_collision = if next_model_collision.is_empty() {
+                            next_collision
+                        } else {
+                            next_model_collision.as_slice()
+                        };
+                        let next_radius = tapered_radius(
+                            branch_radius,
+                            tan_diameter_angle,
+                            node.dist_to_top.saturating_add(1),
+                            effective_height,
+                        );
+                        if body_intersects(next_collision, node.x, node.y, next_radius) {
+                            continue;
+                        }
+                        PlannedSupportNode {
+                            x: node.x,
+                            y: node.y,
+                            dist_to_top: node.dist_to_top.saturating_add(1),
+                            to_buildplate: node.to_buildplate,
+                            demand_ids: node.demand_ids.clone(),
+                        }
+                    } else {
+                        PlannedSupportNode {
+                            x: cx,
+                            y: cy,
+                            // dist_to_top increments as we move down
+                            dist_to_top: node.dist_to_top.saturating_add(1),
+                            to_buildplate: node.to_buildplate,
+                            demand_ids: node.demand_ids.clone(),
+                        }
                     }
                 };
                 next_nodes.push(moved);
@@ -1385,8 +1461,10 @@ impl SupportPlanner {
             active_nodes = next_nodes;
         }
 
-        // Apply per-column Laplacian smoothing (Orca TreeSupport::smooth_nodes port; packet 121).
-        smooth_branches(&mut entries_in_order, 100);
+        // Do not smooth after exact-Z collision validation. `smooth_branches`
+        // translates emitted role polygons, which can move a previously legal
+        // body back into concave model occupancy without another validation
+        // pass.
 
         // ── Packet 118 B4: cap drops are merged into the shared map ──────
         // (Emission happens in run_support_geometry after all objects are
@@ -1583,6 +1661,8 @@ fn push_analysis_contact(
     dropped: &mut std::collections::BTreeMap<u32, usize>,
     demand_id: String,
 ) {
+    // Analysis candidates already carry the host-selected contact layer.
+    // Applying the gap again moves sampled geometry off its demand layer.
     let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
     let collision = collision_cache
@@ -1962,6 +2042,47 @@ pub fn body_overlaps_occupancy(polygons: &[ExPolygon], x: f32, y: f32, radius_mm
 
 fn body_intersects(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bool {
     body_overlaps_occupancy(polygons, x, y, radius_mm)
+}
+
+/// Check the complete emitted capsule, not just its endpoint discs. A branch
+/// can cross an obstacle between two individually clear endpoints.
+fn body_segment_intersects(
+    polygons: &[ExPolygon],
+    a: &PlannedSupportNode,
+    b: &PlannedSupportNode,
+    radius_a: f32,
+    radius_b: f32,
+) -> bool {
+    let Some(segment) = swept_region(
+        &Point3WithWidth {
+            x: a.x,
+            y: a.y,
+            z: 0.0,
+            width: radius_a * 2.0,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
+        },
+        &Point3WithWidth {
+            x: b.x,
+            y: b.y,
+            z: 0.0,
+            width: radius_b * 2.0,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
+        },
+    ) else {
+        return false;
+    };
+    !host::clip_polygons(
+        std::slice::from_ref(&segment),
+        polygons,
+        ClipOperation::Intersection,
+    )
+    .is_empty()
 }
 
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.

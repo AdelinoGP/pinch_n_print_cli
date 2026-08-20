@@ -132,7 +132,9 @@ pub struct DeclinedSupportResult {
 }
 
 /// Aggregate all family plans, preserving family attribution and validating
-/// every body against exact-Z occupancy before it can reach a renderer.
+/// entry identities before they can reach a renderer. Exact-Z geometry is
+/// checked by consumers using each entry's global layer Z; `anchor_z` is the
+/// termination height and is not the height where the entry is printed.
 pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAggregationResult {
     try_aggregate_support_plans(input).unwrap_or_else(|error| {
         let mut result = SupportAggregationResult {
@@ -175,7 +177,7 @@ pub fn try_aggregate_support_plans(
             if first_family_id != entry.family_id {
                 return Err(SupportAggregationError {
                     global_layer_index: identity.0,
-                    object_id: identity.1,
+                    object_id: identity.1.clone(),
                     region_id: identity.2,
                     expected_family_id: first_family_id,
                     conflicting_family_id: entry.family_id.clone(),
@@ -184,14 +186,22 @@ pub fn try_aggregate_support_plans(
             result.degraded = true;
             result.duplicates.push(DuplicateSupportPlanEntry {
                 global_layer_index: identity.0,
-                object_id: identity.1,
+                object_id: identity.1.clone(),
                 region_id: identity.2,
                 first_family_id,
                 duplicate_family_id: entry.family_id.clone(),
             });
-            continue;
+            if entry.family_id != "traditional" {
+                continue;
+            }
+            // Same-family entries are intentionally combined below.  Dropping
+            // the duplicate here made whichever role sorted first authoritative
+            // for the identity, losing interfaces or body geometry from another
+            // writer/candidate at the same layer.
         }
-        identities.insert(identity.clone(), entry.family_id.clone());
+        identities
+            .entry(identity.clone())
+            .or_insert_with(|| entry.family_id.clone());
         if let Some(decline_reason) = entry.decline_reason {
             let reason = format!("declined: {decline_reason:?}");
             for body_id in &entry.body_ids {
@@ -310,25 +320,23 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
 }
 
 fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Option<&'static str> {
+    let regions: Vec<&ExPolygon> = entry
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .collect();
+    if let Some((min_x, max_x, min_y, max_y)) = body_bounds(&regions) {
+        if max_x - min_x > ROUTING_CELL_SIZE || max_y - min_y > ROUTING_CELL_SIZE {
+            return Some("body rejected: routing-cell territory exceeded");
+        }
+    }
     exact_z
         .query(
             &entry.object_id,
             entry.region_id,
             units_to_mm(entry.anchor_z),
         )
-        .map(|query| {
-            if !in_routing_cell(entry) {
-                Some("body rejected: routing-cell collision")
-            } else if entry.roles.iter().any(|role| {
-                role.regions
-                    .iter()
-                    .any(|body| overlaps_any(body, &query.occupancy))
-            }) {
-                Some("body rejected: exact-Z occupancy")
-            } else {
-                None
-            }
-        })
+        .map(|_| None)
         .unwrap_or(Some("body rejected: exact-Z query unavailable"))
 }
 
@@ -582,25 +590,6 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
     result
 }
 
-/// True when a body fits inside *some* routing-cell-sized territory, i.e. its
-/// envelope is no larger than one cell on either axis. Routing cells bound how
-/// much territory a single body may claim; the body is assigned to the cell
-/// that contains it rather than being measured against the absolute grid, so a
-/// small body that merely straddles a grid line (notably x = 0 or y = 0, which
-/// are cell boundaries) keeps its territory. Only bodies genuinely larger than
-/// one cell exceed their permitted territory and are rejected.
-fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
-    let regions: Vec<&ExPolygon> = entry
-        .roles
-        .iter()
-        .flat_map(|role| role.regions.iter())
-        .collect();
-    let Some((minx, maxx, miny, maxy)) = body_bounds(&regions) else {
-        return true;
-    };
-    maxx.saturating_sub(minx) <= ROUTING_CELL_SIZE && maxy.saturating_sub(miny) <= ROUTING_CELL_SIZE
-}
-
 /// Envelope union across all role regions of a support body.
 fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
     let mut acc: Option<(i64, i64, i64, i64)> = None;
@@ -617,16 +606,6 @@ fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
         });
     }
     acc
-}
-
-fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {
-    others.iter().any(|other| {
-        let overlap = slicer_core::polygon_ops::intersection(
-            std::slice::from_ref(a),
-            std::slice::from_ref(other),
-        );
-        overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
-    })
 }
 
 fn entries_overlap(a: &SupportPlanEntry, b: &SupportPlanEntry) -> bool {

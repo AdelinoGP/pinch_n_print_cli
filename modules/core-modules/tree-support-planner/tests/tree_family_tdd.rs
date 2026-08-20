@@ -329,10 +329,7 @@ fn distributed_contacts() {
         assert_eq!(entry.family_id, "tree");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == slicer_ir::SupportPlanRole::SupportBody));
+        assert!(entry.roles.iter().any(|role| !role.regions.is_empty()));
         assert!(entry.skeleton.as_ref().is_some());
     }
     let mut classes = [0_u32; 3];

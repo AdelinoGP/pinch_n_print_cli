@@ -122,10 +122,9 @@ pub fn commit_support_analysis_builtin(
             // a papering-over — a region appearing above empty space is wholly
             // unsupported, and `diff(current, [])` yields exactly that.
             for ((object_id, region_id), by_layer) in region_series {
-                let (Some(&first), Some(&last)) = (
-                    by_layer.keys().next(),
-                    by_layer.keys().next_back(),
-                ) else {
+                let (Some(&first), Some(&last)) =
+                    (by_layer.keys().next(), by_layer.keys().next_back())
+                else {
                     continue;
                 };
                 let series = (first..=last)
@@ -365,7 +364,10 @@ mod tests {
             analysis.shared_settings.get("support_enabled"),
             Some(&"true".to_string())
         );
-        assert_eq!(analysis.model_occupancy.get(&key), Some(&vec![lower.clone()]));
+        assert_eq!(
+            analysis.model_occupancy.get(&key),
+            Some(&vec![lower.clone()])
+        );
 
         // Candidates are support contacts, not cross-sections: exactly one, at
         // the overhanging layer, and never at the supported layer below it.

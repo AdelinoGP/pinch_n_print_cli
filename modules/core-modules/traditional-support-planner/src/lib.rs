@@ -313,11 +313,6 @@ impl SupportPlanner {
         } else {
             1
         };
-        let interface_top_layer = if support_step == 1 {
-            emit_top_layer.saturating_sub(1)
-        } else {
-            emit_top_layer
-        };
         // Canonical downward propagation (`generate_base_layers` /
         // `bottom_contact_layers_and_layer_support_areas`). Two properties
         // matter and both were missing before packet 224, when this loop emitted
@@ -341,37 +336,34 @@ impl SupportPlanner {
         // consumed by the emit loop below.
         let mut propagated_by_layer: BTreeMap<u32, Vec<ExPolygon>> = BTreeMap::new();
         let mut carry = contact_geometry.clone();
-        // The contact layer itself is not trimmed: a contact exists precisely
-        // because it meets the model there, and canonical establishes contacts
-        // separately from the base-layer trim. The termination layer is
-        // likewise permitted to touch the surface it lands on.
-        propagated_by_layer.insert(emit_top_layer, carry.clone());
-        for layer in (termination_layer..emit_top_layer).rev() {
-            if layer != termination_layer {
-                let occupancy = occupancy_at(
-                    support_analysis,
-                    &obj.object_id,
-                    &candidate.region_id,
-                    layer,
-                );
-                if !occupancy.is_empty() {
-                    let trimming = if self.support_object_xy_distance > 0.0 {
-                        let clearance = host::offset_polygons(
-                            &occupancy,
-                            self.support_object_xy_distance,
-                            OffsetJoinType::Miter,
-                            0.0,
-                        );
-                        if clearance.is_empty() {
-                            occupancy
-                        } else {
-                            clearance
-                        }
-                    } else {
+        // Every emitted layer is trimmed against the exact per-layer model
+        // occupancy. The contact geometry is an analysis input, not a license
+        // for the renderer to overlap the model at the chosen support Z.
+        let trim_end = emit_top_layer + 1;
+        for layer in (termination_layer..trim_end).rev() {
+            let occupancy = occupancy_at(
+                support_analysis,
+                &obj.object_id,
+                &candidate.region_id,
+                layer,
+            );
+            if !occupancy.is_empty() {
+                let trimming = if self.support_object_xy_distance > 0.0 {
+                    let clearance = host::offset_polygons(
+                        &occupancy,
+                        self.support_object_xy_distance,
+                        OffsetJoinType::Miter,
+                        0.0,
+                    );
+                    if clearance.is_empty() {
                         occupancy
-                    };
-                    carry = host::clip_polygons(&carry, &trimming, ClipOperation::Difference);
-                }
+                    } else {
+                        clearance
+                    }
+                } else {
+                    occupancy
+                };
+                carry = host::clip_polygons(&carry, &trimming, ClipOperation::Difference);
             }
             if carry.is_empty() {
                 // The object closes off every route below this layer. The demand
@@ -396,7 +388,13 @@ impl SupportPlanner {
             }
             propagated_by_layer.insert(layer, carry.clone());
         }
-
+        // With one-layer support stepping, the contact layer is the model
+        // facing layer and the interface anchors one layer below it. Larger
+        // support steps already land on the computed emit layer.
+        // `emit_top_layer` is the first printed layer. The configured band is
+        // counted from that layer; subtracting one here made every top band
+        // one layer too wide (1->2, 2->3, 3->4).
+        let interface_top_layer = emit_top_layer;
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_layers > 0
                 && layer >= interface_top_layer.saturating_sub(top_layers - 1))
@@ -422,8 +420,9 @@ impl SupportPlanner {
             // both. These three roles previously carried byte-identical
             // regions, so an interface layer was extruded twice: once dense as
             // interface and again underneath as body.
-            let is_top_interface =
-                top_layers > 0 && layer >= interface_top_layer.saturating_sub(top_layers - 1);
+            let is_top_interface = top_layers > 0
+                && (layer != termination_layer || model_termination_layer.is_some())
+                && layer >= interface_top_layer.saturating_sub(top_layers - 1);
             // A floor exists only where the column lands on the model.
             let is_bottom_interface = bottom_layers > 0
                 && model_termination_layer.is_some()
