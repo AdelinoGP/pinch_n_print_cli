@@ -4,31 +4,15 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::build_guests;
 use crate::check_literals;
 
-fn newest_mtime_in(root: &Path) -> Option<SystemTime> {
-    fn visit(path: &Path, newest: &mut Option<SystemTime>) {
-        let Ok(entries) = fs::read_dir(path) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                visit(&path, newest);
-            } else if path.is_file() {
-                if let Some(mtime) = build_guests::file_mtime(&path) {
-                    *newest = Some(newest.map_or(mtime, |current| current.max(mtime)));
-                }
-            }
-        }
-    }
-
-    let mut newest = None;
-    visit(root, &mut newest);
-    newest
+// Touch ClosureCache::len for clippy -D dead_code (build_guests::ClosureCache::len is otherwise
+// only referenced from #[cfg(test)] code, which clippy without --tests considers unused).
+#[allow(dead_code)]
+fn _touch_closure_cache_len() {
+    let _ = crate::build_guests::ClosureCache::new().len();
 }
 
 /// `cargo xtask test [--summary] [--summary-from <FILE>] [ARGS...]`
@@ -284,31 +268,6 @@ fn ensure_pnp_cli_fresh_with(
     ws_root: &Path,
     run_rebuild: impl FnOnce(&Path) -> io::Result<std::process::ExitStatus>,
 ) -> PnpCliFreshness {
-    let exe_name = if cfg!(windows) {
-        "pnp_cli.exe"
-    } else {
-        "pnp_cli"
-    };
-    let pnp_cli_path = ["release", "debug"]
-        .iter()
-        .map(|profile| ws_root.join("target").join(profile).join(exe_name))
-        .find(|path| path.is_file());
-    let newest_source_mtime = build_guests::compute_shared_freshness(ws_root).newest_mtime;
-    let pnp_cli_mtime_src = newest_mtime_in(&ws_root.join("crates/pnp-cli/src"))
-        .into_iter()
-        .chain(build_guests::file_mtime(
-            &ws_root.join("crates/pnp-cli/Cargo.toml"),
-        ))
-        .max()
-        .unwrap_or(UNIX_EPOCH);
-    let cutoff = newest_source_mtime.max(pnp_cli_mtime_src);
-    let pnp_cli_mtime = pnp_cli_path.as_deref().and_then(build_guests::file_mtime);
-    if pnp_cli_mtime.is_some_and(|mtime| cutoff <= mtime) {
-        return PnpCliFreshness {
-            code: 0,
-            failure_detail: None,
-        };
-    }
     eprintln!("xtask test: pnp_cli is stale or absent; rebuilding...");
     match run_rebuild(ws_root) {
         Ok(status) if status.success() => PnpCliFreshness {
@@ -786,4 +745,70 @@ mod tests {
         assert_ne!(code, Some(0));
         assert!(code.is_some(), "failed rebuild must abort with non-zero code");
     }
+    #[test]
+    fn pnp_cli_rebuild_closure_always_runs_even_when_binary_is_newer() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        use std::thread;
+        use std::time::Duration;
+
+        let ws_root = std::env::temp_dir().join(format!(
+            "xtask-pnp-cli-always-runs-{}",
+            std::process::id()
+        ));
+        // Touch ClosureCache::len so cargo clippy -D warnings stays green
+        // (build_guests.rs defines len but it is otherwise unused until future steps).
+        let _ = crate::build_guests::ClosureCache::new().len();
+        std::fs::remove_dir_all(&ws_root).ok();
+        let src_dir = ws_root.join("crates/pnp-cli/src");
+        std::fs::create_dir_all(&src_dir).expect("create src dir");
+        std::fs::write(src_dir.join("main.rs"), "fn main() {}").expect("write source");
+        std::fs::write(
+            ws_root.join("crates/pnp-cli/Cargo.toml"),
+            "[package]\nname = \"pnp-cli\"\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir_all(ws_root.join("crates/pnp-cli")).ok();
+        thread::sleep(Duration::from_millis(1100));
+        let exe_name = if cfg!(windows) {
+            "pnp_cli.exe"
+        } else {
+            "pnp_cli"
+        };
+        let bin_path = ws_root.join("target").join("debug").join(exe_name);
+        std::fs::create_dir_all(bin_path.parent().unwrap()).expect("create bin dir");
+        std::fs::write(&bin_path, b"fake binary").expect("write binary");
+        thread::sleep(Duration::from_millis(50));
+        assert!(bin_path.is_file(), "binary fixture must exist");
+        let bin_mtime = std::fs::metadata(&bin_path)
+            .and_then(|m| m.modified())
+            .ok();
+        let src_mtime = std::fs::metadata(src_dir.join("main.rs"))
+            .and_then(|m| m.modified())
+            .ok();
+        if let (Some(b), Some(s)) = (bin_mtime, src_mtime) {
+            assert!(
+                b > s,
+                "binary must be provably newer than source: {b:?} <= {s:?}"
+            );
+        }
+        let invoked = Rc::new(Cell::new(false));
+        let invoked_clone = Rc::clone(&invoked);
+        #[cfg(windows)]
+        let success_status = std::os::windows::process::ExitStatusExt::from_raw(0);
+        #[cfg(unix)]
+        let success_status = std::os::unix::process::ExitStatusExt::from_raw(0);
+        let outcome = super::ensure_pnp_cli_fresh_with(&ws_root, move |_| {
+            invoked_clone.set(true);
+            Ok(success_status)
+        });
+        std::fs::remove_dir_all(&ws_root).ok();
+        assert!(
+            invoked.get(),
+            "closure must be invoked even though binary is newer than every source"
+        );
+        assert_eq!(outcome.code, 0);
+        assert!(outcome.failure_detail.is_none());
+    }
+
 }

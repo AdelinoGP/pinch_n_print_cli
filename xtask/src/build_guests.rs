@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -551,8 +552,12 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
         })?;
     if drifts.is_empty() {
         // 7. Only on success: write v2- fingerprint.
-        let shared = compute_shared_freshness(ws_root);
-        let freshness = compute_guest_freshness(spec, ws_root, &shared);
+        let mut cache = ClosureCache::new();
+        let freshness = compute_guest_freshness(spec, ws_root, &mut cache).map_err(|e| BuildError::FingerprintMetadataFailed {
+            guest: spec.crate_name.clone(),
+            path: metadata_path.clone(),
+            error: e.to_string(),
+        })?;
         if let Some(parent) = metadata_path.parent() {
             fs::create_dir_all(parent).map_err(|e| BuildError::FingerprintMetadataFailed {
                 guest: spec.crate_name.clone(),
@@ -595,8 +600,12 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
         }
     })?;
     if drifts.is_empty() {
-        let shared = compute_shared_freshness(ws_root);
-        let freshness = compute_guest_freshness(spec, ws_root, &shared);
+        let mut cache = ClosureCache::new();
+        let freshness = compute_guest_freshness(spec, ws_root, &mut cache).map_err(|e| BuildError::FingerprintMetadataFailed {
+            guest: spec.crate_name.clone(),
+            path: metadata_path.clone(),
+            error: e.to_string(),
+        })?;
         if let Some(parent) = metadata_path.parent() {
             fs::create_dir_all(parent).map_err(|e| BuildError::FingerprintMetadataFailed {
                 guest: spec.crate_name.clone(),
@@ -781,6 +790,148 @@ pub struct FreshnessSnapshot {
     entries: Vec<FingerprintEntry>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ClosureError {
+    Unreadable { manifest: PathBuf, reason: String },
+    MissingPathDep { manifest: PathBuf, dep: String, resolved: PathBuf },
+}
+
+impl fmt::Display for ClosureError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unreadable { manifest, reason } => {
+                write!(f, "unreadable manifest {}: {}", manifest.display(), reason)
+            }
+            Self::MissingPathDep { manifest, dep, resolved } => {
+                write!(
+                    f,
+                    "missing path dep '{}' from {} (resolved {})",
+                    dep,
+                    manifest.display(),
+                    resolved.display()
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ClosureError {}
+
+#[derive(Debug, Default)]
+pub struct ClosureCache {
+    inner: HashMap<PathBuf, Vec<PathBuf>>,
+}
+
+impl ClosureCache {
+    pub fn new() -> Self {
+        Self { inner: HashMap::new() }
+    }
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+fn path_dep_manifests(manifest: &Path) -> Result<Vec<PathBuf>, ClosureError> {
+    let content = fs::read_to_string(manifest).map_err(|e| ClosureError::Unreadable {
+        manifest: manifest.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+    let tab: toml::Table = toml::from_str(&content).map_err(|e| ClosureError::Unreadable {
+        manifest: manifest.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+    let parent = manifest.parent().unwrap_or(Path::new("."));
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut collect = |table: &toml::Table| -> Result<(), ClosureError> {
+        for (dep_name, val) in table {
+            if let Some(tbl) = val.as_table() {
+                if let Some(path_str) = tbl.get("path").and_then(|v| v.as_str()) {
+                    let resolved_dir = parent.join(path_str);
+                    let canonical_dir = resolved_dir.canonicalize().map_err(|_| ClosureError::MissingPathDep {
+                        manifest: manifest.to_path_buf(),
+                        dep: dep_name.clone(),
+                        resolved: resolved_dir.clone(),
+                    })?;
+                    let dep_manifest = canonical_dir.join("Cargo.toml");
+                    if !dep_manifest.is_file() {
+                        return Err(ClosureError::MissingPathDep {
+                            manifest: manifest.to_path_buf(),
+                            dep: dep_name.clone(),
+                            resolved: dep_manifest.clone(),
+                        });
+                    }
+                    let canonical_manifest = dep_manifest.canonicalize().unwrap_or(dep_manifest);
+                    out.push(canonical_manifest);
+                }
+            }
+        }
+        Ok(())
+    };
+    if let Some(deps) = tab.get("dependencies").and_then(|v| v.as_table()) {
+        collect(deps)?;
+    }
+    if let Some(target) = tab.get("target").and_then(|v| v.as_table()) {
+        for (_, cfg_val) in target {
+            if let Some(cfg_tab) = cfg_val.as_table() {
+                if let Some(deps) = cfg_tab.get("dependencies").and_then(|v| v.as_table()) {
+                    collect(deps)?;
+                }
+            }
+        }
+    }
+    if let Some(build_deps) = tab.get("build-dependencies").and_then(|v| v.as_table()) {
+        collect(build_deps)?;
+    }
+    Ok(out)
+}
+
+pub fn guest_closure_input_paths(
+    spec: &GuestSpec,
+    cache: &mut ClosureCache,
+) -> Result<Vec<PathBuf>, ClosureError> {
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    let mut queue: VecDeque<PathBuf> = VecDeque::new();
+    let mut result: Vec<PathBuf> = Vec::new();
+
+    let start_canonical = spec
+        .manifest_path
+        .canonicalize()
+        .unwrap_or_else(|_| spec.manifest_path.clone());
+    queue.push_back(start_canonical.clone());
+    visited.insert(start_canonical);
+
+    while let Some(manifest) = queue.pop_front() {
+        let crate_root = manifest.parent().expect("manifest must have parent").to_path_buf();
+        result.extend(input_files(&crate_root.join("src"), None));
+        let cargo_toml = crate_root.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            result.push(cargo_toml);
+        }
+        let build_rs = crate_root.join("build.rs");
+        if build_rs.is_file() {
+            result.push(build_rs);
+        }
+
+        let deps = if let Some(cached) = cache.inner.get(&manifest) {
+            cached.clone()
+        } else {
+            let deps = path_dep_manifests(&manifest)?;
+            cache.inner.insert(manifest.clone(), deps.clone());
+            deps
+        };
+
+        for dep_manifest in deps {
+            if visited.insert(dep_manifest.clone()) {
+                queue.push_back(dep_manifest);
+            }
+        }
+    }
+
+    result.sort();
+    result.dedup();
+    Ok(result)
+}
+
 /// Return all files below `root`, sorted by path, optionally restricted by extension.
 fn input_files(root: &Path, extension: Option<&str>) -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(root)
@@ -797,78 +948,6 @@ fn input_files(root: &Path, extension: Option<&str>) -> Vec<PathBuf> {
     paths
 }
 
-/// Reuse the existing shared source set for both mtime and content freshness.
-fn shared_input_paths(ws_root: &Path) -> Vec<PathBuf> {
-    let wit_root = ws_root.join("crates/slicer-schema/wit");
-    // Per packet 163 (Step 7): restrict the WIT walk to
-    //   * `wit/root.wit`
-    //   * the flat `wit/deps/*.wit` (one level deep, no descend into
-    //     `wit/deps/<stage>/` subdirectories).
-    // Per-stage package directories are charged to individual guests via
-    // `stage_wit_mtime` (see `compute_guest_freshness`), not the shared
-    // set — that is what makes AC-N2 (one WIT bump → only that stage's
-    // guests STALE) provable.
-    let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(&wit_root)
-        .max_depth(2)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("wit"))
-        .filter(|e| {
-            // Reject any path whose parent is a `deps/<dir>/` subdirectory
-            // (i.e. anything under a per-stage package directory).
-            let p = e.path();
-            let rel = p.strip_prefix(&wit_root).unwrap_or(p);
-            let mut comps = rel.components();
-            // Top-level `root.wit` is allowed (path = `root.wit`, no `deps/`).
-            // `wit/deps/<file>.wit` is allowed (one level under `deps/`).
-            // `wit/deps/<dir>/<file>.wit` is rejected.
-            match (comps.next(), comps.next(), comps.next(), comps.next()) {
-                (Some(_), None, _, _) => true, // `root.wit` (relative = `root.wit`)
-                (Some(c1), Some(_c2), None, _) if c1.as_os_str() == "deps" => {
-                    // `deps/<file>.wit`: the file is directly under `deps/`
-                    p.parent()
-                        .and_then(|parent| parent.file_name())
-                        .map(|name| name == "deps")
-                        .unwrap_or(false)
-                }
-                _ => false,
-            }
-        })
-        .map(|e| e.into_path())
-        .collect();
-    paths.sort();
-
-    // `slicer-core` belongs here even though it is not a guest *shim*: it is
-    // baked into every guest, both transitively through `slicer-sdk` and
-    // directly by 7 core modules, so a change to `polygon_ops` (or anything
-    // else guest-reachable) changes the emitted `.wasm`. Omitting it made
-    // `--check` report clean while every guest still carried the previous
-    // `slicer-core` — a silent staleness hole, since the failure mode is a
-    // guest that runs old code rather than one that fails to instantiate.
-    let shared_crates = [
-        "slicer-macros",
-        "slicer-sdk",
-        "slicer-ir",
-        "slicer-schema",
-        "slicer-core",
-    ];
-    for krate in shared_crates {
-        let crate_root = ws_root.join("crates").join(krate);
-        paths.extend(input_files(&crate_root.join("src"), None));
-        for file in ["Cargo.toml", "build.rs"] {
-            let path = crate_root.join(file);
-            if path.is_file() {
-                paths.push(path);
-            }
-        }
-    }
-
-    paths.sort();
-    paths.dedup();
-    paths
-}
-
 fn guest_input_paths(spec: &GuestSpec) -> Vec<PathBuf> {
     let mut paths = input_files(&spec.guest_dir.join("src"), None);
     paths.push(spec.manifest_path.clone());
@@ -881,6 +960,20 @@ fn guest_input_paths(spec: &GuestSpec) -> Vec<PathBuf> {
             .expect("wit-guest/ must have a parent directory");
         paths.extend(input_files(&parent_dir.join("src"), None));
         paths.push(parent_dir.join("Cargo.toml"));
+        // Charge every *.toml directly under the parent module dir (depth 1).
+        // This includes the module manifest `<module>/<module>.toml` whose
+        // `[stage] id` populates `GuestSpec.stage_id` (R5-4) and whose
+        // `[config.schema.*]` drives the host's `ConfigView::from_declared`
+        // filter. Do not recurse — a module's `tests/` fixtures must not
+        // enter the fingerprint.
+        if let Ok(entries) = fs::read_dir(parent_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("toml") {
+                    paths.push(p);
+                }
+            }
+        }
     }
 
     paths.sort();
@@ -942,18 +1035,14 @@ fn snapshot_from_paths(ws_root: &Path, paths: &[PathBuf]) -> FreshnessSnapshot {
     }
 }
 
-/// Compute shared mtime and content inputs once per freshness invocation.
-pub fn compute_shared_freshness(ws_root: &Path) -> FreshnessSnapshot {
-    snapshot_from_paths(ws_root, &shared_input_paths(ws_root))
-}
-
 fn compute_guest_freshness(
     spec: &GuestSpec,
     ws_root: &Path,
-    shared: &FreshnessSnapshot,
-) -> FreshnessSnapshot {
+    cache: &mut ClosureCache,
+) -> Result<FreshnessSnapshot, ClosureError> {
     let guest = snapshot_from_paths(ws_root, &guest_input_paths(spec));
-    let stage = stage_wit_snapshot(ws_root, spec.stage_id.as_deref());
+    let closure_paths = guest_closure_input_paths(spec, cache)?;
+    let closure = snapshot_from_paths(ws_root, &closure_paths);
     // R5-2 / AC-12: extend with workspace Cargo.toml, guest Cargo.lock, and
     // version strings as synthetic fingerprint entries.
     let mut extra_entries: Vec<FingerprintEntry> = Vec::new();
@@ -989,60 +1078,14 @@ fn compute_guest_freshness(
         bytes: wt_bytes,
     });
 
-    let mut entries = shared.entries.clone();
-    entries.extend(guest.entries);
-    entries.extend(stage.entries);
+    let mut entries = guest.entries;
+    entries.extend(closure.entries);
     entries.extend(extra_entries);
-    FreshnessSnapshot {
+    Ok(FreshnessSnapshot {
         fingerprint: fingerprint_entries(&entries),
-        newest_mtime: shared
-            .newest_mtime
-            .max(guest.newest_mtime)
-            .max(stage.newest_mtime),
+        newest_mtime: guest.newest_mtime.max(closure.newest_mtime),
         entries,
-    }
-}
-
-/// Per-stage WIT freshness (packet 163). Returns the union of mtimes under
-/// `wit/deps/<wit_dir>/` for the guest's stage, where `<wit_dir>` is
-/// resolved through `slicer_schema::wit_dir_for_stage_id`.
-///
-/// - `Some(stage_id)` whose stage is in the canonical `STAGES` table →
-///   mtimes of every `.wit` file under that stage's WIT package dir.
-/// - `Some(stage_id)` not in the table (e.g. an unmigrated stage) → mtimes
-///   of every per-stage package dir (conservative).
-/// - `None` (test guests carry no module manifest) → mtimes of every
-///   per-stage package dir (conservative).
-///
-/// Over-rebuilding is safe; under-rebuilding is the bug class the
-/// `cargo xtask build-guests --check` freshness gate exists to prevent.
-fn stage_wit_snapshot(ws_root: &Path, stage_id: Option<&str>) -> FreshnessSnapshot {
-    let wit_root = ws_root.join("crates/slicer-schema/wit");
-    let package_dirs: Vec<PathBuf> = match stage_id.and_then(slicer_schema::wit_dir_for_stage_id) {
-        Some(specific) => vec![wit_root.join("deps").join(specific)],
-        None => {
-            // Conservative: include every per-stage package directory so a
-            // bump to any one rebuilds this guest. `walkdir` would also work
-            // here, but enumerating the canonical list keeps the dependency
-            // surface auditable.
-            (0..slicer_schema::STAGES.len())
-                .filter_map(|i| {
-                    slicer_schema::STAGES.get(i).and_then(|s| {
-                        if s.wit_package.is_empty() {
-                            None
-                        } else {
-                            Some(wit_root.join("deps").join(s.wit_dir))
-                        }
-                    })
-                })
-                .collect()
-        }
-    };
-    let paths: Vec<PathBuf> = package_dirs
-        .iter()
-        .flat_map(|dir| input_files(dir, Some("wit")))
-        .collect();
-    snapshot_from_paths(ws_root, &paths)
+    })
 }
 
 pub fn fingerprint_metadata_path(ws_root: &Path, spec: &GuestSpec) -> PathBuf {
@@ -1099,7 +1142,7 @@ impl fmt::Display for StaleReason {
 }
 
 pub struct CheckContext {
-    pub shared: FreshnessSnapshot,
+    pub closure: ClosureCache,
     pub canonical: crate::wit_verify::WorldModel,
 }
 
@@ -1113,7 +1156,7 @@ fn try_parse_artifact_as_wit_text(path: &Path) -> Option<crate::wit_verify::Worl
     crate::wit_verify::world_model_from_text(&text, &path.display().to_string()).ok()
 }
 
-pub fn stale_reason(spec: &GuestSpec, ws_root: &Path, ctx: &CheckContext) -> Option<StaleReason> {
+pub fn stale_reason(spec: &GuestSpec, ws_root: &Path, ctx: &mut CheckContext) -> Option<StaleReason> {
     let artifact_path = ws_root.join(&spec.artifact_path);
     if !artifact_path.exists() {
         return Some(StaleReason::ArtifactMissing);
@@ -1161,7 +1204,10 @@ pub fn stale_reason(spec: &GuestSpec, ws_root: &Path, ctx: &CheckContext) -> Opt
     // Fingerprint check (content freshness) — stale if sidecar missing or mismatched.
     // Drift must be checked regardless of fingerprint state, so evaluate both before
     // returning. Order per spec: fingerprint before drift, but drift is never skipped.
-    let freshness = compute_guest_freshness(spec, ws_root, &ctx.shared);
+    let freshness = match compute_guest_freshness(spec, ws_root, &mut ctx.closure) {
+        Ok(f) => f,
+        Err(e) => return Some(StaleReason::Undecodable(e.to_string())),
+    };
     let fingerprint_stale = if !metadata_matches(
         &fingerprint_metadata_path(ws_root, spec),
         &freshness.fingerprint,
@@ -1235,7 +1281,7 @@ pub fn stale_reason(spec: &GuestSpec, ws_root: &Path, ctx: &CheckContext) -> Opt
 }
 
 #[allow(dead_code)]
-pub fn is_stale(spec: &GuestSpec, ws_root: &Path, ctx: &CheckContext) -> bool {
+pub fn is_stale(spec: &GuestSpec, ws_root: &Path, ctx: &mut CheckContext) -> bool {
     stale_reason(spec, ws_root, ctx).is_some()
 }
 
@@ -1289,11 +1335,11 @@ fn check_command_with(
             };
         }
     };
-    let shared = compute_shared_freshness(ws_root);
-    let ctx = CheckContext { shared, canonical };
+    let closure = ClosureCache::new();
+    let mut ctx = CheckContext { closure, canonical };
     let mut stale: Vec<GuestSpec> = Vec::new();
     for spec in guests {
-        if let Some(reason) = stale_reason(spec, ws_root, &ctx) {
+        if let Some(reason) = stale_reason(spec, ws_root, &mut ctx) {
             let _ = writeln!(out, "STALE: {}", spec.crate_name);
             let _ = writeln!(out, "{}", reason);
             stale.push(spec.clone());
@@ -1456,16 +1502,18 @@ mod tests {
         };
         // Lock file
         fs::write(guest_dir.join("Cargo.lock"), "lock-v1").expect("write lock");
-        let shared = compute_shared_freshness(&temp.0);
-        let fp1 = compute_guest_freshness(&spec, &temp.0, &shared)
+        let mut closure = ClosureCache::new();
+        let fp1 = compute_guest_freshness(&spec, &temp.0, &mut closure)
+            .expect("compute freshness")
             .fingerprint
             .clone();
         assert!(fp1.starts_with("v2-"), "must start with v2-, got {fp1}");
 
         // Change workspace Cargo.toml
         fs::write(&ws_toml, "[workspace]\n# changed\n").expect("change ws toml");
-        let shared2 = compute_shared_freshness(&temp.0);
-        let fp2 = compute_guest_freshness(&spec, &temp.0, &shared2)
+        let mut closure2 = ClosureCache::new();
+        let fp2 = compute_guest_freshness(&spec, &temp.0, &mut closure2)
+            .expect("compute freshness")
             .fingerprint
             .clone();
         assert_ne!(
@@ -1477,7 +1525,9 @@ mod tests {
 
         // Change guest Cargo.lock
         fs::write(guest_dir.join("Cargo.lock"), "lock-v2-changed").expect("change lock");
-        let fp3 = compute_guest_freshness(&spec, &temp.0, &shared)
+        let mut closure3 = ClosureCache::new();
+        let fp3 = compute_guest_freshness(&spec, &temp.0, &mut closure3)
+            .expect("compute freshness")
             .fingerprint
             .clone();
         assert_ne!(
@@ -1537,121 +1587,36 @@ mod tests {
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
-        let shared = compute_shared_freshness(&temp.0);
-        let ctx = CheckContext {
-            shared: shared.clone(),
+        let closure = ClosureCache::new();
+        let mut ctx = CheckContext {
+            closure,
             canonical: crate::wit_verify::WorldModel {
                 packages: std::collections::BTreeMap::new(),
             },
         };
-        assert!(is_stale(&spec, &temp.0, &ctx));
+        assert!(is_stale(&spec, &temp.0, &mut ctx));
 
-        let freshness = compute_guest_freshness(&spec, &temp.0, &ctx.shared);
+        let mut cache = ClosureCache::new();
+        let freshness = compute_guest_freshness(&spec, &temp.0, &mut cache).expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata directory");
         fs::write(&metadata_path, freshness.fingerprint).expect("write metadata");
-        // Need to rewrite ctx.shared already contains freshness inputs; but stale still true
+        // Need to rewrite ctx.closure already contains freshness inputs; but stale still true
         // because artifact undecodable -> still stale unless we give a decodable artifact
         // For this test, use a minimal decodable artifact via WorldModel fixture NOT via real wasm.
         // To keep it green, we assert the *fingerprint path* still matters: change it and check
         // stale returns true, fresh returns true only when fingerprint matches and artifact is undecodable?
         // Instead verify the predicate delegation: missing metadata => stale
-        let shared2 = compute_shared_freshness(&temp.0);
-        let ctx2 = CheckContext {
-            shared: shared2,
+        let closure2 = ClosureCache::new();
+        let mut ctx2 = CheckContext {
+            closure: closure2,
             canonical: crate::wit_verify::WorldModel {
                 packages: std::collections::BTreeMap::new(),
             },
         };
         // Still stale because artifact undecodable — verify fingerprint-not-matching case too
-        assert!(is_stale(&spec, &temp.0, &ctx2));
-    }
-
-    /// Per packet 164, the per-stage `stage_wit_snapshot` must charge each
-    /// per-stage package directory only to the guest(s) whose
-    /// `stage_id` resolves to it. A bump to one stage's `.wit` must mark
-    /// only that stage's guests `STALE` (AC-N2), not every guest in the
-    /// tree.
-    #[test]
-    fn stage_wit_dir_is_charged_only_to_matching_guest() {
-        // Every delivered module stage resolves to its own per-stage package
-        // directory, preserving freshness isolation between matching guests.
-        let expected_dirs = [
-            ("Layer::SlicePostProcess", "layer-slice-postprocess"),
-            ("Layer::Perimeters", "layer-perimeters"),
-            (
-                "Layer::PerimetersPostProcess",
-                "layer-perimeters-postprocess",
-            ),
-            ("Layer::Infill", "layer-infill"),
-            ("Layer::InfillPostProcess", "layer-infill-postprocess"),
-            ("Layer::Support", "layer-support"),
-            ("Layer::SupportPostProcess", "layer-support-postprocess"),
-            ("Layer::PathOptimization", "layer-path-optimization"),
-            ("PrePass::MeshAnalysis", "prepass-mesh-analysis"),
-            ("PrePass::LayerPlanning", "prepass-layer-planning"),
-            ("PrePass::SeamPlanning", "prepass-seam-planning"),
-            ("PrePass::SupportGeometry", "prepass-support-geometry"),
-            (
-                "PostPass::LayerFinalization",
-                "finalization-layer-finalization",
-            ),
-            ("PostPass::GCodePostProcess", "postpass-gcode-postprocess"),
-            ("PostPass::TextPostProcess", "postpass-text-postprocess"),
-        ];
-        assert_eq!(expected_dirs.len(), 15);
-        for (stage_id, wit_dir) in expected_dirs {
-            assert_eq!(
-                slicer_schema::wit_dir_for_stage_id(stage_id),
-                Some(wit_dir),
-                "stage {stage_id} must resolve to its matching per-stage WIT directory",
-            );
-        }
-    }
-
-    /// A guest whose `stage_id` is `None` (test guests) or refers to a
-    /// stage not in the table must be charged the **union** of all
-    /// per-stage package dirs — never the empty set. The default is
-    /// conservative: over-rebuilding is safe; under-rebuilding is the
-    /// bug class `cargo xtask build-guests --check` exists to prevent.
-    #[test]
-    fn stage_wit_unknown_stage_is_conservative() {
-        let snap = stage_wit_snapshot(workspace_root().as_path(), None);
-        // Representative per-stage packages must be in the union.
-        let names: Vec<String> = snap
-            .entries
-            .iter()
-            .map(|e| e.path.clone())
-            .filter_map(|p| {
-                let s = p.replace('\\', "/");
-                s.split("/deps/").nth(1).map(|rest| rest.to_string())
-            })
-            .collect();
-        // At least one `.wit` file under each representative package dir is charged.
-        assert!(
-            names
-                .iter()
-                .any(|n| n.starts_with("postpass-gcode-postprocess/")),
-            "postpass-gcode-postprocess should be in conservative union: {names:?}",
-        );
-        assert!(
-            names
-                .iter()
-                .any(|n| n.starts_with("postpass-text-postprocess/")),
-            "postpass-text-postprocess should be in conservative union: {names:?}",
-        );
-        assert!(
-            names
-                .iter()
-                .any(|n| n.starts_with("finalization-layer-finalization/")),
-            "finalization-layer-finalization should be in conservative union: {names:?}",
-        );
-
-        // An unknown stage_id resolves to `None` from `wit_dir_for_stage_id`
-        // and so also falls through to the conservative union path.
-        let snap_unknown = stage_wit_snapshot(workspace_root().as_path(), Some("NotAStage"));
-        assert_eq!(snap.entries.len(), snap_unknown.entries.len());
+        assert!(is_stale(&spec, &temp.0, &mut ctx2));
     }
 
     fn wit_artifact(dir: &TempDir, name: &str, wit_text: &str) -> PathBuf {
@@ -1661,8 +1626,8 @@ mod tests {
     }
 
     fn fresh_ctx(temp: &TempDir, spec: &GuestSpec) -> CheckContext {
-        let shared = compute_shared_freshness(&temp.0);
-        let freshness = compute_guest_freshness(spec, &temp.0, &shared);
+        let mut closure = ClosureCache::new();
+        let freshness = compute_guest_freshness(spec, &temp.0, &mut closure).expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata dir");
@@ -1675,7 +1640,7 @@ mod tests {
             crate::wit_verify::world_model_from_text(&text, "canonical.wit")
                 .expect("canonical must parse")
         };
-        CheckContext { shared, canonical }
+        CheckContext { closure, canonical }
     }
 
     #[test]
@@ -1699,8 +1664,8 @@ mod tests {
             tree: GuestTree::Core,
             stage_id: Some("Layer::Infill".to_string()),
         };
-        let ctx = fresh_ctx(&temp, &spec);
-        let reason = stale_reason(&spec, &temp.0, &ctx).expect("core mismatch must be stale");
+        let mut ctx = fresh_ctx(&temp, &spec);
+        let reason = stale_reason(&spec, &temp.0, &mut ctx).expect("core mismatch must be stale");
         assert!(!reason.to_string().contains("STALE:"));
         match reason {
             StaleReason::StageMismatch { expected, resolved } => {
@@ -1709,14 +1674,14 @@ mod tests {
             }
             other => panic!("expected StageMismatch, got {:?}", other),
         }
-        assert!(is_stale(&spec, &temp.0, &ctx));
+        assert!(is_stale(&spec, &temp.0, &mut ctx));
         // Fix: matching stage is fresh (fingerprint matches, artifact decodable).
         // Rewrite the artifact to infill and rebuild the context so canonical
         // matches the rewritten embedded world.
         let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
         fs::write(&artifact_path, wit_infill).expect("overwrite artifact");
-        let ctx2 = fresh_ctx(&temp, &spec);
-        assert!(stale_reason(&spec, &temp.0, &ctx2).is_none());
+        let mut ctx2 = fresh_ctx(&temp, &spec);
+        assert!(stale_reason(&spec, &temp.0, &mut ctx2).is_none());
     }
 
     #[test]
@@ -1738,8 +1703,8 @@ mod tests {
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
-        let ctx = fresh_ctx(&temp, &spec);
-        let reason = stale_reason(&spec, &temp.0, &ctx);
+        let mut ctx = fresh_ctx(&temp, &spec);
+        let reason = stale_reason(&spec, &temp.0, &mut ctx);
         assert!(
             reason.is_none(),
             "test guest with matching artifact must be fresh, got {:?}",
@@ -1752,7 +1717,7 @@ mod tests {
                 "test guest must never StageMismatch"
             );
         }
-        assert!(!is_stale(&spec, &temp.0, &ctx));
+        assert!(!is_stale(&spec, &temp.0, &mut ctx));
     }
 
     #[test]
@@ -1774,17 +1739,17 @@ mod tests {
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
-        let shared = compute_shared_freshness(&temp.0);
-        let ctx = CheckContext {
-            shared,
+        let closure = ClosureCache::new();
+        let mut ctx = CheckContext {
+            closure,
             canonical: crate::wit_verify::WorldModel {
                 packages: std::collections::BTreeMap::new(),
             },
         };
-        let reason = stale_reason(&spec, &temp.0, &ctx).expect("undecodable must be stale");
+        let reason = stale_reason(&spec, &temp.0, &mut ctx).expect("undecodable must be stale");
         assert!(matches!(reason, StaleReason::Undecodable(_)));
         assert!(!reason.to_string().contains("STALE:"));
-        assert!(is_stale(&spec, &temp.0, &ctx));
+        assert!(is_stale(&spec, &temp.0, &mut ctx));
     }
 
     #[test]
@@ -1805,16 +1770,16 @@ mod tests {
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
-        let shared = compute_shared_freshness(&temp.0);
-        let ctx = CheckContext {
-            shared,
+        let closure = ClosureCache::new();
+        let mut ctx = CheckContext {
+            closure,
             canonical: crate::wit_verify::WorldModel {
                 packages: std::collections::BTreeMap::new(),
             },
         };
         assert_eq!(
-            is_stale(&spec_missing, &temp.0, &ctx),
-            stale_reason(&spec_missing, &temp.0, &ctx).is_some()
+            is_stale(&spec_missing, &temp.0, &mut ctx),
+            stale_reason(&spec_missing, &temp.0, &mut ctx).is_some()
         );
         // Fresh case
         let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
@@ -1828,12 +1793,12 @@ mod tests {
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
-        let ctx2 = fresh_ctx(&temp, &spec_fresh);
+        let mut ctx2 = fresh_ctx(&temp, &spec_fresh);
         assert_eq!(
-            is_stale(&spec_fresh, &temp.0, &ctx2),
-            stale_reason(&spec_fresh, &temp.0, &ctx2).is_some()
+            is_stale(&spec_fresh, &temp.0, &mut ctx2),
+            stale_reason(&spec_fresh, &temp.0, &mut ctx2).is_some()
         );
-        assert!(!is_stale(&spec_fresh, &temp.0, &ctx2));
+        assert!(!is_stale(&spec_fresh, &temp.0, &mut ctx2));
     }
 
     #[test]
@@ -1853,14 +1818,14 @@ mod tests {
             tree: GuestTree::Core,
             stage_id: Some("Layer::Infill".to_string()),
         };
-        let shared = compute_shared_freshness(&temp.0);
-        let ctx = CheckContext {
-            shared,
+        let closure = ClosureCache::new();
+        let mut ctx = CheckContext {
+            closure,
             canonical: crate::wit_verify::WorldModel {
                 packages: std::collections::BTreeMap::new(),
             },
         };
-        let reason = stale_reason(&spec, &temp.0, &ctx).expect("never-built must be stale");
+        let reason = stale_reason(&spec, &temp.0, &mut ctx).expect("never-built must be stale");
         assert!(matches!(reason, StaleReason::ArtifactMissing));
         assert!(!reason.to_string().contains("STALE:"));
     }
@@ -2087,15 +2052,15 @@ mod tests {
         let wit_canonical = "package slicer:layer-infill@1.0.0 { interface infill { run: func(a: u32) -> string; extra: func(b: string) -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
         let canonical = crate::wit_verify::world_model_from_text(wit_canonical, "canonical.wit")
             .expect("canonical must parse");
-        let shared = compute_shared_freshness(&temp.0);
+        let mut closure = ClosureCache::new();
         // Write matching fingerprint so fingerprint is not the reason
-        let freshness = compute_guest_freshness(&spec, &temp.0, &shared);
+        let freshness = compute_guest_freshness(&spec, &temp.0, &mut closure).expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata dir");
         fs::write(&metadata_path, &freshness.fingerprint).expect("write fingerprint");
-        let ctx = CheckContext { shared, canonical };
-        let reason = stale_reason(&spec, &temp.0, &ctx).expect("drifting artifact must be stale");
+        let mut ctx = CheckContext { closure, canonical };
+        let reason = stale_reason(&spec, &temp.0, &mut ctx).expect("drifting artifact must be stale");
         assert!(
             !reason.to_string().contains("STALE:"),
             "drift display must not contain STALE:, got {}",
@@ -2107,7 +2072,7 @@ mod tests {
             }
             other => panic!("expected EmbeddedWorldDrift, got {:?}", other),
         }
-        assert!(is_stale(&spec, &temp.0, &ctx));
+        assert!(is_stale(&spec, &temp.0, &mut ctx));
         // Display invariant for drift variant
         let drift_display = StaleReason::EmbeddedWorldDrift(vec![crate::wit_verify::Drift {
             kind: crate::wit_verify::DriftKind::MissingDeclaration,
@@ -2118,5 +2083,560 @@ mod tests {
             embedded: None,
         }]);
         assert!(!drift_display.to_string().contains("STALE:"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Packet 231 — closure-walk tests (red phase, Step 1)
+    // These 11 tests bind to the not-yet-existing ClosureCache /
+    // ClosureError / guest_closure_input_paths API and must fail to compile
+    // until Step 2 lands the walk.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn closure_walk_is_transitive_over_path_deps() {
+        let temp = TempDir::new();
+        // crate b (leaf)
+        let b_dir = temp.0.join("b");
+        fs::create_dir_all(b_dir.join("src")).unwrap();
+        fs::write(
+            b_dir.join("Cargo.toml"),
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(b_dir.join("src/lib.rs"), "pub fn b() {}\n").unwrap();
+        // crate a -> b
+        let a_dir = temp.0.join("a");
+        fs::create_dir_all(a_dir.join("src")).unwrap();
+        let b_path = b_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            a_dir.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\nb = {{ path = \"{b_path}\" }}\n"
+            ),
+        )
+        .unwrap();
+        fs::write(a_dir.join("src/lib.rs"), "pub fn a() {}\n").unwrap();
+        // guest -> a
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        let a_path = a_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"guest-transitive\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\na = {{ path = \"{a_path}\" }}\n"
+            ),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-transitive".to_string(),
+            lib_name: "guest_transitive".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir: guest_dir.clone(),
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        assert!(has("a/src/lib.rs"), "a src missing: {paths:?}");
+        assert!(has("b/src/lib.rs"), "b src missing: {paths:?}");
+        assert!(has("a/Cargo.toml"), "a Cargo.toml missing: {paths:?}");
+        assert!(has("b/Cargo.toml"), "b Cargo.toml missing: {paths:?}");
+    }
+
+    #[test]
+    fn target_cfg_and_build_dependency_tables_are_walked() {
+        let temp = TempDir::new();
+        for name in ["t", "w", "g"] {
+            let d = temp.0.join(name);
+            fs::create_dir_all(d.join("src")).unwrap();
+            fs::write(
+                d.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+            fs::write(d.join("src/lib.rs"), format!("pub fn {name}() {{}}\n")).unwrap();
+        }
+        let t_path = temp.0.join("t").display().to_string().replace('\\', "/");
+        let w_path = temp.0.join("w").display().to_string().replace('\\', "/");
+        let g_path = temp.0.join("g").display().to_string().replace('\\', "/");
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"guest-cfg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[target.'cfg(not(target_arch = \"wasm32\"))'.dependencies]\nt = {{ path = \"{t_path}\" }}\n[target.'cfg(target_arch = \"wasm32\")'.dependencies]\nw = {{ path = \"{w_path}\" }}\n[build-dependencies]\ng = {{ path = \"{g_path}\" }}\n"
+            ),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-cfg".to_string(),
+            lib_name: "guest_cfg".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        assert!(has("t/src/lib.rs"), "target cfg(not wasm) dep t missing: {paths:?}");
+        assert!(has("w/src/lib.rs"), "target cfg(wasm) dep w missing: {paths:?}");
+        assert!(has("g/src/lib.rs"), "build-dep g missing: {paths:?}");
+    }
+
+    #[test]
+    fn core_guest_closure_reaches_sdk_core_ir_schema_and_parent_manifest() {
+        let ws = workspace_root();
+        let manifest = ws.join("modules/core-modules/classic-perimeters/wit-guest/Cargo.toml");
+        assert!(manifest.is_file(), "fixture manifest missing: {}", manifest.display());
+        let guest_dir = ws.join("modules/core-modules/classic-perimeters/wit-guest");
+        let spec = GuestSpec {
+            crate_name: "classic-perimeters-guest".to_string(),
+            lib_name: "classic_perimeters_guest".to_string(),
+            manifest_path: manifest.clone(),
+            guest_dir,
+            artifact_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+            tree: GuestTree::Core,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        assert!(has("crates/slicer-sdk/src/"), "sdk src missing: {paths:?}");
+        assert!(has("crates/slicer-core/src/"), "core src missing: {paths:?}");
+        assert!(has("crates/slicer-ir/src/"), "ir src missing: {paths:?}");
+        assert!(has("crates/slicer-schema/src/"), "schema src missing: {paths:?}");
+        assert!(
+            has("modules/core-modules/classic-perimeters/Cargo.toml"),
+            "parent Cargo.toml missing: {paths:?}"
+        );
+    }
+
+    #[test]
+    fn wit_bindgen_only_test_guest_has_an_empty_closure() {
+        let ws = workspace_root();
+        let manifest = ws.join("crates/slicer-wasm-host/test-guests/prepass-guest/Cargo.toml");
+        assert!(manifest.is_file(), "prepass-guest manifest missing: {}", manifest.display());
+        let guest_dir = ws.join("crates/slicer-wasm-host/test-guests/prepass-guest");
+        let spec = GuestSpec {
+            crate_name: "prepass-guest".to_string(),
+            lib_name: "prepass_guest".to_string(),
+            manifest_path: manifest,
+            guest_dir: guest_dir.clone(),
+            artifact_path: PathBuf::from("crates/slicer-wasm-host/test-guests/prepass-guest.component.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        // Guest's own src and Cargo.toml must be present.
+        assert!(has("prepass-guest/src/"), "guest own src missing: {paths:?}");
+        assert!(has("prepass-guest/Cargo.toml"), "guest own Cargo.toml missing: {paths:?}");
+        for banned in [
+            "crates/slicer-core/",
+            "crates/slicer-sdk/",
+            "crates/slicer-ir/",
+            "crates/slicer-schema/",
+            "crates/slicer-macros/",
+        ] {
+            assert!(!has(banned), "empty closure must not contain {banned}: {paths:?}");
+        }
+    }
+
+    #[test]
+    fn closure_walk_is_cycle_guarded_deduped_and_cached() {
+        let temp = TempDir::new();
+        let a_dir = temp.0.join("a");
+        let b_dir = temp.0.join("b");
+        fs::create_dir_all(a_dir.join("src")).unwrap();
+        fs::create_dir_all(b_dir.join("src")).unwrap();
+        let a_path = a_dir.display().to_string().replace('\\', "/");
+        let b_path = b_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            a_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\nb = {{ path = \"{b_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(
+            b_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"b\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\na = {{ path = \"{a_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(a_dir.join("src/lib.rs"), "pub fn a() {}\n").unwrap();
+        fs::write(b_dir.join("src/lib.rs"), "pub fn b() {}\n").unwrap();
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"guest-cycle\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\na = {{ path = \"{a_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-cycle".to_string(),
+            lib_name: "guest_cycle".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir: guest_dir.clone(),
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let spec2 = GuestSpec {
+            crate_name: "guest-cycle-2".to_string(),
+            lib_name: "guest_cycle_2".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir,
+            artifact_path: PathBuf::from("guest2.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("first walk");
+        // deduped: each file appears once
+        let mut sorted = paths.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(paths.len(), sorted.len(), "paths must be deduped");
+        let has_a = paths.iter().filter(|p| p.to_string_lossy().replace('\\', "/").contains("a/src/lib.rs")).count();
+        let has_b = paths.iter().filter(|p| p.to_string_lossy().replace('\\', "/").contains("b/src/lib.rs")).count();
+        assert_eq!(has_a, 1, "a must appear exactly once");
+        assert_eq!(has_b, 1, "b must appear exactly once");
+        let len_after_first = cache.len();
+        assert!(len_after_first >= 2, "cache must hold a and b: len={len_after_first}");
+        // Second guest resolving same subtree must reuse cache (no new manifest read doubles the cache beyond expected).
+        let _paths2 = guest_closure_input_paths(&spec2, &mut cache).expect("second walk");
+        assert!(cache.len() >= len_after_first, "cache must not shrink");
+        assert!(cache.len() <= len_after_first + 1, "second walk should be cached, len {} vs {}", cache.len(), len_after_first);
+    }
+
+    #[test]
+    fn optional_path_deps_are_included_in_the_closure() {
+        let temp = TempDir::new();
+        let opt_dir = temp.0.join("opt");
+        fs::create_dir_all(opt_dir.join("src")).unwrap();
+        fs::write(
+            opt_dir.join("Cargo.toml"),
+            "[package]\nname = \"opt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(opt_dir.join("src/lib.rs"), "pub fn opt() {}\n").unwrap();
+        let opt_path = opt_dir.display().to_string().replace('\\', "/");
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"guest-opt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\nopt = {{ path = \"{opt_path}\", optional = true }}\n"),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-opt".to_string(),
+            lib_name: "guest_opt".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        assert!(has("opt/src/lib.rs"), "optional dep must be included: {paths:?}");
+    }
+
+    #[test]
+    fn fingerprint_input_set_contains_no_wit_files() {
+        let temp = TempDir::new();
+        let dep_dir = temp.0.join("dep");
+        fs::create_dir_all(dep_dir.join("src")).unwrap();
+        fs::write(
+            dep_dir.join("Cargo.toml"),
+            "[package]\nname = \"dep\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(dep_dir.join("src/lib.rs"), "").unwrap();
+        // a wit file inside dep that must NOT be part of fingerprint
+        fs::write(dep_dir.join("extra.wit"), "package foo:bar;").unwrap();
+        let dep_path = dep_dir.display().to_string().replace('\\', "/");
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"guest-wit\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\ndep = {{ path = \"{dep_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-wit".to_string(),
+            lib_name: "guest_wit".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
+        for p in &paths {
+            assert_ne!(
+                p.extension().and_then(|s| s.to_str()),
+                Some("wit"),
+                "fingerprint must contain no wit files, got {}",
+                p.display()
+            );
+        }
+    }
+
+    #[test]
+    fn module_manifest_toml_edit_marks_core_guest_stale() {
+        let temp = TempDir::new();
+        // Parent module dir with its own manifest classic-perimeters.toml
+        let module_dir = temp.0.join("my-module");
+        fs::create_dir_all(module_dir.join("src")).unwrap();
+        fs::write(module_dir.join("Cargo.toml"), "[package]\nname = \"my-module\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        fs::write(
+            module_dir.join("my-module.toml"),
+            "[stage]\nid = \"Layer::Infill\"\n",
+        )
+        .unwrap();
+        fs::write(module_dir.join("src/lib.rs"), "pub fn x() {}\n").unwrap();
+        let guest_dir = module_dir.join("wit-guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            "[package]\nname = \"my-module-guest\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[lib]\ncrate-type = [\"cdylib\"]\n[dependencies]\nmy-module = { path = \"..\" }\n[workspace]\n",
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let artifact_rel = wit_artifact(&temp, "my-module-guest", wit);
+        let spec = GuestSpec {
+            crate_name: "my-module-guest".to_string(),
+            lib_name: "my_module_guest".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir: guest_dir.clone(),
+            artifact_path: artifact_rel.clone(),
+            tree: GuestTree::Core,
+            stage_id: Some("Layer::Infill".to_string()),
+        };
+        // Fresh: compute fingerprint via closure and write sidecar.
+        let mut cache = ClosureCache::new();
+        let closure_paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
+        // Core guest's module manifest must be part of the input set (guest_input_paths covers it).
+        // On the pre-change tree this file is NOT charged, so the fresh/stale round-trip would not flip.
+        // The post-change walk must make the edit observable; we assert the closure + guest inputs together cover it.
+        // For now verify closure itself does not hide wit and that module manifest is reachable via guest_dir parent.
+        let module_manifest = module_dir.join("my-module.toml");
+        assert!(module_manifest.is_file());
+        // Simulate staleness: changing the module manifest bytes must change the fingerprint input set.
+        // We do this by checking that the file is on disk and that a subsequent guest_closure_input_paths
+        // plus the parent toml listing would include it — the actual staleness is proven via
+        // fingerprint content, but the red-phase test fixes the API shape.
+        let _ = closure_paths;
+        // Now use the real staleness signal: write a fingerprint, then mutate the manifest and expect staleness.
+        // This will become green only when guest_input_paths charges *.toml under the parent dir.
+        let mut ctx_like = {
+            let mut closure = ClosureCache::new();
+            let freshness = compute_guest_freshness(&spec, &temp.0, &mut closure).expect("compute freshness");
+            let meta = fingerprint_metadata_path(&temp.0, &spec);
+            fs::create_dir_all(meta.parent().unwrap()).unwrap();
+            fs::write(&meta, &freshness.fingerprint).unwrap();
+            let canonical = crate::wit_verify::world_model_from_text(wit, "canonical.wit").unwrap();
+            CheckContext { closure, canonical }
+        };
+        // Before edit: should be fresh (fingerprint matches, artifact decodable)
+        assert!(!is_stale(&spec, &temp.0, &mut ctx_like), "must be fresh before manifest edit");
+        // Mutate module manifest
+        fs::write(module_dir.join("my-module.toml"), "[stage]\nid = \"Layer::Infill\"\n# edited\n").unwrap();
+        let closure2 = ClosureCache::new();
+        let mut ctx2 = CheckContext {
+            closure: closure2,
+            canonical: crate::wit_verify::world_model_from_text(wit, "canonical.wit").unwrap(),
+        };
+        // After edit: must be stale — on pre-change code this fails (no charge), which is the expected red signal.
+        assert!(is_stale(&spec, &temp.0, &mut ctx2), "module manifest edit must mark core guest stale");
+    }
+
+    #[test]
+    fn dev_dependencies_are_excluded_from_the_closure() {
+        let temp = TempDir::new();
+        let dev_dir = temp.0.join("dev-only");
+        fs::create_dir_all(dev_dir.join("src")).unwrap();
+        fs::write(
+            dev_dir.join("Cargo.toml"),
+            "[package]\nname = \"dev-only\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(dev_dir.join("src/lib.rs"), "pub fn dev() {}\n").unwrap();
+        let dev_path = dev_dir.display().to_string().replace('\\', "/");
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"guest-dev\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dev-dependencies]\ndev-only = {{ path = \"{dev_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
+        let spec = GuestSpec {
+            crate_name: "guest-dev".to_string(),
+            lib_name: "guest_dev".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
+        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        assert!(!has("dev-only/src/lib.rs"), "dev-dep must be excluded: {paths:?}");
+        assert!(!has("dev-only/Cargo.toml"), "dev-dep manifest must be excluded: {paths:?}");
+    }
+
+    #[test]
+    fn out_of_closure_edit_does_not_mark_guest_stale() {
+        let temp = TempDir::new();
+        let unrelated = temp.0.join("unrelated");
+        fs::create_dir_all(unrelated.join("src")).unwrap();
+        fs::write(
+            unrelated.join("Cargo.toml"),
+            "[package]\nname = \"unrelated\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(unrelated.join("src/lib.rs"), "pub fn old() {}\n").unwrap();
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).unwrap();
+        fs::write(
+            guest_dir.join("Cargo.toml"),
+            "[package]\nname = \"guest-isolated\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(guest_dir.join("src/lib.rs"), "pub fn guest() {}\n").unwrap();
+        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let artifact_rel = wit_artifact(&temp, "guest-isolated", wit);
+        let spec = GuestSpec {
+            crate_name: "guest-isolated".to_string(),
+            lib_name: "guest_isolated".to_string(),
+            manifest_path: guest_dir.join("Cargo.toml"),
+            guest_dir: guest_dir.clone(),
+            artifact_path: artifact_rel,
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        // Prove guest's own src is still charged: mutating guest src must change closure-derived fingerprint.
+        let mut cache = ClosureCache::new();
+        let paths_before = guest_closure_input_paths(&spec, &mut cache).expect("closure");
+        assert!(
+            paths_before.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains("guest/src/lib.rs")),
+            "guest own src must be charged: {paths_before:?}"
+        );
+        let mut _ctx = fresh_ctx(&temp, &spec);
+        assert!(
+            stale_reason(&spec, &temp.0, &mut _ctx).is_none(),
+            "isolated guest must be fresh before unrelated edit"
+        );
+        // Edit file outside closure
+        fs::write(unrelated.join("src/lib.rs"), "pub fn new_changed() {}\n").unwrap();
+        // Still fresh: outside closure must not mark stale
+        let _ctx2 = {
+            let closure = ClosureCache::new();
+            let canonical = crate::wit_verify::world_model_from_text(wit, "canonical.wit").unwrap();
+            CheckContext { closure, canonical }
+        };
+        // Need a fresh fingerprint recomputed without touching guest inputs; reuse fresh_ctx logic for comparison
+        // but stale_reason should still be None because fingerprint hasn't changed for this guest.
+        // We simulate by reusing the previously written fingerprint (it already matches current guest inputs).
+        assert!(
+            stale_reason(&spec, &temp.0, &mut _ctx).is_none(),
+            "out-of-closure edit must not mark guest stale"
+        );
+    }
+
+    #[test]
+    fn unreadable_manifest_or_missing_path_dep_is_an_error_not_a_smaller_closure() {
+        let temp = TempDir::new();
+        // Unreadable / unparsable manifest
+        let bad_dir = temp.0.join("bad");
+        fs::create_dir_all(bad_dir.join("src")).unwrap();
+        fs::write(bad_dir.join("Cargo.toml"), "[[[ not toml").unwrap();
+        fs::write(bad_dir.join("src/lib.rs"), "").unwrap();
+        let guest_bad = temp.0.join("guest-bad");
+        fs::create_dir_all(guest_bad.join("src")).unwrap();
+        let bad_path = bad_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            guest_bad.join("Cargo.toml"),
+            format!("[package]\nname = \"guest-bad\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\nbad = {{ path = \"{bad_path}\" }}\n"),
+        )
+        .unwrap();
+        fs::write(guest_bad.join("src/lib.rs"), "").unwrap();
+        let spec_bad = GuestSpec {
+            crate_name: "guest-bad".to_string(),
+            lib_name: "guest_bad".to_string(),
+            manifest_path: guest_bad.join("Cargo.toml"),
+            guest_dir: guest_bad,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache = ClosureCache::new();
+        let err = guest_closure_input_paths(&spec_bad, &mut cache).expect_err("unparsable manifest must error");
+        let msg = format!("{err:?} {}", err);
+        assert!(
+            msg.contains("bad") || msg.contains("Cargo.toml"),
+            "error must name offending manifest: {msg}"
+        );
+        // Missing path dep
+        let guest_missing = temp.0.join("guest-missing");
+        fs::create_dir_all(guest_missing.join("src")).unwrap();
+        fs::write(
+            guest_missing.join("Cargo.toml"),
+            "[package]\nname = \"guest-missing\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[dependencies]\nnope = { path = \"./does-not-exist\" }\n",
+        )
+        .unwrap();
+        fs::write(guest_missing.join("src/lib.rs"), "").unwrap();
+        let spec_missing = GuestSpec {
+            crate_name: "guest-missing".to_string(),
+            lib_name: "guest_missing".to_string(),
+            manifest_path: guest_missing.join("Cargo.toml"),
+            guest_dir: guest_missing,
+            artifact_path: PathBuf::from("guest2.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let mut cache2 = ClosureCache::new();
+        let err2 = guest_closure_input_paths(&spec_missing, &mut cache2).expect_err("missing path dep must error");
+        let msg2 = format!("{err2:?} {}", err2);
+        assert!(
+            msg2.contains("does-not-exist") || msg2.contains("nope") || msg2.contains("Cargo.toml"),
+            "error must name missing dep: {msg2}"
+        );
+        // Ensure ClosureError type is used (not silently smaller closure)
+        let _: ClosureError = err;
+        let _: ClosureError = err2;
+    }
+
+    #[test]
+    fn no_guest_closure_reaches_slicer_model_io() {
+        let ws_root = workspace_root();
+        let (guests, _warnings) = discover_guests(&ws_root);
+        for spec in guests {
+            let mut cache = ClosureCache::new();
+            let paths = guest_closure_input_paths(&spec, &mut cache)
+                .unwrap_or_else(|e| panic!("closure walk failed for {}: {e}", spec.manifest_path.display()));
+            for p in &paths {
+                assert!(
+                    !p.to_string_lossy().replace('\\', "/").contains("slicer-model-io"),
+                    "guest {} closure must not reach slicer-model-io, got {}",
+                    spec.crate_name,
+                    p.display()
+                );
+            }
+        }
     }
 }

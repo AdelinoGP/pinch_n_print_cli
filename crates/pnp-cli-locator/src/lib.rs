@@ -126,14 +126,16 @@ pub fn newest_source_mtime(root: &Path) -> SystemTime {
 /// `is_stale` has a **third** disjunct this mirror deliberately omits: it also
 /// reports stale when `metadata_matches` finds that the fingerprint recorded at
 /// `fingerprint_metadata_path` differs from the freshly computed
-/// `FreshnessSnapshot::fingerprint` for that guest. That is a content hash over
-/// the guest's resolved input set — shared crates, the guest's own inputs, and
-/// its per-stage WIT package — persisted under `target/guest-fingerprints/`, and
-/// it exists to catch input-set changes that leave mtimes looking fine (a file
-/// removed from the set, a checkout that rewinds content, a stage's WIT dir
-/// swapped). It has no analogue here: `pnp_cli` is an ordinary Cargo binary with
-/// no per-artifact fingerprint sidecar, and Cargo itself owns the equivalent
-/// rebuild decision. Omission is intentional, not drift.
+/// `FreshnessSnapshot::fingerprint` for that guest. That is a dependency closure
+/// fingerprint over the guest's per-guest transitive closure — the `path`
+/// dependencies resolved by `guest_closure_input_paths` (cached in
+/// `ClosureCache` threaded as `cache: &mut ClosureCache` through `is_stale`)
+/// plus the guest's own inputs — persisted under `target/guest-fingerprints/`,
+/// and it exists to catch input-set changes that leave mtimes looking fine (a
+/// file removed from the set, a checkout that rewinds content, a dependency
+/// added or removed). It has no analogue here: `pnp_cli` is an ordinary Cargo
+/// binary with no per-artifact fingerprint sidecar, and Cargo itself owns the
+/// equivalent rebuild decision. Omission is intentional, not drift.
 ///
 /// Keep the two functions legible as siblings if either changes (ADR-0054).
 pub fn staleness_reason(
