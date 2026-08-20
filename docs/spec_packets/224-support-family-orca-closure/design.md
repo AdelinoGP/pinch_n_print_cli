@@ -250,7 +250,9 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 
 **Gate shape (locked 2026-08-18).** Parity is gated by (a) structural invariants in the test suite and (b) a written human/LLM `/visual-debug` inspection checklist with **side-by-side Orca renders at matched physical heights**. No test may read the Orca G-code; no Orca-derived constant may be hardcoded into a test. Extruding-move counts are excluded as a metric.
 
-**Current state.** RC-4 has landed, so both families now emit support G-code and the differential is unblocked. The quantitative side is recorded in §Measured Baseline (2026-08-18). The inspection checklist itself is written into §Orca Inspection Checklist by implementation Step 6.
+**Current state.** RC-4 has landed, so both families now emit support G-code and the differential is unblocked. The quantitative side is recorded in §Measured Baseline (2026-08-18, re-measured 2026-08-20 after the RC-15 port). The inspection checklist itself is written into §Orca Inspection Checklist by implementation Step 6.
+
+**TASK-163b-orca-ref disposition (recorded 2026-08-20, AC-6 half (b)).** The task is **closed** with the existing authoritative references: `tmp/SupportTest_Tree_Orca.gcode` and `tmp/SupportTest_Normal_Orca.gcode`, regenerated 2026-08-18 from the OrcaSlicer checkout with the profile recorded in §Orca reference profile (normal) — `support_threshold_angle=30`, `support_object_xy_distance=0.35`, `support_top_z_distance=0.2`, `support_bottom_z_distance=0.2`, `support_interface_top_layers=2`, `support_interface_bottom_layers=2`, `support_interface_spacing=0.4`, `support_base_pattern=rectilinear`, `support_base_pattern_spacing=2`, `support_line_width=80%`, `support_on_build_plate_only=1`, `support_expansion=0`, `support_style=default`, `layer_height=0.2`, `initial_layer_print_height=0.2`, `nozzle_diameter=0.5`, `support_type=tree(auto)`/`normal(auto)`, `independent_support_layer_height` disabled. Both references were used for the primary differential review in §Orca Inspection Checklist. No external blocker remains. Exact path parity is never claimed.
 
 ## Orca Inspection Checklist
 
@@ -281,6 +283,8 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 | traditional | collision freedom | PASS | 79 | `Layer::Support` | Support remains offset from the model wall and does not visibly intersect it. |
 | traditional | interface placement/count | DIVERGENT (count) | 123 | `Layer::Support` | Placement is correct (topmost, carved out of the body). Count: PnP emits **2** `;TYPE:Support interface` blocks at `top_layers=2`/`bottom_layers=2` (the count follows the configured top band, pinned by `interface_layer_count_follows_config`), Orca emits **3** at the same config. The difference is canonical roof/floor layer-count semantics, registered as a gap (see the gap register). |
 | traditional | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. |
+
+**Per-family disposition (AC-3 half (b)).** Tree: the PnP render (`target/vd-support-family-tree`, source `tmp/visual-debug-support-family-tree.json`) was inspected beside the Orca render (`target/vd-orca-tree-compare`, source `tmp/SupportTest_Tree_Orca.gcode`) at layers 10/30/79/119/123; all five axes PASS, with the recorded top-Z gap-structure deviation noted under independent heights. Traditional: the PnP render (`target/vd-support-family-normal`, source `tmp/visual-debug-support-family-normal.json`) was inspected beside the Orca render (`target/vd-orca-normal-compare`, source `tmp/SupportTest_Normal_Orca.gcode`) at the same layers; four axes PASS and interface placement/count is DIVERGENT on count (2 vs 3), registered as gap G-18. Neither family claims exact path identity.
 
 ## Session Handoff (2026-08-17) — superseded
 
@@ -334,6 +338,12 @@ The open research question is therefore: **does grid-snapping and contour simpli
 ## Risks and Tradeoffs
 - `TASK-163b-orca-ref` may remain externally blocked only if provenance/authority cannot be established; the existing references must still be used for primary differential review.
 - Visual evidence is human-inspected and therefore cannot be reduced to a grep-only AC.
+
+## Inherited debt (recorded 2026-08-20, bisect-verified)
+
+- **32 pre-existing workspace test failures at `ed62090d`** — `cargo test --workspace` fails 32 tests (wedge plan-structure invariants, e2e support evidence, integrated-parity contracts, live-dispatch tests, tool-selection tests, `support_plan_validation`). A bisect at the pre-port baseline `ed62090d` (guests rebuilt, `cargo xtask build-guests --check` clean) shows all 32 fail there too: **0 attributable to this branch's work**. Registered as G-19; human-approved 2026-08-20 to record rather than fix in 224. The packet's own gates (closure 12/12, planner crate 8/8, clippy) are green.
+- `cargo xtask check-literals` exits 1 on 61 inherited violations across 34 files, 0 attributable to this branch (re-derived 2026-08-20; the port's diff adds no watched-type literal). Human-approved to commit over. Registered as G-15.
+- `cargo xtask test --summary --workspace` cannot run while the check-literals preflight fails: the wrapper hard-aborts before the test phase. The guest-WASM freshness gate was therefore verified separately (`cargo xtask build-guests --check`, exit 0) before the direct `cargo test --workspace` run.
 
 ## Context Cost Estimate
 - Aggregate: `M`
