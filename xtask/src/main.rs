@@ -79,7 +79,7 @@ fn main() -> ExitCode {
                 }
                 Some("--check") => {
                     let ws = build_guests::workspace_root();
-                    std::process::exit(build_guests::check_command(&ws));
+                    std::process::exit(build_guests::check_command(&ws).code);
                 }
                 Some(other) => {
                     eprintln!("xtask: unknown flag '{other}' for build-guests\n");

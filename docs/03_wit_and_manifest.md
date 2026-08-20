@@ -1653,6 +1653,15 @@ guests against `crates/slicer-schema/wit/`.
 
 ### Build & Freshness Contract (Normative)
 
+> **Note (packet 230, 2026-08-20):** the contract described below is the
+> pre-packet input-timestamp gate. Since packet 230
+> (`docs/spec_packets/230-output-based-guest-freshness/`), `cargo xtask
+> build-guests --check` decodes each artifact and compares its embedded WIT
+> world against canonical, with exit codes `0` fresh / `1` stale /
+> `3` infrastructure error. The normative prose below is rewritten by packet
+> 232 (`docs/spec_packets/232-freshness-gate-docs/`), which replaces this
+> note together with the section.
+
 Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
 followed by `wasm-tools component new` to produce the `.component.wasm` artifact.
 

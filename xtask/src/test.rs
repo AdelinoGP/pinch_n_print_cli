@@ -155,14 +155,12 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         return 1;
     }
 
-    let check_code = build_guests::check_command(ws_root);
-    if check_code != 0 {
-        eprintln!("xtask test: guest artifacts are stale; rebuilding...");
-        let build_code = build_guests::build_command(ws_root);
-        if build_code != 0 {
-            eprintln!("xtask test: guest rebuild failed; aborting test run.");
-            return build_code;
-        }
+    if let Some(code) = handle_guest_freshness_with(
+        ws_root,
+        || build_guests::check_command(ws_root),
+        |stale| build_guests::build_stale_command(ws_root, stale),
+    ) {
+        return code;
     }
 
     let freshness = ensure_pnp_cli_fresh(ws_root);
@@ -242,6 +240,27 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
 
 fn check_literals_preflight(ws_root: &Path) -> i32 {
     check_literals::run(ws_root, false, &[])
+}
+
+fn handle_guest_freshness_with(
+    _ws_root: &Path,
+    check: impl FnOnce() -> build_guests::CheckOutcome,
+    rebuild: impl FnOnce(&[build_guests::GuestSpec]) -> i32,
+) -> Option<i32> {
+    let outcome = check();
+    if outcome.code == build_guests::EXIT_INFRA_ERROR {
+        eprintln!("xtask test: guest freshness check failed (infrastructure error); aborting.");
+        return Some(outcome.code);
+    }
+    if outcome.code == build_guests::EXIT_STALE {
+        eprintln!("xtask test: guest artifacts are stale; rebuilding...");
+        let build_code = rebuild(&outcome.stale);
+        if build_code != 0 {
+            eprintln!("xtask test: guest rebuild failed; aborting test run.");
+            return Some(build_code);
+        }
+    }
+    None
 }
 
 /// Outcome of the pnp_cli freshness gate: the exit code `test_command` should
@@ -684,5 +703,87 @@ mod tests {
         std::fs::remove_dir_all(&root).expect("remove fixture tree");
 
         assert_eq!(result, 0);
+    }
+
+    fn guest_spec(name: &str) -> crate::build_guests::GuestSpec {
+        crate::build_guests::GuestSpec { // exhaustive: 7-field GuestSpec (AC-9/10/N4 fixtures)
+            crate_name: name.to_string(),
+            lib_name: name.replace('-', "_"),
+            manifest_path: std::path::PathBuf::from(format!("{name}/Cargo.toml")),
+            guest_dir: std::path::PathBuf::from(name),
+            artifact_path: std::path::PathBuf::from(format!("{name}.wasm")),
+            tree: crate::build_guests::GuestTree::Core,
+            stage_id: None,
+        }
+    }
+
+    #[test]
+    fn infrastructure_error_aborts_without_rebuilding() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let ws = std::path::PathBuf::from("/tmp/fake-ws");
+        let rebuilt = Rc::new(Cell::new(false));
+        let rebuilt_clone = Rc::clone(&rebuilt);
+
+        let code = super::handle_guest_freshness_with(
+            &ws,
+            || crate::build_guests::CheckOutcome {
+                stale: Vec::new(),
+                code: crate::build_guests::EXIT_INFRA_ERROR,
+            },
+            |_| {
+                rebuilt_clone.set(true);
+                0
+            },
+        );
+
+        assert_eq!(code, Some(crate::build_guests::EXIT_INFRA_ERROR));
+        assert!(!rebuilt.get(), "infra error must not invoke rebuild");
+    }
+
+    #[test]
+    fn test_command_rebuilds_only_the_stale_specs() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let ws = std::path::PathBuf::from("/tmp/fake-ws");
+        let stale = vec![guest_spec("guest-a"), guest_spec("guest-b")];
+        let stale_names: Vec<String> = stale.iter().map(|g| g.crate_name.clone()).collect();
+        let seen: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        let seen_clone = Rc::clone(&seen);
+
+        let code = super::handle_guest_freshness_with(
+            &ws,
+            move || crate::build_guests::CheckOutcome {
+                code: crate::build_guests::EXIT_STALE,
+                stale: stale.clone(),
+            },
+            move |received| {
+                *seen_clone.borrow_mut() = received.iter().map(|g| g.crate_name.clone()).collect();
+                0
+            },
+        );
+
+        assert_eq!(code, None, "successful stale rebuild must return None (continue)");
+        assert_eq!(*seen.borrow(), stale_names);
+    }
+
+    #[test]
+    fn failed_stale_rebuild_aborts_the_suite() {
+        let ws = std::path::PathBuf::from("/tmp/fake-ws");
+        let stale = vec![guest_spec("guest-a")];
+
+        let code = super::handle_guest_freshness_with(
+            &ws,
+            move || crate::build_guests::CheckOutcome {
+                code: crate::build_guests::EXIT_STALE,
+                stale: stale.clone(),
+            },
+            |_| 1,
+        );
+
+        assert_ne!(code, Some(0));
+        assert!(code.is_some(), "failed rebuild must abort with non-zero code");
     }
 }

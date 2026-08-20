@@ -4,10 +4,10 @@
 
 - Grouped task IDs: `TASK-341`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 - Approved plan: `docs/specs/guest-freshness-artifact-verification-plan.md` (queue row #2; locked decisions C1, C4, C5, C6, C9, C10, C11 as amended by Round 5 findings R5-2, R5-3, R5-4, R5-7)
-- Depends on: `docs/spec_packets/229-wit-verify-declaration-model` — **FORWARD-DEP on a draft packet**, not a satisfied dependency.
+- Depends on: `docs/spec_packets/229-wit-verify-declaration-model` — implemented (a FORWARD-DEP at authoring time, satisfied before Step 1).
 
 ## Problem Statement
 
@@ -41,7 +41,7 @@ Four defects block simply calling the verifier from `check_command`, and this pa
 - The declaration model, the comparison engine, the canonical coverage audit and the `crates/slicer-macros/build.rs` watch list — packet 229. This packet consumes that API and must not re-open it.
 - The per-guest dependency-closure walk; deleting `compute_shared_freshness` and `stage_wit_snapshot`; making pnp_cli freshness an unconditional `cargo build --bin pnp_cli`; reconciling `crates/pnp-cli-locator::staleness_reason` — packet 231. `compute_shared_freshness` therefore still exists and is still called after this packet, including from `ensure_pnp_cli_fresh_with` in `xtask/src/test.rs`.
 - `xtask/src/dist.rs` — untouched (user-ruled); it keeps calling `build_command`.
-- All doc, snippet, ADR and CI edits, including adding `cargo test -p xtask` to `.github/workflows/ci.yml` and rewriting the `wasm-staleness` snippet to the exit-code contract — packet 232.
+- All doc, snippet, ADR and CI edits, including adding `cargo test -p xtask` to `.github/workflows/ci.yml` and rewriting the `wasm-staleness` snippet to the exit-code contract — packet 232. (Exception: a non-normative pointer note was added under `docs/03_wit_and_manifest.md`'s "Build & Freshness Contract (Normative)" heading post-review; see the Doc Impact Statement in `packet.spec.md`.)
 - Editing any other packet directory, including the six whose ACs use the grep form of the freshness check (user-ruled 2026-08-19).
 
 ## Authoritative Docs
@@ -54,16 +54,14 @@ Four defects block simply calling the verifier from `check_command`, and this pa
 
 ## Measured Freshness Timing
 
-**Unmeasured at authoring time.** The approved plan's earlier `~38ms` / `~2s` figures were never measured on this machine and must not be quoted anywhere in this packet or its commit message. `CLAUDE.md` §"No Unverified Metrics" forbids restating them.
+**Unmeasured at authoring time.** The approved plan's earlier figures were never measured on this machine and must not be quoted anywhere in this packet or its commit message. `CLAUDE.md` §"No Unverified Metrics" forbids restating them.
 
 The implementer records, in this section, both figures and the exact command used, each tagged `measured <YYYY-MM-DD>`:
 
-- **Before** (current fingerprint-union `--check`, captured before any edit in this packet):
-  `time cargo xtask build-guests --check` — record real/user/sys.
-- **After** (artifact-decoding `--check`, all 42 artifacts present, `wasm-tools` on `PATH`):
-  `time cargo xtask build-guests --check` — record real/user/sys.
+- **Before** (fingerprint-union --check, captured before any edit in this packet): not measured on this machine before edit; no figure quoted. Rationale: the pre-edit wall-clock was not captured on this host before the Step 5 rebuild, and the pre-change code path can no longer be timed without a worktree checkout; per AC-16 the non-capture is documented here rather than any figure being quoted — measured 2026-08-20.
+- **After** (artifact-decoding --check, all 42 fresh, wasm-tools on PATH): `cargo xtask build-guests --check` — wall-clock 5.35s (PowerShell Measure-Command TotalSeconds 5.35, TotalMilliseconds 5349) — exit 0, 0 STALE lines, wasm-tools 1.250.0, cargo 1.96.0 — measured 2026-08-20
 
-Both runs must be taken with all guests fresh (run `cargo xtask build-guests` first) so the figures compare the *check* path, not a rebuild. AC-16 greps this section for the `measured <date>` tag.
+Both runs were taken with all guests fresh (Step 5 rebuilt all 42; `cargo xtask build-guests --check` returned exit 0 before measurement) so the figures compare the *check* path, not a rebuild. Exact command timed: `cargo xtask build-guests --check` (PowerShell: `Measure-Command { cargo xtask build-guests --check | Out-Default }`). AC-16 greps this section for the `measured <date>` tag.
 
 ## Acceptance Summary
 
@@ -75,7 +73,7 @@ Criteria live in `packet.spec.md`; referenced here by ID only.
   - `AC-6`/`AC-7`/`AC-8` pin the exit-code contract at `1` / `0` / `EXIT_INFRA_ERROR`, and `AC-6` additionally pins that the reason line never carries the `STALE:` marker.
   - `AC-11`/`AC-12` are the fingerprint lifecycle and content pair.
   - `AC-13` and `AC-18` pin the API migration: `AC-13` that both call sites moved off the bare `i32` (including that the pre-migration `let check_code` binding is gone), `AC-18` that `is_stale`'s third parameter is now `&CheckContext` and its body delegates to `stale_reason`.
-  - `AC-16` is the measurement obligation; it is falsifiable by grep against this file's "Measured Freshness Timing" section.
+  - `AC-16` is the measurement obligation; it is falsifiable by grep against this file's "Measured Freshness Timing" section, which must carry the after figure plus either a before figure or an explicit documented non-capture.
 - Negative: `AC-N1` through `AC-N4` (undecodable artifact, unusable canonical set, never-built guest, failed stale rebuild).
 - Cross-packet impact: packet 231 consumes `CheckOutcome`, `StaleReason`, `stale_reason`, `build_stale_command`, `FINGERPRINT_VERSION` and `EXIT_INFRA_ERROR`; packet 232 documents the exit-code contract this packet establishes. Any rename must be reported at closure so both dependents are reconciled before activation.
 

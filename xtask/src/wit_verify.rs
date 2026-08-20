@@ -169,6 +169,65 @@ pub fn stage_expectation(stage_id: &str) -> Option<StageExpectation> {
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageResolutionError {
+    NoStagePackage,
+    Ambiguous(Vec<String>),
+    UnknownPackage(String),
+}
+
+impl fmt::Display for StageResolutionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoStagePackage => write!(f, "no stage package found in embedded world"),
+            Self::Ambiguous(pkgs) => write!(f, "ambiguous stage packages: {}", pkgs.join(", ")),
+            Self::UnknownPackage(pkg) => write!(f, "unknown stage package: {}", pkg),
+        }
+    }
+}
+
+impl std::error::Error for StageResolutionError {}
+
+pub fn resolve_stage_from_world(world: &WorldModel) -> Result<StageExpectation, StageResolutionError> {
+    let mut candidates: Vec<String> = Vec::new();
+    for pkg_name in world.packages.keys() {
+        let stripped = strip_version(pkg_name);
+        if stripped == strip_version(ROOT_COMPONENT_PACKAGE) {
+            continue;
+        }
+        if SHARED_PACKAGES.iter().any(|s| strip_version(s) == stripped) {
+            continue;
+        }
+        candidates.push(pkg_name.clone());
+    }
+    candidates.sort();
+    match candidates.len() {
+        0 => Err(StageResolutionError::NoStagePackage),
+        1 => {
+            let candidate = &candidates[0];
+            let stripped_candidate = strip_version(candidate);
+            let mut matched_spec: Option<&slicer_schema::StageSpec> = None;
+            for spec in slicer_schema::STAGES {
+                if spec.wit_package.is_empty() {
+                    continue;
+                }
+                if strip_version(spec.wit_package) == stripped_candidate {
+                    matched_spec = Some(spec);
+                    break;
+                }
+            }
+            match matched_spec {
+                Some(spec) => match stage_expectation(spec.stage_id) {
+                    Some(exp) => Ok(exp),
+                    None => Err(StageResolutionError::UnknownPackage(candidate.clone())),
+                },
+                None => Err(StageResolutionError::UnknownPackage(candidate.clone())),
+            }
+        }
+        _ => Err(StageResolutionError::Ambiguous(candidates)),
+    }
+}
+
 pub const SHARED_PACKAGES: [&str; 5] = [
     "slicer:types",
     "slicer:config",
@@ -982,43 +1041,6 @@ pub fn embedded_world_model_from_text(
     world_model_from_text(text, artifact)
 }
 
-/// Resolve a core module's per-stage WIT package directory (e.g.
-/// `layer-perimeters`) from its manifest's `[stage] id`, via the canonical
-/// `slicer_schema` table (ADR-0006: the stage table is the sole lookup).
-///
-/// Packet 164 retired the `wit-world` manifest key. This used to read that
-/// key; once it was deleted from every manifest the read returned `None`
-/// for all 20 core modules, which silently dropped every package-ambiguous
-/// type (notably `region-key`) from drift verification. Reading `[stage] id`
-/// restores the check at better precision — per stage, not per tier.
-///
-/// Returns `None` when the manifest is absent, declares no stage, or names a
-/// stage with no WIT package (`PrePass::PaintSegmentation` is host-built-in).
-#[allow(dead_code)]
-pub fn module_stage_wit_dir(module_dir: &Path, module_name: &str) -> Option<&'static str> {
-    let text = std::fs::read_to_string(module_dir.join(format!("{module_name}.toml"))).ok()?;
-    let mut in_stage_section = false;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('[') {
-            in_stage_section = line == "[stage]";
-            continue;
-        }
-        if !in_stage_section {
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("id") else {
-            continue;
-        };
-        let Some((_, value)) = rest.split_once('=') else {
-            continue;
-        };
-        let stage_id = value.trim().trim_matches('"');
-        return slicer_schema::wit_dir_for_stage_id(stage_id);
-    }
-    None
-}
-
 /// Decode a built component's embedded WIT via `wasm-tools component wit`.
 pub fn embedded_wit_text(artifact: &Path) -> Result<String, VerifyError> {
     let out = Command::new("wasm-tools")
@@ -1051,32 +1073,6 @@ mod tests {
             .to_path_buf()
     }
 
-    /// Packet 164 regression guard. Retiring the `wit-world` manifest key left
-    /// the lookup returning `None` for every core module, which silently
-    /// dropped `region-key` from drift verification for the whole tree. A real
-    /// core module must resolve to its per-stage package directory.
-    #[test]
-    fn core_modules_resolve_their_stage_wit_dir() {
-        let root = ws_root();
-        for (module, expected) in [
-            ("classic-perimeters", "layer-perimeters"),
-            ("wipe-tower", "finalization-layer-finalization"),
-            ("gyroid-infill", "layer-infill"),
-            ("support-planner", "prepass-support-geometry"),
-        ] {
-            let dir = root.join("modules/core-modules").join(module);
-            if !dir.join(format!("{module}.toml")).exists() {
-                continue;
-            }
-            assert_eq!(
-                module_stage_wit_dir(&dir, module),
-                Some(expected),
-                "{module} must resolve its per-stage WIT dir from `[stage] id`; \
-                 None here means the drift check is silently dormant",
-            );
-        }
-    }
-
     /// End-to-end proof that the gate detects real drift, exercising the actual
     /// component-decode path rather than synthetic strings.
     ///
@@ -1094,8 +1090,9 @@ mod tests {
             return;
         }
 
-        let stage_id = module_stage_wit_dir(&dir, "classic-perimeters")
-            .and_then(|d| slicer_schema::STAGES.iter().find(|s| s.wit_dir == d))
+        let stage_id = slicer_schema::STAGES
+            .iter()
+            .find(|s| s.wit_dir == "layer-perimeters")
             .map(|s| s.stage_id);
         let expect = stage_id.and_then(stage_expectation);
         let mut canonical_world =
@@ -1198,13 +1195,23 @@ mod tests {
                 continue;
             }
 
-            let wit_dir = module_stage_wit_dir(&dir, name);
-            let stage_id = wit_dir.and_then(|d| {
-                slicer_schema::STAGES
-                    .iter()
-                    .find(|s| s.wit_dir == d)
-                    .map(|s| s.stage_id)
-            });
+            let stage_id = {
+                let text = std::fs::read_to_string(dir.join(format!("{name}.toml"))).unwrap_or_default();
+                let mut sid: Option<&str> = None;
+                let mut in_stage = false;
+                for line in text.lines() {
+                    let t = line.trim();
+                    if t.starts_with('[') { in_stage = t == "[stage]"; continue; }
+                    if !in_stage { continue; }
+                    if let Some(rest) = t.strip_prefix("id") {
+                        if let Some((_, v)) = rest.split_once('=') {
+                            sid = Some(Box::leak(v.trim().trim_matches('"').to_string().into_boxed_str()) as &str);
+                            break;
+                        }
+                    }
+                }
+                sid.and_then(slicer_schema::stage_by_id).map(|s| s.stage_id)
+            };
             let expect = stage_id.and_then(stage_expectation);
             let canonical = canonical_world_model(&root, expect.as_ref()).unwrap_or_else(|e| {
                 eprintln!("skipping '{name}': {e}");
@@ -2124,6 +2131,108 @@ package root:component { world root {} }
                 "artifact {} drifts: {:?}",
                 artifact.display(),
                 drifts
+            );
+        }
+    }
+
+    fn world_with_packages(pkgs: &[&str]) -> WorldModel {
+        let mut packages = BTreeMap::new();
+        for pkg in pkgs {
+            packages.insert(
+                pkg.to_string(),
+                PackageModel {
+                    interfaces: BTreeMap::new(),
+                    worlds: BTreeMap::new(),
+                },
+            );
+        }
+        WorldModel { packages }
+    }
+
+    #[test]
+    fn stage_resolves_from_embedded_package_name() {
+        let world = world_with_packages(&[
+            "root:component",
+            "slicer:types",
+            "slicer:layer-infill@1.0.0",
+        ]);
+        let expect = resolve_stage_from_world(&world).expect("should resolve");
+        assert_eq!(expect.stage_id, "Layer::Infill");
+        assert_eq!(expect.wit_package, "slicer:layer-infill@1.0.0");
+        // version suffix stripped matching
+        let world2 = world_with_packages(&[
+            "root:component",
+            "slicer:config",
+            "slicer:layer-infill@9.9.9",
+        ]);
+        let expect2 = resolve_stage_from_world(&world2).expect("version-stripped resolve");
+        assert_eq!(expect2.stage_id, "Layer::Infill");
+    }
+
+    #[test]
+    fn empty_wit_package_stage_row_is_excluded_from_resolution() {
+        // STAGES has exactly one row with empty wit_package (PrePass::PaintSegmentation)
+        let empty_rows: Vec<_> = slicer_schema::STAGES
+            .iter()
+            .filter(|s| s.wit_package.is_empty())
+            .collect();
+        assert_eq!(empty_rows.len(), 1);
+        assert_eq!(empty_rows[0].stage_id, "PrePass::PaintSegmentation");
+        assert!(stage_expectation("PrePass::PaintSegmentation").is_none());
+        // That row must never be returned by resolve_stage_from_world
+        // Unknown package that might naively map to paint should be UnknownPackage
+        let world = world_with_packages(&["root:component", "slicer:unknown-stage@1.0.0"]);
+        match resolve_stage_from_world(&world) {
+            Err(StageResolutionError::UnknownPackage(pkg)) => {
+                assert!(pkg.contains("unknown-stage"));
+            }
+            other => panic!("expected UnknownPackage, got {:?}", other),
+        }
+        // World with only shared+root has no stage package, not the empty row
+        let world2 = world_with_packages(&["root:component", "slicer:types", "slicer:config"]);
+        assert!(matches!(
+            resolve_stage_from_world(&world2),
+            Err(StageResolutionError::NoStagePackage)
+        ));
+    }
+
+    #[test]
+    fn zero_multiple_and_unknown_stage_packages_are_unresolvable() {
+        // zero stage packages
+        let world_zero = world_with_packages(&["root:component", "slicer:types"]);
+        assert!(matches!(
+            resolve_stage_from_world(&world_zero),
+            Err(StageResolutionError::NoStagePackage)
+        ));
+        // multiple stage packages
+        let world_multi = world_with_packages(&[
+            "root:component",
+            "slicer:layer-infill@1.0.0",
+            "slicer:layer-support@1.0.0",
+        ]);
+        match resolve_stage_from_world(&world_multi) {
+            Err(StageResolutionError::Ambiguous(pkgs)) => {
+                assert_eq!(pkgs.len(), 2);
+                assert!(pkgs.contains(&"slicer:layer-infill@1.0.0".to_string()));
+                assert!(pkgs.contains(&"slicer:layer-support@1.0.0".to_string()));
+            }
+            other => panic!("expected Ambiguous, got {:?}", other),
+        }
+        // unknown single package
+        let world_unknown = world_with_packages(&["root:component", "slicer:evil@1.0.0"]);
+        assert!(matches!(
+            resolve_stage_from_world(&world_unknown),
+            Err(StageResolutionError::UnknownPackage(_))
+        ));
+        // Display never emits STALE:
+        for err in [
+            StageResolutionError::NoStagePackage,
+            StageResolutionError::Ambiguous(vec!["a".to_string(), "b".to_string()]),
+            StageResolutionError::UnknownPackage("x".to_string()),
+        ] {
+            assert!(
+                !err.to_string().contains("STALE:"),
+                "StageResolutionError Display must not contain STALE:"
             );
         }
     }

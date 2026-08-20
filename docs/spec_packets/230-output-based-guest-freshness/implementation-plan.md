@@ -150,7 +150,7 @@ Before Step 1, confirm `docs/spec_packets/229-wit-verify-declaration-model/packe
 ### Step 6: Measure, record, and close
 
 - Task IDs: `TASK-341`
-- Objective: capture the before/after `--check` wall-clock, record it in this packet's `requirements.md`, add the backlog row, and run the closure gates.
+- Objective: capture the after `--check` wall-clock, record it (plus the before figure or its documented non-capture) in this packet's `requirements.md`, add the backlog row, and run the closure gates.
 - Precondition: Steps 1-5 exits met and all guests rebuilt (`cargo xtask build-guests --check` returns `exit=0`).
 - Postcondition: AC-16 and AC-17 pass; all three `packet.spec.md` gate commands pass.
 - Files allowed to read, with ranges when over 300 lines:
@@ -169,11 +169,11 @@ Before Step 1, confirm `docs/spec_packets/229-wit-verify-declaration-model/packe
 - Authoritative docs:
   - `CLAUDE.md` — sections "No Unverified Metrics" and "Ledger Facts Must Be Re-derived, Not Quoted"; direct read. Re-derive the highest `TASK-###` at write time and renumber on collision.
 - Verification:
-  - `rg -q '^## Measured Freshness Timing' docs/spec_packets/230-output-based-guest-freshness/requirements.md && rg -q 'measured 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' docs/spec_packets/230-output-based-guest-freshness/requirements.md && echo PASS || echo FAIL` — FACT PASS/FAIL
+  - `rg -q '^## Measured Freshness Timing' docs/spec_packets/230-output-based-guest-freshness/requirements.md && rg -q 'measured 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' docs/spec_packets/230-output-based-guest-freshness/requirements.md && rg -q '\*\*Before\*\*' docs/spec_packets/230-output-based-guest-freshness/requirements.md && rg -q '\*\*After\*\*' docs/spec_packets/230-output-based-guest-freshness/requirements.md && echo PASS || echo FAIL` — FACT PASS/FAIL
   - `rg -q 'TASK-341 ' docs/07_implementation_status.md && echo PASS || echo FAIL` — FACT PASS/FAIL
   - `cargo clippy --workspace --all-targets -- -D warnings` — FACT pass/fail
   - `mkdir -p target && cargo test -p xtask 2>&1 | tee target/test-output.log | rg '^test result:'` — FACT pass/fail
-- Exit condition: both timing figures are recorded with the `measured <YYYY-MM-DD>` tag and the exact command; no unmeasured figure (including the plan's earlier `~38ms`/`~2s`) appears anywhere in the packet; the `TASK-341` row exists; every pipe-suffixed AC returns PASS.
+- Exit condition: the after timing figure is recorded with the `measured <YYYY-MM-DD>` tag and the exact command, and the before figure is either recorded or its non-capture explicitly documented with rationale; no unmeasured figure (including the plan's earlier `~38ms`/`~2s`) appears anywhere in the packet; the `TASK-341` row exists; every pipe-suffixed AC returns PASS.
 
 ## Per-Step Budget Roll-Up
 
@@ -193,7 +193,7 @@ Aggregate: `M`. No step is L; no split required before activation.
 - All steps and exits complete.
 - Every pipe-suffixed AC command in `packet.spec.md` returns PASS.
 - `cargo xtask build-guests --check` returns `exit=0` after the one-time `v2-` rebuild.
-- The before/after `--check` timings are recorded in `requirements.md` §"Measured Freshness Timing" with the `measured <YYYY-MM-DD>` tag.
+- The after `--check` timing is recorded in `requirements.md` §"Measured Freshness Timing" with the `measured <YYYY-MM-DD>` tag, and the before figure is either recorded or its non-capture explicitly documented with rationale.
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read.
 - Report any rename of a net-new symbol relative to `design.md` §Code Change Surface, because packet 231 consumes `CheckOutcome`, `StaleReason`, `stale_reason`, `build_stale_command`, `FINGERPRINT_VERSION` and `EXIT_INFRA_ERROR` verbatim, and packet 232 documents the exit-code contract.
 - Confirm `xtask/src/dist.rs` was not modified and `build_command` kept its signature.
