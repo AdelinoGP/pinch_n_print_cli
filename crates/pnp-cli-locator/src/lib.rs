@@ -129,7 +129,7 @@ pub fn newest_source_mtime(root: &Path) -> SystemTime {
 /// `FreshnessSnapshot::fingerprint` for that guest. That is a dependency closure
 /// fingerprint over the guest's per-guest transitive closure — the `path`
 /// dependencies resolved by `guest_closure_input_paths` (cached in
-/// `ClosureCache` threaded as `cache: &mut ClosureCache` through `is_stale`)
+/// `ClosureCache` threaded through `is_stale`'s `CheckContext`)
 /// plus the guest's own inputs — persisted under `target/guest-fingerprints/`,
 /// and it exists to catch input-set changes that leave mtimes looking fine (a
 /// file removed from the set, a checkout that rewinds content, a dependency

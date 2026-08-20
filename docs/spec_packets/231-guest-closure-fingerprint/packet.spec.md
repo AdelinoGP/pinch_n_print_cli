@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 231-guest-closure-fingerprint
 task_ids:
   - TASK-342

@@ -11,7 +11,7 @@
 ### Step 1: Author the closure-walk tests (red)
 
 - Task IDs: `TASK-342`
-- Objective: add the eleven `build_guests::tests::*` tests named by AC-1 through AC-7, AC-15, AC-N1, AC-N3 and AC-N4 against the not-yet-existing `guest_closure_input_paths` / `ClosureCache` / `ClosureError` API, so the API's shape is fixed by its callers before it is written.
+- Objective: add the twelve `build_guests::tests::*` tests named by AC-1 through AC-7, AC-15 and AC-N1 through AC-N4 against the not-yet-existing `guest_closure_input_paths` / `ClosureCache` / `ClosureError` API, so the API's shape is fixed by its callers before it is written.
 - Precondition: packet 230 is `status: implemented`; `cargo test -p xtask` is green on the pre-change tree.
 - Postcondition: the new tests exist and the crate does **not** compile (the symbols under test do not exist yet). This is the expected red state.
 - Files allowed to read, with ranges when over 300 lines:
@@ -33,7 +33,7 @@
   - None. This packet ports no canonical algorithm.
 - Verification:
   - `mkdir -p target && cargo test -p xtask build_guests 2>&1 | tee target/test-output.log | rg 'error\[E0425\]|error\[E0433\]|cannot find'` — FACT: the run fails to compile naming the not-yet-existing `guest_closure_input_paths`, proving the tests bind to the intended symbol rather than passing vacuously.
-- Exit condition: exactly eleven new test functions exist with the names given in `packet.spec.md`, and the compile failure names `guest_closure_input_paths`. Falsified if `cargo test -p xtask build_guests` compiles and passes at this step — that would mean the tests assert against existing behaviour. Note that AC-15's test (`module_manifest_toml_edit_marks_core_guest_stale`) must fail on the *pre-change* input set for the right reason: a module `.toml` edit currently leaves the guest fresh because neither `guest_input_paths` nor `shared_input_paths` charges that file.
+- Exit condition: exactly twelve new test functions exist with the names given in `packet.spec.md`, and the compile failure names `guest_closure_input_paths`. Falsified if `cargo test -p xtask build_guests` compiles and passes at this step — that would mean the tests assert against existing behaviour. Note that AC-15's test (`module_manifest_toml_edit_marks_core_guest_stale`) must fail on the *pre-change* input set for the right reason: a module `.toml` edit currently leaves the guest fresh because neither `guest_input_paths` nor `shared_input_paths` charges that file.
 
 ### Step 2: Implement the closure walk and delete the shared-set model
 
@@ -64,7 +64,7 @@
   - `mkdir -p target && cargo test -p xtask build_guests 2>&1 | tee target/test-output.log | rg '^test result:'; if rg -q '^test result: FAILED|test result: FAILED' target/test-output.log; then echo FAIL; else echo PASS; fi` — FACT pass/fail; bounded SNIPPETS on failure.
   - `if rg -q 'shared_input_paths|compute_shared_freshness|stage_wit_snapshot' xtask/src/build_guests.rs; then echo FAIL; else echo PASS; fi` — FACT PASS/FAIL (AC-8, this file's half).
   - `rg -q 'pub stage_id: Option<String>' xtask/src/build_guests.rs && rg -q 'parse_stage_id_from_module_manifest' xtask/src/build_guests.rs && echo PASS || echo FAIL` — FACT PASS/FAIL (AC-9).
-- Exit condition: all eleven Step-1 tests pass and the two deletion/retention greps return PASS. AC-15 must pass because the module `.toml` entered the input set, not because the guest was stale for an unrelated reason — assert in the same test that the guest is fresh before the `.toml` edit and stale after it. Falsified if AC-N3's test passes only because the guest under test has an empty *input set* rather than an empty *closure* — assert the guest's own `src/**` is still charged in the same test.
+- Exit condition: all twelve Step-1 tests pass and the two deletion/retention greps return PASS. AC-15 must pass because the module `.toml` entered the input set, not because the guest was stale for an unrelated reason — assert in the same test that the guest is fresh before the `.toml` edit and stale after it. Falsified if AC-N3's test passes only because the guest under test has an empty *input set* rather than an empty *closure* — assert the guest's own `src/**` is still charged in the same test.
 
 ### Step 3: Make pnp_cli freshness unconditional
 
