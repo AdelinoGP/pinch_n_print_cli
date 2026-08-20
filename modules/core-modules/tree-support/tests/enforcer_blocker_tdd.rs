@@ -257,26 +257,18 @@ fn blocked_planned_region_generates_zero_support() {
     );
 }
 
-/// Test 7: Enforcer overrides `needs_support=false`.
-#[test]
-fn enforcer_overrides_needs_support_false() {
-    let config = enabled_config();
-    let module = TreeSupport::from_config(&config).unwrap();
-    let mut region = square_region(0.3);
-    region.set_needs_support(false);
-
-    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportEnforcer]);
-
-    let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    assert!(
-        !output.support_paths().is_empty(),
-        "SupportEnforcer must override needs_support=false (D14 precedence)"
-    );
-}
+// ── Deleted: `enforcer_overrides_needs_support_false` (packet 224) ─────────
+//
+// This test was VACUOUS and has been removed. The renderer prints what was
+// planned (packet 224 decision 2, 2026-08-20); eligibility is planner-owned.
+// `needs_support` is hardcoded `true` in `classify_object`
+// (`crates/slicer-core/src/algos/mesh_analysis.rs`) and in
+// `SliceRegionView`'s `Default`/`from_ir` (`crates/slicer-sdk/src/views.rs`),
+// so no producer ever sets it false. The sibling test
+// `planned_region_renders_regardless_of_eligibility_flag` already asserts that
+// `needs_support=false` still yields support, so the enforcer annotation added
+// no signal. The gap is registered in
+// `docs/specs/support-parity-gap-register.md` (needs_support row).
 
 /// Test 8: Blocker overrides `needs_support=true`.
 #[test]

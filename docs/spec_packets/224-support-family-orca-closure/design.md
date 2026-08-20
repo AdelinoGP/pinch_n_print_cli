@@ -241,7 +241,7 @@ Consequence: PnP has no object on which to hang gap-band behaviour, so anything 
 
 ## Out-of-Bounds Files
 - Orca source (delegated sub-agent reads only), target bundles, generated bindings, and packet 213 files.
-- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (224a/225/226/227). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
+- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (unnumbered stubs under `docs/spec_packets/stubs/`; the previously named 224a/225/226/227 are taken by unrelated packets). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
 - `docs/07_implementation_status.md` is updated only through delegated status work.
 
 ## Orca Differential Evidence
