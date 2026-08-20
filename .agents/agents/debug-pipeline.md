@@ -48,7 +48,7 @@ compilation, sub-100ms responses.
 - Spec: `docs/specs/agent-cli-debugging.md`
 - Event contract: `docs/09_progress_events.md`
 - Agent guide: `docs/17_agent_debugging.md`
-- Project skill mirror: `.claude/skills/debug-pipeline/SKILL.md`
+- Project skill mirror: `.agents/skills/debug-pipeline/SKILL.md`
 
 ## Output discipline
 

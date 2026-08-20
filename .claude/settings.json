@@ -30,8 +30,8 @@
           {
             "type": "command",
             "timeout": 1800,
-            "statusMessage": "EnterWorktree: building guest wasms (full cold compile)...",
-            "command": "cargo xtask build-guests"
+            "statusMessage": "EnterWorktree: syncing agent tooling + building guest wasms (full cold compile)...",
+            "command": "cargo xtask sync-agents && cargo xtask build-guests"
           }
         ]
       }

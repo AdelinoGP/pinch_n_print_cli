@@ -289,7 +289,7 @@ Do not replace packet-specific commands with generic workspace tests. Use the ma
 
 **`cargo test --workspace` is forbidden during implementation iterations.** The suite is >1000 tests and takes ≥11 minutes per run — running it inside a fix loop burns budget without adding signal beyond the targeted command. It runs at most once, in Phase 5.1's acceptance ceremony, and only if the packet itself lists it as a closure gate. Targeted commands (`cargo test -p <crate> --test <file>` / `-- <test_name>`) and `cargo check --workspace` are the workhorses; reach for `--workspace` test runs deliberately, never reflexively.
 
-**4.2 Review.** After the implementation pass, dispatch a single review worker bound by `.claude/skills/spec-review/SKILL.md` (packet scope) with the same context-discipline reminders. The dispatch prompt must include this adversarial charter verbatim — a review worker without it drifts into confirming the implementation instead of attacking it:
+**4.2 Review.** After the implementation pass, dispatch a single review worker bound by `../spec-review/SKILL.md` (packet scope) with the same context-discipline reminders. The dispatch prompt must include this adversarial charter verbatim — a review worker without it drifts into confirming the implementation instead of attacking it:
 
 > *You did not write this code; review it cold and bias toward finding problems. Burden of proof is on the implementation: an AC without passing dispatched evidence is FAIL, a claim you cannot trace to file:line is [unverified], and any [unverified] load-bearing row caps the verdict at CHANGES REQUESTED. Return the evidence line behind every PASS.*
 
@@ -333,7 +333,7 @@ Do not auto-rewrite packet status just because code compiled. If packet status o
 - `docs/spec_packets/README.md`
 - `docs/07_implementation_status.md` (read via worker dispatch)
 - the packet's `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md`
-- `.claude/skills/spec-review/SKILL.md`
+- `../spec-review/SKILL.md`
 - `runSubagent`, `multi_tool_use.parallel`
 - session memory or a packet-local checkpoint file for the manifest and step ledger
 - packet-specified build/test commands

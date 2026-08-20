@@ -211,7 +211,7 @@ non-empty output directory unless `--overwrite` is supplied.
 
 ## Related Tools
 
-- `docs/17_agent_debugging.md` and `.claude/skills/debug-pipeline/SKILL.md`:
+- `docs/17_agent_debugging.md` and `.agents/skills/debug-pipeline/SKILL.md`:
   timing, DAG, and manifest diagnosis.
 - `docs/16_slicer_report.md`: opt-in HTML timing and allocator report; it is
   not a geometry-rendering facility.

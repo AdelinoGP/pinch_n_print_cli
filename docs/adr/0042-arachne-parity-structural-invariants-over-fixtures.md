@@ -66,7 +66,7 @@ The campaign settled on a **two-instrument model** instead
 
 | Instrument | Purpose | Basis | Committed? |
 |---|---|---|---|
-| LLM-visual steering | *Find* defects; localize where geometry first breaks | Claude renders PnP and canonical OrcaSlicer gcode via `pnp_cli visual-debug` and compares them with multimodal vision, semantically not pixel-exact | No — `tmp/orcaSlicer_arachne_benchy.gcode` uncommitted; tests never read it |
+| LLM-visual steering | *Find* defects; localize where geometry first breaks | The agent renders PnP and canonical OrcaSlicer gcode via `pnp_cli visual-debug` and compares them with multimodal vision, semantically not pixel-exact | No — `tmp/orcaSlicer_arachne_benchy.gcode` uncommitted; tests never read it |
 | Structural-invariant regression | *Prevent* regressions; gate CI | Unit-independent assertions (closure within tolerance, loop count/nesting, bead-count sequence, transitions-present, no self-intersection, coverage ratio, no bead wider than ~2× optimal width) on synthetic fixtures reproducing benchy error classes | Yes — committed, host-algos-gated |
 
 The trade-off this ADR accepts: giving up automated, absolute-numeric parity
@@ -130,7 +130,7 @@ test is flaky-by-construction even when the underlying geometry is correct.
 
 **The OrcaSlicer oracle (`tmp/orcaSlicer_arachne_benchy.gcode`, uncommitted)
 is an LLM-visual/steering reference only.** Automated tests never read it. It
-exists to help a Claude agent *locate* where PnP output diverges from
+exists to help an agent *locate* where PnP output diverges from
 OrcaSlicer's, not to certify correctness numerically or by itself.
 
 **Process corollary — the LLM-visual instrument FLAGS, it never

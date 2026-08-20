@@ -41,7 +41,7 @@ Route everything else to `debug-pipeline` instead:
 
 For `timing`, `DAG`, or manifest questions, do not use pnp_cli visual-debug
 — those stay owned by `debug-pipeline` (`docs/17_agent_debugging.md`,
-`.claude/skills/debug-pipeline/SKILL.md`). Images do not expose static DAG
+`../debug-pipeline/SKILL.md`). Images do not expose static DAG
 edges, validation diagnostics, or runtime timing, so they cannot answer those
 questions even indirectly.
 

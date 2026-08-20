@@ -613,7 +613,7 @@ measurement instability, not fixture spread or known regressions.
 ### LLM-visual oracle
 The uncommitted OrcaSlicer reference gcode (`tmp/orcaSlicer_arachne_benchy.gcode`),
 rendered alongside PnP's own output via `pnp_cli visual-debug` and compared by
-Claude's multimodal vision. It **steers** investigation — flagging where two
+the agent's multimodal vision. It **steers** investigation — flagging where two
 renders differ — but never **adjudicates** whether a flagged difference is a
 real defect; the mechanism must always be confirmed structurally (gcode/IR),
 never concluded from the image alone. See ADR-0042.

@@ -5,6 +5,7 @@ mod compact_specs;
 mod dist;
 mod editions;
 mod gen_config_docs;
+mod sync_agents;
 mod test;
 mod wit_verify;
 
@@ -36,6 +37,11 @@ SUBCOMMANDS:
     compact-specs         Collapse each docs/spec_packets/_OLD packet into a single
                           design-only <NN_slug>.md, then delete the source dir.
     compact-specs --dry-run  Write digests but keep the source dirs (preview).
+    sync-agents           Materialize the gitignored .claude/ mirror (skills,
+                          agents, CLAUDE.md) from the canonical .agents/ home.
+    sync-agents --check   Lint the canonical home: no .claude/ references in
+                          .agents/** or live docs; every skill frontmatter has
+                          name + description with name matching its directory.
     test [ARGS...]        Run the check-literals preflight, then `cargo xtask build-guests --check`
                           (rebuild if stale), then `cargo test ARGS...` with output tee'd to
                           target/test-output.log. Use for whole-suite /
@@ -159,6 +165,19 @@ fn main() -> ExitCode {
                 Some("--dry-run") => ExitCode::from(compact_specs::run(&ws, true) as u8),
                 Some(other) => {
                     eprintln!("xtask: unknown flag '{other}' for compact-specs\n");
+                    eprintln!("{USAGE}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("sync-agents") => {
+            let flag = args.get(1).map(String::as_str);
+            let ws = build_guests::workspace_root();
+            match flag {
+                None => ExitCode::from(sync_agents::run(&ws, false) as u8),
+                Some("--check") => ExitCode::from(sync_agents::run(&ws, true) as u8),
+                Some(other) => {
+                    eprintln!("xtask: unknown flag '{other}' for sync-agents\n");
                     eprintln!("{USAGE}");
                     ExitCode::from(2)
                 }

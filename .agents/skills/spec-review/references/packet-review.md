@@ -61,7 +61,7 @@ A packet that fails the gate **cannot be `APPROVED`**. Report S4/S5/S6 failures 
 
 #### Doc Impact Statement gate (Required)
 
-Every packet's `packet.spec.md` must contain a **Doc Impact Statement** section (see `.claude/skills/spec-packet-generator/references/templates/packet.spec.md`). Verify:
+Every packet's `packet.spec.md` must contain a **Doc Impact Statement** section (see `../spec-packet-generator/references/templates/packet.spec.md`). Verify:
 
 1. The section exists and is non-empty.
 2. Its content is **either** the literal string `none` with a one-line rationale, **or** a list of specific `docs/<NN>_*.md` sections plus one verification grep per section.
