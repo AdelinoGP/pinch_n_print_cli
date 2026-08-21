@@ -46,7 +46,11 @@ fn support_plan(output: &PrepassStageOutput) -> &slicer_ir::SupportPlanIR {
 fn integrated_parity_support_planner_native_matches_wasm() {
     let config = Arc::new(ConfigView::new());
     let stage = StageId::from("PrePass::SupportGeometry");
-    let ctx = support_wedge::prepare_wedge_context(true);
+    // `com.core.tree-support-planner` skips every candidate whose resolved
+    // family is not "tree". The default wedge sets no `support_type`, so its
+    // `family_assignments` are all "traditional" and the planner emitted an
+    // empty plan on both sides — the parity comparison was vacuous.
+    let ctx = support_wedge::prepare_wedge_context_tree(true);
     let (native_output, wasm_output) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: module_id(),

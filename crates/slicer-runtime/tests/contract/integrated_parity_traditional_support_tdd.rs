@@ -12,6 +12,7 @@ use traditional_support::TraditionalSupport;
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
     parity_invariants::{assert_parity_structural, ParityTolerance},
+    support_wedge,
 };
 
 fn support_slice() -> SliceIR {
@@ -59,7 +60,21 @@ fn integrated_parity_traditional_support() {
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
     ])));
-    let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    // Packet 222 removed traditional-support's missing-plan scan-line filler:
+    // it `continue`s when `support_plan_entries_for` is empty, so a bare
+    // Blackboard now yields no `SupportIR` and the harness's `expect("… commit")`
+    // panicked. Commit the plan the renderer is contractually required to consume.
+    let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    bb.commit_support_plan(support_wedge::single_region_support_plan(
+        "traditional",
+        "obj-0",
+        0,
+        0,
+        0.2,
+        support_wedge::square_expolygon(10.0),
+    ))
+    .expect("commit_support_plan must succeed");
+    let bb = bb;
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
