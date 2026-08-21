@@ -45,6 +45,10 @@ use slicer_sdk::views::SliceRegionView;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
+/// Default gap between adjacent support-interface extrusions, matching
+/// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
+const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
+
 /// Tree support branching generator.
 ///
 /// Produces tree-like branching fill patterns for support material areas.
@@ -63,9 +67,37 @@ pub struct TreeSupport {
     line_width: f32,
     /// Number of perimeter passes used to represent a support body.
     wall_count: usize,
+    /// Configured top-interface line gap in millimeters (canonical
+    /// `support_interface_spacing`). This is the *gap*, not the pitch.
+    top_interface_spacing_mm: f32,
+    /// Configured bottom-interface line gap in millimeters (canonical
+    /// `support_bottom_interface_spacing`). Negative mirrors the top value.
+    bottom_interface_spacing_mm: f32,
 }
 
 impl TreeSupport {
+    /// Interface scan-fill pitch in millimetres for the top and bottom
+    /// interface roles at a given layer height.
+    ///
+    /// Canonical `SupportParameters` (`SupportParameters.hpp`):
+    /// `interface_spacing = support_interface_spacing + interface_flow.spacing()`,
+    /// where `spacing()` is `Flow::rounded_rectangle_extrusion_spacing`
+    /// (in-tree: `slicer_core::flow::line_width_to_spacing`).
+    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32) {
+        let layer_height = layer_height_mm.max(0.0);
+        let flow_spacing =
+            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height).unwrap_or(0.0);
+        let top_gap = self.top_interface_spacing_mm.max(0.0);
+        // Negative mirrors the top gap, per OrcaSlicer's `-1 == same as top`
+        // convention for the paired bottom-interface keys.
+        let bottom_gap = if self.bottom_interface_spacing_mm < 0.0 {
+            top_gap
+        } else {
+            self.bottom_interface_spacing_mm
+        };
+        (top_gap + flow_spacing, bottom_gap + flow_spacing)
+    }
+
     /// Returns whether support is enabled.
     pub fn enabled(&self) -> bool {
         self.enabled
@@ -112,12 +144,25 @@ impl LayerModule for TreeSupport {
             _ => 2,
         };
 
+        let top_interface_spacing_mm = match config.get("support_interface_spacing") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => DEFAULT_INTERFACE_SPACING_MM,
+        };
+        let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => -1.0,
+        };
+
         Ok(Self {
             enabled,
             density,
             support_speed,
             line_width,
             wall_count,
+            top_interface_spacing_mm,
+            bottom_interface_spacing_mm,
         })
     }
 
@@ -136,6 +181,14 @@ impl LayerModule for TreeSupport {
         let speed_factor = self.support_speed / BASE_SPEED;
         for region in regions {
             let z = region.z();
+            // F-7: interface roles are pitched by canonical
+            // `SupportParameters::interface_spacing`
+            // (`support_interface_spacing + interface_flow.spacing()`), not by
+            // `support_density`. The tree renderer previously had no interface
+            // spacing at all and scan-filled roofs and floors at the body
+            // pitch.
+            let (top_interface_spacing, bottom_interface_spacing) =
+                self.interface_pitch_mm(region.effective_layer_height());
 
             // Structural support plans carry semantic regions, not printable
             // paths. A missing entry means this demand was declined; do not
@@ -187,7 +240,17 @@ impl LayerModule for TreeSupport {
                         // grid-MST `fill_expolygon_tree` used to be appended
                         // here for `SupportBody` on top of that, so every body
                         // polygon was extruded twice over the same area.
-                        let paths = self.render_polygon(expoly, z, speed_factor);
+                        let fill_spacing = match role_region.role {
+                            slicer_ir::SupportPlanRole::TopInterface => {
+                                Some(top_interface_spacing)
+                            }
+                            slicer_ir::SupportPlanRole::BottomInterface => {
+                                Some(bottom_interface_spacing)
+                            }
+                            _ => None,
+                        };
+                        let paths =
+                            self.render_polygon(expoly, z, speed_factor, fill_spacing);
                         for mut path in paths {
                             match role_region.role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
@@ -233,11 +296,15 @@ impl TreeSupport {
     /// (coincident, no inset) and then scan-filled the full polygon at a
     /// `line_width` pitch — 100% density regardless of `support_density` — so a
     /// support body was extruded several times over.
+    ///
+    /// `fill_spacing_override_mm` supplies the canonical interface pitch for
+    /// interface roles; `None` keeps the density-derived body pitch.
     fn render_polygon(
         &self,
         expoly: &ExPolygon,
         z: f32,
         speed_factor: f32,
+        fill_spacing_override_mm: Option<f32>,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
         if expoly.contour.points.len() < 3 {
@@ -283,10 +350,16 @@ impl TreeSupport {
 
         // `support_density` is a fraction in (0, 1]; 1.0 gives a solid
         // `line_width` pitch. A non-positive density means walls only.
-        if self.density <= 0.0 {
-            return paths;
-        }
-        let spacing = (line_width / self.density.min(1.0)) as f64;
+        let spacing = match fill_spacing_override_mm {
+            Some(override_mm) if override_mm > 0.0 => override_mm as f64,
+            Some(_) => return paths,
+            None => {
+                if self.density <= 0.0 {
+                    return paths;
+                }
+                (line_width / self.density.min(1.0)) as f64
+            }
+        };
         for region in &fill_regions {
             paths.extend(self.scan_fill_region(region, spacing, z, speed_factor));
         }
@@ -406,6 +479,28 @@ mod tests {
         assert!((module.line_width - 0.4).abs() < 0.001);
     }
 
+    /// F-7: the tree renderer had no interface pitch at all — roofs and floors
+    /// were scan-filled at the density-derived body pitch. Canonical is
+    /// `support_interface_spacing + interface_flow.spacing()`, measured at
+    /// 0.757 mm for a 0.4 mm gap / 0.4 mm width / 0.2 mm layer height.
+    #[test]
+    fn interface_pitch_adds_flow_spacing() {
+        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let module = TreeSupport::from_config(&config).unwrap();
+        let (top, bottom) = module.interface_pitch_mm(0.2);
+        assert!(
+            (top - 0.757).abs() < 0.002,
+            "measured Orca interface pitch is 0.757 mm, got {top}"
+        );
+        assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
+        // The interface pitch must not be the body pitch (line_width/density).
+        let body_pitch = module.line_width / module.density.min(1.0);
+        assert!(
+            (top - body_pitch).abs() > 0.01,
+            "interface pitch must be independent of support_density"
+        );
+    }
+
     #[test]
     fn walls_are_inset_and_fill_does_not_overlap_them() {
         // Guards the packet-224 fix: `render_polygon` used to emit `wall_count`
@@ -428,7 +523,7 @@ mod tests {
             },
             holes: vec![],
         };
-        let paths = module.render_polygon(&square, 1.0, 1.0);
+        let paths = module.render_polygon(&square, 1.0, 1.0, None);
         let closed: Vec<&ExtrusionPath3D> =
             paths.iter().filter(|path| path.points.len() > 2).collect();
         assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
@@ -481,7 +576,7 @@ mod tests {
         };
         let count = |module: &TreeSupport| {
             module
-                .render_polygon(&square, 1.0, 1.0)
+                .render_polygon(&square, 1.0, 1.0, None)
                 .iter()
                 .filter(|path| path.points.len() == 2)
                 .count()

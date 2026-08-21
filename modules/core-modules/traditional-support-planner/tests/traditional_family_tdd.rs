@@ -971,3 +971,128 @@ fn slanted_face_contacts_derived_from_facets() {
         entry.decline_reason.is_none() && entry.roles.iter().any(|role| !role.regions.is_empty())
     }));
 }
+
+/// F-36. Canonical `bottom_contact_layers_and_layer_support_areas` builds the
+/// floor from `intersection(top_surfaces, supports_projected)` expanded by one
+/// support-flow width. A column that lands half on a model top surface and half
+/// on bare plate must therefore print BottomInterface only over the model half
+/// and keep printing body over the rest. Before this fix the planner marked the
+/// whole layer cross-section BottomInterface.
+#[test]
+fn bottom_interface_is_limited_to_the_model_landing_area() {
+    // Left half of the 4x4 mm contact column only.
+    let landing = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(2.0, 0.0),
+                Point2::from_mm(2.0, 4.0),
+                Point2::from_mm(0.0, 4.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let object = overhang_object("partial");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "partial".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 3,
+            object_id: "partial".into(),
+            region_id: "0".into(),
+            polygons: vec![landing],
+        }],
+        family_assignments: vec![traditional_assignment("partial")],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+
+    let floor_entry = output
+        .entries()
+        .iter()
+        .find(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::BottomInterface)
+        })
+        .expect("a column landing on a model top surface must carry a floor");
+
+    let floor_max_x = floor_entry
+        .roles
+        .iter()
+        .filter(|role| role.role == SupportPlanRole::BottomInterface)
+        .flat_map(|role| role.regions.iter())
+        .flat_map(|expoly| expoly.contour.points.iter())
+        .map(|point| point.x)
+        .max()
+        .expect("floor role must carry geometry");
+    // The landing is 2 mm wide; canonical grows it by one flow width (0.4 mm).
+    // The column is 4 mm wide, so a whole-layer floor would reach 4 mm.
+    assert!(
+        floor_max_x < slicer_ir::mm_to_units(4.0),
+        "BottomInterface must stop at the model landing area (plus one flow width), \
+         not span the whole column cross-section: max x = {floor_max_x}"
+    );
+    assert!(
+        floor_max_x >= slicer_ir::mm_to_units(2.0),
+        "BottomInterface must cover the landing area itself: max x = {floor_max_x}"
+    );
+    assert!(
+        floor_entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty()),
+        "the part of the layer standing on bare plate must keep printing as body: {:?}",
+        floor_entry.roles
+    );
+}
+
+/// F-49. Top-interface membership depends only on the layer's distance below
+/// the top contact — canonical `generate_interface_layers` counts
+/// `top_interface_layers` down from the contact and knows nothing about the
+/// build plate. A column shorter than `support_interface_top_layers` used to
+/// have its plate layer forced to body by an extra
+/// `layer != termination_layer` guard.
+#[test]
+fn short_plate_column_keeps_its_plate_layer_in_the_top_band() {
+    let object = overhang_object("short");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "short".into(),
+            region_id: "0".into(),
+            // Layer 1 overhang: the column is one printed layer tall (layer 0),
+            // shorter than the 2-layer roof band.
+            global_layer_index: 1,
+            z_units: slicer_ir::mm_to_units(0.4),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("short")],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+
+    let plate_entry = output
+        .entries()
+        .iter()
+        .find(|entry| entry.global_layer_index == 0 && entry.decline_reason.is_none())
+        .expect("the plate layer must be planned");
+    assert!(
+        plate_entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()),
+        "the plate layer of a column shorter than the roof band is still inside \
+         the top-interface band: {:?}",
+        plate_entry.roles
+    );
+}

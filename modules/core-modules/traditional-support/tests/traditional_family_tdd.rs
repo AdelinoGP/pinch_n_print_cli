@@ -144,7 +144,7 @@ fn interface_spacing_config_controls_scan_fill() {
         .float("support_density", 20.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
-        .float("support_interface_spacing_mm", 0.8)
+        .float("support_interface_spacing", 0.8)
         .build();
     let (config, region, paint) =
         fixture_with_config(wide_config, "traditional", body_and_interface_roles());

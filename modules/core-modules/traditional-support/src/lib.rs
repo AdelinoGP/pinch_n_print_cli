@@ -46,6 +46,15 @@ use slicer_sdk::views::SliceRegionView;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
+/// Default gap between adjacent support-interface extrusions, matching
+/// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
+const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
+
+/// Fallback layer height (mm) used only when the region view reports a
+/// non-positive `effective_layer_height`. Interface pitch degenerates to the
+/// configured gap in that case, which is the pre-flow-term behaviour.
+const FALLBACK_LAYER_HEIGHT_MM: f32 = 0.0;
+
 /// Traditional support fill generator.
 ///
 /// Produces parallel fill lines via scan-line polygon intersection
@@ -62,8 +71,16 @@ pub struct TraditionalSupport {
     support_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
-    /// Interface scan-fill line spacing in millimeters.
-    interface_spacing_mm: f32,
+    /// Configured top-interface line gap in millimeters (canonical
+    /// `support_interface_spacing`). This is the *gap*, not the pitch: the
+    /// printed pitch adds the interface flow spacing (see
+    /// `interface_pitch_units`).
+    top_interface_spacing_mm: f32,
+    /// Configured bottom-interface line gap in millimeters (canonical
+    /// `support_bottom_interface_spacing`). Negative mirrors the top value,
+    /// matching OrcaSlicer's `-1 == same as top` convention for the paired
+    /// interface keys.
+    bottom_interface_spacing_mm: f32,
 }
 
 #[slicer_module]
@@ -95,10 +112,16 @@ impl LayerModule for TraditionalSupport {
             _ => 0.4,
         };
 
-        let interface_spacing_mm = match config.get("support_interface_spacing_mm") {
+        let top_interface_spacing_mm = match config.get("support_interface_spacing") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 0.4,
+            _ => DEFAULT_INTERFACE_SPACING_MM,
+        };
+
+        let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => -1.0,
         };
 
         Ok(Self {
@@ -107,7 +130,8 @@ impl LayerModule for TraditionalSupport {
             base_angle,
             support_speed,
             line_width,
-            interface_spacing_mm,
+            top_interface_spacing_mm,
+            bottom_interface_spacing_mm,
         })
     }
 
@@ -129,7 +153,6 @@ impl LayerModule for TraditionalSupport {
         let density_ratio = (self.density / 100.0).max(f32::EPSILON);
         let line_spacing_mm = self.line_width / density_ratio;
         let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
-        let interface_line_spacing = slicer_ir::mm_to_units(self.interface_spacing_mm);
 
         // Compute angle: base + 90 degree alternation per layer
         let layer_rotation = if layer_index.is_multiple_of(2) {
@@ -146,6 +169,14 @@ impl LayerModule for TraditionalSupport {
         let speed_factor = self.support_speed / BASE_SPEED;
         for region in regions {
             let z = region.z();
+            // Canonical `SupportParameters` derives the interface *pitch* as
+            // `support_interface_spacing + interface_flow.spacing()`; the
+            // config key is the gap between adjacent extrusions, not the
+            // centre-to-centre distance. Using the key directly as the pitch
+            // over-extruded every interface layer by roughly the ratio of the
+            // two (0.4 vs 0.757 mm at a 0.4 mm width / 0.2 mm layer).
+            let (top_interface_line_spacing, bottom_interface_line_spacing) =
+                self.interface_pitch_units(region.effective_layer_height());
 
             // Structural support plans carry semantic regions, not printable
             // paths. A missing entry means this demand was declined; do not
@@ -179,8 +210,8 @@ impl LayerModule for TraditionalSupport {
                 for role_region in entry.roles.iter() {
                     let spacing = match role_region.role {
                         slicer_ir::SupportPlanRole::SupportBody => line_spacing,
-                        slicer_ir::SupportPlanRole::TopInterface
-                        | slicer_ir::SupportPlanRole::BottomInterface => interface_line_spacing,
+                        slicer_ir::SupportPlanRole::TopInterface => top_interface_line_spacing,
+                        slicer_ir::SupportPlanRole::BottomInterface => bottom_interface_line_spacing,
                         slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
                     };
                     for expoly in &role_region.regions {
@@ -231,6 +262,37 @@ impl LayerModule for TraditionalSupport {
 }
 
 impl TraditionalSupport {
+    /// Interface scan-fill pitch, in scaled units, for the top and bottom
+    /// interface roles at a given layer height.
+    ///
+    /// Canonical `SupportParameters` (`SupportParameters.hpp`):
+    /// `interface_spacing = support_interface_spacing + interface_flow.spacing()`.
+    /// `spacing()` is `Flow::rounded_rectangle_extrusion_spacing`, exposed
+    /// in-tree as `slicer_core::flow::line_width_to_spacing`. A width/layer
+    /// height pair that yields a non-positive spacing falls back to the bare
+    /// configured gap rather than failing the layer.
+    fn interface_pitch_units(&self, layer_height_mm: f32) -> (i64, i64) {
+        let layer_height = if layer_height_mm > 0.0 {
+            layer_height_mm
+        } else {
+            FALLBACK_LAYER_HEIGHT_MM
+        };
+        let flow_spacing =
+            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height).unwrap_or(0.0);
+        let top_gap = self.top_interface_spacing_mm.max(0.0);
+        // Negative mirrors the top gap, per the `-1 == same as top` convention
+        // OrcaSlicer uses for the paired bottom-interface keys.
+        let bottom_gap = if self.bottom_interface_spacing_mm < 0.0 {
+            top_gap
+        } else {
+            self.bottom_interface_spacing_mm
+        };
+        (
+            slicer_ir::mm_to_units(top_gap + flow_spacing),
+            slicer_ir::mm_to_units(bottom_gap + flow_spacing),
+        )
+    }
+
     /// Generate fill lines for a single ExPolygon.
     fn fill_expolygon(
         &self,
@@ -451,6 +513,26 @@ mod tests {
         assert!(!module.enabled);
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
-        assert!((module.interface_spacing_mm - 0.4).abs() < 0.001);
+        assert!((module.top_interface_spacing_mm - 0.4).abs() < 0.001);
+        assert!(module.bottom_interface_spacing_mm < 0.0);
+    }
+
+    /// F-7: the interface pitch is the configured gap **plus** the interface
+    /// flow spacing, not the configured gap alone. Measured against the
+    /// authoritative OrcaSlicer reference: 0.4 mm gap at a 0.4 mm width and
+    /// 0.2 mm layer height prints a 0.757 mm X pitch.
+    #[test]
+    fn interface_pitch_adds_flow_spacing() {
+        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let module = TraditionalSupport::from_config(&config).unwrap();
+        let (top, bottom) = module.interface_pitch_units(0.2);
+        let expected = slicer_ir::mm_to_units(0.4 + (0.4 - 0.2 * (1.0 - core::f32::consts::PI / 4.0)));
+        assert_eq!(top, expected, "top interface pitch must add flow spacing");
+        assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
+        assert!(
+            (slicer_ir::units_to_mm(top) - 0.757).abs() < 0.002,
+            "measured Orca pitch is 0.757 mm, got {}",
+            slicer_ir::units_to_mm(top)
+        );
     }
 }

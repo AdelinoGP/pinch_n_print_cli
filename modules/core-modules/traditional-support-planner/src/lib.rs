@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/Support/SupportMaterial.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
 //! Traditional support planner.
 //!
 //! Plans cross-layer contact, base, interface, obstacle, and termination
@@ -29,6 +39,9 @@ const DEFAULT_BASE_PATTERN: &str = "rectilinear";
 /// Default XY clearance between support and object, matching OrcaSlicer's
 /// `support_object_xy_distance` default of 0.35 mm.
 const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
+/// Default extrusion line width in mm, used to expand the canonical bottom
+/// contact area (`support_material_flow.scaled_width()`).
+const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 /// Default vertical gap between a support contact and the model above it.
 /// Matches OrcaSlicer's `support_top_z_distance` default of 0.2 mm. This was
 /// `0.0`, so support was printed flush against the overhang with no gap.
@@ -54,6 +67,9 @@ pub struct SupportPlanner {
     /// XY clearance in mm held between support and the object during base-layer
     /// trimming, mirroring canonical `SupportParameters::gap_xy`.
     support_object_xy_distance: f32,
+    /// Extrusion line width in mm. Canonical expands the bottom contact area by
+    /// one support-flow width (`bottom_contact_layers_and_layer_support_areas`).
+    line_width_mm: f32,
 }
 
 #[slicer_module]
@@ -96,6 +112,11 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(v)) => *v as f32,
             _ => DEFAULT_OBJECT_XY_DISTANCE_MM,
         };
+        let line_width_mm = match config.get("line_width") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            Some(ConfigValue::Int(v)) => *v as f32,
+            _ => DEFAULT_LINE_WIDTH_MM,
+        };
         Ok(Self {
             enabled,
             support_family,
@@ -105,6 +126,7 @@ impl PrepassModule for SupportPlanner {
             support_top_z_distance_mm,
             support_layer_height_mm,
             support_object_xy_distance,
+            line_width_mm,
         })
     }
 
@@ -395,6 +417,46 @@ impl SupportPlanner {
         // counted from that layer; subtracting one here made every top band
         // one layer too wide (1->2, 2->3, 3->4).
         let interface_top_layer = emit_top_layer;
+
+        // F-36. Canonical `bottom_contact_layers_and_layer_support_areas`
+        // builds the floor from `intersection(top_surfaces, supports_projected)`
+        // and then expands it by one support-flow width — the floor covers only
+        // the part of the column that actually lands on a model top surface.
+        // This planner marked the *whole* layer cross-section BottomInterface,
+        // so a column landing half on the model and half on the plate printed
+        // dense interface over the plate half too.
+        let bottom_contact_area: Vec<ExPolygon> = match model_termination_layer {
+            None => Vec::new(),
+            Some(term_layer) => {
+                let surfaces: Vec<ExPolygon> = support_analysis
+                    .termination_surfaces
+                    .iter()
+                    .filter(|surface| {
+                        surface.object_id == obj.object_id
+                            && surface.region_id == candidate.region_id
+                            && surface.global_support_layer_index == term_layer
+                    })
+                    .flat_map(|surface| surface.polygons.iter().cloned())
+                    .collect();
+                let landed = propagated_by_layer
+                    .get(&term_layer)
+                    .cloned()
+                    .unwrap_or_default();
+                let contact = host::clip_polygons(&landed, &surfaces, ClipOperation::Intersection);
+                if contact.is_empty() || self.line_width_mm <= 0.0 {
+                    contact
+                } else {
+                    let grown = host::offset_polygons(
+                        &contact,
+                        self.line_width_mm,
+                        OffsetJoinType::Miter,
+                        0.0,
+                    );
+                    if grown.is_empty() { contact } else { grown }
+                }
+            }
+        };
+
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_layers > 0
                 && layer >= interface_top_layer.saturating_sub(top_layers - 1))
@@ -420,8 +482,15 @@ impl SupportPlanner {
             // both. These three roles previously carried byte-identical
             // regions, so an interface layer was extruded twice: once dense as
             // interface and again underneath as body.
+            // F-49: top-interface membership depends only on the layer's
+            // distance below the top contact, exactly as canonical
+            // `generate_interface_layers` counts `top_interface_layers` down
+            // from the contact layer. This additionally required
+            // `layer != termination_layer || model_termination_layer.is_some()`,
+            // which excluded the plate layer — so a column shorter than
+            // `support_interface_top_layers` printed its bottom-most layer as
+            // body even though it lies inside the roof band.
             let is_top_interface = top_layers > 0
-                && (layer != termination_layer || model_termination_layer.is_some())
                 && layer >= interface_top_layer.saturating_sub(top_layers - 1);
             // A floor exists only where the column lands on the model.
             let is_bottom_interface = bottom_layers > 0
@@ -433,11 +502,37 @@ impl SupportPlanner {
                     role: slicer_ir::SupportPlanRole::TopInterface,
                     regions: layer_geometry.clone(),
                 });
-            } else if is_bottom_interface {
-                roles.push(slicer_ir::SupportPlanRoleRegion {
-                    role: slicer_ir::SupportPlanRole::BottomInterface,
-                    regions: layer_geometry.clone(),
-                });
+            } else if is_bottom_interface && !bottom_contact_area.is_empty() {
+                // Only the part of the cross-section standing on the model top
+                // surface is floor; the remainder keeps printing as body.
+                let floor = host::clip_polygons(
+                    layer_geometry,
+                    &bottom_contact_area,
+                    ClipOperation::Intersection,
+                );
+                let remainder = host::clip_polygons(
+                    layer_geometry,
+                    &bottom_contact_area,
+                    ClipOperation::Difference,
+                );
+                if !floor.is_empty() {
+                    roles.push(slicer_ir::SupportPlanRoleRegion {
+                        role: slicer_ir::SupportPlanRole::BottomInterface,
+                        regions: floor,
+                    });
+                }
+                if !remainder.is_empty() {
+                    roles.push(slicer_ir::SupportPlanRoleRegion {
+                        role: slicer_ir::SupportPlanRole::SupportBody,
+                        regions: remainder,
+                    });
+                }
+                if roles.is_empty() {
+                    roles.push(slicer_ir::SupportPlanRoleRegion {
+                        role: slicer_ir::SupportPlanRole::SupportBody,
+                        regions: layer_geometry.clone(),
+                    });
+                }
             } else {
                 roles.push(slicer_ir::SupportPlanRoleRegion {
                     role: slicer_ir::SupportPlanRole::SupportBody,
