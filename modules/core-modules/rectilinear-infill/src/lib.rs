@@ -41,6 +41,10 @@ use slicer_sdk::views::SliceRegionView;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
+/// Solid shell polygons are emitted at full density, independently of sparse
+/// infill density.
+const SOLID_DENSITY: f32 = 1.0;
+
 /// Rectilinear infill generator.
 ///
 /// Produces parallel fill lines via scan-line polygon intersection,
@@ -54,6 +58,8 @@ pub struct RectilinearInfill {
     infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Global role-specific width inputs used for solid paths.
+    width_context: RoleWidthContext,
     /// Per-layer scan-line shift step (mm). Alternates sign each layer
     /// to interleave, not stack. Default 0.0 (no shift).
     infill_shift_step: f32,
@@ -113,6 +119,7 @@ impl LayerModule for RectilinearInfill {
             base_angle,
             infill_speed,
             line_width,
+            width_context,
             infill_shift_step,
         })
     }
@@ -125,10 +132,6 @@ impl LayerModule for RectilinearInfill {
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if self.density <= 0.0 {
-            return Ok(());
-        }
-
         // Compute angle: base + 90 degree alternation per layer
         let layer_rotation = if layer_index.is_multiple_of(2) {
             0.0_f64
@@ -176,14 +179,32 @@ impl LayerModule for RectilinearInfill {
             );
             let region_line_width =
                 slicer_sdk::config_resolution::resolve_float(region, "line_width", self.line_width);
-            if region_density <= 0.0 {
-                continue;
-            }
-            let line_spacing = slicer_ir::mm_to_units(region_line_width / region_density);
+
+            // A per-region base width override remains the fallback for role
+            // widths whose dedicated setting is unset.
+            let mut region_width_context = self.width_context;
+            region_width_context.line_width = slicer_sdk::config_resolution::resolve_float(
+                region,
+                "line_width",
+                self.width_context.line_width,
+            );
+
+            // Zero sparse density only disables the sparse grid; solid shells
+            // still emit below at full density. `scan_expolygon` treats a
+            // non-positive spacing as "emit nothing", which keeps the bridge
+            // block's HEAD behaviour of skipping when no sparse grid exists.
+            let line_spacing = if region_density > 0.0 {
+                slicer_ir::mm_to_units(region_line_width / region_density)
+            } else {
+                0
+            };
 
             // SparseInfill over the host-partitioned sparse-only polygon.
             let sparse = region.sparse_infill_area();
-            if !sparse.is_empty() && region.should_emit(ExtrusionRole::SparseInfill) {
+            if !sparse.is_empty()
+                && line_spacing > 0
+                && region.should_emit(ExtrusionRole::SparseInfill)
+            {
                 for expoly in sparse {
                     let paths = scan_expolygon(
                         expoly,
@@ -209,16 +230,23 @@ impl LayerModule for RectilinearInfill {
             let top = region.top_solid_fill();
             if !top.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
                 let role = solid_fill_role(region.top_shell_index(), ExtrusionRole::TopSolidInfill);
+                let solid_line_width = resolve_role_width(
+                    role.clone(),
+                    layer_index == 0,
+                    false,
+                    &region_width_context,
+                );
+                let solid_spacing = slicer_ir::mm_to_units(solid_line_width / SOLID_DENSITY);
                 for expoly in top {
                     let paths = scan_expolygon(
                         expoly,
-                        line_spacing,
+                        solid_spacing,
                         std_cos_a,
                         std_sin_a,
                         z,
                         speed_factor,
                         &role,
-                        region_line_width,
+                        solid_line_width,
                         true,
                         x_shift_units,
                     );
@@ -236,16 +264,23 @@ impl LayerModule for RectilinearInfill {
                     region.bottom_shell_index(),
                     ExtrusionRole::BottomSolidInfill,
                 );
+                let solid_line_width = resolve_role_width(
+                    role.clone(),
+                    layer_index == 0,
+                    false,
+                    &region_width_context,
+                );
+                let solid_spacing = slicer_ir::mm_to_units(solid_line_width / SOLID_DENSITY);
                 for expoly in bottom {
                     let paths = scan_expolygon(
                         expoly,
-                        line_spacing,
+                        solid_spacing,
                         std_cos_a,
                         std_sin_a,
                         z,
                         speed_factor,
                         &role,
-                        region_line_width,
+                        solid_line_width,
                         true,
                         x_shift_units,
                     );

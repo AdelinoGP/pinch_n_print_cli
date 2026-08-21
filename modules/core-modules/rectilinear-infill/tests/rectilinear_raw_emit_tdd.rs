@@ -518,11 +518,17 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
 /// and last lines touch the boundary; spacing is uniform.
 #[test]
 fn solid_spacing_adjusted_for_solid_role() {
-    // density=0.18, line_width=0.4 → raw spacing=2.222mm. On a 10mm
-    // width, adjust_solid_spacing(10mm, 2.222mm): count=4, new spacing=
-    // round(10/4)=2.5mm. 2.5 ≤ 2.222*1.2=2.667, so no clamp. Half-open
-    // scan lines are at y = 0, 2.5, 5.0, 7.5.
-    let config = make_config(0.18, 0.0, 50.0, 0.4);
+    // A 0.42mm top width at full density gives raw spacing=0.42mm. On a
+    // 10mm width, adjust_solid_spacing(10mm, 0.42mm): count=23, new
+    // spacing=round(10/23)=0.4348mm. The adjusted spacing is within the
+    // 1.2x cap, so the scan uses 23 evenly spaced lines.
+    let config = ConfigViewBuilder::new()
+        .float("infill_density", 0.18)
+        .float("infill_angle", 0.0)
+        .float("infill_speed", 50.0)
+        .float("line_width", 0.4)
+        .float("top_surface_line_width", 0.42)
+        .build();
     let module = RectilinearInfill::from_config(&config).unwrap();
 
     let sq = square_polygon(5.0, 5.0, 10.0);
@@ -550,11 +556,11 @@ fn solid_spacing_adjusted_for_solid_role() {
         .unwrap();
 
     let solid = output.solid_paths();
-    // AC-5: 4 scan lines (intervals 0, 2.5, 5.0, 7.5).
+    // AC-5: 23 adjusted scan lines.
     assert_eq!(
         solid.len(),
-        4,
-        "AC-5: expected 4 adjusted scan lines, got {}",
+        23,
+        "AC-5: expected 23 adjusted scan lines, got {}",
         solid.len()
     );
 
@@ -565,12 +571,24 @@ fn solid_spacing_adjusted_for_solid_role() {
         .iter()
         .flat_map(|p| p.points.iter().map(|pt| slicer_ir::mm_to_units(pt.y)))
         .collect();
-    let expected: BTreeSet<i64> = [0, 25000, 50000, 75000].iter().copied().collect();
+    let y_vals_vec: Vec<i64> = y_vals.iter().copied().collect();
     assert_eq!(
-        y_vals, expected,
-        "AC-5: adjusted solid lines should be at y = 0, 2.5, 5.0, 7.5 mm (units), got {:?}",
-        y_vals
+        y_vals_vec.first(),
+        Some(&0),
+        "AC-5: first line must touch the boundary"
     );
+    assert_eq!(
+        y_vals_vec.len(),
+        23,
+        "AC-5: every scan line must have a unique y"
+    );
+    for pair in y_vals_vec.windows(2) {
+        assert_eq!(
+            pair[1] - pair[0],
+            4348,
+            "AC-5: adjusted scan spacing must be uniform"
+        );
+    }
 
     for path in solid {
         assert_eq!(
@@ -585,6 +603,140 @@ fn solid_spacing_adjusted_for_solid_role() {
             dy
         );
     }
+}
+
+/// Solid shells must use full-density spacing and the width for their emitted
+/// role, rather than sparse-infill density and width.
+#[test]
+fn solid_surfaces_use_full_density_and_role_width() {
+    let config = ConfigViewBuilder::new()
+        .float("infill_density", 0.2)
+        .float("infill_angle", 0.0)
+        .float("infill_speed", 50.0)
+        .float("line_width", 0.4)
+        .float("initial_layer_line_width", 0.7)
+        .float("top_surface_line_width", 0.5)
+        .float("internal_solid_infill_line_width", 0.6)
+        .build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
+    let sq = square_polygon(5.0, 5.0, 10.0);
+
+    let mut top_region = SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .add_polygon(sq.clone())
+        .add_infill_area(sq.clone())
+        .effective_layer_height(0.2)
+        .z(30.05)
+        .has_nonplanar(false)
+        .top_shell_index(Some(0))
+        .top_solid_fill(vec![sq.clone()])
+        .build();
+    top_region.set_held_claims(vec!["claim:top-fill".into()]);
+
+    let mut top_output = InfillOutputBuilder::new();
+    module
+        .run_infill(
+            149,
+            &[top_region],
+            &empty_paint_view(),
+            &mut top_output,
+            &config,
+        )
+        .unwrap();
+
+    let top_paths = top_output.solid_paths();
+    assert_eq!(
+        top_paths.len(),
+        20,
+        "10 mm top surface at 0.5 mm width must emit 20 full-density lines, got {}",
+        top_paths.len()
+    );
+    assert!(top_paths
+        .iter()
+        .all(|path| path.role == slicer_ir::ExtrusionRole::TopSolidInfill));
+    assert!(top_paths.iter().all(|path| path
+        .points
+        .iter()
+        .all(|point| (point.width - 0.5).abs() < 0.001)));
+
+    let mut bottom_region = SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .add_polygon(sq.clone())
+        .add_infill_area(sq.clone())
+        .effective_layer_height(0.2)
+        .z(0.25)
+        .has_nonplanar(false)
+        .bottom_shell_index(Some(0))
+        .bottom_solid_fill(vec![sq.clone()])
+        .build();
+    bottom_region.set_held_claims(vec!["claim:bottom-fill".into()]);
+
+    let mut bottom_output = InfillOutputBuilder::new();
+    module
+        .run_infill(
+            0,
+            &[bottom_region],
+            &empty_paint_view(),
+            &mut bottom_output,
+            &config,
+        )
+        .unwrap();
+
+    let bottom_paths = bottom_output.solid_paths();
+    assert_eq!(
+        bottom_paths.len(),
+        14,
+        "10 mm first-layer bottom at 0.7 mm width must emit 14 full-density lines, got {}",
+        bottom_paths.len()
+    );
+    assert!(bottom_paths
+        .iter()
+        .all(|path| path.role == slicer_ir::ExtrusionRole::BottomSolidInfill));
+    assert!(bottom_paths.iter().all(|path| path
+        .points
+        .iter()
+        .all(|point| (point.width - 0.7).abs() < 0.001)));
+
+    let mut internal_region = SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .add_polygon(sq.clone())
+        .add_infill_area(sq.clone())
+        .effective_layer_height(0.2)
+        .z(30.05)
+        .has_nonplanar(false)
+        .top_shell_index(Some(1))
+        .top_solid_fill(vec![sq])
+        .build();
+    internal_region.set_held_claims(vec!["claim:top-fill".into()]);
+
+    let mut internal_output = InfillOutputBuilder::new();
+    module
+        .run_infill(
+            149,
+            &[internal_region],
+            &empty_paint_view(),
+            &mut internal_output,
+            &config,
+        )
+        .unwrap();
+
+    let internal_paths = internal_output.solid_paths();
+    assert_eq!(
+        internal_paths.len(),
+        16,
+        "10 mm internal solid at 0.6 mm width must emit 16 full-density lines, got {}",
+        internal_paths.len()
+    );
+    assert!(internal_paths
+        .iter()
+        .all(|path| path.role == slicer_ir::ExtrusionRole::InternalSolidInfill));
+    assert!(internal_paths.iter().all(|path| path
+        .points
+        .iter()
+        .all(|point| (point.width - 0.6).abs() < 0.001)));
 }
 
 // ---------------------------------------------------------------------------
