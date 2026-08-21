@@ -25,8 +25,8 @@ use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
-    support_aggregation::aggregate_support_plan_irs_degrading_with_diagnostics, CompiledModuleLive,
-    PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
+    support_aggregation::aggregate_support_plan_irs_degrading_with_attributed_diagnostics,
+    CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
 // PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
@@ -233,7 +233,13 @@ pub fn execute_prepass_with_instrumentation(
     for stage in &plan.prepass_stages {
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
         let mut support_plans = Vec::new();
-        let mut support_plan_audits = Vec::new();
+        // Kept index-parallel with `support_plans`: element `i` is the audit
+        // that belongs to the module which produced `support_plans[i]`, so an
+        // aggregate diagnostic attributed to plan `i` lands on the audit of
+        // the module actually at fault. `None` means that module produced no
+        // audit, in which case the diagnostic must stay unattributed rather
+        // than be pinned on some other module.
+        let mut support_plan_audits: Vec<Option<usize>> = Vec::new();
 
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
@@ -320,6 +326,7 @@ pub fn execute_prepass_with_instrumentation(
                     unreachable!("matched support plan output")
                 };
                 support_plans.push((*plan).clone());
+                support_plan_audits.push(None);
             } else if let Err(e) =
                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
@@ -349,7 +356,9 @@ pub fn execute_prepass_with_instrumentation(
                     diagnostics,
                 });
                 if support_plan_output {
-                    support_plan_audits.push(audit_index);
+                    if let Some(slot) = support_plan_audits.last_mut() {
+                        *slot = Some(audit_index);
+                    }
                 }
             } else if !runtime_reads.is_empty() || !batch_calls.is_empty() {
                 // Module performed reads but produced no output — still record audit.
@@ -370,13 +379,47 @@ pub fn execute_prepass_with_instrumentation(
             // first-arriving family keeps the region and the loser is reported
             // as a non-fatal 1202 diagnostic on the family writer's audit.
             let (plan, diagnostics) =
-                aggregate_support_plan_irs_degrading_with_diagnostics(support_plans, &exact_z);
-            // The aggregate is a host-owned stage result; attach its degraded
-            // diagnostics to the final family writer's existing audit stream.
-            if let Some(&audit_index) = support_plan_audits.last() {
-                audits[audit_index].diagnostics.extend(diagnostics);
-            }
+                aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
+                    support_plans,
+                    &exact_z,
+                );
             let aggregation_module = ModuleId::from("host:support_plan_aggregation");
+            // The aggregate is a host-owned stage result, but its diagnostics
+            // are per-family. Attach each one to the audit of the module that
+            // produced the offending plan.
+            //
+            // This used to extend the LAST family writer's audit with the
+            // whole flat vector, and `emit_host_support_diagnostics`
+            // (slicer-runtime `run.rs`) names `audit.module_id` in the
+            // resulting `module_error` event. So a traditional-planner
+            // `NoRoute` decline (code 1201) was reported against
+            // `com.core.tree-support-planner` -- a module whose sources do not
+            // contain `NoRoute` at all. Two debugging sessions were spent in
+            // the wrong crate because of it.
+            //
+            // Unattributable diagnostics go onto a host audit rather than onto
+            // an arbitrary module: "the host said so" is honest, naming the
+            // wrong module is not.
+            let mut host_audit_index: Option<usize> = None;
+            for entry in diagnostics {
+                let target = entry
+                    .plan_index
+                    .and_then(|index| support_plan_audits.get(index).copied().flatten());
+                let target = match target {
+                    Some(index) => index,
+                    None => *host_audit_index.get_or_insert_with(|| {
+                        audits.push(ModuleAccessAudit {
+                            module_id: aggregation_module.clone(),
+                            runtime_reads: Vec::new(),
+                            runtime_writes: Vec::new(),
+                            batch_calls: Vec::new(),
+                            diagnostics: Vec::new(),
+                        });
+                        audits.len() - 1
+                    }),
+                };
+                audits[target].diagnostics.push(entry.diagnostic);
+            }
             if let Err(e) = commit_stage_output(
                 &stage.stage_id,
                 &aggregation_module,

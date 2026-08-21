@@ -154,6 +154,26 @@ pub struct DuplicateSupportPlanEntry {
     pub duplicate_family_id: String,
 }
 
+/// One aggregate diagnostic plus the index of the input plan it originated
+/// from.
+///
+/// Aggregation is a *multi-writer* merge point: the diagnostics it mints come
+/// from several family writers at once, so a flat `Vec<Diagnostic>` loses the
+/// only information a caller needs to name the module at fault. The prepass
+/// used to attach the whole flat vector to the LAST support-plan writer's
+/// audit, which reported e.g. a traditional-planner `NoRoute` decline against
+/// `com.core.tree-support-planner` — a module in which `NoRoute` does not
+/// appear at all.
+#[derive(Debug, Clone)]
+pub struct AttributedDiagnostic {
+    /// Index into the `plans` slice passed to aggregation, when the producing
+    /// plan is recoverable. `None` means "not attributable" — callers must
+    /// then avoid naming any specific module rather than guessing one.
+    pub plan_index: Option<usize>,
+    /// The diagnostic itself.
+    pub diagnostic: slicer_ir::Diagnostic,
+}
+
 /// Declined candidates retained as diagnostics, with no renderer/filler output.
 #[derive(Debug, Clone)]
 pub struct DeclinedSupport {
@@ -639,11 +659,56 @@ pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
         })
 }
 
+/// Degrading aggregation that preserves per-plan attribution for every
+/// diagnostic it mints.
+///
+/// This is the form the prepass uses: it needs to attach each diagnostic to
+/// the audit of the module that actually produced the offending plan, not to
+/// whichever family writer happened to run last.
+pub fn aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+) -> (SupportPlanIR, Vec<AttributedDiagnostic>) {
+    aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, FamilyConflictPolicy::Degrade)
+        .unwrap_or_else(|error| {
+            // Unreachable under `Degrade`, which never returns `Err`.
+            (
+                SupportPlanIR::default(),
+                vec![AttributedDiagnostic {
+                    plan_index: None,
+                    diagnostic: slicer_ir::Diagnostic {
+                        severity: slicer_ir::DiagnosticSeverity::Error,
+                        code: 1204,
+                        layer: None,
+                        object_id: None,
+                        message: format!("support family routing mismatch: {error:?}"),
+                    },
+                }],
+            )
+        })
+}
+
 fn aggregate_support_plan_irs_with_policy(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
     conflict_policy: FamilyConflictPolicy,
 ) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
+    let (plan, attributed) =
+        aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, conflict_policy)?;
+    Ok((
+        plan,
+        attributed
+            .into_iter()
+            .map(|entry| entry.diagnostic)
+            .collect(),
+    ))
+}
+
+fn aggregate_support_plan_irs_with_policy_attributed(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+    conflict_policy: FamilyConflictPolicy,
+) -> Result<(SupportPlanIR, Vec<AttributedDiagnostic>), SupportAggregationError> {
     let schema_version = plans
         .first()
         .map(|plan| plan.schema_version)
@@ -655,53 +720,97 @@ fn aggregate_support_plan_irs_with_policy(
         },
         conflict_policy,
     )?;
+    // Attribution indices. Aggregation flattens every family's entries into
+    // one list, so the post-hoc diagnostics carry only `family_id` / `body_id`
+    // rather than a plan ordinal; these maps invert that back to the producing
+    // plan. First plan wins for a given key, which is exact as long as a family
+    // (and a body identity) is written by a single module -- the property the
+    // `(layer, object, region)` conflict logic above already enforces.
+    let mut family_to_plan: HashMap<&str, usize> = HashMap::new();
+    let mut body_to_plan: HashMap<&str, usize> = HashMap::new();
+    for (plan_index, plan) in plans.iter().enumerate() {
+        for entry in &plan.entries {
+            family_to_plan
+                .entry(entry.family_id.as_str())
+                .or_insert(plan_index);
+            for body_id in &entry.body_ids {
+                body_to_plan.entry(body_id.as_str()).or_insert(plan_index);
+            }
+        }
+    }
+
     let mut diagnostics = aggregate
         .unmet
         .iter()
-        .map(|demand| slicer_ir::Diagnostic {
+        .map(|demand| AttributedDiagnostic {
+            plan_index: body_to_plan.get(demand.body_id.as_str()).copied(),
+            diagnostic: slicer_ir::Diagnostic {
+                severity: slicer_ir::DiagnosticSeverity::Warn,
+                code: 1200,
+                layer: None,
+                object_id: None,
+                message: format!(
+                    "support demand '{}' unmet for body '{}': {}",
+                    demand.demand_id, demand.body_id, demand.reason
+                ),
+            },
+        })
+        .collect::<Vec<_>>();
+    diagnostics.extend(aggregate.diagnostics.iter().map(|d| AttributedDiagnostic {
+        plan_index: family_to_plan.get(d.family_id.as_str()).copied(),
+        diagnostic: slicer_ir::Diagnostic {
             severity: slicer_ir::DiagnosticSeverity::Warn,
-            code: 1200,
+            code: 1203,
             layer: None,
             object_id: None,
             message: format!(
-                "support demand '{}' unmet for body '{}': {}",
-                demand.demand_id, demand.body_id, demand.reason
+                "support routing: family='{}', body='{}', demand='{}': {}",
+                d.family_id, d.body_id, d.demand_id, d.reason
             ),
-        })
-        .collect::<Vec<_>>();
-    diagnostics.extend(aggregate.diagnostics.iter().map(|d| slicer_ir::Diagnostic {
-        severity: slicer_ir::DiagnosticSeverity::Warn,
-        code: 1203,
-        layer: None,
-        object_id: None,
-        message: format!(
-            "support routing: family='{}', body='{}', demand='{}': {}",
-            d.family_id, d.body_id, d.demand_id, d.reason
-        ),
+        },
     }));
-    diagnostics.extend(aggregate.duplicates.iter().map(|duplicate| slicer_ir::Diagnostic {
-        severity: slicer_ir::DiagnosticSeverity::Warn,
-        code: 1202,
-        layer: Some(duplicate.global_layer_index),
-        object_id: Some(duplicate.object_id.clone()),
-        message: format!(
-            "duplicate support region rejected: layer={}, object='{}', region={}, families '{}' and '{}'",
-            duplicate.global_layer_index,
-            duplicate.object_id,
-            duplicate.region_id,
-            duplicate.first_family_id,
-            duplicate.duplicate_family_id
-        ),
+    diagnostics.extend(aggregate.duplicates.iter().map(|duplicate| AttributedDiagnostic {
+        // The *duplicate* is the rejected write, so the diagnostic belongs to
+        // the family that lost the arbitration, not to the incumbent.
+        plan_index: family_to_plan.get(duplicate.duplicate_family_id.as_str()).copied(),
+        diagnostic: slicer_ir::Diagnostic {
+            severity: slicer_ir::DiagnosticSeverity::Warn,
+            code: 1202,
+            layer: Some(duplicate.global_layer_index),
+            object_id: Some(duplicate.object_id.clone()),
+            message: format!(
+                "duplicate support region rejected: layer={}, object='{}', region={}, families '{}' and '{}'",
+                duplicate.global_layer_index,
+                duplicate.object_id,
+                duplicate.region_id,
+                duplicate.first_family_id,
+                duplicate.duplicate_family_id
+            ),
+        },
     }));
-    for entry in plans.iter().flat_map(|plan| &plan.entries) {
+    // Declines are minted straight from the input plans, so the producing plan
+    // index is exact here -- no inversion needed. The family is also named in
+    // the message so the diagnostic stays self-describing once it is detached
+    // from its `AttributedDiagnostic` wrapper (e.g. in a log line).
+    for (plan_index, entry) in plans
+        .iter()
+        .enumerate()
+        .flat_map(|(plan_index, plan)| plan.entries.iter().map(move |e| (plan_index, e)))
+    {
         if let Some(reason) = entry.decline_reason {
             for demand_id in &entry.demand_ids {
-                diagnostics.push(slicer_ir::Diagnostic {
-                    severity: slicer_ir::DiagnosticSeverity::Warn,
-                    code: 1201,
-                    layer: Some(entry.global_layer_index),
-                    object_id: Some(entry.object_id.clone()),
-                    message: format!("support demand '{}' declined: {:?}", demand_id, reason),
+                diagnostics.push(AttributedDiagnostic {
+                    plan_index: Some(plan_index),
+                    diagnostic: slicer_ir::Diagnostic {
+                        severity: slicer_ir::DiagnosticSeverity::Warn,
+                        code: 1201,
+                        layer: Some(entry.global_layer_index),
+                        object_id: Some(entry.object_id.clone()),
+                        message: format!(
+                            "support demand '{}' declined by family '{}': {:?}",
+                            demand_id, entry.family_id, reason
+                        ),
+                    },
                 });
             }
         }
