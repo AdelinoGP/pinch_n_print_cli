@@ -55,7 +55,14 @@
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
-const DEFAULT_MERGE_DISTANCE_MM: f32 = 0.8;
+/// Canonical `support_line_width` (`PrintConfig.cpp`, `coFloatOrPercent`).
+/// Canonical derives the support extrusion width from
+/// `Flow::auto_extrusion_width(frSupportMaterial, nozzle_diameter)` when the
+/// setting is 0; this module has no nozzle diameter in scope, so it takes the
+/// same 0.35 mm default the G-code serializer already uses.
+const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
+/// Canonical libslic3r `EPSILON`, in mm.
+const CANONICAL_EPSILON_MM: f32 = 1e-4;
 const DEFAULT_MAX_BRANCHES_PER_LAYER: usize = 1024;
 const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 /// Overhang detection threshold: triangles whose normal z-component is below
@@ -81,7 +88,12 @@ pub struct SupportPlanner {
     /// Canonical support family selected for the matching renderer.
     support_family: String,
     branch_angle_deg: f32,
-    merge_distance_mm: f32,
+    /// Canonical `support_line_width` — the support-material extrusion width,
+    /// in mm. This is the cap term in canonical `get_max_move_dist`
+    /// (`min(tan_angle * node->height, support_extrusion_width)`), which is
+    /// the merge radius the F-11 pass tests against. It replaces the invented
+    /// flat `support_branch_merge_distance_mm` constant.
+    support_line_width_mm: f32,
     max_branches_per_layer: usize,
     line_width_mm: f32,
     /// Branch diameter in mm (divide by 2 to get radius).
@@ -879,8 +891,8 @@ impl TreeVolumes {
             .map_or(&[][..], |v| v.as_slice())
     }
 
-    /// Canonical `m_layer_outlines_below` at a layer.
-    #[allow(dead_code)]
+    /// Canonical `m_layer_outlines_below` at a layer. The F-12 per-part
+    /// spanning trees group nodes by the part of this set they fall in.
     fn outlines_below(&self, layer: usize) -> &[ExPolygon] {
         self.layer_outlines_below
             .get(layer)
@@ -989,10 +1001,10 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
         };
-        let merge_distance_mm = match config.get("support_branch_merge_distance_mm") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            Some(ConfigValue::Int(a)) => *a as f32,
-            _ => DEFAULT_MERGE_DISTANCE_MM,
+        let support_line_width_mm = match config.get("support_line_width") {
+            Some(ConfigValue::Float(a)) if *a > 0.0 => *a as f32,
+            Some(ConfigValue::Int(a)) if *a > 0 => *a as f32,
+            _ => DEFAULT_SUPPORT_LINE_WIDTH_MM,
         };
         let max_branches_per_layer = match config.get("support_max_branches_per_layer") {
             Some(ConfigValue::Int(n)) => (*n as usize).clamp(1, 10_000),
@@ -1082,7 +1094,7 @@ impl PrepassModule for SupportPlanner {
             enabled,
             support_family,
             branch_angle_deg,
-            merge_distance_mm,
+            support_line_width_mm,
             max_branches_per_layer,
             line_width_mm,
             tree_support_branch_diameter,
@@ -1648,52 +1660,239 @@ impl SupportPlanner {
                 }
             });
 
-            // Run Prim MST on the active node set.
-            let positions: Vec<(f32, f32)> =
-                active_nodes.iter().map(|id| arena[*id].xy()).collect();
-            let mst_edges = prim_mst(&positions);
+            // Geometry constants for this layer. These are hoisted above the
+            // MST/merge block because the F-11 two-leaf collapse creates its
+            // merged node on the *next* layer down and needs the budget and
+            // the volumes here.
+            let effective_height = layer_plan.layers[layer_rev].effective_layer_height;
+            // Wall-count scaled max move distance (Step 5 AC-5)
+            let max_move_xy = (tan_angle * effective_height * wall_count_factor).max(0.0);
+            let z_current = layer_plan.layers[layer_rev].z;
+            // Collision/avoidance polygons for this layer (Step 5 AC-3)
+            let cache_idx = current_global_layer_index as usize;
+            let next_cache_idx = cache_idx.saturating_sub(1);
+            let (next_print_z, next_layer_height) = if layer_rev > 0 {
+                (
+                    layer_plan.layers[layer_rev - 1].z,
+                    layer_plan.layers[layer_rev - 1].effective_layer_height,
+                )
+            } else {
+                (z_current, effective_height)
+            };
 
-            // Merge nodes within merge_distance: mark the higher-index endpoint
-            // of every short edge for removal.
+            // -- F-12: per-part spanning trees ---------------------------
+            // Canonical `drop_nodes` sizes `nodes_per_part` at
+            // `1 + parts.size()`, with
+            // `parts = m_ts_data->m_layer_outlines_below[obj_layer_nr]`, and
+            // runs `MinimumSpanningTree` once **per group**. The module used
+            // to run one global Prim MST over every active node, so nodes on
+            // opposite sides of the object could become MST neighbours, merge,
+            // and drag each other across it.
+            let parts: Vec<ExPolygon> = volumes.outlines_below(cache_idx).to_vec();
+            let group_of: Vec<usize> = active_nodes
+                .iter()
+                .map(|id| {
+                    let node = &arena[*id];
+                    assign_node_group(&parts, node.to_buildplate, node.x(), node.y())
+                })
+                .collect();
+            let mut mst_edges: Vec<(usize, usize, f32)> = Vec::new();
+            for group in 0..=parts.len() {
+                let members: Vec<usize> = (0..active_nodes.len())
+                    .filter(|i| group_of[*i] == group)
+                    .collect();
+                if members.len() < 2 {
+                    continue;
+                }
+                let positions: Vec<(f32, f32)> = members
+                    .iter()
+                    .map(|i| arena[active_nodes[*i]].xy())
+                    .collect();
+                for (a, b, d) in prim_mst(&positions) {
+                    let (ga, gb) = (members[a], members[b]);
+                    mst_edges.push((ga.min(gb), ga.max(gb), d));
+                }
+            }
+            mst_edges.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then(a.1.cmp(&b.1))
+                    .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+            });
+
+            // -- F-11: canonical merge -----------------------------------
+            // The previous rule was `if edge_length < merge_distance_mm { drop
+            // the higher-INDEX endpoint }` - a flat invented constant with no
+            // leaf-degree test, no midpoint node and no `dist_mm_to_top`
+            // ordering. Canonical's first `drop_nodes` pass has two branches,
+            // both keyed on the MST adjacency of the node's own group.
+            let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); active_nodes.len()];
+            for (a, b, _) in &mst_edges {
+                adjacency[*a].push(*b);
+                adjacency[*b].push(*a);
+            }
             let mut drop = vec![false; active_nodes.len()];
-            for (a, b, d) in &mst_edges {
-                if *d < self.merge_distance_mm {
-                    drop[*a.max(b)] = true;
-                    let (keep, removed) = if a < b { (*a, *b) } else { (*b, *a) };
-                    let (keep_id, removed_id) = (active_nodes[keep], active_nodes[removed]);
-                    let ids = arena[removed_id].demand_ids.clone();
-                    for id in ids {
-                        if !arena[keep_id].demand_ids.contains(&id) {
-                            arena[keep_id].demand_ids.push(id);
+            // Branch A's merged node is created directly on the layer below -
+            // canonical emits it into `contact_nodes[layer_nr - 1]`, so it
+            // never sees this layer's move pass.
+            let mut collapsed_into_next: Vec<NodeId> = Vec::new();
+            for i in 0..active_nodes.len() {
+                if drop[i] {
+                    continue;
+                }
+                let id = active_nodes[i];
+                if !arena[id].valid {
+                    continue;
+                }
+                let max_move_dist_sq =
+                    get_max_move_dist(&arena[id], tan_angle, self.support_line_width_mm, 2);
+                let (node_x, node_y) = arena[id].xy();
+                let neighbours: Vec<usize> = adjacency[i].clone();
+
+                if neighbours.len() == 1 {
+                    // Branch A - two-leaf collapse. Every condition is
+                    // required: the neighbour is within `get_max_move_dist`
+                    // (squared, mm), the neighbour is itself a leaf, and the
+                    // neighbour is not an `ePolygon` node.
+                    let j = neighbours[0];
+                    let nid = active_nodes[j];
+                    if drop[j] || !arena[nid].valid {
+                        continue;
+                    }
+                    let (nb_x, nb_y) = arena[nid].xy();
+                    let dist_sq =
+                        (nb_x - node_x) * (nb_x - node_x) + (nb_y - node_y) * (nb_y - node_y);
+                    if dist_sq >= max_move_dist_sq
+                        || adjacency[j].len() != 1
+                        || arena[nid].type_ == TreeNodeType::Polygon
+                    {
+                        continue;
+                    }
+                    // The merged node sits at the midpoint of the two.
+                    let mut next_position = ((node_x + nb_x) * 0.5, (node_y + nb_y) * 0.5);
+                    // Parent selection: whichever of the two is further from
+                    // the top wins; when only one has a parent, that one.
+                    let (self_parent, nb_parent) = (arena[id].parent, arena[nid].parent);
+                    let parent_id = match (self_parent, nb_parent) {
+                        (Some(_), Some(_)) | (None, None) => {
+                            if arena[id].dist_mm_to_top >= arena[nid].dist_mm_to_top {
+                                id
+                            } else {
+                                nid
+                            }
+                        }
+                        (Some(_), None) => id,
+                        (None, Some(_)) => nid,
+                    };
+                    let other_id = if parent_id == id { nid } else { id };
+                    let next_distance_to_top = arena[parent_id].distance_to_top.saturating_add(1);
+                    let next_radius = tapered_radius(
+                        branch_radius,
+                        tan_diameter_angle,
+                        next_distance_to_top.max(0) as u32,
+                        effective_height,
+                    );
+                    if group_of[i] == 0 {
+                        // Canonical keys this push-out on the merged node's own
+                        // `next_radius` bucket. `TreeVolumes` materialises only
+                        // the `0.0` collision and `branch_radius` avoidance
+                        // ladders today (step 1), so the branch-radius bucket
+                        // is used; widening the bucket set is step 5-7 work.
+                        next_position = move_out_expolys(
+                            volumes.get_avoidance(branch_radius, next_cache_idx),
+                            next_position,
+                            RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
+                            max_move_xy + RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
+                        );
+                    }
+                    let to_buildplate = !is_inside_ex(
+                        volumes.get_collision(0.0, next_cache_idx),
+                        next_position.0,
+                        next_position.1,
+                    );
+                    // Canonical `insert_dropped_node` keeps the max of both
+                    // counters when two nodes collapse onto one position.
+                    let roof_below = arena[id]
+                        .support_roof_layers_below
+                        .max(arena[nid].support_roof_layers_below)
+                        - i32::from(arena[parent_id].distance_to_top >= 0);
+                    let is_sharp_tail = arena[id].is_sharp_tail || arena[nid].is_sharp_tail;
+                    let mut demand_ids = arena[id].demand_ids.clone();
+                    for d in arena[nid].demand_ids.clone() {
+                        if !demand_ids.contains(&d) {
+                            demand_ids.push(d);
                         }
                     }
-                    // Canonical `insert_dropped_node` takes the max of both
-                    // counters when two nodes collapse onto one position.
-                    let (dist, roof) = {
-                        let removed_node = &arena[removed_id];
-                        (
-                            removed_node.distance_to_top,
-                            removed_node.support_roof_layers_below,
-                        )
-                    };
-                    let keep_node = &mut arena[keep_id];
-                    keep_node.distance_to_top = keep_node.distance_to_top.max(dist);
-                    keep_node.support_roof_layers_below =
-                        keep_node.support_roof_layers_below.max(roof);
-                    keep_node.merged_neighbours.push(removed_id);
-                    arena[removed_id].valid = false;
+                    let (parent_x, parent_y) = arena[parent_id].xy();
+                    let new_id = arena.create_node(
+                        Point2::from_mm(next_position.0, next_position.1),
+                        next_distance_to_top,
+                        layer_rev.saturating_sub(1),
+                        roof_below,
+                        to_buildplate,
+                        Some(parent_id),
+                        next_print_z,
+                        next_layer_height,
+                        next_distance_to_top.max(0) as f32 * effective_height,
+                        next_radius,
+                    );
+                    arena[new_id].movement =
+                        Point2::from_mm(next_position.0 - parent_x, next_position.1 - parent_y);
+                    arena[new_id].max_move_dist = max_move_xy;
+                    arena[new_id].is_sharp_tail = is_sharp_tail;
+                    arena[new_id].demand_ids = demand_ids;
+                    // Both originals feed the merged node.
+                    arena[new_id].parents.push(other_id);
+                    arena[other_id].child = Some(new_id);
+                    arena[id].valid = false;
+                    arena[nid].valid = false;
+                    drop[i] = true;
+                    drop[j] = true;
+                    collapsed_into_next.push(new_id);
+                } else if neighbours.len() > 1 {
+                    // Branch B - absorb every close neighbour into this node.
+                    let node_dist_mm_to_top = arena[id].dist_mm_to_top;
+                    for j in neighbours {
+                        if drop[j] || j == i {
+                            continue;
+                        }
+                        let nid = active_nodes[j];
+                        if !arena[nid].valid || arena[nid].type_ == TreeNodeType::Polygon {
+                            continue;
+                        }
+                        let (nb_x, nb_y) = arena[nid].xy();
+                        let dist_sq =
+                            (nb_x - node_x) * (nb_x - node_x) + (nb_y - node_y) * (nb_y - node_y);
+                        if dist_sq >= max_move_dist_sq {
+                            continue;
+                        }
+                        // STUDIO-6326: only the bigger node absorbs. Without
+                        // this, two nodes at different heights each claim the
+                        // other and the column forks.
+                        if node_dist_mm_to_top < arena[nid].dist_mm_to_top {
+                            continue;
+                        }
+                        let ids = arena[nid].demand_ids.clone();
+                        for d in ids {
+                            if !arena[id].demand_ids.contains(&d) {
+                                arena[id].demand_ids.push(d);
+                            }
+                        }
+                        let (dist, roof) = {
+                            let removed = &arena[nid];
+                            (removed.distance_to_top, removed.support_roof_layers_below)
+                        };
+                        let keep = &mut arena[id];
+                        keep.distance_to_top = keep.distance_to_top.max(dist);
+                        keep.support_roof_layers_below = keep.support_roof_layers_below.max(roof);
+                        keep.merged_neighbours.push(nid);
+                        arena[nid].valid = false;
+                        drop[j] = true;
+                    }
                 }
             }
 
             // Record the committed edges as branch segments (mm-space) on
             // this layer. Points sit at this layer's Z.
-            let effective_height = layer_plan.layers[layer_rev].effective_layer_height;
-            // Wall-count scaled max move distance (Step 5 AC-5)
-            let max_move_xy = (tan_angle * effective_height * wall_count_factor).max(0.0);
-            let z_current = layer_plan.layers[layer_rev].z;
-
-            // Collision/avoidance polygons for this layer (Step 5 AC-3)
-            let cache_idx = current_global_layer_index as usize;
             // Canonical `get_collision` / `get_avoidance`. Collision carries
             // `m_xy_distance` (F-16: it used to carry no inflation at all); the
             // node's own tapered radius is added by `body_intersects` at each
@@ -2227,14 +2426,6 @@ impl SupportPlanner {
                 // points back up, so later steps can walk the column in either
                 // direction. Canonical `create_node(..., parent = p_node)` plus
                 // `p_node->child = next_node`.
-                let (next_print_z, next_height) = if layer_rev > 0 {
-                    (
-                        layer_plan.layers[layer_rev - 1].z,
-                        layer_plan.layers[layer_rev - 1].effective_layer_height,
-                    )
-                } else {
-                    (z_current, effective_height)
-                };
                 let next_id = arena.create_node(
                     Point2::from_mm(next_x, next_y),
                     next_distance_to_top,
@@ -2243,7 +2434,7 @@ impl SupportPlanner {
                     to_buildplate,
                     Some(id),
                     next_print_z,
-                    next_height,
+                    next_layer_height,
                     next_distance_to_top.max(0) as f32 * effective_height,
                     radius,
                 );
@@ -2253,6 +2444,9 @@ impl SupportPlanner {
                 arena[next_id].demand_ids = demand_ids;
                 next_nodes.push(next_id);
             }
+            // Canonical branch-A merged nodes were already created on the
+            // layer below and must not be moved again this layer.
+            next_nodes.extend(collapsed_into_next);
 
             active_nodes = next_nodes;
         }
@@ -3327,6 +3521,138 @@ pub fn tapered_radius(
 }
 
 /// Clamp a point into the union of avoidance polygons.
+/// Canonical `is_inside_ex(const ExPolygons&, const Point&)`.
+///
+/// Guest-side because `slicer_core::polygon_ops` is `host-algos`-gated and is
+/// not compiled for `wasm32`, and the WIT surface exposes no point-in-polygon
+/// query. Delegates to [`point_in_any_expoly`], which is inside-contour AND
+/// outside-every-hole — a point in a hole reads as OUTSIDE, matching
+/// canonical `ExPolygon::contains`.
+fn is_inside_ex(expolys: &[ExPolygon], x: f32, y: f32) -> bool {
+    point_in_any_expoly(expolys, x, y)
+}
+
+/// Guest-side port of the file-scope static `move_out_expolys` in canonical
+/// `TreeSupport.cpp`.
+///
+/// Canonical pushes `from` out of `polygons`, leaving it at least `min_dist`
+/// clear of the boundary, and reverts to the original position when the
+/// required travel exceeds `max_dist`. Canonical realises the clearance by
+/// offsetting `polygons` by `min_dist` and projecting onto the inflated ring;
+/// this port projects onto the original ring and steps `min_dist` further
+/// along the outward direction. The two agree except at miter corners, and
+/// the analytic form keeps a host `offset_polygons` round-trip out of the
+/// per-node merge loop.
+///
+/// Distances are in mm. Iterative (no recursion — wasm stack).
+fn move_out_expolys(
+    polygons: &[ExPolygon],
+    from: (f32, f32),
+    min_dist: f32,
+    max_dist: f32,
+) -> (f32, f32) {
+    let (x, y) = from;
+    if polygons.is_empty() || !is_inside_ex(polygons, x, y) {
+        return from;
+    }
+    let qx = x * SCALING_FACTOR as f32;
+    let qy = y * SCALING_FACTOR as f32;
+    let mut best_dist = f32::INFINITY;
+    let mut best: Option<[f32; 2]> = None;
+    for ex in polygons {
+        for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+            let poly: Vec<[f32; 2]> = ring
+                .points
+                .iter()
+                .map(|p| [p.x as f32, p.y as f32])
+                .collect();
+            if poly.len() < 3 {
+                continue;
+            }
+            let (cp, cd) = closest_point_on_polygon(&poly, qx, qy);
+            if cd < best_dist {
+                best_dist = cd;
+                best = Some(cp);
+            }
+        }
+    }
+    let Some(cp) = best else { return from };
+    let bx = cp[0] / SCALING_FACTOR as f32;
+    let by = cp[1] / SCALING_FACTOR as f32;
+    // Outward direction: from the interior point toward the boundary.
+    let (dx, dy) = (bx - x, by - y);
+    let len = (dx * dx + dy * dy).sqrt();
+    let target = if len > 1e-9 {
+        (bx + dx / len * min_dist, by + dy / len * min_dist)
+    } else {
+        (bx + min_dist, by)
+    };
+    let (tdx, tdy) = (target.0 - x, target.1 - y);
+    if (tdx * tdx + tdy * tdy).sqrt() > max_dist {
+        // Canonical restores `from0` when the push-out exceeds the budget.
+        from
+    } else {
+        target
+    }
+}
+
+/// Canonical `drop_nodes`' `nodes_per_part` bucketing (F-12).
+///
+/// `parts` is `m_ts_data->m_layer_outlines_below[obj_layer_nr]`. Group 0 takes
+/// the nodes that must reach the build plate (and every node when there are no
+/// parts at all); a node inside `parts[i]` goes to `i + 1`; otherwise the node
+/// joins the part whose contour it is closest to. Canonical minimises
+/// `vsize2_with_unscale(position - *parts[i].contour.closest_point(position))`
+/// — a squared mm distance; this compares the un-squared scaled distance
+/// [`closest_point_on_polygon`] already returns, which is order-equivalent.
+fn assign_node_group(parts: &[ExPolygon], to_buildplate: bool, x: f32, y: f32) -> usize {
+    if to_buildplate || parts.is_empty() {
+        return 0;
+    }
+    let qx = x * SCALING_FACTOR as f32;
+    let qy = y * SCALING_FACTOR as f32;
+    let mut closest_part = 0usize;
+    let mut closest_dist = f32::INFINITY;
+    for (i, part) in parts.iter().enumerate() {
+        if is_inside_ex(std::slice::from_ref(part), x, y) {
+            return i + 1;
+        }
+        let poly: Vec<[f32; 2]> = part
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
+        if poly.len() < 3 {
+            continue;
+        }
+        let (_cp, cd) = closest_point_on_polygon(&poly, qx, qy);
+        if cd < closest_dist {
+            closest_dist = cd;
+            closest_part = i;
+        }
+    }
+    closest_part + 1
+}
+
+/// Canonical `TreeSupport::get_max_move_dist(node, power)`:
+/// `min(tan_angle * node->height, support_extrusion_width)`, in mm.
+/// `power == 2` returns the SQUARE, which is what the F-11 merge tests
+/// against squared mm node distances.
+fn get_max_move_dist(
+    node: &PlannedSupportNode,
+    tan_angle: f32,
+    support_extrusion_width: f32,
+    power: u32,
+) -> f32 {
+    let d = (tan_angle * node.height).min(support_extrusion_width).max(0.0);
+    if power == 2 {
+        d * d
+    } else {
+        d
+    }
+}
+
 /// Returns the original point if avoidance_polys is empty; otherwise returns
 /// the closest point on any avoidance polygon boundary.
 fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f32) {
@@ -3717,7 +4043,7 @@ mod tests {
             enabled: true,
             support_family: "tree".to_string(),
             branch_angle_deg: DEFAULT_BRANCH_ANGLE_DEG,
-            merge_distance_mm: DEFAULT_MERGE_DISTANCE_MM,
+            support_line_width_mm: DEFAULT_SUPPORT_LINE_WIDTH_MM,
             max_branches_per_layer: DEFAULT_MAX_BRANCHES_PER_LAYER,
             line_width_mm: DEFAULT_LINE_WIDTH_MM,
             tree_support_branch_diameter: 5.0,
@@ -4414,6 +4740,133 @@ mod tests {
         assert!(
             (span_y - 2.0).abs() < 1e-4,
             "span_y must be ~2.0 mm; got {span_y}"
+        );
+    }
+
+    // ── F-12 / F-11 canonical merge helpers ──────────────────────────────
+
+    fn square_mm(x0: f32, y0: f32, side: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x0 + side, y0),
+                    Point2::from_mm(x0 + side, y0 + side),
+                    Point2::from_mm(x0, y0 + side),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// F-12: canonical `nodes_per_part` bucketing. Group 0 is the
+    /// to-buildplate bucket, `parts[i]` is group `i + 1`.
+    #[test]
+    fn assign_node_group_matches_canonical_nodes_per_part() {
+        let parts = vec![square_mm(0.0, 0.0, 10.0), square_mm(50.0, 0.0, 10.0)];
+        // to_buildplate always takes group 0, wherever the node sits.
+        assert_eq!(assign_node_group(&parts, true, 5.0, 5.0), 0);
+        // No parts at all: everything falls into group 0.
+        assert_eq!(assign_node_group(&[], false, 5.0, 5.0), 0);
+        // Inside part 0 / part 1 → 1 / 2.
+        assert_eq!(assign_node_group(&parts, false, 5.0, 5.0), 1);
+        assert_eq!(assign_node_group(&parts, false, 55.0, 5.0), 2);
+        // Outside both: the closest part wins.
+        assert_eq!(assign_node_group(&parts, false, -5.0, 5.0), 1);
+        assert_eq!(assign_node_group(&parts, false, 65.0, 5.0), 2);
+    }
+
+    /// F-12 is what stops two nodes on opposite sides of a model from ever
+    /// becoming MST neighbours: they land in different groups, and canonical
+    /// runs one spanning tree per group.
+    #[test]
+    fn per_part_grouping_separates_opposite_sides_of_the_object() {
+        let parts = vec![square_mm(0.0, 0.0, 10.0), square_mm(50.0, 0.0, 10.0)];
+        let left = assign_node_group(&parts, false, 2.0, 2.0);
+        let right = assign_node_group(&parts, false, 52.0, 2.0);
+        assert_ne!(
+            left, right,
+            "nodes inside different parts must not share a spanning tree"
+        );
+    }
+
+    /// `is_inside_ex` must treat a point in a hole as OUTSIDE, matching
+    /// canonical `ExPolygon::contains`.
+    #[test]
+    fn is_inside_ex_treats_holes_as_outside() {
+        let mut ring = square_mm(0.0, 0.0, 10.0);
+        ring.holes.push(Polygon {
+            points: vec![
+                Point2::from_mm(3.0, 3.0),
+                Point2::from_mm(7.0, 3.0),
+                Point2::from_mm(7.0, 7.0),
+                Point2::from_mm(3.0, 7.0),
+            ],
+        });
+        let polys = vec![ring];
+        assert!(is_inside_ex(&polys, 1.0, 1.0), "inside the contour");
+        assert!(!is_inside_ex(&polys, 5.0, 5.0), "inside a hole is outside");
+        assert!(!is_inside_ex(&polys, 20.0, 20.0), "outside entirely");
+    }
+
+    /// `move_out_expolys` pushes an interior point clear of the boundary by
+    /// `min_dist`, and restores the original when the push exceeds `max_dist`.
+    #[test]
+    fn move_out_expolys_pushes_out_and_respects_the_budget() {
+        let polys = vec![square_mm(0.0, 0.0, 10.0)];
+        // A point outside is left alone.
+        assert_eq!(move_out_expolys(&polys, (20.0, 5.0), 0.2, 100.0), (20.0, 5.0));
+        // A point just inside the left edge exits through it.
+        let moved = move_out_expolys(&polys, (0.5, 5.0), 0.2, 100.0);
+        assert!(!is_inside_ex(&polys, moved.0, moved.1));
+        assert!(
+            (moved.0 - (-0.2)).abs() < 1e-3,
+            "expected the left edge minus min_dist, got {moved:?}"
+        );
+        // The same push with no budget reverts to the original position.
+        let blocked = move_out_expolys(&polys, (0.5, 5.0), 0.2, 0.1);
+        assert_eq!(blocked, (0.5, 5.0));
+    }
+
+    /// Canonical `get_max_move_dist`: `min(tan_angle * height, width)`, and
+    /// `power == 2` returns the SQUARE.
+    #[test]
+    fn get_max_move_dist_caps_at_the_support_extrusion_width() {
+        let mut arena = NodeArena::default();
+        let id = arena.create_node(
+            Point2::from_mm(0.0, 0.0),
+            0,
+            0,
+            0,
+            true,
+            None,
+            0.2,
+            0.2, // height mm
+            0.0,
+            1.0,
+        );
+        // tan(45°) = 1 → 1 * 0.2 = 0.2 mm, below the 0.35 mm width cap.
+        let d = get_max_move_dist(&arena[id], 1.0, DEFAULT_SUPPORT_LINE_WIDTH_MM, 1);
+        assert!((d - 0.2).abs() < 1e-6, "got {d}");
+        let d2 = get_max_move_dist(&arena[id], 1.0, DEFAULT_SUPPORT_LINE_WIDTH_MM, 2);
+        assert!((d2 - 0.04).abs() < 1e-6, "power 2 must square: got {d2}");
+        // A tall node is capped by the extrusion width instead.
+        let tall = arena.create_node(
+            Point2::from_mm(0.0, 0.0),
+            0,
+            0,
+            0,
+            true,
+            None,
+            5.0,
+            5.0,
+            0.0,
+            1.0,
+        );
+        let capped = get_max_move_dist(&arena[tall], 1.0, DEFAULT_SUPPORT_LINE_WIDTH_MM, 1);
+        assert!(
+            (capped - DEFAULT_SUPPORT_LINE_WIDTH_MM).abs() < 1e-6,
+            "got {capped}"
         );
     }
 }
