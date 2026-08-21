@@ -170,6 +170,34 @@ pub fn build_native_layer_request(
     if let Some(ir) = input.lightning_tree_ir.as_ref() {
         paint = paint.with_lightning_tree_ir(std::sync::Arc::clone(ir));
     }
+    // Mirror the wasm leg's paint-view construction. `dispatch_layer_call`
+    // indexes the committed `SupportPlanIR` into `PaintRegionLayerData` via
+    // `build_paint_layer_data_with_plan` for exactly two stages (`Layer::Infill`
+    // and `Layer::Support`); the guest shim then rebuilds an SDK
+    // `PaintRegionLayerView` with `with_support_plan`. Until this call the
+    // native leg handed the module a plan-less view, so any renderer that keys
+    // off `support_plan_entries_for` (traditional-support and
+    // tree-support-family, since packet 222 removed their plan-less fallback)
+    // emitted nothing and `commit_native_layer_response` returned `Ok(None)`.
+    if matches!(stage_export, "Layer::Infill" | "Layer::Support") {
+        paint = paint.with_support_plan(
+            input
+                .support_plan
+                .as_ref()
+                .map(std::sync::Arc::clone)
+                .unwrap_or_default(),
+        );
+    }
+    // `build_layer_support_glue` (crates/slicer-macros) attaches a SliceIR
+    // rebuilt from the region views on the support stage only, so that
+    // `paint_policy_for` can surface enforcer/blocker annotations. Same scope
+    // here: attaching it unconditionally would give native stages a view the
+    // wasm leg does not have.
+    if stage_export == "Layer::Support" {
+        if let Some(slice) = input.slice {
+            paint = paint.with_slice_ir(std::sync::Arc::new(slice.clone()));
+        }
+    }
 
     NativeLayerRequest {
         layer_index,
