@@ -567,6 +567,31 @@ pub fn execute_paint_segmentation(
             .flat_map(|r| r.polygons.iter().cloned())
             .collect();
 
+        // Per-object cross-sections for this layer.
+        //
+        // `layer_total_contours` is the WHOLE-LAYER, ALL-OBJECTS contour set. It
+        // is the correct input for the kernel (the Voronoi decomposition runs
+        // over every contour on the layer) and for the layer-wide cell-tiling
+        // diagnostic, but it must NOT become a per-`RegionKey` region's
+        // `polygons`: emitting it once per matching key handed every object
+        // every other object's cross-section, and every toolpath downstream was
+        // then emitted once per object on the plate.
+        let mut per_object_contours: std::collections::BTreeMap<
+            slicer_ir::ObjectId,
+            Vec<slicer_ir::ExPolygon>,
+        > = std::collections::BTreeMap::new();
+        for r in &layer_slice.regions {
+            per_object_contours
+                .entry(r.object_id.clone())
+                .or_default()
+                .extend(r.polygons.iter().cloned());
+        }
+        // Single-object layers keep the original whole-layer path bit-for-bit:
+        // with one object the per-object contour set IS the layer set, and
+        // routing it through the clipper below would needlessly re-emit
+        // identical geometry with different vertex ordering.
+        let multi_object = per_object_contours.len() > 1;
+
         // Determine num_color_states from PaintLayer facet values.
         // Passed to extract_colored_segments (API parity with OrcaSlicer).
         let num_color_states: usize = {
@@ -753,10 +778,27 @@ pub fn execute_paint_segmentation(
                 .iter()
                 .any(|(color, polys)| color.is_some() && !polys.is_empty());
 
+            // Every painted cell on this layer, used only on multi-object
+            // layers to decide per object whether ANY paint landed on it. The
+            // layer-wide `has_painted_geometry` is the wrong question there: on
+            // a plate holding one painted and one unpainted object it is true
+            // for both, which would send the unpainted object down the residual
+            // branch and hand it whatever the clipper left of another object's
+            // decomposition.
+            let painted_polys_all: Vec<slicer_ir::ExPolygon> = if multi_object {
+                polys_by_color
+                    .iter()
+                    .filter(|(color, _)| color.is_some())
+                    .flat_map(|(_, polys)| polys.iter().cloned())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
             let base_polygons: Vec<slicer_ir::ExPolygon> = if base_has_modifier_annotations {
                 layer_total_contours.clone()
             } else if has_painted_geometry {
-                residual_polys
+                residual_polys.clone()
             } else {
                 // No painted chain on this layer, so there is no partition to
                 // take a residual of — BASE is the whole cross-section.
@@ -813,12 +855,47 @@ pub fn execute_paint_segmentation(
                     }
                 } else {
                     for rk in matching_base {
+                        // Cross-object isolation: a BASE region must be derived
+                        // from ITS OWN object's contours. The three-way branch
+                        // below mirrors the layer-wide `base_polygons` decision
+                        // exactly, but scoped to this key's object; the modifier
+                        // annotations are recomputed against the same polygon
+                        // list because `build_modifier_segment_annotations`
+                        // indexes its "perimeters" positionally against the
+                        // polygons it was given.
+                        let (polygons, segment_annotations) = if multi_object {
+                            let own = per_object_contours
+                                .get(&rk.object_id)
+                                .cloned()
+                                .unwrap_or_default();
+                            let own_annotations = build_modifier_segment_annotations(
+                                i,
+                                &own,
+                                &modifier_vol_per_layer,
+                            );
+                            let painted_overlaps_own = !painted_polys_all.is_empty()
+                                && !crate::polygon_ops::intersection_ex(&painted_polys_all, &own)
+                                    .is_empty();
+                            let own_polygons = if !own_annotations.is_empty() {
+                                own
+                            } else if painted_overlaps_own {
+                                crate::polygon_ops::intersection_ex(&residual_polys, &own)
+                            } else {
+                                // No paint landed on this object, so there is no
+                                // partition to take a residual of — its BASE is
+                                // its whole cross-section.
+                                own
+                            };
+                            (own_polygons, own_annotations)
+                        } else {
+                            (base_polygons.clone(), base_segment_annotations.clone())
+                        };
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: rk.object_id.clone(),
                             region_id: rk.region_id,
-                            polygons: base_polygons.clone(),
+                            polygons,
                             variant_chain: base_chain_key.clone(),
-                            segment_annotations: base_segment_annotations.clone(),
+                            segment_annotations,
                             ..Default::default()
                         });
                     }
@@ -872,10 +949,24 @@ pub fn execute_paint_segmentation(
                     }
                 } else {
                     for rk in matching_keys {
+                        // Same cross-object isolation as BASE: `polys` comes
+                        // from the whole-layer cell decomposition, so clip it to
+                        // this key's own object before handing it over.
+                        let own_polys = if multi_object {
+                            match per_object_contours.get(&rk.object_id) {
+                                Some(own) => crate::polygon_ops::intersection_ex(polys, own),
+                                None => Vec::new(),
+                            }
+                        } else {
+                            polys.clone()
+                        };
+                        if own_polys.is_empty() {
+                            continue;
+                        }
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: rk.object_id.clone(),
                             region_id: paint_variant_region_id(rk.region_id, &chain_key),
-                            polygons: polys.clone(),
+                            polygons: own_polys,
                             variant_chain: chain_key.clone(),
                             // segment_annotations stays empty (D14): FuzzySkin
                             // travels on variant_chain, not here.
