@@ -678,9 +678,6 @@ fn build_roles(
             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
         }
     }
-    if !roof.is_empty() || !floor.is_empty() {
-        carved.clear();
-    }
     let mut roles = Vec::new();
     if !carved.is_empty() {
         roles.push(slicer_ir::SupportPlanRoleRegion {
@@ -1879,7 +1876,8 @@ impl SupportPlanner {
         let tan_angle = self.branch_angle_deg.to_radians().tan();
         let tan_diameter_angle = self.tree_support_branch_diameter_angle.to_radians().tan();
         let branch_radius = self.tree_support_branch_diameter / 2.0;
-        // wall_count multiplier — fall back to 1 per OrcaSlicer line 2632
+        // wall_count multiplier — fall back to 1 per canonical
+        // `generate_toolpaths` (`TreeSupport.cpp`)
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
         // Node ids only. The nodes themselves live in `arena`, so a
