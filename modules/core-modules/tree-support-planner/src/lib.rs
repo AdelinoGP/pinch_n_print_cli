@@ -124,25 +124,279 @@ pub struct SupportPlanner {
     support_object_xy_distance: f32,
 }
 
+/// Canonical `SupportNode::type`. `ePolygon` nodes draw their stored overhang
+/// rather than a circle in `draw_circles`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TreeNodeType {
+    /// Canonical `eCircle`.
+    Circle,
+    /// Canonical `ePolygon`. Consumed by the step 7 `draw_circles` rewrite.
+    #[allow(dead_code)]
+    Polygon,
+}
+
+/// Handle into [`NodeArena`]. Canonical holds raw `SupportNode*`; the arena
+/// index is the borrow-checker-safe equivalent, and is what makes cross-layer
+/// `parent` / `child` / `parents` mutation expressible at all.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+struct NodeId(usize);
+
+/// Port of canonical `SupportNode`.
+///
+/// Field names track `TreeSupport.hpp` deliberately: the drop/merge/move
+/// passes ported in later steps read them by those names, and renaming them
+/// here would make every subsequent diff unverifiable against canonical.
 #[derive(Clone, Debug)]
 struct PlannedSupportNode {
-    x: f32,
-    y: f32,
-    /// Number of layers from this node to the top of its support column.
-    /// Drives radius tapering — nodes farther from the top are wider.
-    dist_to_top: u32,
+    /// Canonical `position`, in scaled units (1 unit = 100 nm).
+    position: Point2,
+    /// Canonical `movement` — the last applied move delta.
+    /// Consumed by the step 5 move pass (F-13) and the step 6 `smooth_nodes`
+    /// pass (F-33).
+    #[allow(dead_code)]
+    movement: Point2,
+    /// Canonical `distance_to_top`. **Signed**: negative marks the virtual
+    /// top-Z-gap node created by F-34, which is propagated but never extruded.
+    distance_to_top: i32,
+    /// Canonical `dist_mm_to_top`. Zero on the virtual gap node, which
+    /// "directly contacts the bottom". Consumed by the step 7 `draw_circles`
+    /// rewrite (the ellipse/first-layer-brim radius terms).
+    #[allow(dead_code)]
+    dist_mm_to_top: f32,
+    /// Canonical `radius`, in mm.
+    radius: f32,
+    /// Canonical `max_move_dist`. Consumed by the step 5 move pass (F-13).
+    #[allow(dead_code)]
+    max_move_dist: f32,
+    /// Canonical `support_roof_layers_below` — the **per-node** roof counter
+    /// (F-1). Seeded from `add_interface ? support_roof_layers : 0` and
+    /// decremented once per descendant whose parent had
+    /// `distance_to_top >= 0`. Merges take the max.
+    support_roof_layers_below: i32,
+    /// Canonical `obj_layer_nr` — the object layer this node lives on.
+    /// Consumed by the step 3 merge pass (F-11), which indexes layers by it.
+    #[allow(dead_code)]
+    obj_layer_nr: usize,
+    /// Canonical `print_z`, in mm. Consumed by the step 7 `draw_circles`
+    /// rewrite.
+    #[allow(dead_code)]
+    print_z: f32,
+    /// Canonical `height`, in mm. On the virtual gap node this is exactly
+    /// `z_distance_top`. Consumed by the step 7 `draw_circles` rewrite.
+    #[allow(dead_code)]
+    height: f32,
     /// Whether this node must reach the build plate (true) or may rest
     /// on the model (false). Set at contact creation from
     /// `!point_in_any_expoly(collision_polys_at_contact_layer, x, y)`
     /// (true iff the contact's XY lies OUTSIDE the object's projected
-    /// footprint at the contact's layer — OrcaSlicer's
-    /// `generate_contact_points` initial assignment, per packet 123).
-    /// Propagated unchanged through move-pass; merged with AND in
-    /// multi-neighbour aggregation (any contributor that is `false`
-    /// demotes the merged node to `false`).
+    /// footprint at the contact's layer, per packet 123). Canonical seeds
+    /// this unconditionally `true` and recomputes it in `drop_nodes`; that
+    /// recompute is F-14, step 5.
     to_buildplate: bool,
-    /// Stable analysis demands represented by this routed node.
+    /// Canonical `type`. Consumed by the step 7 `draw_circles` rewrite.
+    #[allow(dead_code)]
+    type_: TreeNodeType,
+    /// Canonical `overhang`. The virtual gap node draws *this* into
+    /// `roof_gap_areas` instead of a circle (F-34); step 7 owns that draw.
+    overhang: ExPolygon,
+    /// Canonical `skin_direction`, set from vertical enforcer normals.
+    /// Consumed by the step 6 `smooth_nodes` pass (F-33).
+    #[allow(dead_code)]
+    skin_direction: Point2,
+    /// Canonical `is_sharp_tail`. Suppresses interface seeding and the
+    /// inner-lattice stream.
+    is_sharp_tail: bool,
+    /// Canonical `is_corner`. Consumed by the step 7 `draw_circles` rewrite.
+    #[allow(dead_code)]
+    is_corner: bool,
+    /// Canonical `need_extra_wall`. Consumed by the step 6 `smooth_nodes`
+    /// pass (F-33).
+    #[allow(dead_code)]
+    need_extra_wall: bool,
+    /// Canonical `valid`. Cleared instead of erasing, so ids stay stable.
+    valid: bool,
+    /// Canonical `is_processed`. Consumed by the step 3 merge pass (F-11).
+    #[allow(dead_code)]
+    is_processed: bool,
+    /// Canonical `parent` — the node one layer **above** this one.
+    /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
+    #[allow(dead_code)]
+    parent: Option<NodeId>,
+    /// Canonical `child` — the node one layer **below** this one.
+    /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
+    #[allow(dead_code)]
+    child: Option<NodeId>,
+    /// Canonical `parents` — every upper-layer node that feeds this one.
+    /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
+    #[allow(dead_code)]
+    parents: Vec<NodeId>,
+    /// Canonical `merged_neighbours`. Consumed by the step 3 merge pass
+    /// (F-11).
+    #[allow(dead_code)]
+    merged_neighbours: Vec<NodeId>,
+    /// Stable analysis demands represented by this routed node. PnP-specific;
+    /// canonical has no equivalent.
     demand_ids: Vec<String>,
+}
+
+impl PlannedSupportNode {
+    /// X position in mm.
+    fn x(&self) -> f32 {
+        units_to_mm(self.position.x)
+    }
+
+    /// Y position in mm.
+    fn y(&self) -> f32 {
+        units_to_mm(self.position.y)
+    }
+
+    /// Position in mm, in the `(x, y)` shape the emit helpers take.
+    fn xy(&self) -> (f32, f32) {
+        (self.x(), self.y())
+    }
+
+    /// Canonical `support_roof_layers_below > 0` roof test.
+    fn is_roof(&self) -> bool {
+        self.support_roof_layers_below > 0
+    }
+
+    /// True for the F-34 virtual top-Z-gap node — the one canonical
+    /// `draw_circles` diverts into `roof_gap_areas`, which is never extruded.
+    /// Sharp tails are exempt, which is how canonical gives them a zero
+    /// contact distance.
+    fn is_virtual_gap(&self) -> bool {
+        self.distance_to_top < 0 && !self.is_sharp_tail
+    }
+}
+
+/// An empty `ExPolygon`, for nodes with no stored overhang.
+fn empty_expolygon() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon { points: Vec::new() },
+        holes: Vec::new(),
+    }
+}
+
+/// Owns every [`PlannedSupportNode`] for one object.
+///
+/// Canonical `TreeSupportData::create_node` allocates into a pool and hands
+/// out pointers that the drop/merge/move passes mutate **across layers**
+/// (`node->parent`, `node->child`, `node->parents`). The previous per-layer
+/// `Vec<PlannedSupportNode>`-by-value could not express that at all: a node
+/// handed to the next layer was a copy, so any back-edge written into it was
+/// discarded. The arena is the enabling change for steps 3 through 7.
+#[derive(Default)]
+struct NodeArena {
+    nodes: Vec<PlannedSupportNode>,
+}
+
+impl NodeArena {
+    /// Port of canonical `TreeSupportData::create_node`.
+    #[allow(clippy::too_many_arguments)]
+    fn create_node(
+        &mut self,
+        position: Point2,
+        distance_to_top: i32,
+        obj_layer_nr: usize,
+        support_roof_layers_below: i32,
+        to_buildplate: bool,
+        parent: Option<NodeId>,
+        print_z: f32,
+        height: f32,
+        dist_mm_to_top: f32,
+        radius: f32,
+    ) -> NodeId {
+        let id = NodeId(self.nodes.len());
+        self.nodes.push(PlannedSupportNode {
+            position,
+            movement: Point2 { x: 0, y: 0 },
+            distance_to_top,
+            dist_mm_to_top,
+            radius,
+            max_move_dist: 0.0,
+            support_roof_layers_below,
+            obj_layer_nr,
+            print_z,
+            height,
+            to_buildplate,
+            type_: TreeNodeType::Circle,
+            overhang: empty_expolygon(),
+            skin_direction: Point2 { x: 0, y: 0 },
+            is_sharp_tail: false,
+            is_corner: false,
+            need_extra_wall: false,
+            valid: true,
+            is_processed: false,
+            parent,
+            child: None,
+            parents: parent.into_iter().collect(),
+            merged_neighbours: Vec::new(),
+            demand_ids: Vec::new(),
+        });
+        if let Some(parent) = parent {
+            self.nodes[parent.0].child = Some(id);
+        }
+        id
+    }
+
+    /// Number of nodes allocated so far. Consumed by the step 3 merge pass
+    /// (F-11) and by this module's own tests.
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.nodes.len()
+    }
+}
+
+impl std::ops::Index<NodeId> for NodeArena {
+    type Output = PlannedSupportNode;
+    fn index(&self, id: NodeId) -> &PlannedSupportNode {
+        &self.nodes[id.0]
+    }
+}
+
+impl std::ops::IndexMut<NodeId> for NodeArena {
+    fn index_mut(&mut self, id: NodeId) -> &mut PlannedSupportNode {
+        &mut self.nodes[id.0]
+    }
+}
+
+/// Canonical `avg_node_per_layer` / `nodes_angle`, computed once over every
+/// contact position at the end of `generate_contact_points`.
+///
+/// Consumed by the step 6 `smooth_nodes` pass (F-33), which uses the node
+/// orientation to decide the smoothing direction.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ContactStats {
+    /// Canonical `avg_node_per_layer = nNodes / nonempty_layers`.
+    #[allow(dead_code)]
+    avg_node_per_layer: usize,
+    /// Canonical
+    /// `nodes_angle = atan2(n*mxy - mx*my, n*mx2 - SQ(mx))`, radians.
+    #[allow(dead_code)]
+    nodes_angle: f32,
+}
+
+/// Port of the line-fit block that closes canonical
+/// `TreeSupport::generate_contact_points`. `positions` are contact positions
+/// in **mm**; `nonempty_layers` is the number of layers that received at
+/// least one contact.
+fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactStats {
+    let n = positions.len();
+    if n == 0 || nonempty_layers == 0 {
+        return ContactStats::default();
+    }
+    let (mut mx, mut my, mut mxy, mut mx2) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    for (x, y) in positions {
+        mx += x;
+        my += y;
+        mxy += x * y;
+        mx2 += x * x;
+    }
+    let nf = n as f32;
+    ContactStats {
+        avg_node_per_layer: n / nonempty_layers,
+        nodes_angle: (nf * mxy - mx * my).atan2(nf * mx2 - mx * mx),
+    }
 }
 
 /// Assembles a plan entry's roles from structural, roof, and floor segments.
@@ -698,7 +952,11 @@ impl TreeVolumes {
             } else {
                 // `offset_polygons` takes a SIGNED delta in mm and erodes on a
                 // negative one, so it serves canonical's negative `offset_ex`.
-                let step = self.max_move_distances.get(layer - 1).copied().unwrap_or(0.0);
+                let step = self
+                    .max_move_distances
+                    .get(layer - 1)
+                    .copied()
+                    .unwrap_or(0.0);
                 let eroded = if step <= 0.0 {
                     previous.clone()
                 } else {
@@ -1005,11 +1263,53 @@ impl SupportPlanner {
             return Ok(());
         }
 
+        // ── Canonical `generate_contact_points` head (F-34) ───────────────
+        // `top_z_distance = max(top_z_distance, min_layer_height)` when the
+        // configured gap is non-zero; a configured zero gap stays zero (that
+        // is the soluble-interface case).
+        let min_layer_height = layer_plan
+            .layers
+            .iter()
+            .map(|layer| layer.effective_layer_height)
+            .fold(f32::INFINITY, f32::min);
+        let nominal_layer_height = layer_plan.layers[0].effective_layer_height;
+        let z_distance_top = if self.support_top_z_distance_mm > f32::EPSILON {
+            self.support_top_z_distance_mm.max(min_layer_height)
+        } else {
+            0.0
+        };
+        // Canonical `round_up_divide(scale_(z_distance_top), scale_(layer_height)) + 1`
+        // — "support must always be 1 layer below overhang".
+        let z_distance_top_layers = if nominal_layer_height > 0.0 {
+            let num = mm_to_units(z_distance_top);
+            let den = mm_to_units(nominal_layer_height).max(1);
+            (num.div_euclid(den) + i64::from(num.rem_euclid(den) != 0)) as usize + 1
+        } else {
+            1
+        };
+        // Canonical "fix bug of generating support for very thin objects".
+        if layer_plan.layers.len() <= z_distance_top_layers + 1 {
+            return Ok(());
+        }
+        let contact_ctx = ContactContext {
+            z_distance_top,
+            gap_layers: i32::from(z_distance_top != 0.0),
+            support_roof_layers: self.support_interface_top_layers.max(0),
+        };
+
         // Host analysis owns candidate discovery and policy. Geometry remains
         // an independent compatibility input for collision avoidance below.
-        let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
-            vec![Vec::new(); num_layers as usize];
+        let mut arena = NodeArena::default();
+        let mut contacts_by_layer: Vec<Vec<NodeId>> = vec![Vec::new(); num_layers as usize];
         let mut fallback_family_emitted = false;
+        let base_radius = MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0);
+        // Canonical builds `grid_points` once per object over the whole-object
+        // bounding box, rotated 22 degrees (F-35).
+        let sample_step = self
+            .tree_support_branch_distance
+            .max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
+        let object_grid: Option<Vec<(f32, f32)>> = compute_bounds(&obj.vertices)
+            .map(|(min, max)| build_grid_points((min[0], max[0], min[1], max[1]), sample_step));
 
         // Per-affected-layer drop count for the code 1001 cap diagnostic.
         // Keyed by global_layer_index so the message carries the right value
@@ -1022,11 +1322,6 @@ impl SupportPlanner {
         // augments these contacts but never decides whether they are admitted.
         if let Some((bmin, _)) = compute_bounds(&obj.vertices) {
             let blockers = collect_paint_blocker_polygons(obj);
-            let (mesh_min, mesh_max) = compute_bounds(&obj.vertices).expect("bounds checked");
-            let origin = (
-                (mesh_min[0] + mesh_max[0]) * 0.5,
-                (mesh_min[1] + mesh_max[1]) * 0.5,
-            );
             let mut polygons_by_layer: std::collections::BTreeMap<usize, Vec<ExPolygon>> =
                 std::collections::BTreeMap::new();
             for (v0, v1, v2) in detect_overhang_facets(obj, OVERHANG_THRESHOLD_DEG) {
@@ -1064,43 +1359,84 @@ impl SupportPlanner {
                 } else {
                     polygons
                 };
-                let sampled: Vec<(f32, f32)> = sample_contact_points(
+                let samples = sample_contact_points(
                     &polygons,
-                    origin,
-                    Some((mesh_min[0], mesh_max[0], mesh_min[1], mesh_max[1])),
+                    object_grid.as_deref(),
                     self.tree_support_branch_distance,
-                    MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0),
-                )
-                .into_iter()
-                .collect();
-                for (x, y) in sampled {
-                    if !point_in_any_polygon(&blockers, x, y) {
-                        push_contact(
-                            &mut contacts_by_layer,
-                            layer_plan,
-                            volumes,
-                            layer_idx,
-                            x,
-                            y,
-                            self,
-                            dropped_by_layer,
-                        );
+                    base_radius,
+                    false,
+                );
+                for sample in samples {
+                    if point_in_any_polygon(&blockers, sample.x, sample.y) {
+                        continue;
                     }
-                }
-            }
-            for (layer_idx, x, y) in collect_paint_enforcer_contacts(obj) {
-                if !point_in_any_polygon(&blockers, x, y) {
-                    push_contact(
+                    let overhang = &polygons[sample.overhang];
+                    // Canonical `add_interface = area(overhang) > minimum_roof_area
+                    // && !is_sharp_tail` — the F-1 per-node roof seed.
+                    let oc = OverhangContext {
+                        ctx: &contact_ctx,
+                        overhang,
+                        add_interface: expolygon_area(overhang) > minimum_roof_area(),
+                        is_sharp_tail: false,
+                    };
+                    // Name the demand after the layer the contact lands on so
+                    // the id stays stable against the one-layer shift.
+                    let target_idx = layer_idx.saturating_sub(1);
+                    let demand_id = format!(
+                        "mesh-demand-{}-{}",
+                        layer_plan.layers[target_idx].global_layer_index,
+                        contacts_by_layer[target_idx].len()
+                    );
+                    insert_contact_point(
+                        &mut arena,
                         &mut contacts_by_layer,
                         layer_plan,
                         volumes,
-                        (layer_idx as usize).min(num_layers as usize - 1),
-                        x,
-                        y,
                         self,
                         dropped_by_layer,
+                        layer_idx,
+                        (sample.x, sample.y),
+                        sample.radius,
+                        sample.is_corner,
+                        &oc,
+                        demand_id,
                     );
                 }
+            }
+            let enforcer_overhang = empty_expolygon();
+            for (layer_idx, x, y) in collect_paint_enforcer_contacts(obj) {
+                if point_in_any_polygon(&blockers, x, y) {
+                    continue;
+                }
+                let layer_idx = (layer_idx as usize).min(num_layers as usize - 1);
+                // Canonical fakes vertical enforcer points as sharp tails so
+                // the contact distance is zero.
+                let oc = OverhangContext {
+                    ctx: &contact_ctx,
+                    overhang: &enforcer_overhang,
+                    add_interface: false,
+                    is_sharp_tail: true,
+                };
+                let target_idx = layer_idx.saturating_sub(1);
+                let demand_id = format!(
+                    "mesh-demand-{}-{}",
+                    layer_plan.layers[target_idx].global_layer_index,
+                    contacts_by_layer[target_idx].len()
+                );
+                insert_contact_point(
+                    &mut arena,
+                    &mut contacts_by_layer,
+                    layer_plan,
+                    volumes,
+                    self,
+                    dropped_by_layer,
+                    layer_idx,
+                    (x, y),
+                    base_radius,
+                    false,
+                    &oc,
+                    demand_id,
+                );
             }
         }
         // Analysis augments the legacy contacts only for scopes it actually
@@ -1152,33 +1488,33 @@ impl SupportPlanner {
                 .iter()
                 .position(|layer| layer.global_layer_index == candidate.global_layer_index)
                 .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
-            let (origin, grid_bounds) = compute_bounds(&obj.vertices)
-                .map(|(min, max)| {
-                    (
-                        ((min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5),
-                        Some((min[0], max[0], min[1], max[1])),
-                    )
-                })
-                .unwrap_or(((0.0, 0.0), None));
-            for (sample_idx, (x, y)) in sample_contact_points(
+            let samples = sample_contact_points(
                 &candidate.geometry,
-                origin,
-                grid_bounds,
+                object_grid.as_deref(),
                 self.tree_support_branch_distance,
-                MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0),
-            )
-            .into_iter()
-            .enumerate()
-            {
-                push_analysis_contact(
+                base_radius,
+                false,
+            );
+            for (sample_idx, sample) in samples.into_iter().enumerate() {
+                let overhang = &candidate.geometry[sample.overhang];
+                let oc = OverhangContext {
+                    ctx: &contact_ctx,
+                    overhang,
+                    add_interface: expolygon_area(overhang) > minimum_roof_area(),
+                    is_sharp_tail: false,
+                };
+                insert_analysis_contact_point(
+                    &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
                     volumes,
-                    layer_idx,
-                    x,
-                    y,
                     self,
                     dropped_by_layer,
+                    layer_idx,
+                    (sample.x, sample.y),
+                    sample.radius,
+                    sample.is_corner,
+                    &oc,
                     format!("demand-{}-{}", candidate.id, sample_idx),
                 );
             }
@@ -1210,15 +1546,36 @@ impl SupportPlanner {
                 let Some((x, y)) = candidate_contact_point(&entry.outlines) else {
                     continue;
                 };
-                push_contact(
+                let overhang = entry
+                    .outlines
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(empty_expolygon);
+                let oc = OverhangContext {
+                    ctx: &contact_ctx,
+                    overhang: &overhang,
+                    add_interface: expolygon_area(&overhang) > minimum_roof_area(),
+                    is_sharp_tail: false,
+                };
+                let target_idx = layer_idx.saturating_sub(1);
+                let demand_id = format!(
+                    "mesh-demand-{}-{}",
+                    layer_plan.layers[target_idx].global_layer_index,
+                    contacts_by_layer[target_idx].len()
+                );
+                insert_contact_point(
+                    &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
                     volumes,
-                    layer_idx,
-                    x,
-                    y,
                     self,
                     dropped_by_layer,
+                    layer_idx,
+                    (x, y),
+                    base_radius,
+                    false,
+                    &oc,
+                    demand_id,
                 );
             }
         }
@@ -1227,6 +1584,19 @@ impl SupportPlanner {
         if contacts_by_layer.iter().all(|v| v.is_empty()) {
             return Ok(());
         }
+
+        // Canonical closes `generate_contact_points` with a line fit over
+        // every contact position, feeding `smooth_nodes` in step 6 (F-33).
+        let contact_positions: Vec<(f32, f32)> = contacts_by_layer
+            .iter()
+            .flat_map(|layer| layer.iter())
+            .map(|id| arena[*id].xy())
+            .collect();
+        let nonempty_layers = contacts_by_layer
+            .iter()
+            .filter(|layer| !layer.is_empty())
+            .count();
+        let _contact_stats = contact_stats(&contact_positions, nonempty_layers);
 
         // ── Step 10: top-down propagation + per-layer MST merging ────────
         // Walk from top layer down to layer 0. Each iteration:
@@ -1241,8 +1611,9 @@ impl SupportPlanner {
         // wall_count multiplier — fall back to 1 per OrcaSlicer line 2632
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
-        let mut active_nodes: Vec<PlannedSupportNode> = Vec::new();
-        let mut roof_band_layers_emitted = 0u32;
+        // Node ids only. The nodes themselves live in `arena`, so a
+        // back-edge written into an upper-layer node survives the handoff.
+        let mut active_nodes: Vec<NodeId> = Vec::new();
 
         // Accumulate entries bottom-up so the plan keeps a deterministic,
         // top-to-bottom layer order in output.
@@ -1266,15 +1637,21 @@ impl SupportPlanner {
             }
 
             // Sort for deterministic MST/merge ordering.
-            active_nodes.sort_by(|a, b| match a.x.partial_cmp(&b.x) {
-                Some(std::cmp::Ordering::Equal) | None => {
-                    a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal)
+            active_nodes.sort_by(|a, b| {
+                let (ax, ay) = arena[*a].xy();
+                let (bx, by) = arena[*b].xy();
+                match ax.partial_cmp(&bx) {
+                    Some(std::cmp::Ordering::Equal) | None => {
+                        ay.partial_cmp(&by).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    Some(ord) => ord,
                 }
-                Some(ord) => ord,
             });
 
             // Run Prim MST on the active node set.
-            let mst_edges = prim_mst(&active_nodes);
+            let positions: Vec<(f32, f32)> =
+                active_nodes.iter().map(|id| arena[*id].xy()).collect();
+            let mst_edges = prim_mst(&positions);
 
             // Merge nodes within merge_distance: mark the higher-index endpoint
             // of every short edge for removal.
@@ -1283,12 +1660,28 @@ impl SupportPlanner {
                 if *d < self.merge_distance_mm {
                     drop[*a.max(b)] = true;
                     let (keep, removed) = if a < b { (*a, *b) } else { (*b, *a) };
-                    let ids = active_nodes[removed].demand_ids.clone();
+                    let (keep_id, removed_id) = (active_nodes[keep], active_nodes[removed]);
+                    let ids = arena[removed_id].demand_ids.clone();
                     for id in ids {
-                        if !active_nodes[keep].demand_ids.contains(&id) {
-                            active_nodes[keep].demand_ids.push(id);
+                        if !arena[keep_id].demand_ids.contains(&id) {
+                            arena[keep_id].demand_ids.push(id);
                         }
                     }
+                    // Canonical `insert_dropped_node` takes the max of both
+                    // counters when two nodes collapse onto one position.
+                    let (dist, roof) = {
+                        let removed_node = &arena[removed_id];
+                        (
+                            removed_node.distance_to_top,
+                            removed_node.support_roof_layers_below,
+                        )
+                    };
+                    let keep_node = &mut arena[keep_id];
+                    keep_node.distance_to_top = keep_node.distance_to_top.max(dist);
+                    keep_node.support_roof_layers_below =
+                        keep_node.support_roof_layers_below.max(roof);
+                    keep_node.merged_neighbours.push(removed_id);
+                    arena[removed_id].valid = false;
                 }
             }
 
@@ -1351,7 +1744,8 @@ impl SupportPlanner {
             };
             let node_roles: Vec<InterfaceRole> = active_nodes
                 .iter()
-                .map(|node| {
+                .map(|id| {
+                    let node = &arena[*id];
                     // Floor: the branch lands on the model rather than the plate.
                     // The lookup is by *global* layer index; it previously mixed
                     // in `layer_rev`, the reverse loop counter, and indexed the
@@ -1360,14 +1754,15 @@ impl SupportPlanner {
                         && !self.support_on_build_plate_only
                         && (1..=bottom_n).any(|k| {
                             cache_idx.checked_sub(k as usize).is_some_and(|below| {
-                                point_in_any_expoly(volumes.outlines_at(below), node.x, node.y)
+                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
                             })
                         });
-                    // Roof: the top `top_n` layers of the column, counting the
-                    // contact layer itself. `dist_to_top` is canonical's
-                    // per-node `support_roof_layers_below` counter. The contact
-                    // layer must remain interface geometry under the model.
-                    let is_roof = top_n > roof_band_layers_emitted && node.dist_to_top < top_n;
+                    // Roof: canonical `node->support_roof_layers_below > 0`,
+                    // the per-node counter seeded at contact creation and
+                    // decremented once per descendant (F-1). The old
+                    // `roof_band_layers_emitted` object-wide counter is gone:
+                    // it starved every overhang after the first of interface.
+                    let is_roof = top_n > 0 && node.is_roof();
                     if is_floor {
                         InterfaceRole::Floor
                     } else if is_roof {
@@ -1383,22 +1778,31 @@ impl SupportPlanner {
                 if drop[*a_idx] || drop[*b_idx] {
                     continue;
                 }
+                let na = &arena[active_nodes[*a_idx]];
+                let nb = &arena[active_nodes[*b_idx]];
+                // The F-34 virtual top-Z-gap node is propagated but never
+                // extruded: canonical `draw_circles` sends
+                // `distance_to_top < 0 && !is_sharp_tail` into
+                // `roof_gap_areas`, which `generate_toolpaths` never fills.
+                // Sharp tails are exempt — that is how canonical gives them a
+                // zero contact distance.
+                if na.is_virtual_gap() || nb.is_virtual_gap() {
+                    continue;
+                }
                 mst_emitted[*a_idx] = true;
                 mst_emitted[*b_idx] = true;
-                let na = &active_nodes[*a_idx];
-                let nb = &active_nodes[*b_idx];
 
                 // Tapered radii at the two endpoints
                 let radius_a = tapered_radius(
                     branch_radius,
                     tan_diameter_angle,
-                    na.dist_to_top,
+                    na.distance_to_top.max(0) as u32,
                     effective_height,
                 );
                 let radius_b = tapered_radius(
                     branch_radius,
                     tan_diameter_angle,
-                    nb.dist_to_top,
+                    nb.distance_to_top.max(0) as u32,
                     effective_height,
                 );
 
@@ -1407,11 +1811,11 @@ impl SupportPlanner {
                 // still reject its body endpoint; exempting the whole edge
                 // lets body geometry leak into exact-Z model occupancy.
                 let body_endpoint_collides = (node_roles[*a_idx] == InterfaceRole::Body
-                    && body_intersects(collision_polys, na.x, na.y, radius_a))
+                    && body_intersects(collision_polys, na.x(), na.y(), radius_a))
                     || (node_roles[*b_idx] == InterfaceRole::Body
-                        && body_intersects(collision_polys, nb.x, nb.y, radius_b));
+                        && body_intersects(collision_polys, nb.x(), nb.y(), radius_b));
                 let segment_collides =
-                    body_segment_intersects(collision_polys, na, nb, radius_a, radius_b);
+                    body_segment_intersects(collision_polys, na.xy(), nb.xy(), radius_a, radius_b);
                 if body_endpoint_collides || segment_collides {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
@@ -1424,8 +1828,8 @@ impl SupportPlanner {
                     continue;
                 }
 
-                let dist_a_mm = na.dist_to_top as f32 * effective_height;
-                let dist_b_mm = nb.dist_to_top as f32 * effective_height;
+                let dist_a_mm = na.distance_to_top.max(0) as f32 * effective_height;
+                let dist_b_mm = nb.distance_to_top.max(0) as f32 * effective_height;
                 InterfaceRole::target_for_edge(
                     node_roles[*a_idx],
                     node_roles[*b_idx],
@@ -1435,8 +1839,8 @@ impl SupportPlanner {
                 )
                 .push(vec![
                     Point3WithWidth {
-                        x: na.x,
-                        y: na.y,
+                        x: na.x(),
+                        y: na.y(),
                         z: z_current,
                         width: radius_a * 2.0,
                         flow_factor: 1.0,
@@ -1445,8 +1849,8 @@ impl SupportPlanner {
                         overhang_distance_mm: None,
                     },
                     Point3WithWidth {
-                        x: nb.x,
-                        y: nb.y,
+                        x: nb.x(),
+                        y: nb.y(),
                         z: z_current,
                         width: radius_b * 2.0,
                         flow_factor: 1.0,
@@ -1455,10 +1859,10 @@ impl SupportPlanner {
                         overhang_distance_mm: None,
                     },
                 ]);
-                if na.dist_to_top == 0 {
+                if na.distance_to_top <= 0 {
                     origin_contacts_emitted[*a_idx] = true;
                 }
-                if nb.dist_to_top == 0 {
+                if nb.distance_to_top <= 0 {
                     origin_contacts_emitted[*b_idx] = true;
                 }
             }
@@ -1467,8 +1871,11 @@ impl SupportPlanner {
             // represented on its origin layer even when it has no surviving
             // MST edge. This is intentionally limited to dist_to_top == 0;
             // propagated nodes remain subject to collision exclusion below.
-            for (i, node) in active_nodes.iter().enumerate() {
-                if node.dist_to_top != 0 || origin_contacts_emitted[i] {
+            for (i, id) in active_nodes.iter().enumerate() {
+                let node = &arena[*id];
+                // A sharp-tail contact is a tip on its own layer even though
+                // its `distance_to_top` is negative (see `is_virtual_gap`).
+                if node.distance_to_top > 0 || node.is_virtual_gap() || origin_contacts_emitted[i] {
                     continue;
                 }
                 // A contact tip used to be emitted with `width = 0.0` and was
@@ -1478,10 +1885,10 @@ impl SupportPlanner {
                 let radius = tapered_radius(
                     branch_radius,
                     tan_diameter_angle,
-                    node.dist_to_top,
+                    node.distance_to_top.max(0) as u32,
                     effective_height,
                 );
-                if body_intersects(collision_polys, node.x, node.y, radius) {
+                if body_intersects(collision_polys, node.x(), node.y(), radius) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -1496,7 +1903,7 @@ impl SupportPlanner {
                 // Origin contacts are the support tips required to reach the
                 // overhang centroid. They may intentionally lie in model
                 // collision geometry; propagated nodes remain guarded below.
-                let (contact_x, contact_y) = (node.x, node.y);
+                let (contact_x, contact_y) = node.xy();
                 let point = Point3WithWidth {
                     x: contact_x,
                     y: contact_y,
@@ -1516,32 +1923,29 @@ impl SupportPlanner {
                 .push(vec![point, point]);
             }
 
-            if top_n > roof_band_layers_emitted && !interface_segments.is_empty() {
-                roof_band_layers_emitted += 1;
-            }
-
             // A surviving lone propagated node (dist_to_top > 0) with no surviving
             // MST edge still reaches the buildplate and must be emitted as a
             // degenerate current-layer segment (OrcaSlicer draw_circles parity).
-            for (i, node) in active_nodes.iter().enumerate() {
-                if drop[i] || mst_emitted[i] || node.dist_to_top == 0 {
+            for (i, id) in active_nodes.iter().enumerate() {
+                let node = &arena[*id];
+                if drop[i] || mst_emitted[i] || node.distance_to_top <= 0 {
                     continue;
                 }
-                if node.dist_to_top > 0 {
+                {
                     let radius = tapered_radius(
                         branch_radius,
                         tan_diameter_angle,
-                        node.dist_to_top,
+                        node.distance_to_top.max(0) as u32,
                         effective_height,
                     );
-                    if body_intersects(collision_polys, node.x, node.y, radius) {
+                    if body_intersects(collision_polys, node.x(), node.y(), radius) {
                         continue;
                     }
                     let width = radius * 2.0;
-                    let dist_mm = node.dist_to_top as f32 * effective_height;
+                    let dist_mm = node.distance_to_top as f32 * effective_height;
                     let point = Point3WithWidth {
-                        x: node.x,
-                        y: node.y,
+                        x: node.x(),
+                        y: node.y(),
                         z: z_current,
                         width,
                         flow_factor: 1.0,
@@ -1647,7 +2051,7 @@ impl SupportPlanner {
                         family_id: support_family,
                         demand_ids: active_nodes
                             .iter()
-                            .flat_map(|node| node.demand_ids.iter().cloned())
+                            .flat_map(|id| arena[*id].demand_ids.iter().cloned())
                             .collect(),
                         body_ids: vec![format!(
                             "tree-body-{}-{}",
@@ -1686,7 +2090,7 @@ impl SupportPlanner {
             // Nodes without an MST edge simply propagate unchanged. The
             // existing `max_move_xy` cap and `clamp_to_avoidance` post-cap
             // are preserved: only the move *direction* changes.
-            let mut next_nodes: Vec<PlannedSupportNode> = Vec::with_capacity(active_nodes.len());
+            let mut next_nodes: Vec<NodeId> = Vec::with_capacity(active_nodes.len());
             // Per-node list of (neighbour_index, edge_distance) for every
             // MST edge incident on the node. Replaces the old
             // `nearest_neighbour` / `nearest_distance` single-entry lookup.
@@ -1696,44 +2100,55 @@ impl SupportPlanner {
                 neighbours_of[*b].push((*a, *d));
             }
 
-            for (i, node) in active_nodes.iter().enumerate() {
+            for i in 0..active_nodes.len() {
                 if drop[i] {
                     continue;
                 }
+                let id = active_nodes[i];
+                // Copy the scalars out before touching the arena mutably.
+                let (node_x, node_y) = arena[id].xy();
+                let distance_to_top = arena[id].distance_to_top;
+                let support_roof_layers_below = arena[id].support_roof_layers_below;
+                let to_buildplate = arena[id].to_buildplate;
+                let radius = arena[id].radius;
+                let is_sharp_tail = arena[id].is_sharp_tail;
+                let demand_ids = arena[id].demand_ids.clone();
                 let neighbours = &neighbours_of[i];
-                let moved = if neighbours.is_empty() {
+                // Canonical `drop_nodes`: the descendant is one layer closer
+                // to the plate, and the per-node roof counter (F-1) ticks down
+                // only once the column is real — the virtual top-Z-gap node
+                // (`distance_to_top < 0`) does not consume a roof layer.
+                let next_distance_to_top = distance_to_top.saturating_add(1);
+                let next_roof_layers_below =
+                    support_roof_layers_below - i32::from(distance_to_top >= 0);
+
+                let moved_xy = if neighbours.is_empty() {
                     // No MST edge: propagate the node unchanged.
-                    PlannedSupportNode {
-                        x: node.x,
-                        y: node.y,
-                        dist_to_top: node.dist_to_top.saturating_add(1),
-                        to_buildplate: node.to_buildplate,
-                        demand_ids: node.demand_ids.clone(),
-                    }
+                    Some((node_x, node_y))
                 } else {
                     // Build the parallel slices for the aggregate helper.
-                    let positions: Vec<(f32, f32)> = neighbours
+                    let neighbour_positions: Vec<(f32, f32)> = neighbours
                         .iter()
-                        .map(|&(j, _)| (active_nodes[j].x, active_nodes[j].y))
+                        .map(|&(j, _)| arena[active_nodes[j]].xy())
                         .collect();
                     let distances: Vec<f32> = neighbours.iter().map(|&(_, d)| d).collect();
-                    let (tx, ty) = aggregate_neighbour_targets(&positions, &distances)
-                        .unwrap_or((node.x, node.y));
+                    let (tx, ty) = aggregate_neighbour_targets(&neighbour_positions, &distances)
+                        .unwrap_or((node_x, node_y));
 
                     // Apply the existing `max_move_xy` cap to the displacement
                     // from the current node toward the aggregate target. This
-                    // preserves the wall-count-scaled step cap (line 715 in
-                    // the old code; packet 122 explicitly preserves it).
-                    let dx = tx - node.x;
-                    let dy = ty - node.y;
+                    // preserves the wall-count-scaled step cap (packet 122
+                    // explicitly preserves it).
+                    let dx = tx - node_x;
+                    let dy = ty - node_y;
                     let len = (dx * dx + dy * dy).sqrt();
                     let raw_step = if len > max_move_xy && len > 1e-6 {
                         let scale = max_move_xy / len;
-                        (node.x + dx * scale, node.y + dy * scale)
+                        (node_x + dx * scale, node_y + dy * scale)
                     } else if len > 1e-6 {
                         (tx, ty)
                     } else {
-                        (node.x, node.y)
+                        (node_x, node_y)
                     };
 
                     // Push the node out of `avoidance_polys` if it landed inside
@@ -1748,8 +2163,8 @@ impl SupportPlanner {
                     // escape exceeds the budget there is no legal destination,
                     // so the node is dropped with the typed code 1002
                     // `node-clamped-out` diagnostic (AC-N3).
-                    let escape_dx = cx - node.x;
-                    let escape_dy = cy - node.y;
+                    let escape_dx = cx - node_x;
+                    let escape_dy = cy - node_y;
                     let escape_len = (escape_dx * escape_dx + escape_dy * escape_dy).sqrt();
                     if escape_len > max_move_xy + 1e-6 {
                         let _ = output.push_diagnostic(Diagnostic {
@@ -1765,7 +2180,7 @@ impl SupportPlanner {
                                 cy,
                                 escape_len,
                                 max_move_xy,
-                                node.to_buildplate
+                                to_buildplate
                             ),
                         });
                         // Preserve the last legal position when the avoidance
@@ -1792,31 +2207,51 @@ impl SupportPlanner {
                         let next_radius = tapered_radius(
                             branch_radius,
                             tan_diameter_angle,
-                            node.dist_to_top.saturating_add(1),
+                            next_distance_to_top.max(0) as u32,
                             effective_height,
                         );
-                        if body_intersects(next_collision, node.x, node.y, next_radius) {
-                            continue;
-                        }
-                        PlannedSupportNode {
-                            x: node.x,
-                            y: node.y,
-                            dist_to_top: node.dist_to_top.saturating_add(1),
-                            to_buildplate: node.to_buildplate,
-                            demand_ids: node.demand_ids.clone(),
+                        if body_intersects(next_collision, node_x, node_y, next_radius) {
+                            None
+                        } else {
+                            Some((node_x, node_y))
                         }
                     } else {
-                        PlannedSupportNode {
-                            x: cx,
-                            y: cy,
-                            // dist_to_top increments as we move down
-                            dist_to_top: node.dist_to_top.saturating_add(1),
-                            to_buildplate: node.to_buildplate,
-                            demand_ids: node.demand_ids.clone(),
-                        }
+                        Some((cx, cy))
                     }
                 };
-                next_nodes.push(moved);
+
+                let Some((next_x, next_y)) = moved_xy else {
+                    continue;
+                };
+                // The node one layer down is a *new* arena node whose `parent`
+                // points back up, so later steps can walk the column in either
+                // direction. Canonical `create_node(..., parent = p_node)` plus
+                // `p_node->child = next_node`.
+                let (next_print_z, next_height) = if layer_rev > 0 {
+                    (
+                        layer_plan.layers[layer_rev - 1].z,
+                        layer_plan.layers[layer_rev - 1].effective_layer_height,
+                    )
+                } else {
+                    (z_current, effective_height)
+                };
+                let next_id = arena.create_node(
+                    Point2::from_mm(next_x, next_y),
+                    next_distance_to_top,
+                    layer_rev.saturating_sub(1),
+                    next_roof_layers_below,
+                    to_buildplate,
+                    Some(id),
+                    next_print_z,
+                    next_height,
+                    next_distance_to_top.max(0) as f32 * effective_height,
+                    radius,
+                );
+                arena[next_id].movement = Point2::from_mm(next_x - node_x, next_y - node_y);
+                arena[next_id].max_move_dist = max_move_xy;
+                arena[next_id].is_sharp_tail = is_sharp_tail;
+                arena[next_id].demand_ids = demand_ids;
+                next_nodes.push(next_id);
             }
 
             active_nodes = next_nodes;
@@ -1866,36 +2301,195 @@ fn candidate_contact_point(polygons: &[ExPolygon]) -> Option<(f32, f32)> {
     (count > 0).then(|| (units_to_mm(x / count), units_to_mm(y / count)))
 }
 
+/// Bounding box of a polygon set, in scaled units. `None` when empty.
+fn expolygons_bbox(polygons: &[ExPolygon]) -> Option<(i64, i64, i64, i64)> {
+    let mut bbox: Option<(i64, i64, i64, i64)> = None;
+    for polygon in polygons {
+        for point in &polygon.contour.points {
+            bbox = Some(match bbox {
+                None => (point.x, point.x, point.y, point.y),
+                Some((min_x, max_x, min_y, max_y)) => (
+                    min_x.min(point.x),
+                    max_x.max(point.x),
+                    min_y.min(point.y),
+                    max_y.max(point.y),
+                ),
+            });
+        }
+    }
+    bbox
+}
+
+/// Signed shoelace area of a ring, in scaled units².
+fn ring_area(ring: &Polygon) -> f64 {
+    let points = &ring.points;
+    if points.len() < 3 {
+        return 0.0;
+    }
+    let mut twice = 0.0f64;
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        twice += (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64);
+    }
+    twice / 2.0
+}
+
+/// Canonical `area(const ExPolygon&)`: contour area minus hole areas, in
+/// scaled units². Used for the F-1 `minimum_roof_area` test.
+fn expolygon_area(polygon: &ExPolygon) -> f64 {
+    let mut area = ring_area(&polygon.contour).abs();
+    for hole in &polygon.holes {
+        area -= ring_area(hole).abs();
+    }
+    area
+}
+
+/// Canonical `minimum_roof_area = SQ(scaled(1.0))` — one square millimetre,
+/// expressed in this codebase's scaled units (1 unit = 100 nm).
+fn minimum_roof_area() -> f64 {
+    let one_mm = mm_to_units(1.0) as f64;
+    one_mm * one_mm
+}
+
+/// Canonical `BoundingBox::radius()` — half the box diagonal, in mm.
+fn bbox_radius_mm(bbox: (i64, i64, i64, i64)) -> f32 {
+    let (min_x, max_x, min_y, max_y) = bbox;
+    let dx = units_to_mm(max_x - min_x) as f64;
+    let dy = units_to_mm(max_y - min_y) as f64;
+    (0.5 * (dx * dx + dy * dy).sqrt()) as f32
+}
+
+/// Canonical rotated-bbox interior lattice (defect F-35).
+///
+/// `TreeSupport::generate_contact_points` builds `grid_points` **once per
+/// object**, before any overhang is looked at:
+///
+/// ```text
+/// rotated_dims = (size.x*cos + size.y*sin, size.x*sin + size.y*cos) / 2
+/// for x in -rotated_dims.x .. rotated_dims.x step sample_step
+///   for y in -rotated_dims.y .. rotated_dims.y step sample_step
+///     pt = rotate(x, y, 22deg) + bounding_box_middle(object bbox)
+///     if bounding_box.contains(pt) { keep }
+/// ```
+///
+/// The span comes from the **rotated** dimensions, which is what lets a
+/// rotated lattice point still land near a bbox corner. Until packet 224 this
+/// module derived the index span from the unrotated bbox and rotated
+/// afterwards, so the sampled set was the bbox *shrunk* by the rotation —
+/// interior contacts near the corners were never generated, the exact failure
+/// the function's own doc comment claimed to avoid.
+///
+/// `bbox_mm` is `(min_x, max_x, min_y, max_y)` in mm.
+fn build_grid_points(bbox_mm: (f32, f32, f32, f32), sample_step: f32) -> Vec<(f32, f32)> {
+    let (min_x, max_x, min_y, max_y) = bbox_mm;
+    if sample_step <= 0.0 || max_x < min_x || max_y < min_y {
+        return Vec::new();
+    }
+    let rotate_angle = 22.0f32 / 180.0 * std::f32::consts::PI;
+    let (sin_angle, cos_angle) = (rotate_angle.sin(), rotate_angle.cos());
+    let size_x = max_x - min_x;
+    let size_y = max_y - min_y;
+    let rotated_dim_x = (size_x * cos_angle + size_y * sin_angle) / 2.0;
+    let rotated_dim_y = (size_x * sin_angle + size_y * cos_angle) / 2.0;
+    let center = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+
+    let mut grid = Vec::new();
+    let mut x = -rotated_dim_x;
+    while x < rotated_dim_x {
+        let mut y = -rotated_dim_y;
+        while y < rotated_dim_y {
+            // `Point::rotate(cos, sin)` is the standard CCW rotation.
+            let rx = x * cos_angle - y * sin_angle + center.0;
+            let ry = x * sin_angle + y * cos_angle + center.1;
+            if rx >= min_x && rx <= max_x && ry >= min_y && ry <= max_y {
+                grid.push((rx, ry));
+            }
+            y += sample_step;
+        }
+        x += sample_step;
+    }
+    grid
+}
+
+/// One sampled contact position, carrying the per-overhang facts canonical
+/// `insert_point` needs.
+#[derive(Clone, Debug)]
+struct ContactSample {
+    /// Position in mm.
+    x: f32,
+    /// Position in mm.
+    y: f32,
+    /// Canonical per-overhang
+    /// `clamp(unscale_(overhang_bounds.radius()), MIN_BRANCH_RADIUS, base_radius)`.
+    radius: f32,
+    /// Index into the overhang polygon slice this sample came from.
+    overhang: usize,
+    /// Canonical `contact_node->is_corner = true` on the corner stream.
+    is_corner: bool,
+}
+
 /// Sample overhangs using canonical corner, arc, and rotated-interior streams.
 ///
-/// `grid_bounds` is the object bounding box in mm `(min_x, max_x, min_y,
-/// max_y)`. Canonical `TreeSupport::generate_contact_points` builds the
-/// interior grid once per object over the whole-object bounding box, rotated
-/// 22 degrees about the object bbox center, and filters per overhang. Deriving
-/// the index span from the overhang bbox instead would drop lattice points
-/// whose rotated images fall inside the overhang near corners. `None` falls
-/// back to the overhang bbox (mesh-less objects).
+/// `grid_points` is the per-object lattice from [`build_grid_points`]; pass
+/// `None` for a mesh-less object, in which case the lattice is derived from
+/// the overhang polygons' own bbox.
 fn sample_contact_points(
     polygons: &[ExPolygon],
-    origin: (f32, f32),
-    grid_bounds: Option<(f32, f32, f32, f32)>,
+    grid_points: Option<&[(f32, f32)]>,
     point_spread: f32,
     base_radius: f32,
-) -> Vec<(f32, f32)> {
-    let mut result = Vec::new();
+    is_sharp_tail: bool,
+) -> Vec<ContactSample> {
+    let mut result: Vec<ContactSample> = Vec::new();
     let mut buckets = std::collections::HashSet::new();
     let cell = mm_to_units(base_radius).max(1) + 1;
-    let mut add = |x: f32, y: f32| {
+    let sample_step = point_spread.max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
+    let owned_grid = match grid_points {
+        Some(_) => None,
+        None => expolygons_bbox(polygons).map(|(min_x, max_x, min_y, max_y)| {
+            build_grid_points(
+                (
+                    units_to_mm(min_x),
+                    units_to_mm(max_x),
+                    units_to_mm(min_y),
+                    units_to_mm(max_y),
+                ),
+                sample_step,
+            )
+        }),
+    };
+    let grid_points: &[(f32, f32)] = match (grid_points, owned_grid.as_ref()) {
+        (Some(grid), _) => grid,
+        (None, Some(grid)) => grid,
+        (None, None) => &[],
+    };
+
+    let mut add = |sample: ContactSample, result: &mut Vec<ContactSample>| {
         let key = (
-            mm_to_units(x).div_euclid(cell),
-            mm_to_units(y).div_euclid(cell),
+            mm_to_units(sample.x).div_euclid(cell),
+            mm_to_units(sample.y).div_euclid(cell),
         );
         if buckets.insert(key) {
-            result.push((x, y));
+            result.push(sample);
         }
     };
 
-    for polygon in polygons {
+    for (poly_idx, polygon) in polygons.iter().enumerate() {
+        let Some(bbox) = expolygons_bbox(std::slice::from_ref(polygon)) else {
+            continue;
+        };
+        // Canonical per-overhang radius: half the overhang bbox diagonal,
+        // clamped into [MIN_BRANCH_RADIUS, base_radius].
+        let radius =
+            bbox_radius_mm(bbox).clamp(MIN_BRANCH_RADIUS, base_radius.max(MIN_BRANCH_RADIUS));
+        let mk = |x: f32, y: f32, is_corner: bool| ContactSample {
+            x,
+            y,
+            radius,
+            overhang: poly_idx,
+            is_corner,
+        };
         let points = &polygon.contour.points;
         if points.len() < 3 {
             continue;
@@ -1911,7 +2505,10 @@ fn sample_contact_points(
             let b = ((next.x - current.x) as f32, (next.y - current.y) as f32);
             let lengths = (a.0 * a.0 + a.1 * a.1).sqrt() * (b.0 * b.0 + b.1 * b.1).sqrt();
             if lengths > 0.0 && (a.0 * b.0 + a.1 * b.1) / lengths > -0.7 {
-                add(units_to_mm(current.x), units_to_mm(current.y));
+                add(
+                    mk(units_to_mm(current.x), units_to_mm(current.y), true),
+                    &mut result,
+                );
             }
         }
 
@@ -1934,187 +2531,215 @@ fn sample_contact_points(
                     {
                         let t = (distance - *start) / *length;
                         add(
-                            units_to_mm((a.x as f32 + (b.x - a.x) as f32 * t) as i64),
-                            units_to_mm((a.y as f32 + (b.y - a.y) as f32 * t) as i64),
+                            mk(
+                                units_to_mm((a.x as f32 + (b.x - a.x) as f32 * t) as i64),
+                                units_to_mm((a.y as f32 + (b.y - a.y) as f32 * t) as i64),
+                                false,
+                            ),
+                            &mut result,
                         );
                     }
                     distance += mm_to_units(point_spread) as f32;
                 }
             }
         }
-    }
 
-    let eroded = host::offset_polygons(polygons, -base_radius, OffsetJoinType::Miter, 0.0);
-    let (min_x, max_x, min_y, max_y) = match grid_bounds {
-        Some(bounds) => bounds,
-        None => {
-            let (min_x, max_x, min_y, max_y) =
-                polygons.iter().flat_map(|p| p.contour.points.iter()).fold(
-                    (i64::MAX, i64::MIN, i64::MAX, i64::MIN),
-                    |(min_x, max_x, min_y, max_y), point| {
-                        (
-                            min_x.min(point.x),
-                            max_x.max(point.x),
-                            min_y.min(point.y),
-                            max_y.max(point.y),
-                        )
-                    },
-                );
-            (
-                units_to_mm(min_x),
-                units_to_mm(max_x),
-                units_to_mm(min_y),
-                units_to_mm(max_y),
-            )
+        // Canonical: "don't add inner supports for sharp tails".
+        if is_sharp_tail || grid_points.is_empty() {
+            continue;
         }
-    };
-    let step = point_spread.max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
-    let cos = 22.0_f32.to_radians().cos();
-    let sin = 22.0_f32.to_radians().sin();
-    let ix_min = (((min_x - origin.0) / step).floor() as i32) - 1;
-    let ix_max = (((max_x - origin.0) / step).ceil() as i32) + 1;
-    let iy_min = (((min_y - origin.1) / step).floor() as i32) - 1;
-    let iy_max = (((max_y - origin.1) / step).ceil() as i32) + 1;
-    for iy in iy_min..=iy_max {
-        for ix in ix_min..=ix_max {
-            let x = origin.0 + (ix as f32 * step) * cos - (iy as f32 * step) * sin;
-            let y = origin.1 + (ix as f32 * step) * sin + (iy as f32 * step) * cos;
+        // Canonical filters the shared per-object lattice per overhang:
+        // the point must be inside the overhang bbox AND inside the overhang
+        // eroded by the per-overhang radius.
+        let (min_x, max_x, min_y, max_y) = bbox;
+        let eroded = host::offset_polygons(
+            std::slice::from_ref(polygon),
+            -radius,
+            OffsetJoinType::Miter,
+            0.0,
+        );
+        if eroded.is_empty() {
+            continue;
+        }
+        for &(x, y) in grid_points {
+            let (ux, uy) = (mm_to_units(x), mm_to_units(y));
+            if ux < min_x || ux > max_x || uy < min_y || uy > max_y {
+                continue;
+            }
             if point_in_any_expoly(&eroded, x, y) {
-                add(x, y);
+                add(mk(x, y, false), &mut result);
             }
         }
     }
+
     result
 }
 
-/// Lower a flush contact layer by `support_top_z_distance_mm`, measured along
-/// actual layer Z.
-///
-/// `contact_layer` is the layer whose top plane the support would touch with a
-/// zero gap — i.e. the overhang plane. The column must instead stop at the
-/// highest layer whose top plane is at or below `overhang_plane_z - gap`.
-///
-/// The walk is over `LayerPlanViewEntry.z` on purpose. Do **not** reimplement
-/// this as `gap / effective_layer_height`: the host's two producers of that
-/// field disagree (`project_layer_plan_view` takes a max over participating
-/// objects, `build_native_prepass_request` takes the first match), so it is not
-/// a dependable per-layer thickness in the guest view. Dividing by it opened a
-/// 35-layer gap here. `traditional-support-planner::plan_candidate` walks Z for
-/// the same reason.
-fn contact_layer_after_top_gap(
-    layer_plan: &LayerPlanView,
-    contact_layer: usize,
-    support_top_z_distance_mm: f32,
-) -> usize {
-    if support_top_z_distance_mm <= 0.0 || layer_plan.layers.is_empty() {
-        return contact_layer;
-    }
-    let contact_layer = contact_layer.min(layer_plan.layers.len() - 1);
-    let overhang_plane_z = layer_plan.layers[contact_layer].z;
-    let target_top_z = overhang_plane_z - support_top_z_distance_mm;
-    let mut emit_top_layer = contact_layer;
-    while emit_top_layer > 0 && layer_plan.layers[emit_top_layer].z > target_top_z {
-        emit_top_layer -= 1;
-    }
-    emit_top_layer
+/// Per-object contact-generation constants, ported from the head of canonical
+/// `TreeSupport::generate_contact_points`.
+#[derive(Clone, Copy, Debug)]
+struct ContactContext {
+    /// Canonical `top_z_distance`, in mm, after
+    /// `if (top_z_distance > EPSILON) top_z_distance = max(top_z_distance, min_layer_height)`.
+    z_distance_top: f32,
+    /// Canonical `gap_layers = z_distance_top == 0 ? 0 : 1`.
+    gap_layers: i32,
+    /// Canonical `support_roof_layers = config.support_interface_top_layers`.
+    support_roof_layers: i32,
 }
 
-fn push_contact(
-    contacts: &mut [Vec<PlannedSupportNode>],
+/// The per-overhang facts canonical `insert_point` closes over.
+struct OverhangContext<'a> {
+    /// Per-object constants.
+    ctx: &'a ContactContext,
+    /// The overhang `ExPolygon` this contact came from. Stored on the node so
+    /// the step 7 `draw_circles` rewrite can draw it into `roof_gap_areas`.
+    overhang: &'a ExPolygon,
+    /// Canonical `add_interface = area(overhang) > minimum_roof_area && !is_sharp_tail`.
+    add_interface: bool,
+    /// Canonical `is_sharp_tail`.
+    is_sharp_tail: bool,
+}
+
+impl OverhangContext<'_> {
+    /// Canonical `size_t roof_layers = add_interface ? support_roof_layers : 0`.
+    fn roof_layers(&self) -> i32 {
+        if self.add_interface {
+            self.ctx.support_roof_layers.max(0)
+        } else {
+            0
+        }
+    }
+}
+
+/// Port of canonical `insert_point` inside `TreeSupport::generate_contact_points`
+/// (defects F-1 and F-34).
+///
+/// `overhang_layer_idx` is canonical's `layer_nr` — the layer whose overhang
+/// demanded support. The node is created at `layer_nr - 1`, **always exactly
+/// one layer below**, with `distance_to_top = -gap_layers`. When there is a
+/// top-Z gap that makes the contact a *virtual* node: it is propagated like
+/// any other node but is never extruded (canonical draws it into
+/// `roof_gap_areas`, which `generate_toolpaths` never fills), so the printed
+/// column starts one further layer down and the gap is exactly one layer.
+///
+/// Until packet 224 this module instead walked real layer Z downward until
+/// `z <= overhang_z - gap`. At a 0.2 mm gap with 0.1 mm layers that dropped
+/// the contact roughly two layers instead of one-plus-virtual-node, and the
+/// walk had no canonical counterpart at all.
+///
+/// The roof counter is **per node** (F-1): `support_roof_layers_below` is
+/// seeded here from `add_interface ? support_roof_layers : 0`. The old
+/// per-object `roof_band_layers_emitted` counter is gone — it incremented on
+/// every interface-emitting layer of the whole object, so after the first
+/// `support_interface_top_layers` such layers a second, lower overhang on the
+/// same object received no top interface at all.
+#[allow(clippy::too_many_arguments)]
+fn insert_contact_point(
+    arena: &mut NodeArena,
+    contacts: &mut [Vec<NodeId>],
     layer_plan: &LayerPlanView,
     volumes: &TreeVolumes,
-    layer_idx: usize,
-    x: f32,
-    y: f32,
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
-) {
-    // Name the demand after the layer the contact will actually land on, so
-    // the id stays stable against the gap shift applied below.
-    let target_idx =
-        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
-    push_contact_with_demand(
-        contacts,
-        layer_plan,
-        volumes,
-        layer_idx,
-        x,
-        y,
-        planner,
-        dropped,
-        format!(
-            "mesh-demand-{}-{}",
-            layer_plan.layers[target_idx].global_layer_index,
-            contacts[target_idx].len()
-        ),
+    overhang_layer_idx: usize,
+    sample: (f32, f32),
+    radius: f32,
+    is_corner: bool,
+    oc: &OverhangContext<'_>,
+    demand_id: String,
+) -> Option<NodeId> {
+    // Canonical iterates `layer_nr` from 1, so `layer_nr - 1` is always valid.
+    if overhang_layer_idx == 0 || overhang_layer_idx >= layer_plan.layers.len() {
+        return None;
+    }
+    let target_idx = overhang_layer_idx - 1;
+    let overhang_layer = &layer_plan.layers[overhang_layer_idx];
+    // Canonical `m_object->get_layer(layer_nr)->bottom_z()`.
+    let bottom_z = overhang_layer.z - overhang_layer.effective_layer_height;
+    let (x, y) = sample;
+    let global_layer = layer_plan.layers[target_idx].global_layer_index;
+    let collision = volumes.outlines_at(global_layer as usize);
+    let to_buildplate = !point_in_any_expoly(collision, x, y);
+    if planner.support_on_build_plate_only && !to_buildplate {
+        return None;
+    }
+    if contacts[target_idx].len() >= planner.max_branches_per_layer {
+        *dropped.entry(global_layer).or_insert(0) += 1;
+        return None;
+    }
+    let id = arena.create_node(
+        Point2::from_mm(x, y),
+        -oc.ctx.gap_layers,
+        target_idx,
+        oc.roof_layers(),
+        to_buildplate,
+        None,
+        bottom_z,
+        oc.ctx.z_distance_top,
+        0.0,
+        radius,
     );
+    arena[id].overhang = oc.overhang.clone();
+    arena[id].is_sharp_tail = oc.is_sharp_tail;
+    arena[id].is_corner = is_corner;
+    arena[id].demand_ids = vec![demand_id];
+    contacts[target_idx].push(id);
+    Some(id)
 }
 
-fn push_contact_with_demand(
-    contacts: &mut [Vec<PlannedSupportNode>],
+/// Contact insertion for host-analysis candidates.
+///
+/// Analysis candidates already carry the host-selected contact layer, so the
+/// canonical `layer_nr - 1` shift is **not** applied here — doing so would
+/// move sampled geometry off its demand layer. The node is therefore a real
+/// contact (`distance_to_top = 0`), not a virtual gap node.
+#[allow(clippy::too_many_arguments)]
+fn insert_analysis_contact_point(
+    arena: &mut NodeArena,
+    contacts: &mut [Vec<NodeId>],
     layer_plan: &LayerPlanView,
     volumes: &TreeVolumes,
-    layer_idx: usize,
-    x: f32,
-    y: f32,
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
-    demand_id: String,
-) {
-    // Hold the top Z gap: a contact belongs `support_top_z_distance_mm` BELOW
-    // the overhang that demanded it, not flush against it.
-    let layer_idx =
-        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
-    let global_layer = layer_plan.layers[layer_idx].global_layer_index;
-    let collision = volumes.outlines_at(global_layer as usize);
-    let to_buildplate = !point_in_any_expoly(collision, x, y);
-    if planner.support_on_build_plate_only && !to_buildplate {
-        return;
-    }
-    if contacts[layer_idx].len() >= planner.max_branches_per_layer {
-        *dropped.entry(global_layer).or_insert(0) += 1;
-        return;
-    }
-    contacts[layer_idx].push(PlannedSupportNode {
-        x,
-        y,
-        dist_to_top: 0,
-        to_buildplate,
-        demand_ids: vec![demand_id],
-    });
-}
-
-fn push_analysis_contact(
-    contacts: &mut [Vec<PlannedSupportNode>],
-    layer_plan: &LayerPlanView,
-    volumes: &TreeVolumes,
     layer_idx: usize,
-    x: f32,
-    y: f32,
-    planner: &SupportPlanner,
-    dropped: &mut std::collections::BTreeMap<u32, usize>,
+    sample: (f32, f32),
+    radius: f32,
+    is_corner: bool,
+    oc: &OverhangContext<'_>,
     demand_id: String,
-) {
-    // Analysis candidates already carry the host-selected contact layer.
-    // Applying the gap again moves sampled geometry off its demand layer.
+) -> Option<NodeId> {
     let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
-    let global_layer = layer_plan.layers[layer_idx].global_layer_index;
+    let layer = &layer_plan.layers[layer_idx];
+    let (x, y) = sample;
+    let global_layer = layer.global_layer_index;
     let collision = volumes.outlines_at(global_layer as usize);
     let to_buildplate = !point_in_any_expoly(collision, x, y);
     if planner.support_on_build_plate_only && !to_buildplate {
-        return;
+        return None;
     }
     if contacts[layer_idx].len() >= planner.max_branches_per_layer {
         *dropped.entry(global_layer).or_insert(0) += 1;
-        return;
+        return None;
     }
-    contacts[layer_idx].push(PlannedSupportNode {
-        x,
-        y,
-        dist_to_top: 0,
+    let id = arena.create_node(
+        Point2::from_mm(x, y),
+        0,
+        layer_idx,
+        oc.roof_layers(),
         to_buildplate,
-        demand_ids: vec![demand_id],
-    });
+        None,
+        layer.z,
+        layer.effective_layer_height,
+        0.0,
+        radius,
+    );
+    arena[id].overhang = oc.overhang.clone();
+    arena[id].is_sharp_tail = oc.is_sharp_tail;
+    arena[id].is_corner = is_corner;
+    arena[id].demand_ids = vec![demand_id];
+    contacts[layer_idx].push(id);
+    Some(id)
 }
 
 /// Resolve the global support selection to the family vocabulary shared by
@@ -2480,15 +3105,15 @@ fn body_intersects(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bo
 /// can cross an obstacle between two individually clear endpoints.
 fn body_segment_intersects(
     polygons: &[ExPolygon],
-    a: &PlannedSupportNode,
-    b: &PlannedSupportNode,
+    a: (f32, f32),
+    b: (f32, f32),
     radius_a: f32,
     radius_b: f32,
 ) -> bool {
     let Some(segment) = swept_region(
         &Point3WithWidth {
-            x: a.x,
-            y: a.y,
+            x: a.0,
+            y: a.1,
             z: 0.0,
             width: radius_a * 2.0,
             flow_factor: 1.0,
@@ -2497,8 +3122,8 @@ fn body_segment_intersects(
             overhang_distance_mm: None,
         },
         &Point3WithWidth {
-            x: b.x,
-            y: b.y,
+            x: b.0,
+            y: b.1,
             z: 0.0,
             width: radius_b * 2.0,
             flow_factor: 1.0,
@@ -2543,7 +3168,7 @@ pub fn point_in_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> bool {
 /// Matches OrcaSlicer's `MinimumSpanningTree::prim` complexity class (O(V²)).
 /// The `V` input here is the propagated node count, bounded by
 /// `support_max_branches_per_layer`.
-fn prim_mst(nodes: &[PlannedSupportNode]) -> Vec<(usize, usize, f32)> {
+fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
     let n = nodes.len();
     if n < 2 {
         return Vec::new();
@@ -2554,7 +3179,7 @@ fn prim_mst(nodes: &[PlannedSupportNode]) -> Vec<(usize, usize, f32)> {
 
     in_tree[0] = true;
     for i in 1..n {
-        let d = euclidean_distance(&nodes[0], &nodes[i]);
+        let d = euclidean_distance(nodes[0], nodes[i]);
         min_dist[i] = d;
         parent[i] = Some(0);
     }
@@ -2578,7 +3203,7 @@ fn prim_mst(nodes: &[PlannedSupportNode]) -> Vec<(usize, usize, f32)> {
         }
         for i in 0..n {
             if !in_tree[i] {
-                let d = euclidean_distance(&nodes[next], &nodes[i]);
+                let d = euclidean_distance(nodes[next], nodes[i]);
                 if d < min_dist[i] {
                     min_dist[i] = d;
                     parent[i] = Some(next);
@@ -2594,9 +3219,9 @@ fn prim_mst(nodes: &[PlannedSupportNode]) -> Vec<(usize, usize, f32)> {
     edges
 }
 
-fn euclidean_distance(a: &PlannedSupportNode, b: &PlannedSupportNode) -> f32 {
-    let dx = a.x - b.x;
-    let dy = a.y - b.y;
+fn euclidean_distance(a: (f32, f32), b: (f32, f32)) -> f32 {
+    let dx = a.0 - b.0;
+    let dy = a.1 - b.1;
     (dx * dx + dy * dy).sqrt()
 }
 
@@ -2787,6 +3412,178 @@ mod tests {
 
     // ── Volumes layer (defect F-16) ───────────────────────────────────────
 
+    /// F-35: the lattice span comes from the *rotated* bbox dimensions, so
+    /// rotated lattice points still reach the corners of the object bbox.
+    /// The previous unrotated-span derivation could not produce a point in
+    /// the corner quadrants at all.
+    #[test]
+    fn rotated_lattice_reaches_bbox_corners() {
+        // 20x20 mm box at the origin, sampled at 1 mm.
+        let grid = build_grid_points((0.0, 20.0, 0.0, 20.0), 1.0);
+        assert!(!grid.is_empty());
+        // Every kept point is inside the bbox.
+        for (x, y) in &grid {
+            assert!(
+                (0.0..=20.0).contains(x) && (0.0..=20.0).contains(y),
+                "grid point ({x},{y}) escaped the bbox"
+            );
+        }
+        // Corner coverage: at least one point in each 3 mm corner square.
+        let corner = |cx: f32, cy: f32| {
+            grid.iter()
+                .any(|(x, y)| (x - cx).abs() <= 3.0 && (y - cy).abs() <= 3.0)
+        };
+        assert!(
+            corner(0.0, 0.0),
+            "no lattice point near the (min,min) corner"
+        );
+        assert!(
+            corner(20.0, 0.0),
+            "no lattice point near the (max,min) corner"
+        );
+        assert!(
+            corner(0.0, 20.0),
+            "no lattice point near the (min,max) corner"
+        );
+        assert!(
+            corner(20.0, 20.0),
+            "no lattice point near the (max,max) corner"
+        );
+    }
+
+    /// The lattice really is rotated 22 degrees: successive points along one
+    /// column differ by `(-step*sin, step*cos)`.
+    #[test]
+    fn rotated_lattice_uses_the_canonical_22_degree_angle() {
+        let grid = build_grid_points((0.0, 10.0, 0.0, 10.0), 2.0);
+        let angle = 22.0f32.to_radians();
+        let expected = (-2.0 * angle.sin(), 2.0 * angle.cos());
+        // Points are emitted column-major (x outer, y inner), so consecutive
+        // entries within a column are one `sample_step` apart in local y.
+        let mut found = false;
+        for pair in grid.windows(2) {
+            let dx = pair[1].0 - pair[0].0;
+            let dy = pair[1].1 - pair[0].1;
+            if (dx - expected.0).abs() < 1e-3 && (dy - expected.1).abs() < 1e-3 {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "no lattice step matched the 22-degree rotation");
+    }
+
+    /// F-1: `minimum_roof_area` is one square millimetre in scaled units.
+    #[test]
+    fn minimum_roof_area_is_one_square_millimetre() {
+        let square_1mm = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(1.0, 0.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(0.0, 1.0),
+                ],
+            },
+            holes: Vec::new(),
+        };
+        assert!((expolygon_area(&square_1mm) - minimum_roof_area()).abs() < 1.0);
+        // A 1.5 mm square is above the threshold; a 0.5 mm square is below.
+        let scaled = |mm: f32| ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(mm, 0.0),
+                    Point2::from_mm(mm, mm),
+                    Point2::from_mm(0.0, mm),
+                ],
+            },
+            holes: Vec::new(),
+        };
+        assert!(expolygon_area(&scaled(1.5)) > minimum_roof_area());
+        assert!(expolygon_area(&scaled(0.5)) < minimum_roof_area());
+    }
+
+    /// Holes subtract, matching canonical `ExPolygon::area()`.
+    #[test]
+    fn expolygon_area_subtracts_holes() {
+        let with_hole = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(4.0, 0.0),
+                    Point2::from_mm(4.0, 4.0),
+                    Point2::from_mm(0.0, 4.0),
+                ],
+            },
+            holes: vec![Polygon {
+                points: vec![
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(3.0, 1.0),
+                    Point2::from_mm(3.0, 3.0),
+                    Point2::from_mm(1.0, 3.0),
+                ],
+            }],
+        };
+        // 16 mm² minus 4 mm² = 12 mm².
+        let one_mm2 = minimum_roof_area();
+        assert!((expolygon_area(&with_hole) / one_mm2 - 12.0).abs() < 1e-3);
+    }
+
+    /// Canonical closing line fit of `generate_contact_points`, feeding the
+    /// step 6 `smooth_nodes` pass.
+    #[test]
+    fn contact_stats_fit_a_45_degree_line() {
+        let positions = vec![(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)];
+        let stats = contact_stats(&positions, 2);
+        assert_eq!(stats.avg_node_per_layer, 2);
+        assert!(
+            (stats.nodes_angle - std::f32::consts::FRAC_PI_4).abs() < 1e-4,
+            "expected 45 degrees, got {}",
+            stats.nodes_angle
+        );
+        assert_eq!(contact_stats(&[], 0), ContactStats::default());
+    }
+
+    /// The arena is what makes cross-layer parent/child edges expressible:
+    /// creating a child writes the back-edge into the already-created parent.
+    #[test]
+    fn arena_create_node_links_parent_and_child_both_ways() {
+        let mut arena = NodeArena::default();
+        let parent = arena.create_node(
+            Point2::from_mm(1.0, 2.0),
+            -1,
+            5,
+            3,
+            true,
+            None,
+            1.0,
+            0.2,
+            0.0,
+            0.4,
+        );
+        let child = arena.create_node(
+            Point2::from_mm(1.0, 2.0),
+            0,
+            4,
+            3,
+            true,
+            Some(parent),
+            0.8,
+            0.2,
+            0.0,
+            0.4,
+        );
+        assert_eq!(arena.len(), 2);
+        assert_eq!(arena[child].parent, Some(parent));
+        assert_eq!(arena[child].parents, vec![parent]);
+        assert_eq!(arena[parent].child, Some(child));
+        assert!((arena[parent].x() - 1.0).abs() < 1e-4);
+        assert!((arena[parent].y() - 2.0).abs() < 1e-4);
+        // F-34: the seeded contact is virtual, so it is a roof node but must
+        // never be extruded.
+        assert!(arena[parent].distance_to_top < 0);
+        assert!(arena[parent].is_roof());
+    }
     #[test]
     fn ceil_radius_snaps_up_to_the_canonical_sample_resolution() {
         // Canonical `m_radius_sample_resolution` is 0.2 mm.
@@ -2853,7 +3650,13 @@ mod tests {
         };
         // Densify one edge with points that are exactly collinear.
         let mut contour = square(mm_to_units(10.0));
-        contour.points.insert(1, Point2 { x: 0, y: -mm_to_units(10.0) });
+        contour.points.insert(
+            1,
+            Point2 {
+                x: 0,
+                y: -mm_to_units(10.0),
+            },
+        );
         let input = vec![ExPolygon {
             contour,
             holes: vec![square(mm_to_units(2.0))],
@@ -2879,7 +3682,10 @@ mod tests {
             holes: vec![],
         };
         let out = expolygons_simplify(&[sliver], mm_to_units(0.2) as f64);
-        assert!(out.is_empty(), "collapsed ring must be dropped, not emitted degenerate");
+        assert!(
+            out.is_empty(),
+            "collapsed ring must be dropped, not emitted degenerate"
+        );
     }
 
     /// Assign every region of `object_id` to the tree family.
@@ -3172,13 +3978,17 @@ mod tests {
             )
             .unwrap();
 
+        // Canonical seeds contacts into `contact_nodes[layer_nr - 1]`
+        // ("Support must always be 1 layer below overhang"), so the fixture's
+        // layer-8 overhang tops its column out on layer 7 even at a zero gap
+        // (packet 224 defect F-34).
         let origin_entry = output
             .entries()
             .iter()
-            .find(|entry| entry.global_layer_index == 8)
+            .find(|entry| entry.global_layer_index == 7)
             .unwrap_or_else(|| {
                 panic!(
-                    "lone fresh contact must emit on its origin layer; got layers {:?} diags {:?}",
+                    "lone fresh contact must emit on layer 7 (one below its layer-8 overhang); got layers {:?} diags {:?}",
                     output
                         .entries()
                         .iter()
@@ -3198,8 +4008,9 @@ mod tests {
         assert_eq!(segment.len(), 2);
         assert_eq!(segment[0].x, segment[1].x);
         assert_eq!(segment[0].y, segment[1].y);
-        assert!((segment[0].z - 1.8).abs() < 1e-5);
-        assert!((segment[1].z - 1.8).abs() < 1e-5);
+        // Layer 7 on this 0.2mm stack; see the F-34 note above.
+        assert!((segment[0].z - 1.6).abs() < 1e-5);
+        assert!((segment[1].z - 1.6).abs() < 1e-5);
     }
 
     #[test]
@@ -3326,22 +4137,7 @@ mod tests {
 
     #[test]
     fn prim_mst_on_two_nodes_returns_one_edge() {
-        let nodes = vec![
-            PlannedSupportNode {
-                x: 0.0,
-                y: 0.0,
-                dist_to_top: 0,
-                to_buildplate: true,
-                demand_ids: Vec::new(),
-            },
-            PlannedSupportNode {
-                x: 3.0,
-                y: 4.0,
-                dist_to_top: 0,
-                to_buildplate: true,
-                demand_ids: Vec::new(),
-            },
-        ];
+        let nodes = vec![(0.0_f32, 0.0_f32), (3.0_f32, 4.0_f32)];
         let edges = prim_mst(&nodes);
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].0, 0);

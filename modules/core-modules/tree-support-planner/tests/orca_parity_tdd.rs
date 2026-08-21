@@ -1033,13 +1033,17 @@ fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
 #[test]
 fn top_z_distance_lowers_the_tree_contact_layer() {
     // The fixture's overhang underside sits at z = 1.8mm on a 0.2mm layer
-    // stack, so the flush (zero-gap) contact belongs on the layer whose top
-    // plane is 1.8mm — index 8.
+    // stack — layer index 8. Canonical `generate_contact_points` inserts
+    // every contact into `contact_nodes[layer_nr - 1]`, commented "Support
+    // must always be 1 layer below overhang", so even a *zero* gap tops the
+    // column out at layer 7, not 8. Packet 224 defect F-34: this module used
+    // to walk real layer Z down from the overhang plane instead, which put
+    // the zero-gap contact flush on layer 8.
     let flush_top = top_support_layer_for_gap(0.0);
     assert_eq!(
-        flush_top, 8,
-        "with support_top_z_distance_mm = 0.0 the tree column must reach the \
-         overhang underside at z=1.8mm (layer 8); got layer {flush_top}"
+        flush_top, 7,
+        "with support_top_z_distance_mm = 0.0 the tree column must top out \
+         exactly one layer below the overhang layer 8; got layer {flush_top}"
     );
 
     // One 0.2mm layer of clearance must drop the column by exactly one layer.

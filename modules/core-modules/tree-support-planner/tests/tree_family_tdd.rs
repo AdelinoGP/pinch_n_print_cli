@@ -492,9 +492,10 @@ fn branch_angle_scales_the_per_layer_lateral_move() {
 
     fn run_at_angle(angle_deg: f64) -> SupportGeometryOutput {
         let object = overhang("angle", 0.0, 0.0, 8.0);
-        let planner =
-            tree_support_planner::SupportPlanner::from_config(&planner_config_with_angle(angle_deg))
-                .expect("from_config");
+        let planner = tree_support_planner::SupportPlanner::from_config(
+            &planner_config_with_angle(angle_deg),
+        )
+        .expect("from_config");
         let mut output = SupportGeometryOutput::new();
         let region = |x0: f32, x1: f32| ExPolygon {
             contour: Polygon {
@@ -863,10 +864,27 @@ fn invalid_body_rejected() {
         10.0,
         radius
     ));
-    assert!(output
-        .diagnostics()
-        .iter()
-        .any(|d| d.code == 1203 && d.message.contains("complete radius")));
+    // The demand must be rejected through a *typed* gate, not silently
+    // dropped. Which gate fires moved with packet 224 defect F-34: the
+    // contact layer is now canonical's virtual top-Z-gap node
+    // (`distance_to_top < 0`), which is drawn into `roof_gap_areas` and never
+    // extruded, so there is no body on that layer left to reject with 1203
+    // "complete radius". The whole overhang sits inside the blocking
+    // occupancy, so the first *real* column layer is instead pushed out by
+    // the avoidance gate and dropped with 1002 `node-clamped-out`. The
+    // safety property this test exists for -- that nothing is clipped into a
+    // filler polygon -- is asserted unconditionally below.
+    assert!(
+        output.diagnostics().iter().any(|d| (d.code == 1203
+            && d.message.contains("complete radius"))
+            || (d.code == 1002 && d.message.contains("node-clamped-out"))),
+        "expected a typed rejection (1203 complete-radius or 1002 node-clamped-out); got {:?}",
+        output
+            .diagnostics()
+            .iter()
+            .map(|d| (d.code, d.message.clone()))
+            .collect::<Vec<_>>()
+    );
     assert!(
         output
             .entries()
