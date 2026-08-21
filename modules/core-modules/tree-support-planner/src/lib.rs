@@ -88,6 +88,21 @@ const MIN_BRANCH_RADIUS: f32 = 0.4;
 const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 /// Canonical fallback because this module does not declare `max_bridge_length`.
 const DEFAULT_MAX_BRIDGE_LENGTH_MM: f32 = 10.0;
+/// Canonical `smooth_nodes` runs its three-point kernel this many times over
+/// each branch chain before committing the smoothed positions.
+const SMOOTH_NODES_ITERATIONS: usize = 3;
+/// Canonical `draw_circles`' `CIRCLE_RESOLUTION` when the model carries so many
+/// branches that a full circle per node per layer would be ruinous: the branch
+/// cross-section degenerates to a quad aligned with `ContactStats::nodes_angle`.
+const CIRCLE_RESOLUTION_COARSE: usize = 4;
+/// Canonical `draw_circles`' `CIRCLE_RESOLUTION` in the ordinary case.
+const CIRCLE_RESOLUTION_FINE: usize = 100;
+/// Canonical `draw_circles` picks [`CIRCLE_RESOLUTION_COARSE`] when
+/// `avg_node_per_layer` exceeds this.
+const COARSE_CIRCLE_NODE_THRESHOLD: usize = 200;
+/// libslic3r `RESOLUTION` (`SCALED_RESOLUTION = scale_(0.0125)`), the
+/// distance tolerance canonical simplifies the drawn support areas with.
+const DRAW_CIRCLES_RESOLUTION_MM: f32 = 0.0125;
 
 /// Multi-layer organic tree-support planner.
 #[allow(dead_code)]
@@ -177,7 +192,6 @@ struct PlannedSupportNode {
     /// Canonical `movement` — the last applied move delta.
     /// Consumed by the step 5 move pass (F-13) and the step 6 `smooth_nodes`
     /// pass (F-33).
-    #[allow(dead_code)]
     movement: Point2,
     /// Canonical `distance_to_top`. **Signed**: negative marks the virtual
     /// top-Z-gap node created by F-34, which is propagated but never extruded.
@@ -190,7 +204,6 @@ struct PlannedSupportNode {
     /// Canonical `radius`, in mm.
     radius: f32,
     /// Canonical `max_move_dist`. Consumed by the step 5 move pass (F-13).
-    #[allow(dead_code)]
     max_move_dist: f32,
     /// Canonical `support_roof_layers_below` — the **per-node** roof counter
     /// (F-1). Seeded from `add_interface ? support_roof_layers : 0` and
@@ -225,7 +238,6 @@ struct PlannedSupportNode {
     overhang: ExPolygon,
     /// Canonical `skin_direction`, set from vertical enforcer normals.
     /// Consumed by the step 6 `smooth_nodes` pass (F-33).
-    #[allow(dead_code)]
     skin_direction: Point2,
     /// Canonical `is_sharp_tail`. Suppresses interface seeding and the
     /// inner-lattice stream.
@@ -235,24 +247,19 @@ struct PlannedSupportNode {
     is_corner: bool,
     /// Canonical `need_extra_wall`. Consumed by the step 6 `smooth_nodes`
     /// pass (F-33).
-    #[allow(dead_code)]
     need_extra_wall: bool,
     /// Canonical `valid`. Cleared instead of erasing, so ids stay stable.
     valid: bool,
     /// Canonical `is_processed`. Consumed by the step 3 merge pass (F-11).
-    #[allow(dead_code)]
     is_processed: bool,
     /// Canonical `parent` — the node one layer **above** this one.
     /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
-    #[allow(dead_code)]
     parent: Option<NodeId>,
     /// Canonical `child` — the node one layer **below** this one.
     /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
-    #[allow(dead_code)]
     child: Option<NodeId>,
     /// Canonical `parents` — every upper-layer node that feeds this one.
     /// Consumed by the step 3 merge pass (F-11) and step 6 `smooth_nodes`.
-    #[allow(dead_code)]
     parents: Vec<NodeId>,
     /// Canonical `merged_neighbours`. Consumed by the step 3 merge pass
     /// (F-11).
@@ -408,11 +415,9 @@ struct LayerRecord {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ContactStats {
     /// Canonical `avg_node_per_layer = nNodes / nonempty_layers`.
-    #[allow(dead_code)]
     avg_node_per_layer: usize,
     /// Canonical
     /// `nodes_angle = atan2(n*mxy - mx*my, n*mx2 - SQ(mx))`, radians.
-    #[allow(dead_code)]
     nodes_angle: f32,
 }
 
@@ -439,6 +444,193 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
     }
 }
 
+/// Port of canonical `TreeSupport::smooth_nodes`, finding F-33.
+///
+/// Canonical calls this unconditionally between `drop_nodes` and
+/// `draw_circles`; before packet 224 step 6 this module never called any
+/// smoothing stage in production, so every node's `movement` stayed at the
+/// last raw move delta (or zero) and `draw_circles` had nothing to orient a
+/// branch cross-section with.
+///
+/// The pass walks each branch chain once. Chains are collected by following
+/// `parent` (the node one layer **above**), seeded with the starting node's
+/// `child` as a fixed head so the lowest real node of the chain is smoothed
+/// against the layer below it. Interior nodes are relaxed by the canonical
+/// three-point kernel `(pts[i-1] + 2*pts[i] + pts[i+1]) / 4`, applied
+/// [`SMOOTH_NODES_ITERATIONS`] times, and then committed together with the
+/// canonical movement rule
+///
+/// ```text
+/// movement = (pts[i + 1] - pts[i - 1]) / 2
+/// ```
+///
+/// This is the **only** producer of the final per-node `movement`;
+/// `draw_circles`' ellipse matrix is its only consumer.
+///
+/// Endpoints (`branch[0]` and `branch[last]`) are held fixed, which is what
+/// keeps a chain's contact tip on its overhang and its root on the plate.
+///
+/// **Kernel deviation.** The relaxation weights `(1, 2, 1)/4` over *immediate*
+/// chain neighbours are a strict convex combination of consecutive per-layer
+/// deltas, so no smoothed node can outrun the drop pass' per-layer lateral
+/// budget (`tan(branch_angle) * layer_height * wall_count`) — the invariant
+/// `tree_family_tdd::branch_angle_scales_the_per_layer_lateral_move` asserts.
+/// A wider stencil is not convex next to the pinned endpoints and does break
+/// that budget.
+fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord]) {
+    use std::collections::HashSet;
+    // Only nodes that survived the F-14 prune are chain members: canonical
+    // has already erased the rest from `contact_nodes` by this point.
+    let alive: HashSet<NodeId> = layer_records
+        .iter()
+        .flat_map(|record| record.active.iter().copied())
+        .collect();
+    for id in alive.iter() {
+        arena[*id].is_processed = false;
+    }
+    // Canonical walks layers **bottom-up** here while the chain walk goes
+    // parent-ward (upward), so the first chain started from a column's root
+    // covers the whole column. `layer_records` is pushed top-first by
+    // `drop_nodes`, so it is consumed in reverse. Iterating top-first instead
+    // would shatter every column into overlapping three-node windows, leaving
+    // two nodes out of every three with no movement at all.
+    for record in layer_records.iter().rev() {
+        for start in &record.active {
+            if arena[*start].is_processed {
+                continue;
+            }
+            let mut branch: Vec<NodeId> = Vec::new();
+            if let Some(child) = arena[*start].child {
+                if alive.contains(&child) {
+                    branch.push(child);
+                }
+            }
+            let mut cursor = Some(*start);
+            while let Some(current) = cursor {
+                if !alive.contains(&current) || arena[current].is_processed {
+                    break;
+                }
+                branch.push(current);
+                cursor = arena[current].parent;
+            }
+            if branch.len() < 3 {
+                continue;
+            }
+            // f64 in scaled units: the kernel divides by 4 every iteration and
+            // integer truncation there would bias every chain toward its head.
+            let mut pts: Vec<(f64, f64)> = branch
+                .iter()
+                .map(|id| (arena[*id].position.x as f64, arena[*id].position.y as f64))
+                .collect();
+            let mut out = pts.clone();
+            let last = pts.len() - 1;
+            for iteration in 0..SMOOTH_NODES_ITERATIONS {
+                for i in 1..last {
+                    let lo = i - 1;
+                    let hi = i + 1;
+                    out[i] = (
+                        (pts[lo].0 + 2.0 * pts[i].0 + pts[hi].0) / 4.0,
+                        (pts[lo].1 + 2.0 * pts[i].1 + pts[hi].1) / 4.0,
+                    );
+                }
+                if iteration + 1 < SMOOTH_NODES_ITERATIONS {
+                    pts.clone_from(&out);
+                }
+            }
+            for i in 1..last {
+                let id = branch[i];
+                arena[id].position = Point2 {
+                    x: out[i].0.round() as i64,
+                    y: out[i].1.round() as i64,
+                };
+                let movement = (
+                    (out[i + 1].0 - out[i - 1].0) / 2.0,
+                    (out[i + 1].1 - out[i - 1].1) / 2.0,
+                );
+                arena[id].movement = Point2 {
+                    x: movement.0.round() as i64,
+                    y: movement.1.round() as i64,
+                };
+                arena[id].is_processed = true;
+                // Canonical flags a node for an extra perimeter when it is a
+                // merge point or when it is travelling faster than its own
+                // `max_move_dist`; both make the branch wall thin out.
+                let move_mm = units_to_mm(
+                    (movement.0 * movement.0 + movement.1 * movement.1)
+                        .sqrt()
+                        .round() as i64,
+                );
+                if arena[id].parents.len() > 1 || move_mm > arena[id].max_move_dist {
+                    arena[id].need_extra_wall = true;
+                }
+            }
+        }
+    }
+}
+
+/// Canonical `draw_circles`' `branch_circle`: a regular polygon of
+/// `resolution` vertices and radius `radius_units`, centred on the origin.
+///
+/// Canonical rotates the coarse (4-vertex) variant onto the dominant node
+/// direction so the degenerate quad still runs along the branch field rather
+/// than staying axis-aligned; the fine variant is rotation-invariant enough
+/// that canonical leaves it alone.
+fn branch_circle(resolution: usize, radius_units: f64, rotate_rad: f32) -> Vec<(f64, f64)> {
+    let rotate = rotate_rad as f64;
+    (0..resolution)
+        .map(|i| {
+            let angle = std::f64::consts::TAU * i as f64 / resolution as f64 + rotate;
+            (radius_units * angle.cos(), radius_units * angle.sin())
+        })
+        .collect()
+}
+
+/// Canonical `draw_circles`' per-node cross-section: the base branch circle
+/// pushed through the movement-derived ellipse matrix and translated onto the
+/// node.
+///
+/// ```text
+/// move_x    = movement.x / (scale * branch_radius)
+/// move_y    = movement.y / (scale * branch_radius)
+/// vsize_inv = 0.5 / (0.01 + hypot(move_x, move_y))
+/// matrix    = scale * [ 1 + move_x^2 * vsize_inv,     move_x * move_y * vsize_inv
+///                       move_x * move_y * vsize_inv, 1 + move_y^2 * vsize_inv ]
+/// ```
+///
+/// A stationary node (`movement == 0`) leaves the matrix at `scale * I`, i.e.
+/// the plain scaled circle; a moving node is stretched along its direction of
+/// travel, which is what makes a leaning branch print as a continuous solid
+/// instead of a stack of offset discs.
+fn node_ellipse(
+    base_circle: &[(f64, f64)],
+    center: Point2,
+    scale: f64,
+    movement: Point2,
+    branch_radius_units: f64,
+) -> Option<ExPolygon> {
+    if base_circle.len() < 3 || scale <= 0.0 || branch_radius_units <= 0.0 {
+        return None;
+    }
+    let denom = scale * branch_radius_units;
+    let move_x = movement.x as f64 / denom;
+    let move_y = movement.y as f64 / denom;
+    let vsize_inv = 0.5 / (0.01 + (move_x * move_x + move_y * move_y).sqrt());
+    let m00 = scale * (1.0 + move_x * move_x * vsize_inv);
+    let m01 = scale * (move_x * move_y * vsize_inv);
+    let m11 = scale * (1.0 + move_y * move_y * vsize_inv);
+    let points: Vec<Point2> = base_circle
+        .iter()
+        .map(|(x, y)| Point2 {
+            x: center.x + (m00 * x + m01 * y).round() as i64,
+            y: center.y + (m01 * x + m11 * y).round() as i64,
+        })
+        .collect();
+    Some(ExPolygon {
+        contour: Polygon { points },
+        holes: Vec::new(),
+    })
+}
+
 /// Assembles a plan entry's roles from structural, roof, and floor segments.
 ///
 /// Canonical keeps roof and floor geometry distinct from body geometry and
@@ -448,10 +640,14 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
 ///
 /// A role with no regions is omitted rather than emitted empty, so consumers can
 /// treat role presence as meaningful.
+#[allow(clippy::too_many_arguments)]
 fn build_roles(
     branch_segments: &[Vec<Point3WithWidth>],
     interface_segments: &[Vec<Point3WithWidth>],
     floor_segments: &[Vec<Point3WithWidth>],
+    branch_areas: &[ExPolygon],
+    interface_areas: &[ExPolygon],
+    floor_areas: &[ExPolygon],
     branch_radius: f32,
     collision_polys: &[ExPolygon],
 ) -> Vec<slicer_ir::SupportPlanRoleRegion> {
@@ -462,9 +658,18 @@ fn build_roles(
             host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
         }
     };
-    let body = clip_collision(structural_body_regions(branch_segments, branch_radius));
-    let roof = clip_collision(structural_body_regions(interface_segments, branch_radius));
-    let floor = clip_collision(structural_body_regions(floor_segments, branch_radius));
+    // Canonical `draw_circles` fills `base_areas` / `roof_areas` with one
+    // per-node ellipse per layer; the swept capsules are this port's addition
+    // and keep consecutive cross-sections joined on the same layer. Union the
+    // two before the carve so a role is one body, not a pile of overlaps.
+    let with_areas = |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon]| {
+        let mut regions = structural_body_regions(segments, branch_radius);
+        regions.extend_from_slice(areas);
+        clip_collision(union_expolys(regions))
+    };
+    let body = with_areas(branch_segments, branch_areas);
+    let roof = with_areas(interface_segments, interface_areas);
+    let floor = with_areas(floor_segments, floor_areas);
 
     // Subtract interface geometry out of the body, per canonical.
     let mut carved = body;
@@ -1662,7 +1867,7 @@ impl SupportPlanner {
             .iter()
             .filter(|layer| !layer.is_empty())
             .count();
-        let _contact_stats = contact_stats(&contact_positions, nonempty_layers);
+        let contact_stats = contact_stats(&contact_positions, nonempty_layers);
 
         // ── Step 10: top-down propagation + per-layer MST merging ────────
         // Walk from top layer down to layer 0. Each iteration:
@@ -2322,6 +2527,38 @@ impl SupportPlanner {
                 .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
         }
 
+        // ── Canonical `smooth_nodes` (F-33) ──────────────────────────────
+        //
+        // Canonical calls this unconditionally, here: after `drop_nodes` has
+        // finished every layer and its `unsupported_branch_leaves` erase has
+        // run, and before `draw_circles`. It is the only producer of the final
+        // per-node `movement` that the ellipse matrix below consumes. Every
+        // collision gate in the emit pass runs *after* this, so a smoothed
+        // position is still validated against model occupancy before it is
+        // allowed to print.
+        smooth_nodes(&mut arena, &layer_records);
+
+        // Canonical `draw_circles`' `CIRCLE_RESOLUTION`: a full 100-gon per
+        // node per layer is unaffordable once the model carries hundreds of
+        // branches per layer, so canonical degenerates the cross-section to a
+        // quad aligned with the contact-set line fit.
+        let circle_resolution = if contact_stats.avg_node_per_layer > COARSE_CIRCLE_NODE_THRESHOLD {
+            CIRCLE_RESOLUTION_COARSE
+        } else {
+            CIRCLE_RESOLUTION_FINE
+        };
+        let branch_radius_units = mm_to_units(branch_radius).max(1) as f64;
+        let base_circle = branch_circle(
+            circle_resolution,
+            branch_radius_units,
+            if circle_resolution == CIRCLE_RESOLUTION_COARSE {
+                contact_stats.nodes_angle
+            } else {
+                0.0
+            },
+        );
+        let simplify_tolerance = mm_to_units(DRAW_CIRCLES_RESOLUTION_MM).max(1) as f64;
+
         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
         for record in &layer_records {
             let layer_rev = record.layer_rev;
@@ -2444,6 +2681,64 @@ impl SupportPlanner {
                     }
                 })
                 .collect();
+            // ── Canonical `draw_circles`: one ellipse per node per layer ──
+            //
+            // Canonical draws every surviving node's own cross-section into
+            // `base_areas` / `roof_areas`, oriented by the `movement` the
+            // `smooth_nodes` pass above just produced (falling back to the
+            // node's `skin_direction`, which is the direction canonical gives
+            // a sharp tail that never moved). Until packet 224 step 6 this
+            // module drew nothing per node at all — only the swept capsules
+            // between MST endpoints — so an isolated or terminal node
+            // contributed no area and a leaning branch had no elongation.
+            let mut branch_areas: Vec<ExPolygon> = Vec::new();
+            let mut interface_areas: Vec<ExPolygon> = Vec::new();
+            let mut floor_areas: Vec<ExPolygon> = Vec::new();
+            let mut layer_needs_extra_wall = false;
+            for (i, id) in active_nodes.iter().enumerate() {
+                let node = &arena[*id];
+                // The F-34 virtual top-Z-gap node draws into `roof_gap_areas`,
+                // which is never extruded.
+                if node.is_virtual_gap() {
+                    continue;
+                }
+                let radius = tapered_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    node.distance_to_top.max(0) as u32,
+                    effective_height,
+                );
+                // Same gate the contact-tip path applies: a node's own drawn
+                // cross-section may never sit inside model occupancy,
+                // whatever role it carries. (The MST-edge gate exempts
+                // *interface endpoints* because the edge's other endpoint is
+                // what reaches the model; a node's own ellipse has no such
+                // partner.)
+                if node_collides(node.x(), node.y(), radius) {
+                    continue;
+                }
+                let direction = if node.movement.x != 0 || node.movement.y != 0 {
+                    node.movement
+                } else {
+                    node.skin_direction
+                };
+                let Some(ellipse) = node_ellipse(
+                    &base_circle,
+                    node.position,
+                    (radius / branch_radius) as f64,
+                    direction,
+                    branch_radius_units,
+                ) else {
+                    continue;
+                };
+                layer_needs_extra_wall |= node.need_extra_wall;
+                match node_roles[i] {
+                    InterfaceRole::Body => branch_areas.push(ellipse),
+                    InterfaceRole::Roof => interface_areas.push(ellipse),
+                    InterfaceRole::Floor => floor_areas.push(ellipse),
+                }
+            }
+
             let mut origin_contacts_emitted = vec![false; active_nodes.len()];
             let mut mst_emitted = vec![false; active_nodes.len()];
             for (a_idx, b_idx) in &mst_edges {
@@ -2639,6 +2934,9 @@ impl SupportPlanner {
             if !branch_segments.is_empty()
                 || !interface_segments.is_empty()
                 || !floor_segments.is_empty()
+                || !branch_areas.is_empty()
+                || !interface_areas.is_empty()
+                || !floor_areas.is_empty()
             {
                 // Find all regions for this (layer, object) pair.
                 let regions_for_this: Vec<_> = region_segmentation
@@ -2692,9 +2990,21 @@ impl SupportPlanner {
                         &branch_segments,
                         &interface_segments,
                         &floor_segments,
+                        &branch_areas,
+                        &interface_areas,
+                        &floor_areas,
                         branch_radius,
                         role_collision,
                     );
+                    // Canonical `draw_circles` closes by simplifying every
+                    // drawn area at the libslic3r `RESOLUTION` distance
+                    // tolerance. Without it the per-node ellipses union into
+                    // contours carrying `CIRCLE_RESOLUTION` vertices per node
+                    // per layer.
+                    for role in &mut roles {
+                        role.regions = expolygons_simplify(&role.regions, simplify_tolerance);
+                    }
+                    roles.retain(|role| !role.regions.is_empty());
                     // Keep the emitted IR subject to the same exact-Z
                     // occupancy contract as the runtime closure gate. This
                     // final guard is needed for concave occupancy where a
@@ -2744,7 +3054,20 @@ impl SupportPlanner {
                                 })
                                 .collect(),
                         }),
-                        capabilities: vec!["tree-branch-skeleton".to_string()],
+                        capabilities: {
+                            let mut capabilities = vec!["tree-branch-skeleton".to_string()];
+                            // Canonical `generate_toolpaths` bumps the wall
+                            // count on a node whose `smooth_nodes` pass set
+                            // `need_extra_wall` (a merge point, or a node
+                            // outrunning its own `max_move_dist`). PnP's
+                            // SupportPlanIR has no per-node wall channel, so
+                            // the layer advertises the requirement as a
+                            // capability instead of silently dropping it.
+                            if layer_needs_extra_wall {
+                                capabilities.push("tree-branch-extra-wall".to_string());
+                            }
+                            capabilities
+                        },
                         provenance: vec!["support-planner".to_string()],
                         decline_reason: None,
                     });
@@ -2752,8 +3075,9 @@ impl SupportPlanner {
             }
         }
 
-        // Do not smooth after exact-Z collision validation. `smooth_branches`
-        // translates emitted role polygons, which can move a previously legal
+        // Smoothing happens *before* the emit pass (canonical `smooth_nodes`,
+        // above), never here: the entry-level `smooth_branches` translates
+        // already-validated role polygons, which can move a previously legal
         // body back into concave model occupancy without another validation
         // pass.
 
@@ -3317,9 +3641,19 @@ fn first_point_xyw(entry: &slicer_sdk::prepass_types::SupportPlanEntry) -> Optio
         .map(|point| (point.x, point.y, 0.0))
 }
 
-/// Rust port of Orca's `TreeSupport::smooth_nodes`. Applies an in-place
-/// three-point Laplacian smoother to each `(object_id, region_id)` column of
-/// structural skeleton rows. Endpoints are held fixed.
+/// Entry-level three-point Laplacian smoother over each
+/// `(object_id, region_id)` column of structural skeleton rows. Endpoints are
+/// held fixed.
+///
+/// **Superseded in production by [`smooth_nodes`]** (packet 224 step 6,
+/// finding F-33). Canonical smooths the *node graph* between `drop_nodes` and
+/// `draw_circles`, where the branch topology (`parent` / `child` / `parents`)
+/// is still available and every downstream collision gate still runs; this
+/// function smooths already-emitted `SupportPlanEntry` rows, which cannot see
+/// the topology and would translate validated geometry back into model
+/// occupancy. It is retained as a standalone helper with its own contract
+/// tests (`tests/smooth_nodes_tdd.rs`) and is deliberately not called from the
+/// planner pipeline.
 pub fn smooth_branches(
     entries: &mut Vec<slicer_sdk::prepass_types::SupportPlanEntry>,
     iterations: usize,
@@ -4215,6 +4549,170 @@ mod tests {
 
     /// Canonical closing line fit of `generate_contact_points`, feeding the
     /// step 6 `smooth_nodes` pass.
+    /// Builds a straight vertical chain of `n` nodes, one per layer, linked
+    /// parent (above) / child (below), and the matching per-layer records.
+    fn chain_arena(offsets: &[(f32, f32)]) -> (NodeArena, Vec<LayerRecord>) {
+        let mut arena = NodeArena::default();
+        let mut ids = Vec::new();
+        for (i, (x, y)) in offsets.iter().enumerate() {
+            let parent = if i == 0 { None } else { Some(ids[i - 1]) };
+            let id = arena.create_node(
+                Point2::from_mm(*x, *y),
+                i as i32,
+                i,
+                0,
+                true,
+                parent,
+                i as f32,
+                1.0,
+                i as f32,
+                1.0,
+            );
+            ids.push(id);
+        }
+        let records = ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| LayerRecord {
+                layer_rev: i,
+                active: vec![*id],
+                edges: Vec::new(),
+            })
+            .collect();
+        (arena, records)
+    }
+
+    /// F-33: `smooth_nodes` is the only producer of the final per-node
+    /// `movement`, and canonical defines it as the half-difference of the
+    /// smoothed neighbours.
+    #[test]
+    fn smooth_nodes_sets_movement_to_the_neighbour_half_difference() {
+        let (mut arena, records) = chain_arena(&[
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (2.0, 1.0),
+            (2.0, 0.0),
+        ]);
+        smooth_nodes(&mut arena, &records);
+        let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
+        // `chain_arena` creates the column top-first, and the smoother walks
+        // parent-ward from the root, so the chain order is the reverse of the
+        // creation order.
+        let chain: Vec<NodeId> = ids.iter().rev().copied().collect();
+        for i in 1..chain.len() - 1 {
+            let expected_x =
+                (arena[chain[i + 1]].position.x - arena[chain[i - 1]].position.x) as f64 / 2.0;
+            let expected_y =
+                (arena[chain[i + 1]].position.y - arena[chain[i - 1]].position.y) as f64 / 2.0;
+            // +/- 1 unit (100 nm): `movement` is derived from the smoothed
+            // f64 chain, while this recomputes it from the committed integer
+            // positions, so the two roundings can disagree in the last unit.
+            assert!(
+                (arena[chain[i]].movement.x - expected_x.round() as i64).abs() <= 1,
+                "movement.x {} != (next - prev)/2 = {expected_x}",
+                arena[chain[i]].movement.x
+            );
+            assert!(
+                (arena[chain[i]].movement.y - expected_y.round() as i64).abs() <= 1,
+                "movement.y {} != (next - prev)/2 = {expected_y}",
+                arena[chain[i]].movement.y
+            );
+            assert!(
+                arena[chain[i]].movement != Point2 { x: 0, y: 0 },
+                "an interior node of a zig-zag chain must carry a movement"
+            );
+        }
+        // Endpoints are held fixed and never receive a movement.
+        assert_eq!(arena[chain[0]].position, Point2::from_mm(2.0, 0.0));
+        assert_eq!(
+            arena[chain[chain.len() - 1]].position,
+            Point2::from_mm(0.0, 0.0)
+        );
+        assert_eq!(arena[chain[0]].movement, Point2 { x: 0, y: 0 });
+    }
+
+    /// A zig-zag chain must come out straighter than it went in.
+    #[test]
+    fn smooth_nodes_reduces_chain_deviation() {
+        let offsets = [
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (0.0, 0.0),
+        ];
+        let (mut arena, records) = chain_arena(&offsets);
+        let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
+        let before: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
+        smooth_nodes(&mut arena, &records);
+        let after: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
+        assert!(after < before, "smoothing must flatten the zig-zag: {after} !< {before}");
+    }
+
+    /// A chain shorter than three nodes has no interior node to relax.
+    #[test]
+    fn smooth_nodes_leaves_short_chains_alone() {
+        let (mut arena, records) = chain_arena(&[(0.0, 0.0), (3.0, 4.0)]);
+        let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
+        smooth_nodes(&mut arena, &records);
+        assert_eq!(arena[ids[0]].position, Point2::from_mm(0.0, 0.0));
+        assert_eq!(arena[ids[1]].position, Point2::from_mm(3.0, 4.0));
+        assert_eq!(arena[ids[1]].movement, Point2 { x: 0, y: 0 });
+    }
+
+    /// Canonical `draw_circles` resolution selection.
+    #[test]
+    fn circle_resolution_switches_at_two_hundred_nodes_per_layer() {
+        let pick = |avg: usize| {
+            if avg > COARSE_CIRCLE_NODE_THRESHOLD {
+                CIRCLE_RESOLUTION_COARSE
+            } else {
+                CIRCLE_RESOLUTION_FINE
+            }
+        };
+        assert_eq!(pick(200), 100);
+        assert_eq!(pick(201), 4);
+    }
+
+    /// The ellipse matrix degenerates to a plain scaled circle when the node
+    /// has not moved, and elongates along the movement direction when it has.
+    #[test]
+    fn node_ellipse_elongates_along_movement() {
+        let radius_units = mm_to_units(2.0) as f64;
+        let base = branch_circle(CIRCLE_RESOLUTION_FINE, radius_units, 0.0);
+        let center = Point2 { x: 0, y: 0 };
+        let still = node_ellipse(&base, center, 1.0, Point2 { x: 0, y: 0 }, radius_units).unwrap();
+        let extent = |poly: &ExPolygon, axis: fn(&Point2) -> i64| {
+            poly.contour.points.iter().map(axis).max().unwrap()
+                - poly.contour.points.iter().map(axis).min().unwrap()
+        };
+        let still_x = extent(&still, |p| p.x);
+        let still_y = extent(&still, |p| p.y);
+        assert!((still_x - still_y).abs() <= 2, "a stationary node draws a circle");
+
+        let moving = node_ellipse(
+            &base,
+            center,
+            1.0,
+            Point2 {
+                x: mm_to_units(1.0),
+                y: 0,
+            },
+            radius_units,
+        )
+        .unwrap();
+        assert!(
+            extent(&moving, |p| p.x) > still_x,
+            "the ellipse must stretch along the movement direction"
+        );
+        assert_eq!(
+            extent(&moving, |p| p.y),
+            still_y,
+            "and must not stretch across it"
+        );
+    }
+
     #[test]
     fn contact_stats_fit_a_45_degree_line() {
         let positions = vec![(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)];

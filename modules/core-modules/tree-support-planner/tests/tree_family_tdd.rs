@@ -646,14 +646,21 @@ fn radius_aware_collision() {
         .flat_map(|entry| entry.roles.iter())
         .flat_map(|role| role.regions.iter())
     {
-        assert_eq!(body.contour.points.len(), 16);
+        // Vertex count is no longer 16. Packet 224 step 6 (F-33) makes the
+        // emit pass draw canonical `draw_circles`' per-node ellipse, whose
+        // vertex count is `CIRCLE_RESOLUTION` (100 here, 4 above 200 nodes
+        // per layer) before the closing distance-tolerance simplify. Pinning
+        // the count would pin this port's pre-canonical 16-gon capsule; what
+        // this test is actually about is the *radius*, asserted below.
+        let n = body.contour.points.len();
+        assert!(n >= 3, "degenerate emitted region with {n} vertices");
         let center = body
             .contour
             .points
             .iter()
             .map(mm_point)
             .fold((0.0, 0.0), |sum, point| {
-                (sum.0 + point.0 / 16.0, sum.1 + point.1 / 16.0)
+                (sum.0 + point.0 / n as f32, sum.1 + point.1 / n as f32)
             });
         let radii: Vec<f32> = body
             .contour
@@ -662,18 +669,16 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
-        // Floor guards against degenerate/zero-radius bodies. The measured
-        // minimum for the legitimate swept-capsule body between a 0.4 mm
-        // contact tip and a larger propagated node (16-vertex cap) is
-        // 0.3366 mm, so 0.39 (the pre-RC-15 floor) rejects a correct body.
-        // 0.3 was over-corrected: it leaves ~10% of unjustified slack below
-        // the measurement, so a body that had genuinely started collapsing
-        // toward zero radius could still pass. The floor is set just under the
-        // measured value instead, which is the tightest bound the measurement
-        // supports.
+        // Floor guards against degenerate/zero-radius bodies, and is set just
+        // under the measured minimum for this fixture — the tightest bound
+        // the measurement supports. Re-measured for packet 224 step 6 (F-33),
+        // where the emitted body became the union of the swept capsule with
+        // canonical `draw_circles`' per-node ellipses: measured minimum
+        // 0.34407 mm (was 0.3366 mm for the 16-vertex capsule cap), so the
+        // floor tightens from 0.33 to 0.34.
         assert!(
-            local_radius >= 0.33,
-            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.3366 mm)"
+            local_radius >= 0.34,
+            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.34407 mm)"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
