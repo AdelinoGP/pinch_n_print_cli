@@ -105,10 +105,14 @@ F-32/46/47/48.
 
 ## 4. Test-discipline lessons, measured
 
-1. **`cargo test --workspace` is FAIL-FAST.** A run reported "258 binaries / 2112 passed"
-   and looked complete; it had skipped the entire `e2e` binary (128 tests) because
-   `contract` failed first. A later run showed 259 binaries / 2242 tests. **Always append
-   `--no-fail-fast`, and reconcile the binary count, before believing any total.**
+1. **`cargo test --workspace` is FAIL-FAST, and it fooled this session TWICE.** A run
+   reported "258 binaries / 2112 passed" and looked complete; it had skipped the entire
+   `e2e` binary (128 tests) because `contract` failed first. A later run showed
+   "259 binaries / 2242 tests" and the coordinator treated THAT as complete too — it was
+   also truncated. The true complete figure, measured with `--no-fail-fast`, is
+   **386 result lines (345 test binaries + 41 doc-test suites), 3806 passed**.
+   **Never report a workspace total that was not produced with `--no-fail-fast`.**
+   Two of the four remaining failures had never been executed by ANY packet-224 run.
 2. **The `contract` binary was covered by none of this session's narrow commands**
    (`--lib`, `--test integration -- support`). It held a real production regression.
    Narrow greens do not compose into a workspace green.
@@ -126,9 +130,9 @@ F-32/46/47/48.
 
 ## 5. State at handoff
 
-- Full suite: **2242 tests / 259 binaries**, last measured 2241 passed / 1 failed with the
-  single failure fixed in `c5fe29c4`; a final confirming run was in flight at handoff —
-  **verify it before claiming green.**
+- Full suite, COMPLETE measurement (`--no-fail-fast`): **3806 passed / 4 failed / 7
+  ignored across 386 result lines** (345 test binaries + 41 doc-test suites).
+  **THE WORKSPACE IS NOT GREEN.** The 4 failures are listed in section 8.
 - Gates green: `clippy --workspace --all-targets -D warnings`, `check-literals`,
   `check-deviations --check` (was RED before this session), `gen-config-docs --check`,
   `build-guests --check`.
@@ -154,7 +158,7 @@ the references were cut at a finer layer height.
 
 ## 6. Packet status — still `draft`, deliberately
 
-The definition of done includes **"generated G-code from SupportTest.stl for both Tree and
+The workspace is not green (section 8) AND the definition of done includes **"generated G-code from SupportTest.stl for both Tree and
 Traditional passes human review"**. That review has not happened. Every other element is
 met. **Do not mark the packet `implemented` until a human inspects the artifacts above.**
 `TASK-335` stays unchecked in `docs/07_implementation_status.md`.
@@ -176,3 +180,32 @@ met. **Do not mark the packet `implemented` until a human inspects the artifacts
 - `execute_paint_segmentation`'s `matching_base.is_empty()` fallback still clones
   whole-layer contours; unreachable with a well-formed region_map.
 - Routed out by earlier human decision, unchanged: F-8/9/10/17/30/39/40/42-part/43, F-29.
+
+---
+
+## 8. THE WORKSPACE IS NOT GREEN — 4 failures outstanding
+
+Measured with `cargo xtask test --summary --workspace --no-fail-fast`. Two of these had
+never been executed by any prior packet-224 run, because fail-fast aborted first.
+
+1. `prepass_support_geometry_layer_plan_tdd::planner_emits_one_entry_per_region_in_region_map`
+   (`crates/slicer-runtime/tests/executor/`) — expected 2 entries for
+   (layer=5, object=obj-multi), **got 0**.
+2. `prepass_support_geometry_layer_plan_tdd::planner_walks_real_layer_plan_with_variable_layer_heights`
+   — highest entry first point z=0.8, expected ~2.0.
+3. `fixture_invariants` (`crates/slicer-runtime/tests/integration/main.rs`) — **packet
+   AC-1**. "tree: no plate-terminated entry".
+4. `interface_is_topmost_and_carved_out` — layer 118 carries interface geometry but no
+   SupportBody. **May be red-by-design**: `df6b75cd` says six gates "are RED on purpose
+   and stay red until the defects they now bind on are fixed" and names this one (F-4).
+   Needs a verdict, not an assumption.
+
+**Prime suspect for (1) and (3):** commit `c3c1ed5a` gated the legacy mesh-facet contact
+path on "this object has no admissible tree analysis candidates". Consolidating to one
+contact source is canonically right, but that gate may starve cases the analysis path does
+not cover — (1) is a multi-region fixture getting zero entries, (3) reports no
+plate-terminated tree entry at all. Fix without reintroducing dual seeding; `final_gcode_roles`
+(AC-4, interface counts 1/2/3) must stay green.
+
+Gates remain green: clippy, check-literals, check-deviations, gen-config-docs,
+build-guests.
