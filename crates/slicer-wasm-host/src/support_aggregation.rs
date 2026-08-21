@@ -323,12 +323,32 @@ pub fn try_aggregate_support_plans_with_policy(
     // union cannot introduce an overlap that was absent from every input -- so
     // re-checking it after merging would be redundant as well.
     union_same_family_entries(&mut result.retained);
+    // Cross-family overlap is a FAMILY-ARBITRATION guard, not a plate-wide
+    // collision check: it exists because two families that both claim positive
+    // area for the same slice of the same object would double-extrude there,
+    // and the host cannot decide which one is right. Its domain is therefore
+    // the same identity domain as the `(global_layer_index, object_id,
+    // region_id)` conflict logic above -- minus `region_id`, since two regions
+    // of one object at one layer really can be claimed by two families.
+    //
+    // It was scoped by NEITHER object nor layer, and it rejects BOTH sides. So
+    // two genuinely different print objects that legitimately select different
+    // per-object `support_type` values annihilated each other's support the
+    // moment their bodies overlapped in XY -- and `entries_overlap` compares
+    // only XY polygons, so entries on different layers, which cannot physically
+    // collide at all, annihilated each other too. Measured on
+    // `resources/bridge_support_enforcers.3mf`: one tree object plus two
+    // traditional objects yielded a slice with no `;TYPE:Support` whatsoever.
     let mut rejected = vec![false; result.retained.len()];
     for left in 0..result.retained.len() {
         for right in (left + 1)..result.retained.len() {
             let a = &result.retained[left];
             let b = &result.retained[right];
-            if a.family_id != b.family_id && entries_overlap(a, b) {
+            if a.object_id == b.object_id
+                && a.global_layer_index == b.global_layer_index
+                && a.family_id != b.family_id
+                && entries_overlap(a, b)
+            {
                 rejected[left] = true;
                 rejected[right] = true;
             }
