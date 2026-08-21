@@ -333,6 +333,40 @@ partition) as a Clipper2 offset on the wall-inset polygon before re-clipping
 raw segments. OrcaSlicer applies it inside the fill class. PnP centralizes it
 in the linker so infill modules emit geometry only.
 
+### Bridge anchor
+The already-printable geometry beneath or beside a potential span — lower-layer
+material or perimeter walls — that bridge extrusion can attach its ends to. An
+area with no anchor on any side is not bridged; it is unsupported overhang for
+the support system. Distinct from a **support demand**, which asks for new
+material underneath rather than a spanning pass above.
+
+_Avoid_: anchor polygon (implementation shape), landing zone
+
+### Floating edge
+The portion of a prospective bridge's boundary that has no **bridge anchor**
+beneath it — the edge would be laid in air. A prospective bridge fully enclosed
+by anchors has no floating edges; one hanging off a cliff face is all floating
+edge. Floating edges are the input signal for choosing the direction bridge
+lines should run.
+
+_Avoid_: unsupported boundary, open edge
+
+### External bridge
+A bridge printed over empty air beneath it — the classic two-anchor span across
+a void between lower-layer islands. Decided during surface classification of
+the current layer against lower-layer material.
+
+_Avoid_: bottom bridge (role naming), air bridge
+
+### Internal bridge
+A bridge printed inside the model volume over sparse infill instead of solid
+lower material — the first solid shell above a sparse-infill region promoted to
+spanning passes so it does not inherit the sparse pattern. Decided after sparse
+infill geometry exists, not during surface classification; carries its own
+flow/speed settings distinct from **external bridge** ones.
+
+_Avoid_: bridge-over-infill (mechanism name), shell bridge
+
 ### Overhang quartile
 The discrete severity band (1 = least severe, 4 = most severe) classifying
 how far a wall vertex sits from the nearest supported edge on the layer
