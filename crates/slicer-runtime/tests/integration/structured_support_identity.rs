@@ -31,6 +31,7 @@ pub fn structured_support_identity() {
         speed_factor: 1.0,
     };
     let support = SupportIR {
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![SupportEntry {
             family_id: "family-anchored".into(),
             body_id: "body-anchored".into(),

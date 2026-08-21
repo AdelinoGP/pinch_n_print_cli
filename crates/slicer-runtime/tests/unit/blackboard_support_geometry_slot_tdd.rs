@@ -124,6 +124,7 @@ fn support_geometry_slot_roundtrip() {
 }
 
 fn support_entry(family_id: &str, layer: i32) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: layer,
         object_id: "object".into(),
@@ -199,6 +200,7 @@ fn support_plan_merge_rejects_duplicate_region_identity() {
         .expect_err("duplicate support region identity must be rejected");
     assert_eq!(
         error,
+        // exhaustive: error-variant literal compared by assert_eq!; every field is part of the asserted identity
         BlackboardError::DuplicateSupportPlanEntry {
             global_layer_index: 0,
             object_id: "object".into(),

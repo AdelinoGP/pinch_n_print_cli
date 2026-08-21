@@ -863,6 +863,7 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
 
 /// Make a minimal SupportPlanEntry at a given layer index with given point width.
 fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),
@@ -888,6 +889,7 @@ fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry
 /// Make a SupportPlanEntry with a negative (raft) layer index.
 fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
     // global_layer_index is i32 to support negative indices for raft layers.
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: index,
         object_id: "test-object".to_string(),

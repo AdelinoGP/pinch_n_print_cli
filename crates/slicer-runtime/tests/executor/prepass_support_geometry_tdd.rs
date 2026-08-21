@@ -533,6 +533,7 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(mesh, 0);
     let ir = Arc::new(SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![SupportPlanEntry {
             global_layer_index: 0,
             object_id: "plate".into(),
@@ -556,6 +557,7 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
     assert!(blackboard.support_plan().is_some());
 
     let distinct = Arc::new(SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![SupportPlanEntry {
             global_layer_index: 1,
             object_id: "plate".into(),

@@ -106,6 +106,7 @@ fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, M
     support.begin_region("support-object-b", 11);
     support.push_interface_path(support_path(10.0), true)?;
     support.push_raft_path(support_path(20.0))?;
+    // exhaustive: no Default impl; native dispatch response fixture pins every stage-output slot
     Ok(NativeLayerResponse {
         infill: None,
         perimeters: None,
@@ -350,6 +351,7 @@ fn native_prepass_commit_preserves_seam_candidate_reason() {
             ..Default::default()
         })
         .unwrap();
+    // exhaustive: no Default impl; native prepass response fixture pins every stage-output slot
     let response = NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -378,6 +380,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
             ..Default::default()
         })
         .unwrap();
+    // exhaustive: no Default impl; native prepass response fixture pins every stage-output slot
     let response = NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -390,6 +393,7 @@ fn native_prepass_commit_rejects_invalid_region_id() {
 }
 
 fn empty_native_prepass_response() -> NativePrepassResponse {
+    // exhaustive: no Default impl; native prepass response fixture pins every stage-output slot
     NativePrepassResponse {
         mesh_analysis: None,
         layer_plan: None,
@@ -481,6 +485,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
     .unwrap();
     let mut support = SupportGeometryOutput::new();
     support
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         .push_support_plan_entry(SupportPlanEntry {
             global_layer_index: 0,
             object_id: "object".into(),
@@ -497,6 +502,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             decline_reason: None,
         })
         .unwrap();
+    // exhaustive: no Default impl; native prepass response fixture pins every stage-output slot
     let response = NativePrepassResponse {
         mesh_analysis: Some(mesh),
         layer_plan: Some(layers),

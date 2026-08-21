@@ -119,6 +119,7 @@ fn dangling_travel_anchor_rejected() {
 
 #[test]
 fn anchored_contracts_construct_round_trip_and_order() {
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     let planar = AnchoredEntity {
         local_id: 2,
         anchor_global_layer_index: 4,
@@ -135,6 +136,7 @@ fn anchored_contracts_construct_round_trip_and_order() {
             z: 0.2,
         }],
     };
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     let spanning = AnchoredEntity {
         local_id: 1,
         anchor_global_layer_index: 4,

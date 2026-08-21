@@ -5,6 +5,7 @@ use slicer_scheduler::execution_plan::ExecutionPlan;
 
 pub fn capability_derived_anchor_closure() {
     let plan = ExecutionPlan::default();
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     let path_optimization = AnchoredEntity {
         local_id: 1,
         anchor_global_layer_index: 7,

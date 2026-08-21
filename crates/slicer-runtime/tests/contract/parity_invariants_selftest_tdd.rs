@@ -175,6 +175,7 @@ fn support_segment(point_count: usize, role: ExtrusionRole, jitter: f32) -> Extr
 }
 
 fn support_entry(layer: i32, segments: Vec<ExtrusionPath3D>) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: layer,
         object_id: "parity-object".to_string(),
@@ -772,6 +773,7 @@ fn support_ir(jitter: f32) -> SupportIR {
         schema_version: semver(),
         global_layer_index: 0,
         entries: vec![
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
             SupportEntry {
                 family_id: "fixture-family".into(),
                 body_id: "fixture-body".into(),
@@ -781,6 +783,7 @@ fn support_ir(jitter: f32) -> SupportIR {
                 role: SupportRole::SupportBody,
                 paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
             },
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
             SupportEntry {
                 family_id: "fixture-family".into(),
                 body_id: "fixture-body".into(),

@@ -97,6 +97,7 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
         regions: vec![region_with_annotations(vec![enclosing_square()], semantics)],
     };
     let plan = SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![slicer_ir::SupportPlanEntry {
             global_layer_index: 0,
             object_id: "obj1".into(),
@@ -344,6 +345,7 @@ fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerVi
     PaintRegionLayerView::new(0)
         .with_slice_ir(Arc::new(slice))
         .with_support_plan(Arc::new(SupportPlanIR {
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
             entries: vec![slicer_ir::SupportPlanEntry {
                 global_layer_index: 0,
                 object_id: "obj1".into(),

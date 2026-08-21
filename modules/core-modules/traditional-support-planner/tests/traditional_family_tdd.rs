@@ -527,6 +527,7 @@ fn disabled_and_declined() {
         }
     }
 
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let declined = SupportPlanEntry {
         global_layer_index: 0,
         object_id: "object-a".into(),
@@ -749,6 +750,7 @@ fn invalid_body_rejected() {
         holes: vec![],
     };
     let plan = SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![SupportPlanEntry {
             global_layer_index: 0,
             object_id: "object-a".into(),

@@ -21,6 +21,7 @@ fn plan() -> ExecutionPlan {
 }
 
 fn entity(local_id: u64, path_points: Vec<Point3>) -> AnchoredEntity {
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     AnchoredEntity {
         local_id,
         anchor_global_layer_index: 0,

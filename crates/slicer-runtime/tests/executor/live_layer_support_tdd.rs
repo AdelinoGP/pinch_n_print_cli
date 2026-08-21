@@ -75,6 +75,7 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             patch: 0,
         },
         global_layer_index: 0,
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![SupportEntry {
             family_id: "fixture-family".into(),
             body_id: "fixture-body".into(),
@@ -1085,6 +1086,7 @@ mod planner_consuming_tier {
 
     fn plan_for_obj0(layer_index: u32, layer_z: f32) -> Arc<SupportPlanIR> {
         Arc::new(SupportPlanIR {
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
             entries: vec![SupportPlanEntry {
                 global_layer_index: layer_index as i32,
                 object_id: "obj-0".to_string(),
@@ -1274,6 +1276,7 @@ mod planner_consuming_tier {
 
         let plan = Arc::new(SupportPlanIR {
             entries: vec![
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
@@ -1302,6 +1305,7 @@ mod planner_consuming_tier {
                     provenance: vec![],
                     decline_reason: None,
                 },
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),

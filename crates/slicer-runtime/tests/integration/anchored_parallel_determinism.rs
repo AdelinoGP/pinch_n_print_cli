@@ -19,6 +19,7 @@ fn plan() -> ExecutionPlan {
 }
 
 fn event(local_id: u64, z: f32) -> AnchoredEntity {
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     AnchoredEntity {
         local_id,
         anchor_global_layer_index: 0,

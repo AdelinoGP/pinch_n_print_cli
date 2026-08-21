@@ -42,6 +42,7 @@ fn entry(
     region_id: u64,
     body: Option<ExPolygon>,
 ) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: object_id.into(),
@@ -147,6 +148,7 @@ fn support_entry(
     x1: f32,
     y1: f32,
 ) -> SupportEntry {
+    // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
     SupportEntry {
         family_id: family.into(),
         body_id: body.into(),

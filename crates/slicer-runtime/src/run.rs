@@ -1292,11 +1292,13 @@ mod tests {
             Arc::new(crate::progress_events::NullEmitter),
             Arc::clone(&collector),
         );
+        // exhaustive: no Default impl for ModuleAccessAudit; audit fixture pins every access-audit field
         let audit = ModuleAccessAudit {
             module_id: "support-geometry".into(),
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
             batch_calls: Vec::new(),
+            // exhaustive: no Default impl for Diagnostic; audit fixture pins the full diagnostic shape
             diagnostics: vec![Diagnostic {
                 severity: DiagnosticSeverity::Warn,
                 code: 1200,
@@ -1327,11 +1329,13 @@ mod tests {
             Arc::new(crate::progress_events::NullEmitter),
             Arc::clone(&collector),
         );
+        // exhaustive: no Default impl for ModuleAccessAudit; audit fixture pins every access-audit field
         let audit = ModuleAccessAudit {
             module_id: "support-geometry".into(),
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
             batch_calls: Vec::new(),
+            // exhaustive: no Default impl for Diagnostic; audit fixture pins the full diagnostic shape
             diagnostics: vec![Diagnostic {
                 severity: DiagnosticSeverity::Warn,
                 code: 1202,

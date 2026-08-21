@@ -86,6 +86,7 @@ fn mesh() -> MeshIR {
 }
 
 fn entry(body: &str, x: i64) -> slicer_ir::SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     slicer_ir::SupportPlanEntry {
         global_layer_index: 0,
         object_id: "object-a".into(),

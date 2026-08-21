@@ -834,6 +834,7 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
     slicer_ir::SupportIR {
         schema_version: semver(1, 0, 0),
         global_layer_index: 0,
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![slicer_ir::SupportEntry {
             family_id: "fixture-family".into(),
             body_id: "fixture-body".into(),
