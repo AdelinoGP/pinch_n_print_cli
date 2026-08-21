@@ -55,7 +55,7 @@ pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,
 };
 pub use smooth_outward::{
-    smooth_outward, smooth_outward_ex, smooth_outward_polygon, DEFAULT_SMOOTHING_SEGMENTS,
+    smooth_outward, smooth_outward_ex, smooth_outward_polygon, smooth_outward_polygons,
 };
 pub use stage_io::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
