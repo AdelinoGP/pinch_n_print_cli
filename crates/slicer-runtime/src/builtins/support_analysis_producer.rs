@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use slicer_core::algos::overhang_annotation::detect_support_overhangs;
+use rayon::prelude::*;
+use slicer_core::algos::overhang_annotation::{detect_support_contacts, SupportContactParams};
+use slicer_core::polygon_ops::union_ex;
 use slicer_ir::mm_to_units;
 use slicer_ir::slice_ir::{
     ExPolygon, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
@@ -20,7 +22,7 @@ use crate::blackboard::Blackboard;
 ///
 /// Candidates are **support contacts**, not model cross-sections. Each is the
 /// angle-thresholded overhang region produced by
-/// [`detect_support_overhangs`](slicer_core::algos::overhang_annotation::detect_support_overhangs),
+/// [`detect_support_contacts`](slicer_core::algos::overhang_annotation::detect_support_contacts),
 /// mirroring canonical `detect_overhangs` (`SupportMaterial.cpp`): a contact
 /// appears once, at the overhang's own Z, and geometry with no overhang yields
 /// no candidates at all.
@@ -57,10 +59,15 @@ pub fn commit_support_analysis_builtin(
             let mut id = 0_u64;
             let mut object_bounds: BTreeMap<String, (i64, i64, i64, i64)> = BTreeMap::new();
             let mut object_tops: BTreeMap<String, (u32, Vec<ExPolygon>)> = BTreeMap::new();
-            // Per-(object, region) footprint series, keyed by layer index, used
-            // for angle-thresholded contact detection after the sweep.
-            let mut region_series: BTreeMap<(String, u64), BTreeMap<u32, Vec<ExPolygon>>> =
+            // Layer-major contact detection state. Canonical `detect_overhangs`
+            // reads `object.layers()[layer_id - 1]->lslices` -- the union of
+            // *all* regions of the layer below, at object level -- and diffs
+            // each of the current layer's regions against it. So we accumulate
+            // (a) the per-(object, layer) polygon set that becomes that union
+            // and (b) one work item per (layer, object, region).
+            let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
                 BTreeMap::new();
+            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>)> = Vec::new();
             for slice in slices.iter() {
                 for region in &slice.regions {
                     if region.polygons.is_empty() {
@@ -92,62 +99,86 @@ pub fn commit_support_analysis_builtin(
                     if slice.global_layer_index > top.0 {
                         *top = (slice.global_layer_index, region.polygons.clone());
                     }
-                    // Collect the per-region footprint series; candidates are
-                    // derived from it after the sweep, once every layer of each
-                    // region is known.
-                    region_series
-                        .entry((region.object_id.clone(), region.region_id))
+                    // Feed the layer-major detection state: this region's
+                    // polygons join its object's layer union, and the region
+                    // itself becomes one unit of contact-detection work.
+                    object_layer_polygons
+                        .entry((region.object_id.clone(), slice.global_layer_index))
                         .or_default()
-                        .insert(slice.global_layer_index, region.polygons.clone());
+                        .extend(region.polygons.iter().cloned());
+                    contact_work.push((
+                        slice.global_layer_index,
+                        region.object_id.clone(),
+                        region.region_id,
+                        region.polygons.clone(),
+                    ));
                 }
             }
 
-            // Angle-thresholded contact detection per (object, region), so
-            // overhang attribution survives multi-object and multi-region
-            // plates. `detect_support_overhangs` requires physically adjacent
-            // layers, so each series is densified across its own contiguous
-            // layer span: a region that is absent on a layer contributes an
-            // empty footprint there. That is the correct semantics rather than
-            // a papering-over — a region appearing above empty space is wholly
-            // unsupported, and `diff(current, [])` yields exactly that.
-            for ((object_id, region_id), by_layer) in region_series {
-                let (Some(&first), Some(&last)) =
-                    (by_layer.keys().next(), by_layer.keys().next_back())
-                else {
-                    continue;
-                };
-                let series = (first..=last)
-                    .map(|layer_index| {
-                        (
-                            layer_index,
-                            layer_height_mm(&plan.global_layers, layer_index),
-                            by_layer.get(&layer_index).cloned().unwrap_or_default(),
-                        )
-                    })
-                    .collect::<Vec<_>>();
+            // Angle-thresholded contact detection, layer-major then
+            // region-major, mirroring canonical `detect_overhangs`
+            // (`SupportMaterial.cpp`). The lower-layer set is the object's
+            // whole layer below, unioned once, and every region of the layer
+            // above is diffed against that same union. Keying the lower layer
+            // per-region instead (the pre-parity shape) made a region that
+            // first appears at layer `k` while sitting squarely on a *different*
+            // region below emit its entire cross-section as a contact --
+            // spurious full-area support on every multi-region object.
+            let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = object_layer_polygons
+                .into_iter()
+                .map(|(key, polygons)| (key, union_ex(&polygons)))
+                .collect();
+            let base_params = resolve_contact_params(config, threshold_angle_deg);
+            // Deterministic order regardless of `SliceIR` ordering; the
+            // parallel pass below reads only shared immutable state and
+            // `rayon`'s `collect` into a `Vec` preserves this order, so the
+            // committed candidate stream is byte-stable (the same
+            // order-independence property the previous per-series `par_iter`
+            // had).
+            contact_work.sort_by(|a, b| (a.0, &a.1, a.2).cmp(&(b.0, &b.1, b.2)));
+            let contacts: Vec<(u32, String, u64, Vec<ExPolygon>)> = contact_work
+                .par_iter()
+                .filter_map(|(layer_index, object_id, region_id, polygons)| {
+                    // Layer 0 rests on the bed and has no layer below it.
+                    let lower_index = layer_index.checked_sub(1)?;
+                    let empty: Vec<ExPolygon> = Vec::new();
+                    let lower = object_layer_union
+                        .get(&(object_id.clone(), lower_index))
+                        .unwrap_or(&empty);
+                    let params = SupportContactParams {
+                        // Canonical scales the offset by the *lower* layer's
+                        // height.
+                        lower_layer_height_mm: layer_height_mm(&plan.global_layers, lower_index),
+                        ..base_params
+                    };
+                    // Support blockers are not available to this stage; see
+                    // `detect_support_contacts`' "Not modelled" section.
+                    let geometry = detect_support_contacts(polygons, lower, &[], &params);
+                    if geometry.is_empty() {
+                        return None;
+                    }
+                    Some((*layer_index, object_id.clone(), *region_id, geometry))
+                })
+                .collect();
 
-                let contacts = detect_support_overhangs(&series, threshold_angle_deg);
-                let mut contact_layers = contacts.into_iter().collect::<Vec<_>>();
-                contact_layers.sort_by_key(|(layer_index, _)| *layer_index);
-                for (layer_index, geometry) in contact_layers {
-                    let z = plan
-                        .global_layers
-                        .get(layer_index as usize)
-                        .map_or(0.0, |layer| layer.z);
-                    ir.candidates.push(SupportCandidate {
-                        id,
-                        geometry,
-                        source: SupportCandidateSource {
-                            object_id: object_id.clone(),
-                            region_id,
-                            global_layer_index: layer_index,
-                            z_units: mm_to_units(z),
-                        },
-                        enforced: false,
-                        blocked: false,
-                    });
-                    id += 1;
-                }
+            for (layer_index, object_id, region_id, geometry) in contacts {
+                let z = plan
+                    .global_layers
+                    .get(layer_index as usize)
+                    .map_or(0.0, |layer| layer.z);
+                ir.candidates.push(SupportCandidate {
+                    id,
+                    geometry,
+                    source: SupportCandidateSource {
+                        object_id,
+                        region_id,
+                        global_layer_index: layer_index,
+                        z_units: mm_to_units(z),
+                    },
+                    enforced: false,
+                    blocked: false,
+                });
+                id += 1;
             }
             ir.candidates.sort_by_key(|candidate| {
                 (
@@ -208,6 +239,83 @@ pub fn commit_support_analysis_builtin(
         }
     }
     blackboard.commit_support_analysis(Arc::new(ir))
+}
+
+/// Resolves the config half of [`SupportContactParams`] once per slice.
+///
+/// * `fw` -- the external-perimeter extrusion width -- is read as extensions
+///   `outer_wall_line_width`, falling back to the typed `line_width` field,
+///   falling back to `0.4` mm. This mirrors `resolve_line_width_mm` in
+///   `crate::builtins::overhang_annotation_producer`, the resolution
+///   `annotate_overhangs`' caller already uses.
+/// * `support_threshold_overlap` is canonical
+///   `ConfigOptionFloatOrPercent(50., true)`, i.e. 50% of `fw` by default, and
+///   resolves against `fw` as its base.
+/// * `support_expansion` is canonical `coFloat`, default `0`.
+///
+/// `lower_layer_height_mm` is per-layer and is filled in by the caller.
+fn resolve_contact_params(
+    config: &ResolvedConfig,
+    threshold_angle_deg: f32,
+) -> SupportContactParams {
+    let typed_line_width = if config.line_width > 0.0 {
+        config.line_width
+    } else {
+        DEFAULT_LINE_WIDTH_MM
+    };
+    let external_perimeter_width_mm =
+        extension_float(config, "outer_wall_line_width").unwrap_or(typed_line_width);
+    let threshold_overlap_mm = extension_abs_value(
+        config,
+        "support_threshold_overlap",
+        external_perimeter_width_mm,
+    )
+    .unwrap_or(DEFAULT_THRESHOLD_OVERLAP_FRACTION * external_perimeter_width_mm);
+    SupportContactParams {
+        threshold_angle_deg,
+        lower_layer_height_mm: 0.0,
+        external_perimeter_width_mm,
+        threshold_overlap_mm,
+        xy_expansion_mm: extension_float(config, "support_expansion").unwrap_or(0.0),
+    }
+}
+
+/// Line width used when neither `outer_wall_line_width` nor the typed
+/// `line_width` field carries a positive value (the typed field defaults to
+/// `0.0`, which would silently disable the tiny-spot filter). Matches the
+/// guest-side default used by `classic-perimeters`/`arachne-perimeters`.
+const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
+
+/// Canonical `support_threshold_overlap` default: `ConfigOptionFloatOrPercent(50., true)`.
+const DEFAULT_THRESHOLD_OVERLAP_FRACTION: f32 = 0.5;
+
+/// Absolute (non-percent) float read from `extensions`.
+fn extension_float(config: &ResolvedConfig, key: &str) -> Option<f32> {
+    match config.extensions.get(key)? {
+        ConfigValue::Float(value) => Some(*value as f32),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value as f32),
+        _ => None,
+    }
+}
+
+/// `extensions` read mirroring `ConfigOptionFloatOrPercent::get_abs_value`:
+/// a percent resolves against `base`, an absolute value is returned unchanged.
+fn extension_abs_value(config: &ResolvedConfig, key: &str, base: f32) -> Option<f32> {
+    match config.extensions.get(key)? {
+        ConfigValue::Percent(percent) => (base > 0.0).then(|| *percent as f32 / 100.0 * base),
+        ConfigValue::FloatOrPercent { value, is_percent } => {
+            if *is_percent {
+                (base > 0.0).then(|| *value as f32 / 100.0 * base)
+            } else {
+                Some(*value as f32)
+            }
+        }
+        ConfigValue::Float(value) => Some(*value as f32),
+        _ => None,
+    }
 }
 
 fn support_family(config: &ResolvedConfig) -> String {
@@ -274,21 +382,39 @@ mod tests {
         SliceIR, SlicedRegion,
     };
 
-    fn square(x: i64, y: i64, size: i64) -> ExPolygon {
+    /// Axis-aligned square in **millimetres**.
+    ///
+    /// Fixtures here must be mm-scale: contact detection now runs canonical's
+    /// `-0.1 * fw` tiny-spot filter, so the raw-unit squares this module used
+    /// before (~30 units ~= 0.003mm) are far below one line width and are
+    /// filtered away entirely. The geometry below is sized in whole
+    /// millimetres for the same reason.
+    fn square(x_mm: f32, y_mm: f32, size_mm: f32) -> ExPolygon {
         ExPolygon {
             contour: Polygon {
                 points: vec![
-                    Point2 { x, y },
-                    Point2 { x: x + size, y },
-                    Point2 {
-                        x: x + size,
-                        y: y + size,
-                    },
-                    Point2 { x, y: y + size },
+                    Point2::from_mm(x_mm, y_mm),
+                    Point2::from_mm(x_mm + size_mm, y_mm),
+                    Point2::from_mm(x_mm + size_mm, y_mm + size_mm),
+                    Point2::from_mm(x_mm, y_mm + size_mm),
                 ],
             },
             holes: Vec::new(),
         }
+    }
+
+    /// Two 0.2mm-thick layers at realistic Z. `GlobalLayer::default()` has
+    /// `z == 0`, which makes every layer height 0 and therefore every
+    /// `lower_layer_offset` 0 — a plain difference, never the angle-thresholded
+    /// path these fixtures mean to exercise.
+    fn global_layers(count: u32) -> Vec<GlobalLayer> {
+        (0..count)
+            .map(|index| GlobalLayer {
+                index,
+                z: (index + 1) as f32 * 0.2,
+                ..GlobalLayer::default()
+            })
+            .collect()
     }
 
     fn support_enabled_config() -> ResolvedConfig {
@@ -304,7 +430,7 @@ mod tests {
         let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 2);
         blackboard
             .commit_layer_plan(Arc::new(LayerPlanIR {
-                global_layers: vec![GlobalLayer::default(), GlobalLayer::default()],
+                global_layers: global_layers(2),
                 ..LayerPlanIR::default()
             }))
             .unwrap();
@@ -337,9 +463,11 @@ mod tests {
 
     #[test]
     fn support_analysis_populates_all_derivable_inputs() {
-        // Layer 1 is wider than layer 0, so layer 1 genuinely overhangs.
-        let lower = square(10, 20, 30);
-        let upper = square(0, 10, 50);
+        // Layer 1 is a 5mm square overhanging a 3mm one by 1mm on every side,
+        // so layer 1 genuinely overhangs at the default 30-degree threshold
+        // (0.2mm layer / tan(31 deg) = 0.33mm of required overlap).
+        let lower = square(1.0, 2.0, 3.0);
+        let upper = square(0.0, 1.0, 5.0);
         let mut blackboard = blackboard_with_stack(&lower, &upper);
 
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
@@ -401,8 +529,8 @@ mod tests {
         // Inherited from the traditional planner's former
         // `fully_covered_candidate_is_declined`, which asserted this shape but
         // actually passed on an unrelated empty-mesh path.
-        let wide = square(0, 0, 40);
-        let narrow = square(10, 10, 10);
+        let wide = square(0.0, 0.0, 4.0);
+        let narrow = square(1.0, 1.0, 1.0);
         // Layer 0 is wide, layer 1 is narrow and sits entirely within it.
         let mut blackboard = blackboard_with_stack(&wide, &narrow);
 
@@ -423,7 +551,7 @@ mod tests {
         // candidate per non-empty region per layer with no overhang detection
         // whatsoever, so a straight column produced support candidates at every
         // layer. Identical footprints must now produce none.
-        let polygon = square(10, 20, 30);
+        let polygon = square(1.0, 2.0, 3.0);
         let mut blackboard = blackboard_with_stack(&polygon, &polygon);
 
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
@@ -450,7 +578,7 @@ mod tests {
     /// a configured value reaches the detector rather than the default.
     #[test]
     fn configured_threshold_angle_reaches_detection() {
-        let polygon = square(10, 20, 30);
+        let polygon = square(1.0, 2.0, 3.0);
 
         let mut blackboard = blackboard_with_stack(&polygon, &polygon);
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
@@ -487,7 +615,7 @@ mod tests {
         let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
         blackboard
             .commit_layer_plan(Arc::new(LayerPlanIR {
-                global_layers: vec![GlobalLayer::default()],
+                global_layers: global_layers(2),
                 ..LayerPlanIR::default()
             }))
             .unwrap();
@@ -496,7 +624,7 @@ mod tests {
             // support contacts, so each region needs a genuine overhang: layer 1
             // is wider than layer 0.
             .commit_slice_ir(Arc::new(
-                [(0_u32, 10_i64), (1_u32, 20_i64)]
+                [(0_u32, 1.0_f32), (1_u32, 2.0_f32)]
                     .into_iter()
                     .map(|(global_layer_index, size)| SliceIR {
                         global_layer_index,
@@ -504,7 +632,7 @@ mod tests {
                             .map(|region_id| SlicedRegion {
                                 object_id: "object".to_string(),
                                 region_id,
-                                polygons: vec![square(0, 0, size)],
+                                polygons: vec![square(0.0, 0.0, size)],
                                 ..SlicedRegion::default()
                             })
                             .collect(),
