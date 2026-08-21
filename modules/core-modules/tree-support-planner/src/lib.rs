@@ -24,11 +24,13 @@
 //!
 //! # Algorithmic features (Step 5)
 //!
-//! - **Avoidance / collision**: per-support-layer `collision_polys` (union of
-//!   `SupportGeometryView.outlines`) and `avoidance_polys` (inflated by
-//!   `branch_radius + tree_support_branch_distance / 2`). Move-pass clamps
-//!   nodes into `avoidance_polys`; nodes whose target lies in
-//!   `collision_polys` are dropped.
+//! - **Avoidance / collision**: `TreeVolumes`, the port of canonical
+//!   `TreeSupportData`. `get_collision(r, l)` is the layer outline inflated by
+//!   `r + support_object_xy_distance` and simplified at the
+//!   `m_radius_sample_resolution` grid; `get_avoidance(r, l)` is the bottom-up
+//!   recurrence `union(erode(avoidance(r, l-1), max_move[l-1]), collision(r, l))`.
+//!   Move-pass pushes nodes out of the avoidance region; nodes whose target
+//!   lies in collision are dropped.
 //! - **Radius tapering**: two-piece per-emit radius. With
 //!   `mm_to_top = dist_to_top * effective_layer_height`,
 //!   `raw = if mm_to_top <= branch_radius { mm_to_top }
@@ -115,6 +117,11 @@ pub struct SupportPlanner {
     /// declared in the manifest but read nowhere, so tree support printed its
     /// top interface fused to the model.
     support_top_z_distance_mm: f32,
+    /// Canonical `TreeSupportData::m_xy_distance` — the horizontal clearance
+    /// every collision volume is inflated by. Defect F-16: the planner used to
+    /// inflate avoidance by `tree_support_branch_distance / 2`, which is
+    /// canonical's contact-point `point_spread`, not a clearance at all.
+    support_object_xy_distance: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -379,15 +386,336 @@ fn convex_hull(mut points: Vec<Point2>) -> Vec<Point2> {
     hull
 }
 
-/// Holds collision and avoidance polygons for a single support layer.
-#[derive(Clone, Debug, Default)]
-struct LayerCollisionCache {
-    /// Direct support-outline ExPolygons — nodes must stay outside these.
-    /// Holes are preserved so a point inside a hole is not in collision.
-    collision_polys: Vec<ExPolygon>,
-    /// Inflated collision ExPolygons — nodes must stay inside these.
-    /// Holes are preserved from the offset result.
-    avoidance_polys: Vec<ExPolygon>,
+// ── Canonical tree-support volumes layer (TreeSupportData) ────────────────
+//
+// Port of `TreeSupportData::calculate_collision` / `::calculate_avoidance`
+// (`OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`).
+//
+// Canonical:
+//   collision(r, l) = simplify(offset_ex(m_layer_outlines[l], scale_(r + m_xy_distance)),
+//                              scale_(m_radius_sample_resolution))
+//   avoidance(r, l) = union_ex(offset_ex(avoidance(r, l - 1),
+//                                        scale_(-m_max_move_distances[l - 1])),
+//                              collision(r, l))
+//   avoidance(r, 0) = collision(r, 0)
+//
+// Canonical evaluates the avoidance recurrence lazily with a
+// `max_recursion_depth = 100` trampoline; that trampoline exists only to bound
+// C++ stack depth. This port fills the whole ladder iteratively bottom-up: a
+// wasm guest has a far smaller stack than the host C++ build, and a recursive
+// port risks blowing it on tall objects.
+
+/// Canonical `m_radius_sample_resolution`
+/// (`g_config_tree_support_collision_resolution` in `libslic3r.h`), in mm.
+/// Radii are bucketed to this grid so the collision/avoidance caches stay small.
+const RADIUS_SAMPLE_RESOLUTION_MM: f32 = 0.2;
+
+/// Canonical `m_xy_distance` default — the `support_object_xy_distance` print
+/// setting. Used when the config key is absent.
+const DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
+
+/// Canonical `TreeSupportData::ceil_radius`: snap a radius up onto the
+/// `m_radius_sample_resolution` grid so nearby radii share a cache slot.
+fn ceil_radius(radius_mm: f32) -> f32 {
+    if !radius_mm.is_finite() || radius_mm <= 0.0 {
+        return 0.0;
+    }
+    (radius_mm / RADIUS_SAMPLE_RESOLUTION_MM).ceil() * RADIUS_SAMPLE_RESOLUTION_MM
+}
+
+/// Cache key for a bucketed radius. Scaled units keep the key exact — an `f32`
+/// is not `Hash`/`Eq`, and rounding to units is the same quantisation the
+/// geometry itself is subject to.
+fn radius_key(radius_mm: f32) -> i64 {
+    mm_to_units(ceil_radius(radius_mm))
+}
+
+/// Iterative Douglas-Peucker on an open polyline, in scaled units.
+///
+/// `host::simplify_polygon` ignores its `tolerance_mm` argument on both the
+/// wasm and the native path, so canonical's `expolygons_simplify` has to be
+/// implemented guest-side. The recursion is an explicit stack: the guest has a
+/// small wasm stack and a deeply-sampled contour would otherwise risk it.
+fn douglas_peucker_open(points: &[Point2], tolerance_units: f64) -> Vec<Point2> {
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let mut keep = vec![false; points.len()];
+    keep[0] = true;
+    let last = points.len() - 1;
+    keep[last] = true;
+    let tol_sq = tolerance_units * tolerance_units;
+
+    let mut stack: Vec<(usize, usize)> = vec![(0, last)];
+    while let Some((lo, hi)) = stack.pop() {
+        if hi <= lo + 1 {
+            continue;
+        }
+        let a = points[lo];
+        let b = points[hi];
+        let dx = (b.x - a.x) as f64;
+        let dy = (b.y - a.y) as f64;
+        let seg_len_sq = dx * dx + dy * dy;
+        let mut best_idx = lo;
+        let mut best_dist_sq = -1.0_f64;
+        for (offset, p) in points[lo + 1..hi].iter().enumerate() {
+            let px = (p.x - a.x) as f64;
+            let py = (p.y - a.y) as f64;
+            let dist_sq = if seg_len_sq <= f64::EPSILON {
+                px * px + py * py
+            } else {
+                // Perpendicular distance to the *segment*, matching Slic3r's
+                // `MultiPoint::douglas_peucker`, which clamps the projection.
+                let t = ((px * dx + py * dy) / seg_len_sq).clamp(0.0, 1.0);
+                let ex = px - t * dx;
+                let ey = py - t * dy;
+                ex * ex + ey * ey
+            };
+            if dist_sq > best_dist_sq {
+                best_dist_sq = dist_sq;
+                best_idx = lo + 1 + offset;
+            }
+        }
+        if best_dist_sq > tol_sq {
+            keep[best_idx] = true;
+            stack.push((lo, best_idx));
+            stack.push((best_idx, hi));
+        }
+    }
+
+    points
+        .iter()
+        .zip(keep)
+        .filter_map(|(p, k)| if k { Some(*p) } else { None })
+        .collect()
+}
+
+/// Canonical `Polygon::simplify`: close the ring, Douglas-Peucker it as an open
+/// polyline, then drop the duplicated closing point. Rings that collapse below
+/// three vertices are discarded by the caller.
+fn simplify_ring(ring: &Polygon, tolerance_units: f64) -> Polygon {
+    if ring.points.len() < 3 {
+        return ring.clone();
+    }
+    let mut closed = ring.points.clone();
+    closed.push(ring.points[0]);
+    let mut simplified = douglas_peucker_open(&closed, tolerance_units);
+    simplified.pop();
+    Polygon { points: simplified }
+}
+
+/// Canonical `expolygons_simplify`.
+fn expolygons_simplify(polys: &[ExPolygon], tolerance_units: f64) -> Vec<ExPolygon> {
+    polys
+        .iter()
+        .filter_map(|ex| {
+            let contour = simplify_ring(&ex.contour, tolerance_units);
+            if contour.points.len() < 3 {
+                return None;
+            }
+            let holes = ex
+                .holes
+                .iter()
+                .map(|h| simplify_ring(h, tolerance_units))
+                .filter(|h| h.points.len() >= 3)
+                .collect();
+            Some(ExPolygon { contour, holes })
+        })
+        .collect()
+}
+
+/// Union a polygon set with itself, collapsing overlaps.
+fn union_expolys(polys: Vec<ExPolygon>) -> Vec<ExPolygon> {
+    if polys.len() <= 1 {
+        return polys;
+    }
+    let (head, tail) = polys.split_at(1);
+    host::clip_polygons(head, tail, ClipOperation::Union)
+}
+
+/// Canonical `TreeSupportData` — the radius-keyed collision / avoidance volumes
+/// a tree-support run is planned against.
+///
+/// `collision` and `avoidance` are keyed by `(radius_key, layer_index)`. Call
+/// [`TreeVolumes::ensure_radius`] once per radius bucket before reading; the
+/// getters return an empty slice for an unfilled bucket rather than computing
+/// on demand, so the expensive host offsets stay out of the inner node loops.
+struct TreeVolumes {
+    /// Canonical `m_layer_outlines`: the object's cross-section per global
+    /// support layer, straight from `SupportGeometryView`.
+    layer_outlines: Vec<Vec<ExPolygon>>,
+    /// Canonical `m_layer_outlines_below`: the running union of every outline
+    /// at or below each layer, built in the `TreeSupportData` constructor.
+    /// Consumed by the per-part MST and `to_buildplate` passes.
+    layer_outlines_below: Vec<Vec<ExPolygon>>,
+    /// Canonical `m_max_move_distances[l] = layer->height * branch_scale_factor`
+    /// with `branch_scale_factor = tan(tree_support_branch_angle)`, in mm.
+    max_move_distances: Vec<f32>,
+    /// Canonical `m_xy_distance` — the `support_object_xy_distance` setting.
+    xy_distance: f32,
+    collision: std::collections::HashMap<(i64, usize), Vec<ExPolygon>>,
+    avoidance: std::collections::HashMap<(i64, usize), Vec<ExPolygon>>,
+}
+
+impl TreeVolumes {
+    /// Build the outline stack from `SupportGeometryView` and precompute the
+    /// running below-union and the per-layer move budget.
+    fn new(
+        layer_plan: &LayerPlanView,
+        support_geometry: &SupportGeometryView,
+        branch_angle_deg: f32,
+        xy_distance: f32,
+    ) -> Self {
+        let layer_count = layer_plan.layers.len();
+        let mut layer_outlines: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+        for entry in &support_geometry.entries {
+            let layer_idx = entry.global_support_layer_index as usize;
+            if layer_idx >= layer_count {
+                continue;
+            }
+            for expoly in &entry.outlines {
+                if expoly.contour.points.len() >= 3 {
+                    layer_outlines[layer_idx].push(expoly.clone());
+                }
+            }
+        }
+
+        // Canonical builds `m_layer_outlines_below` as a running union in the
+        // `TreeSupportData` constructor. Layers that contribute nothing reuse
+        // the accumulator verbatim, which keeps the host call count down to the
+        // number of layers that actually carry outlines.
+        let mut layer_outlines_below: Vec<Vec<ExPolygon>> = Vec::with_capacity(layer_count);
+        let mut below: Vec<ExPolygon> = Vec::new();
+        for outlines in &layer_outlines {
+            if !outlines.is_empty() {
+                below = if below.is_empty() {
+                    union_expolys(outlines.clone())
+                } else {
+                    host::clip_polygons(&below, outlines, ClipOperation::Union)
+                };
+            }
+            layer_outlines_below.push(below.clone());
+        }
+
+        let branch_scale_factor = branch_angle_deg.to_radians().tan().max(0.0);
+        let max_move_distances = layer_plan
+            .layers
+            .iter()
+            .map(|l| (l.effective_layer_height * branch_scale_factor).max(0.0))
+            .collect();
+
+        Self {
+            layer_outlines,
+            layer_outlines_below,
+            max_move_distances,
+            xy_distance: xy_distance.max(0.0),
+            collision: std::collections::HashMap::new(),
+            avoidance: std::collections::HashMap::new(),
+        }
+    }
+
+    fn layer_count(&self) -> usize {
+        self.layer_outlines.len()
+    }
+
+    /// Raw (uninflated) object outlines at a layer — canonical `m_layer_outlines`.
+    fn outlines_at(&self, layer: usize) -> &[ExPolygon] {
+        self.layer_outlines
+            .get(layer)
+            .map_or(&[][..], |v| v.as_slice())
+    }
+
+    /// Canonical `m_layer_outlines_below` at a layer.
+    #[allow(dead_code)]
+    fn outlines_below(&self, layer: usize) -> &[ExPolygon] {
+        self.layer_outlines_below
+            .get(layer)
+            .map_or(&[][..], |v| v.as_slice())
+    }
+
+    /// Canonical `TreeSupportData::get_collision`.
+    fn get_collision(&self, radius_mm: f32, layer: usize) -> &[ExPolygon] {
+        self.collision
+            .get(&(radius_key(radius_mm), layer))
+            .map_or(&[][..], |v| v.as_slice())
+    }
+
+    /// Canonical `TreeSupportData::get_avoidance`.
+    fn get_avoidance(&self, radius_mm: f32, layer: usize) -> &[ExPolygon] {
+        self.avoidance
+            .get(&(radius_key(radius_mm), layer))
+            .map_or(&[][..], |v| v.as_slice())
+    }
+
+    /// Fill the collision ladder for one radius bucket.
+    ///
+    /// `collision(r, l) = simplify(offset_ex(outlines[l], r + xy_distance))`.
+    /// Every layer's inflation is independent, so the whole stack goes to the
+    /// host in one batch (ADR-0049) rather than one call per layer.
+    fn ensure_collision(&mut self, radius_mm: f32) {
+        let key = radius_key(radius_mm);
+        if self.layer_outlines.is_empty() || self.collision.contains_key(&(key, 0)) {
+            return;
+        }
+        let inflate = ceil_radius(radius_mm) + self.xy_distance;
+        let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
+        let indexed: Vec<usize> = (0..self.layer_count())
+            .filter(|l| !self.layer_outlines[*l].is_empty())
+            .collect();
+        let inflated = slicer_sdk::host_batch::batch_offset(&indexed, |layer| {
+            slicer_sdk::host_batch::OffsetRequest {
+                polygons: self.layer_outlines[*layer].clone(),
+                delta_mm: inflate,
+                join: OffsetJoinType::Miter,
+                arc_tolerance_mm: 0.0,
+            }
+        });
+        let mut by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
+        for (layer, polys) in inflated {
+            by_layer[*layer] = expolygons_simplify(&polys, tolerance_units);
+        }
+        for (layer, polys) in by_layer.into_iter().enumerate() {
+            self.collision.insert((key, layer), polys);
+        }
+    }
+
+    /// Fill the avoidance ladder for one radius bucket, bottom-up.
+    ///
+    /// Avoidance is a strict recurrence — each layer erodes the layer below it
+    /// — so it is walked serially, but iteratively rather than recursively
+    /// (see the module note on canonical's recursion trampoline).
+    fn ensure_avoidance(&mut self, radius_mm: f32) {
+        let key = radius_key(radius_mm);
+        if self.layer_outlines.is_empty() || self.avoidance.contains_key(&(key, 0)) {
+            return;
+        }
+        self.ensure_collision(radius_mm);
+        let mut previous: Vec<ExPolygon> = Vec::new();
+        for layer in 0..self.layer_count() {
+            let collision = self.get_collision(radius_mm, layer).to_vec();
+            let avoidance = if layer == 0 || previous.is_empty() {
+                collision
+            } else {
+                // `offset_polygons` takes a SIGNED delta in mm and erodes on a
+                // negative one, so it serves canonical's negative `offset_ex`.
+                let step = self.max_move_distances.get(layer - 1).copied().unwrap_or(0.0);
+                let eroded = if step <= 0.0 {
+                    previous.clone()
+                } else {
+                    host::offset_polygons(&previous, -step, OffsetJoinType::Miter, 0.0)
+                };
+                if eroded.is_empty() {
+                    collision
+                } else if collision.is_empty() {
+                    eroded
+                } else {
+                    host::clip_polygons(&eroded, &collision, ClipOperation::Union)
+                }
+            };
+            previous = avoidance.clone();
+            self.avoidance.insert((key, layer), avoidance);
+        }
+    }
 }
 
 #[slicer_module]
@@ -484,6 +812,14 @@ impl PrepassModule for SupportPlanner {
             _ => DEFAULT_TOP_Z_DISTANCE_MM,
         }
         .max(0.0);
+        // Canonical `m_xy_distance`. Same key and default (0.35 mm) as
+        // `traditional-support-planner`.
+        let support_object_xy_distance = match config.get("support_object_xy_distance") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
+        }
+        .max(0.0);
         Ok(Self {
             enabled,
             support_family,
@@ -503,6 +839,7 @@ impl PrepassModule for SupportPlanner {
             support_interface_bottom_layers,
             support_on_build_plate_only,
             support_top_z_distance_mm,
+            support_object_xy_distance,
         })
     }
 
@@ -555,57 +892,32 @@ impl PrepassModule for SupportPlanner {
                 .map_err(|e| ModuleError::fatal(1, format!("push_raft_plan failed: {e}")))?;
         }
 
-        // ── Build per-layer collision / avoidance caches ──────────────────
-        // collision_polys[L] = union of all outlines at SupportGeometryView[L]
-        // avoidance_polys[L] = collision_polys[L].inflate(branch_radius + branch_distance/2)
-        let mut collision_cache: Vec<LayerCollisionCache> =
-            vec![LayerCollisionCache::default(); layer_plan.layers.len()];
-
-        let branch_radius = self.tree_support_branch_diameter / 2.0;
-        let avoid_inflate = branch_radius + self.tree_support_branch_distance / 2.0;
-
-        // Every outline's inflation is independent of every other's, and this
-        // loop dominates the module: a native replay of a captured benchy
-        // prepass put 98% of `run_support_geometry`'s runtime here, across ~600
-        // calls at ~7 ms each. Guests cannot thread, and `offset_polygons` runs
-        // clipper2 *inside* the sandbox, so the only way to parallelize it is to
-        // hand the whole set to the host at once (ADR-0049).
+        // ── Build the canonical tree-support volumes (TreeSupportData) ────
         //
-        // Collect in exactly the order the serial loop visited, then distribute
-        // results back the same way — `batch_offset` keeps each result paired
-        // with its own input, so push order into both caches is unchanged.
-        let mut outlines: Vec<(usize, &ExPolygon)> = Vec::new();
-        for entry in &support_geometry.entries {
-            let layer_idx = entry.global_support_layer_index as usize;
-            if layer_idx >= collision_cache.len() {
-                continue;
-            }
-            for expoly in &entry.outlines {
-                if expoly.contour.points.len() >= 3 {
-                    outlines.push((layer_idx, expoly));
-                }
-            }
-        }
-
-        let inflated = slicer_sdk::host_batch::batch_offset(&outlines, |(_, expoly)| {
-            slicer_sdk::host_batch::OffsetRequest {
-                polygons: vec![(*expoly).clone()],
-                delta_mm: avoid_inflate,
-                join: OffsetJoinType::Miter,
-                arc_tolerance_mm: 0.0,
-            }
-        });
-
-        for ((layer_idx, expoly), avoidance) in inflated {
-            collision_cache[*layer_idx]
-                .collision_polys
-                .push((*expoly).clone());
-            for off in avoidance {
-                if off.contour.points.len() >= 3 {
-                    collision_cache[*layer_idx].avoidance_polys.push(off);
-                }
-            }
-        }
+        // Defect F-16: this used to be a per-layer `LayerCollisionCache` whose
+        // collision set was the raw, ZERO-inflated outlines and whose avoidance
+        // set was those outlines inflated by
+        // `branch_radius + tree_support_branch_distance / 2` — a per-layer
+        // quantity with no recursion. Canonical inflates collision by
+        // `radius + m_xy_distance` and derives avoidance as a recurrence down
+        // the layer stack, which is what stops a branch being trapped.
+        let branch_radius = self.tree_support_branch_diameter / 2.0;
+        let mut volumes = TreeVolumes::new(
+            layer_plan,
+            support_geometry,
+            self.branch_angle_deg,
+            self.support_object_xy_distance,
+        );
+        // Canonical keys both ladders on the branch radius. The emit gates
+        // additionally inflate by each node's own *tapered* radius via
+        // `body_intersects`, so they read the radius-free bucket
+        // (`get_collision(0.0, l)` = outlines inflated by `m_xy_distance`
+        // alone); inflating that volume by `branch_radius` as well would count
+        // the radius twice. The avoidance ladder is keyed on `branch_radius`,
+        // as canonical's `get_avoidance(radius, layer)` is.
+        volumes.ensure_collision(0.0);
+        volumes.ensure_avoidance(branch_radius);
+        let volumes = volumes;
 
         // `support_interface_bottom_layers` is implemented as of packet 224: it
         // is read in `from_config` into `self.support_interface_bottom_layers`
@@ -634,7 +946,7 @@ impl PrepassModule for SupportPlanner {
                 region_segmentation,
                 support_analysis,
                 support_geometry,
-                &collision_cache,
+                &volumes,
                 output,
                 &mut dropped_by_layer,
             )?;
@@ -674,7 +986,7 @@ impl SupportPlanner {
         region_segmentation: &RegionSegmentationView,
         support_analysis: &SupportAnalysisView,
         _support_geometry: &SupportGeometryView,
-        collision_cache: &[LayerCollisionCache],
+        volumes: &TreeVolumes,
         output: &mut SupportGeometryOutput,
         dropped_by_layer: &mut std::collections::BTreeMap<u32, usize>,
     ) -> Result<(), ModuleError> {
@@ -766,7 +1078,7 @@ impl SupportPlanner {
                         push_contact(
                             &mut contacts_by_layer,
                             layer_plan,
-                            collision_cache,
+                            volumes,
                             layer_idx,
                             x,
                             y,
@@ -781,7 +1093,7 @@ impl SupportPlanner {
                     push_contact(
                         &mut contacts_by_layer,
                         layer_plan,
-                        collision_cache,
+                        volumes,
                         (layer_idx as usize).min(num_layers as usize - 1),
                         x,
                         y,
@@ -861,7 +1173,7 @@ impl SupportPlanner {
                 push_analysis_contact(
                     &mut contacts_by_layer,
                     layer_plan,
-                    collision_cache,
+                    volumes,
                     layer_idx,
                     x,
                     y,
@@ -901,7 +1213,7 @@ impl SupportPlanner {
                 push_contact(
                     &mut contacts_by_layer,
                     layer_plan,
-                    collision_cache,
+                    volumes,
                     layer_idx,
                     x,
                     y,
@@ -989,14 +1301,13 @@ impl SupportPlanner {
 
             // Collision/avoidance polygons for this layer (Step 5 AC-3)
             let cache_idx = current_global_layer_index as usize;
-            let (collision_polys, avoidance_polys) = if cache_idx < collision_cache.len() {
-                (
-                    collision_cache[cache_idx].collision_polys.as_slice(),
-                    collision_cache[cache_idx].avoidance_polys.as_slice(),
-                )
-            } else {
-                (&[][..], &[][..])
-            };
+            // Canonical `get_collision` / `get_avoidance`. Collision carries
+            // `m_xy_distance` (F-16: it used to carry no inflation at all); the
+            // node's own tapered radius is added by `body_intersects` at each
+            // gate, so the pair sums to canonical's `radius + m_xy_distance`
+            // keyed on the per-node radius rather than a constant one.
+            let collision_polys = volumes.get_collision(0.0, cache_idx);
+            let avoidance_polys = volumes.get_avoidance(branch_radius, cache_idx);
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
@@ -1048,12 +1359,9 @@ impl SupportPlanner {
                     let is_floor = bottom_n > 0
                         && !self.support_on_build_plate_only
                         && (1..=bottom_n).any(|k| {
-                            cache_idx
-                                .checked_sub(k as usize)
-                                .and_then(|below| collision_cache.get(below))
-                                .is_some_and(|cache| {
-                                    point_in_any_expoly(&cache.collision_polys, node.x, node.y)
-                                })
+                            cache_idx.checked_sub(k as usize).is_some_and(|below| {
+                                point_in_any_expoly(volumes.outlines_at(below), node.x, node.y)
+                            })
                         });
                     // Roof: the top `top_n` layers of the column, counting the
                     // contact layer itself. `dist_to_top` is canonical's
@@ -1465,9 +1773,7 @@ impl SupportPlanner {
                         // the next layer's occupancy. This prevents orphaned
                         // lower layers without leaking into exact-Z occupancy.
                         let next_cache_idx = current_global_layer_index.saturating_sub(1) as usize;
-                        let next_collision = collision_cache
-                            .get(next_cache_idx)
-                            .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+                        let next_collision = volumes.outlines_at(next_cache_idx);
                         let next_model_collision: Vec<ExPolygon> = support_analysis
                             .model_occupancy
                             .iter()
@@ -1716,7 +2022,7 @@ fn contact_layer_after_top_gap(
 fn push_contact(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
-    collision_cache: &[LayerCollisionCache],
+    volumes: &TreeVolumes,
     layer_idx: usize,
     x: f32,
     y: f32,
@@ -1730,7 +2036,7 @@ fn push_contact(
     push_contact_with_demand(
         contacts,
         layer_plan,
-        collision_cache,
+        volumes,
         layer_idx,
         x,
         y,
@@ -1747,7 +2053,7 @@ fn push_contact(
 fn push_contact_with_demand(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
-    collision_cache: &[LayerCollisionCache],
+    volumes: &TreeVolumes,
     layer_idx: usize,
     x: f32,
     y: f32,
@@ -1760,9 +2066,7 @@ fn push_contact_with_demand(
     let layer_idx =
         contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
-    let collision = collision_cache
-        .get(global_layer as usize)
-        .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+    let collision = volumes.outlines_at(global_layer as usize);
     let to_buildplate = !point_in_any_expoly(collision, x, y);
     if planner.support_on_build_plate_only && !to_buildplate {
         return;
@@ -1783,7 +2087,7 @@ fn push_contact_with_demand(
 fn push_analysis_contact(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
-    collision_cache: &[LayerCollisionCache],
+    volumes: &TreeVolumes,
     layer_idx: usize,
     x: f32,
     y: f32,
@@ -1795,9 +2099,7 @@ fn push_analysis_contact(
     // Applying the gap again moves sampled geometry off its demand layer.
     let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
-    let collision = collision_cache
-        .get(global_layer as usize)
-        .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+    let collision = volumes.outlines_at(global_layer as usize);
     let to_buildplate = !point_in_any_expoly(collision, x, y);
     if planner.support_on_build_plate_only && !to_buildplate {
         return;
@@ -2406,8 +2708,8 @@ fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f3
     if avoidance_polys.is_empty() {
         return (x, y);
     }
-    // `avoidance_polys` is the model outline inflated by `branch_radius +
-    // branch_distance/2` — the region a branch must stay *out* of, matching
+    // `avoidance_polys` is canonical `get_avoidance(radius, layer)` — the
+    // region a branch of that radius must stay *out* of, matching
     // canonical tree support's avoidance semantics. A node already outside it
     // is safe and must be left where it is; only a node inside is pushed out to
     // the nearest boundary point.
@@ -2483,6 +2785,103 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
 mod tests {
     use super::*;
 
+    // ── Volumes layer (defect F-16) ───────────────────────────────────────
+
+    #[test]
+    fn ceil_radius_snaps_up_to_the_canonical_sample_resolution() {
+        // Canonical `m_radius_sample_resolution` is 0.2 mm.
+        assert!((ceil_radius(0.0) - 0.0).abs() < 1e-6);
+        assert!((ceil_radius(0.01) - 0.2).abs() < 1e-6);
+        assert!((ceil_radius(0.2) - 0.2).abs() < 1e-6);
+        assert!((ceil_radius(0.21) - 0.4).abs() < 1e-6);
+        assert!((ceil_radius(2.5) - 2.6).abs() < 1e-6);
+        // Negative / non-finite radii bucket to zero rather than panicking.
+        assert!((ceil_radius(-1.0) - 0.0).abs() < 1e-6);
+        assert!((ceil_radius(f32::NAN) - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn radius_key_buckets_nearby_radii_into_one_cache_slot() {
+        assert_eq!(radius_key(0.41), radius_key(0.59));
+        assert_ne!(radius_key(0.41), radius_key(0.61));
+        assert_eq!(radius_key(0.6), mm_to_units(0.6));
+    }
+
+    #[test]
+    fn douglas_peucker_drops_collinear_points_and_keeps_corners() {
+        // A straight run of samples collapses to its endpoints; the corner at
+        // the far end survives.
+        let pts: Vec<Point2> = vec![
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 1_000, y: 0 },
+            Point2 { x: 2_000, y: 0 },
+            Point2 { x: 3_000, y: 0 },
+            Point2 { x: 3_000, y: 3_000 },
+        ];
+        let out = douglas_peucker_open(&pts, mm_to_units(0.2) as f64);
+        assert_eq!(
+            out,
+            vec![
+                Point2 { x: 0, y: 0 },
+                Point2 { x: 3_000, y: 0 },
+                Point2 { x: 3_000, y: 3_000 },
+            ]
+        );
+    }
+
+    #[test]
+    fn douglas_peucker_keeps_deviation_above_tolerance() {
+        // 0.2 mm tolerance = 2000 units. A 3000-unit bump must survive.
+        let pts: Vec<Point2> = vec![
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 5_000, y: 3_000 },
+            Point2 { x: 10_000, y: 0 },
+        ];
+        let out = douglas_peucker_open(&pts, mm_to_units(0.2) as f64);
+        assert_eq!(out.len(), 3, "deviation above tolerance must be kept");
+    }
+
+    #[test]
+    fn expolygons_simplify_preserves_a_square_and_its_hole() {
+        let square = |half: i64| Polygon {
+            points: vec![
+                Point2 { x: -half, y: -half },
+                Point2 { x: half, y: -half },
+                Point2 { x: half, y: half },
+                Point2 { x: -half, y: half },
+            ],
+        };
+        // Densify one edge with points that are exactly collinear.
+        let mut contour = square(mm_to_units(10.0));
+        contour.points.insert(1, Point2 { x: 0, y: -mm_to_units(10.0) });
+        let input = vec![ExPolygon {
+            contour,
+            holes: vec![square(mm_to_units(2.0))],
+        }];
+        let out = expolygons_simplify(&input, mm_to_units(0.2) as f64);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].contour.points.len(), 4, "collinear insert removed");
+        assert_eq!(out[0].holes.len(), 1, "hole survives simplification");
+        assert_eq!(out[0].holes[0].points.len(), 4);
+    }
+
+    #[test]
+    fn expolygons_simplify_drops_rings_that_collapse() {
+        // A sliver far below the tolerance has no vertex worth keeping.
+        let sliver = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 { x: 0, y: 0 },
+                    Point2 { x: 10, y: 0 },
+                    Point2 { x: 10, y: 10 },
+                ],
+            },
+            holes: vec![],
+        };
+        let out = expolygons_simplify(&[sliver], mm_to_units(0.2) as f64);
+        assert!(out.is_empty(), "collapsed ring must be dropped, not emitted degenerate");
+    }
+
     /// Assign every region of `object_id` to the tree family.
     ///
     /// `PrePass::SupportAnalysis` is the single authority for a region's
@@ -2527,6 +2926,7 @@ mod tests {
             support_interface_bottom_layers: -1,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
+            support_object_xy_distance: DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
         }
     }
 

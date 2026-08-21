@@ -139,6 +139,17 @@ max     = 1.0
 display = "Support Layer Height"
 group   = "Support"
 
+# Canonical `TreeSupportData::m_xy_distance`: the horizontal clearance every
+# collision volume is inflated by. Declaration copied verbatim from
+# traditional-support-planner.toml so both families read one key.
+[config.schema.support_object_xy_distance]
+type    = "float"
+default = 0.35
+min     = 0.0
+max     = 10.0
+display = "Support/Object XY Distance"
+group   = "Support"
+
 [config.schema.support_top_z_distance_mm]
 type    = "float"
 default = 0.2
