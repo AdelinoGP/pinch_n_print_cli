@@ -388,8 +388,8 @@ fn wall_count_scales_max_move_distance() {
 /// synthetic overhang fixture, frozen to detect regressions. They prove
 /// determinism and stability across runs but do **not** prove parity with
 /// OrcaSlicer's reference output. This test was renamed off `orca_parity` in
-/// packet 224 Step 8 (2026-08-20) and regenerated after the RC-15
-/// contact-sampling port.
+/// packet 224 Step 8 (2026-08-20) and reblessed on 2026-08-21 after the
+/// canonical 7-step tree-support re-port.
 ///
 /// To regenerate the goldens after an intentional algorithm change, set
 /// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
@@ -466,7 +466,7 @@ fn benchy_tree_support_regression_tripwire() {
     let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
 
     // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-20 after the RC-15 contact-sampling port (packet 224 Step 3b).\n";
+    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-21 after the packet-224 canonical tree-support re-port (arena contacts, per-part MSTs, canonical branch merge, canonical move pass).\n";
 
     if regen {
         std::fs::create_dir_all(&golden_dir).expect("create golden dir");
