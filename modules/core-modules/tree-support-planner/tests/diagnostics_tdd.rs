@@ -59,7 +59,7 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -136,7 +136,7 @@ fn multi_object_cap_diagnostic_merges_per_layer() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -219,7 +219,7 @@ fn below_cap_emits_no_cap_diagnostic() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -279,7 +279,7 @@ fn interface_bottom_layers_is_supported_and_warns_nothing() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -335,7 +335,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ),
             ("tree_support_branch_distance", ConfigValue::Float(1.0)),
             ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ]);
         let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -381,7 +381,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ),
             ("tree_support_branch_distance", ConfigValue::Float(1.0)),
             ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ]);
         let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -568,7 +568,7 @@ fn branch_landing_on_model_emits_bottom_interface() {
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 

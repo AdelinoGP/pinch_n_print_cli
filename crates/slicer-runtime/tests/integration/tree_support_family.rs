@@ -240,8 +240,8 @@ pub fn tree_support_family() {
         committed
             .entries
             .iter()
-            .all(|entry| entry.family_id.is_empty() || entry.family_id == "tree"),
-        "committed SupportIR must be attributed to the tree family; got {:?}",
+            .all(|entry| entry.family_id == "tree"),
+        "committed SupportIR must be attributed to the tree family. An EMPTY family_id used to          be accepted here, which let an unattributed entry — the exact defect packet 224 exists          to close — pass this gate. Got {:?}",
         committed
             .entries
             .iter()
@@ -266,17 +266,53 @@ pub fn tree_support_family() {
     assert_eq!(rendered.region_id, 0);
     // A trunk is rendered as inset wall loops plus a density-pitched fill of
     // whatever area the walls leave. This used to require >= 3 paths on the
-    // grounds of "two wall passes plus fill", which only held because the
-    // renderer emitted `wall_count` *coincident* copies of the same contour and
-    // then filled the whole polygon at 100% density regardless of
-    // `support_density` — three passes over one area. The wedge trunk is
-    // roughly one line width across, so it correctly yields a single loop.
-    // Non-overlap of walls and fill is asserted directly in
-    // `modules/core-modules/tree-support`'s own suite.
+    // grounds of "two wall passes plus fill". That number cannot hold: the
+    // wedge trunk is roughly one line width across, so only one loop survives
+    // the inset. What IS canonically true — and what the pre-224 renderer
+    // violated — is that `render_polygon` insets each wall pass by half a line
+    // width past the previous one, so no two wall loops may be COINCIDENT. The
+    // old renderer emitted `wall_count` copies of the same contour at zero
+    // inset and then scan-filled the full polygon at 100% density, extruding
+    // one area several times; a `>= 3` count was satisfied by exactly that bug.
     assert!(
         !rendered.paths.is_empty(),
         "tree trunk must render at least one extrusion path"
     );
+    let closed_loops: Vec<&Vec<_>> = rendered
+        .paths
+        .iter()
+        .filter(|path| path.points.len() > 2)
+        .map(|path| &path.points)
+        .collect();
+    // The original intent of the deleted `paths.len() >= 3` ("two wall passes
+    // plus fill") is preserved structurally: distinct wall loops, and strictly
+    // more paths than loops, i.e. the walls do not account for the whole
+    // render — `render_polygon` fills whatever area survives the wall insets.
+    assert!(
+        closed_loops.len() >= 2,
+        "tree trunk must render at least two distinct wall loops (the module's default          `tree_support_wall_count` is 2); got {} closed loops out of {} paths",
+        closed_loops.len(),
+        rendered.paths.len()
+    );
+    assert!(
+        rendered.paths.len() > closed_loops.len(),
+        "tree trunk must render fill in addition to its wall loops; got {} paths for {} wall loops",
+        rendered.paths.len(),
+        closed_loops.len()
+    );
+    for (i, first) in closed_loops.iter().enumerate() {
+        for second in closed_loops.iter().skip(i + 1) {
+            let coincident = first.len() == second.len()
+                && first.iter().zip(second.iter()).all(|(a, b)| {
+                    (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6 && (a.z - b.z).abs() < 1e-6
+                });
+            assert!(
+                !coincident,
+                "two rendered wall loops are coincident; canonical insets each wall pass half a                  line width past the previous one, so the same contour must never be extruded                  twice ({} closed loops rendered)",
+                closed_loops.len()
+            );
+        }
+    }
     assert!(
         rendered.paths.iter().any(|path| path.points.len() > 2),
         "tree trunk must render at least one closed wall loop"

@@ -58,7 +58,7 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -145,7 +145,7 @@ fn unreachable_buildplate_node_pruned() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -247,7 +247,7 @@ fn buildplate_only_rejects_to_model_contacts() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -333,7 +333,7 @@ fn default_config_does_not_reject_to_model_contacts() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -420,7 +420,7 @@ fn to_model_node_with_collision_not_pruned_by_new_rule() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 

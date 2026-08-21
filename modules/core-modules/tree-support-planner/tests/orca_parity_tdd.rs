@@ -180,7 +180,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -253,40 +253,73 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let &highest = interface_layers.keys().max().unwrap();
     assert!(
         top_interface_layers.contains(&highest),
-        "AC-4: the topmost support layer must be interface, not bare body;          highest={highest} interface={top_interface_layers:?}"
+        "AC-4: the topmost support layer must be interface, not bare body; highest={highest} interface={top_interface_layers:?}"
     );
-    // Interface must be carved out of the body, never printed on top of it.
-    for (&layer, roles) in interface_layers.iter() {
-        if roles.contains(&slicer_ir::SupportPlanRole::TopInterface) {
-            let entry = entries
-                .iter()
-                .find(|e| e.global_layer_index == layer)
-                .unwrap();
-            let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
-                .roles
-                .iter()
-                .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody)
-                .collect();
-            let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
-                .roles
-                .iter()
-                .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface)
-                .collect();
-            for b in &body {
-                for r in &roof {
-                    let overlap = slicer_sdk::host::clip_polygons(
-                        &b.regions,
-                        &r.regions,
-                        slicer_sdk::host::ClipOperation::Intersection,
-                    );
-                    assert!(
-                        overlap.is_empty(),
-                        "AC-4: body and interface overlap at layer {layer};                          interface must be subtracted out of the body"
-                    );
-                }
+    // Interface must be carved out of the body, never printed on top of it —
+    // and the body must SURVIVE the carve. Canonical
+    // `TreeSupport.cpp::draw_circles` computes
+    // `base_areas = diff_ex(base_areas, roofs)` and keeps the remainder, so an
+    // interface layer whose branch continues below the interface band still
+    // carries a `SupportBody` cross-section.
+    //
+    // The previous form of this block iterated `for b in &body { for r in &roof
+    // { .. } }`, which never executed: the planner clears the body on any layer
+    // that carries an interface, so `body` was always empty and the overlap
+    // assertion was unreachable.
+    let geometry_layers: Vec<i32> = entries
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|r| !r.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .collect();
+    let interface_band_bottom = *top_interface_layers
+        .iter()
+        .min()
+        .expect("top_interface_layers is non-empty (asserted above)");
+    let mut carve_checks = 0usize;
+    for &layer in &top_interface_layers {
+        let entry = entries
+            .iter()
+            .find(|e| e.global_layer_index == layer)
+            .expect("interface layer must have an entry");
+        let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+            .roles
+            .iter()
+            .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody && !r.regions.is_empty())
+            .collect();
+        let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+            .roles
+            .iter()
+            .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface && !r.regions.is_empty())
+            .collect();
+        let continues_below = geometry_layers
+            .iter()
+            .any(|&lower| lower < interface_band_bottom);
+        if continues_below {
+            carve_checks += 1;
+            assert!(
+                !body.is_empty(),
+                "AC-4: layer {layer} carries a TopInterface but no SupportBody, while the column continues below the interface band (band bottom={interface_band_bottom}, geometry layers={geometry_layers:?}). Canonical subtracts the roof out of `base_areas` and KEEPS the remainder; clearing the body leaves the branch cross-section unprinted on that layer."
+            );
+        }
+        for b in &body {
+            for r in &roof {
+                let overlap = slicer_sdk::host::clip_polygons(
+                    &b.regions,
+                    &r.regions,
+                    slicer_sdk::host::ClipOperation::Intersection,
+                );
+                assert!(
+                    overlap.is_empty(),
+                    "AC-4: body and interface overlap at layer {layer}; interface must be subtracted out of the body, not layered on top of it"
+                );
             }
         }
     }
+    assert!(
+        carve_checks > 0,
+        "AC-4: no interface layer had a column continuing below it, so the body-survives-the-carve check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
+    );
 }
 
 /// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * wall_count.
@@ -296,7 +329,7 @@ fn wall_count_scales_max_move_distance() {
     //   max_move_distance = tan(branch_angle) * effective_height * wall_count
     //
     // Config keys:
-    //   - support_branch_angle_deg (default 45.0)
+    //   - tree_support_branch_angle (default 45.0)
     //   - support_wall_count (default 0 = auto, typically 1-2)
     //
     // Current v1 behavior: step_xy = tan_angle * effective_height (no wall_count factor).
@@ -356,7 +389,7 @@ fn benchy_tree_support_regression_tripwire() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -567,7 +600,7 @@ fn node_rejected_when_model_occupies_every_destination() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(0.5)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -662,7 +695,7 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -714,7 +747,7 @@ fn contact_count_follows_overhang_area_not_triangle_count() {
         ("tree_support_branch_diameter", ConfigValue::Float(1.0)),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
     let layer_plan = make_layer_plan(11, 0.0, 0.2);
@@ -965,7 +998,7 @@ fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ("support_top_z_distance_mm", ConfigValue::Float(gap_mm)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
@@ -1046,7 +1079,7 @@ fn top_z_distance_defaults_to_traditional_two_tenths() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         // support_top_z_distance_mm deliberately absent.
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");

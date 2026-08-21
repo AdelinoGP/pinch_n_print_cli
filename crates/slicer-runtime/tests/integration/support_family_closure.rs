@@ -1199,45 +1199,94 @@ pub fn accepted_demands_terminate_on_plate_or_model() -> Result<(), String> {
 
 /// Invariant 3: the interface is topmost and is carved OUT of the body.
 ///
-/// Three assertions per support column, keyed by `(object_id, region_id)`:
-/// 1. interface and `SupportBody` regions are disjoint within an entry (carved
-///    out, not layered on top — the pre-224 additive model extruded both over
-///    the same area);
+/// Assertions per support column, keyed by `(object_id, region_id)`:
+/// 1. on an interface layer whose column continues below the interface band,
+///    `SupportBody` geometry MUST be present, and it MUST be disjoint from the
+///    interface. Canonical `TreeSupport.cpp::draw_circles` does
+///    `base_areas = diff_ex(base_areas, roofs)`: the roof is carved out of the
+///    body and the remainder is KEPT. Dropping the body wholesale (or layering
+///    the interface additively on top of it, the pre-224 model) both fail here.
+///    This used to `continue` whenever either set was empty, which made the
+///    disjointness check unreachable on a planner that never emits both;
 /// 2. the topmost geometry-bearing layer of a column carries a `TopInterface`;
 /// 3. no interface layer floats above a gap — an interface layer above the
 ///    column's own bottom must have support geometry on the layer below it.
 pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
     let mut columns_checked = 0usize;
+    let mut interface_layers_checked = 0usize;
     for (family, support_type) in FAMILIES {
         for (model_rel, hazard) in INVARIANT_MODELS {
             let evidence = invariant_evidence(model_rel, support_type)?;
-            // Disjointness is per entry.
+            // Body/interface geometry, aggregated per column per layer. Body
+            // and interface may arrive on separate entries for the same
+            // (object, region, layer), so aggregating first is what makes the
+            // carve-out check total instead of per-entry.
+            let mut column_layers: std::collections::BTreeMap<
+                (String, u64),
+                std::collections::BTreeMap<i32, (Vec<ExPolygon>, Vec<ExPolygon>)>,
+            > = std::collections::BTreeMap::new();
             for entry in accepted_entries(&evidence.plan) {
-                let body: Vec<ExPolygon> = entry
-                    .roles
-                    .iter()
-                    .filter(|role| role.role == SupportPlanRole::SupportBody)
-                    .flat_map(|role| role.regions.iter().cloned())
-                    .collect();
-                let interface: Vec<ExPolygon> = entry
-                    .roles
-                    .iter()
-                    .filter(|role| is_interface(role.role))
-                    .flat_map(|role| role.regions.iter().cloned())
-                    .collect();
-                if body.is_empty() || interface.is_empty() {
-                    continue;
+                let slot = column_layers
+                    .entry((entry.object_id.to_string(), entry.region_id))
+                    .or_default()
+                    .entry(entry.global_layer_index)
+                    .or_default();
+                for role in &entry.roles {
+                    if role.regions.is_empty() {
+                        continue;
+                    }
+                    if role.role == SupportPlanRole::SupportBody {
+                        slot.0.extend(role.regions.iter().cloned());
+                    } else if is_interface(role.role) {
+                        slot.1.extend(role.regions.iter().cloned());
+                    }
                 }
-                let overlap = intersection_ex(&interface, &body);
-                if !overlap.is_empty() {
-                    return Err(format!(
-                        "{model_rel} [{hazard}] {family}: interface is not carved out of the body — \
-                         {} overlapping region(s) at layer {} obj={} region={}",
-                        overlap.len(),
-                        entry.global_layer_index,
-                        entry.object_id,
-                        entry.region_id
-                    ));
+            }
+            for ((object_id, region_id), layers) in &column_layers {
+                let geometry_layers: Vec<i32> = layers
+                    .iter()
+                    .filter(|(_, (body, interface))| !body.is_empty() || !interface.is_empty())
+                    .map(|(&layer, _)| layer)
+                    .collect();
+                for (&layer, (body, interface)) in layers.iter() {
+                    if interface.is_empty() {
+                        continue;
+                    }
+                    // Walk down the contiguous interface run this layer sits in;
+                    // the column "continues below" only if it still carries
+                    // geometry underneath that whole run.
+                    let mut run_bottom = layer;
+                    while layers
+                        .get(&(run_bottom - 1))
+                        .is_some_and(|(_, lower_interface)| !lower_interface.is_empty())
+                    {
+                        run_bottom -= 1;
+                    }
+                    let continues_below = geometry_layers.iter().any(|&lower| lower < run_bottom);
+                    if continues_below {
+                        // Canonical `TreeSupport.cpp::draw_circles` computes
+                        // `base_areas = diff_ex(base_areas, roofs)` and KEEPS the
+                        // remainder — the roof is carved OUT of the body, it does
+                        // not replace it. A column whose branch continues below
+                        // the interface band therefore still has a body
+                        // cross-section on the interface layer.
+                        interface_layers_checked += 1;
+                        if body.is_empty() {
+                            return Err(format!(
+                                "{model_rel} [{hazard}] {family}: layer {layer} of column obj={object_id} region={region_id} carries interface geometry but NO SupportBody, while the column continues below the interface band (run bottom={run_bottom}, geometry layers={geometry_layers:?}). Canonical carves the roof out of the body and keeps the remainder; discarding the body leaves the branch cross-section unprinted."
+                            ));
+                        }
+                    }
+                    if body.is_empty() {
+                        continue;
+                    }
+                    let overlap = intersection_ex(interface, body);
+                    if !overlap.is_empty() {
+                        return Err(format!(
+                            "{model_rel} [{hazard}] {family}: interface is not carved out of the body — {} overlapping region(s) at layer {layer} obj={object_id} region={region_id}",
+                            overlap.len(),
+                        ));
+                    }
                 }
             }
 
@@ -1301,6 +1350,12 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
         return Err(
             "no support column with geometry on any invariant model for either family; the \
              interface-topology check was vacuous"
+                .into(),
+        );
+    }
+    if interface_layers_checked == 0 {
+        return Err(
+            "no interface-bearing layer had a column continuing below it, on any invariant model for either family; the body-survives-the-carve check (canonical `draw_circles`' `base_areas = diff_ex(base_areas, roofs)`) was vacuous"
                 .into(),
         );
     }

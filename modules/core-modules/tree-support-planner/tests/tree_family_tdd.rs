@@ -103,7 +103,15 @@ fn planner_config(enabled: bool) -> ConfigView {
     planner_config_with_diameter(enabled, 5.0)
 }
 
+fn planner_config_with_angle(branch_angle_deg: f64) -> ConfigView {
+    planner_config_full(true, 5.0, branch_angle_deg)
+}
+
 fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigView {
+    planner_config_full(enabled, branch_diameter, 45.0)
+}
+
+fn planner_config_full(enabled: bool, branch_diameter: f64, branch_angle_deg: f64) -> ConfigView {
     let mut values = HashMap::<ConfigKey, ConfigValue>::new();
     values.insert("enable_support".into(), ConfigValue::Bool(enabled));
     values.insert("support_family".into(), ConfigValue::String("tree".into()));
@@ -121,7 +129,10 @@ fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigVi
         ConfigValue::Float(1.0),
     );
     values.insert("tree_support_wall_count".into(), ConfigValue::Int(1));
-    values.insert("tree_support_branch_angle".into(), ConfigValue::Float(45.0));
+    values.insert(
+        "tree_support_branch_angle".into(),
+        ConfigValue::Float(branch_angle_deg),
+    );
     ConfigView::from_map(values)
 }
 
@@ -357,12 +368,38 @@ fn distributed_contacts() {
         output.entries().len() >= 2,
         "planner must emit multiple layers"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(entry.family_id, "tree");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        assert!(entry.roles.iter().any(|role| !role.regions.is_empty()));
         assert!(entry.skeleton.as_ref().is_some());
+        if entry.global_layer_index < top_geometry_layer {
+            // Canonical `TreeSupport.cpp::draw_circles` computes
+            // `base_areas = diff_ex(base_areas, roofs)` and keeps the
+            // remainder: only the topmost layer of a column may be roof-only.
+            // The widened `any non-empty role` form passed even when the
+            // planner discarded the body on every interface layer.
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
     }
     let mut classes = [0_u32; 3];
     for point in output
@@ -416,6 +453,137 @@ fn distributed_contacts() {
     );
 }
 
+/// The branch angle must actually reach the planner and must scale the
+/// per-layer lateral move.
+///
+/// Canonical `TreeSupportData::get_max_move_dist` caps a node's XY travel per
+/// layer at `min(tan(branch_angle) * node.height, support_extrusion_width)`, so
+/// a LARGER angle permits a LARGER lateral step and a pair of branches
+/// converges further over the same number of layers.
+///
+/// This is asserted as a relationship between two runs, not against a captured
+/// number: only the ordering is canonical. It also guards F-21 — 19 test call
+/// sites set `support_branch_angle_deg`, a key the planner stopped reading in
+/// commit 4d1848eb, and all 19 set 45.0, which is `DEFAULT_BRANCH_ANGLE_DEG`,
+/// so every one of them passed by coincidence. A test that never varies the
+/// angle cannot notice that the key is dead.
+#[test]
+fn branch_angle_scales_the_per_layer_lateral_move() {
+    fn spread_by_layer(output: &SupportGeometryOutput) -> std::collections::BTreeMap<i32, f32> {
+        let mut bounds: std::collections::BTreeMap<i32, (f32, f32)> =
+            std::collections::BTreeMap::new();
+        for entry in output.entries() {
+            let Some(skeleton) = entry.skeleton.as_ref() else {
+                continue;
+            };
+            for point in &skeleton.points {
+                let slot = bounds
+                    .entry(entry.global_layer_index)
+                    .or_insert((f32::INFINITY, f32::NEG_INFINITY));
+                slot.0 = slot.0.min(point.x);
+                slot.1 = slot.1.max(point.x);
+            }
+        }
+        bounds
+            .into_iter()
+            .map(|(layer, (min_x, max_x))| (layer, max_x - min_x))
+            .collect()
+    }
+
+    fn run_at_angle(angle_deg: f64) -> SupportGeometryOutput {
+        let object = overhang("angle", 0.0, 0.0, 8.0);
+        let planner =
+            tree_support_planner::SupportPlanner::from_config(&planner_config_with_angle(angle_deg))
+                .expect("from_config");
+        let mut output = SupportGeometryOutput::new();
+        let region = |x0: f32, x1: f32| ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, 0.0),
+                    Point2::from_mm(x1, 0.0),
+                    Point2::from_mm(x1, 2.0),
+                    Point2::from_mm(x0, 2.0),
+                ],
+            },
+            holes: vec![],
+        };
+        planner
+            .run_support_geometry_with_analysis(
+                &[object],
+                &layer_plan(),
+                &regions("angle"),
+                &SupportAnalysisView {
+                    candidates: vec![
+                        SupportAnalysisCandidate {
+                            id: 61,
+                            object_id: "angle".into(),
+                            region_id: "0".into(),
+                            global_layer_index: 8,
+                            z_units: slicer_ir::mm_to_units(1.8),
+                            geometry: vec![region(0.0, 2.0)],
+                            ..Default::default()
+                        },
+                        SupportAnalysisCandidate {
+                            id: 62,
+                            object_id: "angle".into(),
+                            region_id: "0".into(),
+                            global_layer_index: 8,
+                            z_units: slicer_ir::mm_to_units(1.8),
+                            geometry: vec![region(6.0, 8.0)],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                &SupportGeometryView::default(),
+                &mut output,
+                &ConfigView::new(),
+            )
+            .expect("run_support_geometry_with_analysis");
+        output
+    }
+
+    let shallow = run_at_angle(30.0);
+    let steep = run_at_angle(60.0);
+    let shallow_spread = spread_by_layer(&shallow);
+    let steep_spread = spread_by_layer(&steep);
+    assert!(
+        shallow_spread.len() >= 2 && steep_spread.len() >= 2,
+        "both runs must plan multiple layers of skeleton before the angle can be compared; shallow={shallow_spread:?} steep={steep_spread:?}"
+    );
+
+    let convergence = |spread: &std::collections::BTreeMap<i32, f32>| -> f32 {
+        let (_, top) = spread.iter().next_back().expect("non-empty");
+        let (_, bottom) = spread.iter().next().expect("non-empty");
+        top - bottom
+    };
+    let shallow_convergence = convergence(&shallow_spread);
+    let steep_convergence = convergence(&steep_spread);
+    assert!(
+        steep_convergence > shallow_convergence,
+        "a larger branch angle must permit a larger per-layer lateral move (canonical          `get_max_move_dist` = min(tan(angle) * height, extrusion_width)), so branches at 60 deg          must converge further than at 30 deg over the same layers. Got 60deg={steep_convergence}          vs 30deg={shallow_convergence}; spreads 60deg={steep_spread:?} 30deg={shallow_spread:?}"
+    );
+
+    // The cap is an upper bound as well as an ordering: no single layer step may
+    // exceed `tan(angle) * layer_height * wall_count` per node, so the spread
+    // (two nodes closing on each other) may shrink by at most twice that.
+    for (angle_deg, spread) in [(30.0_f32, &shallow_spread), (60.0_f32, &steep_spread)] {
+        let budget = 2.0 * angle_deg.to_radians().tan() * 0.2 * 1.0 + 1e-3;
+        let layers: Vec<(&i32, &f32)> = spread.iter().collect();
+        for pair in layers.windows(2) {
+            let ((lower, below), (upper, above)) = (pair[0], pair[1]);
+            if *upper != *lower + 1 {
+                continue;
+            }
+            assert!(
+                above - below <= budget,
+                "branch closed {} mm of lateral distance between layers {lower} and {upper} at                  {angle_deg} deg, exceeding the canonical per-layer budget {budget} mm                  (tan(angle) * layer_height * wall_count, doubled for two converging nodes)",
+                above - below
+            );
+        }
+    }
+}
+
 #[test]
 fn radius_aware_collision() {
     // Prior defect fixture: a pillar at X -10..0, Y 0..20, Z 0..30,
@@ -467,14 +635,18 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
-        // Floor guards against degenerate/zero-radius bodies. Retargeted from
-        // 0.39 mm to 0.3 mm (packet 224, RC-15 contact-sampling port): the
-        // legitimate swept-capsule body between a 0.4 mm contact tip and a
-        // larger propagated node (16-vertex cap) has min radius 0.3366 mm,
-        // which the stale 0.39 floor rejected.
+        // Floor guards against degenerate/zero-radius bodies. The measured
+        // minimum for the legitimate swept-capsule body between a 0.4 mm
+        // contact tip and a larger propagated node (16-vertex cap) is
+        // 0.3366 mm, so 0.39 (the pre-RC-15 floor) rejects a correct body.
+        // 0.3 was over-corrected: it leaves ~10% of unjustified slack below
+        // the measurement, so a body that had genuinely started collapsing
+        // toward zero radius could still pass. The floor is set just under the
+        // measured value instead, which is the tightest bound the measurement
+        // supports.
         assert!(
-            local_radius >= 0.3,
-            "body lost its local radius: {local_radius}"
+            local_radius >= 0.33,
+            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.3366 mm)"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
@@ -558,6 +730,13 @@ fn anchored_heights_and_termination() {
         lowest_layer, 0,
         "termination must reach the plate-side layer"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(
             entry.anchor_z,
@@ -565,18 +744,27 @@ fn anchored_heights_and_termination() {
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
         assert!(entry.skeleton.as_ref().is_some());
-        // Every entry must carry printable geometry under some role. Since
-        // packet 224 that role is not always `SupportBody`: canonical subtracts
-        // roof and floor areas out of `base_areas`, so on a layer inside the
-        // interface band the body can be fully carved away, leaving only
-        // `TopInterface` or `BottomInterface`. Requiring `SupportBody` on every
-        // entry would forbid that, which is why this assertion was widened.
-        assert!(
-            entry.roles.iter().any(|role| !role.regions.is_empty()),
-            "entry at layer {} carries no printable geometry under any role: {:?}",
-            entry.global_layer_index,
-            entry.roles
-        );
+        // Canonical subtracts roof and floor areas out of `base_areas` and
+        // KEEPS the remainder (`TreeSupport.cpp::draw_circles`). Only the
+        // topmost layer of a column may end up roof-only; every layer below it
+        // still carries a `SupportBody` cross-section. The widened form (`any
+        // non-empty role`) passed even when the planner cleared the body on
+        // every layer that carried any interface.
+        if entry.global_layer_index < top_geometry_layer {
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
         let skeleton = entry.skeleton.as_ref().unwrap();
         assert!(!skeleton.points.is_empty());
     }

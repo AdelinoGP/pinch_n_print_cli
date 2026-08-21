@@ -261,18 +261,38 @@ fn contact_area_planning() {
         !output.entries().is_empty(),
         "traditional contact must produce plan entries"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(entry.family_id, "traditional");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        // Interface is carved OUT of the body rather than layered on top of
-        // it, so an interface layer carries no SupportBody role. Requiring one
-        // on every entry encoded the pre-224 additive model, in which body and
-        // interface held byte-identical regions and were both extruded.
-        assert!(
-            entry.roles.iter().any(|r| !r.regions.is_empty()),
-            "every entry must carry at least one non-empty role"
-        );
+        if entry.global_layer_index < top_geometry_layer {
+            // Canonical carves the interface OUT of the body and keeps the
+            // remainder; only the topmost layer of a column may be
+            // interface-only. The widened form (`any non-empty role`) passed
+            // even though this planner emits exactly one role per entry, so
+            // body and interface can never coexist — the defect the assertion
+            // was supposed to catch.
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical traditional support subtracts the interface out of the base area and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
     }
     assert!(
         output
@@ -459,20 +479,40 @@ fn anchored_termination() {
         lowest_layer, 0,
         "termination must reach the plate-side layer"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(
             entry.anchor_z,
             slicer_ir::mm_to_units((entry.global_layer_index as f32 + 1.0) * 0.2)
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
-        // Interface is carved OUT of the body rather than layered on top of
-        // it, so an interface layer carries no SupportBody role. Requiring one
-        // on every entry encoded the pre-224 additive model, in which body and
-        // interface held byte-identical regions and were both extruded.
-        assert!(
-            entry.roles.iter().any(|r| !r.regions.is_empty()),
-            "every entry must carry at least one non-empty role"
-        );
+        if entry.global_layer_index < top_geometry_layer {
+            // Canonical carves the interface OUT of the body and keeps the
+            // remainder; only the topmost layer of a column may be
+            // interface-only. The widened form (`any non-empty role`) passed
+            // even though this planner emits exactly one role per entry, so
+            // body and interface can never coexist — the defect the assertion
+            // was supposed to catch.
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical traditional support subtracts the interface out of the base area and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
     }
 }
 
