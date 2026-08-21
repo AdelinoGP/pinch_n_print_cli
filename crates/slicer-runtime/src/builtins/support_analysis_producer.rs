@@ -16,23 +16,6 @@ use slicer_scheduler::execution_plan::{
 
 use crate::blackboard::Blackboard;
 
-/// Default support threshold angle in degrees, used when neither
-/// `support_overhang_angle` nor `support_angle` is configured. Matches the
-/// `support_overhang_angle` default recorded in `docs/15_config_keys_reference.md`.
-const DEFAULT_SUPPORT_THRESHOLD_ANGLE_DEG: f32 = 45.0;
-
-/// Resolves the support threshold angle, preferring the planner-facing
-/// `support_overhang_angle` and falling back to the renderer-facing
-/// `support_angle`. Both are snake_case per repo convention.
-fn support_threshold_angle_deg(config: &ResolvedConfig) -> f32 {
-    for key in ["support_overhang_angle", "support_angle"] {
-        if let Some(ConfigValue::Float(value)) = config.extensions.get(key) {
-            return *value as f32;
-        }
-    }
-    DEFAULT_SUPPORT_THRESHOLD_ANGLE_DEG
-}
-
 /// Build conservative candidates without propagating support bodies.
 ///
 /// Candidates are **support contacts**, not model cross-sections. Each is the
@@ -52,7 +35,13 @@ pub fn commit_support_analysis_builtin(
     config: &ResolvedConfig,
 ) -> Result<(), crate::BlackboardError> {
     let enable_support = config.support_enabled;
-    let threshold_angle_deg = support_threshold_angle_deg(config);
+    // Read the typed field directly. `support_threshold_angle` is CLI-bound, so
+    // `resolve_*` routes it into this field and never into `extensions` — an
+    // extensions lookup here silently ignored every configured value. The macro
+    // line in `slicer_ir::resolved_config` owns the default; there is no
+    // host-side fallback constant and no `support_angle` fallback (that key is
+    // canonical's support *pattern rotation*, not an overhang threshold).
+    let threshold_angle_deg = config.support_threshold_angle;
     let mut ir = SupportAnalysisIR::default();
     ir.shared_settings
         .insert("support_enabled".to_string(), enable_support.to_string());
@@ -449,6 +438,48 @@ mod tests {
         // must still be populated.
         assert_eq!(analysis.model_occupancy.len(), 2);
         assert_eq!(analysis.termination_surfaces.len(), 1);
+    }
+
+    /// F-2 regression pin. `support_threshold_angle` is CLI-bound, so
+    /// `resolve_*` routes it to the typed field and never to `extensions`. This
+    /// stage used to read `extensions` only, so it fell through to a hardcoded
+    /// 45.0 on every slice and the user's configured angle was never applied.
+    ///
+    /// Asserts both halves: the default is the canonical 30.0 (OrcaSlicer
+    /// `PrintConfig.cpp` `support_threshold_angle`, `ConfigOptionInt(30)`), and
+    /// a configured value reaches the detector rather than the default.
+    #[test]
+    fn configured_threshold_angle_reaches_detection() {
+        let polygon = square(10, 20, 30);
+
+        let mut blackboard = blackboard_with_stack(&polygon, &polygon);
+        commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
+        assert_eq!(
+            blackboard
+                .support_analysis()
+                .unwrap()
+                .shared_settings
+                .get("support_threshold_angle_deg"),
+            Some(&"30".to_string()),
+            "default must be the canonical 30 deg, owned by the ResolvedConfig macro line"
+        );
+
+        let mut blackboard = blackboard_with_stack(&polygon, &polygon);
+        let config = ResolvedConfig {
+            support_enabled: true,
+            support_threshold_angle: 12.5,
+            ..ResolvedConfig::default()
+        };
+        commit_support_analysis_builtin(&mut blackboard, &config).unwrap();
+        assert_eq!(
+            blackboard
+                .support_analysis()
+                .unwrap()
+                .shared_settings
+                .get("support_threshold_angle_deg"),
+            Some(&"12.5".to_string()),
+            "the configured typed field must reach detection; reading `extensions`              instead silently pinned this to the default"
+        );
     }
 
     #[test]

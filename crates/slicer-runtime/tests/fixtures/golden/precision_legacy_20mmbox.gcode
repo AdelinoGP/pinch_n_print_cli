@@ -4169,8 +4169,8 @@ M73 Q100 S0
 ; slice_closing_radius = 0
 ; solid_infill_speed = 50
 ; sparse_fill_holder = rectilinear-infill
-; support_overhang_angle = 45
 ; support_resolution = 0
+; support_threshold_angle = 30
 ; support_type = Traditional
 ; top_bottom_infill_wall_overlap = 25%
 ; top_fill_holder = rectilinear-infill

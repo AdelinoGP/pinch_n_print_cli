@@ -1367,7 +1367,7 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
 ///
 /// `resources/20mm_cube.obj` is the substitution here: none of the four hazard
 /// models is overhang-free, and a cube's walls are vertical, so no facet can
-/// exceed the 30 degree `support_overhang_angle` in the matched config.
+/// exceed the 30 degree `support_threshold_angle` in the matched config.
 ///
 /// This guards a specific retracted regression: a planner fallback that
 /// fabricated support for every candidate layer of any non-empty mesh. Its own
