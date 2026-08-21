@@ -228,6 +228,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_density` | float | `20.0` | [0.0, 100.0] | `traditional-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
+| `support_style` | string | `"default"` | — | `traditional-support` |
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — | `traditional-support-planner` |

@@ -54,6 +54,8 @@ use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
 
+mod interface_regularize;
+
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
@@ -93,7 +95,12 @@ impl TreeSupport {
     /// `interface_spacing = support_interface_spacing + interface_flow.spacing()`,
     /// where `spacing()` is `Flow::rounded_rectangle_extrusion_spacing`
     /// (in-tree: `slicer_core::flow::line_width_to_spacing`).
-    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32) {
+    /// Returns `(interface_flow_spacing_mm, top_pitch_mm, bottom_pitch_mm)`.
+    /// The bare flow spacing is exposed because canonical
+    /// `generate_interface_layers` derives its smoothing/closing distance
+    /// (`scaled_spacing() * 1.5`) and its minimum island radii
+    /// (`scaled_spacing() / interface_density`) from it.
+    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32, f32) {
         let layer_height = layer_height_mm.max(0.0);
         let flow_spacing =
             slicer_core::flow::line_width_to_spacing(self.line_width, layer_height).unwrap_or(0.0);
@@ -105,7 +112,7 @@ impl TreeSupport {
         } else {
             self.bottom_interface_spacing_mm
         };
-        (top_gap + flow_spacing, bottom_gap + flow_spacing)
+        (flow_spacing, top_gap + flow_spacing, bottom_gap + flow_spacing)
     }
 
     /// Returns whether support is enabled.
@@ -197,7 +204,7 @@ impl LayerModule for TreeSupport {
             // `support_density`. The tree renderer previously had no interface
             // spacing at all and scan-filled roofs and floors at the body
             // pitch.
-            let (top_interface_spacing, bottom_interface_spacing) =
+            let (interface_flow_spacing_mm, top_interface_spacing, bottom_interface_spacing) =
                 self.interface_pitch_mm(region.effective_layer_height());
 
             // Structural support plans carry semantic regions, not printable
@@ -223,8 +230,33 @@ impl LayerModule for TreeSupport {
                     ));
                 }
                 output.begin_region(region.object_id(), *region.region_id());
-                for role_region in entry.roles.iter() {
-                    for expoly in &role_region.regions {
+                // F-37: canonical `generate_interface_layers` regularizes every
+                // interface band (`closing` + `smooth_outward`) and subtracts
+                // the result from the base area before anything is filled.
+                // Tree/organic styles always take the smoothing branch:
+                // canonical `SupportParameters` resolves every style valid for
+                // a tree `support_type` to a tree style (never `smsGrid`), and
+                // `smooth_supports` is `support_style != smsGrid`.
+                // `None` means the entry carries no interface role, so the
+                // planner's partition is rendered verbatim.
+                let regularized = interface_regularize::regularize_entry_roles(
+                    &entry.roles,
+                    interface_flow_spacing_mm,
+                    top_interface_spacing,
+                    bottom_interface_spacing,
+                    true,
+                );
+                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = regularized
+                    .unwrap_or_else(|| {
+                        entry
+                            .roles
+                            .iter()
+                            .map(|r| (r.role, r.regions.clone()))
+                            .collect()
+                    });
+                for (role, role_regions) in rendered.iter() {
+                    let role = *role;
+                    for expoly in role_regions.iter() {
                         match paint.paint_policy_for(expoly) {
                             // Painted "no support here" still overrides the plan.
                             SupportPaintPolicy::Blocked => continue,
@@ -250,7 +282,7 @@ impl LayerModule for TreeSupport {
                         // grid-MST `fill_expolygon_tree` used to be appended
                         // here for `SupportBody` on top of that, so every body
                         // polygon was extruded twice over the same area.
-                        let fill_spacing = match role_region.role {
+                        let fill_spacing = match role {
                             slicer_ir::SupportPlanRole::TopInterface => {
                                 Some(top_interface_spacing)
                             }
@@ -262,7 +294,7 @@ impl LayerModule for TreeSupport {
                         let paths =
                             self.render_polygon(expoly, z, speed_factor, fill_spacing);
                         for mut path in paths {
-                            match role_region.role {
+                            match role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
@@ -497,7 +529,7 @@ mod tests {
     fn interface_pitch_adds_flow_spacing() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::from_config(&config).unwrap();
-        let (top, bottom) = module.interface_pitch_mm(0.2);
+        let (_, top, bottom) = module.interface_pitch_mm(0.2);
         assert!(
             (top - 0.757).abs() < 0.002,
             "measured Orca interface pitch is 0.757 mm, got {top}"

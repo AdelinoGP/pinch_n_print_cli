@@ -43,6 +43,8 @@ use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
+mod interface_regularize;
+
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
@@ -74,13 +76,23 @@ pub struct TraditionalSupport {
     /// Configured top-interface line gap in millimeters (canonical
     /// `support_interface_spacing`). This is the *gap*, not the pitch: the
     /// printed pitch adds the interface flow spacing (see
-    /// `interface_pitch_units`).
+    /// `interface_pitch_mm`).
     top_interface_spacing_mm: f32,
     /// Configured bottom-interface line gap in millimeters (canonical
     /// `support_bottom_interface_spacing`). Negative mirrors the top value,
     /// matching OrcaSlicer's `-1 == same as top` convention for the paired
     /// interface keys.
     bottom_interface_spacing_mm: f32,
+    /// Canonical `support_params.support_style != smsGrid` — whether interface
+    /// regularization runs the `closing` + `smooth_outward` branch of
+    /// `generate_interface_layers`' `regularize` lambda, or the plain
+    /// `union_safety_offset` branch.
+    ///
+    /// Resolved from `support_style` exactly as canonical `SupportParameters`
+    /// resolves it for a **non-tree** `support_type`: any tree style is invalid
+    /// here and falls back to `smsDefault`, and `smsDefault` for non-tree is
+    /// `smsGrid`. So only an explicit `snug` smooths.
+    smooth_supports: bool,
 }
 
 #[slicer_module]
@@ -124,6 +136,16 @@ impl LayerModule for TraditionalSupport {
             _ => -1.0,
         };
 
+        // Canonical `SupportParameters` resolves `support_style` against
+        // `support_type` first: a tree style on a non-tree object degrades to
+        // `smsDefault`, and `smsDefault` for a non-tree object is `smsGrid`.
+        // `smooth_supports` is then `support_style != smsGrid`, so within the
+        // traditional family only an explicit `snug` regularizes.
+        let smooth_supports = match config.get("support_style") {
+            Some(ConfigValue::String(s)) => s.eq_ignore_ascii_case("snug"),
+            _ => false,
+        };
+
         Ok(Self {
             enabled,
             density,
@@ -132,6 +154,7 @@ impl LayerModule for TraditionalSupport {
             line_width,
             top_interface_spacing_mm,
             bottom_interface_spacing_mm,
+            smooth_supports,
         })
     }
 
@@ -175,8 +198,10 @@ impl LayerModule for TraditionalSupport {
             // centre-to-centre distance. Using the key directly as the pitch
             // over-extruded every interface layer by roughly the ratio of the
             // two (0.4 vs 0.757 mm at a 0.4 mm width / 0.2 mm layer).
-            let (top_interface_line_spacing, bottom_interface_line_spacing) =
-                self.interface_pitch_units(region.effective_layer_height());
+            let (interface_flow_spacing_mm, top_interface_pitch_mm, bottom_interface_pitch_mm) =
+                self.interface_pitch_mm(region.effective_layer_height());
+            let top_interface_line_spacing = slicer_ir::mm_to_units(top_interface_pitch_mm);
+            let bottom_interface_line_spacing = slicer_ir::mm_to_units(bottom_interface_pitch_mm);
 
             // Structural support plans carry semantic regions, not printable
             // paths. A missing entry means this demand was declined; do not
@@ -207,16 +232,37 @@ impl LayerModule for TraditionalSupport {
                     ));
                 }
                 output.begin_region(region.object_id(), *region.region_id());
-                for role_region in entry.roles.iter() {
-                    let spacing = match role_region.role {
+                // F-37: canonical `generate_interface_layers` regularizes every
+                // interface band (`closing` + `smooth_outward`) and subtracts
+                // the result from the base area before anything is filled.
+                // `None` means the entry carries no interface role, so the
+                // planner's partition is rendered verbatim.
+                let regularized = interface_regularize::regularize_entry_roles(
+                    &entry.roles,
+                    interface_flow_spacing_mm,
+                    top_interface_pitch_mm,
+                    bottom_interface_pitch_mm,
+                    self.smooth_supports,
+                );
+                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> =
+                    regularized.unwrap_or_else(|| {
+                        entry
+                            .roles
+                            .iter()
+                            .map(|r| (r.role, r.regions.clone()))
+                            .collect()
+                    });
+                for (role, regions) in rendered.iter() {
+                    let role = *role;
+                    let spacing = match role {
                         slicer_ir::SupportPlanRole::SupportBody => line_spacing,
                         slicer_ir::SupportPlanRole::TopInterface => top_interface_line_spacing,
                         slicer_ir::SupportPlanRole::BottomInterface => bottom_interface_line_spacing,
                         slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
                     };
-                    for expoly in &role_region.regions {
+                    for expoly in regions.iter() {
                         let interface = matches!(
-                            role_region.role,
+                            role,
                             slicer_ir::SupportPlanRole::TopInterface
                                 | slicer_ir::SupportPlanRole::BottomInterface
                         );
@@ -230,7 +276,7 @@ impl LayerModule for TraditionalSupport {
                             interface,
                         );
                         for mut path in paths {
-                            match role_region.role {
+                            match role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
@@ -271,7 +317,13 @@ impl TraditionalSupport {
     /// in-tree as `slicer_core::flow::line_width_to_spacing`. A width/layer
     /// height pair that yields a non-positive spacing falls back to the bare
     /// configured gap rather than failing the layer.
-    fn interface_pitch_units(&self, layer_height_mm: f32) -> (i64, i64) {
+    /// `(interface_flow_spacing_mm, top_pitch_mm, bottom_pitch_mm)`.
+    ///
+    /// The bare flow spacing is exposed alongside the pitches because canonical
+    /// `generate_interface_layers` derives both its smoothing/closing distance
+    /// (`scaled_spacing() * 1.5`) and its minimum island radii
+    /// (`scaled_spacing() / interface_density`) from it.
+    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32, f32) {
         let layer_height = if layer_height_mm > 0.0 {
             layer_height_mm
         } else {
@@ -288,8 +340,9 @@ impl TraditionalSupport {
             self.bottom_interface_spacing_mm
         };
         (
-            slicer_ir::mm_to_units(top_gap + flow_spacing),
-            slicer_ir::mm_to_units(bottom_gap + flow_spacing),
+            flow_spacing,
+            top_gap + flow_spacing,
+            bottom_gap + flow_spacing,
         )
     }
 
@@ -525,7 +578,8 @@ mod tests {
     fn interface_pitch_adds_flow_spacing() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TraditionalSupport::from_config(&config).unwrap();
-        let (top, bottom) = module.interface_pitch_units(0.2);
+        let (_, top_mm, bottom_mm) = module.interface_pitch_mm(0.2);
+        let (top, bottom) = (slicer_ir::mm_to_units(top_mm), slicer_ir::mm_to_units(bottom_mm));
         let expected = slicer_ir::mm_to_units(0.4 + (0.4 - 0.2 * (1.0 - core::f32::consts::PI / 4.0)));
         assert_eq!(top, expected, "top interface pitch must add flow spacing");
         assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
