@@ -347,37 +347,62 @@ pub fn backfill_active_region_configs(
 ) {
     for layer in global_layers.iter_mut() {
         for region in layer.active_regions.iter_mut() {
-            let exact = RegionKey {
-                global_layer_index: layer.index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
-                variant_chain: Vec::new(),
-            };
-            // Painted regions are keyed by a non-empty `variant_chain`, so the
-            // exact empty-chain lookup misses them. Fall back to the smallest
-            // matching chain rather than an arbitrary `HashMap` hit, so the
-            // choice is deterministic across runs.
-            let config_id = region_map
-                .entries
-                .get(&exact)
-                .map(|plan| plan.config)
-                .or_else(|| {
-                    region_map
-                        .entries
-                        .iter()
-                        .filter(|(key, _)| {
-                            key.global_layer_index == layer.index
-                                && key.object_id == region.object_id
-                                && key.region_id == region.region_id
-                        })
-                        .min_by(|(a, _), (b, _)| a.variant_chain.cmp(&b.variant_chain))
-                        .map(|(_, plan)| plan.config)
-                });
+            let config_id = config_for_region_smallest_chain(
+                region_map,
+                layer.index,
+                &region.object_id,
+                region.region_id,
+            );
             if let Some(config_id) = config_id {
                 region.resolved_config = region_map.config_for_raw(config_id).clone();
             }
         }
     }
+}
+
+/// Resolve a region's `ConfigId` in a `RegionMapIR`, tolerating painted regions.
+///
+/// Two-stage lookup: an exact hit on the empty-`variant_chain` `RegionKey`
+/// first, else the entry with the **smallest** `variant_chain` among all
+/// entries matching `(global_layer_index, object_id, region_id)`. Painted
+/// regions are keyed by a non-empty `variant_chain`, so the exact lookup misses
+/// them; taking the smallest chain rather than an arbitrary `HashMap` hit keeps
+/// the choice deterministic across runs.
+///
+/// This is shared on purpose. [`backfill_active_region_configs`] uses it to
+/// decide which `support-family:<id>` module a region is routed to, and
+/// `commit_support_analysis_builtin` uses it to record
+/// `SupportAnalysisIR.family_assignments`. When the two lookups diverged
+/// (F-44), a painted tree region was routed to the tree planner but recorded as
+/// `"traditional"`. Call this from both sites; do not reinline the fallback.
+pub fn config_for_region_smallest_chain(
+    region_map: &slicer_ir::RegionMapIR,
+    global_layer_index: u32,
+    object_id: &slicer_ir::slice_ir::ObjectId,
+    region_id: slicer_ir::slice_ir::RegionId,
+) -> Option<slicer_ir::slice_ir::ConfigId> {
+    let exact = RegionKey {
+        global_layer_index,
+        object_id: object_id.clone(),
+        region_id,
+        variant_chain: Vec::new(),
+    };
+    region_map
+        .entries
+        .get(&exact)
+        .map(|plan| plan.config)
+        .or_else(|| {
+            region_map
+                .entries
+                .iter()
+                .filter(|(key, _)| {
+                    key.global_layer_index == global_layer_index
+                        && key.object_id == *object_id
+                        && key.region_id == region_id
+                })
+                .min_by(|(a, _), (b, _)| a.variant_chain.cmp(&b.variant_chain))
+                .map(|(_, plan)| plan.config)
+        })
 }
 
 fn is_same_z_entity(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> bool {
