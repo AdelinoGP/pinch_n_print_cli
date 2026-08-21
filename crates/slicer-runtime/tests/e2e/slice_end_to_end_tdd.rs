@@ -1113,9 +1113,14 @@ fn support_type_tree_config_selects_tree_support_holder() {
 
     // -- Half 2: per-region routing selects the tree family. --
     let mesh = crate::common::model_cache::cached_load_model(&fixture_stl());
-    let context =
-        slicer_runtime::run::prepare_prepass_context(mesh, config_source.clone(), &[full], true, false)
-            .expect("prepass with support_type=tree(auto) must succeed");
+    let context = slicer_runtime::run::prepare_prepass_context(
+        mesh,
+        config_source.clone(),
+        &[full],
+        true,
+        false,
+    )
+    .expect("prepass with support_type=tree(auto) must succeed");
 
     let tree_claims = vec![
         "support-generator".to_string(),

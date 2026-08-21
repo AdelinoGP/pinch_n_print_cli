@@ -172,10 +172,9 @@ fn branch_curvature_below_threshold() {
     // Was `map_or(true, ..)`, which passes for every `skeleton: None` entry the
     // traditional planner emits — i.e. it was vacuously green on the old
     // fixture. Every structural tree entry must actually carry a skeleton.
-    assert!(structural.iter().all(|entry| entry
-        .skeleton
-        .as_ref()
-        .is_some_and(|s| s.points.len() >= 2)));
+    assert!(structural
+        .iter()
+        .all(|entry| entry.skeleton.as_ref().is_some_and(|s| s.points.len() >= 2)));
 }
 
 #[test]
@@ -451,11 +450,7 @@ fn support_segments_stay_outside_the_model_and_within_the_build_volume() {
             let (idx, z) = layers
                 .iter()
                 .copied()
-                .min_by(|a, b| {
-                    (a.1 - point.z)
-                        .abs()
-                        .total_cmp(&(b.1 - point.z).abs())
-                })
+                .min_by(|a, b| (a.1 - point.z).abs().total_cmp(&(b.1 - point.z).abs()))
                 .expect("layers is non-empty");
             let polys = &outlines[&idx];
             let depth = penetration_depth_mm(polys, point.x as f64, point.y as f64);

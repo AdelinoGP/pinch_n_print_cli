@@ -137,7 +137,8 @@ pub fn commit_support_analysis_builtin(
             // never appear as a `variant_chain` entry -- slicing the modifier
             // volumes here is the only way this stage can see them.
             let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
-            let modifiers = ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
+            let modifiers =
+                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
             // Deterministic order regardless of `SliceIR` ordering; the
             // parallel pass below reads only shared immutable state and
             // `rayon`'s `collect` into a `Vec` preserves this order, so the

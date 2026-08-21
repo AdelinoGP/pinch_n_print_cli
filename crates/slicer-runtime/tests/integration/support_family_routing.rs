@@ -88,12 +88,7 @@ fn plan(entries: Vec<SupportPlanEntry>) -> SupportPlanIR {
 /// anchors at z = 0, where the cross-section is still empty, so their
 /// behaviour is unchanged.
 fn exact_z() -> ExactZQueryService {
-    let corners = [
-        (0.0_f32, 0.0_f32),
-        (10.0, 0.0),
-        (10.0, 10.0),
-        (0.0, 10.0),
-    ];
+    let corners = [(0.0_f32, 0.0_f32), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
     let mut vertices = Vec::new();
     for z in [50.0_f32, 150.0] {
         for (x, y) in corners {

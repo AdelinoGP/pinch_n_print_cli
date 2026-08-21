@@ -28,9 +28,9 @@ use crate::binding::{
 };
 use crate::marshal::{
     convert_infill_output, convert_perimeter_output, convert_support_output_with_plan,
-    ir_to_wit_expolygons,
-    ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop, GcodeCommandCollected,
-    InfillOutputCollected, OriginId, PerimeterOutputCollected, SupportOutputCollected,
+    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop,
+    GcodeCommandCollected, InfillOutputCollected, OriginId, PerimeterOutputCollected,
+    SupportOutputCollected,
 };
 
 fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId> {

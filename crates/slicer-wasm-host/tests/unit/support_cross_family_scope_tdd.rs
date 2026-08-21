@@ -184,7 +184,13 @@ fn different_layers_of_one_object_both_survive_xy_overlap() {
 #[test]
 fn same_object_same_layer_cross_family_overlap_still_rejected() {
     let exact_z = exact_z(&["object"]);
-    let mut tree = entry("tree", "tree-body", "object", 0, polygon(100, 100, 300, 300));
+    let mut tree = entry(
+        "tree",
+        "tree-body",
+        "object",
+        0,
+        polygon(100, 100, 300, 300),
+    );
     tree.region_id = 0;
     let mut traditional = entry(
         "traditional",
