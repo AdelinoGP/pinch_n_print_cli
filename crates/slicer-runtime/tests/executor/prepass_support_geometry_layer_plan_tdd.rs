@@ -156,24 +156,44 @@ fn variable_height_layer_plan() -> LayerPlanIR {
     }
 }
 
-/// LayerPlanIR with a single layer 5 for the multi-region fixture.
-/// Z must be >= 1.8 so the overhang contact (centroid at zâ‰ˆ1.8) lands on it.
+/// LayerPlanIR for the multi-region fixture: global layers 2..=5, with layer 5
+/// at z = 2.0 so the overhang (facet centroid z = 1.8) is CONTAINED by it.
+///
+/// CANONICAL JUSTIFICATION for the layers below 5, which this fixture did not
+/// have before packet 224 (it was a single layer, index 5, z = 2.0):
+/// canonical `generate_contact_points` (`TreeSupport.cpp`) is the only contact
+/// source, it iterates `layer_nr` from 1, and its `insert_point` lambda calls
+/// `create_node(pt, -gap_layers, layer_nr - 1, ...)` — the contact ALWAYS
+/// lands one layer below the overhang, as the virtual top-Z-gap node that
+/// `draw_circles` diverts into `roof_gap_areas` and never extrudes. The same
+/// function returns early when
+/// `m_object->layers().size() <= z_distance_top_layers + 1` ("fix bug of
+/// generating support for very thin objects"). A one-layer plan therefore
+/// carries no tree support under canonical rules at all, and the old fixture
+/// only produced entries because this module used to seed the contact ON the
+/// overhang layer — i.e. inside the model. AC-8 ("one entry per region in the
+/// region map") is unchanged and asserted below; only the layer stack it runs
+/// on is now canonically viable.
 fn multi_region_layer_plan() -> LayerPlanIR {
     LayerPlanIR {
-        global_layers: vec![GlobalLayer {
-            index: 5,
-            z: 2.0,
-            ..Default::default()
-        }],
+        global_layers: (2..=5)
+            .map(|index| GlobalLayer {
+                index,
+                z: index as f32 * 0.4,
+                ..Default::default()
+            })
+            .collect(),
         object_participation: {
             let mut m = HashMap::new();
             m.insert(
                 "obj-multi".to_string(),
-                vec![ObjectLayerRef {
-                    local_layer_index: 0,
-                    global_layer_index: 5,
-                    effective_layer_height: 0.2,
-                }],
+                (2..=5)
+                    .map(|index| ObjectLayerRef {
+                        local_layer_index: index - 2,
+                        global_layer_index: index,
+                        effective_layer_height: 0.4,
+                    })
+                    .collect(),
             );
             m
         },
@@ -201,27 +221,26 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
     }
 }
 
-/// Multi-region RegionMapIR: two regions (7, 42) for "obj-multi" on layer 5.
+/// Multi-region RegionMapIR: two regions (7, 42) for "obj-multi" on every
+/// layer of `multi_region_layer_plan`. Both regions must exist on every layer
+/// the planner can emit on, because the emit pass looks the region set up by
+/// (object, global layer) — and canonical never emits on the overhang layer
+/// itself (see `multi_region_layer_plan`).
 fn multi_region_map() -> RegionMapIR {
     let mut entries = HashMap::new();
-    entries.insert(
-        RegionKey {
-            global_layer_index: 5,
-            object_id: "obj-multi".to_string(),
-            region_id: 7,
-            variant_chain: Vec::new(),
-        },
-        RegionPlan::default(),
-    );
-    entries.insert(
-        RegionKey {
-            global_layer_index: 5,
-            object_id: "obj-multi".to_string(),
-            region_id: 42,
-            variant_chain: Vec::new(),
-        },
-        RegionPlan::default(),
-    );
+    for global_layer_index in 2..=5 {
+        for region_id in [7, 42] {
+            entries.insert(
+                RegionKey {
+                    global_layer_index,
+                    object_id: "obj-multi".to_string(),
+                    region_id,
+                    variant_chain: Vec::new(),
+                },
+                RegionPlan::default(),
+            );
+        }
+    }
     RegionMapIR {
         entries,
         ..Default::default()
@@ -415,18 +434,65 @@ fn planner_walks_real_layer_plan_with_variable_layer_heights() {
         );
     }
 
-    // The highest entry's structural skeleton must reach z=2.0.
+    // Every entry's skeleton must sit at the LayerPlanIR Z of its own layer.
+    // That is the AC-7 property: the planner walks the committed plan instead
+    // of assuming a uniform `index * layer_height` stack. Layer 3 is the only
+    // one whose plan Z (2.0) differs from the uniform-height guess (1.6), and
+    // layer 1's plan Z (0.8) differs from a first-layer-relative guess, so the
+    // check still discriminates against a planner that ignores the plan.
+    let plan_z = |global_layer_index: i32| -> f32 {
+        variable_height_layer_plan()
+            .global_layers
+            .iter()
+            .find(|layer| layer.index as i32 == global_layer_index)
+            .expect("entry layer must exist in the plan")
+            .z
+    };
+    for entry in &plan_ir.entries {
+        let expected_z = plan_z(entry.global_layer_index);
+        for point in &entry.skeleton.as_ref().expect("skeleton").points {
+            assert!(
+                (point.z - expected_z).abs() < 1e-4,
+                "entry at layer {} has skeleton z={}, expected the plan's z={}",
+                entry.global_layer_index,
+                point.z,
+                expected_z
+            );
+        }
+    }
+
+    // CANONICAL: the topmost PRINTED support layer is TWO layers below the
+    // overhang layer, not the overhang layer itself.
+    //
+    // The plate's downward facets sit at z = 1.8, which the plan contains in
+    // layer 3 (z = 2.0, bottom_z = 1.2). Canonical `generate_contact_points`'
+    // `insert_point` lambda (`TreeSupport.cpp`) has exactly one seeding rule —
+    // `create_node(pt, -gap_layers, layer_nr - 1, ..., bottom_z,
+    // z_distance_top, 0, radius)` — so the contact node lands on layer 2 with
+    // `distance_to_top = -gap_layers`. That node is VIRTUAL: `draw_circles`
+    // sends `distance_to_top < 0 && !is_sharp_tail` into `roof_gap_areas`,
+    // which `generate_toolpaths` never fills. The first extruded cross-section
+    // is therefore its descendant on layer 1, z = 0.8.
+    //
+    // This assertion used to require z = 2.0 — support printed on the same
+    // layer as the overhang, i.e. inside the model, with no top Z gap at all.
+    // That was the module's pre-packet-224 behaviour (contacts were seeded on
+    // the overhang layer); it has no canonical counterpart.
     let highest = plan_ir
         .entries
         .iter()
         .max_by_key(|e| e.global_layer_index)
         .expect("SupportPlanIR must have at least one entry");
+    assert_eq!(
+        highest.global_layer_index, 1,
+        "topmost printed support layer must be two below the overhang layer 3          (layer 2 is canonical's virtual top-Z-gap node, never extruded); got {}",
+        highest.global_layer_index
+    );
     for point in &highest.skeleton.as_ref().expect("skeleton").points {
-        let first_z = point.z;
         assert!(
-            (first_z - 2.0).abs() < 1e-4,
-            "highest entry first point z={} expected ~2.0",
-            first_z
+            (point.z - 0.8).abs() < 1e-4,
+            "highest entry point z={} expected the plan z of layer 1 (0.8)",
+            point.z
         );
     }
 }
@@ -441,51 +507,90 @@ fn planner_emits_one_entry_per_region_in_region_map() {
 
     let plan_ir = run_prepass(mesh, layer_plan, region_map);
 
-    // Must have exactly 2 entries for (layer=5, object="obj-multi").
-    let matching: Vec<_> = plan_ir
+    // AC-8 unchanged: ONE entry per region in the region map, for every layer
+    // the planner emits on, with byte-identical structural skeletons.
+    //
+    // KNOWN RED (worker wV, packet 224 follow-up), and deliberately NOT
+    // weakened. Two independent causes were separated here:
+    //
+    //   1. FIXED — the fixture was a one-layer plan, on which canonical
+    //      `generate_contact_points` can seed no contact at all (see
+    //      `multi_region_layer_plan`). It produced ZERO entries, which masked
+    //      cause 2 entirely.
+    //   2. OPEN — with a viable layer stack the planner emits ONE entry
+    //      (region 7), not two. `SupportAnalysisIR.family_assignments`
+    //      (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`)
+    //      is minted per CANDIDATE, and candidates are derived from `SliceIR`
+    //      regions — this fixture's plate yields a single sliced region. The
+    //      planner then declines region 42 by design: `candidate_family`
+    //      ("No self-default: a region the host did not assign to this family
+    //      is not this planner's to plan"). So "one entry per RegionMap
+    //      region" and "one entry per host-ASSIGNED region" have diverged.
+    //      Which of the two AC-8 means is a spec decision, not a code fix, and
+    //      is left to the planner owner rather than resolved by relaxing the
+    //      count below.
+    //
+    // The layer is derived from the plan rather than pinned at 5 because
+    // canonical never emits support on the overhang layer itself — see
+    // `multi_region_layer_plan` for the `create_node(pt, -gap_layers,
+    // layer_nr - 1, ...)` citation. Pinning layer 5 would assert the
+    // pre-packet-224 behaviour of seeding contacts inside the model.
+    let mine: Vec<_> = plan_ir
         .entries
         .iter()
-        .filter(|e| e.global_layer_index == 5 && e.object_id == "obj-multi")
+        .filter(|e| e.object_id == "obj-multi")
         .collect();
-    assert_eq!(
-        matching.len(),
-        2,
-        "expected 2 entries for (layer=5, object=obj-multi), got {}",
-        matching.len()
+    assert!(
+        !mine.is_empty(),
+        "planner emitted no entries for obj-multi; AC-8 cannot be observed"
     );
 
-    // One must have region_id=7, the other region_id=42.
-    let region_ids: Vec<u64> = matching.iter().map(|e| e.region_id).collect();
-    assert!(
-        region_ids.contains(&7),
-        "expected region_id=7, got {:?}",
-        region_ids
-    );
-    assert!(
-        region_ids.contains(&42),
-        "expected region_id=42, got {:?}",
-        region_ids
-    );
+    let mut layers: Vec<i32> = mine.iter().map(|e| e.global_layer_index).collect();
+    layers.sort_unstable();
+    layers.dedup();
+    for layer in layers {
+        let matching: Vec<_> = mine
+            .iter()
+            .filter(|e| e.global_layer_index == layer)
+            .collect();
+        assert_eq!(
+            matching.len(),
+            2,
+            "expected 2 entries for (layer={layer}, object=obj-multi), got {}",
+            matching.len()
+        );
 
-    // Byte-identical structural skeletons between the two entries.
-    let entry_7 = matching.iter().find(|e| e.region_id == 7).unwrap();
-    let entry_42 = matching.iter().find(|e| e.region_id == 42).unwrap();
-    assert_eq!(
-        entry_7.skeleton.as_ref().unwrap().points.len(),
-        entry_42.skeleton.as_ref().unwrap().points.len(),
-        "skeleton length mismatch between region 7 and 42"
-    );
-    for (seg_7, seg_42) in entry_7
-        .skeleton
-        .as_ref()
-        .unwrap()
-        .points
-        .iter()
-        .zip(entry_42.skeleton.as_ref().unwrap().points.iter())
-    {
-        assert_eq!(seg_7.x.to_bits(), seg_42.x.to_bits());
-        assert_eq!(seg_7.y.to_bits(), seg_42.y.to_bits());
-        assert_eq!(seg_7.z.to_bits(), seg_42.z.to_bits());
+        // One must have region_id=7, the other region_id=42.
+        let region_ids: Vec<u64> = matching.iter().map(|e| e.region_id).collect();
+        assert!(
+            region_ids.contains(&7),
+            "expected region_id=7 at layer {layer}, got {region_ids:?}"
+        );
+        assert!(
+            region_ids.contains(&42),
+            "expected region_id=42 at layer {layer}, got {region_ids:?}"
+        );
+
+        // Byte-identical structural skeletons between the two entries.
+        let entry_7 = matching.iter().find(|e| e.region_id == 7).unwrap();
+        let entry_42 = matching.iter().find(|e| e.region_id == 42).unwrap();
+        assert_eq!(
+            entry_7.skeleton.as_ref().unwrap().points.len(),
+            entry_42.skeleton.as_ref().unwrap().points.len(),
+            "skeleton length mismatch between region 7 and 42 at layer {layer}"
+        );
+        for (seg_7, seg_42) in entry_7
+            .skeleton
+            .as_ref()
+            .unwrap()
+            .points
+            .iter()
+            .zip(entry_42.skeleton.as_ref().unwrap().points.iter())
+        {
+            assert_eq!(seg_7.x.to_bits(), seg_42.x.to_bits());
+            assert_eq!(seg_7.y.to_bits(), seg_42.y.to_bits());
+            assert_eq!(seg_7.z.to_bits(), seg_42.z.to_bits());
+        }
     }
 }
 

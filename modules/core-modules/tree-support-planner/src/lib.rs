@@ -768,6 +768,7 @@ fn build_roles(
     floor_areas: &[ExPolygon],
     branch_radius: f32,
     collision_polys: &[ExPolygon],
+    simplify_tolerance: f64,
 ) -> Vec<slicer_ir::SupportPlanRoleRegion> {
     let clip_collision = |regions: Vec<ExPolygon>| {
         if collision_polys.is_empty() || regions.is_empty() {
@@ -780,10 +781,29 @@ fn build_roles(
     // per-node ellipse per layer; the swept capsules are this port's addition
     // and keep consecutive cross-sections joined on the same layer. Union the
     // two before the carve so a role is one body, not a pile of overlaps.
+    //
+    // Canonical `draw_circles` closes by simplifying every drawn area at the
+    // libslic3r `RESOLUTION` distance tolerance (`area.simplify(scale_(
+    // line_width / 2), &base_areas_simplified)`). Without it the per-node
+    // ellipses union into contours carrying `CIRCLE_RESOLUTION` vertices per
+    // node per layer.
+    //
+    // It runs HERE, before every carve, and not after them in the emit loop.
+    // Douglas-Peucker moves contour vertices by up to the tolerance, so a
+    // simplification applied after `diff_ex` can push an area back across the
+    // boundary it was just carved clear of — breaking both the "role never
+    // overlaps model occupancy" contract and canonical's
+    // `base_areas = diff_ex(base_areas, roofs)`. Canonical guards the same
+    // hazard by re-running `diff_ex` after its simplify pass
+    // (`base_areas = diff_ex(base_areas, trimming)`); simplifying first is the
+    // equivalent with one clip instead of two.
     let with_areas = |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon]| {
         let mut regions = structural_body_regions(segments, branch_radius);
         regions.extend_from_slice(areas);
-        clip_collision(union_expolys(regions))
+        clip_collision(expolygons_simplify(
+            &union_expolys(regions),
+            simplify_tolerance,
+        ))
     };
     let body = with_areas(branch_segments, branch_areas);
     let roof = with_areas(interface_segments, interface_areas);
@@ -3252,30 +3272,30 @@ impl SupportPlanner {
                         &floor_areas,
                         branch_radius,
                         role_collision,
+                        simplify_tolerance,
                     );
-                    // Canonical `draw_circles` closes by simplifying every
-                    // drawn area at the libslic3r `RESOLUTION` distance
-                    // tolerance. Without it the per-node ellipses union into
-                    // contours carrying `CIRCLE_RESOLUTION` vertices per node
-                    // per layer.
-                    for role in &mut roles {
-                        role.regions = expolygons_simplify(&role.regions, simplify_tolerance);
-                    }
-                    roles.retain(|role| !role.regions.is_empty());
-                    // Keep the emitted IR subject to the same exact-Z
-                    // occupancy contract as the runtime closure gate. This
-                    // final guard is needed for concave occupancy where a
-                    // preserved clamp position can evade the centerline test.
-                    for role in &mut roles {
-                        role.regions.retain(|region| {
-                            host::clip_polygons(
-                                std::slice::from_ref(region),
-                                role_collision,
-                                ClipOperation::Intersection,
-                            )
-                            .is_empty()
-                        });
-                    }
+                    // The exact-Z occupancy contract is discharged entirely by
+                    // `build_roles`' carve against `role_collision`, which now
+                    // runs after simplification and is therefore final.
+                    //
+                    // This site used to re-check it with
+                    // `role.regions.retain(|r| intersection(r,
+                    // role_collision).is_empty())` — an ALL-OR-NOTHING
+                    // rejection that discarded a whole connected region
+                    // because one of its lobes touched the model. Canonical
+                    // `draw_circles` never does that: it uses
+                    // `avoid_object_remove_extra_small_parts(circle,
+                    // get_collision(...))`, a difference that keeps what
+                    // survives. Measured on `SupportTest.stl` (AC-1
+                    // `fixture_invariants`): the tree column below the
+                    // cantilever is ONE connected body — the wall-hugging
+                    // nodes at x = 0, the MST capsules and the free branch at
+                    // x ≈ 12 union into a single ExPolygon — so a
+                    // simplification nudge of the wall-side contour threw the
+                    // free branch away on every layer from 38 down to 0 and
+                    // the plan terminated at z = 8.0 instead of the plate.
+                    // Canonical Orca prints tree support down to Z0.2 on this
+                    // fixture (`SupportTest_Tree_Orca.gcode`).
                     roles.retain(|role| !role.regions.is_empty());
                     if roles.is_empty() {
                         continue;
