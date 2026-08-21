@@ -25,7 +25,7 @@ use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
-    support_aggregation::try_aggregate_support_plan_irs_with_diagnostics, CompiledModuleLive,
+    support_aggregation::aggregate_support_plan_irs_degrading_with_diagnostics, CompiledModuleLive,
     PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
@@ -364,14 +364,13 @@ pub fn execute_prepass_with_instrumentation(
         }
         if !support_plans.is_empty() {
             let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
+            // Degrading policy: two families claiming one
+            // `(layer, object, region)` is a planner defect, but it must not
+            // discard every other retained entry and abort the prepass. The
+            // first-arriving family keeps the region and the loser is reported
+            // as a non-fatal 1202 diagnostic on the family writer's audit.
             let (plan, diagnostics) =
-                try_aggregate_support_plan_irs_with_diagnostics(support_plans, &exact_z).map_err(
-                    |error| PrepassExecutionError::FatalModule {
-                        stage_id: stage.stage_id.clone(),
-                        module_id: ModuleId::from("host:support_plan_aggregation"),
-                        message: format!("support family routing mismatch: {error:?}"),
-                    },
-                )?;
+                aggregate_support_plan_irs_degrading_with_diagnostics(support_plans, &exact_z);
             // The aggregate is a host-owned stage result; attach its degraded
             // diagnostics to the final family writer's existing audit stream.
             if let Some(&audit_index) = support_plan_audits.last() {

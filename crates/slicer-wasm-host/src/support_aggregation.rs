@@ -40,6 +40,47 @@ pub struct SupportAggregationInput<'a> {
     pub exact_z: &'a ExactZQueryService,
 }
 
+/// What aggregation does when two *different* families claim one
+/// `(global_layer_index, object_id, region_id)` identity.
+///
+/// Packet 223 made this unconditionally fatal, which every infallible caller
+/// then turned into a total loss of the aggregate (`unwrap_or_else` yields an
+/// empty result, and the prepass mapped it to a fatal module error). Callers
+/// that must keep printing choose [`FamilyConflictPolicy::Degrade`]; the one
+/// caller that must refuse to publish keeps [`FamilyConflictPolicy::Fail`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FamilyConflictPolicy {
+    /// Retain the first-*arriving* claimant, record a
+    /// [`DuplicateSupportPlanEntry`] (surfaced as diagnostic code 1202), and
+    /// mark the aggregate degraded.
+    #[default]
+    Degrade,
+    /// Abort with [`SupportAggregationError`], publishing nothing.
+    Fail,
+}
+
+// ORDERING ASYMMETRY (deliberate; no OrcaSlicer basis for either half).
+//
+// Two different orders are live in this function and they disagree:
+//
+//   * `Fail` computes its `SupportAggregationError` payload from the SORTED
+//     entry list, so `expected_family_id` is whichever family sorts first
+//     under `compare_entries` (which keys on `body_ids.iter().min()`, so e.g.
+//     "traditional-body" < "tree-body").
+//   * `Degrade` retains the first entry in PLAN-ARRIVAL order -- the
+//     `(plan_index, entry_index)` ordinal captured before the sort -- because
+//     "the first writer to claim a region owns it" is the only rule that is
+//     stable against a body being renamed.
+//
+// Neither order is derived from canonical OrcaSlicer behaviour; canonical has
+// no multi-family merge point at all. They are kept apart because
+// `mismatched_family_fatal` (slicer-runtime `tests/integration/
+// support_family_routing.rs`) pins the sorted-order payload while the two
+// degrade tests pin arrival-order retention. Do NOT unify them without first
+// amending `mismatched_family_fatal`.
+//
+// The sort itself remains, and is now purely for output determinism.
+
 /// Structured unmet demand diagnostic emitted when a body is dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnmetSupportDemand {
@@ -134,19 +175,23 @@ pub struct DeclinedSupportResult {
 /// Aggregate all family plans, preserving family attribution and validating
 /// every body against exact-Z occupancy before it can reach a renderer.
 pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAggregationResult {
-    try_aggregate_support_plans(input).unwrap_or_else(|error| {
-        let mut result = SupportAggregationResult {
-            degraded: true,
-            ..SupportAggregationResult::default()
-        };
-        result.diagnostics.push(SupportRoutingDiagnostics {
-            family_id: String::new(),
-            body_id: String::new(),
-            demand_id: String::new(),
-            reason: format!("fatal support family routing mismatch: {error:?}"),
-        });
-        result
-    })
+    try_aggregate_support_plans_with_policy(input, FamilyConflictPolicy::Degrade).unwrap_or_else(
+        |error| {
+            // Unreachable under `Degrade`, which never returns `Err`; kept so
+            // the signature stays total.
+            let mut result = SupportAggregationResult {
+                degraded: true,
+                ..SupportAggregationResult::default()
+            };
+            result.diagnostics.push(SupportRoutingDiagnostics {
+                family_id: String::new(),
+                body_id: String::new(),
+                demand_id: String::new(),
+                reason: format!("fatal support family routing mismatch: {error:?}"),
+            });
+            result
+        },
+    )
 }
 
 /// Fallible aggregate used by the prepass commit seam, which must not publish
@@ -154,49 +199,94 @@ pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAgg
 pub fn try_aggregate_support_plans(
     input: SupportAggregationInput<'_>,
 ) -> Result<SupportAggregationResult, SupportAggregationError> {
+    try_aggregate_support_plans_with_policy(input, FamilyConflictPolicy::Fail)
+}
+
+/// Aggregate family plans under an explicit [`FamilyConflictPolicy`].
+///
+/// See the ORDERING ASYMMETRY note above: the `Fail` error payload is computed
+/// from the sorted entry list, while `Degrade` retention follows plan-arrival
+/// order.
+pub fn try_aggregate_support_plans_with_policy(
+    input: SupportAggregationInput<'_>,
+    conflict_policy: FamilyConflictPolicy,
+) -> Result<SupportAggregationResult, SupportAggregationError> {
     let mut result = SupportAggregationResult::default();
     let mut identities = HashMap::new();
+    // Arrival ordinal `(plan_index, entry_index)`, captured BEFORE the total
+    // sort below. Under `Degrade` this -- not sort position -- decides which
+    // family owns a contested identity.
     let mut entries = input
         .plans
         .iter()
-        .flat_map(|plan| plan.entries.iter().cloned())
+        .enumerate()
+        .flat_map(|(plan_index, plan)| {
+            plan.entries
+                .iter()
+                .enumerate()
+                .map(move |(entry_index, entry)| ((plan_index, entry_index), entry.clone()))
+        })
         .collect::<Vec<_>>();
-    entries.sort_by(compare_entries);
-    for plan in input.plans {
-        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
-    }
-    for entry in entries {
+    let mut arrival_owners: HashMap<(i32, String, u64), ((usize, usize), String)> = HashMap::new();
+    for (arrival, entry) in &entries {
         let identity = (
             entry.global_layer_index,
             entry.object_id.clone(),
             entry.region_id,
         );
-        if let Some(first_family_id) = identities.get(&identity).cloned() {
-            if first_family_id != entry.family_id {
-                return Err(SupportAggregationError {
-                    global_layer_index: identity.0,
-                    object_id: identity.1.clone(),
-                    region_id: identity.2,
-                    expected_family_id: first_family_id,
-                    conflicting_family_id: entry.family_id.clone(),
-                });
+        match arrival_owners.get(&identity) {
+            Some((incumbent, _)) if incumbent <= arrival => {}
+            _ => {
+                arrival_owners.insert(identity, (*arrival, entry.family_id.clone()));
             }
-            result.degraded = true;
-            result.duplicates.push(DuplicateSupportPlanEntry {
-                global_layer_index: identity.0,
-                object_id: identity.1.clone(),
-                region_id: identity.2,
-                first_family_id,
-                duplicate_family_id: entry.family_id.clone(),
-            });
-            if entry.family_id != "traditional" {
-                continue;
-            }
-            // Same-family entries are intentionally combined below.  Dropping
-            // the duplicate here made whichever role sorted first authoritative
-            // for the identity, losing interfaces or body geometry from another
-            // writer/candidate at the same layer.
         }
+    }
+    entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
+    for plan in input.plans {
+        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
+    }
+    for (_arrival, entry) in entries {
+        let identity = (
+            entry.global_layer_index,
+            entry.object_id.clone(),
+            entry.region_id,
+        );
+        match conflict_policy {
+            FamilyConflictPolicy::Fail => {
+                if let Some(first_family_id) = identities.get(&identity).cloned() {
+                    if first_family_id != entry.family_id {
+                        return Err(SupportAggregationError {
+                            global_layer_index: identity.0,
+                            object_id: identity.1.clone(),
+                            region_id: identity.2,
+                            expected_family_id: first_family_id,
+                            conflicting_family_id: entry.family_id.clone(),
+                        });
+                    }
+                }
+            }
+            FamilyConflictPolicy::Degrade => {
+                if let Some((_, owner_family_id)) = arrival_owners.get(&identity) {
+                    if owner_family_id != &entry.family_id {
+                        result.degraded = true;
+                        result.duplicates.push(DuplicateSupportPlanEntry {
+                            global_layer_index: identity.0,
+                            object_id: identity.1.clone(),
+                            region_id: identity.2,
+                            first_family_id: owner_family_id.clone(),
+                            duplicate_family_id: entry.family_id.clone(),
+                        });
+                        continue;
+                    }
+                }
+            }
+        }
+        // A repeated identity within ONE family is not a conflict: it is two
+        // entries for one region from one writer (body + interface candidates,
+        // or two candidates at the same layer). It is combined by
+        // `union_same_family_entries` below and carries no diagnostic. Dropping
+        // it made whichever role sorted first authoritative for the identity,
+        // losing interfaces or body geometry from the other entry.
         identities
             .entry(identity.clone())
             .or_insert_with(|| entry.family_id.clone());
@@ -494,18 +584,57 @@ pub fn aggregate_support_plan_irs_with_diagnostics(
 }
 
 /// Fallible aggregation used when a caller must prevent publication on error.
+///
+/// Keeps [`FamilyConflictPolicy::Fail`]: a cross-family identity conflict is
+/// reported as `Err` and nothing is published.
 pub fn try_aggregate_support_plan_irs_with_diagnostics(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
+) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
+    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Fail)
+}
+
+/// Degrading aggregation used by the runtime prepass commit seam.
+///
+/// A cross-family identity conflict retains the first-arriving family, emits
+/// diagnostic code 1202, and still publishes every other entry, instead of
+/// discarding the whole aggregate.
+pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
+    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Degrade)
+        .unwrap_or_else(|error| {
+            // Unreachable under `Degrade`, which never returns `Err`.
+            (
+                SupportPlanIR::default(),
+                vec![slicer_ir::Diagnostic {
+                    severity: slicer_ir::DiagnosticSeverity::Error,
+                    code: 1204,
+                    layer: None,
+                    object_id: None,
+                    message: format!("support family routing mismatch: {error:?}"),
+                }],
+            )
+        })
+}
+
+fn aggregate_support_plan_irs_with_policy(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+    conflict_policy: FamilyConflictPolicy,
 ) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
     let schema_version = plans
         .first()
         .map(|plan| plan.schema_version)
         .unwrap_or_default();
-    let aggregate = try_aggregate_support_plans(SupportAggregationInput {
-        plans: plans.clone(),
-        exact_z,
-    })?;
+    let aggregate = try_aggregate_support_plans_with_policy(
+        SupportAggregationInput {
+            plans: plans.clone(),
+            exact_z,
+        },
+        conflict_policy,
+    )?;
     let mut diagnostics = aggregate
         .unmet
         .iter()
