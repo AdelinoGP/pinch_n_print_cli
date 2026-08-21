@@ -734,6 +734,30 @@ fn node_ellipse(
 ///
 /// A role with no regions is omitted rather than emitted empty, so consumers can
 /// treat role presence as meaningful.
+/// Inflate raw model cross-sections into a `draw_circles` carve set.
+///
+/// Canonical `draw_circles` never carves the drawn circles out of the bare
+/// object outline: its local `get_collision` lambda returns
+/// `offset_ex(m_layer_outlines[obj_layer_nr], scale_(m_xy_distance))`, so the
+/// printed footprint keeps a full `support_object_xy_distance` gap to the wall.
+///
+/// `SupportAnalysisView::model_occupancy` carries the RAW `SliceIR` region
+/// polygons (`support_analysis_producer` inserts `region.polygons` verbatim,
+/// with zero inflation). It is preferred over the `TreeVolumes` ladder because
+/// it is the exact per-layer occupancy, but it must be inflated here or the
+/// carve degenerates to a difference against the wall itself.
+///
+/// Measured on `resources/regression_wedge.stl` before this inflation: 940 of
+/// 19856 emitted role-region vertices sat within 0.05 mm of the model outline
+/// (many exactly on it) — e.g. layer 107 vertices at x = 21.0000 and
+/// x = 29.0000, flush against the model edges at those coordinates.
+fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPolygon> {
+    if polys.is_empty() || xy_distance_mm <= 0.0 {
+        return polys.to_vec();
+    }
+    host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_roles(
     branch_segments: &[Vec<Point3WithWidth>],
@@ -2736,15 +2760,18 @@ impl SupportPlanner {
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
-            let model_collision: Vec<ExPolygon> = support_analysis
-                .model_occupancy
-                .iter()
-                .filter(|entry| {
-                    entry.object_id == obj.object_id
-                        && entry.global_support_layer_index == current_global_layer_index
-                })
-                .flat_map(|entry| entry.polygons.iter().cloned())
-                .collect();
+            let model_collision: Vec<ExPolygon> = inflate_model_occupancy(
+                &support_analysis
+                    .model_occupancy
+                    .iter()
+                    .filter(|entry| {
+                        entry.object_id == obj.object_id
+                            && entry.global_support_layer_index == current_global_layer_index
+                    })
+                    .flat_map(|entry| entry.polygons.iter().cloned())
+                    .collect::<Vec<_>>(),
+                self.support_object_xy_distance,
+            );
             let collision_polys: &[ExPolygon] = if model_collision.is_empty() {
                 collision_polys.as_slice()
             } else {
@@ -3197,16 +3224,20 @@ impl SupportPlanner {
                         continue;
                     }
                     fallback_family_emitted |= assignments_empty;
-                    let model_occupancy: Vec<ExPolygon> = support_analysis
-                        .model_occupancy
-                        .iter()
-                        .filter(|entry| {
-                            entry.object_id == obj.object_id
-                                && entry.global_support_layer_index == current_global_layer_index
-                                && entry.region_id == *region_id
-                        })
-                        .flat_map(|entry| entry.polygons.iter().cloned())
-                        .collect();
+                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy(
+                        &support_analysis
+                            .model_occupancy
+                            .iter()
+                            .filter(|entry| {
+                                entry.object_id == obj.object_id
+                                    && entry.global_support_layer_index
+                                        == current_global_layer_index
+                                    && entry.region_id == *region_id
+                            })
+                            .flat_map(|entry| entry.polygons.iter().cloned())
+                            .collect::<Vec<_>>(),
+                        self.support_object_xy_distance,
+                    );
                     let role_collision = if model_occupancy.is_empty() {
                         collision_polys
                     } else {
