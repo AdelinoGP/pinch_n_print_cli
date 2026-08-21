@@ -401,21 +401,48 @@ fn distributed_contacts() {
         .map(|entry| entry.global_layer_index)
         .max()
         .expect("planner must emit geometry on at least one layer");
+    // Canonical `draw_circles` (`TreeSupport.cpp`) dispatches every node to
+    // EXACTLY ONE bucket -- `roof_gap_areas`, else `roof_1st_layer` when
+    // `support_roof_layers_below == 1`, else `roof_areas`/`roof_base_areas`
+    // when `> 1`, else `base_areas` -- and only afterwards computes
+    // `base_areas = diff_ex(base_areas, roofs)`. On a layer where every
+    // surviving node is a roof node, canonical's `base_areas` is already empty
+    // BEFORE the carve, so canonical prints no body cross-section there either.
+    // The "body survives the carve" invariant therefore holds strictly BELOW
+    // the top-interface band, not on it. The band bottom is derived from the
+    // emitted plan (not from config) so the check tracks whatever band the
+    // planner actually produced.
+    let interface_band_bottom = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty())
+        })
+        .map(|entry| entry.global_layer_index)
+        .min()
+        .unwrap_or(top_geometry_layer);
     for entry in output.entries() {
         assert_eq!(entry.family_id, "tree");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
         assert!(entry.skeleton.as_ref().is_some());
-        if entry.global_layer_index < top_geometry_layer {
-            // Canonical `TreeSupport.cpp::draw_circles` computes
-            // `base_areas = diff_ex(base_areas, roofs)` and keeps the
-            // remainder: only the topmost layer of a column may be roof-only.
-            // The widened `any non-empty role` form passed even when the
-            // planner discarded the body on every interface layer.
+        if entry.global_layer_index < interface_band_bottom {
+            // NOTE on regression scope: this fixture's single contact makes the
+            // roof cover the whole branch on every band layer, so no layer here
+            // is ever mixed and this test cannot gate the F-3 `carved.clear()`
+            // defect. `anchored_heights_and_termination` (below) is that gate.
+            //
+            // Below the roof band no node is a roof node, so canonical's
+            // `base_areas` is non-empty and survives `diff_ex(base_areas,
+            // roofs)` intact. The widened `any non-empty role` form passed even
+            // when the planner discarded the body on every interface layer.
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} is below the top-interface band yet carries no SupportBody geometry. Canonical's `base_areas` is non-empty below the roof band and survives `diff_ex(base_areas, roofs)`, so the layer must still print a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );
@@ -777,16 +804,20 @@ fn anchored_heights_and_termination() {
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
         assert!(entry.skeleton.as_ref().is_some());
         // Canonical subtracts roof and floor areas out of `base_areas` and
-        // KEEPS the remainder (`TreeSupport.cpp::draw_circles`). Only the
-        // topmost layer of a column may end up roof-only; every layer below it
-        // still carries a `SupportBody` cross-section. The widened form (`any
-        // non-empty role`) passed even when the planner cleared the body on
-        // every layer that carried any interface.
+        // KEEPS the remainder (`draw_circles`, `TreeSupport.cpp`). On THIS
+        // fixture the contact area is narrower than the branch, so the roof
+        // never covers the whole cross-section and `diff_ex(base_areas, roofs)`
+        // always leaves a remainder: layers 6 and 5 are mixed (SupportBody +
+        // TopInterface). That makes this the F-3 regression gate -- the
+        // pre-fix `carved.clear()` dropped the body on every roof-carrying
+        // layer and turned this assertion red. Do NOT narrow it to
+        // "below the interface band"; that would exempt exactly the two mixed
+        // layers the gate exists to protect.
         if entry.global_layer_index < top_geometry_layer {
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder; on this fixture the roof never covers the whole branch, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );

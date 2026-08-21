@@ -255,12 +255,16 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         top_interface_layers.contains(&highest),
         "AC-4: the topmost support layer must be interface, not bare body; highest={highest} interface={top_interface_layers:?}"
     );
-    // Interface must be carved out of the body, never printed on top of it —
-    // and the body must SURVIVE the carve. Canonical
-    // `TreeSupport.cpp::draw_circles` computes
-    // `base_areas = diff_ex(base_areas, roofs)` and keeps the remainder, so an
-    // interface layer whose branch continues below the interface band still
-    // carries a `SupportBody` cross-section.
+    // Interface must be carved out of the body, never printed on top of it.
+    //
+    // The body does NOT have to survive on an interface layer: canonical
+    // `draw_circles` (`TreeSupport.cpp`) dispatches each node to exactly one
+    // bucket (`roof_gap_areas` / `roof_1st_layer` / `roof_areas` /
+    // `base_areas`), so on a layer whose surviving nodes are all roof nodes
+    // canonical's `base_areas` is empty BEFORE `base_areas = diff_ex(base_areas,
+    // roofs)` runs. What canonical does guarantee is that the layer immediately
+    // BELOW the interface band -- where no node is a roof node -- still prints a
+    // body cross-section. That is what is asserted here.
     //
     // The previous form of this block iterated `for b in &body { for r in &roof
     // { .. } }`, which never executed: the planner clears the body on any layer
@@ -292,16 +296,6 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
             .iter()
             .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface && !r.regions.is_empty())
             .collect();
-        let continues_below = geometry_layers
-            .iter()
-            .any(|&lower| lower < interface_band_bottom);
-        if continues_below {
-            carve_checks += 1;
-            assert!(
-                !body.is_empty(),
-                "AC-4: layer {layer} carries a TopInterface but no SupportBody, while the column continues below the interface band (band bottom={interface_band_bottom}, geometry layers={geometry_layers:?}). Canonical subtracts the roof out of `base_areas` and KEEPS the remainder; clearing the body leaves the branch cross-section unprinted on that layer."
-            );
-        }
         for b in &body {
             for r in &roof {
                 let overlap = slicer_sdk::host::clip_polygons(
@@ -316,9 +310,37 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
             }
         }
     }
+    // Every layer below the interface band must still print a body: no node
+    // there is a roof node, so canonical's `base_areas` is non-empty and the
+    // `diff_ex(base_areas, roofs)` carve leaves it intact.
+    //
+    // NOTE on regression scope: on THIS fixture the roof covers the entire
+    // branch on both band layers, so no layer here ever carries a roof and a
+    // body at once. This test therefore cannot -- and never could -- gate the
+    // F-3 `carved.clear()` defect; its former "body must survive on a band
+    // layer" form was red under the fixed code too. The F-3 gate is
+    // `tree_family_tdd::anchored_heights_and_termination`, whose fixture has a
+    // contact narrower than the branch and so produces genuinely mixed layers;
+    // it is verified red when `carved.clear()` is reinstated.
+    for &layer in &geometry_layers {
+        if layer >= interface_band_bottom {
+            continue;
+        }
+        let entry = entries
+            .iter()
+            .find(|e| e.global_layer_index == layer)
+            .expect("geometry layer must have an entry");
+        carve_checks += 1;
+        assert!(
+            entry.roles.iter().any(|r| r.role == slicer_ir::SupportPlanRole::SupportBody
+                && !r.regions.is_empty()),
+            "AC-4: layer {layer} lies below the interface band (band bottom={interface_band_bottom}) yet carries no SupportBody. Canonical keeps `base_areas` intact below the roof band; clearing the body leaves the branch cross-section unprinted. Roles: {:?}",
+            entry.roles
+        );
+    }
     assert!(
         carve_checks > 0,
-        "AC-4: no interface layer had a column continuing below it, so the body-survives-the-carve check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
+        "AC-4: no geometry layer sat below the interface band, so the body-below-the-band check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
     );
 }
 

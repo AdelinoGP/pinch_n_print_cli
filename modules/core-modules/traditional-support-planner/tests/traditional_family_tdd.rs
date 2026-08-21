@@ -268,21 +268,43 @@ fn contact_area_planning() {
         .map(|entry| entry.global_layer_index)
         .max()
         .expect("planner must emit geometry on at least one layer");
+    // Canonical `generate_interface_layers` (`SupportCommon.cpp`) builds the
+    // interface as `intersection(intermediate_layer.polygons, <projected top
+    // contacts>)` and then does `intermediate_layer.polygons =
+    // diff(intermediate_layer.polygons, layer_new.polygons)`. For a straight
+    // column the intersection covers the whole cross-section, so that `diff` is
+    // EMPTY and `generate_support_layers` (same file) skips the now-empty
+    // intermediate layer via its `if (! layer.polygons.empty())` guard --
+    // canonical prints no body on an interface layer of a uniform column.
+    // The "body survives the carve" invariant therefore holds strictly BELOW
+    // the top-interface band, not on it.
+    let interface_band_bottom = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty())
+        })
+        .map(|entry| entry.global_layer_index)
+        .min()
+        .unwrap_or(top_geometry_layer);
     for entry in output.entries() {
         assert_eq!(entry.family_id, "traditional");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        if entry.global_layer_index < top_geometry_layer {
-            // Canonical carves the interface OUT of the body and keeps the
-            // remainder; only the topmost layer of a column may be
-            // interface-only. The widened form (`any non-empty role`) passed
-            // even though this planner emits exactly one role per entry, so
-            // body and interface can never coexist — the defect the assertion
-            // was supposed to catch.
+        if entry.global_layer_index < interface_band_bottom {
+            // Below the interface band nothing is projected into the
+            // intermediate layer, so canonical's base remainder is the full
+            // cross-section and a body must be printed. The widened form (`any
+            // non-empty role`) passed even though this planner emits exactly
+            // one role per entry, so body and interface can never coexist — the
+            // defect the assertion was supposed to catch.
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical traditional support subtracts the interface out of the base area and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} is below the top-interface band yet carries no SupportBody geometry. Canonical leaves the intermediate layer untouched below the band, so it must still print a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );
@@ -486,23 +508,45 @@ fn anchored_termination() {
         .map(|entry| entry.global_layer_index)
         .max()
         .expect("planner must emit geometry on at least one layer");
+    // Canonical `generate_interface_layers` (`SupportCommon.cpp`) builds the
+    // interface as `intersection(intermediate_layer.polygons, <projected top
+    // contacts>)` and then does `intermediate_layer.polygons =
+    // diff(intermediate_layer.polygons, layer_new.polygons)`. For a straight
+    // column the intersection covers the whole cross-section, so that `diff` is
+    // EMPTY and `generate_support_layers` (same file) skips the now-empty
+    // intermediate layer via its `if (! layer.polygons.empty())` guard --
+    // canonical prints no body on an interface layer of a uniform column.
+    // The "body survives the carve" invariant therefore holds strictly BELOW
+    // the top-interface band, not on it.
+    let interface_band_bottom = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty())
+        })
+        .map(|entry| entry.global_layer_index)
+        .min()
+        .unwrap_or(top_geometry_layer);
     for entry in output.entries() {
         assert_eq!(
             entry.anchor_z,
             slicer_ir::mm_to_units((entry.global_layer_index as f32 + 1.0) * 0.2)
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
-        if entry.global_layer_index < top_geometry_layer {
-            // Canonical carves the interface OUT of the body and keeps the
-            // remainder; only the topmost layer of a column may be
-            // interface-only. The widened form (`any non-empty role`) passed
-            // even though this planner emits exactly one role per entry, so
-            // body and interface can never coexist — the defect the assertion
-            // was supposed to catch.
+        if entry.global_layer_index < interface_band_bottom {
+            // Below the interface band nothing is projected into the
+            // intermediate layer, so canonical's base remainder is the full
+            // cross-section and a body must be printed. The widened form (`any
+            // non-empty role`) passed even though this planner emits exactly
+            // one role per entry, so body and interface can never coexist — the
+            // defect the assertion was supposed to catch.
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical traditional support subtracts the interface out of the base area and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} is below the top-interface band yet carries no SupportBody geometry. Canonical leaves the intermediate layer untouched below the band, so it must still print a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );
