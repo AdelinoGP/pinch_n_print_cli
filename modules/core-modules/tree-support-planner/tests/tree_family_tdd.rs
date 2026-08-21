@@ -104,7 +104,21 @@ fn planner_config(enabled: bool) -> ConfigView {
 }
 
 fn planner_config_with_angle(branch_angle_deg: f64) -> ConfigView {
-    planner_config_full(true, 5.0, branch_angle_deg)
+    // Packet 224 step 5 (F-13): canonical `DO_NOT_MOVER_UNDER_MM` is 5 mm for
+    // the non-slim tree styles and 0 for slim. Below that `print_z` a branch is
+    // forbidden to converge on its neighbours at all. This fixture is 2 mm tall
+    // (10 layers at 0.2 mm), so under the default style NEITHER angle can
+    // produce any convergence and the ordering the test asserts is vacuous —
+    // both runs measure zero. Selecting the slim style is the only way to make
+    // the fixture exercise convergence at all; the assertions themselves
+    // (steeper angle converges further, and no layer step exceeds the
+    // per-layer budget) are unchanged.
+    planner_config_full_with(
+        true,
+        5.0,
+        branch_angle_deg,
+        &[("support_style", ConfigValue::String("tree_slim".into()))],
+    )
 }
 
 fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigView {
@@ -112,6 +126,15 @@ fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigVi
 }
 
 fn planner_config_full(enabled: bool, branch_diameter: f64, branch_angle_deg: f64) -> ConfigView {
+    planner_config_full_with(enabled, branch_diameter, branch_angle_deg, &[])
+}
+
+fn planner_config_full_with(
+    enabled: bool,
+    branch_diameter: f64,
+    branch_angle_deg: f64,
+    extra: &[(&str, ConfigValue)],
+) -> ConfigView {
     let mut values = HashMap::<ConfigKey, ConfigValue>::new();
     values.insert("enable_support".into(), ConfigValue::Bool(enabled));
     values.insert("support_family".into(), ConfigValue::String("tree".into()));
@@ -133,6 +156,9 @@ fn planner_config_full(enabled: bool, branch_diameter: f64, branch_angle_deg: f6
         "tree_support_branch_angle".into(),
         ConfigValue::Float(branch_angle_deg),
     );
+    for (key, value) in extra {
+        values.insert((*key).into(), value.clone());
+    }
     ConfigView::from_map(values)
 }
 

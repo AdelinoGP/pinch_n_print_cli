@@ -72,6 +72,14 @@ const OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 /// Hard upper clamp on branch radius in mm. Matches OrcaSlicer's
 /// `TreeSupportData::max_radius` hard upper bound (6.0 mm).
 const MAX_BRANCH_RADIUS_MM: f32 = 6.0;
+/// Canonical `DO_NOT_MOVER_UNDER_MM` for the non-slim tree styles. Below this
+/// `print_z` the F-13 move pass forbids neighbour convergence entirely; the
+/// slim style uses `0`.
+const DO_NOT_MOVER_UNDER_MM: f32 = 5.0;
+/// Canonical `drop_nodes` sends a sharp tail along its own `skin_direction`
+/// rather than toward its neighbours while it is still within this distance
+/// of the tip.
+const SHARP_TAIL_SKIN_FOLLOW_MM: f32 = 3.0;
 const MIN_BRANCH_RADIUS: f32 = 0.4;
 /// Default vertical clearance between the top of a support column and the
 /// overhang it supports. Matches OrcaSlicer's `support_top_z_distance` default
@@ -104,6 +112,10 @@ pub struct SupportPlanner {
     tree_support_branch_distance: f32,
     /// Number of wall rings around each branch. Scales max move distance.
     tree_support_wall_count: u32,
+    /// Canonical `is_slim` (`support_style == smsTreeSlim`). Selects the
+    /// `DO_NOT_MOVER_UNDER_MM` threshold in the F-13 move pass: `0` when slim,
+    /// `5` mm otherwise.
+    tree_support_is_slim: bool,
     /// Number of raft layers to describe.
     support_raft_layers: i32,
     /// Density of the first raft layer.
@@ -370,6 +382,22 @@ impl std::ops::IndexMut<NodeId> for NodeArena {
     fn index_mut(&mut self, id: NodeId) -> &mut PlannedSupportNode {
         &mut self.nodes[id.0]
     }
+}
+
+/// One layer's committed `drop_nodes` result, replayed by the emit pass.
+///
+/// Canonical runs `drop_nodes` over every layer and only then calls
+/// `draw_circles`. F-14's `unsupported_branch_leaves` pruning walks *up* the
+/// parent chain, so an interleaved plan/emit loop could not withdraw geometry
+/// it had already written for a higher layer.
+struct LayerRecord {
+    /// Index into `layer_plan.layers` (the forward index, not `layer_rev`'s
+    /// reverse counter — they are the same number here, kept explicit).
+    layer_rev: usize,
+    /// Surviving nodes on this layer, after merge drops.
+    active: Vec<NodeId>,
+    /// Surviving MST edges as node-id pairs.
+    edges: Vec<(NodeId, NodeId)>,
 }
 
 /// Canonical `avg_node_per_layer` / `nodes_angle`, computed once over every
@@ -819,8 +847,23 @@ struct TreeVolumes {
     max_move_distances: Vec<f32>,
     /// Canonical `m_xy_distance` — the `support_object_xy_distance` setting.
     xy_distance: f32,
-    collision: std::collections::HashMap<(i64, usize), Vec<ExPolygon>>,
-    avoidance: std::collections::HashMap<(i64, usize), Vec<ExPolygon>>,
+    collision: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
+    avoidance: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
+}
+
+/// Shared, cheaply-cloned handle to one cached `(radius, layer)` volume.
+///
+/// The move pass (F-13) queries collision and avoidance at each node's *own*
+/// tapered radius, so the bucket set is no longer known before the layer loop
+/// and cannot be filled by a pair of `ensure_*` calls up front. The caches
+/// therefore materialise lazily behind a `RefCell` and hand out `Rc`s rather
+/// than borrows, so a caller can hold a volume across a further `get_*` call
+/// that fills a different bucket. The guest is single-threaded, so neither
+/// `Rc` nor `RefCell` costs anything here.
+type PolySet = std::rc::Rc<Vec<ExPolygon>>;
+
+fn empty_poly_set() -> PolySet {
+    std::rc::Rc::new(Vec::new())
 }
 
 impl TreeVolumes {
@@ -875,8 +918,8 @@ impl TreeVolumes {
             layer_outlines_below,
             max_move_distances,
             xy_distance: xy_distance.max(0.0),
-            collision: std::collections::HashMap::new(),
-            avoidance: std::collections::HashMap::new(),
+            collision: std::cell::RefCell::new(std::collections::HashMap::new()),
+            avoidance: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -899,18 +942,26 @@ impl TreeVolumes {
             .map_or(&[][..], |v| v.as_slice())
     }
 
-    /// Canonical `TreeSupportData::get_collision`.
-    fn get_collision(&self, radius_mm: f32, layer: usize) -> &[ExPolygon] {
+    /// Canonical `TreeSupportData::get_collision`. Materialises the radius
+    /// bucket on first use, exactly as canonical's cache does.
+    fn get_collision(&self, radius_mm: f32, layer: usize) -> PolySet {
+        self.ensure_collision(radius_mm);
         self.collision
+            .borrow()
             .get(&(radius_key(radius_mm), layer))
-            .map_or(&[][..], |v| v.as_slice())
+            .cloned()
+            .unwrap_or_else(empty_poly_set)
     }
 
-    /// Canonical `TreeSupportData::get_avoidance`.
-    fn get_avoidance(&self, radius_mm: f32, layer: usize) -> &[ExPolygon] {
+    /// Canonical `TreeSupportData::get_avoidance`. Materialises the radius
+    /// bucket on first use.
+    fn get_avoidance(&self, radius_mm: f32, layer: usize) -> PolySet {
+        self.ensure_avoidance(radius_mm);
         self.avoidance
+            .borrow()
             .get(&(radius_key(radius_mm), layer))
-            .map_or(&[][..], |v| v.as_slice())
+            .cloned()
+            .unwrap_or_else(empty_poly_set)
     }
 
     /// Fill the collision ladder for one radius bucket.
@@ -918,9 +969,9 @@ impl TreeVolumes {
     /// `collision(r, l) = simplify(offset_ex(outlines[l], r + xy_distance))`.
     /// Every layer's inflation is independent, so the whole stack goes to the
     /// host in one batch (ADR-0049) rather than one call per layer.
-    fn ensure_collision(&mut self, radius_mm: f32) {
+    fn ensure_collision(&self, radius_mm: f32) {
         let key = radius_key(radius_mm);
-        if self.layer_outlines.is_empty() || self.collision.contains_key(&(key, 0)) {
+        if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
             return;
         }
         let inflate = ceil_radius(radius_mm) + self.xy_distance;
@@ -940,8 +991,9 @@ impl TreeVolumes {
         for (layer, polys) in inflated {
             by_layer[*layer] = expolygons_simplify(&polys, tolerance_units);
         }
+        let mut cache = self.collision.borrow_mut();
         for (layer, polys) in by_layer.into_iter().enumerate() {
-            self.collision.insert((key, layer), polys);
+            cache.insert((key, layer), std::rc::Rc::new(polys));
         }
     }
 
@@ -950,15 +1002,15 @@ impl TreeVolumes {
     /// Avoidance is a strict recurrence — each layer erodes the layer below it
     /// — so it is walked serially, but iteratively rather than recursively
     /// (see the module note on canonical's recursion trampoline).
-    fn ensure_avoidance(&mut self, radius_mm: f32) {
+    fn ensure_avoidance(&self, radius_mm: f32) {
         let key = radius_key(radius_mm);
-        if self.layer_outlines.is_empty() || self.avoidance.contains_key(&(key, 0)) {
+        if self.layer_outlines.is_empty() || self.avoidance.borrow().contains_key(&(key, 0)) {
             return;
         }
         self.ensure_collision(radius_mm);
         let mut previous: Vec<ExPolygon> = Vec::new();
         for layer in 0..self.layer_count() {
-            let collision = self.get_collision(radius_mm, layer).to_vec();
+            let collision = self.get_collision(radius_mm, layer).as_ref().clone();
             let avoidance = if layer == 0 || previous.is_empty() {
                 collision
             } else {
@@ -983,7 +1035,9 @@ impl TreeVolumes {
                 }
             };
             previous = avoidance.clone();
-            self.avoidance.insert((key, layer), avoidance);
+            self.avoidance
+                .borrow_mut()
+                .insert((key, layer), std::rc::Rc::new(avoidance));
         }
     }
 }
@@ -1032,6 +1086,12 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(d)) => *d as f32,
             _ => 1.0,
         };
+        // Canonical `is_slim = support_style == smsTreeSlim`.
+        let tree_support_is_slim = matches!(
+            config.get("support_style"),
+            Some(ConfigValue::String(style))
+                if style == "tree_slim" || style == "organic" || style == "slim"
+        );
         let tree_support_wall_count = match config.get("tree_support_wall_count") {
             Some(ConfigValue::Int(n)) => *n as u32,
             Some(ConfigValue::Float(n)) => *n as u32,
@@ -1101,6 +1161,7 @@ impl PrepassModule for SupportPlanner {
             tree_support_branch_diameter_angle,
             tree_support_branch_distance,
             tree_support_wall_count,
+            tree_support_is_slim,
             support_raft_layers,
             raft_first_layer_density,
             base_raft_layers,
@@ -1171,23 +1232,20 @@ impl PrepassModule for SupportPlanner {
         // quantity with no recursion. Canonical inflates collision by
         // `radius + m_xy_distance` and derives avoidance as a recurrence down
         // the layer stack, which is what stops a branch being trapped.
-        let branch_radius = self.tree_support_branch_diameter / 2.0;
-        let mut volumes = TreeVolumes::new(
+        let volumes = TreeVolumes::new(
             layer_plan,
             support_geometry,
             self.branch_angle_deg,
             self.support_object_xy_distance,
         );
-        // Canonical keys both ladders on the branch radius. The emit gates
-        // additionally inflate by each node's own *tapered* radius via
-        // `body_intersects`, so they read the radius-free bucket
-        // (`get_collision(0.0, l)` = outlines inflated by `m_xy_distance`
-        // alone); inflating that volume by `branch_radius` as well would count
-        // the radius twice. The avoidance ladder is keyed on `branch_radius`,
-        // as canonical's `get_avoidance(radius, layer)` is.
-        volumes.ensure_collision(0.0);
-        volumes.ensure_avoidance(branch_radius);
-        let volumes = volumes;
+        // Both ladders are now keyed on the *querying node's* radius and
+        // materialise on demand (see `PolySet`). Until packet 224 step 5 the
+        // module pre-filled exactly two buckets here — `collision(0.0)` and
+        // `avoidance(branch_radius)` — because the getters returned borrows
+        // and could not be filled inside the layer loop. The canonical move
+        // pass (F-13) queries `get_avoidance(calc_radius(...), l)` and
+        // `get_collision(node_radius, l)`, so the bucket set is not knowable
+        // before the loop runs.
 
         // `support_interface_bottom_layers` is implemented as of packet 224: it
         // is read in `from_config` into `self.support_interface_bottom_layers`
@@ -1403,7 +1461,6 @@ impl SupportPlanner {
                         &mut arena,
                         &mut contacts_by_layer,
                         layer_plan,
-                        volumes,
                         self,
                         dropped_by_layer,
                         layer_idx,
@@ -1439,7 +1496,6 @@ impl SupportPlanner {
                     &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
-                    volumes,
                     self,
                     dropped_by_layer,
                     layer_idx,
@@ -1519,7 +1575,6 @@ impl SupportPlanner {
                     &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
-                    volumes,
                     self,
                     dropped_by_layer,
                     layer_idx,
@@ -1579,7 +1634,6 @@ impl SupportPlanner {
                     &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
-                    volumes,
                     self,
                     dropped_by_layer,
                     layer_idx,
@@ -1631,9 +1685,19 @@ impl SupportPlanner {
         // top-to-bottom layer order in output.
         let mut entries_in_order: Vec<SupportPlanEntry> = Vec::new();
 
+        // Canonical `drop_nodes`' `unsupported_branch_leaves` (F-14): branch
+        // leaves with no legal footing, drained after every layer has run.
+        let mut unsupported_branch_leaves: std::collections::VecDeque<NodeId> =
+            std::collections::VecDeque::new();
+        // Per-layer committed state for the emit pass.
+        let mut layer_records: Vec<LayerRecord> = Vec::new();
+
         // Iterate top → bottom.
         let top = num_layers as usize;
         for layer_rev in (0..top).rev() {
+            // Canonical caches `is_line_cut_by_contour` per `drop_nodes` layer
+            // pass; the contours it tests against are this layer's.
+            let mut line_cut = LineCutCache::default();
             let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
             // Merge freshly-detected contacts at this layer.
             active_nodes.extend(std::mem::take(&mut contacts_by_layer[layer_rev]));
@@ -1696,6 +1760,18 @@ impl SupportPlanner {
                     assign_node_group(&parts, node.to_buildplate, node.x(), node.y())
                 })
                 .collect();
+            // F-14: the canonical grouping loop drops a node that must reach
+            // the plate but no longer can — `continue` before `nodes_per_part`,
+            // so it joins no spanning tree, is never moved and is never
+            // propagated — and files it as an unsupported branch leaf so the
+            // whole column above it is pruned.
+            let mut unsupported: Vec<bool> = vec![false; active_nodes.len()];
+            for (i, id) in active_nodes.iter().enumerate() {
+                if self.support_on_build_plate_only && !arena[*id].to_buildplate {
+                    unsupported_branch_leaves.push_back(*id);
+                    unsupported[i] = true;
+                }
+            }
             let mut mst_edges: Vec<(usize, usize, f32)> = Vec::new();
             for group in 0..=parts.len() {
                 let members: Vec<usize> = (0..active_nodes.len())
@@ -1730,7 +1806,7 @@ impl SupportPlanner {
                 adjacency[*a].push(*b);
                 adjacency[*b].push(*a);
             }
-            let mut drop = vec![false; active_nodes.len()];
+            let mut drop = unsupported;
             // Branch A's merged node is created directly on the layer below -
             // canonical emits it into `contact_nodes[layer_nr - 1]`, so it
             // never sees this layer's move pass.
@@ -1793,19 +1869,21 @@ impl SupportPlanner {
                     );
                     if group_of[i] == 0 {
                         // Canonical keys this push-out on the merged node's own
-                        // `next_radius` bucket. `TreeVolumes` materialises only
-                        // the `0.0` collision and `branch_radius` avoidance
-                        // ladders today (step 1), so the branch-radius bucket
-                        // is used; widening the bucket set is step 5-7 work.
+                        // `next_radius` bucket. Steps 3-4 had to settle for the
+                        // constant branch-radius bucket because `TreeVolumes`
+                        // materialised only two; the caches are demand-filled
+                        // as of step 5, so the real bucket is used.
+                        let avoidance = volumes.get_avoidance(next_radius, next_cache_idx);
                         next_position = move_out_expolys(
-                            volumes.get_avoidance(branch_radius, next_cache_idx),
+                            &avoidance,
                             next_position,
                             RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
                             max_move_xy + RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
                         );
                     }
+                    // F-14: the raw outlines of the layer below, not collision.
                     let to_buildplate = !is_inside_ex(
-                        volumes.get_collision(0.0, next_cache_idx),
+                        volumes.outlines_at(next_cache_idx),
                         next_position.0,
                         next_position.1,
                     );
@@ -1890,6 +1968,381 @@ impl SupportPlanner {
                     }
                 }
             }
+            // ── F-13: canonical `drop_nodes` move pass ───────────────────
+            //
+            // Until packet 224 step 5 this stepped toward a 1/d^2 weighted
+            // *mean of neighbour positions*, capped the displacement at
+            // `tan_angle * layer_height * wall_count`, then post-hoc clamped
+            // the result out of avoidance and dropped the node with a typed
+            // code-1002 `node-clamped-out` diagnostic when the escape exceeded
+            // that budget. None of the capping, the clamping or the escape
+            // budget is canonical: canonical always takes a step of exactly
+            // `get_max_move_dist(&node)` along a direction that is either the
+            // outward projection out of the *next* layer's avoidance or the
+            // neighbour-convergence direction. The 1/d^2 weighting survives as
+            // the direction (`neighbour_direction_sum`); the caps do not.
+            let mut next_nodes: Vec<NodeId> = Vec::with_capacity(active_nodes.len());
+            // Steps 3-4 built the neighbour lists from **every** MST edge,
+            // including edges whose endpoint the merge pass had since dropped,
+            // so a survivor could aim at a merged-away neighbour's stale
+            // position. Both endpoints must still be live.
+            let live_edges: Vec<(usize, usize)> = mst_edges
+                .iter()
+                .filter(|(a, b, _)| {
+                    // `valid` here is the *merge* pass flag, read before the
+                    // move pass runs, so a node the move pass later terminates
+                    // on the model keeps its edges for this layer emit.
+                    !drop[*a]
+                        && !drop[*b]
+                        && arena[active_nodes[*a]].valid
+                        && arena[active_nodes[*b]].valid
+                })
+                .map(|(a, b, _)| (*a, *b))
+                .collect();
+            let mut neighbours_of: Vec<Vec<usize>> = vec![Vec::new(); active_nodes.len()];
+            for (a, b) in &live_edges {
+                neighbours_of[*a].push(*b);
+                neighbours_of[*b].push(*a);
+            }
+
+            // Canonical `DO_NOT_MOVER_UNDER_MM = is_slim ? 0 : 5`: below this
+            // print_z a branch is not allowed to converge onto its neighbours
+            // at all, so the column stays plumb near the plate.
+            let do_not_move_under = if self.tree_support_is_slim {
+                0.0
+            } else {
+                DO_NOT_MOVER_UNDER_MM
+            };
+            let layer_outlines = volumes.outlines_at(cache_idx).to_vec();
+
+            for i in 0..active_nodes.len() {
+                if drop[i] {
+                    continue;
+                }
+                let id = active_nodes[i];
+                if !arena[id].valid {
+                    continue;
+                }
+                let (node_x, node_y) = arena[id].xy();
+                let distance_to_top = arena[id].distance_to_top;
+                let support_roof_layers_below = arena[id].support_roof_layers_below;
+                let radius = arena[id].radius;
+                let is_sharp_tail = arena[id].is_sharp_tail;
+                let dist_mm_to_top = arena[id].dist_mm_to_top;
+                let print_z = arena[id].print_z;
+                let skin_direction = arena[id].skin_direction;
+                let demand_ids = arena[id].demand_ids.clone();
+
+                // Canonical: "If the branch falls completely inside a collision
+                // area (the entire branch would be removed by the X/Y offset),
+                // delete it." Only `support_on_buildplate_only` escalates that
+                // to pruning the whole column; otherwise canonical just clears
+                // `valid`, which stops propagation but still DRAWS the node on
+                // its own layer — that is how a branch terminates on the model.
+                if group_of[i] > 0 {
+                    let collision = volumes.get_collision(0.0, cache_idx);
+                    if is_inside_ex(&collision, node_x, node_y) {
+                        let to_outside = projection_onto(&collision, (node_x, node_y));
+                        let dist2_to_outside = (to_outside.0 - node_x) * (to_outside.0 - node_x)
+                            + (to_outside.1 - node_y) * (to_outside.1 - node_y);
+                        if dist2_to_outside >= radius * radius {
+                            if self.support_on_build_plate_only {
+                                unsupported_branch_leaves.push_back(id);
+                            } else {
+                                arena[id].valid = false;
+                            }
+                            continue;
+                        }
+                        // "if the link between parent and current is cut by
+                        // contours, mark current as bottom contact node".
+                        if let Some(parent) = arena[id].parent {
+                            let parent_xy = arena[parent].xy();
+                            if line_cut.is_line_cut_by_contour(
+                                &layer_outlines,
+                                (node_x, node_y),
+                                parent_xy,
+                            ) {
+                                arena[id].valid = false;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // Canonical `get_max_move_dist(&node)` — the FULL step length,
+                // not a cap on a shorter one.
+                let max_move =
+                    get_max_move_dist(&arena[id], tan_angle, self.support_line_width_mm, 1);
+                let max_move2 =
+                    get_max_move_dist(&arena[id], tan_angle, self.support_line_width_mm, 2);
+
+                // Canonical `drop_nodes`: the descendant is one layer closer
+                // to the plate, and the per-node roof counter (F-1) ticks down
+                // only once the column is real — the virtual top-Z-gap node
+                // (`distance_to_top < 0`) does not consume a roof layer.
+                let next_distance_to_top = distance_to_top.saturating_add(1);
+                let next_roof_layers_below =
+                    support_roof_layers_below - i32::from(distance_to_top >= 0);
+
+                // -- `move_to_neighbor_center` ---------------------------
+                let neighbours = &neighbours_of[i];
+                let mut move_to_neighbor_center = (0.0_f32, 0.0_f32);
+                let first_d2 = neighbours
+                    .first()
+                    .map(|j| {
+                        let (nx, ny) = arena[active_nodes[*j]].xy();
+                        (nx - node_x) * (nx - node_x) + (ny - node_y) * (ny - node_y)
+                    })
+                    .unwrap_or(0.0);
+                if print_z > do_not_move_under
+                    && (neighbours.len() > 1 || (neighbours.len() == 1 && first_d2 >= max_move2))
+                {
+                    let branch_bottom_radius =
+                        calc_radius(branch_radius, tan_diameter_angle, dist_mm_to_top + print_z);
+                    let mut converging: Vec<(f32, f32)> = Vec::with_capacity(neighbours.len());
+                    for &j in neighbours {
+                        let nid = active_nodes[j];
+                        if !arena[nid].valid {
+                            continue;
+                        }
+                        let (nx, ny) = arena[nid].xy();
+                        let d2 = (nx - node_x) * (nx - node_x) + (ny - node_y) * (ny - node_y);
+                        if d2 <= 0.0 {
+                            continue;
+                        }
+                        let neighbour_bottom_radius = calc_radius(
+                            branch_radius,
+                            tan_diameter_angle,
+                            arena[nid].dist_mm_to_top + arena[nid].print_z,
+                        );
+                        let max_converge_distance = tan_angle * (print_z - do_not_move_under)
+                            + branch_bottom_radius.max(neighbour_bottom_radius);
+                        if d2 > max_converge_distance * max_converge_distance {
+                            continue;
+                        }
+                        if line_cut.is_line_cut_by_contour(
+                            &layer_outlines,
+                            (node_x, node_y),
+                            (nx, ny),
+                        ) {
+                            continue;
+                        }
+                        converging.push((nx, ny));
+                    }
+                    move_to_neighbor_center =
+                        neighbour_direction_sum((node_x, node_y), &converging);
+                }
+
+                // -- `direction_to_outer` --------------------------------
+                let next_avoid_radius = calc_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    dist_mm_to_top + next_layer_height,
+                );
+                let avoidance_next = volumes.get_avoidance(next_avoid_radius, next_cache_idx);
+                let to_outside = projection_onto(&avoidance_next, (node_x, node_y));
+                let mut direction_to_outer = (to_outside.0 - node_x, to_outside.1 - node_y);
+                let mut dist2_to_outer = direction_to_outer.0 * direction_to_outer.0
+                    + direction_to_outer.1 * direction_to_outer.1;
+                // `max_move_distance2 * SQ(obj_layer_nr)`: the further from the
+                // plate, the further a branch is allowed to jump outward.
+                let layer_scale = (cache_idx as f32) * (cache_idx as f32);
+                if line_cut.is_line_cut_by_contour(&layer_outlines, (node_x, node_y), to_outside)
+                    || dist2_to_outer > max_move2 * layer_scale
+                    || !is_inside_ex(&avoidance_next, node_x, node_y)
+                {
+                    // STUDIO-4252 retries the escape against **collision**,
+                    // not avoidance: avoidance is the accumulated no-go cone,
+                    // and projecting onto it can be arbitrarily far away.
+                    let collision_next = volumes.get_collision(next_avoid_radius, next_cache_idx);
+                    let candidate = move_out_expolys(
+                        &collision_next,
+                        (node_x, node_y),
+                        RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
+                        max_move + RADIUS_SAMPLE_RESOLUTION_MM + CANONICAL_EPSILON_MM,
+                    );
+                    direction_to_outer = (candidate.0 - node_x, candidate.1 - node_y);
+                    dist2_to_outer = direction_to_outer.0 * direction_to_outer.0
+                        + direction_to_outer.1 * direction_to_outer.1;
+                    if dist2_to_outer <= f32::EPSILON {
+                        direction_to_outer = (0.0, 0.0);
+                        dist2_to_outer = 0.0;
+                    }
+                }
+
+                // The step is ALWAYS full length.
+                let mut movement = if dist2_to_outer > 0.0 {
+                    normal_to_length(direction_to_outer, max_move)
+                } else {
+                    normal_to_length(move_to_neighbor_center, max_move)
+                };
+                // A sharp tail near its tip follows the painted skin normal
+                // instead — that is how canonical keeps a thin spike plumb.
+                if is_sharp_tail && dist_mm_to_top < SHARP_TAIL_SKIN_FOLLOW_MM {
+                    movement = normal_to_length(
+                        (units_to_mm(skin_direction.x), units_to_mm(skin_direction.y)),
+                        max_move,
+                    );
+                }
+                let next_x = node_x + movement.0;
+                let next_y = node_y + movement.1;
+
+                // -- F-14: recompute `to_buildplate` from the *moved* position
+                // against the RAW outlines of the layer below. Canonical seeds
+                // every contact `to_buildplate = true` and derives the flag
+                // per descendant here; the module used to compute it once at
+                // contact creation from an inflated collision test and copy it
+                // unchanged down every propagation step.
+                let to_buildplate =
+                    !is_inside_ex(volumes.outlines_at(next_cache_idx), next_x, next_y);
+
+                // The node one layer down is a *new* arena node whose `parent`
+                // points back up, so later steps can walk the column in either
+                // direction. Canonical `create_node(..., parent = p_node)` plus
+                // `p_node->child = next_node`.
+                let next_dist_mm_to_top = next_distance_to_top.max(0) as f32 * effective_height;
+                let mut next_radius =
+                    calc_radius(branch_radius, tan_diameter_angle, next_dist_mm_to_top);
+                // STUDIO-7883: a branch may not grow wider than its clearance
+                // to the model, and may never shrink below its parent.
+                let collision_here = volumes.get_collision(0.0, next_cache_idx);
+                if !collision_here.is_empty() {
+                    let projected = projection_onto(&collision_here, (next_x, next_y));
+                    let dist_to_outer = ((projected.0 - node_x) * (projected.0 - node_x)
+                        + (projected.1 - node_y) * (projected.1 - node_y))
+                        .sqrt();
+                    next_radius = radius.max(next_radius.min(dist_to_outer));
+                }
+
+                let next_id = arena.create_node(
+                    Point2::from_mm(next_x, next_y),
+                    next_distance_to_top,
+                    layer_rev.saturating_sub(1),
+                    next_roof_layers_below,
+                    to_buildplate,
+                    Some(id),
+                    next_print_z,
+                    next_layer_height,
+                    next_dist_mm_to_top,
+                    next_radius,
+                );
+                arena[next_id].movement = Point2::from_mm(movement.0, movement.1);
+                arena[next_id].max_move_dist = max_move;
+                arena[next_id].is_sharp_tail = is_sharp_tail;
+                arena[next_id].demand_ids = demand_ids;
+                next_nodes.push(next_id);
+            }
+
+            // Record what this layer committed so the emit pass can replay it
+            // after F-14 pruning has run. Canonical runs `drop_nodes` to
+            // completion over every layer and only then calls `draw_circles`;
+            // pruning walks *up* the parent chain, so a single interleaved
+            // pass could not un-emit an upper layer it had already written.
+            layer_records.push(LayerRecord {
+                layer_rev,
+                // `drop` covers the merge pass absorbed nodes and the grouping
+                // pass unsupported leaves. It deliberately does NOT include
+                // nodes the move pass cleared `valid` on: canonical
+                // `draw_circles` has no `valid` filter, so a branch that
+                // terminates on the model still prints its last cross-section.
+                active: (0..active_nodes.len())
+                    .filter(|i| !drop[*i])
+                    .map(|i| active_nodes[i])
+                    .collect(),
+                edges: live_edges
+                    .iter()
+                    .map(|(a, b)| (active_nodes[*a], active_nodes[*b]))
+                    .collect(),
+            });
+
+            // Canonical branch-A merged nodes were already created on the
+            // layer below and must not be moved again this layer.
+            next_nodes.extend(collapsed_into_next);
+
+            active_nodes = next_nodes;
+        }
+
+        // ── F-14: drain `unsupported_branch_leaves` ──────────────────────
+        //
+        // Canonical `drop_nodes` collects every branch leaf it decided cannot
+        // reach a legal footing, then walks each one *up* its parent chain
+        // marking `is_processed`, re-linking the neighbours it passes, and
+        // enqueuing any node that had merged into it. The whole column is then
+        // erased from every layer. Nothing of this existed before packet 224
+        // step 5: `to_buildplate` was decided once at contact creation and a
+        // node that could not descend was simply dropped where it stood,
+        // leaving an orphaned stub in the layers above it.
+        while let Some(leaf) = unsupported_branch_leaves.pop_front() {
+            let mut cursor = Some(leaf);
+            while let Some(i_node) = cursor {
+                if arena[i_node].is_processed {
+                    break;
+                }
+                arena[i_node].is_processed = true;
+                arena[i_node].valid = false;
+                let parent = arena[i_node].parent;
+                let child = arena[i_node].child;
+                if let Some(c) = child {
+                    if arena[c].parent == Some(i_node) {
+                        arena[c].parent = parent;
+                    }
+                    arena[c].parents.retain(|p| *p != i_node);
+                    // Canonical `append(i_node->child->parents, i_node->parents)`.
+                    for p in arena[i_node].parents.clone() {
+                        if !arena[c].parents.contains(&p) {
+                            arena[c].parents.push(p);
+                        }
+                    }
+                }
+                for p in arena[i_node].parents.clone() {
+                    if arena[p].child == Some(i_node) {
+                        arena[p].child = child;
+                    }
+                }
+                if let Some(p) = parent {
+                    if arena[p].child == Some(i_node) {
+                        arena[p].child = child;
+                    }
+                }
+                for merged in arena[i_node].merged_neighbours.clone() {
+                    if !arena[merged].is_processed {
+                        unsupported_branch_leaves.push_back(merged);
+                    }
+                }
+                cursor = parent;
+            }
+        }
+
+        // Canonical `erase_if(is_processed)` across ALL layers, applied here as
+        // a filter on the recorded per-layer node sets.
+        for record in &mut layer_records {
+            record.active.retain(|id| !arena[*id].is_processed);
+            record
+                .edges
+                .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
+        }
+
+        // ── Emit pass (canonical `draw_circles`) ─────────────────────────
+        for record in &layer_records {
+            let layer_rev = record.layer_rev;
+            let active_nodes: Vec<NodeId> = record.active.clone();
+            if active_nodes.is_empty() {
+                continue;
+            }
+            let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
+            let cache_idx = current_global_layer_index as usize;
+            let z_current = layer_plan.layers[layer_rev].z;
+            let effective_height = layer_plan.layers[layer_rev].effective_layer_height;
+            let index_of: std::collections::HashMap<NodeId, usize> = active_nodes
+                .iter()
+                .enumerate()
+                .map(|(i, id)| (*id, i))
+                .collect();
+            let mst_edges: Vec<(usize, usize)> = record
+                .edges
+                .iter()
+                .filter_map(|(a, b)| Some((*index_of.get(a)?, *index_of.get(b)?)))
+                .collect();
 
             // Record the committed edges as branch segments (mm-space) on
             // this layer. Points sit at this layer's Z.
@@ -1898,8 +2351,18 @@ impl SupportPlanner {
             // node's own tapered radius is added by `body_intersects` at each
             // gate, so the pair sums to canonical's `radius + m_xy_distance`
             // keyed on the per-node radius rather than a constant one.
+            // Step 1 left these gates on the radius-free bucket
+            // (`get_collision(0.0, l)` = outlines inflated by `m_xy_distance`
+            // alone) and let `body_intersects` supply the per-node tapered
+            // radius as a disc test, to avoid counting the radius twice. Now
+            // that F-13 moves nodes with canonical point-in-volume tests, the
+            // per-node gates read `get_collision(tapered_radius, l)` directly
+            // and drop the extra inflation: a point inside that bucket is
+            // exactly a branch of that radius touching the model. The *segment*
+            // gate keeps the radius-free bucket because it passes both
+            // endpoint radii explicitly into a swept hull, which is already
+            // exact.
             let collision_polys = volumes.get_collision(0.0, cache_idx);
-            let avoidance_polys = volumes.get_avoidance(branch_radius, cache_idx);
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
@@ -1912,10 +2375,20 @@ impl SupportPlanner {
                 })
                 .flat_map(|entry| entry.polygons.iter().cloned())
                 .collect();
-            let collision_polys = if model_collision.is_empty() {
-                collision_polys
+            let collision_polys: &[ExPolygon] = if model_collision.is_empty() {
+                collision_polys.as_slice()
             } else {
                 model_collision.as_slice()
+            };
+            // Per-node point gate. Host-supplied `model_occupancy` is exact-Z
+            // and un-inflated, so it keeps the disc test; the cached ladder
+            // folds the radius into the volume instead.
+            let node_collides = |x: f32, y: f32, radius: f32| -> bool {
+                if model_collision.is_empty() {
+                    is_inside_ex(&volumes.get_collision(radius, cache_idx), x, y)
+                } else {
+                    body_intersects(&model_collision, x, y, radius)
+                }
             };
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
@@ -1973,10 +2446,7 @@ impl SupportPlanner {
                 .collect();
             let mut origin_contacts_emitted = vec![false; active_nodes.len()];
             let mut mst_emitted = vec![false; active_nodes.len()];
-            for (a_idx, b_idx, _) in &mst_edges {
-                if drop[*a_idx] || drop[*b_idx] {
-                    continue;
-                }
+            for (a_idx, b_idx) in &mst_edges {
                 let na = &arena[active_nodes[*a_idx]];
                 let nb = &arena[active_nodes[*b_idx]];
                 // The F-34 virtual top-Z-gap node is propagated but never
@@ -2010,9 +2480,9 @@ impl SupportPlanner {
                 // still reject its body endpoint; exempting the whole edge
                 // lets body geometry leak into exact-Z model occupancy.
                 let body_endpoint_collides = (node_roles[*a_idx] == InterfaceRole::Body
-                    && body_intersects(collision_polys, na.x(), na.y(), radius_a))
+                    && node_collides(na.x(), na.y(), radius_a))
                     || (node_roles[*b_idx] == InterfaceRole::Body
-                        && body_intersects(collision_polys, nb.x(), nb.y(), radius_b));
+                        && node_collides(nb.x(), nb.y(), radius_b));
                 let segment_collides =
                     body_segment_intersects(collision_polys, na.xy(), nb.xy(), radius_a, radius_b);
                 if body_endpoint_collides || segment_collides {
@@ -2087,7 +2557,7 @@ impl SupportPlanner {
                     node.distance_to_top.max(0) as u32,
                     effective_height,
                 );
-                if body_intersects(collision_polys, node.x(), node.y(), radius) {
+                if node_collides(node.x(), node.y(), radius) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -2127,7 +2597,7 @@ impl SupportPlanner {
             // degenerate current-layer segment (OrcaSlicer draw_circles parity).
             for (i, id) in active_nodes.iter().enumerate() {
                 let node = &arena[*id];
-                if drop[i] || mst_emitted[i] || node.distance_to_top <= 0 {
+                if mst_emitted[i] || node.distance_to_top <= 0 {
                     continue;
                 }
                 {
@@ -2137,7 +2607,7 @@ impl SupportPlanner {
                         node.distance_to_top.max(0) as u32,
                         effective_height,
                     );
-                    if body_intersects(collision_polys, node.x(), node.y(), radius) {
+                    if node_collides(node.x(), node.y(), radius) {
                         continue;
                     }
                     let width = radius * 2.0;
@@ -2280,175 +2750,6 @@ impl SupportPlanner {
                     });
                 }
             }
-
-            // Build the "moved" node set for the next (lower) layer.
-            //
-            // For each surviving node, move toward the reciprocal-distance-
-            // squared weighted aggregate of ALL its MST neighbours (Orca
-            // `TreeSupport::drop_nodes` non-`is_strong` behaviour, packet 122).
-            // Nodes without an MST edge simply propagate unchanged. The
-            // existing `max_move_xy` cap and `clamp_to_avoidance` post-cap
-            // are preserved: only the move *direction* changes.
-            let mut next_nodes: Vec<NodeId> = Vec::with_capacity(active_nodes.len());
-            // Per-node list of (neighbour_index, edge_distance) for every
-            // MST edge incident on the node. Replaces the old
-            // `nearest_neighbour` / `nearest_distance` single-entry lookup.
-            let mut neighbours_of: Vec<Vec<(usize, f32)>> = vec![Vec::new(); active_nodes.len()];
-            for (a, b, d) in &mst_edges {
-                neighbours_of[*a].push((*b, *d));
-                neighbours_of[*b].push((*a, *d));
-            }
-
-            for i in 0..active_nodes.len() {
-                if drop[i] {
-                    continue;
-                }
-                let id = active_nodes[i];
-                // Copy the scalars out before touching the arena mutably.
-                let (node_x, node_y) = arena[id].xy();
-                let distance_to_top = arena[id].distance_to_top;
-                let support_roof_layers_below = arena[id].support_roof_layers_below;
-                let to_buildplate = arena[id].to_buildplate;
-                let radius = arena[id].radius;
-                let is_sharp_tail = arena[id].is_sharp_tail;
-                let demand_ids = arena[id].demand_ids.clone();
-                let neighbours = &neighbours_of[i];
-                // Canonical `drop_nodes`: the descendant is one layer closer
-                // to the plate, and the per-node roof counter (F-1) ticks down
-                // only once the column is real — the virtual top-Z-gap node
-                // (`distance_to_top < 0`) does not consume a roof layer.
-                let next_distance_to_top = distance_to_top.saturating_add(1);
-                let next_roof_layers_below =
-                    support_roof_layers_below - i32::from(distance_to_top >= 0);
-
-                let moved_xy = if neighbours.is_empty() {
-                    // No MST edge: propagate the node unchanged.
-                    Some((node_x, node_y))
-                } else {
-                    // Build the parallel slices for the aggregate helper.
-                    let neighbour_positions: Vec<(f32, f32)> = neighbours
-                        .iter()
-                        .map(|&(j, _)| arena[active_nodes[j]].xy())
-                        .collect();
-                    let distances: Vec<f32> = neighbours.iter().map(|&(_, d)| d).collect();
-                    let (tx, ty) = aggregate_neighbour_targets(&neighbour_positions, &distances)
-                        .unwrap_or((node_x, node_y));
-
-                    // Apply the existing `max_move_xy` cap to the displacement
-                    // from the current node toward the aggregate target. This
-                    // preserves the wall-count-scaled step cap (packet 122
-                    // explicitly preserves it).
-                    let dx = tx - node_x;
-                    let dy = ty - node_y;
-                    let len = (dx * dx + dy * dy).sqrt();
-                    let raw_step = if len > max_move_xy && len > 1e-6 {
-                        let scale = max_move_xy / len;
-                        (node_x + dx * scale, node_y + dy * scale)
-                    } else if len > 1e-6 {
-                        (tx, ty)
-                    } else {
-                        (node_x, node_y)
-                    };
-
-                    // Push the node out of `avoidance_polys` if it landed inside
-                    // (Step 5 AC-3).
-                    let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
-
-                    // A branch may only travel `max_move_xy` per layer — that is
-                    // the branch-angle budget. Escaping avoidance is not exempt
-                    // from it: the nearest point outside avoidance can be
-                    // arbitrarily far away, and taking it unconditionally would
-                    // teleport the branch off the overhang it supports. When the
-                    // escape exceeds the budget there is no legal destination,
-                    // so the node is dropped with the typed code 1002
-                    // `node-clamped-out` diagnostic (AC-N3).
-                    let escape_dx = cx - node_x;
-                    let escape_dy = cy - node_y;
-                    let escape_len = (escape_dx * escape_dx + escape_dy * escape_dy).sqrt();
-                    if escape_len > max_move_xy + 1e-6 {
-                        let _ = output.push_diagnostic(Diagnostic {
-                            severity: DiagnosticSeverity::Warn,
-                            code: 1002,
-                            layer: Some(current_global_layer_index as i32),
-                            object_id: Some(obj.object_id.clone()),
-                            message: format!(
-                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3}) escape={:.3}mm budget={:.3}mm to_buildplate={}",
-                                current_global_layer_index,
-                                obj.object_id,
-                                cx,
-                                cy,
-                                escape_len,
-                                max_move_xy,
-                                to_buildplate
-                            ),
-                        });
-                        // Preserve the last legal position when the avoidance
-                        // escape is over budget, unless that position is in
-                        // the next layer's occupancy. This prevents orphaned
-                        // lower layers without leaking into exact-Z occupancy.
-                        let next_cache_idx = current_global_layer_index.saturating_sub(1) as usize;
-                        let next_collision = volumes.outlines_at(next_cache_idx);
-                        let next_model_collision: Vec<ExPolygon> = support_analysis
-                            .model_occupancy
-                            .iter()
-                            .filter(|entry| {
-                                entry.object_id == obj.object_id
-                                    && entry.global_support_layer_index
-                                        == current_global_layer_index.saturating_sub(1)
-                            })
-                            .flat_map(|entry| entry.polygons.iter().cloned())
-                            .collect();
-                        let next_collision = if next_model_collision.is_empty() {
-                            next_collision
-                        } else {
-                            next_model_collision.as_slice()
-                        };
-                        let next_radius = tapered_radius(
-                            branch_radius,
-                            tan_diameter_angle,
-                            next_distance_to_top.max(0) as u32,
-                            effective_height,
-                        );
-                        if body_intersects(next_collision, node_x, node_y, next_radius) {
-                            None
-                        } else {
-                            Some((node_x, node_y))
-                        }
-                    } else {
-                        Some((cx, cy))
-                    }
-                };
-
-                let Some((next_x, next_y)) = moved_xy else {
-                    continue;
-                };
-                // The node one layer down is a *new* arena node whose `parent`
-                // points back up, so later steps can walk the column in either
-                // direction. Canonical `create_node(..., parent = p_node)` plus
-                // `p_node->child = next_node`.
-                let next_id = arena.create_node(
-                    Point2::from_mm(next_x, next_y),
-                    next_distance_to_top,
-                    layer_rev.saturating_sub(1),
-                    next_roof_layers_below,
-                    to_buildplate,
-                    Some(id),
-                    next_print_z,
-                    next_layer_height,
-                    next_distance_to_top.max(0) as f32 * effective_height,
-                    radius,
-                );
-                arena[next_id].movement = Point2::from_mm(next_x - node_x, next_y - node_y);
-                arena[next_id].max_move_dist = max_move_xy;
-                arena[next_id].is_sharp_tail = is_sharp_tail;
-                arena[next_id].demand_ids = demand_ids;
-                next_nodes.push(next_id);
-            }
-            // Canonical branch-A merged nodes were already created on the
-            // layer below and must not be moved again this layer.
-            next_nodes.extend(collapsed_into_next);
-
-            active_nodes = next_nodes;
         }
 
         // Do not smooth after exact-Z collision validation. `smooth_branches`
@@ -2833,7 +3134,6 @@ fn insert_contact_point(
     arena: &mut NodeArena,
     contacts: &mut [Vec<NodeId>],
     layer_plan: &LayerPlanView,
-    volumes: &TreeVolumes,
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
     overhang_layer_idx: usize,
@@ -2853,11 +3153,13 @@ fn insert_contact_point(
     let bottom_z = overhang_layer.z - overhang_layer.effective_layer_height;
     let (x, y) = sample;
     let global_layer = layer_plan.layers[target_idx].global_layer_index;
-    let collision = volumes.outlines_at(global_layer as usize);
-    let to_buildplate = !point_in_any_expoly(collision, x, y);
-    if planner.support_on_build_plate_only && !to_buildplate {
-        return None;
-    }
+    // F-14: canonical `generate_contact_points` seeds every contact
+    // `to_buildplate = true` unconditionally and lets `drop_nodes` recompute
+    // it per descendant from the *moved* position. This site used to decide it
+    // once from a footprint test and reject the contact outright under
+    // `support_on_build_plate_only`; that rejection now happens in the
+    // `unsupported_branch_leaves` pass, which also prunes the column above it.
+    let to_buildplate = true;
     if contacts[target_idx].len() >= planner.max_branches_per_layer {
         *dropped.entry(global_layer).or_insert(0) += 1;
         return None;
@@ -2893,7 +3195,6 @@ fn insert_analysis_contact_point(
     arena: &mut NodeArena,
     contacts: &mut [Vec<NodeId>],
     layer_plan: &LayerPlanView,
-    volumes: &TreeVolumes,
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
     layer_idx: usize,
@@ -2907,11 +3208,8 @@ fn insert_analysis_contact_point(
     let layer = &layer_plan.layers[layer_idx];
     let (x, y) = sample;
     let global_layer = layer.global_layer_index;
-    let collision = volumes.outlines_at(global_layer as usize);
-    let to_buildplate = !point_in_any_expoly(collision, x, y);
-    if planner.support_on_build_plate_only && !to_buildplate {
-        return None;
-    }
+    // F-14: see `insert_contact_point` — canonical seeds `to_buildplate` true.
+    let to_buildplate = true;
     if contacts[layer_idx].len() >= planner.max_branches_per_layer {
         *dropped.entry(global_layer).or_insert(0) += 1;
         return None;
@@ -3419,80 +3717,168 @@ fn euclidean_distance(a: (f32, f32), b: (f32, f32)) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
-/// Reciprocal-distance-squared weighted aggregate of MST-neighbour positions.
+/// Canonical `drop_nodes`' `sum_direction` accumulator: the sum over MST
+/// neighbours of `(neighbour - node) * (1 / dist2)`, in mm.
 ///
-/// Pure math helper used by the propagation block in `plan_for_object` to
-/// synthesise the move target for a node from ALL its MST neighbours at once
-/// (replacing the old single-neighbour lookup). Matches OrcaSlicer's
-/// `TreeSupport::drop_nodes` non-`is_strong` aggregation: each neighbour's
-/// position is weighted by `1.0 / D_j²` where `D_j` is the MST edge distance
-/// from the central node to neighbour `j`. Weights are normalised so they
-/// sum to 1.0. With equal `D_j`s (symmetric fan) the aggregate equals the
-/// geometric centroid; with one close neighbour the close neighbour
-/// dominates (1/d² is a strong bias).
+/// Only the *direction* of this vector is canonical — `drop_nodes` feeds it to
+/// `normal(move_to_neighbor_center, scale_(get_max_move_dist(&node)))`, which
+/// rescales it to the full per-layer move budget. Until packet 224 step 5 this
+/// module instead computed a 1/d^2-weighted *mean of neighbour positions* and
+/// stepped toward it with a fractional cap. The two agree on direction (the
+/// mean minus the node position is this sum divided by the positive weight
+/// total), which is why the weighting survived the re-port and the capping did
+/// not.
 ///
-/// Degenerate `D_j < 1e-6 mm` (coincident point): weight saturates to
-/// infinity; implementation short-circuits and returns that neighbour's
-/// position directly. This avoids the divide-by-zero path AND the unstable
-/// "huge weight / huge denominator" path that would otherwise depend on
-/// floating-point ordering of the sum.
-///
-/// Empty input → `None`. Single-element input → that element's position.
-///
-/// Reference: OrcaSlicer `TreeSupport::drop_nodes` (the second-pass move
-/// step), `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`. The
-/// packet 122 design reconciles Orca's 1/d² weighting with the implementation.
-pub fn aggregate_neighbour_targets(
+/// Reference: canonical `TreeSupport::drop_nodes` (`TreeSupport.cpp`), the
+/// `move_to_neighbor_center` accumulation.
+pub fn neighbour_direction_sum(
+    node: (f32, f32),
     neighbour_positions: &[(f32, f32)],
-    distances: &[f32],
-) -> Option<(f32, f32)> {
-    debug_assert_eq!(
-        neighbour_positions.len(),
-        distances.len(),
-        "neighbour_positions and distances must be parallel slices"
-    );
-    if neighbour_positions.is_empty() {
-        return None;
+) -> (f32, f32) {
+    let mut sum_x = 0.0_f64;
+    let mut sum_y = 0.0_f64;
+    for &(nx, ny) in neighbour_positions {
+        let dx = (nx - node.0) as f64;
+        let dy = (ny - node.1) as f64;
+        let dist2 = dx * dx + dy * dy;
+        if dist2 <= 1e-12 {
+            continue;
+        }
+        sum_x += dx / dist2;
+        sum_y += dy / dist2;
     }
-    if neighbour_positions.len() == 1 {
-        return Some(neighbour_positions[0]);
+    (sum_x as f32, sum_y as f32)
+}
+
+/// Canonical `normal(Point, len)`: rescale a vector to exactly `len`.
+/// A zero-length input stays zero (canonical divides by the norm, so the
+/// caller must never hand it one; this port is defensive instead).
+fn normal_to_length(v: (f32, f32), len: f32) -> (f32, f32) {
+    let n = (v.0 * v.0 + v.1 * v.1).sqrt();
+    if n <= 1e-12 || !n.is_finite() {
+        return (0.0, 0.0);
     }
-    // Degenerate-collision short-circuit: any D_j below the epsilon collapses
-    // the aggregate to that neighbour's position.
-    const EPS_MM: f32 = 1e-6;
-    for &d in distances {
-        if d < EPS_MM {
-            // Find the matching position. Multiple zeros are possible; pick
-            // the first — the test asserts it does not panic and the result
-            // equals ONE of the zero-distance neighbours' positions.
-            for (idx, &dd) in distances.iter().enumerate() {
-                if dd < EPS_MM {
-                    return Some(neighbour_positions[idx]);
-                }
+    (v.0 / n * len, v.1 / n * len)
+}
+
+/// Nearest point on any ring of `expolys` — contours **and** holes — to `pt`.
+///
+/// Canonical spells this `projection_onto(const ExPolygons&, const Point&)`.
+/// Guest-side because `slicer_core::polygon_ops` is `host-algos`-gated and the
+/// WIT surface exposes no nearest-point query. Coordinates in and out are mm.
+/// Returns `pt` unchanged when there is no ring to project onto.
+fn projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
+    let qx = pt.0 * SCALING_FACTOR as f32;
+    let qy = pt.1 * SCALING_FACTOR as f32;
+    let mut best_dist = f32::INFINITY;
+    let mut best: Option<[f32; 2]> = None;
+    for ex in expolys {
+        for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+            if ring.points.len() < 3 {
+                continue;
+            }
+            let poly: Vec<[f32; 2]> = ring
+                .points
+                .iter()
+                .map(|p| [p.x as f32, p.y as f32])
+                .collect();
+            let (cp, cd) = closest_point_on_polygon(&poly, qx, qy);
+            if cd < best_dist {
+                best_dist = cd;
+                best = Some(cp);
             }
         }
     }
-    // 1/d² weighted mean.
-    let mut sum_wx = 0.0_f64;
-    let mut sum_wy = 0.0_f64;
-    let mut sum_w = 0.0_f64;
-    for (idx, &(nx, ny)) in neighbour_positions.iter().enumerate() {
-        let d = distances[idx] as f64;
-        let w = 1.0 / (d * d);
-        sum_wx += w * (nx as f64);
-        sum_wy += w * (ny as f64);
-        sum_w += w;
+    match best {
+        Some(cp) => (
+            cp[0] / SCALING_FACTOR as f32,
+            cp[1] / SCALING_FACTOR as f32,
+        ),
+        None => pt,
     }
-    if sum_w <= 0.0 {
-        // Defensive: should not happen given the short-circuit above, but
-        // if all distances are non-finite or NaN we fall back to the
-        // unweighted centroid of the neighbour positions.
-        let n = neighbour_positions.len() as f64;
-        let mx = neighbour_positions.iter().map(|p| p.0 as f64).sum::<f64>() / n;
-        let my = neighbour_positions.iter().map(|p| p.1 as f64).sum::<f64>() / n;
-        return Some((mx as f32, my as f32));
+}
+
+/// Canonical `TreeSupport::is_line_cut_by_contour(Point a, Point b)`: true when
+/// the segment `a`-`b` crosses any edge of the current layer's model contours.
+///
+/// Canonical memoises the answer in a `std::map<std::pair<Point, Point>, bool>`
+/// keyed under **both** orderings of the endpoint pair, because `drop_nodes`
+/// asks the same question from both ends of an MST edge. This port keeps that
+/// cache (`LineCutCache`), keyed on the scaled integer coordinates so the key
+/// is hashable and exactly reproduces canonical's `Point` equality.
+///
+/// Both contours and holes are tested: a branch that would pass through a hole
+/// wall is cut just as surely as one crossing the outer wall.
+#[derive(Default)]
+struct LineCutCache {
+    cache: std::collections::HashMap<((i64, i64), (i64, i64)), bool>,
+}
+
+impl LineCutCache {
+    fn is_line_cut_by_contour(&mut self, outlines: &[ExPolygon], a: (f32, f32), b: (f32, f32)) -> bool {
+        let ka = (mm_to_units(a.0), mm_to_units(a.1));
+        let kb = (mm_to_units(b.0), mm_to_units(b.1));
+        if let Some(hit) = self.cache.get(&(ka, kb)) {
+            return *hit;
+        }
+        let mut cut = false;
+        'outer: for ex in outlines {
+            for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+                let n = ring.points.len();
+                if n < 2 {
+                    continue;
+                }
+                for i in 0..n {
+                    let p0 = &ring.points[i];
+                    let p1 = &ring.points[(i + 1) % n];
+                    let c = (
+                        units_to_mm(p0.x) as f64,
+                        units_to_mm(p0.y) as f64,
+                    );
+                    let d = (
+                        units_to_mm(p1.x) as f64,
+                        units_to_mm(p1.y) as f64,
+                    );
+                    if segments_intersect(
+                        (a.0 as f64, a.1 as f64),
+                        (b.0 as f64, b.1 as f64),
+                        c,
+                        d,
+                    ) {
+                        cut = true;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        // Canonical inserts under both orderings.
+        self.cache.insert((ka, kb), cut);
+        self.cache.insert((kb, ka), cut);
+        cut
     }
-    Some(((sum_wx / sum_w) as f32, (sum_wy / sum_w) as f32))
+}
+
+/// Proper/improper segment intersection test. Iterative, allocation-free.
+fn segments_intersect(p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), p4: (f64, f64)) -> bool {
+    fn orient(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+        (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+    }
+    fn on_segment(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> bool {
+        c.0 >= a.0.min(b.0) && c.0 <= a.0.max(b.0) && c.1 >= a.1.min(b.1) && c.1 <= a.1.max(b.1)
+    }
+    let d1 = orient(p3, p4, p1);
+    let d2 = orient(p3, p4, p2);
+    let d3 = orient(p1, p2, p3);
+    let d4 = orient(p1, p2, p4);
+    if ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
+        && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
+    {
+        return true;
+    }
+    (d1 == 0.0 && on_segment(p3, p4, p1))
+        || (d2 == 0.0 && on_segment(p3, p4, p2))
+        || (d3 == 0.0 && on_segment(p1, p2, p3))
+        || (d4 == 0.0 && on_segment(p1, p2, p4))
 }
 
 // ── Step-5 helper functions ───────────────────────────────────────────────────
@@ -3511,7 +3897,22 @@ pub fn tapered_radius(
     dist_to_top: u32,
     effective_layer_height: f32,
 ) -> f32 {
-    let mm_to_top = (dist_to_top as f32) * effective_layer_height;
+    calc_radius(
+        branch_radius,
+        tan_diameter_angle,
+        (dist_to_top as f32) * effective_layer_height,
+    )
+}
+
+/// Canonical `calc_branch_radius(branch_radius, mm_to_top, diameter_angle)` —
+/// the same taper as [`tapered_radius`] but taking the distance from the tip
+/// directly in **mm** rather than in layers.
+///
+/// The F-13 move pass needs the mm form: canonical evaluates the taper at
+/// `node->dist_mm_to_top + node->print_z` (branch *bottom* radius) and at
+/// `node->dist_mm_to_top + height_next`, neither of which is a whole number of
+/// layers.
+pub fn calc_radius(branch_radius: f32, tan_diameter_angle: f32, mm_to_top: f32) -> f32 {
     let raw = if mm_to_top <= branch_radius {
         mm_to_top
     } else {
@@ -3651,49 +4052,6 @@ fn get_max_move_dist(
     } else {
         d
     }
-}
-
-/// Returns the original point if avoidance_polys is empty; otherwise returns
-/// the closest point on any avoidance polygon boundary.
-fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f32) {
-    if avoidance_polys.is_empty() {
-        return (x, y);
-    }
-    // `avoidance_polys` is canonical `get_avoidance(radius, layer)` — the
-    // region a branch of that radius must stay *out* of, matching
-    // canonical tree support's avoidance semantics. A node already outside it
-    // is safe and must be left where it is; only a node inside is pushed out to
-    // the nearest boundary point.
-    //
-    // This guard was inverted before packet 224: it returned early for nodes
-    // *inside* avoidance and snapped every node *outside* it onto the boundary,
-    // so branches descending through open space were dragged into the model
-    // each layer instead of descending freely, and died a few layers below
-    // their contact.
-    if !point_in_any_expoly(avoidance_polys, x, y) {
-        return (x, y);
-    }
-    let mut best_dist = f32::INFINITY;
-    let mut best = (x, y);
-    let query_x_internal = x * SCALING_FACTOR as f32;
-    let query_y_internal = y * SCALING_FACTOR as f32;
-    for ex in avoidance_polys {
-        let poly: Vec<[f32; 2]> = ex
-            .contour
-            .points
-            .iter()
-            .map(|p| [p.x as f32, p.y as f32])
-            .collect();
-        if poly.len() < 3 {
-            continue;
-        }
-        let (cp, cd) = closest_point_on_polygon(&poly, query_x_internal, query_y_internal);
-        if cd < best_dist {
-            best_dist = cd;
-            best = (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32);
-        }
-    }
-    best
 }
 
 /// Returns the closest point on polygon boundary to (x, y) and its squared distance.
@@ -4050,6 +4408,7 @@ mod tests {
             tree_support_branch_diameter_angle: 5.0,
             tree_support_branch_distance: 1.0,
             tree_support_wall_count: 1,
+            tree_support_is_slim: false,
             support_raft_layers: 0,
             raft_first_layer_density: 0.4,
             base_raft_layers: 1,

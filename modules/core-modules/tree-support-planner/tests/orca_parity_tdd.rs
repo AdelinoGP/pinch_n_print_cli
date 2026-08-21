@@ -568,21 +568,24 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 /// **Strengthened by packet 224.** The drop trigger changed, and the test gained
 /// a check that the original was missing.
 ///
-/// Previously code 1002 fired when a node's clamped *centre* landed inside
-/// `collision_polys`, and it only ever fired because `clamp_to_avoidance`'s
-/// guard was inverted: nodes safely outside avoidance were snapped onto the
-/// avoidance boundary, dragging branches into the model. Correcting that guard
-/// alone was not enough — pushing a node to the *nearest* point outside
-/// avoidance can move it arbitrarily far, so this fixture began planning
-/// support bodies metres away from the overhang they were meant to support.
+/// **Rewired by packet 224 step 5 (F-13).** This asserted a typed code-1002
+/// `node-clamped-out` diagnostic. That diagnostic reported a non-canonical
+/// mechanism — a fractional `max_move_xy` cap plus a post-hoc clamp out of
+/// avoidance, with an "escape budget" that dropped the node when the clamp
+/// exceeded it — and F-13 deletes all three. Canonical always takes a full
+/// `get_max_move_dist(&node)` step and never clamps, so there is no escape to
+/// go over budget and nothing for code 1002 to report.
 ///
-/// The trigger is now the branch-angle budget: a branch may travel at most
-/// `max_move_xy` per layer, escaping avoidance included. When no legal
-/// destination is within budget the node is dropped with code 1002.
+/// The canonical mechanism for this fixture is the `drop_nodes` rule "if the
+/// branch falls completely inside a collision area, delete it": with
+/// `support_on_buildplate_only = false` the node has `valid` cleared, which
+/// stops propagation but still draws the node on its own layer. So the
+/// observable is *pruning*, not a diagnostic: the column must not descend
+/// past the layer at which it meets the model.
 ///
-/// The added assertion is that nothing is planned at all. A diagnostic without
-/// an actual drop is a warning that support was printed through the object,
-/// which is precisely what the earlier version of this test failed to catch.
+/// The two surviving assertions are strictly stronger than the code-1002 one
+/// they replace — they check the drop actually happened rather than that a
+/// warning was printed about it.
 #[module_test]
 fn node_rejected_when_model_occupies_every_destination() {
     // Note: #[module_test] already drains and reinstalls log capture via
@@ -608,13 +611,11 @@ fn node_rejected_when_model_occupies_every_destination() {
     let lp = make_layer_plan(11, 0.0, 0.2);
     let rs = make_region_segmentation("blocked", 11);
 
-    // Build a SupportGeometryView whose collision_polys cover the entire
-    // overhang region so any node move lands inside the collision union.
-    // The plate sits in [0..4, 0..4] xy; cover [-10..14, -10..14] which
-    // entirely contains it. avoidance_polys (collision inflated outward) will
-    // also contain the move targets, so clamp_to_avoidance is satisfied —
-    // but point_in_any_polygon(collision_polys, ...) hits and the node is
-    // dropped with a typed code-1002 diagnostic.
+    // Build a SupportGeometryView whose collision covers the entire overhang
+    // region so any node move lands inside the collision union. The plate sits
+    // in [0..4, 0..4] xy; cover [-10..14, -10..14], which entirely contains it.
+    // Every node is therefore further inside collision than its own branch
+    // radius, so canonical clears `valid` and the column stops descending.
     let big_box = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -654,17 +655,41 @@ fn node_rejected_when_model_occupies_every_destination() {
     let rejected: Vec<&Diagnostic> = diagnostics
         .iter()
         .filter(|d| {
-            d.code == 1002
+            d.code == 1203
                 && matches!(d.severity, DiagnosticSeverity::Warn)
-                && d.message.contains("node-clamped-out")
+                && d.message.contains("intersects model occupancy")
         })
         .collect();
     assert!(
         !rejected.is_empty(),
-        "AC-N3: expected at least one code 1002 warn diagnostic containing \
-         'node-clamped-out'; got {} diagnostics: {:?}",
+        "AC-N3: expected at least one typed warn diagnostic recording that \
+         the branch intersects model occupancy; got {} diagnostics: {:?}",
         diagnostics.len(),
         diagnostics
+    );
+
+    // The column must be PRUNED, not merely warned about: a node that falls
+    // completely inside collision has `valid` cleared, so no descendant is
+    // created and no lower layer carries geometry. `rejected` records the
+    // topmost blocked layer; nothing may be planned below it.
+    let topmost_rejected = rejected
+        .iter()
+        .filter_map(|d| d.layer)
+        .max()
+        .expect("rejection diagnostics carry a layer");
+    assert!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.decline_reason.is_none())
+            .all(|entry| entry.global_layer_index >= topmost_rejected),
+        "AC-N3: the branch must not descend below the layer at which it \
+         meets the model (topmost rejected layer {topmost_rejected}); got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| e.global_layer_index)
+            .collect::<Vec<_>>()
     );
 
     // The rejection must be total: nothing may be planned inside a region the
