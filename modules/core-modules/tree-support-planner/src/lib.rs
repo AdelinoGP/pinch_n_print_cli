@@ -29,8 +29,21 @@
 //!   `r + support_object_xy_distance` and simplified at the
 //!   `m_radius_sample_resolution` grid; `get_avoidance(r, l)` is the bottom-up
 //!   recurrence `union(erode(avoidance(r, l-1), max_move[l-1]), collision(r, l))`.
-//!   Move-pass pushes nodes out of the avoidance region; nodes whose target
-//!   lies in collision are dropped.
+//!   The move pass does **not** clamp a node out of avoidance. Per canonical
+//!   `drop_nodes`, every surviving node steps exactly `get_max_move_dist(node)`
+//!   along a *direction*: the outward projection out of the **next** layer's
+//!   `get_avoidance(calc_radius(...))`, or — when that projection is cut by a
+//!   contour, overshoots `max_move^2 * layer^2`, or the node is already outside
+//!   avoidance — the STUDIO-4252 retry against the next layer's *collision*,
+//!   falling back to the 1/d^2-weighted neighbour-convergence direction when
+//!   there is nothing to escape from. A node is never dropped for landing in
+//!   collision: a node found inside `get_collision(0, layer)` whose clearance
+//!   to the boundary is at least its own radius (or whose link to its parent is
+//!   cut by a contour) has `valid` cleared, which stops propagation but still
+//!   draws the node on its own layer — that is how a branch terminates on the
+//!   model. Only `support_on_buildplate_only` escalates that to pruning the
+//!   column, via the `to_buildplate` pass, which recomputes the flag from each
+//!   moved position against the raw outlines of the layer below.
 //! - **Radius tapering**: two-piece per-emit radius. With
 //!   `mm_to_top = dist_to_top * effective_layer_height`,
 //!   `raw = if mm_to_top <= branch_radius { mm_to_top }

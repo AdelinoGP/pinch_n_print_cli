@@ -902,7 +902,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
 
 /// Build a single-overhang fixture: an anchor at the origin (so bounds span
 /// z=0..2.0 across ≥10 layers at 0.2mm height) plus a downward-facing quad
-/// plate floating at z=1.8 covering [0..0.2]×[0..0.2]. The two plate triangles
+/// plate floating at z=1.8 covering [0..4]×[0..4]. The two plate triangles
 /// register as overhang facets and seed a contact point near the top of the
 /// layer stack.
 fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
@@ -922,8 +922,9 @@ fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
     }
 }
 
-/// Build the same floating plate as `overhang_plate_fixture`, but with one
-/// downward-facing triangle so its contact propagates as a lone node.
+/// Build the same floating plate as `overhang_plate_fixture`, but shrunk to
+/// [0..0.2]×[0..0.2] and with a single downward-facing triangle, so its
+/// overhang samples to one contact that propagates as a lone node.
 fn single_contact_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],

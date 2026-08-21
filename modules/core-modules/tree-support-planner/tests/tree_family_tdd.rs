@@ -697,15 +697,28 @@ fn radius_aware_collision() {
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
         // Floor guards against degenerate/zero-radius bodies, and is set just
-        // under the measured minimum for this fixture — the tightest bound
-        // the measurement supports. Re-measured for packet 224 step 6 (F-33),
-        // where the emitted body became the union of the swept capsule with
-        // canonical `draw_circles`' per-node ellipses: measured minimum
-        // 0.34407 mm (was 0.3366 mm for the 16-vertex capsule cap), so the
-        // floor tightens from 0.33 to 0.34.
+        // under the measured minimum for this fixture — the tightest bound the
+        // measurement supports.
+        //
+        // This is a **re-measured self-captured baseline, not a canonical
+        // constant**: `local_radius` is the distance from the vertex-average
+        // centroid of a multi-node union body to its nearest vertex, so it
+        // tracks how deep the concave waist between two branch lobes runs, and
+        // is unrelated to `MIN_BRANCH_RADIUS`.
+        //
+        // Commit `3319ad35` (canonical fix to `smooth_nodes` / `draw_circles`)
+        // moved it from 0.34407 mm to 0.23845 mm. Attributed by re-measurement,
+        // reverting one correction at a time: restoring the pre-fix `(1,2,1)/4`
+        // kernel at 3 iterations alone gives 0.26453 mm, dropping canonical's
+        // axis-aligned ellipse guard alone gives 0.28917 mm, and both together
+        // give 0.34368 mm — i.e. the whole move is accounted for by those two
+        // corrections, with no unexplained residue. Straighter chains (100
+        // relaxation passes) and round cross-sections for axis-aligned movers
+        // both narrow the waist; the body itself stays substantial
+        // (~9.87 mm^2 for the tightest layer).
         assert!(
-            local_radius >= 0.34,
-            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.34407 mm)"
+            local_radius >= 0.23,
+            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.23845 mm)"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
@@ -1127,3 +1140,4 @@ fn non_tree_family_candidates_are_skipped() {
         "tree planner must not emit entries for a traditional-family candidate"
     );
 }
+

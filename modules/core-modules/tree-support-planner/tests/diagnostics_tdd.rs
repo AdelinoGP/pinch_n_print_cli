@@ -541,8 +541,6 @@ fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
     }
 }
 
-/// A tiny fixture (2 triangles) just enough to drive the planner; used by
-/// the code-1003 emission tests where the cap is not exercised.
 /// A branch that comes down onto the model rather than the build plate carries a
 /// `BottomInterface` role — canonical's `floor_areas`, anchored to the true
 /// support-to-model contact surface.
@@ -629,6 +627,11 @@ fn branch_landing_on_model_emits_bottom_interface() {
     );
 }
 
+/// A tiny fixture (2 triangles) just enough to drive the planner: a 4x4 mm
+/// downward-facing plate at z=1.8 over an anchor at the origin. Used by the
+/// `interface_bottom_layers_*` and bottom-interface tests, where the
+/// per-layer branch cap is not exercised (see `cap_overflow_fixture` for
+/// that).
 fn small_overhang_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],
