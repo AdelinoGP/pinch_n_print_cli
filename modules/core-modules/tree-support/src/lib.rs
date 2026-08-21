@@ -8,19 +8,31 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Per-layer 2-D grid-MST infill with optional SupportPlanIR consumption
+//! Tree-support **renderer**: turns `SupportPlanIR` regions into extrusions
 //!
-//! Implements `LayerModule::run_support` for the `Layer::Support` stage.
-//! Generates branching polyline structures instead of traditional grid fills.
-//! Branches converge toward fewer build-plate contact points, using less material.
-//! This module is **not a port of OrcaSlicer's TreeSupport** — it is a
-//! from-scratch grid-MST design adapted for the Pinch 'n Print architecture.
+//! Implements `LayerModule::run_support` for the `Layer::Support` stage as the
+//! renderer half of the tree family's planner/renderer pair. All branch
+//! geometry — contact sampling, avoidance, the MST propagation and the radius
+//! taper — is decided upstream by `tree-support-planner`
+//! (`modules/core-modules/tree-support-planner/src/lib.rs`, the port of
+//! canonical `TreeSupport::drop_nodes`). This module owns no tree topology of
+//! its own; the standalone grid-MST filler it used to carry was deleted in
+//! packet 224 because it double-extruded every body polygon that
+//! `render_polygon` already covered.
 //!
-//! Algorithm (single-layer simplified tree support):
-//! 1. Sample support polygon interior points on a grid (spacing from density)
-//! 2. Build a nearest-neighbor tree connecting sample points from centroid
-//! 3. Generate branch paths from tree edges
-//! 4. Convert to ExtrusionPath3D with SupportMaterial role
+//! Algorithm (per region, per layer):
+//! 1. Read the planner's `SupportPlanEntry` records via
+//!    `PaintRegionLayerView::support_plan_entries_for`, honouring paint
+//!    overrides through `SupportPaintPolicy`.
+//! 2. For each planned role region (`SupportBody` / `TopInterface` /
+//!    `BottomInterface`), render the polygon with `render_polygon`: `wall_count`
+//!    inset perimeter passes plus a scan fill inset clear of them.
+//! 3. Pitch the fill from `support_density` for bodies, and from the canonical
+//!    `support_interface_spacing` / `support_bottom_interface_spacing` pair for
+//!    interfaces (see `interface_pitch_mm`).
+//! 4. Stamp `ExtrusionRole::SupportInterface` on interface paths so
+//!    `crates/slicer-gcode/src/emit.rs` selects `;TYPE:Support interface` and
+//!    `support_interface_speed`.
 //!
 //! # Speed normalization
 //!
@@ -49,18 +61,16 @@ const BASE_SPEED: f32 = 50.0;
 /// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
 const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
 
-/// Tree support branching generator.
+/// Tree-support renderer.
 ///
-/// Produces tree-like branching fill patterns for support material areas.
-/// Branches converge toward fewer contact points, reducing material usage
-/// compared to traditional rectilinear support.
+/// Renders the `SupportPlanIR` regions produced by `tree-support-planner` as
+/// inset perimeter passes plus a scan fill. The branching topology is the
+/// planner's; this type only decides walls, pitch, role and speed.
 pub struct TreeSupport {
     /// Whether support generation is enabled.
     enabled: bool,
     /// Support density (0.0 to 1.0).
     density: f32,
-    /// Base support angle in degrees (reserved for future use).
-    #[allow(dead_code)]
     /// Support print speed in mm/s.
     support_speed: f32,
     /// Extrusion line width in millimeters.

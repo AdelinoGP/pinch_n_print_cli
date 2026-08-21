@@ -224,10 +224,12 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `true` | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
+| `support_bottom_interface_spacing` | float | `-1.0` | [-1.0, 2.0] | `traditional-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `traditional-support` |
-| `support_interface_spacing_mm` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
+| `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
@@ -236,7 +238,9 @@ is the authoritative catalog of their defaults and ranges.
 | `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
 | `enable_support` | bool | `true` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
+| `support_bottom_interface_spacing` | float | `-1.0` | [-1.0, 2.0] | `tree-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `tree-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
@@ -247,6 +251,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `tree-support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `tree-support-planner` |
+| `support_line_width` | float | `0.35` | [0.0, 2.0] | `tree-support-planner` |
 | `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `tree-support-planner` |
 | `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
@@ -394,6 +399,10 @@ upstream or has no upstream equivalent.
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
 | `support_angle` | `traditional-support` | `60.0` | `0.0` |
+| `support_bottom_interface_spacing` | `traditional-support` | `-1.0` | `0.5` |
+| `support_bottom_interface_spacing` | `tree-support` | `-1.0` | `0.5` |
+| `support_interface_spacing` | `traditional-support` | `0.4` | `0.5` |
+| `support_interface_spacing` | `tree-support` | `0.4` | `0.5` |
 | `support_interface_top_layers` | `traditional-support-planner` | `2` | `3.0` |
 | `support_interface_top_layers` | `tree-support-planner` | `2` | `3.0` |
 | `support_speed` | `traditional-support` | `50.0` | `80.0` |
