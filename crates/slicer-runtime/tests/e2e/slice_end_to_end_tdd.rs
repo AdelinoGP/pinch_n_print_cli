@@ -914,19 +914,56 @@ fn wedge_no_support_marker_when_disabled() {
     );
 }
 
-/// AC-7: tree_support_active_holder â€” proves that with the filtered
-/// module dir (traditional-support excluded), `com.core.tree-support`
-/// is the active `support-generator` claim holder. Contrastively
-/// proves the same module loses by alphabetical first-winner dedup
-/// when traditional-support is also present, so the filter is the
-/// load-bearing change that flips the holder.
+/// AC-7: `tree_support_active_holder` — pins the **post-packet-221** claim
+/// contract for `support-generator`.
+///
+/// Packet 221 deliberately removed startup dedup for the `support-generator`
+/// (and family-scoped `support-planner`) claims: renderers and planners are
+/// now selected **per region** at dispatch time by
+/// `slicer_scheduler::execution_plan::module_claims_match_active_region`, not
+/// by a single global first-winner. Every family candidate must therefore
+/// survive module load — dropping one would make its family undispatchable
+/// for any region that selects it.
+///
+/// This test asserts that contract in both directions:
+///   1. Filtered dir (traditional-support physically absent): tree-support is
+///      bound and is not dropped.
+///   2. Full dir: **both** renderers and **both** planners are bound, and no
+///      dedup `Info` diagnostic drops any of them for `support-generator` or
+///      `support-planner`.
+///
+/// The pre-221 expectation — full dir keeps only `com.core.traditional-support`
+/// by alphabetical first-winner dedup and emits a drop diagnostic for
+/// `com.core.tree-support` — was stale from `d3caeb53`/`9d50a138` onward and is
+/// replaced here. Do not restore it by re-enabling dedup for these claims: that
+/// would break per-region dispatch. Per-region *selection* (which of the two
+/// retained renderers actually receives a region) is asserted by
+/// `support_type_tree_config_selects_tree_support_holder` below.
 #[test]
 fn tree_support_active_holder() {
     use slicer_runtime::{load_live_modules_for_plan, DiagnosticLevel};
 
-    // â”€â”€ Filtered dir: traditional-support is excluded; tree-support
-    //    is the only `support-generator` holder, so the dedup never
-    //    drops it. â”€â”€
+    // Returns dedup `Info` diagnostics that dropped `module_id` for one of the
+    // per-region support claims.
+    fn support_drop_diagnostics<'a>(
+        diagnostics: &'a [slicer_runtime::LoadDiagnostic],
+        module_id: &str,
+    ) -> Vec<&'a String> {
+        diagnostics
+            .iter()
+            .filter(|d| {
+                matches!(d.level, DiagnosticLevel::Info)
+                    && d.message.contains(&format!("module '{module_id}'"))
+                    && d.message.contains("dropped")
+                    && (d.message.contains("support-generator")
+                        || d.message.contains("support-planner"))
+            })
+            .map(|d| &d.message)
+            .collect()
+    }
+
+    // -- Filtered dir: traditional-support is excluded; tree-support is the
+    //    only `support-generator` holder. --
     let filtered = crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
     );
@@ -950,16 +987,9 @@ fn tree_support_active_holder() {
         "filtered dir bindings must NOT include 'com.core.traditional-support', got: {:?}",
         bound_ids
     );
-    let dropped_tree_support = loaded.diagnostics.iter().any(|d| {
-        matches!(d.level, DiagnosticLevel::Info)
-            && d.message.contains("module 'com.core.tree-support'")
-            && d.message.contains("dropped")
-            && d.message.contains("support-generator")
-    });
     assert!(
-        !dropped_tree_support,
-        "filtered dir must NOT drop tree-support via support-generator dedup; \
-         diagnostics: {:?}",
+        support_drop_diagnostics(&loaded.diagnostics, "com.core.tree-support").is_empty(),
+        "filtered dir must NOT drop tree-support via support-claim dedup; diagnostics: {:?}",
         loaded
             .diagnostics
             .iter()
@@ -967,9 +997,7 @@ fn tree_support_active_holder() {
             .collect::<Vec<_>>()
     );
 
-    // â”€â”€ Full dir: alphabetical dedup keeps `com.core.traditional-support`
-    //    (traditional < tree) and drops `com.core.tree-support`. This
-    //    contrastive check proves the filter is the load-bearing change. â”€â”€
+    // -- Full dir: every family candidate is retained. --
     let full = core_modules_dir();
     assert_path_exists(&full, "core-modules directory");
     let full_loaded =
@@ -980,47 +1008,54 @@ fn tree_support_active_holder() {
         .iter()
         .map(|b| b.module.id().to_string())
         .collect();
-    assert!(
-        full_ids
-            .iter()
-            .any(|id| id == "com.core.traditional-support"),
-        "full dir bindings must include 'com.core.traditional-support' as the \
-         alphabetical first-winner support-generator holder, got: {:?}",
-        full_ids
-    );
-    assert!(
-        !full_ids.iter().any(|id| id == "com.core.tree-support"),
-        "full dir bindings must NOT include 'com.core.tree-support' (it is \
-         dropped by alphabetical dedup), got: {:?}",
-        full_ids
-    );
-    let full_dropped_tree_support = full_loaded.diagnostics.iter().any(|d| {
-        matches!(d.level, DiagnosticLevel::Info)
-            && d.message.contains("module 'com.core.tree-support'")
-            && d.message.contains("dropped")
-            && d.message.contains("support-generator")
-            && d.message.contains("com.core.traditional-support")
-    });
-    assert!(
-        full_dropped_tree_support,
-        "full dir must emit a dedup diagnostic dropping tree-support in favour \
-         of traditional-support; diagnostics: {:?}",
-        full_loaded
-            .diagnostics
-            .iter()
-            .map(|d| &d.message)
-            .collect::<Vec<_>>()
-    );
+    for required in [
+        "com.core.traditional-support",
+        "com.core.tree-support",
+        "com.core.traditional-support-planner",
+        "com.core.tree-support-planner",
+    ] {
+        assert!(
+            full_ids.iter().any(|id| id == required),
+            "post-221 per-region dispatch requires every support family candidate to survive \
+             module load, but '{required}' is missing from the full-dir bindings. Startup dedup \
+             for 'support-generator'/'support-planner' must stay disabled (packet 221). \
+             Bound ids: {:?}",
+            full_ids
+        );
+        assert!(
+            support_drop_diagnostics(&full_loaded.diagnostics, required).is_empty(),
+            "full dir must emit no support-claim dedup drop for '{required}'; diagnostics: {:?}",
+            full_loaded
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
-/// AC-7b: support_type_tree_config_selects_tree_support_holder — proves
-/// that with the full core-modules dir AND a raw `support_type` config
-/// carrying OrcaSlicer's `tree(auto)` spelling, the config-aware
-/// support-generator dedup exception flips the holder from
-/// `com.core.traditional-support` (the alphabetical default) to
-/// `com.core.tree-support`. Contrasts with `tree_support_active_holder`
-/// above, which needed traditional-support physically removed from the
-/// search dir because the dedup had no config input for the support claim.
+/// AC-7b: `support_type_tree_config_selects_tree_support_holder` — proves that
+/// the family selection packet 221 moved out of startup dedup still happens,
+/// one layer down, at **per-region routing**.
+///
+/// With the full core-modules dir and a raw `support_type` config carrying
+/// OrcaSlicer's `tree(auto)` spelling:
+///   1. both renderers and both planners are still bound (no mutual exclusion
+///      at load time — see `tree_support_active_holder` above), and
+///   2. every active region on the promoted execution plan routes to
+///      `support-family:tree` and **not** to `support-family:traditional`, per
+///      `slicer_scheduler::execution_plan::module_claims_match_active_region`.
+///
+/// This mirrors the shape of the passing
+/// `integration::support_family_closure::family_reaches_region_routing`, but
+/// drives it from the same live-load entry point the pre-221 version of this
+/// test used, so the load-time and dispatch-time halves of the contract are
+/// asserted together.
+///
+/// The pre-221 expectation — dedup drops `com.core.traditional-support` and
+/// emits an `Info` drop diagnostic naming `com.core.tree-support` as the
+/// winner — is gone by design; that diagnostic is no longer emitted for this
+/// claim.
 #[test]
 fn support_type_tree_config_selects_tree_support_holder() {
     use slicer_ir::ConfigValue;
@@ -1035,8 +1070,10 @@ fn support_type_tree_config_selects_tree_support_holder() {
         "support_type".to_string(),
         ConfigValue::String("tree(auto)".to_string()),
     );
+    config_source.insert("enable_support".to_string(), ConfigValue::Bool(true));
 
-    let loaded = load_live_modules_for_plan_with_config(&[full], 1, &config_source)
+    // -- Half 1: load time keeps every family candidate. --
+    let loaded = load_live_modules_for_plan_with_config(&[full.clone()], 1, &config_source)
         .expect("config-aware live module load must succeed");
 
     let bound_ids: Vec<String> = loaded
@@ -1044,37 +1081,107 @@ fn support_type_tree_config_selects_tree_support_holder() {
         .iter()
         .map(|b| b.module.id().to_string())
         .collect();
+    for required in [
+        "com.core.tree-support",
+        "com.core.traditional-support",
+        "com.core.tree-support-planner",
+        "com.core.traditional-support-planner",
+    ] {
+        assert!(
+            bound_ids.iter().any(|id| id == required),
+            "with support_type=tree(auto) the bindings must still include '{required}' \
+             (family selection is per-region, not per-load; packet 221), got: {:?}",
+            bound_ids
+        );
+    }
+    let dedup_drops: Vec<&String> = loaded
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(d.level, DiagnosticLevel::Info)
+                && d.message.contains("dropped")
+                && (d.message.contains("support-generator")
+                    || d.message.contains("support-planner"))
+        })
+        .map(|d| &d.message)
+        .collect();
     assert!(
-        bound_ids.iter().any(|id| id == "com.core.tree-support"),
-        "with support_type=tree(auto) the bindings must include 'com.core.tree-support', \
-         got: {:?}",
-        bound_ids
-    );
-    assert!(
-        !bound_ids
-            .iter()
-            .any(|id| id == "com.core.traditional-support"),
-        "with support_type=tree(auto) the bindings must NOT include \
-         'com.core.traditional-support', got: {:?}",
-        bound_ids
+        dedup_drops.is_empty(),
+        "support claim dedup must emit no drop diagnostics post-221; got: {:?}",
+        dedup_drops
     );
 
-    let dropped_traditional = loaded.diagnostics.iter().any(|d| {
-        matches!(d.level, DiagnosticLevel::Info)
-            && d.message.contains("module 'com.core.traditional-support'")
-            && d.message.contains("dropped")
-            && d.message.contains("support-generator")
-            && d.message.contains("com.core.tree-support")
-    });
+    // -- Half 2: per-region routing selects the tree family. --
+    let mesh = crate::common::model_cache::cached_load_model(&fixture_stl());
+    let context =
+        slicer_runtime::run::prepare_prepass_context(mesh, config_source.clone(), &[full], true, false)
+            .expect("prepass with support_type=tree(auto) must succeed");
+
+    let tree_claims = vec![
+        "support-generator".to_string(),
+        "support-family:tree".to_string(),
+    ];
+    let traditional_claims = vec![
+        "support-generator".to_string(),
+        "support-family:traditional".to_string(),
+    ];
+
+    let layers = &context.plan.global_layers;
     assert!(
-        dropped_traditional,
-        "dedup must emit a diagnostic dropping traditional-support in favour of \
-         tree-support; diagnostics: {:?}",
-        loaded
-            .diagnostics
-            .iter()
-            .map(|d| &d.message)
-            .collect::<Vec<_>>()
+        !layers.is_empty(),
+        "promoted execution plan must carry global layers for routing evidence"
+    );
+
+    let mut active_regions = 0usize;
+    let mut tree_routed = 0usize;
+    let mut traditional_routed = 0usize;
+    let mut sample = String::from("no active regions on any layer");
+    for layer in layers.iter() {
+        for region in &layer.active_regions {
+            if active_regions == 0 {
+                sample = format!(
+                    "object={} region={} support_type_enum={:?} ext.support_type={:?} \
+                     ext.support_family={:?}",
+                    region.object_id,
+                    region.region_id,
+                    region.resolved_config.support_type,
+                    region.resolved_config.extensions.get("support_type"),
+                    region.resolved_config.extensions.get("support_family"),
+                );
+            }
+            active_regions += 1;
+            if slicer_scheduler::execution_plan::module_claims_match_active_region(
+                &tree_claims,
+                region,
+            ) {
+                tree_routed += 1;
+            }
+            if slicer_scheduler::execution_plan::module_claims_match_active_region(
+                &traditional_claims,
+                region,
+            ) {
+                traditional_routed += 1;
+            }
+        }
+    }
+
+    assert!(
+        active_regions > 0,
+        "promoted execution plan has no active regions; layers={}",
+        layers.len()
+    );
+    assert_eq!(
+        tree_routed, active_regions,
+        "with support_type=tree(auto) every active region must route to \
+         'support-family:tree'; {tree_routed}/{active_regions} did. \
+         first_active_region[{sample}]"
+    );
+    assert_eq!(
+        traditional_routed, 0,
+        "with support_type=tree(auto) no active region may route to \
+         'support-family:traditional'; {traditional_routed}/{active_regions} did. \
+         Mutual exclusion moved from startup dedup to per-region routing in packet 221. \
+         first_active_region[{sample}]"
     );
 }
 
