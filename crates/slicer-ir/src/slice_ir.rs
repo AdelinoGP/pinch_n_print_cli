@@ -269,10 +269,15 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for host-owned support analysis inputs.
+/// Schema version for host-owned support analysis inputs. Bumped to 1.1.0 by
+/// F-19 (auto/manual support-type axis): the shape is unchanged, but the
+/// candidate-population semantics changed — under a *manual* `support_type`
+/// only enforcer-covered geometry yields candidates, and `enforced`/`blocked`
+/// are now derived from sliced modifier volumes instead of being hardcoded
+/// `false`.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -287,8 +292,13 @@ pub const CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `RegionMapIR`. Bumped to 2.0.0 by packet 91 — breaking
 /// field changes: `RegionPlan.config` is now a `ConfigId` (interner index),
 /// `configs` Vec added to `RegionMapIR`, `RegionKey.variant_chain` added.
+///
+/// Bumped to 3.0.0 by F-19: `ResolvedConfig` is interned in
+/// `RegionMapIR.configs`, and `SupportType`'s serde representation changed
+/// breakingly to the canonical four-value `s_keys_map_SupportType` spellings —
+/// the old `Traditional` / `Tree` tokens no longer deserialize.
 pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 2,
+    major: 3,
     minor: 0,
     patch: 0,
 };
@@ -1863,14 +1873,106 @@ pub enum InfillType {
     Concentric,
 }
 
-/// Support type
+/// Support type: the canonical two-axis `support_type` setting.
+///
+/// Mirrors OrcaSlicer's `s_keys_map_SupportType` (`PrintConfig.cpp`), which has
+/// **four** values, not two: the *family* axis (normal / tree) is crossed with
+/// the *placement* axis (auto / manual). The two axes are modelled as one enum
+/// rather than an enum plus a bool because they are one config key: the pair
+/// can never disagree, and [`SupportType::as_canonical_str`] round-trips the
+/// exact canonical spellings through [`ResolvedConfig::to_config_map`]
+/// (`crate::ResolvedConfig`).
+///
+/// Under a *manual* value canonical generates support **only** where a support
+/// enforcer covers the geometry — `detect_overhangs` (`SupportMaterial.cpp`)
+/// gates its angle-thresholded branch on
+/// `auto_normal_support = support_type == stNormalAuto`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SupportType {
-    /// Traditional support generation
+    /// Canonical `stNormalAuto` (`normal(auto)`): traditional family,
+    /// auto-detected overhangs plus enforcers.
     #[default]
-    Traditional,
-    /// Tree support generation
-    Tree,
+    #[serde(rename = "normal(auto)")]
+    NormalAuto,
+    /// Canonical `stTreeAuto` (`tree(auto)`): tree family, auto-detected
+    /// overhangs plus enforcers.
+    #[serde(rename = "tree(auto)")]
+    TreeAuto,
+    /// Canonical `stNormal` (`normal(manual)`): traditional family, support
+    /// enforcers only.
+    #[serde(rename = "normal(manual)")]
+    NormalManual,
+    /// Canonical `stTree` (`tree(manual)`): tree family, support enforcers
+    /// only.
+    #[serde(rename = "tree(manual)")]
+    TreeManual,
+}
+
+impl SupportType {
+    /// True for the *auto* half of the placement axis, mirroring canonical's
+    /// free function `is_auto(SupportType)` (`PrintConfig.hpp`).
+    ///
+    /// When this is false the support producer must not emit angle-thresholded
+    /// candidates at all: only enforcer-covered geometry gets support.
+    #[must_use]
+    pub const fn is_auto(self) -> bool {
+        matches!(self, SupportType::NormalAuto | SupportType::TreeAuto)
+    }
+
+    /// True for the *tree* half of the family axis, mirroring canonical's free
+    /// function `is_tree(SupportType)` (`PrintConfig.hpp`).
+    #[must_use]
+    pub const fn is_tree(self) -> bool {
+        matches!(self, SupportType::TreeAuto | SupportType::TreeManual)
+    }
+
+    /// The exact canonical `support_type` spelling for this value, as accepted
+    /// by [`canonical_support_family`] and by OrcaSlicer's config parser.
+    #[must_use]
+    pub const fn as_canonical_str(self) -> &'static str {
+        match self {
+            SupportType::NormalAuto => "normal(auto)",
+            SupportType::TreeAuto => "tree(auto)",
+            SupportType::NormalManual => "normal(manual)",
+            SupportType::TreeManual => "tree(manual)",
+        }
+    }
+
+    /// The support-**family** claim this typed value contributes to
+    /// [`canonical_support_family`], or `None` when it carries none.
+    ///
+    /// [`SupportType::NormalAuto`] is the `Default`, so a config that never
+    /// touched `support_type` is indistinguishable from one that set it to
+    /// `normal(auto)`. Treating the default as *no claim* is what lets an
+    /// explicit `support_family` extension still select the tree family on an
+    /// otherwise-default config — the behaviour the scheduler has always had,
+    /// back when this axis was the two-variant `Traditional` / `Tree` enum and
+    /// `Traditional` mapped to `None`.
+    ///
+    /// This is the family axis only; the auto/manual axis is read separately
+    /// via [`SupportType::is_auto`] and is deliberately invisible to family
+    /// selection (`canonical_support_family` prefix-matches `tree*`/`normal*`).
+    #[must_use]
+    pub const fn family_claim(self) -> Option<&'static str> {
+        match self {
+            SupportType::NormalAuto => None,
+            other => Some(other.as_canonical_str()),
+        }
+    }
+
+    /// Parse a canonical `support_type` spelling. Returns `None` for anything
+    /// outside `s_keys_map_SupportType`, leaving the fallback policy to the
+    /// caller (canonical config parsing rejects unknown values outright).
+    #[must_use]
+    pub fn from_canonical_str(value: &str) -> Option<Self> {
+        match value {
+            "normal(auto)" => Some(SupportType::NormalAuto),
+            "tree(auto)" => Some(SupportType::TreeAuto),
+            "normal(manual)" => Some(SupportType::NormalManual),
+            "tree(manual)" => Some(SupportType::TreeManual),
+            _ => None,
+        }
+    }
 }
 
 /// Canonical support-family identifier for the tree family.

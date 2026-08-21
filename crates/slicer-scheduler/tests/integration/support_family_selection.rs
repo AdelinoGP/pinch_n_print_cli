@@ -119,7 +119,7 @@ fn live_region_dispatch_retains_paired_family_candidates() {
             object_id: "object-a".into(),
             region_id: 1,
             resolved_config: ResolvedConfig {
-                support_type: slicer_ir::SupportType::Traditional,
+                support_type: slicer_ir::SupportType::NormalAuto,
                 ..Default::default()
             },
             ..Default::default()
@@ -282,7 +282,7 @@ pub fn support_family_selection_two_planners_coexist() {
             object_id: "object-a".into(),
             region_id: 1,
             resolved_config: ResolvedConfig {
-                support_type: slicer_ir::SupportType::Traditional,
+                support_type: slicer_ir::SupportType::NormalAuto,
                 ..Default::default()
             },
             ..Default::default()

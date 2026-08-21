@@ -287,9 +287,10 @@ pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegio
                 ConfigValue::String(value) => Some(value.as_str()),
                 _ => None,
             });
-        // `support_type` remains a compatibility alias. Traditional is the
-        // default enum value, so only an explicit legacy extension or Tree
-        // enum value overrides the canonical family.
+        // `support_type` remains a compatibility alias. `normal(auto)` is the
+        // default enum value, so only an explicit legacy extension or a
+        // non-default enum value overrides the canonical family (see
+        // `SupportType::family_claim`).
         let support_type = region
             .resolved_config
             .extensions
@@ -298,10 +299,7 @@ pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegio
                 ConfigValue::String(value) => Some(value.as_str()),
                 _ => None,
             })
-            .or(match region.resolved_config.support_type {
-                slicer_ir::SupportType::Tree => Some("tree"),
-                slicer_ir::SupportType::Traditional => None,
-            });
+            .or(region.resolved_config.support_type.family_claim());
         let selected = select_support_family(support_family, support_type);
         if family == selected {
             return true;

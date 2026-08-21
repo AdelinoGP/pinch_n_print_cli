@@ -121,7 +121,11 @@ impl ResolvedConfig {
         );
         m.insert(
             "support_type".into(),
-            ConfigValue::String(format!("{:?}", self.support_type)),
+            // Canonical spelling, not the Rust variant name: this map is read
+            // back by `canonical_support_family`, whose alias table matches
+            // `tree*` / `normal*` case-sensitively. `format!("{:?}")` emitted
+            // `Tree`, which fell through to the traditional family.
+            ConfigValue::String(self.support_type.as_canonical_str().to_string()),
         );
         m.insert(
             "support_threshold_angle".into(),
@@ -913,7 +917,7 @@ declare_resolved_config! {
      /// Whether to suppress M73 progress commands.
      cli "disable_m73"             disable_m73: bool = false => extract_bool;
      /// Support generation type. Not CLI-bound today.
-    plain                        support_type: SupportType = SupportType::Traditional;
+    plain                        support_type: SupportType = SupportType::NormalAuto;
     /// Overhang angle threshold in degrees above which support is generated.
     ///
     /// Canonical name and default: OrcaSlicer's `support_threshold_angle`

@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 use slicer_core::algos::overhang_annotation::{detect_support_contacts, SupportContactParams};
-use slicer_core::polygon_ops::union_ex;
+use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
+use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
 use slicer_ir::slice_ir::{
     ExPolygon, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
     SupportCandidateSource, SupportGeometryKey, SupportType,
 };
-use slicer_ir::{ConfigValue, ResolvedConfig};
+use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
 use slicer_scheduler::execution_plan::{
     select_support_family, SUPPORT_FAMILY_CONFIG_KEY, SUPPORT_GENERATOR_CONFIG_KEY,
 };
@@ -129,6 +130,13 @@ pub fn commit_support_analysis_builtin(
                 .map(|(key, polygons)| (key, union_ex(&polygons)))
                 .collect();
             let base_params = resolve_contact_params(config, threshold_angle_deg);
+            // F-19: sliced support-enforcer / support-blocker modifier volumes.
+            // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
+            // excludes these two paint subtypes from region splitting, so they
+            // never appear as a `variant_chain` entry -- slicing the modifier
+            // volumes here is the only way this stage can see them.
+            let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
+            let modifiers = ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
             // Deterministic order regardless of `SliceIR` ordering; the
             // parallel pass below reads only shared immutable state and
             // `rayon`'s `collect` into a `Vec` preserves this order, so the
@@ -136,7 +144,7 @@ pub fn commit_support_analysis_builtin(
             // order-independence property the previous per-series `par_iter`
             // had).
             contact_work.sort_by(|a, b| (a.0, &a.1, a.2).cmp(&(b.0, &b.1, b.2)));
-            let contacts: Vec<(u32, String, u64, Vec<ExPolygon>)> = contact_work
+            let contacts: Vec<Contact> = contact_work
                 .par_iter()
                 .filter_map(|(layer_index, object_id, region_id, polygons)| {
                     // Layer 0 rests on the bed and has no layer below it.
@@ -151,17 +159,69 @@ pub fn commit_support_analysis_builtin(
                         lower_layer_height_mm: layer_height_mm(&plan.global_layers, lower_index),
                         ..base_params
                     };
-                    // Support blockers are not available to this stage; see
-                    // `detect_support_contacts`' "Not modelled" section.
-                    let geometry = detect_support_contacts(polygons, lower, &[], &params);
+                    let enforcers = modifiers.enforcers_at(object_id, *layer_index);
+                    let blockers = modifiers.blockers_at(object_id, *layer_index);
+                    // F-19: the auto/manual axis is a *per-region* setting --
+                    // an object's regions may carry different `support_type`
+                    // values -- so it is resolved from the region's own config,
+                    // never from the run config.
+                    let support_type = effective_support_type(
+                        region_config(region_map.as_deref(), *layer_index, object_id, *region_id)
+                            .unwrap_or(config),
+                    );
+                    let geometry = if support_type.is_auto() {
+                        // Canonical `detect_overhangs` (`SupportMaterial.cpp`)
+                        // gates this branch on
+                        // `auto_normal_support = support_type == stNormalAuto`.
+                        // Blockers are subtracted inside the detector (its step
+                        // 3), so they are wired into that parameter rather than
+                        // re-subtracted here.
+                        detect_support_contacts(polygons, lower, blockers, &params)
+                    } else {
+                        // Manual: "If Normal (manual) or Tree (manual) is
+                        // selected, only support enforcers are generated"
+                        // (OrcaSlicer `support_type` tooltip). The
+                        // angle-thresholded branch is skipped entirely -- a
+                        // region with no enforcer over it yields no candidate
+                        // however steep it is.
+                        enforcer_contacts(
+                            polygons,
+                            lower,
+                            enforcers,
+                            blockers,
+                            params.external_perimeter_width_mm,
+                        )?
+                    };
                     if geometry.is_empty() {
                         return None;
                     }
-                    Some((*layer_index, object_id.clone(), *region_id, geometry))
+                    // `enforced` / `blocked` describe how the region relates to
+                    // the painted modifier volumes. `blocked` is tested against
+                    // the region's own cross-section, not the surviving
+                    // geometry, so it stays true for a candidate whose blocked
+                    // part has already been subtracted away.
+                    let enforced = !intersection_ex(&geometry, enforcers).is_empty();
+                    let blocked = !intersection_ex(polygons, blockers).is_empty();
+                    Some(Contact {
+                        layer_index: *layer_index,
+                        object_id: object_id.clone(),
+                        region_id: *region_id,
+                        geometry,
+                        enforced,
+                        blocked,
+                    })
                 })
                 .collect();
 
-            for (layer_index, object_id, region_id, geometry) in contacts {
+            for Contact {
+                layer_index,
+                object_id,
+                region_id,
+                geometry,
+                enforced,
+                blocked,
+            } in contacts
+            {
                 let z = plan
                     .global_layers
                     .get(layer_index as usize)
@@ -175,8 +235,8 @@ pub fn commit_support_analysis_builtin(
                         global_layer_index: layer_index,
                         z_units: mm_to_units(z),
                     },
-                    enforced: false,
-                    blocked: false,
+                    enforced,
+                    blocked,
                 });
                 id += 1;
             }
@@ -239,6 +299,218 @@ pub fn commit_support_analysis_builtin(
         }
     }
     blackboard.commit_support_analysis(Arc::new(ir))
+}
+
+/// Canonical `SUPPORT_SURFACES_OFFSET_PARAMETERS` is `jtSquare, 0.` — every
+/// offset in the support-contact pipeline uses a square join. Mirrors the
+/// private constant of the same shape in
+/// `slicer_core::algos::overhang_annotation`.
+const SUPPORT_SURFACES_JOIN: OffsetJoinType = OffsetJoinType::Square;
+/// Arc tolerance for the offsets above; irrelevant for a square join, but the
+/// parameter is not optional.
+const OFFSET_ARC_TOLERANCE_MM: f32 = 0.01;
+
+/// The *enforcer* half of canonical `detect_contacts` (`SupportMaterial.cpp`):
+///
+/// ```text
+/// enforcer_polygons = diff(intersection(layer.lslices, enforcer_polygons_src),
+///                          expand(lower_layer_polygons, 0.05f * no_interface_offset));
+/// ```
+///
+/// "Enforce supports (as if with 90 degrees of slope) for the regions covered
+/// by the enforcer meshes" — so no angle threshold applies, but area that
+/// already rests on the layer below is still excluded (canonical inflates the
+/// lower layer "just a tiny bit to avoid intersection of the overhang areas
+/// with the object"). `no_interface_offset` is canonical's minimum external
+/// perimeter width, which this stage carries as
+/// `SupportContactParams::external_perimeter_width_mm`.
+///
+/// Canonical intersects the enforcer with the whole layer (`layer.lslices`);
+/// this entry point is per-region and the per-region results union to the same
+/// area.
+///
+/// Returns `None` when nothing survives, matching the caller's
+/// "no candidate for this region" contract.
+fn enforcer_contacts(
+    region_polygons: &[ExPolygon],
+    lower_layer_polygons: &[ExPolygon],
+    enforcers: &[ExPolygon],
+    blockers: &[ExPolygon],
+    external_perimeter_width_mm: f32,
+) -> Option<Vec<ExPolygon>> {
+    if enforcers.is_empty() {
+        return None;
+    }
+    let covered = intersection_ex(region_polygons, enforcers);
+    if covered.is_empty() {
+        return None;
+    }
+    let grown_lower = offset(
+        lower_layer_polygons,
+        0.05 * external_perimeter_width_mm,
+        SUPPORT_SURFACES_JOIN,
+        OFFSET_ARC_TOLERANCE_MM,
+    );
+    let contacts = difference_ex(&covered, &grown_lower);
+    if contacts.is_empty() {
+        return None;
+    }
+    // Canonical applies the blockers to the whole contact set of the layer.
+    let contacts = if blockers.is_empty() {
+        contacts
+    } else {
+        difference_ex(&contacts, blockers)
+    };
+    (!contacts.is_empty()).then(|| union_ex(&contacts))
+}
+
+/// One detected support contact, before it becomes a [`SupportCandidate`].
+struct Contact {
+    layer_index: u32,
+    object_id: String,
+    region_id: u64,
+    geometry: Vec<ExPolygon>,
+    enforced: bool,
+    blocked: bool,
+}
+
+/// Sliced support-enforcer / support-blocker modifier volumes, keyed by
+/// `(object_id, global_layer_index)`.
+///
+/// Painted support enforcers and blockers are carried as *modifier volumes* on
+/// `ObjectMesh`, not as region variants:
+/// `slicer_core::algos::region_mapping` deliberately keeps
+/// `PaintSemantic::SupportEnforcer` / `SupportBlocker` out of region splitting,
+/// so they never reach this stage through `RegionKey::variant_chain`. Slicing
+/// the volumes with
+/// [`slice_modifier_volumes`](slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes)
+/// is the only source.
+///
+/// The slice is taken **per object** rather than over the whole `MeshIR` at
+/// once, because `slice_modifier_volumes` merges every object's volumes into a
+/// single per-semantic bucket and would otherwise let one object's enforcer
+/// force support on another object that happens to overlap it in XY.
+#[derive(Default)]
+struct ModifierGeometry {
+    enforcers: BTreeMap<(String, u32), Vec<ExPolygon>>,
+    blockers: BTreeMap<(String, u32), Vec<ExPolygon>>,
+}
+
+impl ModifierGeometry {
+    fn slice(
+        mesh: &slicer_ir::MeshIR,
+        layer_zs: &[f32],
+        global_layers: &[slicer_ir::slice_ir::GlobalLayer],
+    ) -> Self {
+        let mut geometry = ModifierGeometry::default();
+        for object in &mesh.objects {
+            if object.modifier_volumes.is_empty() {
+                continue;
+            }
+            // Per-object scoping: hand the slicer exactly one object's volumes.
+            let scoped = slicer_ir::MeshIR {
+                schema_version: mesh.schema_version,
+                objects: vec![slicer_ir::slice_ir::ObjectMesh {
+                    id: object.id.clone(),
+                    mesh: slicer_ir::slice_ir::IndexedTriangleSet::default(),
+                    transform: object.transform,
+                    config: object.config.clone(),
+                    modifier_volumes: object.modifier_volumes.clone(),
+                    paint_data: None,
+                    world_z_extent: object.world_z_extent,
+                }],
+                build_volume: mesh.build_volume,
+            };
+            for (position, entries) in slice_modifier_volumes(&scoped, layer_zs)
+                .into_iter()
+                .enumerate()
+            {
+                // `layer_zs` is built from `global_layers` in order, so the
+                // outer index is that slot's position; the candidate stream is
+                // keyed by `GlobalLayer::index`, which is what gets stored.
+                let Some(layer) = global_layers.get(position) else {
+                    continue;
+                };
+                for entry in entries {
+                    if entry.polygons.is_empty() {
+                        continue;
+                    }
+                    let bucket = match entry.semantic {
+                        PaintSemantic::SupportEnforcer => &mut geometry.enforcers,
+                        PaintSemantic::SupportBlocker => &mut geometry.blockers,
+                        _ => continue,
+                    };
+                    bucket
+                        .entry((object.id.clone(), layer.index))
+                        .or_default()
+                        .extend(entry.polygons);
+                }
+            }
+        }
+        for polygons in geometry
+            .enforcers
+            .values_mut()
+            .chain(geometry.blockers.values_mut())
+        {
+            *polygons = union_ex(polygons);
+        }
+        geometry
+    }
+
+    fn enforcers_at(&self, object_id: &str, layer_index: u32) -> &[ExPolygon] {
+        Self::at(&self.enforcers, object_id, layer_index)
+    }
+
+    fn blockers_at(&self, object_id: &str, layer_index: u32) -> &[ExPolygon] {
+        Self::at(&self.blockers, object_id, layer_index)
+    }
+
+    fn at<'a>(
+        map: &'a BTreeMap<(String, u32), Vec<ExPolygon>>,
+        object_id: &str,
+        layer_index: u32,
+    ) -> &'a [ExPolygon] {
+        map.get(&(object_id.to_string(), layer_index))
+            .map_or(&[][..], Vec::as_slice)
+    }
+}
+
+/// The region's effective `support_type`.
+///
+/// The raw OrcaSlicer spelling rides in `extensions` (that is the channel a 3MF
+/// sidecar's `support_type` reaches pnp through, and it is what
+/// `support_family` already consults); the typed field is the fallback. An
+/// unrecognised extension string falls back to the typed field rather than
+/// silently forcing auto.
+fn effective_support_type(config: &ResolvedConfig) -> SupportType {
+    config
+        .extensions
+        .get(SUPPORT_GENERATOR_CONFIG_KEY)
+        .and_then(|value| match value {
+            ConfigValue::String(value) => SupportType::from_canonical_str(value),
+            _ => None,
+        })
+        .unwrap_or(config.support_type)
+}
+
+/// The per-region `ResolvedConfig` for one `(layer, object, region)`, or `None`
+/// when no region map is committed (unit fixtures) or the region is absent.
+fn region_config<'a>(
+    region_map: Option<&'a slicer_ir::RegionMapIR>,
+    global_layer_index: u32,
+    object_id: &str,
+    region_id: u64,
+) -> Option<&'a ResolvedConfig> {
+    let map = region_map?;
+    let key = RegionKey {
+        global_layer_index,
+        object_id: object_id.to_string(),
+        region_id,
+        variant_chain: Vec::new(),
+    };
+    map.entries
+        .get(&key)
+        .map(|plan| map.config_for_raw(plan.config))
 }
 
 /// Resolves the config half of [`SupportContactParams`] once per slice.
@@ -333,10 +605,7 @@ fn support_family(config: &ResolvedConfig) -> String {
             ConfigValue::String(value) => Some(value.as_str()),
             _ => None,
         })
-        .or(match config.support_type {
-            SupportType::Tree => Some("tree"),
-            SupportType::Traditional => None,
-        });
+        .or(config.support_type.family_claim());
     select_support_family(support_family, support_type).to_string()
 }
 
@@ -427,7 +696,17 @@ mod tests {
     /// Commits a two-layer, single-region slice stack for object `"object"`,
     /// region 3, with the given lower and upper footprints.
     fn blackboard_with_stack(lower: &ExPolygon, upper: &ExPolygon) -> Blackboard {
-        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 2);
+        blackboard_with_stack_and_mesh(lower, upper, MeshIR::default())
+    }
+
+    /// As [`blackboard_with_stack`], but with a caller-supplied `MeshIR` so a
+    /// fixture can carry support-enforcer / support-blocker modifier volumes.
+    fn blackboard_with_stack_and_mesh(
+        lower: &ExPolygon,
+        upper: &ExPolygon,
+        mesh: MeshIR,
+    ) -> Blackboard {
+        let mut blackboard = Blackboard::new(Arc::new(mesh), 2);
         blackboard
             .commit_layer_plan(Arc::new(LayerPlanIR {
                 global_layers: global_layers(2),
@@ -668,7 +947,7 @@ mod tests {
             ..ResolvedConfig::default()
         };
         let enum_tree = ResolvedConfig {
-            support_type: slicer_ir::SupportType::Tree,
+            support_type: slicer_ir::SupportType::TreeAuto,
             ..ResolvedConfig::default()
         };
         for (region_id, config) in [(3, canonical_tree), (4, alias_override), (5, enum_tree)] {
@@ -697,5 +976,212 @@ mod tests {
         assert_eq!(assignments[&(String::from("object"), 3)], "tree");
         assert_eq!(assignments[&(String::from("object"), 4)], "traditional");
         assert_eq!(assignments[&(String::from("object"), 5)], "tree");
+    }
+
+    // ---------------------------------------------------------------------
+    // F-19: the auto/manual axis of canonical `support_type`.
+    // ---------------------------------------------------------------------
+
+    /// Axis-aligned box spanning `[x0,x1] x [y0,y1]` in mm over the full Z of
+    /// both fixture layers (`global_layers(2)` puts them at 0.2 and 0.4 mm).
+    fn modifier_box(x0: f32, y0: f32, x1: f32, y1: f32) -> slicer_ir::IndexedTriangleSet {
+        use slicer_ir::{IndexedTriangleSet, Point3};
+        let (z0, z1) = (-1.0_f32, 1.0_f32);
+        let vertices = [
+            (x0, y0, z0),
+            (x1, y0, z0),
+            (x1, y1, z0),
+            (x0, y1, z0),
+            (x0, y0, z1),
+            (x1, y0, z1),
+            (x1, y1, z1),
+            (x0, y1, z1),
+        ]
+        .into_iter()
+        .map(|(x, y, z)| Point3 { x, y, z })
+        .collect();
+        IndexedTriangleSet {
+            vertices,
+            indices: vec![
+                0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
+                7, 3, 1, 2, 6, 1, 6, 5,
+            ],
+        }
+    }
+
+    /// A `MeshIR` for object `"object"` carrying the given `(subtype, box)`
+    /// modifier volumes.
+    fn mesh_with_modifiers(volumes: &[(&str, slicer_ir::IndexedTriangleSet)]) -> MeshIR {
+        use slicer_ir::{ConfigDelta, ModifierScope, ModifierVolume, ObjectMesh};
+        MeshIR {
+            objects: vec![ObjectMesh {
+                id: "object".to_string(),
+                modifier_volumes: volumes
+                    .iter()
+                    .enumerate()
+                    // exhaustive: ModifierVolume has no Default and every field is load-bearing here
+                    .map(|(index, (subtype, mesh))| ModifierVolume {
+                        id: format!("mv-{index}"),
+                        mesh: mesh.clone(),
+                        config_delta: ConfigDelta {
+                            fields: [(
+                                "subtype".to_string(),
+                                ConfigValue::String((*subtype).to_string()),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        },
+                        priority: 0,
+                        applies_to: ModifierScope::AllFeatures,
+                    })
+                    .collect(),
+                ..ObjectMesh::default()
+            }],
+            ..MeshIR::default()
+        }
+    }
+
+    fn config_with_support_type(spelling: &str) -> ResolvedConfig {
+        ResolvedConfig {
+            extensions: [(
+                "support_type".to_string(),
+                ConfigValue::String(spelling.to_string()),
+            )]
+            .into_iter()
+            .collect(),
+            ..support_enabled_config()
+        }
+    }
+
+    /// The overhanging stack from `support_analysis_populates_all_derivable_inputs`:
+    /// layer 1 is a 5mm square overhanging a 3mm one on every side.
+    fn overhang_stack() -> (ExPolygon, ExPolygon) {
+        (square(1.0, 2.0, 3.0), square(0.0, 1.0, 5.0))
+    }
+
+    fn candidates_for(config: &ResolvedConfig, mesh: MeshIR) -> Vec<SupportCandidate> {
+        let (lower, upper) = overhang_stack();
+        let mut blackboard = blackboard_with_stack_and_mesh(&lower, &upper, mesh);
+        commit_support_analysis_builtin(&mut blackboard, config).unwrap();
+        blackboard.support_analysis().unwrap().candidates.clone()
+    }
+
+    /// Canonical `detect_overhangs` (`SupportMaterial.cpp`) gates its
+    /// angle-thresholded branch on `support_type == stNormalAuto`, and the Orca
+    /// `support_type` tooltip is explicit: "If Normal (manual) or Tree (manual)
+    /// is selected, only support enforcers are generated."
+    ///
+    /// Before F-19 `SupportType` had no auto/manual axis at all, so this
+    /// genuinely-overhanging stack produced an auto-detected candidate under
+    /// every `support_type` value.
+    #[test]
+    fn manual_support_type_emits_no_auto_detected_candidate() {
+        // Control: the same fixture under `normal(auto)` does overhang.
+        assert!(
+            !candidates_for(&config_with_support_type("normal(auto)"), MeshIR::default())
+                .is_empty(),
+            "fixture must overhang under normal(auto), or the manual assertion proves nothing"
+        );
+        for manual in ["normal(manual)", "tree(manual)"] {
+            assert!(
+                candidates_for(&config_with_support_type(manual), MeshIR::default()).is_empty(),
+                "{manual} must emit no auto-detected candidate without an enforcer"
+            );
+        }
+    }
+
+    /// Manual mode still supports enforcer-covered geometry, and only that
+    /// geometry.
+    #[test]
+    fn manual_support_type_emits_enforcer_driven_candidate() {
+        let enforcer = square(0.0, 1.0, 2.0);
+        let candidates = candidates_for(
+            &config_with_support_type("tree(manual)"),
+            mesh_with_modifiers(&[("support_enforcer", modifier_box(0.0, 1.0, 2.0, 3.0))]),
+        );
+        assert_eq!(
+            candidates.len(),
+            1,
+            "one enforcer over one overhanging layer yields one candidate"
+        );
+        let candidate = &candidates[0];
+        assert_eq!(candidate.source.global_layer_index, 1);
+        assert!(
+            candidate.enforced,
+            "enforcer-driven candidate must be flagged"
+        );
+        assert!(!candidate.blocked);
+        assert!(
+            difference_ex(&candidate.geometry, &[enforcer]).is_empty(),
+            "manual candidates must not extend beyond the enforcer footprint"
+        );
+    }
+
+    /// Canonical `detect_overhangs` step 3 subtracts the blocker set from the
+    /// contact region. The producer used to pass `&[]` for that parameter.
+    #[test]
+    fn auto_support_type_subtracts_blockers() {
+        let candidates = candidates_for(
+            &config_with_support_type("normal(auto)"),
+            // Covers the whole layer-1 footprint, so nothing survives.
+            mesh_with_modifiers(&[("support_blocker", modifier_box(-1.0, 0.0, 6.0, 7.0))]),
+        );
+        assert!(
+            candidates.is_empty(),
+            "a blocker covering the whole overhang must remove every candidate"
+        );
+    }
+
+    /// A blocker that only clips part of the overhang leaves a candidate, and
+    /// that candidate is flagged `blocked`.
+    #[test]
+    fn auto_support_type_flags_partially_blocked_candidate() {
+        let candidates = candidates_for(
+            &config_with_support_type("normal(auto)"),
+            mesh_with_modifiers(&[("support_blocker", modifier_box(-1.0, 0.0, 1.0, 7.0))]),
+        );
+        assert_eq!(candidates.len(), 1);
+        assert!(
+            candidates[0].blocked,
+            "candidate overlapping a blocker must be flagged"
+        );
+        assert!(!candidates[0].enforced);
+        assert!(
+            difference_ex(&candidates[0].geometry, &[square(1.0, 1.0, 5.0)]).is_empty(),
+            "the blocked strip (x < 1mm) must be subtracted from the contact"
+        );
+    }
+
+    /// The axis is a per-region setting: a region map may give two regions of
+    /// the same object different `support_type` values, and the run config must
+    /// not override them.
+    #[test]
+    fn auto_manual_axis_is_resolved_per_region() {
+        let (lower, upper) = overhang_stack();
+        let mut blackboard = blackboard_with_stack_and_mesh(&lower, &upper, MeshIR::default());
+        let mut region_map = RegionMapIR::default();
+        let manual = region_map.intern_config(config_with_support_type("tree(manual)"));
+        for global_layer_index in 0..=1 {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index,
+                    object_id: "object".to_string(),
+                    region_id: 3,
+                    variant_chain: Vec::new(),
+                },
+                RegionPlan {
+                    config: manual,
+                    ..RegionPlan::default()
+                },
+            );
+        }
+        blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+        // The *run* config is auto; the region's own config is manual and wins.
+        commit_support_analysis_builtin(&mut blackboard, &config_with_support_type("normal(auto)"))
+            .unwrap();
+        assert!(
+            blackboard.support_analysis().unwrap().candidates.is_empty(),
+            "a manual region config must suppress auto detection even under an auto run config"
+        );
     }
 }

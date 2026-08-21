@@ -502,7 +502,7 @@ and intern as distinct entries. NaN is already a fatal validation error
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 2.0.0** (Major bump by Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`). RegionMapIR schema remains at 2.0.0 post-roadmap.)
+**Current schema_version: 3.0.0** (Major bump by F-19 — `ResolvedConfig` is interned in `RegionMapIR.configs`, and `ResolvedConfig.support_type` widened from the two-variant `Traditional` / `Tree` enum to canonical's four-value `s_keys_map_SupportType` (`normal(auto)` / `tree(auto)` / `normal(manual)` / `tree(manual)`); the serde tokens are now those canonical spellings, so `Traditional` / `Tree` no longer deserialize. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`); 2.0.0 (Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added).)
 
 `RegionMapIR`, `RegionKey`, `RegionPlan`, `ModuleInvocation`, and `ConfigId` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. `RegionMapIR.configs` is the
@@ -847,8 +847,13 @@ and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 1.0.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`).
+**Current schema_version: 1.1.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by F-19 — the shape is
+unchanged, but the candidate-population semantics changed: under a *manual*
+`support_type` only enforcer-covered geometry yields candidates, and
+`enforced` / `blocked` are derived from sliced support-enforcer /
+support-blocker modifier volumes instead of being hardcoded `false`. Prior
+version: 1.0.0 initial.)
 
 **Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
 host-owned input shared by all support family planners — it is produced once
@@ -865,7 +870,16 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   which the conservative candidate came). Each candidate also carries
   `enforced: bool` and `blocked: bool` — the enforcer/blocker annotations
   (enforcers guarantee candidate creation, not printed geometry; blockers
-  mark geometry that must not receive support).
+  mark geometry that must not receive support). Both are derived by the host
+  built-in from the object's support-enforcer / support-blocker modifier
+  volumes, sliced per layer via
+  `slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes`.
+  `blocked` is tested against the region cross-section, so it stays true for a
+  candidate whose blocked part has already been subtracted away. Under a
+  *manual* `support_type` (`normal(manual)` / `tree(manual)`) the
+  angle-thresholded branch is skipped entirely and only enforcer-covered
+  geometry produces candidates, mirroring canonical `detect_overhangs`'
+  `auto_normal_support` gate (`SupportMaterial.cpp`).
 - `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
   occupancy per `(layer, object, region)` key.
 - `termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the
