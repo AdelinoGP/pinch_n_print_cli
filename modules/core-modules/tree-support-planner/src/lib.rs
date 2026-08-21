@@ -1684,9 +1684,39 @@ impl SupportPlanner {
         // shared map so per-layer totals are merged across all objects
         // before emission.
 
-        // Keep projected mesh contacts as the primary legacy path. Analysis
-        // augments these contacts but never decides whether they are admitted.
-        if let Some((bmin, _)) = compute_bounds(&obj.vertices) {
+        // Canonical `generate_contact_points` reads ONE contact source: the
+        // host-computed per-layer overhang polygons (`layer->loverhangs`).
+        // In-tree that source is `SupportAnalysisView::candidates`, whose
+        // geometry `detect_support_overhangs` derives with the same 2D
+        // slice-difference canonical uses. The mesh-facet projection below is
+        // a compatibility shim for fixtures that carry no analysis at all
+        // (coplanar plates whose closed-solid cross-section is empty).
+        //
+        // Running BOTH seeds two independent contact chains for the same
+        // overhang, and the union of their two roof bands is longer than the
+        // configured `support_interface_top_layers`. Measured on
+        // SupportTest.stl before this gate: top=1 emitted 2 interface layers,
+        // top=2 emitted 4, top=3 emitted 5, while traditional (single-source)
+        // emitted the correct 1/2/3.
+        let has_analysis_contacts = support_analysis.candidates.iter().any(|candidate| {
+            candidate.object_id == obj.object_id
+                && !candidate.blocked
+                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                    == Some("tree")
+                && candidate
+                    .geometry
+                    .iter()
+                    .any(|polygon| polygon.contour.points.len() >= 3)
+                && region_segmentation.entries.iter().any(|entry| {
+                    entry.object_id == obj.object_id
+                        && entry.layer_index == candidate.global_layer_index
+                        && entry
+                            .region_ids
+                            .iter()
+                            .any(|region_id| region_id == &candidate.region_id)
+                })
+        });
+        if let Some((bmin, _)) = compute_bounds(&obj.vertices).filter(|_| !has_analysis_contacts) {
             let blockers = collect_paint_blocker_polygons(obj);
             let mut polygons_by_layer: std::collections::BTreeMap<usize, Vec<ExPolygon>> =
                 std::collections::BTreeMap::new();
@@ -1867,7 +1897,20 @@ impl SupportPlanner {
                     add_interface: expolygon_area(overhang) > minimum_roof_area(),
                     is_sharp_tail: false,
                 };
-                insert_analysis_contact_point(
+                // Canonical `generate_contact_points` has exactly ONE contact
+                // seeding rule: the node goes on `layer_nr - 1` and starts at
+                // `distance_to_top = -gap_layers` (the virtual top-Z-gap node
+                // that `draw_circles` diverts into `roof_gap_areas`). Step 2
+                // gave analysis candidates their own unshifted rule on the
+                // reasoning that the host hands over a *contact* layer rather
+                // than an overhang layer; it does not — `detect_support_over-
+                // hangs` reports the layer that CONTAINS the overhang, the
+                // same input canonical shifts. Running two rules seeded two
+                // roof bands one layer apart for the same overhang, and their
+                // union gave N+1..N+2 interface layers instead of N
+                // (measured: top=1 -> 2, top=2 -> 4, top=3 -> 5 on
+                // SupportTest.stl).
+                insert_contact_point(
                     &mut arena,
                     &mut contacts_by_layer,
                     layer_plan,
@@ -2681,20 +2724,14 @@ impl SupportPlanner {
             // this layer. Points sit at this layer's Z.
             // Canonical `get_collision` / `get_avoidance`. Collision carries
             // `m_xy_distance` (F-16: it used to carry no inflation at all); the
-            // node's own tapered radius is added by `body_intersects` at each
-            // gate, so the pair sums to canonical's `radius + m_xy_distance`
-            // keyed on the per-node radius rather than a constant one.
+            // node's own tapered radius is folded into the drawn footprint,
+            // so the pair sums to canonical's `radius + m_xy_distance` keyed
+            // on the per-node radius rather than a constant one.
             // Step 1 left these gates on the radius-free bucket
             // (`get_collision(0.0, l)` = outlines inflated by `m_xy_distance`
-            // alone) and let `body_intersects` supply the per-node tapered
-            // radius as a disc test, to avoid counting the radius twice. Now
-            // that F-13 moves nodes with canonical point-in-volume tests, the
-            // per-node gates read `get_collision(tapered_radius, l)` directly
-            // and drop the extra inflation: a point inside that bucket is
-            // exactly a branch of that radius touching the model. The *segment*
-            // gate keeps the radius-free bucket because it passes both
-            // endpoint radii explicitly into a swept hull, which is already
-            // exact.
+            // alone), matching canonical `draw_circles`' own `get_collision`
+            // lambda, and carves the drawn footprint out of it rather than
+            // testing a disc for contact.
             let collision_polys = volumes.get_collision(0.0, cache_idx);
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
@@ -2713,14 +2750,77 @@ impl SupportPlanner {
             } else {
                 model_collision.as_slice()
             };
-            // Per-node point gate. Host-supplied `model_occupancy` is exact-Z
-            // and un-inflated, so it keeps the disc test; the cached ladder
-            // folds the radius into the volume instead.
-            let node_collides = |x: f32, y: f32, radius: f32| -> bool {
-                if model_collision.is_empty() {
-                    is_inside_ex(&volumes.get_collision(radius, cache_idx), x, y)
-                } else {
-                    body_intersects(&model_collision, x, y, radius)
+            // ── Drop only what the model swallows whole ───────────────────
+            //
+            // Canonical has two distinct rules and this module had collapsed
+            // them into one that is stronger than either.
+            //
+            // 1. `drop_nodes` deletes a node only when "the branch falls
+            //    completely inside a collision area (the entire branch would
+            //    be removed by the X/Y offset)". `get_collision(r, l)` is
+            //    `outlines ⊕ (r + m_xy_distance)`, so "the whole footprint of
+            //    radius r lies inside that volume" is exactly that test.
+            // 2. `draw_circles` never drops a node whose cross-section merely
+            //    *touches* the model: it computes
+            //    `avoid_object_remove_extra_small_parts(circle, collision)` —
+            //    a difference that keeps the largest surviving part — so a
+            //    branch running alongside a wall still prints the sliver that
+            //    clears it. `build_roles` performs that same difference here.
+            //
+            // Until this fix the emit pass rejected a node (and an MST edge)
+            // on any *overlap* between the node's full tapered radius and the
+            // model, which is strictly stronger than both. On real geometry it
+            // is catastrophic, because canonical expects nodes to sit inside
+            // collision: `move_out_expolys` reverts the push-out whenever the
+            // required travel exceeds `max_move_distance +
+            // radius_sample_resolution`, so a branch beside a wall stays put
+            // and relies on the carve. Measured on
+            // `resources/regression_wedge.stl` before the fix: 68 of 72 nodes
+            // and 69 of 70 MST edges rejected on layer 99, every node lost on
+            // layers 145-151, and ten layers emitted role areas with an EMPTY
+            // skeleton. The synthetic fixtures never caught it because they
+            // run with an empty `model_occupancy`.
+            //
+            // The drop gate reads the radius-bucketed ladder (rule 1); the
+            // carve in `build_roles` reads `collision_polys` (rule 2).
+            let swallowed_by_collision = |region: &ExPolygon, radius: f32| -> bool {
+                let gate = volumes.get_collision(radius, cache_idx);
+                if gate.is_empty() {
+                    return false;
+                }
+                host::clip_polygons(
+                    std::slice::from_ref(region),
+                    &gate,
+                    ClipOperation::Difference,
+                )
+                .is_empty()
+            };
+            // A footprint contained in the gate volume must have its centre
+            // inside it too, so an outside centre proves the carve leaves
+            // something behind. That keeps the host clip off the common path.
+            let node_swallowed = |x: f32, y: f32, radius: f32| -> bool {
+                let gate = volumes.get_collision(radius, cache_idx);
+                if gate.is_empty() || !is_inside_ex(&gate, x, y) {
+                    return false;
+                }
+                let point = Point3WithWidth {
+                    x,
+                    y,
+                    z: 0.0,
+                    width: radius * 2.0,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                };
+                match swept_region(&point, &point) {
+                    Some(disc) => host::clip_polygons(
+                        std::slice::from_ref(&disc),
+                        &gate,
+                        ClipOperation::Difference,
+                    )
+                    .is_empty(),
+                    None => false,
                 }
             };
 
@@ -2810,9 +2910,6 @@ impl SupportPlanner {
                 // *interface endpoints* because the edge's other endpoint is
                 // what reaches the model; a node's own ellipse has no such
                 // partner.)
-                if node_collides(node.x(), node.y(), radius) {
-                    continue;
-                }
                 let direction = if node.movement.x != 0 || node.movement.y != 0 {
                     node.movement
                 } else {
@@ -2828,6 +2925,11 @@ impl SupportPlanner {
                 ) else {
                     continue;
                 };
+                // Canonical `drop_nodes`: only a cross-section the collision
+                // volume swallows whole is lost.
+                if swallowed_by_collision(&ellipse, radius) {
+                    continue;
+                }
                 layer_needs_extra_wall |= node.need_extra_wall;
                 match node_roles[i] {
                     InterfaceRole::Body => branch_areas.push(ellipse),
@@ -2850,8 +2952,6 @@ impl SupportPlanner {
                 if na.is_virtual_gap() || nb.is_virtual_gap() {
                     continue;
                 }
-                mst_emitted[*a_idx] = true;
-                mst_emitted[*b_idx] = true;
 
                 // Tapered radii at the two endpoints
                 let radius_a = tapered_radius(
@@ -2867,17 +2967,39 @@ impl SupportPlanner {
                     effective_height,
                 );
 
-                // Interface nodes are allowed to meet the model, but that
-                // exemption is per endpoint. A mixed body/interface edge must
-                // still reject its body endpoint; exempting the whole edge
-                // lets body geometry leak into exact-Z model occupancy.
-                let body_endpoint_collides = (node_roles[*a_idx] == InterfaceRole::Body
-                    && node_collides(na.x(), na.y(), radius_a))
-                    || (node_roles[*b_idx] == InterfaceRole::Body
-                        && node_collides(nb.x(), nb.y(), radius_b));
-                let segment_collides =
-                    body_segment_intersects(collision_polys, na.xy(), nb.xy(), radius_a, radius_b);
-                if body_endpoint_collides || segment_collides {
+                // The swept capsule follows the same canonical carve rule as
+                // a node's own cross-section: `build_roles` differences it
+                // against this collision set, so only a capsule the model
+                // swallows entirely has nothing left to print. Rejecting on
+                // mere *intersection* — which is what this gate used to do,
+                // plus a per-endpoint disc test — discarded almost every edge
+                // on real geometry (69 of 70 on wedge layer 99).
+                let capsule = swept_region(
+                    &Point3WithWidth {
+                        x: na.x(),
+                        y: na.y(),
+                        z: 0.0,
+                        width: radius_a * 2.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    },
+                    &Point3WithWidth {
+                        x: nb.x(),
+                        y: nb.y(),
+                        z: 0.0,
+                        width: radius_b * 2.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    },
+                );
+                let segment_swallowed = capsule
+                    .as_ref()
+                    .is_some_and(|c| swallowed_by_collision(c, radius_a.max(radius_b)));
+                if segment_swallowed {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -2888,6 +3010,13 @@ impl SupportPlanner {
                     });
                     continue;
                 }
+                // Only an edge that actually contributes geometry counts as
+                // emitted. Setting this before the rejection above left a node
+                // whose sole edge was refused with no representation at all —
+                // the degenerate-node fallback below skipped it — so the layer
+                // produced role areas with an EMPTY skeleton.
+                mst_emitted[*a_idx] = true;
+                mst_emitted[*b_idx] = true;
 
                 let dist_a_mm = na.distance_to_top.max(0) as f32 * effective_height;
                 let dist_b_mm = nb.distance_to_top.max(0) as f32 * effective_height;
@@ -2949,7 +3078,7 @@ impl SupportPlanner {
                     node.distance_to_top.max(0) as u32,
                     effective_height,
                 );
-                if node_collides(node.x(), node.y(), radius) {
+                if node_swallowed(node.x(), node.y(), radius) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -2999,7 +3128,7 @@ impl SupportPlanner {
                         node.distance_to_top.max(0) as u32,
                         effective_height,
                     );
-                    if node_collides(node.x(), node.y(), radius) {
+                    if node_swallowed(node.x(), node.y(), radius) {
                         continue;
                     }
                     let width = radius * 2.0;
@@ -3605,56 +3734,6 @@ fn insert_contact_point(
     Some(id)
 }
 
-/// Contact insertion for host-analysis candidates.
-///
-/// Analysis candidates already carry the host-selected contact layer, so the
-/// canonical `layer_nr - 1` shift is **not** applied here — doing so would
-/// move sampled geometry off its demand layer. The node is therefore a real
-/// contact (`distance_to_top = 0`), not a virtual gap node.
-#[allow(clippy::too_many_arguments)]
-fn insert_analysis_contact_point(
-    arena: &mut NodeArena,
-    contacts: &mut [Vec<NodeId>],
-    layer_plan: &LayerPlanView,
-    planner: &SupportPlanner,
-    dropped: &mut std::collections::BTreeMap<u32, usize>,
-    layer_idx: usize,
-    sample: (f32, f32),
-    radius: f32,
-    is_corner: bool,
-    oc: &OverhangContext<'_>,
-    demand_id: String,
-) -> Option<NodeId> {
-    let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
-    let layer = &layer_plan.layers[layer_idx];
-    let (x, y) = sample;
-    let global_layer = layer.global_layer_index;
-    // F-14: see `insert_contact_point` — canonical seeds `to_buildplate` true.
-    let to_buildplate = true;
-    if contacts[layer_idx].len() >= planner.max_branches_per_layer {
-        *dropped.entry(global_layer).or_insert(0) += 1;
-        return None;
-    }
-    let id = arena.create_node(
-        Point2::from_mm(x, y),
-        0,
-        layer_idx,
-        oc.roof_layers(),
-        to_buildplate,
-        None,
-        layer.z,
-        layer.effective_layer_height,
-        0.0,
-        radius,
-    );
-    arena[id].overhang = oc.overhang.clone();
-    arena[id].is_sharp_tail = oc.is_sharp_tail;
-    arena[id].is_corner = is_corner;
-    arena[id].demand_ids = vec![demand_id];
-    contacts[layer_idx].push(id);
-    Some(id)
-}
-
 /// Resolve the global support selection to the family vocabulary shared by
 /// the planner and both renderers. Orca-style `support_type` aliases remain
 /// accepted, with the legacy key taking precedence when both are present.
@@ -4018,51 +4097,6 @@ pub fn body_overlaps_occupancy(polygons: &[ExPolygon], x: f32, y: f32, radius_mm
             })
             || point_in_polygon(&poly, qx, qy)
     })
-}
-
-fn body_intersects(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bool {
-    body_overlaps_occupancy(polygons, x, y, radius_mm)
-}
-
-/// Check the complete emitted capsule, not just its endpoint discs. A branch
-/// can cross an obstacle between two individually clear endpoints.
-fn body_segment_intersects(
-    polygons: &[ExPolygon],
-    a: (f32, f32),
-    b: (f32, f32),
-    radius_a: f32,
-    radius_b: f32,
-) -> bool {
-    let Some(segment) = swept_region(
-        &Point3WithWidth {
-            x: a.0,
-            y: a.1,
-            z: 0.0,
-            width: radius_a * 2.0,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
-        },
-        &Point3WithWidth {
-            x: b.0,
-            y: b.1,
-            z: 0.0,
-            width: radius_b * 2.0,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-            dist_to_top_mm: 0.0,
-            overhang_distance_mm: None,
-        },
-    ) else {
-        return false;
-    };
-    !host::clip_polygons(
-        std::slice::from_ref(&segment),
-        polygons,
-        ClipOperation::Intersection,
-    )
-    .is_empty()
 }
 
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.

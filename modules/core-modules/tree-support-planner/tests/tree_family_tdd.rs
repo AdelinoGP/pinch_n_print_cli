@@ -454,13 +454,20 @@ fn distributed_contacts() {
             );
         }
     }
+    // The contact seeded from an analysis candidate follows canonical
+    // `generate_contact_points`: the node lands on `layer_nr - 1` as the
+    // virtual top-Z-gap node (`distance_to_top < 0`), which `draw_circles`
+    // diverts into `roof_gap_areas` and never extrudes. The first layer that
+    // actually draws the contact set is therefore the topmost layer carrying
+    // geometry, not the candidate's own index. Derive it from the plan so the
+    // check tracks the emitted band rather than a pinned layer number.
+    let contact_layer = top_geometry_layer;
     let mut classes = [0_u32; 3];
     for point in output
         .entries()
         .iter()
-        .filter(|entry| entry.global_layer_index == 8)
+        .filter(|entry| entry.global_layer_index == contact_layer)
         .flat_map(|entry| entry.skeleton.as_ref().unwrap().points.iter())
-        .filter(|point| (point.z - 1.8).abs() < 0.001)
     {
         let p = (point.x, point.y);
         let vertices = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)];
