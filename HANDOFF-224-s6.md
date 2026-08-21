@@ -130,9 +130,10 @@ F-32/46/47/48.
 
 ## 5. State at handoff
 
-- Full suite, COMPLETE measurement (`--no-fail-fast`): **3806 passed / 4 failed / 7
+- Full suite, COMPLETE measurement (`--no-fail-fast`): **3809 passed / 1 failed / 7
   ignored across 386 result lines** (345 test binaries + 41 doc-test suites).
-  **THE WORKSPACE IS NOT GREEN.** The 4 failures are listed in section 8.
+  **THE WORKSPACE IS NOT GREEN** — one failure remains, needing a SPEC decision, not a
+  code fix. See section 8.
 - Gates green: `clippy --workspace --all-targets -D warnings`, `check-literals`,
   `check-deviations --check` (was RED before this session), `gen-config-docs --check`,
   `build-guests --check`.
@@ -143,16 +144,21 @@ F-32/46/47/48.
 
 Orca-matched config, release `pnp_cli`, `--module-dir modules/core-modules`:
 
+**Regenerated after the AC-1 fix (`92077096`).** The earlier set was produced while tree
+columns terminated at z=8.0 and is superseded.
+
 - `SupportTest_normal.gcode` — 122 `;TYPE:Support` blocks, 2 interface, 1391 support
-  extrusion moves, 150 layers, degraded=false, 0 errors
-- `SupportTest_tree.gcode` — 120 support blocks, 2 interface, 6526 support extrusion
-  moves, 150 layers, degraded=false, 0 errors
+  extrusion moves, support Z 0.2 to 24.4, 150 layers, degraded=false, 0 errors
+- `SupportTest_tree.gcode` — **122** support blocks, 2 interface, **10533** support
+  extrusion moves, support Z 0.2 to 24.4, 150 layers, degraded=false, 0 errors
 - `report-normal.html`, `report-tree.html`, `config-normal.json`, `config-tree.json`
 
 Orca reference comparison (context only; no test reads Orca, per the AC-6 gate):
-Normal 121 support / **3** interface; Tree 122 support / 2 interface. The Normal 2-vs-3
-difference is the already-registered **G-18**. Layer counts differ (150 vs 452) because
-the references were cut at a finer layer height.
+Normal 121 support / **3** interface; Tree **122** support / 2 interface. **The tree
+block count now matches the reference exactly** (122 = 122); before the AC-1 fix it was
+120 with only 6526 extrusion moves and columns stopping at z=8.0. The Normal 2-vs-3
+interface difference is the already-registered **G-18**. Layer counts differ (150 vs 452)
+because the references were cut at a finer layer height.
 
 ---
 
@@ -183,29 +189,31 @@ met. **Do not mark the packet `implemented` until a human inspects the artifacts
 
 ---
 
-## 8. THE WORKSPACE IS NOT GREEN — 4 failures outstanding
+## 8. ONE FAILURE OUTSTANDING — needs a SPEC decision, not a code fix
 
-Measured with `cargo xtask test --summary --workspace --no-fail-fast`. Two of these had
-never been executed by any prior packet-224 run, because fail-fast aborted first.
+Three of the four masked failures were fixed in `92077096` (see that commit for the
+AC-1 simplify-before-carve defect, and for two stale fixtures that encoded pre-224
+contact placement). The coordinator's suspicion that `c3c1ed5a`'s mesh-path gate caused
+them was DISPROVED — do not re-attempt it.
 
-1. `prepass_support_geometry_layer_plan_tdd::planner_emits_one_entry_per_region_in_region_map`
-   (`crates/slicer-runtime/tests/executor/`) — expected 2 entries for
-   (layer=5, object=obj-multi), **got 0**.
-2. `prepass_support_geometry_layer_plan_tdd::planner_walks_real_layer_plan_with_variable_layer_heights`
-   — highest entry first point z=0.8, expected ~2.0.
-3. `fixture_invariants` (`crates/slicer-runtime/tests/integration/main.rs`) — **packet
-   AC-1**. "tree: no plate-terminated entry".
-4. `interface_is_topmost_and_carved_out` — layer 118 carries interface geometry but no
-   SupportBody. **May be red-by-design**: `df6b75cd` says six gates "are RED on purpose
-   and stay red until the defects they now bind on are fixed" and names this one (F-4).
-   Needs a verdict, not an assumption.
+**`prepass_support_geometry_layer_plan_tdd::planner_emits_one_entry_per_region_in_region_map`
+(AC-8) is RED and left red deliberately.**
 
-**Prime suspect for (1) and (3):** commit `c3c1ed5a` gated the legacy mesh-facet contact
-path on "this object has no admissible tree analysis candidates". Consolidating to one
-contact source is canonically right, but that gate may starve cases the analysis path does
-not cover — (1) is a multi-region fixture getting zero entries, (3) reports no
-plate-terminated tree entry at all. Fix without reintroducing dual seeding; `final_gcode_roles`
-(AC-4, interface counts 1/2/3) must stay green.
+```
+expected 2 entries for (layer=2, object=obj-multi), got 1
+entries emitted: layer=2 region=7, layer=3 region=7; region 42 never appears
+```
+
+Root cause, confirmed: `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`
+mints `SupportAnalysisIR.family_assignments` per CANDIDATE; candidates come from `SliceIR`
+regions (this plate slices to one); and `candidate_family` deliberately refuses to
+self-default ("No self-default"). So a RegionMap region with no candidate gets no family
+assignment and is declined.
+
+**The human decision required:** does AC-8 mean one entry per RegionMap region, or one
+entry per host-ASSIGNED region? Then either widen the host assignment or re-pin the count.
+The count assertion has been left INTACT and the diagnosis written into the test rather
+than the expectation being softened.
 
 Gates remain green: clippy, check-literals, check-deviations, gen-config-docs,
 build-guests.
