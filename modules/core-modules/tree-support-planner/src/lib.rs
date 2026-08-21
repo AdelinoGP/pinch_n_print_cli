@@ -88,9 +88,15 @@ const MIN_BRANCH_RADIUS: f32 = 0.4;
 const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 /// Canonical fallback because this module does not declare `max_bridge_length`.
 const DEFAULT_MAX_BRIDGE_LENGTH_MM: f32 = 10.0;
-/// Canonical `smooth_nodes` runs its three-point kernel this many times over
-/// each branch chain before committing the smoothed positions.
-const SMOOTH_NODES_ITERATIONS: usize = 3;
+/// Canonical `smooth_nodes`' `const int iterations = 100` — the number of
+/// three-point relaxation passes run over each branch chain before the
+/// smoothed positions are committed.
+const SMOOTH_NODES_ITERATIONS: usize = 100;
+/// Canonical `smooth_nodes`' `thresh_tall_branch`, in mm: a chain whose summed
+/// node heights exceed this is "very tall", and its tip needs an extra wall.
+const SMOOTH_NODES_THRESH_TALL_BRANCH_MM: f32 = 100.0;
+/// Canonical `smooth_nodes`' `thresh_dist_to_top`, in mm.
+const SMOOTH_NODES_THRESH_DIST_TO_TOP_MM: f32 = 30.0;
 /// Canonical `draw_circles`' `CIRCLE_RESOLUTION` when the model carries so many
 /// branches that a full circle per node per layer would be ruinous: the branch
 /// cross-section degenerates to a quad aligned with `ContactStats::nodes_angle`.
@@ -100,8 +106,28 @@ const CIRCLE_RESOLUTION_FINE: usize = 100;
 /// Canonical `draw_circles` picks [`CIRCLE_RESOLUTION_COARSE`] when
 /// `avg_node_per_layer` exceeds this.
 const COARSE_CIRCLE_NODE_THRESHOLD: usize = 200;
-/// libslic3r `RESOLUTION` (`SCALED_RESOLUTION = scale_(0.0125)`), the
-/// distance tolerance canonical simplifies the drawn support areas with.
+/// libslic3r `RESOLUTION` (`SCALED_RESOLUTION = scale_(0.0125)`).
+///
+/// **DEVIATION (verified against canonical, packet 224).** Canonical
+/// `draw_circles` does *not* use `RESOLUTION` at all. Its only simplify is
+///
+/// ```text
+/// if (SQUARE_SUPPORT) {
+///     ExPolygons base_areas_simplified;
+///     for (auto &area : base_areas) { area.simplify(scale_(line_width / 2), &base_areas_simplified); }
+///     base_areas = std::move(base_areas_simplified);
+/// }
+/// ```
+///
+/// i.e. tolerance `line_width / 2`, applied to `base_areas` only, and only on
+/// the square-support path. This port instead applies a `RESOLUTION`-grade
+/// tolerance to every role unconditionally. It is kept deliberately: the
+/// emitted regions here are a union of many per-node ellipses plus this
+/// port's swept capsules, and an unconditional vertex-grade cleanup keeps the
+/// serialized `SupportPlanIR` from carrying ~100 collinear vertices per node
+/// per layer. Adopting canonical's `line_width / 2` tolerance would coarsen
+/// branch outlines by two orders of magnitude on the non-square path, where
+/// canonical does not simplify at all.
 const DRAW_CIRCLES_RESOLUTION_MM: f32 = 0.0125;
 
 /// Multi-layer organic tree-support planner.
@@ -454,31 +480,50 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
 ///
 /// The pass walks each branch chain once. Chains are collected by following
 /// `parent` (the node one layer **above**), seeded with the starting node's
-/// `child` as a fixed head so the lowest real node of the chain is smoothed
-/// against the layer below it. Interior nodes are relaxed by the canonical
-/// three-point kernel `(pts[i-1] + 2*pts[i] + pts[i+1]) / 4`, applied
-/// [`SMOOTH_NODES_ITERATIONS`] times, and then committed together with the
-/// canonical movement rule
+/// `child` as a fixed head — canonical's "add a fixed head if it's not a
+/// polygon node, see STUDIO-4403", which is why a `Polygon`-typed child is
+/// skipped. Chains shorter than three nodes are left alone. Interior nodes
+/// are relaxed by canonical's unweighted three-point kernel
+///
+/// ```text
+/// pts1[i]   = (pts[i - 1] + pts[i] + pts[i + 1]) / 3
+/// radii1[i] = (radii[i - 1] + radii[i] + radii[i + 1]) / 3
+/// ```
+///
+/// applied [`SMOOTH_NODES_ITERATIONS`] times (Jacobi: each pass reads the
+/// previous pass' array), and then committed on the final pass together with
+/// the canonical movement rule
 ///
 /// ```text
 /// movement = (pts[i + 1] - pts[i - 1]) / 2
 /// ```
+///
+/// Note the asymmetry canonical deliberately has: the committed *position* is
+/// the final pass' **output** (`pts1[i]`) while the committed *movement* is
+/// read off that pass' **input** (`pts`). This port reproduces it.
 ///
 /// This is the **only** producer of the final per-node `movement`;
 /// `draw_circles`' ellipse matrix is its only consumer.
 ///
 /// Endpoints (`branch[0]` and `branch[last]`) are held fixed, which is what
 /// keeps a chain's contact tip on its overhang and its root on the plate.
-///
-/// **Kernel deviation.** The relaxation weights `(1, 2, 1)/4` over *immediate*
-/// chain neighbours are a strict convex combination of consecutive per-layer
-/// deltas, so no smoothed node can outrun the drop pass' per-layer lateral
-/// budget (`tan(branch_angle) * layer_height * wall_count`) — the invariant
+/// Because the kernel is a convex combination of immediate chain neighbours,
+/// the relaxed chain converges toward the straight segment between those two
+/// pinned endpoints, so every per-layer delta stays a convex combination of
+/// the drop pass' original per-layer deltas and no smoothed node can outrun
+/// the lateral budget that
 /// `tree_family_tdd::branch_angle_scales_the_per_layer_lateral_move` asserts.
-/// A wider stencil is not convex next to the pinned endpoints and does break
-/// that budget.
-fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord]) {
+///
+/// **Deviation (arithmetic only).** Canonical relaxes in `Point` integer
+/// arithmetic, so each of the 100 passes truncates. This port relaxes in
+/// `f64` scaled units and rounds once at commit; over 100 passes the
+/// truncation would otherwise bias every chain toward its head. The kernel,
+/// the iteration count, and the commit rules are canonical.
+fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_line_width_mm: f32) {
     use std::collections::HashSet;
+    // Canonical `float max_move = scale_(m_object_config->support_line_width / 2)`.
+    // 1 unit = 100 nm here, so `mm_to_units` is the local `scale_`.
+    let max_move_units = mm_to_units(support_line_width_mm / 2.0) as f64;
     // Only nodes that survived the F-14 prune are chain members: canonical
     // has already erased the rest from `contact_nodes` by this point.
     let alive: HashSet<NodeId> = layer_records
@@ -500,9 +545,15 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord]) {
                 continue;
             }
             let mut branch: Vec<NodeId> = Vec::new();
+            let mut total_height_mm = 0.0f32;
+            // Canonical: "add a fixed head if it's not a polygon node, see
+            // STUDIO-4403. Polygon node can't be added because the move
+            // distance might be huge, making the nodes in between jump and
+            // dangling."
             if let Some(child) = arena[*start].child {
-                if alive.contains(&child) {
+                if alive.contains(&child) && arena[child].type_ != TreeNodeType::Polygon {
                     branch.push(child);
+                    total_height_mm += arena[child].height;
                 }
             }
             let mut cursor = Some(*start);
@@ -511,30 +562,34 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord]) {
                     break;
                 }
                 branch.push(current);
+                total_height_mm += arena[current].height;
                 cursor = arena[current].parent;
             }
             if branch.len() < 3 {
                 continue;
             }
-            // f64 in scaled units: the kernel divides by 4 every iteration and
-            // integer truncation there would bias every chain toward its head.
+            // f64 in scaled units: see the arithmetic deviation above.
             let mut pts: Vec<(f64, f64)> = branch
                 .iter()
                 .map(|id| (arena[*id].position.x as f64, arena[*id].position.y as f64))
                 .collect();
+            let mut radii: Vec<f64> = branch.iter().map(|id| arena[*id].radius as f64).collect();
             let mut out = pts.clone();
+            let mut radii_out = radii.clone();
             let last = pts.len() - 1;
             for iteration in 0..SMOOTH_NODES_ITERATIONS {
                 for i in 1..last {
                     let lo = i - 1;
                     let hi = i + 1;
                     out[i] = (
-                        (pts[lo].0 + 2.0 * pts[i].0 + pts[hi].0) / 4.0,
-                        (pts[lo].1 + 2.0 * pts[i].1 + pts[hi].1) / 4.0,
+                        (pts[lo].0 + pts[i].0 + pts[hi].0) / 3.0,
+                        (pts[lo].1 + pts[i].1 + pts[hi].1) / 3.0,
                     );
+                    radii_out[i] = (radii[lo] + radii[i] + radii[hi]) / 3.0;
                 }
                 if iteration + 1 < SMOOTH_NODES_ITERATIONS {
                     pts.clone_from(&out);
+                    radii.clone_from(&radii_out);
                 }
             }
             for i in 1..last {
@@ -543,25 +598,38 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord]) {
                     x: out[i].0.round() as i64,
                     y: out[i].1.round() as i64,
                 };
-                let movement = (
-                    (out[i + 1].0 - out[i - 1].0) / 2.0,
-                    (out[i + 1].1 - out[i - 1].1) / 2.0,
-                );
-                arena[id].movement = Point2 {
-                    x: movement.0.round() as i64,
-                    y: movement.1.round() as i64,
+                arena[id].radius = radii_out[i] as f32;
+                // Canonical reads the movement off the final pass' *input*
+                // array, not its output.
+                let movement = Point2 {
+                    x: ((pts[i + 1].0 - pts[i - 1].0) / 2.0).round() as i64,
+                    y: ((pts[i + 1].1 - pts[i - 1].1) / 2.0).round() as i64,
                 };
+                arena[id].movement = movement;
                 arena[id].is_processed = true;
-                // Canonical flags a node for an extra perimeter when it is a
-                // merge point or when it is travelling faster than its own
-                // `max_move_dist`; both make the branch wall thin out.
-                let move_mm = units_to_mm(
-                    (movement.0 * movement.0 + movement.1 * movement.1)
-                        .sqrt()
-                        .round() as i64,
-                );
-                if arena[id].parents.len() > 1 || move_mm > arena[id].max_move_dist {
+                // Canonical:
+                //   branch[i]->parents.size() > 1
+                //   || movement.x() > max_move || movement.y() > max_move
+                //   || (total_height > thresh_tall_branch
+                //       && branch[i]->dist_mm_to_top < thresh_dist_to_top)
+                // The move test is componentwise and **signed** in canonical
+                // (not a magnitude), and the cap is half the support line
+                // width — not the node's own `max_move_dist`.
+                if arena[id].parents.len() > 1
+                    || movement.x as f64 > max_move_units
+                    || movement.y as f64 > max_move_units
+                    || (total_height_mm > SMOOTH_NODES_THRESH_TALL_BRANCH_MM
+                        && arena[id].dist_mm_to_top < SMOOTH_NODES_THRESH_DIST_TO_TOP_MM)
+                {
                     arena[id].need_extra_wall = true;
+                }
+            }
+            // Canonical "interpolate need_extra_wall in the end": a node
+            // bracketed by two extra-wall nodes gets one too, so the wall
+            // count does not flicker along a branch.
+            for i in 1..branch.len().saturating_sub(1) {
+                if arena[branch[i - 1]].need_extra_wall && arena[branch[i + 1]].need_extra_wall {
+                    arena[branch[i]].need_extra_wall = true;
                 }
             }
         }
@@ -597,16 +665,23 @@ fn branch_circle(resolution: usize, radius_units: f64, rotate_rad: f32) -> Vec<(
 ///                       move_x * move_y * vsize_inv, 1 + move_y^2 * vsize_inv ]
 /// ```
 ///
-/// A stationary node (`movement == 0`) leaves the matrix at `scale * I`, i.e.
-/// the plain scaled circle; a moving node is stretched along its direction of
-/// travel, which is what makes a leaning branch print as a continuous solid
-/// instead of a stack of offset discs.
+/// A moving node is stretched along its direction of travel, which is what
+/// makes a leaning branch print as a continuous solid instead of a stack of
+/// offset discs.
+///
+/// Canonical gates the matrix on `!SQUARE_SUPPORT && std::abs(moveX) > 0.001
+/// && std::abs(moveY) > 0.001` and otherwise falls back to `circle.points[i] *
+/// scale + node.position` — the plain scaled circle. Both conditions matter:
+/// the degenerate 4-gon of the square-support path is never elongated, and a
+/// node whose movement is axis-aligned (one component ~0) keeps a round
+/// cross-section rather than being stretched along that single axis.
 fn node_ellipse(
     base_circle: &[(f64, f64)],
     center: Point2,
     scale: f64,
     movement: Point2,
     branch_radius_units: f64,
+    square_support: bool,
 ) -> Option<ExPolygon> {
     if base_circle.len() < 3 || scale <= 0.0 || branch_radius_units <= 0.0 {
         return None;
@@ -614,10 +689,16 @@ fn node_ellipse(
     let denom = scale * branch_radius_units;
     let move_x = movement.x as f64 / denom;
     let move_y = movement.y as f64 / denom;
-    let vsize_inv = 0.5 / (0.01 + (move_x * move_x + move_y * move_y).sqrt());
-    let m00 = scale * (1.0 + move_x * move_x * vsize_inv);
-    let m01 = scale * (move_x * move_y * vsize_inv);
-    let m11 = scale * (1.0 + move_y * move_y * vsize_inv);
+    let (m00, m01, m11) = if !square_support && move_x.abs() > 0.001 && move_y.abs() > 0.001 {
+        let vsize_inv = 0.5 / (0.01 + (move_x * move_x + move_y * move_y).sqrt());
+        (
+            scale * (1.0 + move_x * move_x * vsize_inv),
+            scale * (move_x * move_y * vsize_inv),
+            scale * (1.0 + move_y * move_y * vsize_inv),
+        )
+    } else {
+        (scale, 0.0, scale)
+    };
     let points: Vec<Point2> = base_circle
         .iter()
         .map(|(x, y)| Point2 {
@@ -2534,7 +2615,7 @@ impl SupportPlanner {
         // collision gate in the emit pass runs *after* this, so a smoothed
         // position is still validated against model occupancy before it is
         // allowed to print.
-        smooth_nodes(&mut arena, &layer_records);
+        smooth_nodes(&mut arena, &layer_records, self.support_line_width_mm);
 
         // Canonical `draw_circles`' `CIRCLE_RESOLUTION`: a full 100-gon per
         // node per layer is unaffordable once the model carries hundreds of
@@ -2546,11 +2627,15 @@ impl SupportPlanner {
             CIRCLE_RESOLUTION_FINE
         };
         let branch_radius_units = mm_to_units(branch_radius).max(1) as f64;
+        // Canonical: `angle = i / CIRCLE_RESOLUTION * TAU + M_PI_4 + nodes_angle`
+        // for the square path, plain `i / CIRCLE_RESOLUTION * TAU` otherwise.
+        // The `M_PI_4` puts the quad's *edges*, not its corners, across the
+        // branch direction.
         let base_circle = branch_circle(
             circle_resolution,
             branch_radius_units,
             if circle_resolution == CIRCLE_RESOLUTION_COARSE {
-                contact_stats.nodes_angle
+                std::f32::consts::FRAC_PI_4 + contact_stats.nodes_angle
             } else {
                 0.0
             },
@@ -2726,6 +2811,7 @@ impl SupportPlanner {
                     (radius / branch_radius) as f64,
                     direction,
                     branch_radius_units,
+                    circle_resolution == CIRCLE_RESOLUTION_COARSE,
                 ) else {
                     continue;
                 };
@@ -4592,7 +4678,7 @@ mod tests {
             (2.0, 1.0),
             (2.0, 0.0),
         ]);
-        smooth_nodes(&mut arena, &records);
+        smooth_nodes(&mut arena, &records, DEFAULT_SUPPORT_LINE_WIDTH_MM);
         let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
         // `chain_arena` creates the column top-first, and the smoother walks
         // parent-ward from the root, so the chain order is the reverse of the
@@ -4643,7 +4729,7 @@ mod tests {
         let (mut arena, records) = chain_arena(&offsets);
         let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
         let before: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
-        smooth_nodes(&mut arena, &records);
+        smooth_nodes(&mut arena, &records, DEFAULT_SUPPORT_LINE_WIDTH_MM);
         let after: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
         assert!(after < before, "smoothing must flatten the zig-zag: {after} !< {before}");
     }
@@ -4653,7 +4739,7 @@ mod tests {
     fn smooth_nodes_leaves_short_chains_alone() {
         let (mut arena, records) = chain_arena(&[(0.0, 0.0), (3.0, 4.0)]);
         let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
-        smooth_nodes(&mut arena, &records);
+        smooth_nodes(&mut arena, &records, DEFAULT_SUPPORT_LINE_WIDTH_MM);
         assert_eq!(arena[ids[0]].position, Point2::from_mm(0.0, 0.0));
         assert_eq!(arena[ids[1]].position, Point2::from_mm(3.0, 4.0));
         assert_eq!(arena[ids[1]].movement, Point2 { x: 0, y: 0 });
@@ -4675,12 +4761,17 @@ mod tests {
 
     /// The ellipse matrix degenerates to a plain scaled circle when the node
     /// has not moved, and elongates along the movement direction when it has.
+    ///
+    /// Canonical's guard is `!SQUARE_SUPPORT && std::abs(moveX) > 0.001 &&
+    /// std::abs(moveY) > 0.001`, so an axis-aligned movement (one component
+    /// zero) is *not* elongated — asserted below alongside the diagonal case.
     #[test]
     fn node_ellipse_elongates_along_movement() {
         let radius_units = mm_to_units(2.0) as f64;
         let base = branch_circle(CIRCLE_RESOLUTION_FINE, radius_units, 0.0);
         let center = Point2 { x: 0, y: 0 };
-        let still = node_ellipse(&base, center, 1.0, Point2 { x: 0, y: 0 }, radius_units).unwrap();
+        let still =
+            node_ellipse(&base, center, 1.0, Point2 { x: 0, y: 0 }, radius_units, false).unwrap();
         let extent = |poly: &ExPolygon, axis: fn(&Point2) -> i64| {
             poly.contour.points.iter().map(axis).max().unwrap()
                 - poly.contour.points.iter().map(axis).min().unwrap()
@@ -4689,26 +4780,47 @@ mod tests {
         let still_y = extent(&still, |p| p.y);
         assert!((still_x - still_y).abs() <= 2, "a stationary node draws a circle");
 
-        let moving = node_ellipse(
-            &base,
-            center,
-            1.0,
-            Point2 {
-                x: mm_to_units(1.0),
-                y: 0,
-            },
-            radius_units,
-        )
-        .unwrap();
+        let diagonal = Point2 {
+            x: mm_to_units(1.0),
+            y: mm_to_units(1.0),
+        };
+        let moving = node_ellipse(&base, center, 1.0, diagonal, radius_units, false).unwrap();
+        let span = |poly: &ExPolygon, ux: f64, uy: f64| {
+            let proj: Vec<f64> = poly
+                .contour
+                .points
+                .iter()
+                .map(|p| p.x as f64 * ux + p.y as f64 * uy)
+                .collect();
+            proj.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                - proj.iter().cloned().fold(f64::INFINITY, f64::min)
+        };
+        let axis = std::f64::consts::FRAC_1_SQRT_2;
         assert!(
-            extent(&moving, |p| p.x) > still_x,
+            span(&moving, axis, axis) > span(&still, axis, axis),
             "the ellipse must stretch along the movement direction"
         );
-        assert_eq!(
-            extent(&moving, |p| p.y),
-            still_y,
+        assert!(
+            (span(&moving, axis, -axis) - span(&still, axis, -axis)).abs() <= 2.0,
             "and must not stretch across it"
         );
+
+        // Canonical leaves an axis-aligned mover, and every square-support
+        // node, as a plain scaled circle.
+        for (movement, square) in [
+            (
+                Point2 {
+                    x: mm_to_units(1.0),
+                    y: 0,
+                },
+                false,
+            ),
+            (diagonal, true),
+        ] {
+            let plain = node_ellipse(&base, center, 1.0, movement, radius_units, square).unwrap();
+            assert_eq!(extent(&plain, |p| p.x), still_x);
+            assert_eq!(extent(&plain, |p| p.y), still_y);
+        }
     }
 
     #[test]
