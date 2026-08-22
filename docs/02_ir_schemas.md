@@ -1138,6 +1138,7 @@ Values below are ordered as they print (lowest first) and mirror
 | `RaftInfill`          | 50   |
 | `SparseInfill`        | 3000 |
 | `BridgeInfill`        | 3500 |
+| `InternalBridgeInfill` | 3500 |
 | `InternalSolidInfill` | 3800 |
 | `BottomSolidInfill`   | 4000 |
 | `TopSolidInfill`      | 4500 |

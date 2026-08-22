@@ -918,7 +918,8 @@ fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ExtrusionRole::SupportMaterial => ::slicer_sdk::ir::ExtrusionRole::SupportMaterial,
                     ExtrusionRole::SupportInterface => ::slicer_sdk::ir::ExtrusionRole::SupportInterface,
                     ExtrusionRole::Ironing => ::slicer_sdk::ir::ExtrusionRole::Ironing,
-                    ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
+                     ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
+                     ExtrusionRole::InternalBridgeInfill => ::slicer_sdk::ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill
@@ -942,7 +943,8 @@ fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ::slicer_sdk::ir::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
                     ::slicer_sdk::ir::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
                     ::slicer_sdk::ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
-                    ::slicer_sdk::ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+                     ::slicer_sdk::ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+                     ::slicer_sdk::ir::ExtrusionRole::InternalBridgeInfill => ExtrusionRole::InternalBridgeInfill,
                     ::slicer_sdk::ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
                     ::slicer_sdk::ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
                     ::slicer_sdk::ir::ExtrusionRole::PrimeTower => {
@@ -1239,7 +1241,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ExtrusionRole::SupportMaterial => ::slicer_ir::ExtrusionRole::SupportMaterial,
                     ExtrusionRole::SupportInterface => ::slicer_ir::ExtrusionRole::SupportInterface,
                     ExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
-                    ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
+                     ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
+                     ExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_ir::ExtrusionRole::InternalSolidInfill
@@ -1263,7 +1266,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ::slicer_ir::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
                     ::slicer_ir::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
                     ::slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
-                    ::slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+                     ::slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+                     ::slicer_ir::ExtrusionRole::InternalBridgeInfill => ExtrusionRole::InternalBridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
                     ::slicer_ir::ExtrusionRole::PrimeTower => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1"))
@@ -2582,7 +2586,8 @@ fn layer_glue_helpers() -> TokenStream2 {
                 WitExtrusionRole::SupportMaterial => ::slicer_ir::ExtrusionRole::SupportMaterial,
                 WitExtrusionRole::SupportInterface => ::slicer_ir::ExtrusionRole::SupportInterface,
                 WitExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
-                WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
+                 WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
+                 WitExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                 WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
                 WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill
@@ -2727,7 +2732,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 ::slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
                 ::slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
                 ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
-                ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                 ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                 ::slicer_ir::ExtrusionRole::InternalBridgeInfill => WitExtrusionRole::InternalBridgeInfill,
                 ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
                 ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
                 ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
@@ -3077,8 +3083,9 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                     ::slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
                     ::slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
                     ::slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
-                    ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
-                    ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                     ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
+                     ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                     ::slicer_ir::ExtrusionRole::InternalBridgeInfill => WitExtrusionRole::InternalBridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
                     ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
                     ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
@@ -3365,6 +3372,7 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
             sparse_infill: r.sparse_infill.iter().map(__slicer_wit_path_to_ir).collect(),
             solid_infill: r.solid_infill.iter().map(__slicer_wit_path_to_ir).collect(),
             ironing: r.ironing.iter().map(__slicer_wit_path_to_ir).collect(),
+            internal_bridge_infill: ::std::vec::Vec::new(),
         }).collect();
         let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill_postprocess(

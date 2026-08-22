@@ -281,7 +281,7 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
         .collect();
     let feature_flags: Vec<WallFeatureFlags> = (0..point_count)
         .map(|_| WallFeatureFlags {
-        tool_index: None,
+            tool_index: None,
             fuzzy_skin: false,
             is_bridge: false,
             is_thin_wall: false,

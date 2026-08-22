@@ -90,3 +90,28 @@
 ## Q3 Resolution (scheduler dependency)
 
 **Resolved — no new prepass data dependency on N±1 layers.** The unsupported-span test reads the lower layer's slices from inputs that already exist in the post-slice prepass: the committed `SliceIR` (each object's final per-layer region polygons, read by `PrePass::OverhangAnnotation` and `PrePass::ShellClassification`) and, more directly, `SurfaceClassificationIR.prev_layer_boundaries` (`HashMap<u32, Vec<ExPolygon>>` keyed by global layer index, populated by `commit_overhang_annotation_builtin` since packet 193). `PrePass::OverhangAnnotation` already diffs consecutive-layer footprints from the committed `SliceIR` — the exact N−1 access pattern the gate needs — so the gate resolves inside existing per-layer/prepass stage inputs by running in `PrePass::ShellClassification` (which executes after `PrePass::Slice` and `PrePass::OverhangAnnotation`). The packet 36-rev1 scheduler constraint (no cross-layer dependency during parallel per-layer slicing) is satisfied because the gate runs in the sequential prepass tier, not the parallel per-layer tier.
+
+## Note from Packet 233 Execution (2026-08-22)
+
+During packet 233's implementation, a wip stash salvaged a *during-slice* variant of this
+packet's false-site gating (current-minus-previous raw-polygon difference applied inside
+`execute_prepass_slice_single_layer_impl` via the batch cache) and it was briefly landed by
+accident. Empirical findings, preserved here as steering evidence for Step 2:
+
+- The during-slice variant shifts external bridge classification one layer later: for a flat
+  bridge ceiling exactly at z=28.0, exact-boundary slicing excludes that ceiling from the
+  layer's cross-section, so `difference(current_raw, previous_raw)` is empty there and the
+  gate clears `bridge_areas`/`is_bridge`; material first appears at z=28.2. This broke the
+  previously-green e2e test `wedge_multi_layer_top_bottom_evidence` (expects `;TYPE:Bridge`
+  at z=28.0). The variant was reverted; packet 233's tree keeps `assemble_bridge_areas` at
+  HEAD semantics.
+- The salvage diff is preserved verbatim at
+  `references/prepass_slice_false_site_gating.salvage.rs` (uncompiling reference copy — do
+  not drop into `src/`). It is superseded by this design's Q3 resolution: gate in
+  `PrePass::ShellClassification` from committed data (`prev_layer_boundaries` /
+  committed `SliceIR`), never inside the parallel per-layer slicing loop.
+- Implication for Step 2's verification: whichever gate lands must state how the flat-ceiling
+  boundary case (empty current-minus-previous at the true ceiling layer) avoids demoting the
+  correct layer, and name the test that pins it. If canonical semantics genuinely classify at
+  the next containing layer instead, `wedge_multi_layer_top_bottom_evidence`'s expectation
+  must be revisited explicitly in that step, not silently.

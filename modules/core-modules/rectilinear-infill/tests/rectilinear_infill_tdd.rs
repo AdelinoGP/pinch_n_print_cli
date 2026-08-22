@@ -146,9 +146,9 @@ fn angle_rotation_45() {
     );
 }
 
-/// Test 4: Layer alternation — layer 0 vs layer 1 should have different orientations.
+/// Test 4: Layer direction remains constant when the layer index changes.
 #[test]
-fn layer_alternation() {
+fn layer_alternation_direction_is_constant() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
     let module = RectilinearInfill::from_config(&config).unwrap();
 
@@ -171,17 +171,15 @@ fn layer_alternation() {
     assert!(!paths0.is_empty(), "layer 0 should have lines");
     assert!(!paths1.is_empty(), "layer 1 should have lines");
 
-    // Layer 0 (angle=0): horizontal lines (dy ~ 0)
-    // Layer 1 (angle=90): vertical lines (dx ~ 0)
     let avg_dy_0: f32 = paths0
         .iter()
         .map(|p| (p.points[0].y - p.points[1].y).abs())
         .sum::<f32>()
         / paths0.len() as f32;
 
-    let avg_dx_1: f32 = paths1
+    let avg_dy_1: f32 = paths1
         .iter()
-        .map(|p| (p.points[0].x - p.points[1].x).abs())
+        .map(|p| (p.points[0].y - p.points[1].y).abs())
         .sum::<f32>()
         / paths1.len() as f32;
 
@@ -191,9 +189,9 @@ fn layer_alternation() {
         avg_dy_0
     );
     assert!(
-        avg_dx_1 < 0.01,
-        "layer 1 lines should be vertical, avg dx={}",
-        avg_dx_1
+        avg_dy_1 < 0.01,
+        "layer 1 lines should remain horizontal, avg dy={}",
+        avg_dy_1
     );
 }
 
@@ -270,7 +268,8 @@ fn extrusion_role_is_sparse() {
     }
 }
 
-/// Test 8: Speed factor derived from config infill_speed / BASE_SPEED.
+/// Test 8: Host feedrate resolution owns the role speed; paths carry no
+/// shared module speed multiplier.
 #[test]
 fn speed_factor_from_config() {
     let config = make_config(0.2, 0.0, 100.0, 0.4);
@@ -286,8 +285,8 @@ fn speed_factor_from_config() {
     assert!(!output.sparse_paths().is_empty());
     for path in output.sparse_paths() {
         assert!(
-            (path.speed_factor - 2.0).abs() < 0.001,
-            "speed_factor should be 100/50=2.0, got {}",
+            (path.speed_factor - 1.0).abs() < 0.001,
+            "speed_factor should be 1.0, got {}",
             path.speed_factor
         );
     }

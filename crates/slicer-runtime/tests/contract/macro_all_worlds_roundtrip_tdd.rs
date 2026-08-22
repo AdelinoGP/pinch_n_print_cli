@@ -553,11 +553,13 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     slicer_runtime::apply_for_test(
         &mut arena,
         __commit,
+        // exhaustive: round-trip fixture explicitly pins all apply context metadata.
         &slicer_runtime::StageApplyContext {
             stage_id: &stage,
             module_id: "com.test.sdk-layer-infill-witness-out",
             layer_index: 9,
             seam_plan: None,
+            config_view: None,
         },
     )
     .expect("commit must succeed");
@@ -649,11 +651,13 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
         slicer_runtime::apply_for_test(
             &mut arena,
             __commit,
+            // exhaustive: round-trip fixture explicitly pins all apply context metadata.
             &slicer_runtime::StageApplyContext {
                 stage_id: &stage,
                 module_id: "com.test.sdk-layer-infill-det-content",
                 layer_index: 2,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit");

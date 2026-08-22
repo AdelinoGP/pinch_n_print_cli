@@ -187,6 +187,7 @@ pub fn convert_infill_output(
             sparse_infill: Vec::new(),
             solid_infill: Vec::new(),
             ironing: Vec::new(),
+            internal_bridge_infill: Vec::new(),
         }
     }
 

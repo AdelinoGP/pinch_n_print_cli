@@ -13,12 +13,12 @@ use std::sync::Arc;
 use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
     LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const PATH_OPT_WASM: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -283,6 +283,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 sparse_infill: vec![path_at(0.0, 0.0), path_at(0.0, 100.0)],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
             // exhaustive: fixture defines the complete second region used by ordering.
             InfillRegion {
@@ -291,6 +292,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 sparse_infill: vec![path_at(1.0, 0.0), path_at(1.0, 1.0)],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
         ],
     };
@@ -402,6 +404,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
                 ],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
         ],
     };

@@ -1047,10 +1047,134 @@ fn invalid_bridge_excluded_from_slice_areas() {
 
     for region in &slice_ir.regions {
         assert!(
+            !region.is_bridge,
+            "invalid bridge candidates must not mark the layer as a bridge"
+        );
+        assert!(
             region.bridge_areas.is_empty(),
             "invalid bridge must contribute nothing to bridge_areas"
         );
     }
+}
+
+/// A mesh-level bridge footprint must not be reused on layers outside the
+/// bridge facets' Z span. Orca's `BridgeDetector` is invoked for the current
+/// layer surface against the lower-layer slices; it does not make a bridge
+/// material region layer-invariant.
+#[test]
+fn bridge_footprint_does_not_leak_outside_facet_z_span() {
+    let object_id = "bridge-z-guard".to_string();
+    // exhaustive: bridge-z-guard fixture explicitly defines every BridgeRegion field
+    let bridge_region = BridgeRegion {
+        id: 0,
+        facet_indices: vec![],
+        bridge_direction_deg: 0.0,
+        anchor_width_mm: 5.0,
+        bridge_length_mm: 20.0,
+        expansion_margin_mm: 1.0,
+        is_valid: true,
+        xy_footprint: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
+    };
+    // exhaustive: bridge-z-guard fixture explicitly defines every ObjectSurfaceData field
+    let object_surface = ObjectSurfaceData {
+        facet_classes: vec![],
+        surface_groups: vec![],
+        bridge_regions: vec![bridge_region],
+        overhang_regions: vec![],
+    };
+    let classification = SurfaceClassificationIR {
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        per_object: vec![(object_id.clone(), object_surface)]
+            .into_iter()
+            .collect(),
+        overhang_quartile_polygons: HashMap::new(),
+        prev_layer_boundaries: HashMap::new(),
+    };
+    // exhaustive: bridge-z-guard fixture explicitly defines every SlicedRegion field
+    let mut region = SlicedRegion {
+        object_id,
+        region_id: RegionId::default(),
+        polygons: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
+        infill_areas: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
+        nonplanar_surface: None,
+        effective_layer_height: 0.2,
+        segment_annotations: HashMap::new(),
+        variant_chain: Vec::new(),
+        top_shell_index: None,
+        bottom_shell_index: None,
+        top_solid_fill: vec![],
+        bottom_solid_fill: vec![],
+        is_bridge: false,
+        bridge_areas: vec![],
+        bridge_orientation_deg: 0.0,
+        sparse_infill_area: vec![],
+    };
+
+    assemble_bridge_areas(&mut region, Some(&classification));
+
+    assert!(
+        region.bridge_areas.is_empty(),
+        "bridge footprint must not leak below its facet Z span"
+    );
+}
+
+/// A valid mesh bridge candidate still needs unsupported area on the current
+/// layer. Orca's `LayerRegion::process_external_surfaces` compares the bottom
+/// surface with the lower-layer slices before assigning bridge flow; a fully
+/// supported candidate must remain ordinary fill.
+#[test]
+fn supported_bridge_candidate_does_not_emit_bridge_fill() {
+    let mesh_ir =
+        make_rotated_bridge_mesh_walls(5.0, 20.0, 0.0, false, WallPlacement::LeftAndBottom);
+    let analysis = execute_mesh_analysis_with(&mesh_ir, MeshAnalysisConfig::default())
+        .expect("mesh analysis must succeed");
+
+    let current_area = rect_expoly_mm(0.0, 0.0, 5.0, 20.0);
+    let previous_area = current_area.clone();
+    let mut current_by_object = HashMap::new();
+    current_by_object.insert("bridge-obj".to_string(), vec![current_area]);
+    let mut previous_by_object = HashMap::new();
+    previous_by_object.insert("bridge-obj".to_string(), vec![previous_area]);
+    let bottom_footprints = HashMap::new();
+    let cache = PrepassSliceCache {
+        raw_polygons: &current_by_object,
+        prev_raw_polygons: Some(&previous_by_object),
+        bottom_surface_footprint: &bottom_footprints,
+    };
+
+    let layer = GlobalLayer {
+        index: 1,
+        z: 1.0,
+        active_regions: vec![ActiveRegion {
+            object_id: "bridge-obj".to_string(),
+            effective_layer_height: 0.2,
+            ..ActiveRegion::default()
+        }],
+        ..GlobalLayer::default()
+    };
+
+    let slice_ir = execute_prepass_slice_single_layer_with_cache(
+        &mesh_ir,
+        &layer,
+        Some(&analysis),
+        None,
+        &cache,
+    )
+    .expect("slice must succeed");
+    let region = slice_ir.regions.first().expect("region must be sliced");
+
+    assert!(
+        !region.is_bridge,
+        "supported area must not be marked as bridge"
+    );
+    assert!(
+        region.bridge_areas.is_empty(),
+        "supported area must not receive bridge fill"
+    );
 }
 
 /// FLAT-BRIDGE POSITIVE (packet 109 defect fix): a perfectly horizontal

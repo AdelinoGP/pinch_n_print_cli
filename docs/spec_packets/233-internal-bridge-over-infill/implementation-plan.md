@@ -198,7 +198,7 @@
   - none
 - Verification:
   - AC-6 reslice pair + python assertion (see `packet.spec.md`; model `resources/bridge.obj`, configs `resources/test_config/ac6_infill_40.json` / `ac6_infill_120.json`) - FACT pass/fail
-  - `rg -q 'InternalBridgeInfill' docs/02_ir_schemas.md && rg -q 'InternalBridgeInfill\|internal-bridge-infill' docs/03_wit_and_manifest.md && rg -q 'internal_bridge_angle' docs/15_config_keys_reference.md` - doc greps
+  - `rg -q 'InternalBridgeInfill' docs/02_ir_schemas.md && rg -q 'InternalBridgeInfill|internal-bridge-infill' docs/03_wit_and_manifest.md && rg -q 'internal_bridge_angle' docs/15_config_keys_reference.md` - doc greps
   - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
 - Exit condition: every AC (positive + negative + doc greps) returns PASS; packet ready for `status: implemented`.
 

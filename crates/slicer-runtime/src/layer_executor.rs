@@ -12,10 +12,10 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
-    ConfigValue, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
-    LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR,
-    SeamPlanIR, SliceIR, StageId, SupportGeometryIR, SupportIR, SupportPlanIR,
-    SurfaceClassificationIR, WallFeatureFlags,
+    ConfigValue, ExtrusionPath3D, ExtrusionRole, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR,
+    LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point2,
+    Point3WithWidth, PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId,
+    SupportGeometryIR, SupportIR, SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -538,6 +538,7 @@ fn execute_single_layer_inner(
                     module_id: module.module_id().as_str(),
                     layer_index: layer.index,
                     seam_plan: seam_plan_ir_for_commit,
+                    config_view: Some(module.config_view().as_ref()),
                 };
                 if let Err(e) = apply(&mut arena, staged, &ctx) {
                     let message = e.to_string();
@@ -1334,6 +1335,7 @@ pub fn execute_captured_stages_with_support_tools(
                         module_id: module.module_id().as_str(),
                         layer_index: layer.index,
                         seam_plan: seam_plan_ir_for_commit,
+                        config_view: Some(module.config_view().as_ref()),
                     };
                     apply(&mut arena, staged, &ctx).map_err(|e| {
                         CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
@@ -1616,7 +1618,7 @@ fn run_paint_annotation(
 /// committed order, emit one `PrintEntity` per wall loop (ordered by the
 /// region's own `walls` slice, whose order is guest-preserved); then for each
 /// `InfillRegion` in committed order, emit sparse / solid / ironing paths in
-/// that order; finally emit `SupportIR` paths (support / interface / raft /
+/// that order, then internal-bridge paths; finally emit `SupportIR` paths (support / interface / raft /
 /// ironing). `region_key` carries `(global_layer_index, object_id, region_id)`
 /// for perimeter and infill entities. `SupportIR` is flat in the current IR
 /// model and has no per-region identity, so support entities use an empty
@@ -1930,6 +1932,9 @@ pub(crate) fn assemble_ordered_entities(
             for path in &region.ironing {
                 infill_push(path, path.role.clone(), &mut out);
             }
+            for path in &region.internal_bridge_infill {
+                infill_push(path, path.role.clone(), &mut out);
+            }
         }
     }
 
@@ -2149,6 +2154,9 @@ pub struct StageApplyContext<'a> {
     pub layer_index: u32,
     /// Seam plan consulted by the perimeter arms to back-fill `resolved_seam`.
     pub seam_plan: Option<&'a slicer_ir::SeamPlanIR>,
+    /// The module's already-resolved config view. Host bridge post-processing
+    /// reads rectilinear bridge settings from this same channel as the guest.
+    pub config_view: Option<&'a slicer_ir::ConfigView>,
 }
 
 /// Back-fill `resolved_seam` on perimeter regions that the guest left unresolved,
@@ -2289,6 +2297,171 @@ pub(crate) fn apply(
             }
         }
         LayerStageCommit::InfillPostProcess(ir) => {
+            let mut ir = ir;
+            if let Some(mut slice) = arena.take_slice() {
+                let perimeter = arena.perimeter();
+                for region in &mut ir.regions {
+                    let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
+                        candidate.object_id == region.object_id
+                            && candidate.region_id == region.region_id
+                    }) else {
+                        continue;
+                    };
+                    let mut anchors: Vec<Vec<Point2>> = region
+                        .sparse_infill
+                        .iter()
+                        .map(|path| {
+                            path.points
+                                .iter()
+                                .map(|point| Point2::from_mm(point.x, point.y))
+                                .collect()
+                        })
+                        .filter(|path: &Vec<Point2>| path.len() >= 2)
+                        .collect();
+                    // Canonical `boundary_plines` are walls plus the limiting
+                    // area, not sparse infill alone. Keep all sources in one
+                    // anchor set because angle selection uses nearest anchors.
+                    if let Some(perim) = perimeter.and_then(|perimeter| {
+                        perimeter.regions.iter().find(|candidate| {
+                            candidate.object_id == region.object_id
+                                && candidate.region_id == region.region_id
+                        })
+                    }) {
+                        for wall in &perim.walls {
+                            if matches!(
+                                wall.path.role,
+                                ExtrusionRole::OuterWall | ExtrusionRole::InnerWall
+                            ) {
+                                let path: Vec<Point2> = wall
+                                    .path
+                                    .points
+                                    .iter()
+                                    .map(|point| Point2::from_mm(point.x, point.y))
+                                    .collect();
+                                if path.len() >= 2 {
+                                    anchors.push(path);
+                                }
+                            }
+                        }
+                        // The inset contours implement the canonical limiting
+                        // area boundary when wall extrusion paths do not reach
+                        // the sparse-infill void endpoints.
+                        for area in &perim.infill_areas {
+                            for polygon in std::iter::once(&area.contour).chain(area.holes.iter()) {
+                                let mut path: Vec<Point2> = polygon.points.to_vec();
+                                if path.len() >= 2 {
+                                    if path.first() != path.last() {
+                                        path.push(path[0]);
+                                    }
+                                    anchors.push(path);
+                                }
+                            }
+                        }
+                    }
+                    if anchors.is_empty() || slice_region.sparse_infill_area.is_empty() {
+                        continue;
+                    }
+                    let edges: Vec<Vec<Point2>> = slice_region
+                        .sparse_infill_area
+                        .iter()
+                        .map(|void| void.contour.points.clone())
+                        .collect();
+                    log::debug!(
+                        "internal bridge seam layer={} object={} region={} anchors={} candidate_voids={}",
+                        ctx.layer_index,
+                        region.object_id,
+                        region.region_id,
+                        anchors.len(),
+                        slice_region.sparse_infill_area.len()
+                    );
+                    let config = ctx.config_view;
+                    let value = |key: &str, default: f32| {
+                        config
+                            .and_then(|view| view.get_float(key))
+                            .map(|value| value as f32)
+                            .unwrap_or(default)
+                    };
+                    let bridge_line_width = value("bridge_line_width", 0.0);
+                    let bridge_flow_ratio = value("internal_bridge_flow", 1.0);
+                    let nozzle_diameter = value("nozzle_diameter", 0.4);
+                    let flow = slicer_core::flow::canonical_bridging_flow(
+                        bridge_line_width,
+                        bridge_flow_ratio,
+                        nozzle_diameter,
+                    );
+                    let angle_override = value("internal_bridge_angle", 0.0);
+                    let angle = slicer_core::algos::bridge_over_infill::determine_bridging_angle(
+                        &anchors,
+                        &edges,
+                        angle_override,
+                    );
+                    let (bridge_polys, bridge_lines) =
+                        slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
+                            &anchors,
+                            &slice_region.sparse_infill_area,
+                            angle,
+                            flow.spacing_mm,
+                            flow.thread_diameter_mm,
+                        );
+                    log::debug!(
+                        "internal bridge construction layer={} object={} region={} polygons={} lines={}",
+                        ctx.layer_index,
+                        region.object_id,
+                        region.region_id,
+                        bridge_polys.len(),
+                        bridge_lines.len()
+                    );
+                    // Strict filtering is the default: construction itself requires
+                    // anchor-flanked scan sections, and no-filter only bypasses the
+                    // final sliver guard. Extra bridge layers need N +/- 1 and are
+                    // intentionally parse-only here (packet 234).
+                    if bridge_polys.is_empty()
+                        || bridge_lines.is_empty()
+                        || (!config.is_some_and(|view| {
+                            view.get_bool("dont_filter_internal_bridges")
+                                .unwrap_or(false)
+                        }) && bridge_lines.iter().any(|line| {
+                            line.windows(2)
+                                .map(|pair| {
+                                    let dx = pair[1].x - pair[0].x;
+                                    let dy = pair[1].y - pair[0].y;
+                                    ((dx * dx + dy * dy) as f32).sqrt()
+                                })
+                                .sum::<f32>()
+                                < flow.thread_diameter_mm
+                        }))
+                    {
+                        continue;
+                    }
+                    slice_region.sparse_infill_area =
+                        slicer_core::difference(&slice_region.sparse_infill_area, &bridge_polys);
+                    region
+                        .internal_bridge_infill
+                        .extend(bridge_lines.into_iter().map(|line| {
+                            ExtrusionPath3D {
+                                points: line
+                                    .into_iter()
+                                    .map(|point| Point3WithWidth {
+                                        x: point.x as f32 / 10_000.0,
+                                        y: point.y as f32 / 10_000.0,
+                                        z: slice.z,
+                                        width: flow.thread_diameter_mm,
+                                        flow_factor: 1.0,
+                                        overhang_quartile: None,
+                                        dist_to_top_mm: 0.0,
+                                        overhang_distance_mm: None,
+                                    })
+                                    .collect(),
+                                role: ExtrusionRole::InternalBridgeInfill,
+                                speed_factor: 1.0,
+                                tool_index: None,
+                            }
+                        }));
+                }
+                arena
+                    .set_slice(slice)
+                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+            }
             let _ = arena.take_infill();
             arena
                 .set_infill(ir)
@@ -2472,6 +2645,9 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
                 target.sparse_infill.extend(new_region.sparse_infill);
                 target.solid_infill.extend(new_region.solid_infill);
                 target.ironing.extend(new_region.ironing);
+                target
+                    .internal_bridge_infill
+                    .extend(new_region.internal_bridge_infill);
             }
             None => existing.regions.push(new_region),
         }

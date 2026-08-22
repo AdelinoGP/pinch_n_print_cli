@@ -3,8 +3,8 @@
 use infill_linker::InfillLinker;
 use slicer_ir::{ConfigView, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point3WithWidth};
 use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::traits::LayerModule;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::traits::LayerModule;
 
 fn path(role: ExtrusionRole, speed_factor: f32, x_offset: f32) -> ExtrusionPath3D {
     ExtrusionPath3D {
@@ -50,6 +50,7 @@ fn prior_infill() -> Vec<InfillRegion> {
                 path(ExtrusionRole::Ironing, 0.73, 2.0),
                 path(ExtrusionRole::Ironing, 1.25, 3.0),
             ],
+            internal_bridge_infill: Vec::new(),
         },
         // exhaustive: this carrier fixture explicitly sets every InfillRegion field used by the roundtrip assertion.
         InfillRegion {
@@ -58,6 +59,7 @@ fn prior_infill() -> Vec<InfillRegion> {
             sparse_infill: vec![],
             solid_infill: vec![],
             ironing: vec![path(ExtrusionRole::Ironing, 0.66, -2.0)],
+            internal_bridge_infill: Vec::new(),
         },
     ]
 }

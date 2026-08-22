@@ -198,6 +198,9 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
+| `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | `rectilinear-infill` |
+| `dont_filter_internal_bridges` | bool | `false` | — | `rectilinear-infill` |
+| `enable_extra_bridge_layer` | bool | `false` | — | `rectilinear-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `rectilinear-infill` |

@@ -220,9 +220,10 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// existing `ExtrusionPath3D` wall surface. No existing field or type changed;
 /// `#[serde(default)]` on the new optional fields preserves backward
 /// compatibility with 4.6.0 fixtures that predate these types.
+/// Minor bump to 4.8.0 adds the typed `InternalBridgeInfill` extrusion role.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 7,
+    minor: 8,
     patch: 0,
 };
 
@@ -1810,6 +1811,8 @@ pub enum ExtrusionRole {
     Ironing,
     /// Bridge infill
     BridgeInfill,
+    /// Internal bridge infill over sparse infill
+    InternalBridgeInfill,
     /// Skirt / brim
     Skirt,
     /// Brim (bed-adhesion loops). Shares the skirt/brim module's geometry
@@ -1845,6 +1848,7 @@ impl ExtrusionRole {
             Self::ThinWall => 1700,
             Self::SparseInfill => 3000,
             Self::BridgeInfill => 3500,
+            Self::InternalBridgeInfill => 3500,
             Self::InternalSolidInfill => 3800,
             Self::BottomSolidInfill => 4000,
             Self::TopSolidInfill => 4500,
@@ -2156,6 +2160,9 @@ pub struct InfillRegion {
     pub solid_infill: Vec<ExtrusionPath3D>,
     /// Ironing paths
     pub ironing: Vec<ExtrusionPath3D>,
+    /// Internal bridge paths generated over sparse infill.
+    #[serde(default)]
+    pub internal_bridge_infill: Vec<ExtrusionPath3D>,
 }
 
 /// Infill IR

@@ -48,6 +48,7 @@ pub struct SliceRegionView {
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
+    is_internal_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
@@ -105,6 +106,7 @@ impl Default for SliceRegionView {
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
             is_bridge: false,
+            is_internal_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
@@ -255,6 +257,12 @@ impl SliceRegionView {
         self.is_bridge = is_bridge;
     }
 
+    /// Override the internal-bridge classification flag for legacy module APIs.
+    #[doc(hidden)]
+    pub fn set_is_internal_bridge(&mut self, is_internal_bridge: bool) {
+        self.is_internal_bridge = is_internal_bridge;
+    }
+
     /// Override the bridge areas (host-only, for testing).
     #[doc(hidden)]
     pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
@@ -356,6 +364,11 @@ impl SliceRegionView {
     /// a different fill strategy.
     pub fn is_bridge(&self) -> bool {
         self.is_bridge
+    }
+
+    /// Returns the legacy internal-bridge classification flag.
+    pub fn is_internal_bridge(&self) -> bool {
+        self.is_internal_bridge
     }
 
     /// Returns the object ID this region belongs to.
@@ -557,7 +570,9 @@ impl SliceRegionView {
             ExtrusionRole::TopSolidInfill => "claim:top-fill",
             ExtrusionRole::RaftInfill => "claim:raft-fill",
             ExtrusionRole::BottomSolidInfill => "claim:bottom-fill",
-            ExtrusionRole::BridgeInfill => "claim:bridge-fill",
+            ExtrusionRole::BridgeInfill | ExtrusionRole::InternalBridgeInfill => {
+                "claim:bridge-fill"
+            }
             ExtrusionRole::SparseInfill => "claim:sparse-fill",
             _ => return true,
         };

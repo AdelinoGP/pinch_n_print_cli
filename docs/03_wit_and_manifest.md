@@ -225,6 +225,7 @@ losslessly through reserved `custom(string)` tags:
 - `Skirt` maps to `custom("slicer.builtin/skirt@1")`
 - `Brim` maps to `custom("slicer.builtin/brim@1")`
 - `InternalSolidInfill` maps to `custom("slicer.builtin/internal-solid-infill@1")`
+- `InternalBridgeInfill` maps to the dedicated `internal-bridge-infill` WIT variant.
 - Third-party modules must not mint any reserved `slicer.builtin/…` tag.
 
 The tag constants and marshalling live in `crates/slicer-macros/src/lib.rs` and

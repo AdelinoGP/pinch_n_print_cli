@@ -19,7 +19,12 @@ use slicer_ir::{
     SlicedRegion,
 };
 use slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice;
+use slicer_runtime::wit_host::{
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, OriginId,
+};
 use slicer_runtime::LayerArena;
+
+use crate::common::{commit_hec_for_test, point3_with_width};
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
 
@@ -475,4 +480,106 @@ fn ac6_partition_preserves_unrelated_fields() {
     assert_eq!(r.top_shell_index, Some(2));
     assert_eq!(r.bottom_shell_index, Some(3));
     assert!(r.is_bridge);
+}
+
+#[test]
+fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
+    let wall_inset = square(0.0, 0.0, 10.0, 10.0);
+    let mut slice = empty_slice_ir();
+    slice
+        .regions
+        .push(sliced_region("obj-1", 0, vec![wall_inset.clone()]));
+    let mut arena = arena_with(slice, empty_perimeter_ir());
+    arena.take_perimeter();
+    arena
+        .set_perimeter(perimeter_region_ir_for_test(wall_inset))
+        .expect("set perimeter");
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
+
+    let module_id = "test.internal-bridge";
+    let mut ctx = HostExecutionContextBuilder::new(module_id, 0.2, 0.2).build();
+    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
+        points: vec![
+            point3_with_width(-1.0, -1.0, 0.2, 0.4),
+            point3_with_width(11.0, 1.0, 0.2, 0.4),
+        ],
+        role: ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+        tool_index: None,
+    });
+    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
+        points: vec![
+            point3_with_width(-1.0, 9.0, 0.2, 0.4),
+            point3_with_width(11.0, 11.0, 0.2, 0.4),
+        ],
+        role: ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+        tool_index: None,
+    });
+    ctx.infill_output_mut().sparse_path_origins.extend([
+        Some(OriginId {
+            object_id: "obj-1".into(),
+            region_id: 0,
+        }),
+        Some(OriginId {
+            object_id: "obj-1".into(),
+            region_id: 0,
+        }),
+    ]);
+    commit_hec_for_test(
+        "Layer::InfillPostProcess",
+        module_id,
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("infill postprocess commit");
+
+    let sparse = &arena.slice().expect("slice").regions[0].sparse_infill_area;
+    let infill = arena.infill().expect("infill");
+    let bridge = &infill.regions[0].internal_bridge_infill;
+    assert!(
+        !bridge.is_empty(),
+        "executor must emit InternalBridgeInfill"
+    );
+    for path in bridge {
+        let min_x = path
+            .points
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::INFINITY, f32::min)
+            - 0.2;
+        let max_x = path
+            .points
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::NEG_INFINITY, f32::max)
+            + 0.2;
+        let min_y = path
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f32::INFINITY, f32::min)
+            - 0.2;
+        let max_y = path
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f32::NEG_INFINITY, f32::max)
+            + 0.2;
+        let bridge_box = square(min_x, min_y, max_x, max_y);
+        assert!(
+            ex_area_mm2(&intersection(sparse, &[bridge_box])) < 0.01,
+            "InternalBridgeInfill partition must be disjoint from sparse partition"
+        );
+    }
+}
+
+fn perimeter_region_ir_for_test(infill_area: ExPolygon) -> PerimeterIR {
+    let mut perimeter = empty_perimeter_ir();
+    perimeter
+        .regions
+        .push(perimeter_region("obj-1", 0, vec![infill_area]));
+    perimeter
 }

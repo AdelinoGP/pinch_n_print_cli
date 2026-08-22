@@ -128,11 +128,13 @@ fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
 }
 
 fn pathopt_ctx() -> StageApplyContext<'static> {
+    // exhaustive: path optimization fixture explicitly pins all apply context metadata.
     StageApplyContext {
         stage_id: "Layer::PathOptimization",
         module_id: "test",
         layer_index: 0,
         seam_plan: None,
+        config_view: None,
     }
 }
 
@@ -184,11 +186,13 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
     apply_for_test(
         &mut arena,
         LayerStageCommit::Perimeters(ir),
+        // exhaustive: seam regression fixture explicitly pins all apply context metadata.
         &StageApplyContext {
             stage_id: "Layer::Perimeters",
             module_id: "test",
             layer_index: 0,
             seam_plan: Some(&seam),
+            config_view: None,
         },
     )
     .expect("apply(Perimeters)");

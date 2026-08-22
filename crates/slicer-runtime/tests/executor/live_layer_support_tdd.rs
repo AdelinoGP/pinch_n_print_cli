@@ -105,11 +105,13 @@ fn tree_support_dispatch_commits_support_material_paths() {
         apply_for_test(
             &mut arena,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit must succeed");
@@ -160,11 +162,13 @@ fn traditional_support_dispatch_commits_support_material_paths() {
         apply_for_test(
             &mut arena,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit must succeed");
@@ -210,11 +214,13 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
         apply_for_test(
             &mut arena,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit must succeed");
@@ -249,11 +255,13 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
         apply_for_test(
             &mut arena,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit must succeed (empty commit is not an error)");
@@ -287,11 +295,13 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
         apply_for_test(
             &mut arena1,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("first commit must succeed");
@@ -303,11 +313,13 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
         apply_for_test(
             &mut arena2,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("second commit must succeed");
@@ -374,11 +386,13 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
         apply_for_test(
             &mut arena,
             c,
+            // exhaustive: support fixture explicitly pins all apply context metadata.
             &StageApplyContext {
                 stage_id: "Layer::Support",
                 module_id,
                 layer_index,
                 seam_plan: None,
+                config_view: None,
             },
         )
         .expect("commit must succeed for blocker case (empty is valid)");
@@ -406,8 +420,8 @@ use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
     WasmRuntimeDispatcher,
 };
-use std::sync::Arc;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::sync::Arc;
 
 /// Returns the path to the tree-support.wasm module, panicking if not found.
 fn tree_support_wasm_path() -> std::path::PathBuf {
@@ -825,11 +839,13 @@ fn support_deterministic_across_repeated_runs() {
             apply_for_test(
                 &mut arena,
                 c,
+                // exhaustive: support fixture explicitly pins all apply context metadata.
                 &StageApplyContext {
                     stage_id: "Layer::Support",
                     module_id: bundle.module.module_id(),
                     layer_index: layer.index,
                     seam_plan: None,
+                    config_view: None,
                 },
             )
             .expect("commit must succeed");

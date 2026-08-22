@@ -8,8 +8,8 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::{ConfigViewBuilder, PerimeterRegionViewBuilder};
-use slicer_sdk::traits::LayerModule;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::traits::LayerModule;
 
 fn square(x_mm: f32, width_mm: f32) -> ExPolygon {
     ExPolygon {
@@ -218,6 +218,7 @@ fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
         sparse_infill: paths,
         solid_infill: vec![],
         ironing: vec![],
+        internal_bridge_infill: Vec::new(),
     }
 }
 
@@ -353,6 +354,7 @@ fn solid_bucket_forces_unlimited_anchor_while_sparse_obeys_the_key() {
             sparse_infill: sparse,
             solid_infill: vec![solid_a, solid_b],
             ironing: vec![],
+            internal_bridge_infill: Vec::new(),
         },
     ];
     let views = vec![solid_view_with_anchor(

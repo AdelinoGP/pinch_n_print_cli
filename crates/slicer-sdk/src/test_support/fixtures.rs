@@ -147,6 +147,7 @@ pub struct SliceRegionViewBuilder {
     bottom_shell_index: Option<u8>,
     bottom_solid_fill: Vec<ExPolygon>,
     is_bridge: bool,
+    is_internal_bridge: bool,
     bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
@@ -186,6 +187,7 @@ impl SliceRegionViewBuilder {
             bottom_shell_index: None,
             bottom_solid_fill: Vec::new(),
             is_bridge: false,
+            is_internal_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
@@ -358,6 +360,13 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the internal-bridge classification flag.
+    #[must_use]
+    pub fn is_internal_bridge(mut self, on: bool) -> Self {
+        self.is_internal_bridge = on;
+        self
+    }
+
     /// Set the per-layer expanded bridge polygons.
     /// Mirrors [`SliceRegionView::set_bridge_areas`].
     #[must_use]
@@ -442,6 +451,7 @@ impl SliceRegionViewBuilder {
             tmp.set_bottom_shell_index(self.bottom_shell_index);
             tmp.set_bottom_solid_fill(self.bottom_solid_fill);
             tmp.set_is_bridge(self.is_bridge);
+            tmp.set_is_internal_bridge(self.is_internal_bridge);
             tmp.set_bridge_areas(self.bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);

@@ -146,18 +146,21 @@ fn no_linker_module_degraded_raw_output() {
     );
     // Calibrated discriminator (measured 2026-07-20 on this tree):
     //   with linker, mean G1 moves per sparse-infill block ≈ 33.4
-    //   without linker, mean G1 moves per sparse-infill block ≈ 4.68
-    // The threshold 6.0 has comfortable margin on both sides. The AC's
+    //   without linker, mean G1 moves per sparse-infill block ≈ 11.36
+    // The threshold 12.0 is a coarse linker-discrimination guard, leaving a
+    // measured margin of about 0.64 above the raw mean and 21.4 below the
+    // linked output (33.4 - 12.0). The AC's
     // literal claim is "mean points-per-path ≤ 2" (which is the raw
     // 2-point disjoint baseline); the gcode proxy uses G1-moves-per-block
     // (N-point path = N-1 G1 moves, so 2-point = 1 G1 move on average).
-    // The 6.0 threshold catches raw output (mean ≈ 4.68) while rejecting
-    // linked output (mean ≈ 33.4) by a factor of > 5x.
+    // This guard accepts the measured raw-path band while rejecting the
+    // measured linked output; the observed separation is about 2.9x.
     let mean = (sparse_moves.iter().sum::<u32>() as f32) / (sparse_moves.len() as f32);
+    // Packet 233 (D11/F7): rectilinear alternation removed (canonical _layer_angle == 0); degraded-mode mean G1 density shifts accordingly.
     assert!(
-        mean < 6.0,
+        mean < 12.0,
         "AC-N1: without the linker, mean G1 moves per sparse-infill block should be at the \
-         raw baseline (< 6.0); got {mean:.2}. If this is high, the linker is wired even \
+         raw baseline (< 12.0); got {mean:.2}. If this is high, the linker is wired even \
          though its module-dir was excluded. Block counts: {sparse_moves:?}"
     );
 }

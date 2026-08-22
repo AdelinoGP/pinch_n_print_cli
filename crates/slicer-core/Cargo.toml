@@ -89,6 +89,9 @@ name = "wall_sequence_reorder_tdd"
 name = "sharp_corner_seam_threshold_tdd"
 
 [[test]]
+name = "bridge_over_infill_tdd"
+
+[[test]]
 name = "beading_distributed"
 path = "tests/beading/distributed.rs"
 

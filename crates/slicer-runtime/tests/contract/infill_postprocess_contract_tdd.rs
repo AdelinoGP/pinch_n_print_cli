@@ -17,9 +17,9 @@ use slicer_ir::{
 };
 use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{build_wasm_instance_pool, CompiledModuleBuilder, WasmArtifactMetadata};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use std::collections::HashMap;
 use std::sync::Arc;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const HEADER_MARKER: f32 = 777.0;
 const FIELD_MARKER: f32 = 888.0;
@@ -282,6 +282,7 @@ fn infill_postprocess_prior_ir_multi_region_buckets() {
                 sparse_infill: mk(2, ExtrusionRole::SparseInfill),
                 solid_infill: mk(1, ExtrusionRole::TopSolidInfill),
                 ironing: mk(3, ExtrusionRole::Ironing),
+                internal_bridge_infill: Vec::new(),
             },
             InfillRegion {
                 object_id: "obj-b".into(),

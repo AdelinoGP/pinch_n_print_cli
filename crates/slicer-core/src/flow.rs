@@ -160,6 +160,52 @@ pub fn bridging_flow(
     }
 }
 
+/// Extra spacing (mm) applied to round bridge threads.
+///
+/// This is OrcaSlicer's `Flow.hpp` `BRIDGE_EXTRA_SPACING` constant.
+pub const BRIDGE_EXTRA_SPACING_MM: f32 = 0.05;
+
+/// Resolved diameter and spacing for a canonical bridge extrusion, in mm.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BridgingFlowSpec {
+    /// Diameter of the round bridge thread, in millimetres.
+    pub thread_diameter_mm: f32,
+    /// Spacing between bridge lines, in millimetres.
+    pub spacing_mm: f32,
+}
+
+/// Add OrcaSlicer's fixed extra spacing to a round bridge-thread diameter.
+pub fn bridge_extrusion_spacing(thread_diameter_mm: f32) -> f32 {
+    thread_diameter_mm + BRIDGE_EXTRA_SPACING_MM
+}
+
+/// Resolve canonical bridge-thread diameter and spacing, in mm.
+///
+/// A non-positive bridge line width is the unset sentinel and falls back to
+/// the nozzle diameter. A positive bridge flow ratio scales the diameter by
+/// its square root, matching OrcaSlicer's `LayerRegion::bridging_flow` and
+/// `Flow::bridging_flow`.
+pub fn canonical_bridging_flow(
+    bridge_line_width: f32,
+    bridge_flow_ratio: f32,
+    nozzle_diameter: f32,
+) -> BridgingFlowSpec {
+    let base_diameter = if bridge_line_width > 0.0 {
+        bridge_line_width
+    } else {
+        nozzle_diameter
+    };
+    let thread_diameter_mm = if bridge_flow_ratio > 0.0 {
+        base_diameter * bridge_flow_ratio.sqrt()
+    } else {
+        base_diameter
+    };
+    BridgingFlowSpec {
+        thread_diameter_mm,
+        spacing_mm: bridge_extrusion_spacing(thread_diameter_mm),
+    }
+}
+
 /// Resolved line-width inputs used by [`resolve_role_width`].
 ///
 /// A width of zero means that the corresponding setting is absent or unset.

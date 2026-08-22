@@ -676,14 +676,15 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       struck/reserved by P106; see the docs/02 Contract note.)
     //       minor bump to 4.7.0 by packet 112 (AC-5) — additive new
     //       ExtrusionLine/ExtrusionJunction IR for Arachne extrusion wireup.
+    //       minor bump to 4.8.0 by packet 233 — additive InternalBridgeInfill role.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 7,
+            minor: 8,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 7, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 8, 0)"
     );
 
     // (c)

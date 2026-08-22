@@ -220,11 +220,13 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
     apply_for_test(
         &mut arena,
         commit_with_perimeter(ir_owned),
+        // exhaustive: postprocess fixture explicitly pins all apply context metadata.
         &StageApplyContext {
             stage_id: "Layer::PerimetersPostProcess",
             module_id: "test",
             layer_index: 0,
             seam_plan: None,
+            config_view: None,
         },
     )
     .expect("commit");
@@ -318,11 +320,13 @@ fn pairs_regions_by_object_id_not_by_position() {
     apply_for_test(
         &mut arena,
         commit_with_perimeter(ir_owned),
+        // exhaustive: postprocess fixture explicitly pins all apply context metadata.
         &StageApplyContext {
             stage_id: "Layer::PerimetersPostProcess",
             module_id: "test",
             layer_index: 0,
             seam_plan: None,
+            config_view: None,
         },
     )
     .expect("commit");
@@ -420,11 +424,13 @@ fn partition_re_fires_under_post_process_only_path() {
     apply_for_test(
         &mut arena,
         commit_with_perimeter(ir_owned),
+        // exhaustive: postprocess fixture explicitly pins all apply context metadata.
         &StageApplyContext {
             stage_id: "Layer::PerimetersPostProcess",
             module_id: "test",
             layer_index: 0,
             seam_plan: None,
+            config_view: None,
         },
     )
     .expect("commit");
