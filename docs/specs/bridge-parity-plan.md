@@ -249,3 +249,31 @@ unreliable.
 3. Whether W-A's unsupported-span test needs a new prepass data dependency on N±1
    layers (the scheduler constraint noted in packet 36-rev1) or resolves inside the
    existing per-layer stage inputs — re-derive from the scheduler docs at authoring.
+
+## Packet Queue
+
+Generated via `/spec-packet-generator` (orchestrated). Backlog slots are
+`docs/specs/orca-feature-gap/issues/` entries, not docs/07 TASK IDs. Numbers follow
+ticket 06 Rule 1 (next free = highest numeric `docs/spec_packets/[0-9]*/` prefix + 1,
+re-derived from disk at authoring time; 233 was correct when this queue was written).
+
+| # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
+|---|-------------|---------------------|----------|------------|--------|------------|
+| 1 | 233-internal-bridge-over-infill | Relocate internal bridge-over-infill to the post-surface/infill seam with anchored-polygon construction and windowed-mean angle, thread an `InternalBridgeInfill` role through IR/WIT/host/marshal/gcode, bundling the sparse ±90° alternation fix (D11) and canonical `bridging_flow` spacing (F5/F6) | ISSUE-82 (P75) | - | generated | docs/spec_packets/233-internal-bridge-over-infill/ |
+| 2 | 234-bridge-false-site-gating | Gate bridge classification on the canonical unsupported-span test (bridge area minus anchor areas from lower-layer slices/expansion zones), demoting the stash's mesh-validity filter to at most a cheap pre-filter | new (§4 W-A, no prior owner) | #1 | generated | docs/spec_packets/234-bridge-false-site-gating/ |
+| 3 | 235-external-bridge-orientation | Port the active inline `detect_bridging_direction` semantics (floating-edge candidates, PC fallback, SCALED_EPSILON anchor expand) with the ADR-0061 deterministic tie-break and D6 degrees-mod-180 boundary conversion | ISSUE-84 (P77, `bridge_angle` half) | #2 | generated | docs/spec_packets/235-external-bridge-orientation/ |
+
+Mechanical reminders encoded in every packet below: (a) popping `stash@{0}` flips
+guest WASM artifacts stale again — `cargo xtask build-guests --check` exit codes
+(0 fresh / 1 stale / 3 missing wasm-tools) arbitrate freshness; (b) any reslice in a
+verification command MUST pass `--module-dir modules/core-modules`.
+
+Errata from generation-time grounding (packets supersede the prose here):
+- §3/F2's "dead code behind the legacy `#else` branch" characterization of canonical
+  `BridgeDetector::detect_angle` is wrong for the checked-out tree — it is an active
+  implementation; the ACTIVE path selects the inline `detect_bridging_direction`
+  overloads at `LayerRegion::process_external_surfaces`. Packet 235 states it that way.
+- §3/F3's "our pipeline decides in `PrePass::ShellClassification`" describes the STASH
+  WIP, not HEAD: at HEAD that function holds no internal-bridge logic and nothing emits
+  a `Custom("InternalBridge")` role. Packet 233 frames W-C as introducing the decision
+  at the seam.
