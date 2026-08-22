@@ -1144,6 +1144,7 @@ fn support_geometry_shapes(
                     .collect(),
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
+                tool_index: None,
             };
             match view {
                 GeometryView::FilledAreas => {

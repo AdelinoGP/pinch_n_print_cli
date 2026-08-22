@@ -6,6 +6,11 @@ Newly found divergences between our support-family code and canonical OrcaSlicer
 Canonical code is cited by file + function name, never line number.
 Section numbering refers to the original squash groups; the original commit SHAs were dropped when the source branch was retired.
 
+> **ID renumbering note (merge of 2026-08-21):** the six deviation rows filed below as
+> DEV-135..DEV-140 were renumbered **DEV-141..DEV-146** in `docs/DEVIATION_LOG.md`, because
+> mainline had independently allocated DEV-135 (packet 226, authored-coloring carrier).
+> References to DEV-139 in this document therefore resolve to **DEV-145**.
+
 ## Squashed commit 1 of 8 (2026-08-21)
 
 1. **Tree top-Z gap mechanism: mm walk over actual layer Z vs canonical layer-count + virtual gap node.**

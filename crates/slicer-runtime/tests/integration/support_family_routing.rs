@@ -170,6 +170,7 @@ fn support_entry(
             ],
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
+            tool_index: None,
         }],
     }
 }

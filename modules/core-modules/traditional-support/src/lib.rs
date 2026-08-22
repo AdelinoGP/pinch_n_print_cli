@@ -244,8 +244,8 @@ impl LayerModule for TraditionalSupport {
                     bottom_interface_pitch_mm,
                     self.smooth_supports,
                 );
-                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> =
-                    regularized.unwrap_or_else(|| {
+                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = regularized
+                    .unwrap_or_else(|| {
                         entry
                             .roles
                             .iter()
@@ -257,7 +257,9 @@ impl LayerModule for TraditionalSupport {
                     let spacing = match role {
                         slicer_ir::SupportPlanRole::SupportBody => line_spacing,
                         slicer_ir::SupportPlanRole::TopInterface => top_interface_line_spacing,
-                        slicer_ir::SupportPlanRole::BottomInterface => bottom_interface_line_spacing,
+                        slicer_ir::SupportPlanRole::BottomInterface => {
+                            bottom_interface_line_spacing
+                        }
                         slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
                     };
                     for expoly in regions.iter() {
@@ -516,6 +518,7 @@ impl TraditionalSupport {
                     ],
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
+                    tool_index: None,
                 });
                 i += 2;
             }
@@ -545,6 +548,7 @@ impl TraditionalSupport {
                 points,
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor,
+                tool_index: None,
             });
         }
 
@@ -601,8 +605,12 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TraditionalSupport::from_config(&config).unwrap();
         let (_, top_mm, bottom_mm) = module.interface_pitch_mm(0.2);
-        let (top, bottom) = (slicer_ir::mm_to_units(top_mm), slicer_ir::mm_to_units(bottom_mm));
-        let expected = slicer_ir::mm_to_units(0.4 + (0.4 - 0.2 * (1.0 - core::f32::consts::PI / 4.0)));
+        let (top, bottom) = (
+            slicer_ir::mm_to_units(top_mm),
+            slicer_ir::mm_to_units(bottom_mm),
+        );
+        let expected =
+            slicer_ir::mm_to_units(0.4 + (0.4 - 0.2 * (1.0 - core::f32::consts::PI / 4.0)));
         assert_eq!(top, expected, "top interface pitch must add flow spacing");
         assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
         assert!(

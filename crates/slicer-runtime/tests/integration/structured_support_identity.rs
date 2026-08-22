@@ -29,6 +29,7 @@ pub fn structured_support_identity() {
         ],
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
+        tool_index: None,
     };
     let support = SupportIR {
         // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple

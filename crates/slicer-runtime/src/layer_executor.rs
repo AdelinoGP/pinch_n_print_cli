@@ -461,6 +461,7 @@ fn append_same_z_entities(
                     .collect(),
                 role: slicer_ir::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
+                tool_index: None,
             },
             role: slicer_ir::ExtrusionRole::SupportMaterial,
             region_key: RegionKey::default(),

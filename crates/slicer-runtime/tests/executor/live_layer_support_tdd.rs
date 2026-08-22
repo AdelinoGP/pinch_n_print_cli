@@ -937,7 +937,6 @@ fn support_deterministic_across_repeated_runs() {
 /// contract via the WIT `paint-region-layer-view::support-plan-segments`
 /// accessor. No direct Rust trait calls into the modules.
 mod planner_consuming_tier {
-    use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
     use std::sync::Arc;
 
     use crate::common::{run_layer_and_commit_with_bundle, wasm_cache, TestModuleBundle};
