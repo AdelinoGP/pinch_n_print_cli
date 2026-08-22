@@ -41,6 +41,8 @@ use tree_support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
 /// AC-2: radius tapering — topmost width = branch_diameter,
 /// bottom > top + tan(diameter_angle) * height_diff.
 #[test]
+
+
 fn radius_tapers_with_distance_to_top() {
     // Test the actual tapered_radius() function from the planner (Step 5).
     // Formula: radius(dist_to_top) = branch_radius + tan(diameter_angle) * dist_to_top * layer_height
@@ -189,7 +191,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("col"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -203,34 +205,81 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         "AC-4: raft plan must not emit raft geometry entries"
     );
 
-    // Group model-layer entries by global_layer_index and count total
-    // branch_segments at each layer.
-    let mut segs_by_layer: BTreeMap<i32, usize> = BTreeMap::new();
-    for e in entries.iter().filter(|e| e.global_layer_index >= 0) {
-        *segs_by_layer.entry(e.global_layer_index).or_insert(0) +=
-            e.skeleton.as_ref().map_or(0, |s| s.points.len());
-    }
+    // Canonical builds roof as an area *distinct* from `base_areas` and
+    // subtracts it out of the body (`TreeSupport::generate_toolpaths`' area
+    // pass), so an interface layer does not carry extra geometry on top of the
+    // body — it carries the same footprint under a different role.
+    //
+    // This assertion used to require interface layers to hold MORE skeleton
+    // points than the contact layer, which only held because the pre-224
+    // planner *added* bounding-box scan lines on top of the body instead of
+    // carving the interface out of it.
+    let interface_layers: BTreeMap<i32, Vec<slicer_ir::SupportPlanRole>> = entries
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .map(|e| {
+            (
+                e.global_layer_index,
+                e.roles.iter().map(|r| r.role).collect::<Vec<_>>(),
+            )
+        })
+        .collect();
     assert!(
-        !segs_by_layer.is_empty(),
+        !interface_layers.is_empty(),
         "AC-4: expected non-empty model-layer plan; got 0 entries"
     );
-    // The top of the column has dist_to_top=0 (no interface fill);
-    // layers below it (dist_to_top=1..=top_n) carry interface fill.
-    // Identify the topmost (max) global_layer_index that received segments
-    // — it should have FEWER segments than at least one interface layer.
-    let &top_layer = segs_by_layer.keys().max().unwrap();
-    let top_segs = segs_by_layer[&top_layer];
-    let interface_max = segs_by_layer
+    let top_interface_layers: Vec<i32> = interface_layers
         .iter()
-        .filter(|(&k, _)| k < top_layer)
-        .map(|(_, &v)| v)
-        .max()
-        .unwrap_or(0);
+        .filter(|(_, roles)| roles.contains(&slicer_ir::SupportPlanRole::TopInterface))
+        .map(|(&layer, _)| layer)
+        .collect();
     assert!(
-        interface_max > top_segs,
-        "AC-4: expected interface layers to carry more branch_segments than \
-         the contact layer={top_layer} (segs={top_segs}); got max interface segs={interface_max}"
+        !top_interface_layers.is_empty(),
+        "AC-4: expected at least one layer carrying a TopInterface role; got {interface_layers:?}"
     );
+    // The interface band sits at the top of the column: `support_interface_top_layers`
+    // is 2 here, so at most two layers may carry it.
+    assert!(
+        top_interface_layers.len() <= 2,
+        "AC-4: interface band wider than support_interface_top_layers=2; got {top_interface_layers:?}"
+    );
+    let &highest = interface_layers.keys().max().unwrap();
+    assert!(
+        top_interface_layers.contains(&highest),
+        "AC-4: the topmost support layer must be interface, not bare body;          highest={highest} interface={top_interface_layers:?}"
+    );
+    // Interface must be carved out of the body, never printed on top of it.
+    for (&layer, roles) in interface_layers.iter() {
+        if roles.contains(&slicer_ir::SupportPlanRole::TopInterface) {
+            let entry = entries
+                .iter()
+                .find(|e| e.global_layer_index == layer)
+                .unwrap();
+            let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+                .roles
+                .iter()
+                .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody)
+                .collect();
+            let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+                .roles
+                .iter()
+                .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface)
+                .collect();
+            for b in &body {
+                for r in &roof {
+                    let overlap = slicer_sdk::host::clip_polygons(
+                        &b.regions,
+                        &r.regions,
+                        slicer_sdk::host::ClipOperation::Intersection,
+                    );
+                    assert!(
+                        overlap.is_empty(),
+                        "AC-4: body and interface overlap at layer {layer};                          interface must be subtracted out of the body"
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * wall_count.
@@ -310,7 +359,7 @@ fn benchy_orca_parity_within_tolerance() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("benchy-stand-in"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -466,14 +515,30 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
         .fold(0.0_f32, f32::max)
 }
 
-/// AC-N3: node dropped when avoidance rejects all moves → warn diagnostic.
-/// When the planner's MST move pass clamps a node into avoidance and the
-/// clamped target lies inside the collision_polys (i.e. the only valid
-/// destination is occupied by the model), the node is dropped and a
-/// typed code 1002 warn-level `Diagnostic` is emitted via the
-/// `SupportGeometryOutput::push_diagnostic` channel.
+/// AC-N3: when the model occupies every destination a branch could move to, the
+/// branch is rejected and a typed warn-level `Diagnostic` records it, rather
+/// than support being emitted through the model.
+///
+/// **Strengthened by packet 224.** The drop trigger changed, and the test gained
+/// a check that the original was missing.
+///
+/// Previously code 1002 fired when a node's clamped *centre* landed inside
+/// `collision_polys`, and it only ever fired because `clamp_to_avoidance`'s
+/// guard was inverted: nodes safely outside avoidance were snapped onto the
+/// avoidance boundary, dragging branches into the model. Correcting that guard
+/// alone was not enough — pushing a node to the *nearest* point outside
+/// avoidance can move it arbitrarily far, so this fixture began planning
+/// support bodies metres away from the overhang they were meant to support.
+///
+/// The trigger is now the branch-angle budget: a branch may travel at most
+/// `max_move_xy` per layer, escaping avoidance included. When no legal
+/// destination is within budget the node is dropped with code 1002.
+///
+/// The added assertion is that nothing is planned at all. A diagnostic without
+/// an actual drop is a warning that support was printed through the object,
+/// which is precisely what the earlier version of this test failed to catch.
 #[module_test]
-fn node_dropped_when_avoidance_rejects_all_moves() {
+fn node_rejected_when_model_occupies_every_destination() {
     // Note: #[module_test] already drains and reinstalls log capture via
     // reset_global_state() + mock_host_setup(). No explicit install needed here.
 
@@ -528,11 +593,11 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("blocked"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
-    let clamped: Vec<&Diagnostic> = diagnostics
+    let rejected: Vec<&Diagnostic> = diagnostics
         .iter()
         .filter(|d| {
             d.code == 1002
@@ -541,12 +606,27 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         })
         .collect();
     assert!(
-        !clamped.is_empty(),
+        !rejected.is_empty(),
         "AC-N3: expected at least one code 1002 warn diagnostic containing \
          'node-clamped-out'; got {} diagnostics: {:?}",
         diagnostics.len(),
         diagnostics
     );
+
+    // The rejection must be total: nothing may be planned inside a region the
+    // model occupies entirely. A diagnostic without an actual drop would be a
+    // warning that support was printed through the object.
+    assert!(
+        output
+            .entries()
+            .iter()
+            .all(|entry| entry.decline_reason.is_some()
+                || entry.roles.iter().all(|role| role.regions.is_empty())),
+        "AC-N3: no support body may be planned where the model occupies every \
+         destination; got {:?}",
+        output.entries()
+    );
+
 }
 
 // RC-1 lone-node column mid-air: a propagated node must still emit its segment.
@@ -572,7 +652,7 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("lone-node"), &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -738,4 +818,172 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
 /// Make a SupportPlanEntry with a positive layer index.
 fn make_entry_with_index(index: u32) -> SupportPlanEntry {
     make_support_entry(index as i32, index as f32 * 0.2, 0.4)
+}
+
+/// Assign every region of `object_id` to the tree family.
+///
+/// Packet 224 made `PrePass::SupportAnalysis` the single authority for a
+/// region's family; the planner no longer defaults to its own identity.
+fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisView {
+    slicer_sdk::prepass_types::SupportAnalysisView {
+        family_assignments: ["0", "1"]
+            .iter()
+            .map(
+                |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
+                    object_id: object_id.to_string(),
+                    region_id: region_id.to_string(),
+                    family_id: "tree".to_string(),
+                },
+            )
+            .collect(),
+        ..Default::default()
+    }
+}
+
+// ── RC-11: `support_top_z_distance_mm` must hold the tree top gap ──────────
+//
+// The tree planner declared `support_top_z_distance_mm` in its manifest and
+// read it nowhere, so its top interface printed flush against the overhang
+// with zero gap while `traditional-support-planner` honoured the key. This
+// test pins the asymmetry closed.
+//
+// The gap is measured by walking actual layer Z. It must NOT be derived by
+// dividing by `LayerPlanViewEntry.effective_layer_height`: the host's two
+// producers of that field disagree (one takes a max over participating
+// objects, the other takes the first match), and a previous attempt to divide
+// by it opened a 35-layer gap.
+
+/// Plan the fixture at a given `support_top_z_distance_mm` and return the
+/// highest model-layer index carrying planned support geometry.
+fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("support_top_z_distance_mm", ConfigValue::Float(gap_mm)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture("gap");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("gap", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("gap"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry");
+
+    output
+        .entries()
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .max()
+        .expect("expected at least one planned model-layer support entry")
+}
+
+#[test]
+fn top_z_distance_lowers_the_tree_contact_layer() {
+    // The fixture's overhang underside sits at z = 1.8mm on a 0.2mm layer
+    // stack, so the flush (zero-gap) contact belongs on the layer whose top
+    // plane is 1.8mm — index 8.
+    let flush_top = top_support_layer_for_gap(0.0);
+    assert_eq!(
+        flush_top, 8,
+        "with support_top_z_distance_mm = 0.0 the tree column must reach the \
+         overhang underside at z=1.8mm (layer 8); got layer {flush_top}"
+    );
+
+    // One 0.2mm layer of clearance must drop the column by exactly one layer.
+    let gapped_top = top_support_layer_for_gap(0.2);
+    assert!(
+        gapped_top < flush_top,
+        "RC-11: with support_top_z_distance_mm = 0.2 the topmost tree support \
+         layer must sit at least one 0.2mm layer below the flush contact layer \
+         {flush_top}; got layer {gapped_top} (the key is declared in \
+         tree-support-planner.toml but read nowhere)"
+    );
+
+    // The gap must track actual layer Z, not collapse to zero and not blow out
+    // to tens of layers (the effective_layer_height division failure mode).
+    let dropped_layers = flush_top - gapped_top;
+    assert_eq!(
+        dropped_layers, 1,
+        "RC-11: a 0.2mm gap on a 0.2mm layer stack must drop the contact by \
+         exactly one layer; got {dropped_layers} layers (flush={flush_top}, \
+         gapped={gapped_top})"
+    );
+}
+
+#[test]
+fn top_z_distance_defaults_to_traditional_two_tenths() {
+    // `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM` is 0.2 and
+    // matches OrcaSlicer's `support_top_z_distance`. An absent key must give
+    // the tree family the same gap, not a flush contact.
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        // support_top_z_distance_mm deliberately absent.
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture("gap-default");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("gap-default", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("gap-default"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry");
+
+    let default_top = output
+        .entries()
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .max()
+        .expect("expected at least one planned model-layer support entry");
+
+    assert_eq!(
+        default_top,
+        top_support_layer_for_gap(0.2),
+        "RC-11: the tree default for support_top_z_distance_mm must equal \
+         traditional's DEFAULT_TOP_Z_DISTANCE_MM (0.2mm); got top layer \
+         {default_top}"
+    );
 }

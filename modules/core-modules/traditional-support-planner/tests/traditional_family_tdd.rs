@@ -173,14 +173,12 @@ fn regions(object_id: &str) -> RegionSegmentationView {
     }
 }
 
-fn minimal_object(object_id: &str) -> MeshObjectView {
-    MeshObjectView {
-        object_id: object_id.into(),
-        vertices: vec![],
-        triangles: vec![],
-        paint_layers: vec![],
-    }
-}
+// `minimal_object` (an empty mesh: no vertices, no triangles) was removed by
+// packet 224. Its only remaining caller relied on the planner's mesh-facet
+// contact derivation declining any mesh with no downward facets — a code path
+// that no longer exists, since contact detection moved to
+// `PrePass::SupportAnalysis`. An empty-mesh fixture can no longer express
+// anything about this planner's behaviour.
 
 fn overhang_object(object_id: &str) -> MeshObjectView {
     MeshObjectView {
@@ -267,11 +265,22 @@ fn contact_area_planning() {
         assert_eq!(entry.family_id, "traditional");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == SupportPlanRole::SupportBody));
+        // Interface is carved OUT of the body rather than layered on top of
+        // it, so an interface layer carries no SupportBody role. Requiring one
+        // on every entry encoded the pre-224 additive model, in which body and
+        // interface held byte-identical regions and were both extruded.
+        assert!(
+            entry.roles.iter().any(|r| !r.regions.is_empty()),
+            "every entry must carry at least one non-empty role"
+        );
     }
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|e| e.roles.iter().any(|r| r.role == SupportPlanRole::SupportBody)),
+        "a multi-layer column must carry body geometry below its interface band"
+    );
     assert!(
         output.entries().len() >= 2,
         "contact area must derive body/interface roles across layers"
@@ -307,6 +316,15 @@ fn base_interface_obstacle() {
             object_id: "base".into(),
             region_id: "0".into(),
             polygons: vec![obstacle_region()],
+        }],
+        // A bottom interface exists only where the column lands ON the model.
+        // Without a termination surface this column runs to the build plate,
+        // and a floor there would be dense interface against bare plate.
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "base".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
         }],
         family_assignments: vec![traditional_assignment("base")],
         ..Default::default()
@@ -350,6 +368,47 @@ fn base_interface_obstacle() {
                 && e.roles.is_empty()
         }),
         "obstacle candidate must be structurally declined"
+    );
+}
+
+/// A column that lands on the build plate carries no bottom interface: there
+/// is no model surface beneath to interface with. Before packet 224 the floor
+/// band was applied unconditionally, so a plate-terminated column printed dense
+/// interface on its first layers — visible as `;TYPE:Support interface` at
+/// Z 0.2 and 0.4 on the decisive fixture.
+#[test]
+fn plate_termination_emits_no_bottom_interface() {
+    let object = overhang_object("plate-term");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "plate-term".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        // No termination surfaces: the column runs to the plate.
+        family_assignments: vec![traditional_assignment("plate-term")],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+    assert!(
+        !output.entries().is_empty(),
+        "plate-terminated column must still be planned"
+    );
+    assert!(
+        !output.entries().iter().any(|e| e
+            .roles
+            .iter()
+            .any(|r| r.role == SupportPlanRole::BottomInterface)),
+        "a plate-terminated column must carry no BottomInterface role; got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| e.roles.iter().map(|r| r.role).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -406,10 +465,14 @@ fn anchored_termination() {
             slicer_ir::mm_to_units((entry.global_layer_index as f32 + 1.0) * 0.2)
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
-        assert!(entry
-            .roles
-            .iter()
-            .any(|r| r.role == SupportPlanRole::SupportBody));
+        // Interface is carved OUT of the body rather than layered on top of
+        // it, so an interface layer carries no SupportBody role. Requiring one
+        // on every entry encoded the pre-224 additive model, in which body and
+        // interface held byte-identical regions and were both extruded.
+        assert!(
+            entry.roles.iter().any(|r| !r.regions.is_empty()),
+            "every entry must carry at least one non-empty role"
+        );
     }
 }
 
@@ -515,7 +578,24 @@ fn top_z_distance_lowers_contact_start() {
         .map(|entry| entry.global_layer_index)
         .max()
         .unwrap();
-    assert_eq!(highest, 5, "ceil(0.5 / 0.2) lowers layer 8 by 3 layers");
+    // The candidate's layer is the first layer that *contains* the overhang,
+    // so the overhanging surface is at the bottom of layer 8 — the top of
+    // layer 7, z = 1.6. A 0.5 mm gap requires the topmost support layer's own
+    // top to sit at or below 1.1, which is layer 4 (top z = 1.0); layer 5's top
+    // is 1.2 and would leave only 0.4 mm.
+    //
+    // This asserted `8 - ceil(0.5/0.2) = 5`, which measured the gap from the
+    // overhang layer itself rather than from the surface, and divided by
+    // `effective_layer_height` — a field that is unreliable in the guest view
+    // and evaluated such that the production gap came out as ZERO. Measured on
+    // the decisive fixture: support fused to the model at Z=25.0 with the
+    // overhang underside also at 25.0. With the Z-walk the top contact lands at
+    // 24.8, which is exactly where OrcaSlicer puts it in
+    // `tmp/SupportTest_Normal_Orca.gcode`.
+    assert_eq!(
+        highest, 4,
+        "a 0.5 mm gap below the overhang surface (z=1.6) admits layer 4 (top z=1.0), not layer 5 (top z=1.2)"
+    );
 }
 
 #[test]
@@ -542,10 +622,16 @@ fn support_layer_height_controls_body_spacing() {
         .map(|entry| entry.global_layer_index)
         .collect();
     layers.sort_unstable_by(|a, b| b.cmp(a));
+    // Shifted down one layer from the previous `[8, 7, 5, 2, 0]`: layer 8 is
+    // the layer that *contains* the overhang, so support may not print there
+    // even at a zero top gap. Layer 0 is the termination layer, which now
+    // always prints — it used to be dropped whenever it failed the
+    // support-layer-height modulo, leaving the column stopping short of the
+    // plate.
     assert_eq!(
         layers,
-        vec![8, 7, 5, 2, 0],
-        "support body layers use every third model layer and interfaces retain their bands"
+        vec![7, 6, 4, 1, 0],
+        "support body layers use every third model layer, interfaces retain their bands,          and the termination layer always prints"
     );
 }
 
@@ -631,6 +717,14 @@ fn invalid_body_rejected() {
         "colliding demand must emit no body/interface polygons"
     );
 
+    // Genuinely oversized: one unit wider AND taller than ROUTING_CELL_SIZE
+    // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
+    // (Before packet 224 this fixture was a 1_000-unit body parked across the
+    // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
+    // the size contract; the extent-based `in_routing_cell` now retains such a
+    // body, as it should.) It is also kept clear of the validation mesh's
+    // 0..100_000-unit footprint so occupancy cannot be the cause of the drop.
+    const OVERSIZE: i64 = (1 << 20) + 1;
     let crossing = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -639,16 +733,16 @@ fn invalid_body_rejected() {
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
+                    x: 1_048_076 + OVERSIZE,
                     y: 5_000,
                 },
                 Point2 {
-                    x: 1_049_076,
-                    y: 6_000,
+                    x: 1_048_076 + OVERSIZE,
+                    y: 5_000 + OVERSIZE,
                 },
                 Point2 {
                     x: 1_048_076,
-                    y: 6_000,
+                    y: 5_000 + OVERSIZE,
                 },
             ],
         },
@@ -689,7 +783,7 @@ fn invalid_body_rejected() {
         "complete crossing body is dropped"
     );
     assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing cell")
+        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing-cell")
     }));
     assert!(aggregated
         .entries
@@ -698,27 +792,50 @@ fn invalid_body_rejected() {
         .all(|role| role.regions.is_empty()));
 }
 
+/// A candidate whose downward route is closed by the model records a structured
+/// `NoRoute` decline rather than vanishing from the plan.
+///
+/// **Retargeted by packet 224.** This test was `fully_covered_candidate_is_declined`
+/// and placed its occupancy at layer 9 — *above* the layer-8 contact — asserting
+/// the planner declines a contact covered from above. The planner never
+/// implemented that rule. It passed because its fixture is `minimal_object`, an
+/// empty mesh with no vertices or triangles, and the planner's since-removed
+/// mesh-facet contact derivation declined any mesh with no downward facets. The
+/// name described coverage; the mechanism was "empty mesh".
+///
+/// Judging whether a region is an overhang at all now belongs to
+/// `PrePass::SupportAnalysis` — a region covered by the layer above is not an
+/// overhang, so `detect_support_overhangs` never emits a candidate for it. That
+/// is gated by `straight_column_yields_no_support_candidates` and
+/// `support_analysis_populates_all_derivable_inputs` in
+/// `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`.
+///
+/// What the planner owns is routing: given a real contact, does a route to a
+/// termination surface exist? This test now pins that, with occupancy *below*
+/// the contact where the planner can actually act on it.
 #[test]
-fn fully_covered_candidate_is_declined() {
-    let object = minimal_object("covered");
+fn candidate_with_no_downward_route_is_declined() {
+    let object = overhang_object("blocked-route");
     let full_region = contact_region();
     let analysis = SupportAnalysisView {
         candidates: vec![SupportAnalysisCandidate {
             id: 1,
-            object_id: "covered".into(),
+            object_id: "blocked-route".into(),
             region_id: "0".into(),
             global_layer_index: 8,
             z_units: slicer_ir::mm_to_units(1.8),
             geometry: vec![full_region.clone()],
             ..Default::default()
         }],
+        // Model occupancy BELOW the contact, covering the whole contact area, so
+        // no descending route survives the per-layer trim.
         model_occupancy: vec![SupportAnalysisGeometryEntry {
-            global_support_layer_index: 9,
-            object_id: "covered".into(),
+            global_support_layer_index: 4,
+            object_id: "blocked-route".into(),
             region_id: "0".into(),
             polygons: vec![full_region],
         }],
-        family_assignments: vec![traditional_assignment("covered")],
+        family_assignments: vec![traditional_assignment("blocked-route")],
         ..Default::default()
     };
     let output = run_planner_with_analysis(true, object, analysis);
@@ -727,7 +844,8 @@ fn fully_covered_candidate_is_declined() {
             .entries()
             .iter()
             .any(|entry| entry.decline_reason == Some(SupportPlanDeclineReason::NoRoute)),
-        "fully-covered candidate must record a structured decline"
+        "a candidate with no downward route must record a structured decline, got {:?}",
+        output.entries()
     );
     assert!(
         !output
@@ -735,7 +853,7 @@ fn fully_covered_candidate_is_declined() {
             .iter()
             .any(|entry| entry.decline_reason.is_none()
                 && entry.roles.iter().any(|role| !role.regions.is_empty())),
-        "fully-covered candidate must not emit a non-declined entry with roles"
+        "a blocked candidate must not emit a non-declined entry with roles"
     );
 }
 

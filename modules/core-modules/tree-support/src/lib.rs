@@ -33,25 +33,17 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::host::{self, OffsetJoinType};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
-
-/// Cap on interior sample points per ExPolygon per layer. The tree MST
-/// builder is O(n²) Prim (same algorithmic class as OrcaSlicer's
-/// `MinimumSpanningTree::prim`), so grid refinements that push `n` into
-/// the millions produce effectively unbounded work. If the density-derived
-/// grid would exceed this cap, the spacing is widened so that the sample
-/// count stays ≤ `MAX_SAMPLES_PER_EXPOLY`. Deterministic and coverage-
-/// preserving — no random downsampling.
-const MAX_SAMPLES_PER_EXPOLY: f64 = 2000.0;
 
 /// Tree support branching generator.
 ///
@@ -65,7 +57,6 @@ pub struct TreeSupport {
     density: f32,
     /// Base support angle in degrees (reserved for future use).
     #[allow(dead_code)]
-    base_angle: f32,
     /// Support print speed in mm/s.
     support_speed: f32,
     /// Extrusion line width in millimeters.
@@ -100,13 +91,9 @@ impl LayerModule for TreeSupport {
         };
 
         let density = match config.get("support_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
+            // The manifest and user-facing config express density as a percent.
+            Some(ConfigValue::Float(d)) => (*d as f32) / 100.0,
             _ => 0.2,
-        };
-
-        let base_angle = match config.get("support_angle") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
         };
 
         let support_speed = match config.get("support_speed") {
@@ -128,7 +115,6 @@ impl LayerModule for TreeSupport {
         Ok(Self {
             enabled,
             density,
-            base_angle,
             support_speed,
             line_width,
             wall_count,
@@ -178,31 +164,49 @@ impl LayerModule for TreeSupport {
                 for role_region in entry.roles.iter() {
                     for expoly in &role_region.regions {
                         match paint.paint_policy_for(expoly) {
+                            // Painted "no support here" still overrides the plan.
                             SupportPaintPolicy::Blocked => continue,
-                            SupportPaintPolicy::Enforced => {}
-                            SupportPaintPolicy::DefaultEligible => {
-                                if !region.needs_support() {
-                                    continue;
-                                }
-                            }
+                            // Painted "support here", and the default case, both
+                            // render what the planner planned.
+                            //
+                            // `DefaultEligible` previously additionally required
+                            // `region.needs_support()`. That re-litigated the
+                            // plan at render time: a `SupportPlanIR` entry *is*
+                            // the determination that support is needed, made by
+                            // the planner from `PrePass::SupportAnalysis`
+                            // contacts. When the flag disagreed, every planned
+                            // polygon was skipped silently — no paths, no
+                            // diagnostic — so the tree family emitted a full
+                            // 126-entry plan and no `;TYPE:Support` at all.
+                            // `traditional-support` never had this gate, so the
+                            // two families also disagreed on what a plan means.
+                            SupportPaintPolicy::Enforced | SupportPaintPolicy::DefaultEligible => {}
                         }
 
-                        let mut paths = self.render_polygon(expoly, z, speed_factor);
-                        // Keep the existing branching skeleton alongside the
-                        // printable polygon representation until downstream
-                        // consumers stop relying on branch-direction density.
-                        if matches!(role_region.role, slicer_ir::SupportPlanRole::SupportBody) {
-                            paths.extend(self.fill_expolygon_tree(expoly, z, speed_factor));
-                        }
-                        for path in paths {
+                        // `render_polygon` already covers the whole region
+                        // with inset walls plus a density-pitched fill. The
+                        // grid-MST `fill_expolygon_tree` used to be appended
+                        // here for `SupportBody` on top of that, so every body
+                        // polygon was extruded twice over the same area.
+                        let paths = self.render_polygon(expoly, z, speed_factor);
+                        for mut path in paths {
                             match role_region.role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
+                                // The extrusion role must be stamped here, not
+                                // left as `SupportMaterial`: `;TYPE:Support
+                                // interface` and `support_interface_speed` are
+                                // both selected from `ExtrusionRole` in
+                                // `crates/slicer-gcode/src/emit.rs`, so an
+                                // interface path that keeps the body role is
+                                // emitted and fed as plain support.
                                 slicer_ir::SupportPlanRole::TopInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
                                 }
                                 slicer_ir::SupportPlanRole::BottomInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, false);
                                 }
                                 slicer_ir::SupportPlanRole::RaftRelated => {}
@@ -222,7 +226,14 @@ impl LayerModule for TreeSupport {
 // the same query implementation through `PaintRegionLayerView::paint_policy_for`.
 
 impl TreeSupport {
-    /// Render a semantic support polygon as perimeter passes and scan-fill.
+    /// Render a semantic support polygon as inset perimeter passes plus scan-fill.
+    ///
+    /// Each wall is inset half a line width past the previous one and the fill
+    /// region is inset clear of all of them, so the passes do not overlap.
+    /// Before packet 224 this emitted `wall_count` copies of the *same* contour
+    /// (coincident, no inset) and then scan-filled the full polygon at a
+    /// `line_width` pitch — 100% density regardless of `support_density` — so a
+    /// support body was extruded several times over.
     fn render_polygon(
         &self,
         expoly: &ExPolygon,
@@ -230,293 +241,138 @@ impl TreeSupport {
         speed_factor: f32,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
-        let points = &expoly.contour.points;
-        if points.len() < 3 {
+        if expoly.contour.points.len() < 3 {
             return paths;
         }
-        for _ in 0..self.wall_count {
-            let mut wall = points
-                .iter()
-                .map(|point| Point3WithWidth {
-                    x: slicer_ir::units_to_mm(point.x),
-                    y: slicer_ir::units_to_mm(point.y),
-                    z,
-                    width: self.line_width,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                    overhang_distance_mm: None,
-                })
-                .collect::<Vec<_>>();
-            wall.push(wall[0]);
-            paths.push(ExtrusionPath3D {
-                points: wall,
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor,
-            });
-        }
+        let line_width = self.line_width.max(f32::EPSILON);
+        let source = [expoly.clone()];
 
-        let (min_x, min_y, max_x, max_y) = polygon_bbox_mm(expoly);
-        let line_width = self.line_width as f64;
-        let mut y = min_y + line_width * 0.5;
-        while y < max_y {
-            let mut intersections = Vec::new();
-            for i in 0..points.len() {
-                let a = &points[i];
-                let b = &points[(i + 1) % points.len()];
-                let ay = slicer_ir::units_to_mm(a.y) as f64;
-                let by = slicer_ir::units_to_mm(b.y) as f64;
-                if (ay > y) != (by > y) {
-                    let ax = slicer_ir::units_to_mm(a.x) as f64;
-                    let bx = slicer_ir::units_to_mm(b.x) as f64;
-                    intersections.push(ax + (y - ay) * (bx - ax) / (by - ay));
+        for wall_index in 0..self.wall_count {
+            let inset = -line_width * (wall_index as f32 + 0.5);
+            let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
+            for ring_poly in &ring_set {
+                for ring in std::iter::once(&ring_poly.contour).chain(ring_poly.holes.iter()) {
+                    if ring.points.len() < 3 {
+                        continue;
+                    }
+                    let mut wall = ring
+                        .points
+                        .iter()
+                        .map(|point| self.support_point(point.x, point.y, z))
+                        .collect::<Vec<_>>();
+                    wall.push(wall[0]);
+                    paths.push(ExtrusionPath3D {
+                        points: wall,
+                        role: ExtrusionRole::SupportMaterial,
+                        speed_factor,
+                    });
                 }
             }
-            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            for pair in intersections.chunks_exact(2) {
+        }
+
+        // Fill only the area the walls do not already cover.
+        let fill_regions = if self.wall_count == 0 {
+            source.to_vec()
+        } else {
+            host::offset_polygons(
+                &source,
+                -line_width * self.wall_count as f32,
+                OffsetJoinType::Miter,
+                0.0,
+            )
+        };
+
+        // `support_density` is a fraction in (0, 1]; 1.0 gives a solid
+        // `line_width` pitch. A non-positive density means walls only.
+        if self.density <= 0.0 {
+            return paths;
+        }
+        let spacing = (line_width / self.density.min(1.0)) as f64;
+        for region in &fill_regions {
+            paths.extend(self.scan_fill_region(region, spacing, z, speed_factor));
+        }
+        paths
+    }
+
+    /// Build one support vertex from scaled-integer coordinates.
+    fn support_point(&self, x: i64, y: i64, z: f32) -> Point3WithWidth {
+        Point3WithWidth {
+            x: slicer_ir::units_to_mm(x),
+            y: slicer_ir::units_to_mm(y),
+            z,
+            width: self.line_width,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
+        }
+    }
+
+    /// Axis-aligned scan fill of one `ExPolygon`, honouring its holes.
+    ///
+    /// Crossings are gathered from the contour *and* every hole ring, so an
+    /// interior void is not filled over.
+    fn scan_fill_region(
+        &self,
+        expoly: &ExPolygon,
+        spacing: f64,
+        z: f32,
+        speed_factor: f32,
+    ) -> Vec<ExtrusionPath3D> {
+        let mut paths = Vec::new();
+        if expoly.contour.points.len() < 3 || spacing <= 0.0 {
+            return paths;
+        }
+        let (min_x, min_y, max_x, max_y) = polygon_bbox_mm(expoly);
+        let rings: Vec<&slicer_ir::Polygon> = std::iter::once(&expoly.contour)
+            .chain(expoly.holes.iter())
+            .collect();
+        let mut y = min_y + spacing * 0.5;
+        while y < max_y {
+            let mut crossings = Vec::new();
+            for ring in &rings {
+                let points = &ring.points;
+                for i in 0..points.len() {
+                    let a = &points[i];
+                    let b = &points[(i + 1) % points.len()];
+                    let ay = slicer_ir::units_to_mm(a.y) as f64;
+                    let by = slicer_ir::units_to_mm(b.y) as f64;
+                    if (ay > y) != (by > y) {
+                        let ax = slicer_ir::units_to_mm(a.x) as f64;
+                        let bx = slicer_ir::units_to_mm(b.x) as f64;
+                        crossings.push(ax + (y - ay) * (bx - ax) / (by - ay));
+                    }
+                }
+            }
+            crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            for pair in crossings.chunks_exact(2) {
                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
                     paths.push(ExtrusionPath3D {
                         points: vec![
-                            Point3WithWidth {
-                                x: pair[0] as f32,
-                                y: y as f32,
+                            self.support_point(
+                                slicer_ir::mm_to_units(pair[0] as f32),
+                                slicer_ir::mm_to_units(y as f32),
                                 z,
-                                width: self.line_width,
-                                flow_factor: 1.0,
-                                overhang_quartile: None,
-                                dist_to_top_mm: 0.0,
-                                overhang_distance_mm: None,
-                            },
-                            Point3WithWidth {
-                                x: pair[1] as f32,
-                                y: y as f32,
+                            ),
+                            self.support_point(
+                                slicer_ir::mm_to_units(pair[1] as f32),
+                                slicer_ir::mm_to_units(y as f32),
                                 z,
-                                width: self.line_width,
-                                flow_factor: 1.0,
-                                overhang_quartile: None,
-                                dist_to_top_mm: 0.0,
-                                overhang_distance_mm: None,
-                            },
+                            ),
                         ],
                         role: ExtrusionRole::SupportMaterial,
                         speed_factor,
                     });
                 }
             }
-            y += line_width;
+            y += spacing;
         }
-        paths
-    }
-
-    /// Generate tree-style branching fill for a single ExPolygon.
-    ///
-    /// Algorithm:
-    /// 1. Compute bounding box, derive grid spacing from density
-    /// 2. Sample interior points on grid (point-in-polygon test)
-    /// 3. Build nearest-neighbor tree from centroid
-    /// 4. Walk tree edges to generate branch polylines
-    /// 5. Each branch becomes an ExtrusionPath3D with SupportMaterial role
-    fn fill_expolygon_tree(
-        &self,
-        expoly: &ExPolygon,
-        z: f32,
-        speed_factor: f32,
-    ) -> Vec<ExtrusionPath3D> {
-        // `support_density` is declared in tree-support.toml as a 0-100
-        // percentage (min=0, max=100, default=20), matching OrcaSlicer's
-        // UI convention. Convert to a 0-1 ratio before using it as the
-        // spacing divisor. A density of 0 has already been filtered
-        // upstream (run_support early-returns when density <= 0).
-        let density_ratio = (self.density as f64 / 100.0).max(f64::EPSILON);
-        let mut spacing_mm = self.line_width as f64 / density_ratio;
-
-        // Compute bounding box in mm
-        let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = polygon_bbox_mm(expoly);
-        let bb_width = bb_max_x - bb_min_x;
-        let bb_height = bb_max_y - bb_min_y;
-
-        if bb_width <= 0.0 || bb_height <= 0.0 {
-            return Vec::new();
-        }
-
-        // Sample-count cap: widen spacing so (bb_w/spacing)*(bb_h/spacing)
-        // ≤ MAX_SAMPLES_PER_EXPOLY. Bounds the O(n²) Prim work per
-        // ExPolygon; see MAX_SAMPLES_PER_EXPOLY doc.
-        let min_spacing_from_cap = (bb_width * bb_height / MAX_SAMPLES_PER_EXPOLY).sqrt();
-        if min_spacing_from_cap > spacing_mm {
-            spacing_mm = min_spacing_from_cap;
-        }
-
-        // Sample interior points on a grid with spacing
-        let mut samples: Vec<(f64, f64)> = Vec::new();
-
-        let mut gy = bb_min_y + spacing_mm * 0.5;
-        while gy < bb_max_y {
-            let mut gx = bb_min_x + spacing_mm * 0.5;
-            while gx < bb_max_x {
-                if point_in_expolygon(gx, gy, expoly) {
-                    samples.push((gx, gy));
-                }
-                gx += spacing_mm;
-            }
-            gy += spacing_mm;
-        }
-
-        // Centroid fallback: when the grid yields no samples (e.g. polygon
-        // smaller than `spacing_mm` so no cell midpoint lands inside the
-        // bbox at all), drop a single sample at the polygon centroid so any
-        // non-empty support polygon still emits at least one branch path.
-        if samples.is_empty() {
-            let cx = (bb_min_x + bb_max_x) * 0.5;
-            let cy = (bb_min_y + bb_max_y) * 0.5;
-            if point_in_expolygon(cx, cy, expoly) {
-                samples.push((cx, cy));
-            }
-        }
-
-        if samples.is_empty() {
-            return Vec::new();
-        }
-
-        if samples.len() == 1 {
-            // Single point: emit a short path from point toward nearest boundary
-            let (sx, sy) = samples[0];
-            let (bx, by) = nearest_boundary_point(sx, sy, expoly);
-            return vec![ExtrusionPath3D {
-                points: vec![
-                    Point3WithWidth {
-                        x: sx as f32,
-                        y: sy as f32,
-                        z,
-                        width: self.line_width,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                        overhang_distance_mm: None,
-                    },
-                    Point3WithWidth {
-                        x: bx as f32,
-                        y: by as f32,
-                        z,
-                        width: self.line_width,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                        overhang_distance_mm: None,
-                    },
-                ],
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor,
-                tool_index: None,
-            }];
-        }
-
-        // Compute centroid of samples
-        let cx: f64 = samples.iter().map(|s| s.0).sum::<f64>() / samples.len() as f64;
-        let cy: f64 = samples.iter().map(|s| s.1).sum::<f64>() / samples.len() as f64;
-
-        // Find the sample nearest to the centroid as root
-        let root_idx = samples
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| {
-                let da = (a.0 - cx).powi(2) + (a.1 - cy).powi(2);
-                let db = (b.0 - cx).powi(2) + (b.1 - cy).powi(2);
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(i, _)| i)
-            .unwrap_or(0);
-
-        // Build nearest-neighbor tree starting from root
-        // parent[i] = index of parent node in tree (-1 for root)
-        let tree = build_nearest_neighbor_tree(&samples, root_idx);
-
-        // Convert tree edges to extrusion paths
-        let mut paths = Vec::new();
-        for (child_idx, parent_idx) in tree.iter().enumerate() {
-            if let Some(pidx) = parent_idx {
-                let (cx_pt, cy_pt) = samples[child_idx];
-                let (px, py) = samples[*pidx];
-
-                paths.push(ExtrusionPath3D {
-                    points: vec![
-                        Point3WithWidth {
-                            x: px as f32,
-                            y: py as f32,
-                            z,
-                            width: self.line_width,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
-                        },
-                        Point3WithWidth {
-                            x: cx_pt as f32,
-                            y: cy_pt as f32,
-                            z,
-                            width: self.line_width,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
-                        },
-                    ],
-                    role: ExtrusionRole::SupportMaterial,
-                    speed_factor,
-                    tool_index: None,
-                });
-            }
-        }
-
         paths
     }
 }
 
 // expolygon_centroid was an artifact of the deleted local support_paint_policy
 // stub.  The v2 query lives in `PaintRegionLayerView::paint_policy_for` (slicer-sdk).
-
-/// Build a nearest-neighbor tree from sample points.
-///
-/// Starting from `root_idx`, repeatedly find the unvisited point nearest to
-/// any visited point and connect it. Returns a Vec where `result[i] = Some(parent)`
-/// for each node, or `None` for the root.
-fn build_nearest_neighbor_tree(samples: &[(f64, f64)], root_idx: usize) -> Vec<Option<usize>> {
-    let n = samples.len();
-    let mut parent: Vec<Option<usize>> = vec![None; n];
-    let mut visited = vec![false; n];
-
-    visited[root_idx] = true;
-    let mut visited_count = 1;
-
-    while visited_count < n {
-        let mut best_unvisited = 0;
-        let mut best_visited = 0;
-        let mut best_dist_sq = f64::MAX;
-
-        for (ui, &(ux, uy)) in samples.iter().enumerate() {
-            if visited[ui] {
-                continue;
-            }
-            for (vi, &(vx, vy)) in samples.iter().enumerate() {
-                if !visited[vi] {
-                    continue;
-                }
-                let d_sq = (ux - vx).powi(2) + (uy - vy).powi(2);
-                if d_sq < best_dist_sq {
-                    best_dist_sq = d_sq;
-                    best_unvisited = ui;
-                    best_visited = vi;
-                }
-            }
-        }
-
-        parent[best_unvisited] = Some(best_visited);
-        visited[best_unvisited] = true;
-        visited_count += 1;
-    }
-
-    parent
-}
 
 /// Compute bounding box of an ExPolygon in mm coordinates.
 fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
@@ -537,108 +393,10 @@ fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
     (min_x, min_y, max_x, max_y)
 }
 
-/// Simple point-in-ExPolygon test using ray casting.
-fn point_in_expolygon(x: f64, y: f64, expoly: &ExPolygon) -> bool {
-    if !point_in_polygon(x, y, &expoly.contour.points) {
-        return false;
-    }
-    for hole in &expoly.holes {
-        if point_in_polygon(x, y, &hole.points) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Ray casting point-in-polygon test.
-fn point_in_polygon(x: f64, y: f64, points: &[Point2]) -> bool {
-    let n = points.len();
-    if n < 3 {
-        return false;
-    }
-
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let xi = slicer_ir::units_to_mm(points[i].x) as f64;
-        let yi = slicer_ir::units_to_mm(points[i].y) as f64;
-        let xj = slicer_ir::units_to_mm(points[j].x) as f64;
-        let yj = slicer_ir::units_to_mm(points[j].y) as f64;
-
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-        j = i;
-    }
-
-    inside
-}
-
-/// Find the nearest point on the boundary of an ExPolygon to a given point.
-fn nearest_boundary_point(x: f64, y: f64, expoly: &ExPolygon) -> (f64, f64) {
-    let mut best = (x, y);
-    let mut best_dist = f64::MAX;
-
-    nearest_point_on_polygon(x, y, &expoly.contour.points, &mut best, &mut best_dist);
-
-    for hole in &expoly.holes {
-        nearest_point_on_polygon(x, y, &hole.points, &mut best, &mut best_dist);
-    }
-
-    best
-}
-
-/// Find the nearest point on polygon edges, updating best/best_dist.
-fn nearest_point_on_polygon(
-    x: f64,
-    y: f64,
-    points: &[Point2],
-    best: &mut (f64, f64),
-    best_dist: &mut f64,
-) {
-    let n = points.len();
-    if n < 2 {
-        return;
-    }
-
-    for i in 0..n {
-        let j = (i + 1) % n;
-        let ax = slicer_ir::units_to_mm(points[i].x) as f64;
-        let ay = slicer_ir::units_to_mm(points[i].y) as f64;
-        let bx = slicer_ir::units_to_mm(points[j].x) as f64;
-        let by = slicer_ir::units_to_mm(points[j].y) as f64;
-
-        let (cx, cy) = closest_point_on_segment(x, y, ax, ay, bx, by);
-        let dx = x - cx;
-        let dy = y - cy;
-        let dist = (dx * dx + dy * dy).sqrt();
-
-        if dist < *best_dist {
-            *best_dist = dist;
-            *best = (cx, cy);
-        }
-    }
-}
-
-/// Find the closest point on a line segment to a given point.
-fn closest_point_on_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> (f64, f64) {
-    let dx = bx - ax;
-    let dy = by - ay;
-    let len_sq = dx * dx + dy * dy;
-
-    if len_sq < 1e-15 {
-        return (ax, ay);
-    }
-
-    let t = ((px - ax) * dx + (py - ay) * dy) / len_sq;
-    let t = t.clamp(0.0, 1.0);
-
-    (ax + t * dx, ay + t * dy)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slicer_ir::Point2;
 
     #[test]
     fn from_config_defaults() {
@@ -650,32 +408,90 @@ mod tests {
     }
 
     #[test]
-    fn point_in_polygon_basic() {
-        let pts = vec![
-            Point2::from_mm(-5.0, -5.0),
-            Point2::from_mm(5.0, -5.0),
-            Point2::from_mm(5.0, 5.0),
-            Point2::from_mm(-5.0, 5.0),
-        ];
-        assert!(point_in_polygon(0.0, 0.0, &pts));
-        assert!(!point_in_polygon(10.0, 10.0, &pts));
-    }
+    fn walls_are_inset_and_fill_does_not_overlap_them() {
+        // Guards the packet-224 fix: `render_polygon` used to emit `wall_count`
+        // coincident copies of the same contour and then scan-fill the whole
+        // polygon at a `line_width` pitch, so a body was extruded several times
+        // over the same area.
+        let mut map = std::collections::HashMap::new();
+        map.insert("enable_support".to_string(), ConfigValue::Bool(true));
+        map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(2));
+        let module = TreeSupport::from_config(&ConfigView::from_map(map)).unwrap();
 
-    #[test]
-    fn nearest_boundary_basic() {
-        let expoly = ExPolygon {
+        let square = ExPolygon {
             contour: slicer_ir::Polygon {
                 points: vec![
-                    Point2::from_mm(-5.0, -5.0),
-                    Point2::from_mm(5.0, -5.0),
-                    Point2::from_mm(5.0, 5.0),
-                    Point2::from_mm(-5.0, 5.0),
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(10.0, 0.0),
+                    Point2::from_mm(10.0, 10.0),
+                    Point2::from_mm(0.0, 10.0),
                 ],
             },
             holes: vec![],
         };
-        let (bx, by) = nearest_boundary_point(0.0, 0.0, &expoly);
-        let dist = ((bx * bx) + (by * by)).sqrt();
-        assert!((dist - 5.0).abs() < 0.01);
+        let paths = module.render_polygon(&square, 1.0, 1.0);
+        let closed: Vec<&ExtrusionPath3D> =
+            paths.iter().filter(|path| path.points.len() > 2).collect();
+        assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
+
+        // Each wall must sit at its own inset, not on top of the previous one.
+        let extent = |path: &ExtrusionPath3D| {
+            let xs: Vec<f32> = path.points.iter().map(|p| p.x).collect();
+            xs.iter().cloned().fold(f32::MIN, f32::max)
+                - xs.iter().cloned().fold(f32::MAX, f32::min)
+        };
+        let outer = extent(closed[0]);
+        let inner = extent(closed[1]);
+        assert!(
+            outer - inner > 0.3,
+            "walls are coincident: outer extent {outer}, inner extent {inner}"
+        );
+
+        // Fill lines must start clear of the walls, not span the full polygon.
+        let fill_max_x = paths
+            .iter()
+            .filter(|path| path.points.len() == 2)
+            .flat_map(|path| path.points.iter())
+            .map(|p| p.x)
+            .fold(f32::MIN, f32::max);
+        assert!(
+            fill_max_x < 10.0 - module.line_width,
+            "fill reaches {fill_max_x}, overlapping the wall band"
+        );
+    }
+
+    #[test]
+    fn fill_pitch_honours_support_density() {
+        let build = |density: f64| {
+            let mut map = std::collections::HashMap::new();
+            map.insert("enable_support".to_string(), ConfigValue::Bool(true));
+            map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
+            map.insert("support_density".to_string(), ConfigValue::Float(density));
+            TreeSupport::from_config(&ConfigView::from_map(map)).unwrap()
+        };
+        let square = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(20.0, 0.0),
+                    Point2::from_mm(20.0, 20.0),
+                    Point2::from_mm(0.0, 20.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let count = |module: &TreeSupport| {
+            module
+                .render_polygon(&square, 1.0, 1.0)
+                .iter()
+                .filter(|path| path.points.len() == 2)
+                .count()
+        };
+        let sparse = count(&build(20.0));
+        let solid = count(&build(100.0));
+        assert!(
+            solid > sparse * 3,
+            "support_density is ignored: {sparse} lines at 20% vs {solid} at 100%"
+        );
     }
 }

@@ -71,20 +71,6 @@ max     = 2.0
 display = "Support Interface Spacing"
 group   = "Support"
 
-[config.schema.support_filament]
-type    = "int"
-default = 0
-min     = 0
-display = "Support Filament"
-group   = "Support"
-
-[config.schema.support_interface_filament]
-type    = "int"
-default = 0
-min     = 0
-display = "Support Interface Filament"
-group   = "Support"
-
 [config.overridable-per-region]
 keys = []
 

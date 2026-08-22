@@ -64,10 +64,6 @@ pub struct TraditionalSupport {
     line_width: f32,
     /// Interface scan-fill line spacing in millimeters.
     interface_spacing_mm: f32,
-    /// Raw Orca-style support filament selection (rebased by the runtime).
-    support_filament: u32,
-    /// Raw Orca-style interface filament selection (rebased by the runtime).
-    support_interface_filament: u32,
 }
 
 #[slicer_module]
@@ -105,17 +101,6 @@ impl LayerModule for TraditionalSupport {
             _ => 0.4,
         };
 
-        // Keep the authored 1-based selections intact. The runtime applies the
-        // shared zero-based rebasing convention when it emits path entities.
-        let support_filament = match config.get("support_filament") {
-            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
-            _ => 0,
-        };
-        let support_interface_filament = match config.get("support_interface_filament") {
-            Some(ConfigValue::Int(value)) if *value >= 0 => (*value).try_into().unwrap_or(0),
-            _ => 0,
-        };
-
         Ok(Self {
             enabled,
             density,
@@ -123,8 +108,6 @@ impl LayerModule for TraditionalSupport {
             support_speed,
             line_width,
             interface_spacing_mm,
-            support_filament,
-            support_interface_filament,
         })
     }
 
@@ -139,11 +122,6 @@ impl LayerModule for TraditionalSupport {
         if !self.enabled || self.density <= 0.0 {
             return Ok(());
         }
-
-        // Tool selection is applied by the runtime when SupportIR paths become
-        // entities; reading these keeps the renderer-side authored selections
-        // attached to this configured module without adding IR fields.
-        let _ = (self.support_filament, self.support_interface_filament);
 
         // `support_density` is declared in traditional-support.toml as a
         // 0-100 percentage (matching OrcaSlicer's UI convention). Convert
@@ -206,17 +184,38 @@ impl LayerModule for TraditionalSupport {
                         slicer_ir::SupportPlanRole::RaftRelated => line_spacing,
                     };
                     for expoly in &role_region.regions {
-                        let paths =
-                            self.fill_expolygon(expoly, spacing, cos_a, sin_a, z, speed_factor);
-                        for path in paths {
+                        let interface = matches!(
+                            role_region.role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        );
+                        let paths = self.fill_expolygon(
+                            expoly,
+                            spacing,
+                            cos_a,
+                            sin_a,
+                            z,
+                            speed_factor,
+                            interface,
+                        );
+                        for mut path in paths {
                             match role_region.role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
+                                // The extrusion role must be stamped here, not
+                                // left as `SupportMaterial`: `;TYPE:Support
+                                // interface` and `support_interface_speed` are
+                                // both selected from `ExtrusionRole` in
+                                // `crates/slicer-gcode/src/emit.rs`, so an
+                                // interface path that keeps the body role is
+                                // emitted and fed as plain support.
                                 slicer_ir::SupportPlanRole::TopInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
                                 }
                                 slicer_ir::SupportPlanRole::BottomInterface => {
+                                    path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, false);
                                 }
                                 slicer_ir::SupportPlanRole::RaftRelated => {}
@@ -241,6 +240,7 @@ impl TraditionalSupport {
         sin_a: f64,
         z: f32,
         speed_factor: f32,
+        interface: bool,
     ) -> Vec<ExtrusionPath3D> {
         // Collect all edges (contour + holes)
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
@@ -356,6 +356,83 @@ impl TraditionalSupport {
             scan_y += line_spacing;
         }
 
+        // Centroid fallback: when the polygon is smaller than `line_spacing`
+        // along the scan axis, the scan-line loop emits nothing. Drop a
+        // single horizontal segment across the polygon's centroid so any
+        // non-empty support polygon yields at least one fill path.
+        if paths.is_empty() {
+            let centroid_y = (min_y + max_y) / 2;
+            let mut centroid_xs: Vec<i64> = Vec::new();
+            for &(rx1, ry1, rx2, ry2) in &rotated_edges {
+                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
+                if centroid_y > edge_min_y && centroid_y < edge_max_y {
+                    let x = rx1 as f64
+                        + (centroid_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
+                    centroid_xs.push(x.round() as i64);
+                }
+            }
+            centroid_xs.sort();
+            let mut i = 0;
+            while i + 1 < centroid_xs.len() {
+                let (start_x, start_y) = rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
+                let (end_x, end_y) = rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
+                paths.push(ExtrusionPath3D {
+                    points: vec![
+                        Point3WithWidth {
+                            x: slicer_ir::units_to_mm(start_x),
+                            y: slicer_ir::units_to_mm(start_y),
+                            z,
+                            width: self.line_width,
+                            flow_factor: 1.0,
+                            overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
+                        },
+                        Point3WithWidth {
+                            x: slicer_ir::units_to_mm(end_x),
+                            y: slicer_ir::units_to_mm(end_y),
+                            z,
+                            width: self.line_width,
+                            flow_factor: 1.0,
+                            overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
+                        },
+                    ],
+                    role: ExtrusionRole::SupportMaterial,
+                    speed_factor,
+                });
+                i += 2;
+            }
+        }
+
+        // Contact polygons can have no scan-line span. Keep the
+        // contact-inclusive interface layer printable without restoring body
+        // geometry that was carved out by the planner.
+        if interface && paths.is_empty() && expoly.contour.points.len() >= 2 {
+            let mut points = expoly
+                .contour
+                .points
+                .iter()
+                .map(|point| Point3WithWidth {
+                    x: slicer_ir::units_to_mm(point.x),
+                    y: slicer_ir::units_to_mm(point.y),
+                    z,
+                    width: self.line_width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                })
+                .collect::<Vec<_>>();
+            points.push(points[0]);
+            paths.push(ExtrusionPath3D {
+                points,
+                role: ExtrusionRole::SupportMaterial,
+                speed_factor,
+            });
+        }
+
         paths
     }
 }
@@ -397,22 +474,5 @@ mod tests {
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.interface_spacing_mm - 0.4).abs() < 0.001);
-        assert_eq!(module.support_filament, 0);
-        assert_eq!(module.support_interface_filament, 0);
-    }
-
-    #[test]
-    fn from_config_retains_support_filament_selections() {
-        let config = ConfigView::from_map(std::collections::HashMap::from([
-            ("support_filament".to_string(), ConfigValue::Int(2)),
-            (
-                "support_interface_filament".to_string(),
-                ConfigValue::Int(3),
-            ),
-        ]));
-        let module = TraditionalSupport::from_config(&config).unwrap();
-
-        assert_eq!(module.support_filament, 2);
-        assert_eq!(module.support_interface_filament, 3);
     }
 }

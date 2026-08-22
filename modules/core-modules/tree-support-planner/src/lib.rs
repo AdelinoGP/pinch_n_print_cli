@@ -64,6 +64,11 @@ const OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 /// `TreeSupportData::max_radius` hard upper bound (6.0 mm).
 const MAX_BRANCH_RADIUS_MM: f32 = 6.0;
 const MIN_BRANCH_RADIUS: f32 = 0.4;
+/// Default vertical clearance between the top of a support column and the
+/// overhang it supports. Matches OrcaSlicer's `support_top_z_distance` default
+/// and `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM`, so both
+/// families leave the same gap when the key is absent.
+const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 
 /// Multi-layer organic tree-support planner.
 #[allow(dead_code)]
@@ -93,14 +98,21 @@ pub struct SupportPlanner {
     interface_raft_layers: u32,
     /// Number of interface layers at top of each branch column.
     support_interface_top_layers: i32,
+    /// Number of dense interface layers where branches land on the model.
+    /// `-1` mirrors the top interface count (OrcaSlicer convention).
+    support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
-    tree_support_interface_spacing_mm: f32,
     /// When true, contacts whose XY lies inside the object's projected
     /// footprint at the contact's layer (`to_buildplate = false`) are
     /// rejected at creation time — only build-plate-bound branches are
     /// emitted. Default `false`: to-model contacts are admitted and
     /// propagated like before. Packet 123.
     support_on_build_plate_only: bool,
+    /// Vertical clearance in mm between the top of a support column and the
+    /// overhang plane that demanded it. Packet 224 RC-11: this key was
+    /// declared in the manifest but read nowhere, so tree support printed its
+    /// top interface fused to the model.
+    support_top_z_distance_mm: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -124,41 +136,245 @@ struct PlannedSupportNode {
     demand_ids: Vec<String>,
 }
 
-/// Convert planned centerline nodes into semantic, unit-space support-body
-/// regions. Width belongs to rendering, while the plan carries only a
-/// conservative structural footprint.
+/// Assembles a plan entry's roles from structural, roof, and floor segments.
+///
+/// Canonical keeps roof and floor geometry distinct from body geometry and
+/// removes it from `base_areas` (`TreeSupport::generate_toolpaths`' area pass).
+/// Reproducing that subtraction is what keeps an interface layer from being
+/// printed twice — once as dense interface and again as body underneath.
+///
+/// A role with no regions is omitted rather than emitted empty, so consumers can
+/// treat role presence as meaningful.
+fn build_roles(
+    branch_segments: &[Vec<Point3WithWidth>],
+    interface_segments: &[Vec<Point3WithWidth>],
+    floor_segments: &[Vec<Point3WithWidth>],
+    branch_radius: f32,
+    collision_polys: &[ExPolygon],
+) -> Vec<slicer_ir::SupportPlanRoleRegion> {
+    let clip_collision = |regions: Vec<ExPolygon>| {
+        if collision_polys.is_empty() || regions.is_empty() {
+            regions
+        } else {
+            host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+        }
+    };
+    let body = clip_collision(structural_body_regions(branch_segments, branch_radius));
+    let roof = clip_collision(structural_body_regions(interface_segments, branch_radius));
+    let floor = clip_collision(structural_body_regions(floor_segments, branch_radius));
+
+    // Subtract interface geometry out of the body, per canonical.
+    let mut carved = body;
+    for cut in [&roof, &floor] {
+        if !carved.is_empty() && !cut.is_empty() {
+            carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
+        }
+    }
+    if !roof.is_empty() || !floor.is_empty() {
+        carved.clear();
+    }
+    let mut roles = Vec::new();
+    if !carved.is_empty() {
+        roles.push(slicer_ir::SupportPlanRoleRegion {
+            role: slicer_ir::SupportPlanRole::SupportBody,
+            regions: carved,
+        });
+    }
+    if !roof.is_empty() {
+        roles.push(slicer_ir::SupportPlanRoleRegion {
+            role: slicer_ir::SupportPlanRole::TopInterface,
+            regions: roof,
+        });
+    }
+    if !floor.is_empty() {
+        roles.push(slicer_ir::SupportPlanRoleRegion {
+            role: slicer_ir::SupportPlanRole::BottomInterface,
+            regions: floor,
+        });
+    }
+    roles
+}
+
+/// Convert planned centerline segments into semantic support-body regions.
+///
+/// Each segment is swept: the region is the convex hull of the two endpoint
+/// circles, so a branch is a continuous capsule rather than a pair of detached
+/// discs. Before packet 224 this emitted one independent 16-gon per endpoint
+/// and unioned nothing, so a steeply-moving branch printed as a dotted line of
+/// discs with gaps between them.
+///
+/// Zero-width points are the contact tips at the top of a column. They used to
+/// be filtered out entirely, which meant the layer that is supposed to meet the
+/// overhang produced no printable geometry at all; they are now floored at
+/// `MIN_BRANCH_RADIUS` like every other point.
+///
+/// Overlapping segment hulls are unioned so a merged branch is one region.
 pub fn structural_body_regions(
     segments: &[Vec<Point3WithWidth>],
     _branch_radius_mm: f32,
 ) -> Vec<ExPolygon> {
-    // Emit the complete local-radius footprint, not a centerline surrogate.
-    segments
-        .iter()
-        // Zero-width points are model-contact tips, not support-body volume.
-        // Keep them in the skeleton while excluding them from exact-Z body
-        // occupancy validation.
-        .flat_map(|segment| segment.iter().filter(|point| point.width > 0.0))
-        .map(|point| {
-            let radius = (point.width * 0.5).max(MIN_BRANCH_RADIUS);
-            let radius_units = mm_to_units(radius).max(1);
-            let x = mm_to_units(point.x);
-            let y = mm_to_units(point.y);
-            ExPolygon {
-                contour: Polygon {
-                    points: (0..16)
-                        .map(|i| {
-                            let a = std::f32::consts::TAU * i as f32 / 16.0;
-                            Point2 {
-                                x: x + (radius_units as f32 * a.cos()).round() as i64,
-                                y: y + (radius_units as f32 * a.sin()).round() as i64,
-                            }
-                        })
-                        .collect(),
-                },
-                holes: Vec::new(),
+    let mut regions: Vec<ExPolygon> = Vec::new();
+    for segment in segments {
+        for pair in segment.windows(2) {
+            if let Some(hull) = swept_region(&pair[0], &pair[1]) {
+                regions.push(hull);
             }
-        })
-        .collect()
+        }
+        if segment.len() == 1 {
+            if let Some(disc) = swept_region(&segment[0], &segment[0]) {
+                regions.push(disc);
+            }
+        }
+    }
+    let mut regions = if regions.len() < 2 {
+        regions
+    } else {
+        // Union so merged branches and consecutive segments form one body
+        // rather than a pile of overlapping capsules that would each be
+        // walled and filled.
+        let (first, rest) = regions.split_at(1);
+        host::clip_polygons(first, rest, ClipOperation::Union)
+    };
+    for region in &mut regions {
+        limit_contour_vertices(&mut region.contour.points, BRANCH_CIRCLE_SEGMENTS);
+    }
+    regions
+}
+
+fn limit_contour_vertices(points: &mut Vec<Point2>, limit: usize) {
+    while points.len() > limit {
+        let mut remove = 0;
+        let mut smallest = i128::MAX;
+        for index in 0..points.len() {
+            let previous = points[(index + points.len() - 1) % points.len()];
+            let current = points[index];
+            let next = points[(index + 1) % points.len()];
+            let area = ((current.x - previous.x) as i128 * (next.y - current.y) as i128
+                - (current.y - previous.y) as i128 * (next.x - current.x) as i128)
+                .abs();
+            if area < smallest {
+                smallest = area;
+                remove = index;
+            }
+        }
+        points.remove(remove);
+    }
+}
+
+/// Which semantic role a planned node's own area carries on its layer.
+///
+/// Canonical produces roof and floor as areas distinct from `base_areas` and
+/// subtracts them out of the body, so a node contributes to exactly one of the
+/// three collections.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum InterfaceRole {
+    /// Ordinary branch body.
+    Body,
+    /// Roof: within the top interface band of its column.
+    Roof,
+    /// Floor: the branch lands on the model rather than the build plate.
+    Floor,
+}
+
+impl InterfaceRole {
+    /// Select the collection a single node's segment belongs to.
+    fn target_for_node<'a>(
+        role: InterfaceRole,
+        body: &'a mut Vec<Vec<Point3WithWidth>>,
+        roof: &'a mut Vec<Vec<Point3WithWidth>>,
+        floor: &'a mut Vec<Vec<Point3WithWidth>>,
+    ) -> &'a mut Vec<Vec<Point3WithWidth>> {
+        match role {
+            InterfaceRole::Floor => floor,
+            InterfaceRole::Roof => roof,
+            InterfaceRole::Body => body,
+        }
+    }
+
+    /// Select the collection an MST edge belongs to.
+    ///
+    /// Floor wins if either endpoint lands on the model, matching the existing
+    /// floor-over-roof precedence. Roof requires *both* endpoints to be in the
+    /// band, so an edge straddling the band boundary stays body rather than
+    /// pulling non-interface geometry into the dense roof fill.
+    fn target_for_edge<'a>(
+        a: InterfaceRole,
+        b: InterfaceRole,
+        body: &'a mut Vec<Vec<Point3WithWidth>>,
+        roof: &'a mut Vec<Vec<Point3WithWidth>>,
+        floor: &'a mut Vec<Vec<Point3WithWidth>>,
+    ) -> &'a mut Vec<Vec<Point3WithWidth>> {
+        if a == InterfaceRole::Floor || b == InterfaceRole::Floor {
+            floor
+        } else if a == InterfaceRole::Roof && b == InterfaceRole::Roof {
+            roof
+        } else {
+            body
+        }
+    }
+}
+
+/// Number of vertices used to approximate a branch circle.
+const BRANCH_CIRCLE_SEGMENTS: usize = 16;
+
+/// Build the swept region between two centerline points as the convex hull of
+/// their radius circles. Returns `None` when the result is degenerate.
+fn swept_region(a: &Point3WithWidth, b: &Point3WithWidth) -> Option<ExPolygon> {
+    let mut points = Vec::with_capacity(BRANCH_CIRCLE_SEGMENTS * 2);
+    for point in [a, b] {
+        let radius = (point.width * 0.5).max(MIN_BRANCH_RADIUS);
+        let radius_units = mm_to_units(radius).max(1);
+        let cx = mm_to_units(point.x);
+        let cy = mm_to_units(point.y);
+        for i in 0..BRANCH_CIRCLE_SEGMENTS {
+            let angle = std::f32::consts::TAU * i as f32 / BRANCH_CIRCLE_SEGMENTS as f32;
+            points.push(Point2 {
+                x: cx + (radius_units as f32 * angle.cos()).round() as i64,
+                y: cy + (radius_units as f32 * angle.sin()).round() as i64,
+            });
+        }
+    }
+    let hull = convex_hull(points);
+    if hull.len() < 3 {
+        return None;
+    }
+    Some(ExPolygon {
+        contour: Polygon { points: hull },
+        holes: Vec::new(),
+    })
+}
+
+/// Andrew's monotone-chain convex hull, counter-clockwise, no collinear points.
+fn convex_hull(mut points: Vec<Point2>) -> Vec<Point2> {
+    points.sort_by(|p, q| p.x.cmp(&q.x).then(p.y.cmp(&q.y)));
+    points.dedup();
+    if points.len() < 3 {
+        return points;
+    }
+    // i128 keeps the cross product exact: coordinates are scaled integers and
+    // a branch capsule at plate scale overflows i64 when squared.
+    fn cross(o: &Point2, a: &Point2, b: &Point2) -> i128 {
+        (a.x as i128 - o.x as i128) * (b.y as i128 - o.y as i128)
+            - (a.y as i128 - o.y as i128) * (b.x as i128 - o.x as i128)
+    }
+    let mut hull: Vec<Point2> = Vec::with_capacity(points.len() * 2);
+    for point in points.iter() {
+        while hull.len() >= 2 && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], point) <= 0 {
+            hull.pop();
+        }
+        hull.push(*point);
+    }
+    let lower_len = hull.len() + 1;
+    for point in points.iter().rev() {
+        while hull.len() >= lower_len
+            && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], point) <= 0
+        {
+            hull.pop();
+        }
+        hull.push(*point);
+    }
+    hull.pop();
+    hull
 }
 
 /// Holds collision and avoidance polygons for a single support layer.
@@ -180,7 +396,7 @@ impl PrepassModule for SupportPlanner {
             _ => true,
         };
         let support_family = canonical_support_family(config);
-        let branch_angle_deg = match config.get("support_branch_angle_deg") {
+        let branch_angle_deg = match config.get("tree_support_branch_angle") {
             Some(ConfigValue::Float(a)) => *a as f32,
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
@@ -241,17 +457,16 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as u32,
             _ => 0,
         };
+        let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
+            Some(ConfigValue::Int(n)) => *n as i32,
+            Some(ConfigValue::Float(n)) => *n as i32,
+            _ => -1,
+        };
         let support_interface_top_layers = match config.get("support_interface_top_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 2,
         };
-        let tree_support_interface_spacing_mm =
-            match config.get("tree_support_interface_spacing_mm") {
-                Some(ConfigValue::Float(w)) => *w as f32,
-                Some(ConfigValue::Int(w)) => *w as f32,
-                _ => 0.4,
-            };
         // Packet 123: `support_on_build_plate_only` config — when true,
         // contacts whose `to_buildplate` would be `false` are rejected
         // at creation time (no to-model branches). Default `false` to
@@ -260,6 +475,13 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
+        // Packet 224 RC-11: honour the top-Z gap the manifest already declared.
+        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => DEFAULT_TOP_Z_DISTANCE_MM,
+        }
+        .max(0.0);
         Ok(Self {
             enabled,
             support_family,
@@ -276,8 +498,9 @@ impl PrepassModule for SupportPlanner {
             base_raft_layers,
             interface_raft_layers,
             support_interface_top_layers,
-            tree_support_interface_spacing_mm,
+            support_interface_bottom_layers,
             support_on_build_plate_only,
+            support_top_z_distance_mm,
         })
     }
 
@@ -382,28 +605,15 @@ impl PrepassModule for SupportPlanner {
             }
         }
 
-        // ── Packet 118 D11: planner-owned code 1003 warning ─────────────
-        // Read the preserved `support_interface_bottom_layers` config key
-        // and emit exactly one typed diagnostic before the layer loop when
-        // the value is not -1. Packet 116 owns dead-state cleanup and
-        // emits no warning; this packet owns the typed record.
-        let interface_bottom_layers = match _config.get("support_interface_bottom_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => -1,
-        };
-        if interface_bottom_layers != -1 {
-            let _ = output.push_diagnostic(Diagnostic {
-                severity: DiagnosticSeverity::Warn,
-                code: 1003,
-                layer: None,
-                object_id: None,
-                message: format!(
-                    "support-planner interface-bottom-layers: support_interface_bottom_layers \
-                     is not yet implemented (config value={interface_bottom_layers})"
-                ),
-            });
-        }
+        // `support_interface_bottom_layers` is implemented as of packet 224: it
+        // is read in `from_config` into `self.support_interface_bottom_layers`
+        // and drives the `BottomInterface` band (canonical `floor_areas`) where
+        // branches land on the model. `-1` mirrors the top interface count,
+        // matching canonical's `number_of_support_interface_bottom_layers`.
+        //
+        // This site previously emitted a code 1003 "not yet implemented"
+        // warning. That diagnostic is retired because the feature now exists —
+        // leaving it would report a working config key as unsupported.
 
         // ── Packet 118 B4: cross-object merged cap diagnostic ───────────
         // Accumulate drops across all objects on the same global layer so
@@ -485,6 +695,7 @@ impl SupportPlanner {
         // an independent compatibility input for collision avoidance below.
         let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
             vec![Vec::new(); num_layers as usize];
+        let mut fallback_family_emitted = false;
 
         // Per-affected-layer drop count for the code 1001 cap diagnostic.
         // Keyed by global_layer_index so the message carries the right value
@@ -546,7 +757,8 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
-                && candidate_family(candidate, support_analysis) == "tree"
+                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                    == Some("tree")
         }) {
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
@@ -567,7 +779,8 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
-                && candidate_family(candidate, support_analysis) == "tree"
+                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                    == Some("tree")
                 && candidate
                     .geometry
                     .iter()
@@ -590,7 +803,7 @@ impl SupportPlanner {
                 .into_iter()
                 .enumerate()
             {
-                push_contact_with_demand(
+                push_analysis_contact(
                     &mut contacts_by_layer,
                     layer_plan,
                     collision_cache,
@@ -662,6 +875,7 @@ impl SupportPlanner {
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
         let mut active_nodes: Vec<PlannedSupportNode> = Vec::new();
+        let mut roof_band_layers_emitted = 0u32;
 
         // Accumulate entries bottom-up so the plan keeps a deterministic,
         // top-to-bottom layer order in output.
@@ -728,9 +942,78 @@ impl SupportPlanner {
             } else {
                 (&[][..], &[][..])
             };
+            // Host analysis carries the exact per-layer occupancy used by the
+            // closure gate. Prefer it for emission checks when present; the
+            // support-outline cache remains the compatibility fallback.
+            let model_collision: Vec<ExPolygon> = support_analysis
+                .model_occupancy
+                .iter()
+                .filter(|entry| {
+                    entry.object_id == obj.object_id
+                        && entry.global_support_layer_index == current_global_layer_index
+                })
+                .flat_map(|entry| entry.polygons.iter().cloned())
+                .collect();
+            let collision_polys = if model_collision.is_empty() {
+                collision_polys
+            } else {
+                model_collision.as_slice()
+            };
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+            let mut interface_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+            let mut floor_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+
+            // Canonical keeps roof and floor as distinct *areas* carved out of
+            // `base_areas` (`TreeSupport::generate_toolpaths`' area pass), and
+            // fills them at the interface spacing. This classifies each node's
+            // own branch area, which is what the renderer then fills.
+            //
+            // Until packet 224 the interface was instead a set of axis-aligned
+            // scan lines over the node's bounding box, carrying the full branch
+            // diameter as their width — so every scan-line endpoint expanded
+            // into a branch-sized disc and the roof bore no relation to the
+            // branch footprint.
+            let top_n = self.support_interface_top_layers.max(0) as u32;
+            // `-1` mirrors the top interface count, matching canonical's
+            // `number_of_support_interface_bottom_layers` fallback.
+            let bottom_n = if self.support_interface_bottom_layers < 0 {
+                top_n
+            } else {
+                self.support_interface_bottom_layers.max(0) as u32
+            };
+            let node_roles: Vec<InterfaceRole> = active_nodes
+                .iter()
+                .map(|node| {
+                    // Floor: the branch lands on the model rather than the plate.
+                    // The lookup is by *global* layer index; it previously mixed
+                    // in `layer_rev`, the reverse loop counter, and indexed the
+                    // collision cache with it.
+                    let is_floor = bottom_n > 0
+                        && !self.support_on_build_plate_only
+                        && (1..=bottom_n).any(|k| {
+                            cache_idx
+                                .checked_sub(k as usize)
+                                .and_then(|below| collision_cache.get(below))
+                                .is_some_and(|cache| {
+                                    point_in_any_expoly(&cache.collision_polys, node.x, node.y)
+                                })
+                        });
+                    // Roof: the top `top_n` layers of the column, counting the
+                    // contact layer itself. `dist_to_top` is canonical's
+                    // per-node `support_roof_layers_below` counter. The contact
+                    // layer must remain interface geometry under the model.
+                    let is_roof = top_n > roof_band_layers_emitted && node.dist_to_top < top_n;
+                    if is_floor {
+                        InterfaceRole::Floor
+                    } else if is_roof {
+                        InterfaceRole::Roof
+                    } else {
+                        InterfaceRole::Body
+                    }
+                })
+                .collect();
             let mut origin_contacts_emitted = vec![false; active_nodes.len()];
             let mut mst_emitted = vec![false; active_nodes.len()];
             for (a_idx, b_idx, _) in &mst_edges {
@@ -756,9 +1039,17 @@ impl SupportPlanner {
                     effective_height,
                 );
 
-                if body_intersects(collision_polys, na.x, na.y, radius_a)
-                    || body_intersects(collision_polys, nb.x, nb.y, radius_b)
-                {
+                // Interface nodes are allowed to meet the model, but that
+                // exemption is per endpoint. A mixed body/interface edge must
+                // still reject its body endpoint; exempting the whole edge
+                // lets body geometry leak into exact-Z model occupancy.
+                let body_endpoint_collides = (node_roles[*a_idx] == InterfaceRole::Body
+                    && body_intersects(collision_polys, na.x, na.y, radius_a))
+                    || (node_roles[*b_idx] == InterfaceRole::Body
+                        && body_intersects(collision_polys, nb.x, nb.y, radius_b));
+                let segment_collides =
+                    body_segment_intersects(collision_polys, na, nb, radius_a, radius_b);
+                if body_endpoint_collides || segment_collides {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -772,7 +1063,14 @@ impl SupportPlanner {
 
                 let dist_a_mm = na.dist_to_top as f32 * effective_height;
                 let dist_b_mm = nb.dist_to_top as f32 * effective_height;
-                branch_segments.push(vec![
+                InterfaceRole::target_for_edge(
+                    node_roles[*a_idx],
+                    node_roles[*b_idx],
+                    &mut branch_segments,
+                    &mut interface_segments,
+                    &mut floor_segments,
+                )
+                .push(vec![
                     Point3WithWidth {
                         x: na.x,
                         y: na.y,
@@ -810,7 +1108,28 @@ impl SupportPlanner {
                 if node.dist_to_top != 0 || origin_contacts_emitted[i] {
                     continue;
                 }
-                let width = 0.0;
+                // A contact tip used to be emitted with `width = 0.0` and was
+                // then dropped by `structural_body_regions`, so the layer that
+                // meets the overhang produced no printable geometry. It now
+                // carries the tapered radius like any other node.
+                let radius = tapered_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    node.dist_to_top,
+                    effective_height,
+                );
+                if body_intersects(collision_polys, node.x, node.y, radius) {
+                    let _ = output.push_diagnostic(Diagnostic {
+                        severity: DiagnosticSeverity::Warn,
+                        code: 1203,
+                        layer: Some(current_global_layer_index as i32),
+                        object_id: Some(obj.object_id.clone()),
+                        message: "tree contact tip rejected: radius intersects model occupancy"
+                            .to_string(),
+                    });
+                    continue;
+                }
+                let width = radius * 2.0;
                 // Origin contacts are the support tips required to reach the
                 // overhang centroid. They may intentionally lie in model
                 // collision geometry; propagated nodes remain guarded below.
@@ -825,7 +1144,17 @@ impl SupportPlanner {
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
                 };
-                branch_segments.push(vec![point, point]);
+                InterfaceRole::target_for_node(
+                    node_roles[i],
+                    &mut branch_segments,
+                    &mut interface_segments,
+                    &mut floor_segments,
+                )
+                .push(vec![point, point]);
+            }
+
+            if top_n > roof_band_layers_emitted && !interface_segments.is_empty() {
+                roof_band_layers_emitted += 1;
             }
 
             // A surviving lone propagated node (dist_to_top > 0) with no surviving
@@ -857,53 +1186,24 @@ impl SupportPlanner {
                         dist_to_top_mm: dist_mm,
                         overhang_distance_mm: None,
                     };
-                    branch_segments.push(vec![point, point]);
-                }
-            }
-
-            // Top-interface densification (Step 6 AC-4):
-            // Per OrcaSlicer TreeSupport.cpp 1460-1700, the top
-            // `support_interface_top_layers` layers below each branch
-            // contact carry dense rectilinear scan-line fill in addition
-            // to structural branch segments. dist_to_top tracks layers
-            // below the column's contact (0 = contact layer itself); the
-            // interface band is [1 .. top_n] (excludes the contact layer
-            // since the contact is the model boundary).
-            let top_n = self.support_interface_top_layers.max(0) as u32;
-            if top_n > 0 && self.tree_support_interface_spacing_mm > 0.0 {
-                // Alternate scan-line direction by layer parity (X-axis on
-                // even layers, Y-axis on odd) per OrcaSlicer convention.
-                let layer_parity = (current_global_layer_index as i32).rem_euclid(2);
-                for (i, node) in active_nodes.iter().enumerate() {
-                    if drop[i] {
-                        continue;
-                    }
-                    if node.dist_to_top == 0 || node.dist_to_top > top_n {
-                        continue;
-                    }
-                    let radius = tapered_radius(
-                        branch_radius,
-                        tan_diameter_angle,
-                        node.dist_to_top,
-                        effective_height,
-                    );
-                    let bbox_half = radius + self.tree_support_branch_distance * 0.5;
-                    push_interface_scan_lines(
+                    InterfaceRole::target_for_node(
+                        node_roles[i],
                         &mut branch_segments,
-                        node.x,
-                        node.y,
-                        z_current,
-                        bbox_half,
-                        radius * 2.0,
-                        self.tree_support_interface_spacing_mm,
-                        layer_parity,
-                        avoidance_polys,
-                        collision_polys,
-                    );
+                        &mut interface_segments,
+                        &mut floor_segments,
+                    )
+                    .push(vec![point, point]);
                 }
             }
 
-            if !branch_segments.is_empty() {
+            // Emit when *either* structural or interface geometry exists. Gating
+            // on `branch_segments` alone was what collapsed the branch shaft in
+            // an earlier attempt at this split: layers carrying only interface
+            // geometry produced no entry at all.
+            if !branch_segments.is_empty()
+                || !interface_segments.is_empty()
+                || !floor_segments.is_empty()
+            {
                 // Find all regions for this (layer, object) pair.
                 let regions_for_this: Vec<_> = region_segmentation
                     .entries
@@ -914,18 +1214,67 @@ impl SupportPlanner {
                     .flat_map(|e| e.region_ids.iter())
                     .collect();
                 for region_id in regions_for_this {
-                    let support_family = support_analysis
-                        .family_assignments
-                        .iter()
-                        .find(|assignment| {
-                            assignment.object_id == obj.object_id
-                                && assignment.region_id == *region_id
-                        })
-                        .map(|assignment| {
-                            canonical_support_family_alias(Some(&assignment.family_id))
-                        })
-                        .unwrap_or_else(|| "tree".to_string());
+                    // No self-default: a region the host did not assign to this
+                    // family is not this planner's to plan. See `candidate_family`.
+                    let assignments_empty = support_analysis.family_assignments.is_empty();
+                    let Some(support_family) = (if assignments_empty {
+                        Some(canonical_support_family_alias(Some(&self.support_family)))
+                    } else {
+                        support_analysis
+                            .family_assignments
+                            .iter()
+                            .find(|assignment| {
+                                assignment.object_id == obj.object_id
+                                    && assignment.region_id == *region_id
+                            })
+                            .map(|assignment| {
+                                canonical_support_family_alias(Some(&assignment.family_id))
+                            })
+                    }) else {
+                        continue;
+                    };
                     if support_family != "tree" {
+                        continue;
+                    }
+                    fallback_family_emitted |= assignments_empty;
+                    let model_occupancy: Vec<ExPolygon> = support_analysis
+                        .model_occupancy
+                        .iter()
+                        .filter(|entry| {
+                            entry.object_id == obj.object_id
+                                && entry.global_support_layer_index == current_global_layer_index
+                                && entry.region_id == *region_id
+                        })
+                        .flat_map(|entry| entry.polygons.iter().cloned())
+                        .collect();
+                    let role_collision = if model_occupancy.is_empty() {
+                        collision_polys
+                    } else {
+                        model_occupancy.as_slice()
+                    };
+                    let mut roles = build_roles(
+                        &branch_segments,
+                        &interface_segments,
+                        &floor_segments,
+                        branch_radius,
+                        role_collision,
+                    );
+                    // Keep the emitted IR subject to the same exact-Z
+                    // occupancy contract as the runtime closure gate. This
+                    // final guard is needed for concave occupancy where a
+                    // preserved clamp position can evade the centerline test.
+                    for role in &mut roles {
+                        role.regions.retain(|region| {
+                            host::clip_polygons(
+                                std::slice::from_ref(region),
+                                role_collision,
+                                ClipOperation::Intersection,
+                            )
+                            .is_empty()
+                        });
+                    }
+                    roles.retain(|role| !role.regions.is_empty());
+                    if roles.is_empty() {
                         continue;
                     }
                     entries_in_order.push(SupportPlanEntry {
@@ -945,13 +1294,12 @@ impl SupportPlanner {
                         // SupportPlanIR stores physical Z in canonical slicer
                         // units (1 unit = 100 nm), not a WIT-specific scale.
                         anchor_z: mm_to_units(z_current),
-                        roles: vec![slicer_ir::SupportPlanRoleRegion {
-                            role: slicer_ir::SupportPlanRole::SupportBody,
-                            regions: structural_body_regions(&branch_segments, branch_radius),
-                        }],
+                        roles,
                         skeleton: Some(slicer_ir::SupportPlanSkeleton {
                             points: branch_segments
                                 .iter()
+                                .chain(interface_segments.iter())
+                                .chain(floor_segments.iter())
                                 .flat_map(|segment| segment.iter())
                                 .map(|point| slicer_ir::Point3 {
                                     x: point.x,
@@ -1025,38 +1373,86 @@ impl SupportPlanner {
                         (node.x, node.y)
                     };
 
-                    // Clamp into avoidance_polys (Step 5 AC-3)
+                    // Push the node out of `avoidance_polys` if it landed inside
+                    // (Step 5 AC-3).
                     let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
 
-                    // Drop nodes whose target lies inside collision_polys
-                    // (AC-N3: code 1002 node-clamped-out typed diagnostic).
-                    // Packet 123: the existing drop is the additive prune
-                    // trigger for `to_buildplate = true` nodes (same
-                    // condition — drop when target in collision_polys).
-                    // `to_buildplate = false` nodes still follow the same
-                    // drop; the new rule is a tightening for the
-                    // `to_buildplate = true` subset, not a relaxation.
-                    if point_in_any_expoly(collision_polys, cx, cy) {
+                    // A branch may only travel `max_move_xy` per layer — that is
+                    // the branch-angle budget. Escaping avoidance is not exempt
+                    // from it: the nearest point outside avoidance can be
+                    // arbitrarily far away, and taking it unconditionally would
+                    // teleport the branch off the overhang it supports. When the
+                    // escape exceeds the budget there is no legal destination,
+                    // so the node is dropped with the typed code 1002
+                    // `node-clamped-out` diagnostic (AC-N3).
+                    let escape_dx = cx - node.x;
+                    let escape_dy = cy - node.y;
+                    let escape_len = (escape_dx * escape_dx + escape_dy * escape_dy).sqrt();
+                    if escape_len > max_move_xy + 1e-6 {
                         let _ = output.push_diagnostic(Diagnostic {
                             severity: DiagnosticSeverity::Warn,
                             code: 1002,
                             layer: Some(current_global_layer_index as i32),
                             object_id: Some(obj.object_id.clone()),
                             message: format!(
-                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3}) to_buildplate={}",
-                                current_global_layer_index, obj.object_id, cx, cy, node.to_buildplate
+                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3}) escape={:.3}mm budget={:.3}mm to_buildplate={}",
+                                current_global_layer_index,
+                                obj.object_id,
+                                cx,
+                                cy,
+                                escape_len,
+                                max_move_xy,
+                                node.to_buildplate
                             ),
                         });
-                        continue;
-                    }
-
-                    PlannedSupportNode {
-                        x: cx,
-                        y: cy,
-                        // dist_to_top increments as we move down
-                        dist_to_top: node.dist_to_top.saturating_add(1),
-                        to_buildplate: node.to_buildplate,
-                        demand_ids: node.demand_ids.clone(),
+                        // Preserve the last legal position when the avoidance
+                        // escape is over budget, unless that position is in
+                        // the next layer's occupancy. This prevents orphaned
+                        // lower layers without leaking into exact-Z occupancy.
+                        let next_cache_idx = current_global_layer_index.saturating_sub(1) as usize;
+                        let next_collision = collision_cache
+                            .get(next_cache_idx)
+                            .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+                        let next_model_collision: Vec<ExPolygon> = support_analysis
+                            .model_occupancy
+                            .iter()
+                            .filter(|entry| {
+                                entry.object_id == obj.object_id
+                                    && entry.global_support_layer_index
+                                        == current_global_layer_index.saturating_sub(1)
+                            })
+                            .flat_map(|entry| entry.polygons.iter().cloned())
+                            .collect();
+                        let next_collision = if next_model_collision.is_empty() {
+                            next_collision
+                        } else {
+                            next_model_collision.as_slice()
+                        };
+                        let next_radius = tapered_radius(
+                            branch_radius,
+                            tan_diameter_angle,
+                            node.dist_to_top.saturating_add(1),
+                            effective_height,
+                        );
+                        if body_intersects(next_collision, node.x, node.y, next_radius) {
+                            continue;
+                        }
+                        PlannedSupportNode {
+                            x: node.x,
+                            y: node.y,
+                            dist_to_top: node.dist_to_top.saturating_add(1),
+                            to_buildplate: node.to_buildplate,
+                            demand_ids: node.demand_ids.clone(),
+                        }
+                    } else {
+                        PlannedSupportNode {
+                            x: cx,
+                            y: cy,
+                            // dist_to_top increments as we move down
+                            dist_to_top: node.dist_to_top.saturating_add(1),
+                            to_buildplate: node.to_buildplate,
+                            demand_ids: node.demand_ids.clone(),
+                        }
                     }
                 };
                 next_nodes.push(moved);
@@ -1065,8 +1461,10 @@ impl SupportPlanner {
             active_nodes = next_nodes;
         }
 
-        // Apply per-column Laplacian smoothing (Orca TreeSupport::smooth_nodes port; packet 121).
-        smooth_branches(&mut entries_in_order, 100);
+        // Do not smooth after exact-Z collision validation. `smooth_branches`
+        // translates emitted role polygons, which can move a previously legal
+        // body back into concave model occupancy without another validation
+        // pass.
 
         // ── Packet 118 B4: cap drops are merged into the shared map ──────
         // (Emission happens in run_support_geometry after all objects are
@@ -1078,6 +1476,16 @@ impl SupportPlanner {
             output
                 .push_support_plan_entry(entry)
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
+        }
+        if fallback_family_emitted {
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1004,
+                layer: None,
+                object_id: Some(obj.object_id.clone()),
+                message: "support-planner: no family assignments; using configured support family"
+                    .to_string(),
+            });
         }
         Ok(())
     }
@@ -1143,6 +1551,38 @@ fn candidate_contact_points(polygons: &[ExPolygon]) -> Vec<(f32, f32)> {
     }
 }
 
+/// Lower a flush contact layer by `support_top_z_distance_mm`, measured along
+/// actual layer Z.
+///
+/// `contact_layer` is the layer whose top plane the support would touch with a
+/// zero gap — i.e. the overhang plane. The column must instead stop at the
+/// highest layer whose top plane is at or below `overhang_plane_z - gap`.
+///
+/// The walk is over `LayerPlanViewEntry.z` on purpose. Do **not** reimplement
+/// this as `gap / effective_layer_height`: the host's two producers of that
+/// field disagree (`project_layer_plan_view` takes a max over participating
+/// objects, `build_native_prepass_request` takes the first match), so it is not
+/// a dependable per-layer thickness in the guest view. Dividing by it opened a
+/// 35-layer gap here. `traditional-support-planner::plan_candidate` walks Z for
+/// the same reason.
+fn contact_layer_after_top_gap(
+    layer_plan: &LayerPlanView,
+    contact_layer: usize,
+    support_top_z_distance_mm: f32,
+) -> usize {
+    if support_top_z_distance_mm <= 0.0 || layer_plan.layers.is_empty() {
+        return contact_layer;
+    }
+    let contact_layer = contact_layer.min(layer_plan.layers.len() - 1);
+    let overhang_plane_z = layer_plan.layers[contact_layer].z;
+    let target_top_z = overhang_plane_z - support_top_z_distance_mm;
+    let mut emit_top_layer = contact_layer;
+    while emit_top_layer > 0 && layer_plan.layers[emit_top_layer].z > target_top_z {
+        emit_top_layer -= 1;
+    }
+    emit_top_layer
+}
+
 fn push_contact(
     contacts: &mut [Vec<PlannedSupportNode>],
     layer_plan: &LayerPlanView,
@@ -1153,6 +1593,10 @@ fn push_contact(
     planner: &SupportPlanner,
     dropped: &mut std::collections::BTreeMap<u32, usize>,
 ) {
+    // Name the demand after the layer the contact will actually land on, so
+    // the id stays stable against the gap shift applied below.
+    let target_idx =
+        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
     push_contact_with_demand(
         contacts,
         layer_plan,
@@ -1164,8 +1608,8 @@ fn push_contact(
         dropped,
         format!(
             "mesh-demand-{}-{}",
-            layer_plan.layers[layer_idx].global_layer_index,
-            contacts[layer_idx].len()
+            layer_plan.layers[target_idx].global_layer_index,
+            contacts[target_idx].len()
         ),
     );
 }
@@ -1181,6 +1625,45 @@ fn push_contact_with_demand(
     dropped: &mut std::collections::BTreeMap<u32, usize>,
     demand_id: String,
 ) {
+    // Hold the top Z gap: a contact belongs `support_top_z_distance_mm` BELOW
+    // the overhang that demanded it, not flush against it.
+    let layer_idx =
+        contact_layer_after_top_gap(layer_plan, layer_idx, planner.support_top_z_distance_mm);
+    let global_layer = layer_plan.layers[layer_idx].global_layer_index;
+    let collision = collision_cache
+        .get(global_layer as usize)
+        .map_or(&[][..], |cache| cache.collision_polys.as_slice());
+    let to_buildplate = !point_in_any_expoly(collision, x, y);
+    if planner.support_on_build_plate_only && !to_buildplate {
+        return;
+    }
+    if contacts[layer_idx].len() >= planner.max_branches_per_layer {
+        *dropped.entry(global_layer).or_insert(0) += 1;
+        return;
+    }
+    contacts[layer_idx].push(PlannedSupportNode {
+        x,
+        y,
+        dist_to_top: 0,
+        to_buildplate,
+        demand_ids: vec![demand_id],
+    });
+}
+
+fn push_analysis_contact(
+    contacts: &mut [Vec<PlannedSupportNode>],
+    layer_plan: &LayerPlanView,
+    collision_cache: &[LayerCollisionCache],
+    layer_idx: usize,
+    x: f32,
+    y: f32,
+    planner: &SupportPlanner,
+    dropped: &mut std::collections::BTreeMap<u32, usize>,
+    demand_id: String,
+) {
+    // Analysis candidates already carry the host-selected contact layer.
+    // Applying the gap again moves sampled geometry off its demand layer.
+    let layer_idx = layer_idx.min(layer_plan.layers.len().saturating_sub(1));
     let global_layer = layer_plan.layers[layer_idx].global_layer_index;
     let collision = collision_cache
         .get(global_layer as usize)
@@ -1219,23 +1702,23 @@ fn canonical_support_family(config: &ConfigView) -> String {
 }
 
 fn canonical_support_family_alias(value: Option<&str>) -> String {
-    let value = value.unwrap_or("traditional");
-    if value.starts_with("tree") || value.starts_with("hybrid") {
-        "tree".to_string()
-    } else {
-        "traditional".to_string()
-    }
+    slicer_ir::canonical_support_family(value).to_string()
 }
 
 /// Resolve the canonical support family for a candidate from the host's
-/// per-region family assignments, falling back to the tree planner's own
-/// canonical identity. A tree planner never plans a non-tree candidate, so
-/// the fallback is the fixed `"tree"` identity rather than the config-resolved
-/// global family (which may select the traditional family).
+/// per-region family assignments.
+///
+/// Returns the planner's configured family only when the host supplied no
+/// assignments at all. When assignments exist, an unmatched region remains
+/// unassigned so another family can own it.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
-) -> String {
+    fallback: &str,
+) -> Option<String> {
+    if analysis.family_assignments.is_empty() {
+        return Some(canonical_support_family_alias(Some(fallback)));
+    }
     analysis
         .family_assignments
         .iter()
@@ -1244,7 +1727,6 @@ fn candidate_family(
                 && assignment.region_id == candidate.region_id
         })
         .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
-        .unwrap_or_else(|| "tree".to_string())
 }
 
 /// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
@@ -1348,10 +1830,32 @@ pub fn smooth_branches(
                     };
                     let new_x = (prev.0 + cur.0 + next.0) / 3.0;
                     let new_y = (prev.1 + cur.1 + next.1) / 3.0;
-                    if let Some(skeleton) = entries[column[i]].skeleton.as_mut() {
-                        if let Some(point) = skeleton.points.first_mut() {
-                            point.x = new_x;
-                            point.y = new_y;
+                    // Move the printed geometry with the skeleton. Smoothing
+                    // used to mutate `skeleton.points[0]` only — a field no
+                    // renderer reads — so it changed nothing that gets printed.
+                    let dx = new_x - cur.0;
+                    let dy = new_y - cur.1;
+                    let entry = &mut entries[column[i]];
+                    if let Some(skeleton) = entry.skeleton.as_mut() {
+                        for point in skeleton.points.iter_mut() {
+                            point.x += dx;
+                            point.y += dy;
+                        }
+                    }
+                    let dx_units = mm_to_units(dx);
+                    let dy_units = mm_to_units(dy);
+                    if dx_units != 0 || dy_units != 0 {
+                        for role in entry.roles.iter_mut() {
+                            for expoly in role.regions.iter_mut() {
+                                for ring in std::iter::once(&mut expoly.contour)
+                                    .chain(expoly.holes.iter_mut())
+                                {
+                                    for point in ring.points.iter_mut() {
+                                        point.x += dx_units;
+                                        point.y += dy_units;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1519,7 +2023,13 @@ pub fn body_overlaps_occupancy(polygons: &[ExPolygon], x: f32, y: f32, radius_mm
         if poly.len() < 3 {
             return false;
         }
-        let (closest, distance) = closest_point_on_polygon(&poly, qx, qy);
+        let (_closest, distance) = closest_point_on_polygon(&poly, qx, qy);
+        // The disc overlaps when its centre is inside the outline, or when the
+        // outline comes within one radius of the centre. A previous fourth
+        // clause asked `point_in_polygon(closest)` — whether the closest point
+        // ON the boundary is inside — which is decided by floating-point
+        // accident at the boundary and answered "overlapping" for a body
+        // arbitrarily far away, rejecting every branch near any occupancy.
         distance <= radius
             || poly.iter().any(|p| {
                 let dx = p[0] - qx;
@@ -1527,12 +2037,52 @@ pub fn body_overlaps_occupancy(polygons: &[ExPolygon], x: f32, y: f32, radius_mm
                 dx * dx + dy * dy <= radius * radius
             })
             || point_in_polygon(&poly, qx, qy)
-            || point_in_polygon(&poly, closest[0], closest[1])
     })
 }
 
 fn body_intersects(polygons: &[ExPolygon], x: f32, y: f32, radius_mm: f32) -> bool {
     body_overlaps_occupancy(polygons, x, y, radius_mm)
+}
+
+/// Check the complete emitted capsule, not just its endpoint discs. A branch
+/// can cross an obstacle between two individually clear endpoints.
+fn body_segment_intersects(
+    polygons: &[ExPolygon],
+    a: &PlannedSupportNode,
+    b: &PlannedSupportNode,
+    radius_a: f32,
+    radius_b: f32,
+) -> bool {
+    let Some(segment) = swept_region(
+        &Point3WithWidth {
+            x: a.x,
+            y: a.y,
+            z: 0.0,
+            width: radius_a * 2.0,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
+        },
+        &Point3WithWidth {
+            x: b.x,
+            y: b.y,
+            z: 0.0,
+            width: radius_b * 2.0,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+            overhang_distance_mm: None,
+        },
+    ) else {
+        return false;
+    };
+    !host::clip_polygons(
+        std::slice::from_ref(&segment),
+        polygons,
+        ClipOperation::Intersection,
+    )
+    .is_empty()
 }
 
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.
@@ -1726,7 +2276,18 @@ fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f3
     if avoidance_polys.is_empty() {
         return (x, y);
     }
-    if point_in_any_expoly(avoidance_polys, x, y) {
+    // `avoidance_polys` is the model outline inflated by `branch_radius +
+    // branch_distance/2` — the region a branch must stay *out* of, matching
+    // canonical tree support's avoidance semantics. A node already outside it
+    // is safe and must be left where it is; only a node inside is pushed out to
+    // the nearest boundary point.
+    //
+    // This guard was inverted before packet 224: it returned early for nodes
+    // *inside* avoidance and snapped every node *outside* it onto the boundary,
+    // so branches descending through open space were dragged into the model
+    // each layer instead of descending freely, and died a few layers below
+    // their contact.
+    if !point_in_any_expoly(avoidance_polys, x, y) {
         return (x, y);
     }
     let mut best_dist = f32::INFINITY;
@@ -1788,91 +2349,33 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
     [p0[0] + tt * dx, p0[1] + tt * dy]
 }
 
-/// Append rectilinear scan-line dense interface fill segments around a node.
-///
-/// Generates parallel scan-lines at `spacing` apart spanning the bounding box
-/// `[cx ± half, cy ± half]`. Layer parity selects scan direction (X-aligned
-/// on even layers, Y-aligned on odd) — matches OrcaSlicer's alternating fill
-/// convention from `TreeSupport.cpp` 1460–1700.
-///
-/// When `avoidance_polys` is non-empty, each scan-line is emitted only if both
-/// endpoints lie inside the avoidance union; otherwise the line is skipped.
-/// This is a coarse clip (no per-edge intersection) — sufficient for v1 since
-/// avoidance polys already cover the support footprint with safety margin.
-#[allow(clippy::too_many_arguments)]
-fn push_interface_scan_lines(
-    out: &mut Vec<Vec<Point3WithWidth>>,
-    cx: f32,
-    cy: f32,
-    z: f32,
-    half: f32,
-    width: f32,
-    spacing: f32,
-    parity: i32,
-    avoidance_polys: &[ExPolygon],
-    collision_polys: &[ExPolygon],
-) {
-    if spacing <= 0.0 || half <= 0.0 {
-        return;
-    }
-    let xmin = cx - half;
-    let xmax = cx + half;
-    let ymin = cy - half;
-    let ymax = cy + half;
-    let n = ((half * 2.0) / spacing).max(1.0).ceil() as i32;
-    for k in 0..=n {
-        let t = (k as f32) * spacing;
-        if t > half * 2.0 + 1e-6 {
-            break;
-        }
-        let (p1x, p1y, p2x, p2y) = if parity == 0 {
-            // X-aligned line at varying y
-            let y = ymin + t;
-            (xmin, y, xmax, y)
-        } else {
-            let x = xmin + t;
-            (x, ymin, x, ymax)
-        };
-        if !avoidance_polys.is_empty()
-            && (!point_in_any_expoly(avoidance_polys, p1x, p1y)
-                || !point_in_any_expoly(avoidance_polys, p2x, p2y))
-        {
-            continue;
-        }
-        if !collision_polys.is_empty()
-            && (point_in_any_expoly(collision_polys, p1x, p1y)
-                || point_in_any_expoly(collision_polys, p2x, p2y))
-        {
-            continue;
-        }
-        out.push(vec![
-            Point3WithWidth {
-                x: p1x,
-                y: p1y,
-                z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            },
-            Point3WithWidth {
-                x: p2x,
-                y: p2y,
-                z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            },
-        ]);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Assign every region of `object_id` to the tree family.
+    ///
+    /// `PrePass::SupportAnalysis` is the single authority for a region's
+    /// family. The planner no longer falls back to its own identity when an
+    /// assignment is missing, because that fallback let it publish a full plan
+    /// for regions region routing had assigned to the traditional family.
+    /// `RegionSegmentationView::region_support_configs` is marshalled by the
+    /// host but read by neither planner, so it cannot stand in for this.
+    fn tree_analysis(object_id: &str, region_ids: &[&str]) -> SupportAnalysisView {
+        SupportAnalysisView {
+            family_assignments: region_ids
+                .iter()
+                .map(
+                    |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
+                        object_id: object_id.to_string(),
+                        region_id: region_id.to_string(),
+                        family_id: "tree".to_string(),
+                    },
+                )
+                .collect(),
+            ..Default::default()
+        }
+    }
 
     fn default_planner() -> SupportPlanner {
         SupportPlanner {
@@ -1891,8 +2394,9 @@ mod tests {
             base_raft_layers: 1,
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
-            tree_support_interface_spacing_mm: 0.4,
+            support_interface_bottom_layers: -1,
             support_on_build_plate_only: false,
+            support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
         }
     }
 
@@ -1974,7 +2478,15 @@ mod tests {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("plate", &["0", "1"]),
+                &sg,
+                &mut output,
+                &ConfigView::default(),
+            )
             .unwrap();
         assert!(
             output.entries().is_empty(),
@@ -2036,7 +2548,15 @@ mod tests {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("plate", &["0", "1"]),
+                &sg,
+                &mut output,
+                &ConfigView::default(),
+            )
             .unwrap();
         assert!(
             !output.entries().is_empty(),
@@ -2071,16 +2591,30 @@ mod tests {
             triangles,
             paint_layers: vec![],
         };
-        let planner = default_planner();
+        // This test is about tip *emission* on the contact's own layer, not
+        // about the top-Z gap, so pin the gap to zero and keep the authored
+        // fixture coordinates (layer 8, z = 1.8mm) exactly as-is. Packet 224
+        // RC-11 gave `SupportPlanner` a default gap of
+        // `DEFAULT_TOP_Z_DISTANCE_MM`; RC-11's own coverage lives in
+        // `tests/orca_parity_tdd.rs::top_z_distance_lowers_the_tree_contact_layer`.
+        let planner = SupportPlanner {
+            support_top_z_distance_mm: 0.0,
+            ..default_planner()
+        };
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("lone-contact", 10);
+        // Model occupancy placed clear of the contact centroid (~2.67, 1.33).
+        // It used to span the whole plane, which put the contact *inside* the
+        // model; a zero-width tip contributed no body geometry so nothing
+        // noticed, but now that tips carry real area they are collision-checked
+        // like any other node and such a contact is correctly rejected.
         let collision_box = ExPolygon {
             contour: Polygon {
                 points: vec![
-                    Point2::from_mm(-10.0, -10.0),
-                    Point2::from_mm(14.0, -10.0),
+                    Point2::from_mm(8.0, 8.0),
+                    Point2::from_mm(14.0, 8.0),
                     Point2::from_mm(14.0, 14.0),
-                    Point2::from_mm(-10.0, 14.0),
+                    Point2::from_mm(8.0, 14.0),
                 ],
             },
             holes: vec![],
@@ -2097,14 +2631,39 @@ mod tests {
         };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("lone-contact", &["0", "1"]),
+                &sg,
+                &mut output,
+                &ConfigView::default(),
+            )
             .unwrap();
 
         let origin_entry = output
             .entries()
             .iter()
             .find(|entry| entry.global_layer_index == 8)
-            .expect("lone fresh contact must emit on its origin layer");
+            .unwrap_or_else(|| {
+                panic!(
+                    "lone fresh contact must emit on its origin layer; got layers {:?} diags {:?}",
+                    output
+                        .entries()
+                        .iter()
+                        .map(|e| (
+                            e.global_layer_index,
+                            e.roles.iter().map(|r| r.role).collect::<Vec<_>>()
+                        ))
+                        .collect::<Vec<_>>(),
+                    output
+                        .diagnostics()
+                        .iter()
+                        .map(|d| (d.code, d.layer, d.message.clone()))
+                        .collect::<Vec<_>>()
+                )
+            });
         let segment = &origin_entry.skeleton.as_ref().unwrap().points;
         assert_eq!(segment.len(), 2);
         assert_eq!(segment[0].x, segment[1].x);
@@ -2137,7 +2696,15 @@ mod tests {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("plate", &["0", "1"]),
+                &sg,
+                &mut output,
+                &ConfigView::default(),
+            )
             .unwrap();
 
         let mut distances_by_layer = std::collections::BTreeMap::<u32, Vec<u32>>::new();
@@ -2192,6 +2759,39 @@ mod tests {
                 child_distances
             );
         }
+    }
+
+    #[test]
+    fn body_clear_of_occupancy_does_not_overlap() {
+        // `body_overlaps_occupancy` ended with
+        // `point_in_polygon(&poly, closest[0], closest[1])` — asking whether the
+        // closest point ON the boundary is inside the polygon, which is true or
+        // false by floating-point accident and carries no information. It made
+        // the predicate answer "overlaps" for a node arbitrarily far away, so
+        // every branch body near any model occupancy was rejected.
+        let box_far = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(8.0, 8.0),
+                    Point2::from_mm(14.0, 8.0),
+                    Point2::from_mm(14.0, 14.0),
+                    Point2::from_mm(8.0, 14.0),
+                ],
+            },
+            holes: vec![],
+        };
+        assert!(
+            !body_overlaps_occupancy(&[box_far.clone()], 2.67, 1.33, 2.5),
+            "a body 8 mm clear of occupancy must not be reported as overlapping"
+        );
+        assert!(
+            body_overlaps_occupancy(&[box_far.clone()], 11.0, 11.0, 2.5),
+            "a body inside occupancy must overlap"
+        );
+        assert!(
+            body_overlaps_occupancy(&[box_far], 6.0, 11.0, 2.5),
+            "a body whose radius reaches occupancy must overlap"
+        );
     }
 
     #[test]

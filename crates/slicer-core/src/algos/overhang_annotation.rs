@@ -159,6 +159,89 @@ pub fn annotate_overhangs(
     (bands_map, prev_map)
 }
 
+/// Angle-thresholded support-contact detection, the support-generation sibling
+/// of [`annotate_overhangs`].
+///
+/// The two functions diff the same consecutive slices but answer different
+/// questions and mirror **different** canonical functions, so neither may be
+/// substituted for the other:
+///
+/// - [`annotate_overhangs`] mirrors `detect_overhangs_for_lift`
+///   (`PrintObject.cpp`) and partitions *all* unsupported area into fixed
+///   `line_width`-multiple distance bands, for lift and speed classification.
+/// - This function mirrors `detect_overhangs` (`SupportMaterial.cpp`) and
+///   returns only the area steep enough to *require support*, by growing the
+///   lower layer outward by an angle-derived offset before the difference:
+///   `diff(current, expand(previous, lower_layer_height / tan(threshold)))`.
+///
+/// Because the lower layer is grown before subtracting, the result is always a
+/// subset of the plain unsupported area — the shallower the threshold angle,
+/// the more area counts as self-supporting and drops out.
+///
+/// # Parameters
+/// - `layer_footprints`: one entry per layer ordered by increasing Z, each
+///   `(layer_index, layer_height_mm, footprint)`. Consecutive entries must be
+///   physically adjacent layers so the difference is meaningful. Canonical
+///   scales the offset by the **lower** layer's height, so entry `i` uses
+///   `layer_footprints[i - 1]`'s height. The first entry has no predecessor and
+///   is therefore never a support contact.
+/// - `threshold_angle_deg`: the support threshold angle in degrees. `0` means
+///   "support every unsupported region" and degenerates to a plain difference,
+///   matching canonical's zero-offset case; without that special case the
+///   `tan` would be zero and the offset would diverge.
+///
+/// # Returns
+///
+/// A map from layer index to that layer's support-contact polygons. **Layers
+/// with no contact have their key absent**, matching this module's
+/// "Empty-layer semantics".
+pub fn detect_support_overhangs(
+    layer_footprints: &[(u32, f32, Vec<ExPolygon>)],
+    threshold_angle_deg: f32,
+) -> HashMap<u32, Vec<ExPolygon>> {
+    if layer_footprints.len() < 2 {
+        return HashMap::new();
+    }
+
+    // Same parallel-sweep reasoning as `annotate_overhangs`: iteration `i` reads
+    // only entries `i - 1` and `i`, contributes exactly one keyed entry, and
+    // calls only pure Clipper2 wrappers, so the collected map is independent of
+    // completion order.
+    (1..layer_footprints.len())
+        .into_par_iter()
+        .filter_map(|i| {
+            let (_, lower_layer_height_mm, previous) = &layer_footprints[i - 1];
+            let (layer_index, _, current) = &layer_footprints[i];
+
+            if current.is_empty() {
+                return None;
+            }
+
+            // Canonical `detect_overhangs` grows the lower layer by
+            // `lower_layer.height / tan(threshold_rad)` before differencing; a
+            // threshold of 0 is the documented plain-`diff` case.
+            let contacts = if threshold_angle_deg <= 0.0 {
+                difference_ex(current, previous)
+            } else {
+                let tan_threshold = threshold_angle_deg.to_radians().tan();
+                let lower_layer_offset_mm = lower_layer_height_mm / tan_threshold;
+                let grown = offset(
+                    previous,
+                    lower_layer_offset_mm,
+                    OffsetJoinType::Miter,
+                    OFFSET_ARC_TOLERANCE_MM,
+                );
+                difference_ex(current, &grown)
+            };
+
+            if contacts.is_empty() {
+                return None;
+            }
+            Some((*layer_index, contacts))
+        })
+        .collect()
+}
+
 /// Partitions `overhang_area` (already `current \ previous`) into the 4
 /// quartile bands, measuring distance outward from `previous`'s boundary.
 ///

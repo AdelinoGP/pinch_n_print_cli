@@ -1875,6 +1875,35 @@ pub enum SupportType {
     Tree,
 }
 
+/// Canonical support-family identifier for the tree family.
+pub const SUPPORT_FAMILY_TREE: &str = "tree";
+/// Canonical support-family identifier for the traditional family.
+pub const SUPPORT_FAMILY_TRADITIONAL: &str = "traditional";
+
+/// Map a raw support-family or `support_type` value onto the canonical family
+/// vocabulary shared by the host scheduler, both family planners, and both
+/// family renderers.
+///
+/// This is the single source of truth for the alias table. It lives in
+/// `slicer-ir` because that crate is a dependency of both the host scheduler
+/// and every guest module — the same table was previously copy-pasted into
+/// `slicer-scheduler` and both planner crates, where the three copies were
+/// free to drift.
+///
+/// Accepted spellings follow OrcaSlicer's `support_type`: `tree(auto)` /
+/// `tree(manual)` and the legacy `hybrid(auto)` select the tree family;
+/// `normal(auto)` / `normal(manual)` and `classic*` select the traditional
+/// family. `None` and every unrecognised value fall back to traditional, which
+/// is also the historical default.
+pub fn canonical_support_family(value: Option<&str>) -> &'static str {
+    match value {
+        Some(value) if value.starts_with("tree") || value.starts_with("hybrid") => {
+            SUPPORT_FAMILY_TREE
+        }
+        _ => SUPPORT_FAMILY_TRADITIONAL,
+    }
+}
+
 /// A segment of a material boundary transition on a wall polygon.
 ///
 /// Each segment records the point range (half-open `[start, end)`) on the

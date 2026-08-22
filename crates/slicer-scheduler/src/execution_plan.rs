@@ -267,16 +267,7 @@ pub fn select_support_family(
     support_family: Option<&str>,
     support_type: Option<&str>,
 ) -> &'static str {
-    let value = support_type.or(support_family).unwrap_or("traditional");
-    if value.starts_with("tree") || value.starts_with("hybrid") {
-        "tree"
-    } else if value.starts_with("normal") || value.starts_with("classic") {
-        "traditional"
-    } else if value == "tree" {
-        "tree"
-    } else {
-        "traditional"
-    }
+    slicer_ir::canonical_support_family(support_type.or(support_family))
 }
 
 /// Returns whether a module may receive an active region under support-family

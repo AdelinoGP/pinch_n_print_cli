@@ -69,7 +69,7 @@ fn from_config_defaults() {
 /// Test 2: from_config reads custom config values.
 #[test]
 fn from_config_custom() {
-    let config = make_config(true, 0.5, 15.0, 80.0, 0.6);
+    let config = make_config(true, 50.0, 15.0, 80.0, 0.6);
     let module = TreeSupport::from_config(&config).unwrap();
     assert!(module.enabled());
     assert!((module.density() - 0.5).abs() < 0.001);
@@ -221,108 +221,32 @@ fn paths_at_correct_z() {
     }
 }
 
-/// Test 9: Branching pattern is present -- paths have varying directions
-/// (not all parallel like traditional support).
+/// The renderer owns branch walls; density is a traditional-support concern.
 #[test]
-fn branching_pattern_present() {
-    // density is interpreted as percent (0..100) post packet 26; 30% on a
-    // 20mm region yields ~25 grid samples and ample branching.
-    let config = make_config(true, 30.0, 0.0, 50.0, 0.4);
-    let module = TreeSupport::from_config(&config).unwrap();
-
-    // Use a large region to get many branches
-    let region = make_square_region(20.0, 0.3);
-    let paint = paint_with_plan("tree");
-    let mut output = SupportOutputBuilder::new();
-
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    let paths = output.support_paths();
-    assert!(
-        paths.len() >= 3,
-        "need at least 3 paths to verify branching, got {}",
-        paths.len()
-    );
-
-    // Compute angles of each path segment
-    let mut angles: Vec<f64> = Vec::new();
-    for path in paths {
-        if path.points.len() >= 2 {
-            let dx = (path.points.last().unwrap().x - path.points[0].x) as f64;
-            let dy = (path.points.last().unwrap().y - path.points[0].y) as f64;
-            if dx.abs() > 0.001 || dy.abs() > 0.001 {
-                angles.push(dy.atan2(dx));
-            }
-        }
-    }
-
-    assert!(
-        angles.len() >= 3,
-        "need at least 3 non-degenerate path angles, got {}",
-        angles.len()
-    );
-
-    // Verify that not all angles are the same -- at least two paths differ by
-    // more than 10 degrees, indicating branching (not parallel lines).
-    let mut has_different_angles = false;
-    'outer: for i in 0..angles.len() {
-        for j in (i + 1)..angles.len() {
-            let diff = (angles[i] - angles[j]).abs();
-            // Normalize to [0, PI]
-            let diff = if diff > std::f64::consts::PI {
-                2.0 * std::f64::consts::PI - diff
-            } else {
-                diff
-            };
-            if diff > 10.0_f64.to_radians() {
-                has_different_angles = true;
-                break 'outer;
-            }
-        }
-    }
-
-    assert!(
-        has_different_angles,
-        "tree support should have varying branch directions, but all angles are similar: {:?}",
-        angles
-    );
-}
-
-/// Test 10: Higher density produces more paths than lower density.
-#[test]
-fn density_affects_coverage() {
-    // density is interpreted as percent (0..100) post packet 26.
-    let config_low = make_config(true, 10.0, 0.0, 50.0, 0.4);
-    let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
-
-    let module_low = TreeSupport::from_config(&config_low).unwrap();
-    let module_high = TreeSupport::from_config(&config_high).unwrap();
-
-    let region_low = make_square_region(10.0, 0.3);
-    let region_high = make_square_region(10.0, 0.3);
-
-    let paint = paint_with_plan("tree");
-    let mut output_low = SupportOutputBuilder::new();
-    let mut output_high = SupportOutputBuilder::new();
-
-    module_low
-        .run_support(0, &[region_low], &paint, &mut output_low, &config_low)
-        .unwrap();
-    module_high
-        .run_support(0, &[region_high], &paint, &mut output_high, &config_high)
-        .unwrap();
-
-    let count_low = output_low.support_paths().len();
-    let count_high = output_high.support_paths().len();
-
-    assert!(
-        count_high > count_low,
-        "higher density should produce more paths: low={}, high={}",
-        count_low,
-        count_high
-    );
+fn tree_support_wall_count() {
+    let render = |wall_count: i64| {
+        let config = ConfigViewBuilder::new()
+            .bool("enable_support", true)
+            .float("support_density", 20.0)
+            .float("support_speed", 50.0)
+            .float("line_width", 0.4)
+            .int("tree_support_wall_count", wall_count)
+            .build();
+        let module = TreeSupport::from_config(&config).unwrap();
+        let region = make_square_region(10.0, 0.3);
+        let paint = paint_with_plan("tree");
+        let mut output = SupportOutputBuilder::new();
+        module
+            .run_support(0, &[region], &paint, &mut output, &config)
+            .unwrap();
+        output
+            .support_paths()
+            .iter()
+            .filter(|path| path.points.len() > 2)
+            .count()
+    };
+    assert_eq!(render(1), 1);
+    assert_eq!(render(3), 3);
 }
 
 /// Test 11: All point widths match the configured line_width.

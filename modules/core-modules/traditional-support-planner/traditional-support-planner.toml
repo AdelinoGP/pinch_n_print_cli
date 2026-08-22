@@ -47,26 +47,29 @@ max     = 10
 display = "Support Interface Bottom Layers"
 group   = "Support"
 
-[config.schema.support_overhang_angle]
+[config.schema.support_object_xy_distance]
 type    = "float"
-default = 45.0
+default = 0.35
 min     = 0.0
-max     = 90.0
-display = "Support Overhang Angle"
+max     = 10.0
+display = "Support/Object XY Distance"
 group   = "Support"
 
 [config.schema.support_top_z_distance_mm]
 type    = "float"
-default = 0.0
+default = 0.2
 min     = 0.0
 max     = 5.0
 display = "Support Top Z Distance"
 group   = "Support"
 
+# `0.0` is the documented "same as the model layer height" sentinel, so the
+# declared range must admit it. A `min` of 0.05 made the declared default
+# illegal and rejected any config that stated the key explicitly.
 [config.schema.support_layer_height_mm]
 type    = "float"
 default = 0.0
-min     = 0.05
+min     = 0.0
 max     = 1.0
 display = "Support Layer Height"
 group   = "Support"

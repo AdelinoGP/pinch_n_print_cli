@@ -221,7 +221,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 // docs/02_ir_schemas.md and docs/01_system_architecture.md §"Layer::Support".
 
 #[test]
-fn default_ineligible_region_generates_zero_support() {
+fn planned_region_renders_regardless_of_eligibility_flag() {
     let config = enabled_config();
     let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
@@ -234,21 +234,17 @@ fn default_ineligible_region_generates_zero_support() {
         .run_support(0, &[region], &paint, &mut output, &config)
         .unwrap();
 
-    assert_eq!(
-        output.support_paths().len(),
-        0,
-        "needs_support=false with no paint must yield zero support paths",
-    );
+    assert!(!output.support_paths().is_empty());
 }
 
 #[test]
-fn default_eligible_region_generates_support() {
+fn blocked_planned_region_generates_zero_support() {
     let config = enabled_config();
     let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
-    let paint = paint_view_with_annotations(0.3, &[]);
+    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportBlocker]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -256,8 +252,8 @@ fn default_eligible_region_generates_support() {
         .unwrap();
 
     assert!(
-        !output.support_paths().is_empty(),
-        "needs_support=true with no paint must yield support paths",
+        output.support_paths().is_empty(),
+        "blocked paint must suppress the planned polygon",
     );
 }
 

@@ -153,6 +153,9 @@ pub use slice_ir::{
     SupportPlanSkeleton,
     SupportRole,
     SupportType,
+    canonical_support_family,
+    SUPPORT_FAMILY_TRADITIONAL,
+    SUPPORT_FAMILY_TREE,
 
     // Surface classification types
     SurfaceClassificationIR,

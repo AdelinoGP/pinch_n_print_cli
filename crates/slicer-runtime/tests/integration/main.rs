@@ -16,11 +16,54 @@ mod anchored_z_span_validation;
 mod anchored_z_validation;
 mod structured_support_identity;
 mod support_disabled_no_output;
+mod support_family_closure;
 mod support_family_routing;
 
 #[test]
 fn support_disabled_no_output() {
     support_disabled_no_output::support_disabled_no_output();
+}
+
+#[test]
+fn fixture_invariants() {
+    support_family_closure::fixture_invariants().expect("SupportTest fixture invariants must hold");
+}
+
+#[test]
+fn family_reaches_region_routing() {
+    support_family_closure::family_reaches_region_routing()
+        .expect("selected support family must reach region routing");
+}
+
+#[test]
+fn invalid_geometry_fails() {
+    support_family_closure::invalid_geometry_fails()
+        .expect("invalid support geometry must be rejected");
+}
+
+#[test]
+fn matched_height_evidence() {
+    support_family_closure::matched_height_evidence().unwrap();
+}
+
+#[test]
+fn differential_evidence() {
+    support_family_closure::differential_evidence().unwrap();
+}
+
+#[test]
+fn final_gcode_roles() {
+    support_family_closure::final_gcode_roles().unwrap();
+}
+
+#[test]
+fn supersedes_packet_213_and_task_329() {
+    support_family_closure::supersedes_packet_213_and_task_329().unwrap();
+}
+
+#[test]
+fn task_163b_disposition() {
+    support_family_closure::task_163b_disposition().unwrap();
 }
 
 #[test]
@@ -111,3 +154,23 @@ mod threemf_transform_tdd;
 mod traditional_support_family;
 mod tree_support_family;
 mod wasm_instance_pool_tdd;
+
+#[test]
+fn support_never_intersects_model_at_exact_z() {
+    support_family_closure::support_never_intersects_model_at_exact_z().unwrap();
+}
+
+#[test]
+fn accepted_demands_terminate_on_plate_or_model() {
+    support_family_closure::accepted_demands_terminate_on_plate_or_model().unwrap();
+}
+
+#[test]
+fn interface_is_topmost_and_carved_out() {
+    support_family_closure::interface_is_topmost_and_carved_out().unwrap();
+}
+
+#[test]
+fn no_overhang_mesh_produces_zero_support() {
+    support_family_closure::no_overhang_mesh_produces_zero_support().unwrap();
+}

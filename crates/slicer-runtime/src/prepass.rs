@@ -772,7 +772,7 @@ pub fn execute_prepass_with_builtins_configured_instr(
         |bb| {
             crate::builtins::support_analysis_producer::commit_support_analysis_builtin(
                 bb,
-                default_resolved_config.support_enabled,
+                default_resolved_config,
             )
             .map_err(|source| PrepassExecutionError::Blackboard {
                 stage_id: "PrePass::SupportAnalysis".to_string(),

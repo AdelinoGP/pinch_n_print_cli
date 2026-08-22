@@ -226,7 +226,7 @@ fn unreachable_buildplate_node_pruned() {
 
 /// AC-4: With `support_on_build_plate_only = true` and a contact whose XY
 /// is INSIDE the object's per-layer footprint, the contact is rejected at
-/// creation time. The footprint at the contact's layer (8) covers the
+/// creation time. The footprint at the effective contact layer (7) covers the
 /// contact centroid (2.25, 2.0); the contact is therefore
 /// `to_buildplate = false` and must NOT be admitted. The test asserts:
 /// the emitted plan is empty (no entry carries the rejected contact's
@@ -270,7 +270,7 @@ fn buildplate_only_rejects_to_model_contacts() {
     let lp = make_layer_plan(10, 0.0, 0.2);
     let rs = make_region_segmentation("ac4", 10);
 
-    // At the contact's layer (8), a large footprint covers the contact
+    // At the effective contact layer (7), a large footprint covers the contact
     // centroid (2.67, 1.33) ⇒ to_buildplate = false after the
     // implementation. Before the implementation, the contact is admitted
     // and the origin tip is emitted on layer 8 (entries non-empty). The
@@ -288,7 +288,7 @@ fn buildplate_only_rejects_to_model_contacts() {
     };
     let sg = SupportGeometryView {
         entries: vec![SupportGeometryViewEntry {
-            global_support_layer_index: 8,
+            global_support_layer_index: 7,
             object_id: "ac4".to_string(),
             region_id: "0".to_string(),
             outlines: vec![covering_box.clone()],

@@ -1224,9 +1224,7 @@ pub fn prepare_prepass_context(
     )
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
 
-    if let Some(layer_plan) = blackboard.layer_plan() {
-        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
-    }
+    crate::layer_executor::promote_global_layers(&mut plan, &blackboard);
 
     let layer_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 

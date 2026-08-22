@@ -72,29 +72,60 @@ fn plan(entries: Vec<SupportPlanEntry>) -> SupportPlanIR {
     }
 }
 
+/// Fixture model for exact-Z occupancy queries: a closed 10 x 10 mm box
+/// spanning z = 50..150 mm.
+///
+/// It used to be a single triangle lying flat at z = 100 mm. A coplanar
+/// triangle has no cross-section at any Z, so `ExactZSupportQuery::occupancy`
+/// was empty for every query and the exact-Z occupancy rejection in
+/// `validate_entry` could never fire. `invalid_body_degraded`'s occupancy case
+/// therefore passed only because the pre-packet-224 `in_routing_cell` rejected
+/// any body straddling an absolute grid line — including a 3-unit body at the
+/// origin. A solid is required for occupancy to be exercised at all.
+///
+/// The solid deliberately starts at z = 50 mm: every other test in this file
+/// anchors at z = 0, where the cross-section is still empty, so their
+/// behaviour is unchanged.
 fn exact_z() -> ExactZQueryService {
+    let corners = [
+        (0.0_f32, 0.0_f32),
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (0.0, 10.0),
+    ];
+    let mut vertices = Vec::new();
+    for z in [50.0_f32, 150.0] {
+        for (x, y) in corners {
+            vertices.push(slicer_ir::Point3 { x, y, z });
+        }
+    }
     ExactZQueryService::new(Arc::new(slicer_ir::MeshIR {
         objects: vec![slicer_ir::ObjectMesh {
             id: "object".into(),
             mesh: slicer_ir::IndexedTriangleSet {
-                vertices: vec![
-                    slicer_ir::Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 100.0,
-                    },
-                    slicer_ir::Point3 {
-                        x: 1.0,
-                        y: 0.0,
-                        z: 100.0,
-                    },
-                    slicer_ir::Point3 {
-                        x: 0.0,
-                        y: 1.0,
-                        z: 100.0,
-                    },
+                vertices,
+                // Winding matches the closed-cube fixture in
+                // `slicer_core::algos::mesh_cross_section`'s own tests. The
+                // slicer needs consistently wound faces to close a loop; an
+                // inconsistently wound box yields an empty cross-section and
+                // silently disables the occupancy check this test relies on.
+                #[rustfmt::skip]
+                indices: vec![
+                    0, 1, 2,  0, 2, 3,
+                    4, 5, 6,  4, 6, 7,
+                    0, 1, 5,  0, 5, 4,
+                    1, 2, 6,  1, 6, 5,
+                    2, 3, 7,  2, 7, 6,
+                    3, 0, 4,  3, 4, 7,
                 ],
-                indices: vec![0, 1, 2],
+            },
+            // `Transform3d::default()` is an all-zeros matrix, not the
+            // identity: it collapses every vertex onto the origin, which is
+            // the second reason this fixture produced no occupancy.
+            transform: slicer_ir::Transform3d {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
             },
             ..slicer_ir::ObjectMesh::default()
         }],
@@ -601,18 +632,64 @@ fn invalid_body_degraded() {
         .iter()
         .any(|d| d.code == 1203 && d.message.contains("invalid-body")));
 
+    // Exact-Z occupancy. `anchor_z` = 1_000_000 units = 100 mm, which cuts the
+    // fixture solid and yields a 10 x 10 mm occupancy square (0..100_000
+    // units). The body sits at 1..2 mm, wholly inside that square, so it
+    // collides. Its extent is 10_000 units, far under ROUTING_CELL_SIZE
+    // (1 << 20), so routing-cell rejection cannot be what drops it.
     let mut occupied = entry(
         "tree",
         "occupied-body",
         "occupied-demand",
         "object",
         1,
-        Some(polygon(-1, -1, 2, 2)),
+        Some(polygon(10_000, 10_000, 20_000, 20_000)),
     );
     occupied.anchor_z = 1_000_000;
-    let (output, diagnostics) = aggregate(vec![plan(vec![occupied])]);
+    let (output, diagnostics) = aggregate(vec![plan(vec![occupied.clone()])]);
     assert!(output.entries.is_empty());
     assert!(diagnostics
         .iter()
         .any(|d| d.code == 1200 && d.message.contains("occupied-demand")));
+
+    // Assert the *reason*, not merely the drop: the structured aggregation
+    // reports why each body was rejected.
+    let exact_z = exact_z();
+    let structured = try_aggregate_support_plans(SupportAggregationInput {
+        plans: vec![plan(vec![occupied])],
+        exact_z: &exact_z,
+    })
+    .expect("structured aggregation");
+    assert!(structured.retained.is_empty());
+    assert_eq!(
+        structured
+            .unmet
+            .iter()
+            .map(|d| d.reason.as_str())
+            .collect::<Vec<_>>(),
+        ["body rejected: exact-Z occupancy"],
+        "occupied body must be dropped for occupancy, not routing-cell: {:?}",
+        structured.unmet
+    );
+
+    // Control: the same body shape at the same Z but clear of the solid's
+    // 0..10 mm footprint is retained. Without this, an unconditional rejection
+    // would satisfy the assertions above.
+    let mut clear = entry(
+        "tree",
+        "clear-body",
+        "clear-demand",
+        "object",
+        2,
+        Some(polygon(200_000, 200_000, 210_000, 210_000)),
+    );
+    clear.anchor_z = 1_000_000;
+    let (output, diagnostics) = aggregate(vec![plan(vec![clear])]);
+    assert_eq!(
+        output.entries.len(),
+        1,
+        "body clear of occupancy must survive: {diagnostics:?}"
+    );
+    assert_eq!(output.entries[0].body_ids, ["clear-body"]);
+    assert!(diagnostics.is_empty());
 }

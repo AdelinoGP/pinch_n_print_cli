@@ -288,10 +288,15 @@ pub fn convert_support_output_with_plan(
         .iter()
         .map(convert_extrusion_path)
         .collect::<Result<_, _>>()?;
-    let interface: Vec<_> = collected
+    // The `is_top_interface` flag must survive: it is the only thing that
+    // distinguishes a roof from a floor downstream, and dropping it collapsed
+    // every interface path onto `SupportRole::TopInterface`, so
+    // `SupportRole::BottomInterface` was never produced in production and the
+    // bottom-interface tool could never be selected.
+    let interface: Vec<(slicer_ir::ExtrusionPath3D, bool)> = collected
         .interface_paths
         .iter()
-        .map(|(p, _)| convert_extrusion_path(p))
+        .map(|(p, is_top)| convert_extrusion_path(p).map(|path| (path, *is_top)))
         .collect::<Result<_, _>>()?;
     let raft: Vec<_> = collected
         .raft_paths
@@ -310,7 +315,11 @@ pub fn convert_support_output_with_plan(
             entries: vec![slicer_ir::SupportEntry {
                 object_id: String::new(),
                 region_id: 0,
-                paths: support.into_iter().chain(interface).chain(raft).collect(),
+                paths: support
+                    .into_iter()
+                    .chain(interface.into_iter().map(|(path, _)| path))
+                    .chain(raft)
+                    .collect(),
                 ..Default::default()
             }],
         });
@@ -326,7 +335,8 @@ pub fn convert_support_output_with_plan(
         body_id: String,
         demand_ids: Vec<String>,
         support: Vec<slicer_ir::ExtrusionPath3D>,
-        interface: Vec<slicer_ir::ExtrusionPath3D>,
+        interface_top: Vec<slicer_ir::ExtrusionPath3D>,
+        interface_bottom: Vec<slicer_ir::ExtrusionPath3D>,
         raft: Vec<slicer_ir::ExtrusionPath3D>,
     }
 
@@ -338,7 +348,8 @@ pub fn convert_support_output_with_plan(
             body_id: String::new(),
             demand_ids: Vec::new(),
             support: Vec::new(),
-            interface: Vec::new(),
+            interface_top: Vec::new(),
+            interface_bottom: Vec::new(),
             raft: Vec::new(),
         }
     }
@@ -359,7 +370,13 @@ pub fn convert_support_output_with_plan(
             "interface",
             interface,
             &collected.interface_path_origins,
-            |r, p| r.interface.push(p),
+            |r, (path, is_top)| {
+                if is_top {
+                    r.interface_top.push(path)
+                } else {
+                    r.interface_bottom.push(path)
+                }
+            },
         )
         .map_err(|e| support_untagged_msg(e, "interface"))?;
 
@@ -397,7 +414,8 @@ pub fn convert_support_output_with_plan(
             }
             let roles = [
                 (slicer_ir::SupportRole::SupportBody, r.support),
-                (slicer_ir::SupportRole::TopInterface, r.interface),
+                (slicer_ir::SupportRole::TopInterface, r.interface_top),
+                (slicer_ir::SupportRole::BottomInterface, r.interface_bottom),
                 (slicer_ir::SupportRole::Raft, r.raft),
             ];
             identities
