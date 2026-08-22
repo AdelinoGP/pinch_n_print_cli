@@ -1200,14 +1200,19 @@ pub fn accepted_demands_terminate_on_plate_or_model() -> Result<(), String> {
 /// Invariant 3: the interface is topmost and is carved OUT of the body.
 ///
 /// Assertions per support column, keyed by `(object_id, region_id)`:
-/// 1. on an interface layer whose column continues below the interface band,
-///    `SupportBody` geometry MUST be present, and it MUST be disjoint from the
-///    interface. Canonical `TreeSupport.cpp::draw_circles` does
-///    `base_areas = diff_ex(base_areas, roofs)`: the roof is carved out of the
-///    body and the remainder is KEPT. Dropping the body wholesale (or layering
-///    the interface additively on top of it, the pre-224 model) both fail here.
-///    This used to `continue` whenever either set was empty, which made the
-///    disjointness check unreachable on a planner that never emits both;
+/// 1. wherever a layer carries BOTH body and interface, the two MUST be
+///    disjoint — canonical `TreeSupport.cpp::draw_circles` does
+///    `base_areas = diff_ex(base_areas, roofs)`, so the interface is carved
+///    OUT of the body and never layered additively on top of it (the pre-224
+///    model). This used to `continue` whenever either set was empty, which
+///    made the disjointness check unreachable on a planner that never emits
+///    both. The first geometry-bearing layer strictly BELOW a contiguous
+///    interface run, on a column that continues below that run, MUST also
+///    carry `SupportBody`: that is where `diff_ex(base_areas, roofs)`
+///    provably leaves a remainder. It is NOT asserted inside the run —
+///    canonical's node dispatch is exclusive, so an all-roof layer has an
+///    empty `base_areas` before the carve even runs (see the in-body
+///    comment);
 /// 2. the topmost geometry-bearing layer of a column carries a `TopInterface`;
 /// 3. no interface layer floats above a gap — an interface layer above the
 ///    column's own bottom must have support geometry on the layer below it.
@@ -1262,18 +1267,58 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
                     {
                         run_bottom -= 1;
                     }
+                    // CANONICAL SCOPE: the body-survival check belongs BELOW
+                    // the interface run, never inside it.
+                    //
+                    // This block used to require `SupportBody` on the
+                    // interface layer itself whenever the column continued
+                    // below the run. Canonical does not guarantee that.
+                    // `draw_circles` (`TreeSupport.cpp`) dispatches each node
+                    // through an EXCLUSIVE if/else-if/else chain —
+                    // `roof_gap_areas` (`distance_to_top < 0`), else
+                    // `roof_1st_layer` (`support_roof_layers_below == 1`), else
+                    // `roof_areas` / `roof_base_areas`
+                    // (`support_roof_layers_below > 1`), else `base_areas` —
+                    // so a node that lands in any roof bucket appends NOTHING
+                    // to `base_areas`. On a layer whose surviving nodes are
+                    // all roof nodes, `base_areas` is already empty when
+                    // `base_areas = diff_ex(base_areas, roofs)` runs: there is
+                    // no remainder to keep. Requiring a body there asserts the
+                    // pre-224 additive model, in which the interface was
+                    // layered on top of a body that was still drawn.
+                    //
+                    // This is the same ruling `54a98e22` applied to the four
+                    // sibling assertions in `orca_parity_tdd` AC-4, tree
+                    // `distributed_contacts`, and traditional
+                    // `contact_area_planning` / `anchored_termination`; this
+                    // site was written before that ruling and was missed by
+                    // its sweep. What canonical DOES guarantee — and what is
+                    // asserted here instead — is that the column keeps
+                    // printing a body BELOW the roof band, which is precisely
+                    // where `diff_ex(base_areas, roofs)` leaves a remainder.
+                    //
+                    // NOT the F-3 gate. `54a98e22` established that
+                    // `tree_family_tdd::anchored_heights_and_termination` is
+                    // the only fixture in either crate producing MIXED
+                    // (body + interface) layers, and it is deliberately kept
+                    // un-narrowed there. Every fixture reached from here is
+                    // uniform, so no `carved.clear()` regression is observable
+                    // in it either way.
                     let continues_below = geometry_layers.iter().any(|&lower| lower < run_bottom);
-                    if continues_below {
-                        // Canonical `TreeSupport.cpp::draw_circles` computes
-                        // `base_areas = diff_ex(base_areas, roofs)` and KEEPS the
-                        // remainder — the roof is carved OUT of the body, it does
-                        // not replace it. A column whose branch continues below
-                        // the interface band therefore still has a body
-                        // cross-section on the interface layer.
+                    if continues_below && layer == run_bottom {
+                        let below = geometry_layers
+                            .iter()
+                            .copied()
+                            .filter(|&lower| lower < run_bottom)
+                            .max()
+                            .expect("`continues_below` proves one exists");
+                        let (below_body, _) = layers
+                            .get(&below)
+                            .expect("`geometry_layers` is derived from `layers`");
                         interface_layers_checked += 1;
-                        if body.is_empty() {
+                        if below_body.is_empty() {
                             return Err(format!(
-                                "{model_rel} [{hazard}] {family}: layer {layer} of column obj={object_id} region={region_id} carries interface geometry but NO SupportBody, while the column continues below the interface band (run bottom={run_bottom}, geometry layers={geometry_layers:?}). Canonical carves the roof out of the body and keeps the remainder; discarding the body leaves the branch cross-section unprinted."
+                                "{model_rel} [{hazard}] {family}: layer {below} of column obj={object_id} region={region_id} is the first layer BELOW the interface run ending at {run_bottom} and carries no SupportBody, though it carries geometry. Canonical `draw_circles` carves the roof out of the body (`base_areas = diff_ex(base_areas, roofs)`) and keeps the remainder; below the roof band the body is the only thing left to print."
                             ));
                         }
                     }
@@ -1355,7 +1400,7 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
     }
     if interface_layers_checked == 0 {
         return Err(
-            "no interface-bearing layer had a column continuing below it, on any invariant model for either family; the body-survives-the-carve check (canonical `draw_circles`' `base_areas = diff_ex(base_areas, roofs)`) was vacuous"
+            "no interface run had a geometry-bearing layer below it, on any invariant model for either family; the body-survives-the-carve check (canonical `draw_circles`' `base_areas = diff_ex(base_areas, roofs)`) was vacuous"
                 .into(),
         );
     }

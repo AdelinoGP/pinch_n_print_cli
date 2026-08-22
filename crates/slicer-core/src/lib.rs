@@ -37,6 +37,11 @@ pub mod polygon_tree;
 pub mod profile;
 #[cfg(feature = "host-algos")]
 pub mod skeletal_trapezoidation;
+/// Outward-only concave-corner smoothing (canonical `smooth_outward`).
+///
+/// Deliberately NOT gated behind `host-algos`: guest WASM support modules
+/// call it from the interface-regularization pass.
+pub mod smooth_outward;
 pub mod stage_io;
 pub mod top_surface_split;
 pub mod triangle_mesh_slicer;
@@ -48,6 +53,9 @@ use slicer_ir::{Point2, Point3, Point3WithWidth};
 pub use aabb_tree::{AabbTree, ClosestPointHit, RayHit};
 pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,
+};
+pub use smooth_outward::{
+    smooth_outward, smooth_outward_ex, smooth_outward_polygon, smooth_outward_polygons,
 };
 pub use stage_io::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,

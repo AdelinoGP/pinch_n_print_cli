@@ -13,5 +13,6 @@ mod raycast_z_down_hit_tdd;
 mod raycast_z_down_invalid_object_tdd;
 mod raycast_z_down_miss_tdd;
 mod raycast_z_down_transformed_object_tdd;
+mod support_cross_family_scope_tdd;
 mod surface_normal_at_oob_tdd;
 mod surface_normal_at_unit_length_tdd;

@@ -48,10 +48,17 @@ fn fixture(
         body_ids: vec!["body-1".into()],
         anchor_layer_index: 0,
         anchor_z: 300,
+        // Deliberately *overlapping* roles: the interface square sits inside
+        // the body square. F-37 wired canonical `generate_interface_layers`'
+        // regularization into the renderer, so the roof is `closing`-expanded
+        // by the minimum island radius and then subtracted from the base
+        // (`intermediate_layer.polygons = diff(intermediate_layer.polygons,
+        // interface)`). The body square is 6 mm (not 4 mm) so the remaining
+        // base ring is still wide enough for two walls plus fill.
         roles: vec![
             SupportPlanRoleRegion {
                 role: SupportPlanRole::SupportBody,
-                regions: vec![square(4.0)],
+                regions: vec![square(6.0)],
             },
             SupportPlanRoleRegion {
                 role: SupportPlanRole::TopInterface,

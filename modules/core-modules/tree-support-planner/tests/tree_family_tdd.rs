@@ -401,21 +401,48 @@ fn distributed_contacts() {
         .map(|entry| entry.global_layer_index)
         .max()
         .expect("planner must emit geometry on at least one layer");
+    // Canonical `draw_circles` (`TreeSupport.cpp`) dispatches every node to
+    // EXACTLY ONE bucket -- `roof_gap_areas`, else `roof_1st_layer` when
+    // `support_roof_layers_below == 1`, else `roof_areas`/`roof_base_areas`
+    // when `> 1`, else `base_areas` -- and only afterwards computes
+    // `base_areas = diff_ex(base_areas, roofs)`. On a layer where every
+    // surviving node is a roof node, canonical's `base_areas` is already empty
+    // BEFORE the carve, so canonical prints no body cross-section there either.
+    // The "body survives the carve" invariant therefore holds strictly BELOW
+    // the top-interface band, not on it. The band bottom is derived from the
+    // emitted plan (not from config) so the check tracks whatever band the
+    // planner actually produced.
+    let interface_band_bottom = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty())
+        })
+        .map(|entry| entry.global_layer_index)
+        .min()
+        .unwrap_or(top_geometry_layer);
     for entry in output.entries() {
         assert_eq!(entry.family_id, "tree");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
         assert!(entry.skeleton.as_ref().is_some());
-        if entry.global_layer_index < top_geometry_layer {
-            // Canonical `TreeSupport.cpp::draw_circles` computes
-            // `base_areas = diff_ex(base_areas, roofs)` and keeps the
-            // remainder: only the topmost layer of a column may be roof-only.
-            // The widened `any non-empty role` form passed even when the
-            // planner discarded the body on every interface layer.
+        if entry.global_layer_index < interface_band_bottom {
+            // NOTE on regression scope: this fixture's single contact makes the
+            // roof cover the whole branch on every band layer, so no layer here
+            // is ever mixed and this test cannot gate the F-3 `carved.clear()`
+            // defect. `anchored_heights_and_termination` (below) is that gate.
+            //
+            // Below the roof band no node is a roof node, so canonical's
+            // `base_areas` is non-empty and survives `diff_ex(base_areas,
+            // roofs)` intact. The widened `any non-empty role` form passed even
+            // when the planner discarded the body on every interface layer.
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} is below the top-interface band yet carries no SupportBody geometry. Canonical's `base_areas` is non-empty below the roof band and survives `diff_ex(base_areas, roofs)`, so the layer must still print a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );
@@ -427,13 +454,20 @@ fn distributed_contacts() {
             );
         }
     }
+    // The contact seeded from an analysis candidate follows canonical
+    // `generate_contact_points`: the node lands on `layer_nr - 1` as the
+    // virtual top-Z-gap node (`distance_to_top < 0`), which `draw_circles`
+    // diverts into `roof_gap_areas` and never extrudes. The first layer that
+    // actually draws the contact set is therefore the topmost layer carrying
+    // geometry, not the candidate's own index. Derive it from the plan so the
+    // check tracks the emitted band rather than a pinned layer number.
+    let contact_layer = top_geometry_layer;
     let mut classes = [0_u32; 3];
     for point in output
         .entries()
         .iter()
-        .filter(|entry| entry.global_layer_index == 8)
+        .filter(|entry| entry.global_layer_index == contact_layer)
         .flat_map(|entry| entry.skeleton.as_ref().unwrap().points.iter())
-        .filter(|point| (point.z - 1.8).abs() < 0.001)
     {
         let p = (point.x, point.y);
         let vertices = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)];
@@ -646,14 +680,21 @@ fn radius_aware_collision() {
         .flat_map(|entry| entry.roles.iter())
         .flat_map(|role| role.regions.iter())
     {
-        assert_eq!(body.contour.points.len(), 16);
+        // Vertex count is no longer 16. Packet 224 step 6 (F-33) makes the
+        // emit pass draw canonical `draw_circles`' per-node ellipse, whose
+        // vertex count is `CIRCLE_RESOLUTION` (100 here, 4 above 200 nodes
+        // per layer) before the closing distance-tolerance simplify. Pinning
+        // the count would pin this port's pre-canonical 16-gon capsule; what
+        // this test is actually about is the *radius*, asserted below.
+        let n = body.contour.points.len();
+        assert!(n >= 3, "degenerate emitted region with {n} vertices");
         let center = body
             .contour
             .points
             .iter()
             .map(mm_point)
             .fold((0.0, 0.0), |sum, point| {
-                (sum.0 + point.0 / 16.0, sum.1 + point.1 / 16.0)
+                (sum.0 + point.0 / n as f32, sum.1 + point.1 / n as f32)
             });
         let radii: Vec<f32> = body
             .contour
@@ -662,18 +703,29 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
-        // Floor guards against degenerate/zero-radius bodies. The measured
-        // minimum for the legitimate swept-capsule body between a 0.4 mm
-        // contact tip and a larger propagated node (16-vertex cap) is
-        // 0.3366 mm, so 0.39 (the pre-RC-15 floor) rejects a correct body.
-        // 0.3 was over-corrected: it leaves ~10% of unjustified slack below
-        // the measurement, so a body that had genuinely started collapsing
-        // toward zero radius could still pass. The floor is set just under the
-        // measured value instead, which is the tightest bound the measurement
-        // supports.
+        // Floor guards against degenerate/zero-radius bodies, and is set just
+        // under the measured minimum for this fixture — the tightest bound the
+        // measurement supports.
+        //
+        // This is a **re-measured self-captured baseline, not a canonical
+        // constant**: `local_radius` is the distance from the vertex-average
+        // centroid of a multi-node union body to its nearest vertex, so it
+        // tracks how deep the concave waist between two branch lobes runs, and
+        // is unrelated to `MIN_BRANCH_RADIUS`.
+        //
+        // Commit `3319ad35` (canonical fix to `smooth_nodes` / `draw_circles`)
+        // moved it from 0.34407 mm to 0.23845 mm. Attributed by re-measurement,
+        // reverting one correction at a time: restoring the pre-fix `(1,2,1)/4`
+        // kernel at 3 iterations alone gives 0.26453 mm, dropping canonical's
+        // axis-aligned ellipse guard alone gives 0.28917 mm, and both together
+        // give 0.34368 mm — i.e. the whole move is accounted for by those two
+        // corrections, with no unexplained residue. Straighter chains (100
+        // relaxation passes) and round cross-sections for axis-aligned movers
+        // both narrow the waist; the body itself stays substantial
+        // (~9.87 mm^2 for the tightest layer).
         assert!(
-            local_radius >= 0.33,
-            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.3366 mm)"
+            local_radius >= 0.23,
+            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.23845 mm)"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
@@ -772,16 +824,20 @@ fn anchored_heights_and_termination() {
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
         assert!(entry.skeleton.as_ref().is_some());
         // Canonical subtracts roof and floor areas out of `base_areas` and
-        // KEEPS the remainder (`TreeSupport.cpp::draw_circles`). Only the
-        // topmost layer of a column may end up roof-only; every layer below it
-        // still carries a `SupportBody` cross-section. The widened form (`any
-        // non-empty role`) passed even when the planner cleared the body on
-        // every layer that carried any interface.
+        // KEEPS the remainder (`draw_circles`, `TreeSupport.cpp`). On THIS
+        // fixture the contact area is narrower than the branch, so the roof
+        // never covers the whole cross-section and `diff_ex(base_areas, roofs)`
+        // always leaves a remainder: layers 6 and 5 are mixed (SupportBody +
+        // TopInterface). That makes this the F-3 regression gate -- the
+        // pre-fix `carved.clear()` dropped the body on every roof-carrying
+        // layer and turned this assertion red. Do NOT narrow it to
+        // "below the interface band"; that would exempt exactly the two mixed
+        // layers the gate exists to protect.
         if entry.global_layer_index < top_geometry_layer {
             assert!(
                 entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
                     && !role.regions.is_empty()),
-                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder; on this fixture the roof never covers the whole branch, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
                 entry.global_layer_index,
                 entry.roles
             );
@@ -1091,3 +1147,4 @@ fn non_tree_family_candidates_are_skipped() {
         "tree planner must not emit entries for a traditional-family candidate"
     );
 }
+

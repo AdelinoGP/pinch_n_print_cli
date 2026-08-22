@@ -18,6 +18,7 @@ use slicer_scheduler::execution_plan::{
 };
 
 use crate::blackboard::Blackboard;
+use crate::layer_executor::config_for_region_smallest_chain;
 
 /// Build conservative candidates without propagating support bodies.
 ///
@@ -136,7 +137,8 @@ pub fn commit_support_analysis_builtin(
             // never appear as a `variant_chain` entry -- slicing the modifier
             // volumes here is the only way this stage can see them.
             let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
-            let modifiers = ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
+            let modifiers =
+                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
             // Deterministic order regardless of `SliceIR` ordering; the
             // parallel pass below reads only shared immutable state and
             // `rayon`'s `collect` into a `Vec` preserves this order, so the
@@ -249,24 +251,27 @@ pub fn commit_support_analysis_builtin(
                 )
             });
             for candidate in &ir.candidates {
-                let key = RegionKey {
-                    global_layer_index: candidate.source.global_layer_index,
-                    object_id: candidate.source.object_id.clone(),
-                    region_id: candidate.source.region_id,
-                    variant_chain: Vec::new(),
-                };
                 ir.family_assignments
                     .entry((
                         candidate.source.object_id.clone(),
                         candidate.source.region_id,
                     ))
                     .or_insert_with(|| {
+                        // Must use the same two-stage lookup the executor uses to
+                        // route the region (`backfill_active_region_configs`), or a
+                        // painted region — keyed by a non-empty `variant_chain` —
+                        // goes to the tree planner while being recorded here as
+                        // "traditional" (F-44).
                         region_map
                             .as_deref()
                             .and_then(|map| {
-                                map.entries
-                                    .get(&key)
-                                    .map(|plan| map.config_for_raw(plan.config))
+                                config_for_region_smallest_chain(
+                                    map,
+                                    candidate.source.global_layer_index,
+                                    &candidate.source.object_id,
+                                    candidate.source.region_id,
+                                )
+                                .map(|config| map.config_for_raw(config))
                             })
                             .map(support_family)
                             .unwrap_or_else(|| "traditional".to_string())
@@ -976,6 +981,70 @@ mod tests {
         assert_eq!(assignments[&(String::from("object"), 3)], "tree");
         assert_eq!(assignments[&(String::from("object"), 4)], "traditional");
         assert_eq!(assignments[&(String::from("object"), 5)], "tree");
+    }
+
+    /// F-44: a painted region is keyed in the region map by a **non-empty**
+    /// `variant_chain`, so the exact empty-chain `RegionKey` lookup misses it.
+    /// The executor's `backfill_active_region_configs` routes such a region to
+    /// the tree planner via its smallest-chain fallback; before the fix this
+    /// stage recorded it as "traditional", so the routing decision and the
+    /// recorded `family_assignments` string disagreed.
+    #[test]
+    fn support_analysis_resolves_painted_region_family_via_variant_chain() {
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+        blackboard
+            .commit_layer_plan(Arc::new(LayerPlanIR {
+                global_layers: global_layers(2),
+                ..LayerPlanIR::default()
+            }))
+            .unwrap();
+        blackboard
+            .commit_slice_ir(Arc::new(
+                [(0_u32, 1.0_f32), (1_u32, 2.0_f32)]
+                    .into_iter()
+                    .map(|(global_layer_index, size)| SliceIR {
+                        global_layer_index,
+                        regions: vec![SlicedRegion {
+                            object_id: "object".to_string(),
+                            region_id: 7,
+                            polygons: vec![square(0.0, 0.0, size)],
+                            ..SlicedRegion::default()
+                        }],
+                        ..SliceIR::default()
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .unwrap();
+
+        let mut region_map = RegionMapIR::default();
+        let config_id = region_map.intern_config(ResolvedConfig {
+            support_type: slicer_ir::SupportType::TreeAuto,
+            ..ResolvedConfig::default()
+        });
+        for global_layer_index in 0..=1 {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index,
+                    object_id: "object".to_string(),
+                    region_id: 7,
+                    // Painted: the only entry for this region carries a
+                    // non-empty chain, exactly as RegionMapping emits it.
+                    variant_chain: vec![(
+                        "support_paint".to_string(),
+                        slicer_ir::slice_ir::PaintValue::Flag(true),
+                    )],
+                },
+                RegionPlan {
+                    config: config_id,
+                    ..RegionPlan::default()
+                },
+            );
+        }
+        blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+
+        commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
+        let assignments = &blackboard.support_analysis().unwrap().family_assignments;
+        assert_eq!(assignments[&(String::from("object"), 7)], "tree");
     }
 
     // ---------------------------------------------------------------------

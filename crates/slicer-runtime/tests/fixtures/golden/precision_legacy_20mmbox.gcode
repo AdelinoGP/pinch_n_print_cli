@@ -4171,7 +4171,7 @@ M73 Q100 S0
 ; sparse_fill_holder = rectilinear-infill
 ; support_resolution = 0
 ; support_threshold_angle = 30
-; support_type = Traditional
+; support_type = normal(auto)
 ; top_bottom_infill_wall_overlap = 25%
 ; top_fill_holder = rectilinear-infill
 ; top_shell_layers = 3

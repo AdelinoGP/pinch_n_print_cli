@@ -255,12 +255,16 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         top_interface_layers.contains(&highest),
         "AC-4: the topmost support layer must be interface, not bare body; highest={highest} interface={top_interface_layers:?}"
     );
-    // Interface must be carved out of the body, never printed on top of it —
-    // and the body must SURVIVE the carve. Canonical
-    // `TreeSupport.cpp::draw_circles` computes
-    // `base_areas = diff_ex(base_areas, roofs)` and keeps the remainder, so an
-    // interface layer whose branch continues below the interface band still
-    // carries a `SupportBody` cross-section.
+    // Interface must be carved out of the body, never printed on top of it.
+    //
+    // The body does NOT have to survive on an interface layer: canonical
+    // `draw_circles` (`TreeSupport.cpp`) dispatches each node to exactly one
+    // bucket (`roof_gap_areas` / `roof_1st_layer` / `roof_areas` /
+    // `base_areas`), so on a layer whose surviving nodes are all roof nodes
+    // canonical's `base_areas` is empty BEFORE `base_areas = diff_ex(base_areas,
+    // roofs)` runs. What canonical does guarantee is that the layer immediately
+    // BELOW the interface band -- where no node is a roof node -- still prints a
+    // body cross-section. That is what is asserted here.
     //
     // The previous form of this block iterated `for b in &body { for r in &roof
     // { .. } }`, which never executed: the planner clears the body on any layer
@@ -292,16 +296,6 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
             .iter()
             .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface && !r.regions.is_empty())
             .collect();
-        let continues_below = geometry_layers
-            .iter()
-            .any(|&lower| lower < interface_band_bottom);
-        if continues_below {
-            carve_checks += 1;
-            assert!(
-                !body.is_empty(),
-                "AC-4: layer {layer} carries a TopInterface but no SupportBody, while the column continues below the interface band (band bottom={interface_band_bottom}, geometry layers={geometry_layers:?}). Canonical subtracts the roof out of `base_areas` and KEEPS the remainder; clearing the body leaves the branch cross-section unprinted on that layer."
-            );
-        }
         for b in &body {
             for r in &roof {
                 let overlap = slicer_sdk::host::clip_polygons(
@@ -316,9 +310,37 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
             }
         }
     }
+    // Every layer below the interface band must still print a body: no node
+    // there is a roof node, so canonical's `base_areas` is non-empty and the
+    // `diff_ex(base_areas, roofs)` carve leaves it intact.
+    //
+    // NOTE on regression scope: on THIS fixture the roof covers the entire
+    // branch on both band layers, so no layer here ever carries a roof and a
+    // body at once. This test therefore cannot -- and never could -- gate the
+    // F-3 `carved.clear()` defect; its former "body must survive on a band
+    // layer" form was red under the fixed code too. The F-3 gate is
+    // `tree_family_tdd::anchored_heights_and_termination`, whose fixture has a
+    // contact narrower than the branch and so produces genuinely mixed layers;
+    // it is verified red when `carved.clear()` is reinstated.
+    for &layer in &geometry_layers {
+        if layer >= interface_band_bottom {
+            continue;
+        }
+        let entry = entries
+            .iter()
+            .find(|e| e.global_layer_index == layer)
+            .expect("geometry layer must have an entry");
+        carve_checks += 1;
+        assert!(
+            entry.roles.iter().any(|r| r.role == slicer_ir::SupportPlanRole::SupportBody
+                && !r.regions.is_empty()),
+            "AC-4: layer {layer} lies below the interface band (band bottom={interface_band_bottom}) yet carries no SupportBody. Canonical keeps `base_areas` intact below the roof band; clearing the body leaves the branch cross-section unprinted. Roles: {:?}",
+            entry.roles
+        );
+    }
     assert!(
         carve_checks > 0,
-        "AC-4: no interface layer had a column continuing below it, so the body-survives-the-carve check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
+        "AC-4: no geometry layer sat below the interface band, so the body-below-the-band check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
     );
 }
 
@@ -366,8 +388,8 @@ fn wall_count_scales_max_move_distance() {
 /// synthetic overhang fixture, frozen to detect regressions. They prove
 /// determinism and stability across runs but do **not** prove parity with
 /// OrcaSlicer's reference output. This test was renamed off `orca_parity` in
-/// packet 224 Step 8 (2026-08-20) and regenerated after the RC-15
-/// contact-sampling port.
+/// packet 224 Step 8 (2026-08-20) and reblessed on 2026-08-21 after the
+/// canonical 7-step tree-support re-port.
 ///
 /// To regenerate the goldens after an intentional algorithm change, set
 /// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
@@ -444,7 +466,7 @@ fn benchy_tree_support_regression_tripwire() {
     let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
 
     // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-20 after the RC-15 contact-sampling port (packet 224 Step 3b).\n";
+    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-21 after the packet-224 canonical tree-support re-port (arena contacts, per-part MSTs, canonical branch merge, canonical move pass).\n";
 
     if regen {
         std::fs::create_dir_all(&golden_dir).expect("create golden dir");
@@ -880,7 +902,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
 
 /// Build a single-overhang fixture: an anchor at the origin (so bounds span
 /// z=0..2.0 across ≥10 layers at 0.2mm height) plus a downward-facing quad
-/// plate floating at z=1.8 covering [0..0.2]×[0..0.2]. The two plate triangles
+/// plate floating at z=1.8 covering [0..4]×[0..4]. The two plate triangles
 /// register as overhang facets and seed a contact point near the top of the
 /// layer stack.
 fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
@@ -900,8 +922,9 @@ fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
     }
 }
 
-/// Build the same floating plate as `overhang_plate_fixture`, but with one
-/// downward-facing triangle so its contact propagates as a lone node.
+/// Build the same floating plate as `overhang_plate_fixture`, but shrunk to
+/// [0..0.2]×[0..0.2] and with a single downward-facing triangle, so its
+/// overhang samples to one contact that propagates as a lone node.
 fn single_contact_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],

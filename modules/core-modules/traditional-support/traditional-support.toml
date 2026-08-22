@@ -63,12 +63,26 @@ max     = 2.0
 display = "Line Width"
 group   = "Support"
 
-[config.schema.support_interface_spacing_mm]
+[config.schema.support_interface_spacing]
 type    = "float"
 default = 0.4
-min     = 0.1
+min     = 0.0
 max     = 2.0
 display = "Support Interface Spacing"
+group   = "Support"
+
+[config.schema.support_bottom_interface_spacing]
+type    = "float"
+default = -1.0
+min     = -1.0
+max     = 2.0
+display = "Support Bottom Interface Spacing"
+group   = "Support"
+
+[config.schema.support_style]
+type    = "string"
+default = "default"
+display = "Support Style"
 group   = "Support"
 
 [config.overridable-per-region]

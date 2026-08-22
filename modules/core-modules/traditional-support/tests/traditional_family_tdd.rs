@@ -73,11 +73,19 @@ fn fixture_with_config(
     (config, region, paint)
 }
 
+/// Deliberately *overlapping* roles: the interface square sits inside the body
+/// square. F-37 wired canonical `generate_interface_layers`'
+/// `intermediate_layer.polygons = diff(intermediate_layer.polygons, interface)`
+/// into the renderer, so the body is now filled over the L-shaped remainder
+/// rather than over the whole square. The body square is 6 mm (not 4 mm) so
+/// that remainder still contains a scan line that is not collinear with the
+/// notch edge at the 2 mm body pitch; the interface square must stay at 2 mm
+/// for `interface_spacing_config_controls_scan_fill` to resolve two pitches.
 fn body_and_interface_roles() -> Vec<SupportPlanRoleRegion> {
     vec![
         SupportPlanRoleRegion {
             role: SupportPlanRole::SupportBody,
-            regions: vec![square(4.0)],
+            regions: vec![square(6.0)],
         },
         SupportPlanRoleRegion {
             role: SupportPlanRole::TopInterface,
@@ -144,7 +152,7 @@ fn interface_spacing_config_controls_scan_fill() {
         .float("support_density", 20.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
-        .float("support_interface_spacing_mm", 0.8)
+        .float("support_interface_spacing", 0.8)
         .build();
     let (config, region, paint) =
         fixture_with_config(wide_config, "traditional", body_and_interface_roles());

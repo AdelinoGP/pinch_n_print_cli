@@ -74,8 +74,7 @@ pub fn tree_support_family() {
         .find(|entry| {
             entry.decline_reason.is_none()
                 && entry.roles.iter().any(|role| {
-                    role.role == slicer_ir::SupportPlanRole::SupportBody
-                        && !role.regions.is_empty()
+                    role.role == slicer_ir::SupportPlanRole::SupportBody && !role.regions.is_empty()
                 })
         })
         .expect("tree fixture must contain a structural support-body entry");
