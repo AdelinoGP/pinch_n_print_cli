@@ -34,6 +34,7 @@ fn paint_with_plan(family_id: &str) -> PaintRegionLayerView {
 }
 
 fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let entry = slicer_ir::SupportPlanEntry {
         global_layer_index: layer_index as i32,
         object_id: "obj1".into(),

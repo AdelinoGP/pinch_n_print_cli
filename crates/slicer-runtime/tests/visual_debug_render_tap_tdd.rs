@@ -131,6 +131,7 @@ fn mixed_unit_shared_viewport() {
             geometry: SupportGeometryIR::default(),
             plan: SupportPlanIR {
                 schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 entries: vec![SupportPlanEntry {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
@@ -284,6 +285,7 @@ fn degenerate_support_branch_renders_as_visible_disk() {
             geometry: SupportGeometryIR::default(),
             plan: SupportPlanIR {
                 schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 entries: vec![SupportPlanEntry {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
@@ -345,6 +347,7 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
             geometry: SupportGeometryIR::default(),
             plan: SupportPlanIR {
                 schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 entries: vec![SupportPlanEntry {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),
@@ -411,6 +414,7 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
             geometry: SupportGeometryIR::default(),
             plan: SupportPlanIR {
                 schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 entries: vec![SupportPlanEntry {
                     global_layer_index: 0,
                     object_id: "obj-0".to_string(),

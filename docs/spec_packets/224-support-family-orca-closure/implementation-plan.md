@@ -10,7 +10,7 @@
 - Run `cargo xtask build-guests --check` after editing any `modules/core-modules/*/src/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**`, or `crates/slicer-core/**` path, and rebuild before trusting any measurement. Stale-guest artifacts already caused one recorded false diagnosis (see `design.md` §Root Causes RC-11).
 - `eprintln!` from guest code does not reach the test harness; use `push_diagnostic`.
 - **Never filter the closure suite with the bare token `support_family_closure`.** The closure tests are bare `#[test] fn` wrappers in `crates/slicer-runtime/tests/integration/main.rs` with no module prefix, so that filter matches **zero** tests and reports a green run with everything filtered out. Always name the tests explicitly with `-- <name> ... --exact`.
-- Every canonical feature gap discovered mid-flight is **registered and routed** (`docs/specs/support-parity-gap-register.md`, packets 224a/225/226/227), never implemented here.
+- Every canonical feature gap discovered mid-flight is **registered and routed** (`docs/specs/support-parity-gap-register.md`, unnumbered stubs under `docs/spec_packets/stubs/`), never implemented here.
 
 ## Steps
 
@@ -57,7 +57,7 @@
 - Verification: `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition --exact`; `cargo xtask build-guests --check`.
 - Exit condition: configured interface layer counts are produced by both families and pinned by a test that fails when the keys are ignored.
 
-**Status 2026-08-18 — NOT STARTED.** The measured blocker still stands: PnP normal emits **1** `;TYPE:Support interface` block against Orca's **3** at `support_interface_top_layers = 2` / `support_interface_bottom_layers = 2`.
+**Status 2026-08-20 — DONE (`ee27ac94`).** Interface counts are exact 1/2/3 in both families, pinned by `interface_layer_count_follows_config` through a real `run_slice` plus the `bottom = -1` fallback (session-3 audit: sound, strengthening). The count follows the configured top band; the remaining 2-vs-3 difference against Orca at `top=2`/`bottom=2` is canonical roof/floor band structure, registered as gap G-18.
 
 ### Step 3: Tree density diagnosis (read-only)
 - Task IDs: `TASK-335`
@@ -88,6 +88,8 @@
 - Verification: `cargo test -p tree-support-planner --tests --no-fail-fast`; `cargo test -p tree-support --tests --no-fail-fast`; `cargo xtask build-guests --check`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`.
 - Exit condition: RC-A is fixed once and the five tests it masked are re-run **before** any of them is separately "fixed"; every remaining punch-list item is green or carries a written verdict; binary counts are compared across runs, so no failure is hidden by an early abort.
 
+**Status 2026-08-20 — DONE (`39507cff`, `0629a9b5`, `868508ba`, `ed62090d`; session-3 audit).** RC-A fixed in production with a diagnostic on fallback; RC-B percent/fraction fixed; RC-C left red (golden regenerated in Step 8); RC-D/RC-E carried the audit's verdicts. `tree-support-planner` 8 binaries with only RC-C red; `tree-support` 27/27 (now 26/26 after the Step 7 deletion of the vacuous `enforcer_overrides_needs_support_false`).
+
 ### Step 3b: RC-15 contact-point-sampling port (added 2026-08-18)
 - Task IDs: `TASK-335`
 - Objective: replace `tree-support-planner`'s mesh-overhang-triangle-centroid contact derivation with the 2D, slice-based sampling recorded in `design.md` Root Causes RC-15, so branch density is a function of the support settings rather than of the input file's tessellation.
@@ -101,6 +103,8 @@
 - Context cost: `M`
 - Verification: `cargo test -p tree-support-planner --tests --no-fail-fast`; `cargo xtask build-guests --check`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`; then re-measure the deposited-material and support XY-path-length rows in `design.md` Measured Baseline.
 - Exit condition: contact count is driven by overhang area and `tree_support_branch_distance` rather than by triangle count, the loop-count and footprint fan-out move measurably toward the Orca figures above, and every number was taken after a clean guest check.
+
+**Status 2026-08-20 — DONE (`ad9019ee`).** The three canonical sampling streams (contour corners, arc walk, 22°-rotated interior grid over the whole-object bbox) landed with the collision-gate narrowing reverted (bisect-confirmed: narrowing alone = closure 9/12, sampling alone = 12/12). Closure 12/12; planner crate 8 binaries with only RC-C red after the fixture/config migrations (no assertion weakened; the `radius_aware_collision` floor retarget to 0.3 was human-approved). Re-measured: tree deficit 1.76x → 1.58x deposited (432.85 vs 683.96 mm), 1.949x → 1.75x XY path (13,013.9 vs 22,774.9 mm); `design.md` §Measured Baseline updated.
 
 ### Step 4: Config-key reconciliation (four support modules)
 - Task IDs: `TASK-335`
@@ -149,18 +153,22 @@
 - Verification: `cargo run -q -p pnp-cli --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-tree.json --output target/vd-support-family-tree --overwrite`; the same for the `-normal` request into `target/vd-support-family-normal`; `cargo test -p slicer-runtime --test integration -- fixture_invariants family_reaches_region_routing invalid_geometry_fails matched_height_evidence differential_evidence final_gcode_roles supersedes_packet_213_and_task_329 task_163b_disposition support_never_intersects_model_at_exact_z accepted_demands_terminate_on_plate_or_model interface_is_topmost_and_carved_out no_overhang_mesh_produces_zero_support --exact`.
 - Exit condition: two per-family requests exist and render distinct output, side-by-side Orca renders were inspected, and the checklist records a verdict per axis.
 
+**Status 2026-08-20 — DONE (`8cb60b91`).** Both per-family requests and both Orca G-code requests rendered at matched heights (layers 10/30/79/119/123 = z 2.0..24.8 mm); `matched_height_evidence` passes; `design.md` §Orca Inspection Checklist written with a verdict per axis, each naming its layer and tap. One honest DIVERGENT verdict (traditional interface count 2 vs Orca 3) registered as gap G-18. Request-fixture notes: layer 124 dropped (no support there in three of four files), tree request `filament_lines`-only (skeleton paths carry no width; renderer fails closed), Orca G-code requests carry `gcode_line_width_mm: 0.4`.
+
 ### Step 7: Paperwork — ACs, gap register, packet stubs, docs/07
 - Task IDs: `TASK-335`
 - Objective: amend the acceptance criteria to the delivered gate, create the gap register, stub the follow-on packets, and update implementation status.
 - Precondition: Steps 0-6 landed with their evidence recorded.
-- Postcondition: `packet.spec.md` AC-2/AC-3/AC-6 amended with the amendment recorded verbatim in place (the style used for AC-N2), pointing at the two per-family commands and the inspection-checklist gate, AC-2's fixture path corrected from `tmp/SupportTest.stl` to the authoritative `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl`, and the stale claim about `missing_fixture_is_blocking` corrected to match Step 5's actual deletion; `docs/specs/support-parity-gap-register.md` exists listing every routed gap with its owning packet; stubs exist for **224a** (AGG rasterizer / `support_area_algorithm`), **225** (independent support-layer Z), **226** (base/interface patterns, `support_expansion`, `support_bottom_z_distance`), **227** (raft); `docs/07_implementation_status.md` carries the `TASK-335` row and the follow-on rows.
+- Postcondition: `packet.spec.md` AC-2/AC-3/AC-6 amended with the amendment recorded verbatim in place (the style used for AC-N2), pointing at the two per-family commands and the inspection-checklist gate, AC-2's fixture path corrected from `tmp/SupportTest.stl` to the authoritative `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl`, and the stale claim about `missing_fixture_is_blocking` corrected to match Step 5's actual deletion; `docs/specs/support-parity-gap-register.md` exists listing every routed gap with its owning packet; stubs exist for the AGG rasterizer / `support_area_algorithm`, independent support-layer Z, base/interface patterns + `support_expansion` + `support_bottom_z_distance`, raft, and `needs_support` eligibility classification (unnumbered, under `docs/spec_packets/stubs/` — the previously named 224a/225/226/227 are taken by unrelated packets); `docs/07_implementation_status.md` carries the `TASK-335` row and the follow-on rows.
 - Files allowed to read: `packet.spec.md`; `docs/07_implementation_status.md`; the gap notes produced in Steps 3-4.
 - Files allowed to edit: `docs/spec_packets/224-support-family-orca-closure/packet.spec.md`; `docs/specs/support-parity-gap-register.md`; the four packet stubs; `docs/07_implementation_status.md` (via delegated status worker).
 - Files explicitly out of bounds: all `src/**` and all test files.
 - Expected sub-agent dispatches: Question: update `docs/07_implementation_status.md` rows for `TASK-335` and the follow-on packets; scope: that file; return: `SUMMARY`.
 - Context cost: `S`
-- Verification: `rg -q 'TASK-335' docs/07_implementation_status.md`; `rg -q '224a' docs/specs/support-parity-gap-register.md`; `cargo xtask check-deviations` if any deviation row was filed.
+- Verification: `rg -q 'TASK-335' docs/07_implementation_status.md`; `rg -q 'support-agg-rasterizer' docs/specs/support-parity-gap-register.md`; `cargo xtask check-deviations` if any deviation row was filed.
 - Exit condition: no gap named in this packet is unrouted, and every AC reads as the gate actually delivered.
+
+**Status 2026-08-20 — DONE.** `needs_support` eligibility gap filed (G-17, decision 2) and the vacuous `enforcer_overrides_needs_support_false` deleted from `modules/core-modules/tree-support/tests/enforcer_blocker_tdd.rs` (tree-support 26/26). Gap register updated: G-01 marked implemented, G-17/G-18 added, destinations renamed to the five unnumbered stubs under `docs/spec_packets/stubs/` (human decision: no numbers). Stale status lines corrected in `packet.spec.md` and `implementation-plan.md` (Steps 2/3a/3b/6). `docs/07_implementation_status.md` carries the TASK-335 state note and the five stub rows.
 
 ### Step 8: Close
 - Task IDs: `TASK-335`
@@ -196,7 +204,7 @@ No step is rated `L`.
 - All eleven steps complete with their exit conditions met (Steps 0-8 plus Steps 3a and 3b, added 2026-08-18).
 - **Correctness closure, not canonical completeness.** The packet closes when tree honours `support_top_z_distance_mm`, both families honour the interface layer-count keys, the tree-density root cause is written down and classified, the four support modules' config keys are reconciled, and the closure suite contains no assertion-free test or dead helper.
 - **Parity gate:** structural invariants plus the written `/visual-debug` inspection checklist with side-by-side Orca renders, recorded in `design.md` §Orca Inspection Checklist. No test reads the Orca G-code. Extruding-move counts are not evidence.
-- Every routed gap (base/interface patterns, `support_expansion`, `support_bottom_z_distance`, raft, independent support-layer Z, the AGG rasterizer, and the dead raft/`support_base_pattern` keys) appears in `docs/specs/support-parity-gap-register.md` against packet 224a/225/226/227.
+- Every routed gap (base/interface patterns, `support_expansion`, `support_bottom_z_distance`, raft, independent support-layer Z, the AGG rasterizer, the dead raft/`support_base_pattern` keys, `needs_support` eligibility, and the roof/floor layer-count semantics) appears in `docs/specs/support-parity-gap-register.md` against an owning stub under `docs/spec_packets/stubs/`.
 - `packet.spec.md` AC-2/AC-3/AC-6 amended in place with the amendment recorded verbatim; every remaining AC command returns PASS as written.
 - Benchy golden regenerated **last**, renamed off `orca_parity`, provenance header disclaiming parity.
 - `cargo xtask check-literals`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo xtask test --summary --workspace` (sub-agent, FACT return) all pass.

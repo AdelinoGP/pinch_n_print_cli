@@ -17,6 +17,7 @@ use crate::common::{
 fn support_plan() -> SupportPlanIR {
     SupportPlanIR {
         schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![SupportPlanEntry {
             global_layer_index: 0,
             object_id: "parity-object".to_string(),

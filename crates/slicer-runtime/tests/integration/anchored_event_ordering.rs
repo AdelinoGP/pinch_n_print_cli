@@ -17,6 +17,7 @@ fn event(
     geometry: AnchoredGeometryContract,
     feature: &str,
 ) -> AnchoredEntity {
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     AnchoredEntity {
         local_id,
         anchor_global_layer_index,

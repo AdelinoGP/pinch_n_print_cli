@@ -9,7 +9,7 @@
 ## Problem Statement
 The support defect cannot close on typed captures or self-captured goldens. The decisive model and Orca reference files are present in this checkout, so closure must regenerate and inspect evidence from those fixtures.
 
-**Closure basis (locked 2026-08-18).** This packet closes on **correctness plus honest tests**, not on canonical feature completeness. Every remaining canonical feature gap routes to a named follow-on packet through `docs/specs/support-parity-gap-register.md` (224a AGG rasterizer, 225 independent support-layer Z, 226 base/interface patterns + expansion + bottom-Z, 227 raft). A gap that is registered and routed is not a 224 blocker; an incorrect behaviour or a test that asserts nothing is.
+**Closure basis (locked 2026-08-18).** This packet closes on **correctness plus honest tests**, not on canonical feature completeness. Every remaining canonical feature gap routes to a named follow-on packet through `docs/specs/support-parity-gap-register.md` (unnumbered stubs under `docs/spec_packets/stubs/`: AGG rasterizer, independent support-layer Z, base/interface patterns + expansion + bottom-Z, raft, `needs_support` eligibility). A gap that is registered and routed is not a 224 blocker; an incorrect behaviour or a test that asserts nothing is.
 
 ## In Scope
 - Real-fixture invariants for demand termination, exact-Z collision freedom, routing, overlap rejection, and support-disabled behavior.
@@ -33,7 +33,7 @@ Routed to follow-on packets via `docs/specs/support-parity-gap-register.md`; non
 - `support_bottom_z_distance` (packet 226).
 - Raft geometry and all raft config keys (packet 227).
 - Independent support-layer Z (packet 225). **The original justification is void.** It read: "Orca's `normal` reference emits 205 distinct print Z for a 150-layer print; PnP emits 150." That divergence no longer exists in the evidence: the Orca references were **regenerated on 2026-08-18 with `independent_support_layer_height` disabled**, and both PnP and Orca now emit **150 distinct print Z** (see `design.md` §Measured Baseline). Do not quote the 205 figure. The routing to packet 225 stands on a different and correct basis: independent support-layer Z is a **canonical feature PnP does not have**, not a divergence measurable against the current references. It is out of scope here because implementing an absent feature is not closure work, and because it cannot be gated by the references this packet uses.
-- The `SupportGridPattern` AGG rasterizer and any `support_area_algorithm` key (packet 224a).
+- The `SupportGridPattern` AGG rasterizer and any `support_area_algorithm` key (stub `support-agg-rasterizer`).
 - Raft keys and `support_base_pattern` stay as-is (dead) in the four support modules; they are recorded in the gap register rather than removed or wired.
 - New global scheduler, opaque family schema, or exact Orca path identity.
 - New xtask gates or workspace-wide config-key audits.

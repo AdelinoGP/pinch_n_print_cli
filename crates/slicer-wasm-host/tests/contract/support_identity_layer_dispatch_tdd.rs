@@ -63,6 +63,7 @@ fn support_layer_dispatch_joins_plan_identity() {
     let support_plan = SupportPlanIR {
         schema_version: slicer_ir::CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
         entries: vec![
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
             SupportPlanEntry {
                 global_layer_index: 0,
                 object_id: object_id.clone(),
@@ -78,6 +79,7 @@ fn support_layer_dispatch_joins_plan_identity() {
                 provenance: Vec::new(),
                 decline_reason: None,
             },
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
             SupportPlanEntry {
                 global_layer_index: 0,
                 object_id: object_id.clone(),
@@ -96,6 +98,7 @@ fn support_layer_dispatch_joins_plan_identity() {
         ],
         raft_plan: None,
     };
+    // exhaustive: no Default impl for LayerStageInput; dispatch input fixture pins every projected borrow
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
         paint_regions: None,

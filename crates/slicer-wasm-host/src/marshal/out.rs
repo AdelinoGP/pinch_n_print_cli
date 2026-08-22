@@ -309,19 +309,40 @@ pub fn convert_support_output_with_plan(
         || collected.raft_path_origins.iter().any(Option::is_some);
 
     if !any_tagged {
+        // F-28: previously this branch collapsed support + interface + raft into
+        // ONE entry whose `role` fell through to `SupportRole::default()` ==
+        // `SupportBody`, relabelling interface and raft paths as body and
+        // discarding `is_top`.  Emit one entry per non-empty role bucket over
+        // the same (empty) identity instead, so the untagged path carries the
+        // same role fidelity as the tagged path below.
+        let (interface_top, interface_bottom): (Vec<_>, Vec<_>) =
+            interface.into_iter().partition(|(_, is_top)| *is_top);
+        let buckets = [
+            (slicer_ir::SupportRole::SupportBody, support),
+            (
+                slicer_ir::SupportRole::TopInterface,
+                interface_top.into_iter().map(|(path, _)| path).collect(),
+            ),
+            (
+                slicer_ir::SupportRole::BottomInterface,
+                interface_bottom.into_iter().map(|(path, _)| path).collect(),
+            ),
+            (slicer_ir::SupportRole::Raft, raft),
+        ];
         return Ok(slicer_ir::SupportIR {
             schema_version: slicer_ir::CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: layer_index,
-            entries: vec![slicer_ir::SupportEntry {
-                object_id: String::new(),
-                region_id: 0,
-                paths: support
-                    .into_iter()
-                    .chain(interface.into_iter().map(|(path, _)| path))
-                    .chain(raft)
-                    .collect(),
-                ..Default::default()
-            }],
+            entries: buckets
+                .into_iter()
+                .filter(|(_, paths): &(_, Vec<slicer_ir::ExtrusionPath3D>)| !paths.is_empty())
+                .map(|(role, paths)| slicer_ir::SupportEntry {
+                    object_id: String::new(),
+                    region_id: 0,
+                    role,
+                    paths,
+                    ..Default::default()
+                })
+                .collect(),
         });
     }
 

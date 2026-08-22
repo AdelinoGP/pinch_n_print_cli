@@ -228,8 +228,8 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     if overlay.support_type != d.support_type {
         r.support_type = overlay.support_type;
     }
-    if overlay.support_overhang_angle != d.support_overhang_angle {
-        r.support_overhang_angle = overlay.support_overhang_angle;
+    if overlay.support_threshold_angle != d.support_threshold_angle {
+        r.support_threshold_angle = overlay.support_threshold_angle;
     }
     if overlay.nonplanar_max_angle_deg != d.nonplanar_max_angle_deg {
         r.nonplanar_max_angle_deg = overlay.nonplanar_max_angle_deg;

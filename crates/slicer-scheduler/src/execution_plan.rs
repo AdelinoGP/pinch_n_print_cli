@@ -287,9 +287,10 @@ pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegio
                 ConfigValue::String(value) => Some(value.as_str()),
                 _ => None,
             });
-        // `support_type` remains a compatibility alias. Traditional is the
-        // default enum value, so only an explicit legacy extension or Tree
-        // enum value overrides the canonical family.
+        // `support_type` remains a compatibility alias. `normal(auto)` is the
+        // default enum value, so only an explicit legacy extension or a
+        // non-default enum value overrides the canonical family (see
+        // `SupportType::family_claim`).
         let support_type = region
             .resolved_config
             .extensions
@@ -298,10 +299,7 @@ pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegio
                 ConfigValue::String(value) => Some(value.as_str()),
                 _ => None,
             })
-            .or(match region.resolved_config.support_type {
-                slicer_ir::SupportType::Tree => Some("tree"),
-                slicer_ir::SupportType::Traditional => None,
-            });
+            .or(region.resolved_config.support_type.family_claim());
         let selected = select_support_family(support_family, support_type);
         if family == selected {
             return true;
@@ -393,12 +391,28 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// dedup with no config input and silently selected `arachne-perimeters`
 /// (alphabetically first) with no way for a user's config to express intent,
 /// and `incompatible-with` never fired because dedup runs before
-/// `validate_startup_dag`. The `support-generator` claim: when both
-/// `com.core.traditional-support` and `com.core.tree-support` are
-/// candidates, the winner is resolved by the raw `support_type` config (see
-/// [`support_generator_preferred_module_id`]) — without it, `tree-support`
-/// always lost by alphabetical accident (`traditional` sorts before
-/// `tree`) and OrcaSlicer's support-type dropdown could never select it.
+/// `validate_startup_dag`. The `support-generator` claim (and the
+/// family-scoped half of `support-planner`) is the second exception, but in
+/// the opposite direction: it is **not deduplicated at all**. Packet 221
+/// moved support-family selection from load time to dispatch time, where
+/// [`module_claims_match_active_region`] picks a renderer/planner pair per
+/// region from that region's resolved `support_family` / `support_type`.
+/// Every family candidate must therefore survive this pass; collapsing them
+/// to one winner would make the losing family undispatchable for any region
+/// that selects it.
+///
+/// Consequence: the `support_type` argument threaded through
+/// [`dedup_same_claim_modules_with_wall_generator`] no longer influences this
+/// function's result. It is retained (as `_support_type`) rather than removed
+/// because it is part of a `pub` signature that the production live-loader
+/// `slicer_wasm_host::load_live_modules_for_plan_with_config` calls, and
+/// because the same raw value is what the region-mapping pass later resolves
+/// into `ResolvedConfig`. **There is no support_type-preferred-module branch
+/// here any more — do not add one back.** An earlier revision selected
+/// `com.core.tree-support` over `com.core.traditional-support` here (without
+/// it, `tree-support` lost by alphabetical accident, `traditional` sorting
+/// before `tree`); that selection now lives entirely in
+/// [`select_support_family`] / [`module_claims_match_active_region`].
 ///
 /// Matches docs/04 §2 "Global claim conflicts" (exactly one holder
 /// globally per claim) and docs/10 §Glossary ("Exactly one holder per
@@ -409,8 +423,9 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// tests can exercise the claim dedup path without building a full
 /// `LoadModulesReport`. Behaviour is identical to the private helper with
 /// `wall_generator` and `support_type` absent (`None`), i.e.
-/// [`DEFAULT_WALL_GENERATOR`] (`"classic"`) and the traditional support
-/// holder apply if a claim collision is present. See
+/// [`DEFAULT_WALL_GENERATOR`] (`"classic"`) applies if a
+/// `perimeter-generator` collision is present. `support_type` is inert here
+/// (see above); support claims are never deduplicated. See
 /// [`dedup_same_claim_modules_with_wall_generator`] for the config-aware
 /// entry point the production live-loader uses.
 #[doc(hidden)]
@@ -426,11 +441,15 @@ pub fn dedup_same_claim_modules_for_test(
 /// string value, or `None` if the key is absent), `spiral_vase` (the raw
 /// `config_source.get("spiral_vase")` bool value, or `false` if absent) and
 /// `support_type` (the raw `config_source.get("support_type")` string value,
-/// or `None` if the key is absent) are threaded through to resolve the
-/// `perimeter-generator` and `support-generator` claims. When `spiral_vase`
-/// is `true`, the classic perimeter generator is forced for that claim
-/// regardless of `wall_generator` (Arachne is incompatible with spiral-vase
-/// mode). This is the entry point
+/// or `None` if the key is absent) are threaded through. Only
+/// `wall_generator` / `spiral_vase` affect the outcome, resolving the
+/// `perimeter-generator` claim; when `spiral_vase` is `true`, the classic
+/// perimeter generator is forced for that claim regardless of
+/// `wall_generator` (Arachne is incompatible with spiral-vase mode).
+/// `support_type` is accepted but **unreachable** as a selector: support
+/// claims are not deduplicated post-packet-221 (see
+/// [`dedup_same_claim_modules_for_test`]'s doc comment). This is the entry
+/// point
 /// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
@@ -454,6 +473,12 @@ fn dedup_same_claim_modules(
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
     spiral_vase: bool,
+    // Intentionally unused, and intentionally still in the signature. Support
+    // renderers/planners are selected per region at dispatch time
+    // (`module_claims_match_active_region`), never here — see this module's
+    // `dedup_same_claim_modules_for_test` doc comment. Reading `support_type`
+    // in this function would re-introduce the pre-221 mutual exclusion and
+    // make one support family undispatchable.
     _support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;

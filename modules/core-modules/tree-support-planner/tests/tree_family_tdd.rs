@@ -100,13 +100,48 @@ fn validation_mesh() -> MeshIR {
 }
 
 fn planner_config(enabled: bool) -> ConfigView {
+    planner_config_with_diameter(enabled, 5.0)
+}
+
+fn planner_config_with_angle(branch_angle_deg: f64) -> ConfigView {
+    // Packet 224 step 5 (F-13): canonical `DO_NOT_MOVER_UNDER_MM` is 5 mm for
+    // the non-slim tree styles and 0 for slim. Below that `print_z` a branch is
+    // forbidden to converge on its neighbours at all. This fixture is 2 mm tall
+    // (10 layers at 0.2 mm), so under the default style NEITHER angle can
+    // produce any convergence and the ordering the test asserts is vacuous —
+    // both runs measure zero. Selecting the slim style is the only way to make
+    // the fixture exercise convergence at all; the assertions themselves
+    // (steeper angle converges further, and no layer step exceeds the
+    // per-layer budget) are unchanged.
+    planner_config_full_with(
+        true,
+        5.0,
+        branch_angle_deg,
+        &[("support_style", ConfigValue::String("tree_slim".into()))],
+    )
+}
+
+fn planner_config_with_diameter(enabled: bool, branch_diameter: f64) -> ConfigView {
+    planner_config_full(enabled, branch_diameter, 45.0)
+}
+
+fn planner_config_full(enabled: bool, branch_diameter: f64, branch_angle_deg: f64) -> ConfigView {
+    planner_config_full_with(enabled, branch_diameter, branch_angle_deg, &[])
+}
+
+fn planner_config_full_with(
+    enabled: bool,
+    branch_diameter: f64,
+    branch_angle_deg: f64,
+    extra: &[(&str, ConfigValue)],
+) -> ConfigView {
     let mut values = HashMap::<ConfigKey, ConfigValue>::new();
     values.insert("enable_support".into(), ConfigValue::Bool(enabled));
     values.insert("support_family".into(), ConfigValue::String("tree".into()));
     values.insert("support_raft_layers".into(), ConfigValue::Int(0));
     values.insert(
         "tree_support_branch_diameter".into(),
-        ConfigValue::Float(5.0),
+        ConfigValue::Float(branch_diameter),
     );
     values.insert(
         "tree_support_branch_diameter_angle".into(),
@@ -117,7 +152,13 @@ fn planner_config(enabled: bool) -> ConfigView {
         ConfigValue::Float(1.0),
     );
     values.insert("tree_support_wall_count".into(), ConfigValue::Int(1));
-    values.insert("tree_support_branch_angle".into(), ConfigValue::Float(45.0));
+    values.insert(
+        "tree_support_branch_angle".into(),
+        ConfigValue::Float(branch_angle_deg),
+    );
+    for (key, value) in extra {
+        values.insert((*key).into(), value.clone());
+    }
     ConfigView::from_map(values)
 }
 
@@ -223,6 +264,32 @@ fn run_planner_with_analysis(
     output
 }
 
+fn run_planner_with_analysis_and_diameter(
+    enabled: bool,
+    object: MeshObjectView,
+    analysis: SupportAnalysisView,
+    branch_diameter: f64,
+) -> SupportGeometryOutput {
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_with_diameter(
+        enabled,
+        branch_diameter,
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
 fn mm_point(point: &Point2) -> (f32, f32) {
     (point.x as f32 / 10_000.0, point.y as f32 / 10_000.0)
 }
@@ -275,6 +342,7 @@ fn run_blocked_planner() -> SupportGeometryOutput {
 }
 
 fn declined_entry(reason: SupportPlanDeclineReason) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: "object-a".into(),
@@ -305,7 +373,7 @@ fn distributed_contacts() {
         },
         holes: vec![],
     };
-    let output = run_planner_with_analysis(
+    let output = run_planner_with_analysis_and_diameter(
         true,
         overhang("distributed", 0.0, 0.0, 4.0),
         SupportAnalysisView {
@@ -320,17 +388,44 @@ fn distributed_contacts() {
             }],
             ..Default::default()
         },
+        1.0,
     );
     assert!(
         output.entries().len() >= 2,
         "planner must emit multiple layers"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(entry.family_id, "tree");
         assert!(!entry.demand_ids.is_empty());
         assert!(!entry.body_ids.is_empty());
-        assert!(entry.roles.iter().any(|role| !role.regions.is_empty()));
         assert!(entry.skeleton.as_ref().is_some());
+        if entry.global_layer_index < top_geometry_layer {
+            // Canonical `TreeSupport.cpp::draw_circles` computes
+            // `base_areas = diff_ex(base_areas, roofs)` and keeps the
+            // remainder: only the topmost layer of a column may be roof-only.
+            // The widened `any non-empty role` form passed even when the
+            // planner discarded the body on every interface layer.
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
     }
     let mut classes = [0_u32; 3];
     for point in output
@@ -384,6 +479,138 @@ fn distributed_contacts() {
     );
 }
 
+/// The branch angle must actually reach the planner and must scale the
+/// per-layer lateral move.
+///
+/// Canonical `TreeSupportData::get_max_move_dist` caps a node's XY travel per
+/// layer at `min(tan(branch_angle) * node.height, support_extrusion_width)`, so
+/// a LARGER angle permits a LARGER lateral step and a pair of branches
+/// converges further over the same number of layers.
+///
+/// This is asserted as a relationship between two runs, not against a captured
+/// number: only the ordering is canonical. It also guards F-21 — 19 test call
+/// sites set `support_branch_angle_deg`, a key the planner stopped reading in
+/// commit 4d1848eb, and all 19 set 45.0, which is `DEFAULT_BRANCH_ANGLE_DEG`,
+/// so every one of them passed by coincidence. A test that never varies the
+/// angle cannot notice that the key is dead.
+#[test]
+fn branch_angle_scales_the_per_layer_lateral_move() {
+    fn spread_by_layer(output: &SupportGeometryOutput) -> std::collections::BTreeMap<i32, f32> {
+        let mut bounds: std::collections::BTreeMap<i32, (f32, f32)> =
+            std::collections::BTreeMap::new();
+        for entry in output.entries() {
+            let Some(skeleton) = entry.skeleton.as_ref() else {
+                continue;
+            };
+            for point in &skeleton.points {
+                let slot = bounds
+                    .entry(entry.global_layer_index)
+                    .or_insert((f32::INFINITY, f32::NEG_INFINITY));
+                slot.0 = slot.0.min(point.x);
+                slot.1 = slot.1.max(point.x);
+            }
+        }
+        bounds
+            .into_iter()
+            .map(|(layer, (min_x, max_x))| (layer, max_x - min_x))
+            .collect()
+    }
+
+    fn run_at_angle(angle_deg: f64) -> SupportGeometryOutput {
+        let object = overhang("angle", 0.0, 0.0, 8.0);
+        let planner = tree_support_planner::SupportPlanner::from_config(
+            &planner_config_with_angle(angle_deg),
+        )
+        .expect("from_config");
+        let mut output = SupportGeometryOutput::new();
+        let region = |x0: f32, x1: f32| ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, 0.0),
+                    Point2::from_mm(x1, 0.0),
+                    Point2::from_mm(x1, 2.0),
+                    Point2::from_mm(x0, 2.0),
+                ],
+            },
+            holes: vec![],
+        };
+        planner
+            .run_support_geometry_with_analysis(
+                &[object],
+                &layer_plan(),
+                &regions("angle"),
+                &SupportAnalysisView {
+                    candidates: vec![
+                        SupportAnalysisCandidate {
+                            id: 61,
+                            object_id: "angle".into(),
+                            region_id: "0".into(),
+                            global_layer_index: 8,
+                            z_units: slicer_ir::mm_to_units(1.8),
+                            geometry: vec![region(0.0, 2.0)],
+                            ..Default::default()
+                        },
+                        SupportAnalysisCandidate {
+                            id: 62,
+                            object_id: "angle".into(),
+                            region_id: "0".into(),
+                            global_layer_index: 8,
+                            z_units: slicer_ir::mm_to_units(1.8),
+                            geometry: vec![region(6.0, 8.0)],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                &SupportGeometryView::default(),
+                &mut output,
+                &ConfigView::new(),
+            )
+            .expect("run_support_geometry_with_analysis");
+        output
+    }
+
+    let shallow = run_at_angle(30.0);
+    let steep = run_at_angle(60.0);
+    let shallow_spread = spread_by_layer(&shallow);
+    let steep_spread = spread_by_layer(&steep);
+    assert!(
+        shallow_spread.len() >= 2 && steep_spread.len() >= 2,
+        "both runs must plan multiple layers of skeleton before the angle can be compared; shallow={shallow_spread:?} steep={steep_spread:?}"
+    );
+
+    let convergence = |spread: &std::collections::BTreeMap<i32, f32>| -> f32 {
+        let (_, top) = spread.iter().next_back().expect("non-empty");
+        let (_, bottom) = spread.iter().next().expect("non-empty");
+        top - bottom
+    };
+    let shallow_convergence = convergence(&shallow_spread);
+    let steep_convergence = convergence(&steep_spread);
+    assert!(
+        steep_convergence > shallow_convergence,
+        "a larger branch angle must permit a larger per-layer lateral move (canonical          `get_max_move_dist` = min(tan(angle) * height, extrusion_width)), so branches at 60 deg          must converge further than at 30 deg over the same layers. Got 60deg={steep_convergence}          vs 30deg={shallow_convergence}; spreads 60deg={steep_spread:?} 30deg={shallow_spread:?}"
+    );
+
+    // The cap is an upper bound as well as an ordering: no single layer step may
+    // exceed `tan(angle) * layer_height * wall_count` per node, so the spread
+    // (two nodes closing on each other) may shrink by at most twice that.
+    for (angle_deg, spread) in [(30.0_f32, &shallow_spread), (60.0_f32, &steep_spread)] {
+        let budget = 2.0 * angle_deg.to_radians().tan() * 0.2 * 1.0 + 1e-3;
+        let layers: Vec<(&i32, &f32)> = spread.iter().collect();
+        for pair in layers.windows(2) {
+            let ((lower, below), (upper, above)) = (pair[0], pair[1]);
+            if *upper != *lower + 1 {
+                continue;
+            }
+            assert!(
+                above - below <= budget,
+                "branch closed {} mm of lateral distance between layers {lower} and {upper} at                  {angle_deg} deg, exceeding the canonical per-layer budget {budget} mm                  (tan(angle) * layer_height * wall_count, doubled for two converging nodes)",
+                above - below
+            );
+        }
+    }
+}
+
 #[test]
 fn radius_aware_collision() {
     // Prior defect fixture: a pillar at X -10..0, Y 0..20, Z 0..30,
@@ -435,9 +662,18 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
+        // Floor guards against degenerate/zero-radius bodies. The measured
+        // minimum for the legitimate swept-capsule body between a 0.4 mm
+        // contact tip and a larger propagated node (16-vertex cap) is
+        // 0.3366 mm, so 0.39 (the pre-RC-15 floor) rejects a correct body.
+        // 0.3 was over-corrected: it leaves ~10% of unjustified slack below
+        // the measurement, so a body that had genuinely started collapsing
+        // toward zero radius could still pass. The floor is set just under the
+        // measured value instead, which is the tightest bound the measurement
+        // supports.
         assert!(
-            local_radius >= 0.39,
-            "body lost its local radius: {local_radius}"
+            local_radius >= 0.33,
+            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.3366 mm)"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
@@ -521,6 +757,13 @@ fn anchored_heights_and_termination() {
         lowest_layer, 0,
         "termination must reach the plate-side layer"
     );
+    let top_geometry_layer = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.roles.iter().any(|role| !role.regions.is_empty()))
+        .map(|entry| entry.global_layer_index)
+        .max()
+        .expect("planner must emit geometry on at least one layer");
     for entry in output.entries() {
         assert_eq!(
             entry.anchor_z,
@@ -528,18 +771,27 @@ fn anchored_heights_and_termination() {
         );
         assert_eq!(entry.anchor_layer_index, entry.global_layer_index as u32);
         assert!(entry.skeleton.as_ref().is_some());
-        // Every entry must carry printable geometry under some role. Since
-        // packet 224 that role is not always `SupportBody`: canonical subtracts
-        // roof and floor areas out of `base_areas`, so on a layer inside the
-        // interface band the body can be fully carved away, leaving only
-        // `TopInterface` or `BottomInterface`. Requiring `SupportBody` on every
-        // entry would forbid that, which is why this assertion was widened.
-        assert!(
-            entry.roles.iter().any(|role| !role.regions.is_empty()),
-            "entry at layer {} carries no printable geometry under any role: {:?}",
-            entry.global_layer_index,
-            entry.roles
-        );
+        // Canonical subtracts roof and floor areas out of `base_areas` and
+        // KEEPS the remainder (`TreeSupport.cpp::draw_circles`). Only the
+        // topmost layer of a column may end up roof-only; every layer below it
+        // still carries a `SupportBody` cross-section. The widened form (`any
+        // non-empty role`) passed even when the planner cleared the body on
+        // every layer that carried any interface.
+        if entry.global_layer_index < top_geometry_layer {
+            assert!(
+                entry.roles.iter().any(|role| role.role == SupportPlanRole::SupportBody
+                    && !role.regions.is_empty()),
+                "entry at layer {} carries no SupportBody geometry. Canonical carves roof/floor out of `base_areas` and KEEPS the remainder, so every layer below the top of the column still prints a body cross-section. Roles: {:?}",
+                entry.global_layer_index,
+                entry.roles
+            );
+        } else {
+            assert!(
+                entry.roles.iter().any(|role| !role.regions.is_empty()),
+                "topmost support layer {} carries no printable geometry at all",
+                entry.global_layer_index
+            );
+        }
         let skeleton = entry.skeleton.as_ref().unwrap();
         assert!(!skeleton.points.is_empty());
     }
@@ -638,10 +890,27 @@ fn invalid_body_rejected() {
         10.0,
         radius
     ));
-    assert!(output
-        .diagnostics()
-        .iter()
-        .any(|d| d.code == 1203 && d.message.contains("complete radius")));
+    // The demand must be rejected through a *typed* gate, not silently
+    // dropped. Which gate fires moved with packet 224 defect F-34: the
+    // contact layer is now canonical's virtual top-Z-gap node
+    // (`distance_to_top < 0`), which is drawn into `roof_gap_areas` and never
+    // extruded, so there is no body on that layer left to reject with 1203
+    // "complete radius". The whole overhang sits inside the blocking
+    // occupancy, so the first *real* column layer is instead pushed out by
+    // the avoidance gate and dropped with 1002 `node-clamped-out`. The
+    // safety property this test exists for -- that nothing is clipped into a
+    // filler polygon -- is asserted unconditionally below.
+    assert!(
+        output.diagnostics().iter().any(|d| (d.code == 1203
+            && d.message.contains("complete radius"))
+            || (d.code == 1002 && d.message.contains("node-clamped-out"))),
+        "expected a typed rejection (1203 complete-radius or 1002 node-clamped-out); got {:?}",
+        output
+            .diagnostics()
+            .iter()
+            .map(|d| (d.code, d.message.clone()))
+            .collect::<Vec<_>>()
+    );
     assert!(
         output
             .entries()
@@ -710,6 +979,7 @@ fn invalid_body_rejected() {
         holes: vec![],
     };
     let plan = SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         entries: vec![SupportPlanEntry {
             global_layer_index: 0,
             object_id: "object-a".into(),

@@ -59,7 +59,7 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -69,7 +69,15 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("cap"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("cap"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -128,7 +136,7 @@ fn multi_object_cap_diagnostic_merges_per_layer() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -211,7 +219,7 @@ fn below_cap_emits_no_cap_diagnostic() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -222,7 +230,15 @@ fn below_cap_emits_no_cap_diagnostic() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("nocap"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("nocap"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -263,7 +279,7 @@ fn interface_bottom_layers_is_supported_and_warns_nothing() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -275,7 +291,15 @@ fn interface_bottom_layers_is_supported_and_warns_nothing() {
     // The 1003 diagnostic reads the config at run_support_geometry time,
     // so the same config must be passed in here.
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl"), &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("ibl"),
+            &sg,
+            &mut output,
+            &config,
+        )
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
@@ -311,7 +335,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ),
             ("tree_support_branch_distance", ConfigValue::Float(1.0)),
             ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ]);
         let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -321,7 +345,15 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl-neg"), &sg, &mut output, &config)
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("ibl-neg"),
+                &sg,
+                &mut output,
+                &config,
+            )
             .expect("run_support_geometry");
         let count = output
             .diagnostics()
@@ -349,7 +381,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ),
             ("tree_support_branch_distance", ConfigValue::Float(1.0)),
             ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ]);
         let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -359,7 +391,15 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
         let sg = SupportGeometryView { entries: vec![] };
         let mut output = SupportGeometryOutput::new();
         planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("ibl-absent"), &sg, &mut output, &config)
+            .run_support_geometry_with_analysis(
+                &[obj],
+                &lp,
+                &rs,
+                &tree_analysis("ibl-absent"),
+                &sg,
+                &mut output,
+                &config,
+            )
             .expect("run_support_geometry");
         let count = output
             .diagnostics()
@@ -468,7 +508,8 @@ fn offset_fixture_translate(object_id: &str, n: usize, dx: f32, dy: f32) -> Mesh
 /// Build a mesh that produces N downward-facing overhang triangles.
 /// All triangle centroids sit at z=1.8, so they all funnel into layer 8
 /// (`z = 0.2 * 9 = 1.8`). Each triangle is laid out on a 0.4×0.4 mm grid
-/// tile; the full mesh spans `(0..ceil(sqrt(N))*0.4, 0..ceil(sqrt(N))*0.4)`
+/// tile at a 2.4 mm pitch; the full mesh keeps each tile disjoint so every
+/// tile contributes its own contact bucket.
 /// in XY. Triangles use CW winding from above so their normals point
 /// downward (z < 0), matching OrcaSlicer's `detect_overhangs` threshold.
 fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
@@ -478,15 +519,16 @@ fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
     let mut triangles: Vec<[u32; 3]> = Vec::with_capacity(n);
     let side = ((n as f64).sqrt().ceil() as usize).max(1);
     let tile = 0.4_f32;
+    let pitch = 2.4_f32;
     let overhang_z = 1.8_f32;
     for i in 0..n {
         let gx = (i % side) as f32;
         let gy = (i / side) as f32;
         let base = vertices.len() as u32;
-        vertices.push([gx * tile, gy * tile, overhang_z]);
-        vertices.push([(gx + 1.0) * tile, gy * tile, overhang_z]);
-        vertices.push([(gx + 1.0) * tile, (gy + 1.0) * tile, overhang_z]);
-        vertices.push([gx * tile, (gy + 1.0) * tile, overhang_z]);
+        vertices.push([gx * pitch, gy * pitch, overhang_z]);
+        vertices.push([gx * pitch + tile, gy * pitch, overhang_z]);
+        vertices.push([gx * pitch + tile, gy * pitch + tile, overhang_z]);
+        vertices.push([gx * pitch, gy * pitch + tile, overhang_z]);
         // CW winding from above ⇒ normal z < 0.
         triangles.push([base, base + 2, base + 1]);
         triangles.push([base, base + 3, base + 2]);
@@ -526,7 +568,7 @@ fn branch_landing_on_model_emits_bottom_interface() {
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -560,7 +602,15 @@ fn branch_landing_on_model_emits_bottom_interface() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("floor"), &sg, &mut output, &config)
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("floor"),
+            &sg,
+            &mut output,
+            &config,
+        )
         .expect("run_support_geometry");
 
     let has_bottom_interface = output.entries().iter().any(|entry| {

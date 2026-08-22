@@ -27,7 +27,8 @@ use crate::binding::{
     PrepassStageInput,
 };
 use crate::marshal::{
-    convert_infill_output, convert_perimeter_output, convert_support_output, ir_to_wit_expolygons,
+    convert_infill_output, convert_perimeter_output, convert_support_output_with_plan,
+    ir_to_wit_expolygons,
     ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop, GcodeCommandCollected,
     InfillOutputCollected, OriginId, PerimeterOutputCollected, SupportOutputCollected,
 };
@@ -967,10 +968,19 @@ fn collect_support(builder: &SupportOutputBuilder) -> SupportOutputCollected {
 }
 
 /// Commit a native layer response through the existing output converters.
+///
+/// `support_plan` is the committed `SupportPlanIR` for this slice, threaded in
+/// from `dispatch_layer_call`'s `input.support_plan`. It exists so the native
+/// path consumes the **same** plan the wasm path does: `deconstruct_layer_ctx`
+/// forwards it to `convert_support_output_with_plan`, and until packet 224 the
+/// native branch passed `None` there, silently discarding plan-derived
+/// identity (family_id / body_id / demand_ids / object_id) on every
+/// native-dispatched support stage.
 pub fn commit_native_layer_response(
     response: &NativeLayerResponse,
     stage_export: &str,
     layer_index: u32,
+    support_plan: Option<&slicer_ir::SupportPlanIR>,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, String> {
     use slicer_ir::LayerStageCommit;
     match stage_export {
@@ -1005,7 +1015,7 @@ pub fn commit_native_layer_response(
             {
                 return Ok(None);
             }
-            let ir = convert_support_output(&collected, layer_index)?;
+            let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
             Ok(Some(if stage_export.ends_with("PostProcess") {
                 LayerStageCommit::SupportPostProcess(ir)
             } else {

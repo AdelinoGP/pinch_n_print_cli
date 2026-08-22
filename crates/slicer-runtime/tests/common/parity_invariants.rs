@@ -7,9 +7,10 @@
 //! compared, so it cannot certify a broken path vacuously.
 
 use slicer_ir::{
-    ExtrusionPath3D, GCodeCommand, InfillIR, InfillRegion, LayerCollectionIR, LayerPlanIR,
-    LayerStageCommit, PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point3WithWidth,
-    RetractSpec, SeamPlanEntry, SeamPlanIR, SupportIR, SupportPlanIR, TravelMoveDest, WallLoop,
+    ExPolygon, ExtrusionPath3D, GCodeCommand, InfillIR, InfillRegion, LayerCollectionIR,
+    LayerPlanIR, LayerStageCommit, PathOptimizationCommit, PerimeterIR, PerimeterRegion,
+    Point3WithWidth, Polygon, RetractSpec, SeamPlanEntry, SeamPlanIR, SupportIR, SupportPlanEntry,
+    SupportPlanIR, SupportPlanRoleRegion, SupportPlanSkeleton, TravelMoveDest, WallLoop,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -780,11 +781,11 @@ fn compare_path_vector(
 pub fn assert_prepass_parity_structural(
     native: &PrepassStageOutput,
     wasm: &PrepassStageOutput,
-    _tol: ParityTolerance,
+    tol: ParityTolerance,
 ) -> Result<(), String> {
     match (native, wasm) {
         (PrepassStageOutput::SupportPlan(n), PrepassStageOutput::SupportPlan(w)) => {
-            compare_support_plan_ir(n, w)
+            compare_support_plan_ir(n, w, &tol)
         }
         _ => Err(format!(
             "variant mismatch: native={} wasm={} \
@@ -808,7 +809,11 @@ fn prepass_variant_name(output: &PrepassStageOutput) -> &'static str {
     }
 }
 
-fn compare_support_plan_ir(native: &SupportPlanIR, wasm: &SupportPlanIR) -> Result<(), String> {
+fn compare_support_plan_ir(
+    native: &SupportPlanIR,
+    wasm: &SupportPlanIR,
+    tol: &ParityTolerance,
+) -> Result<(), String> {
     if native.entries.len() != wasm.entries.len() {
         return Err(format!(
             "entries count mismatch: native={} wasm={}",
@@ -820,8 +825,7 @@ fn compare_support_plan_ir(native: &SupportPlanIR, wasm: &SupportPlanIR) -> Resu
     // compared pairwise rather than collapsed by a map.
     let mut native_entries: Vec<_> = native.entries.iter().collect();
     let mut wasm_entries: Vec<_> = wasm.entries.iter().collect();
-    let key =
-        |e: &slicer_ir::SupportPlanEntry| (e.global_layer_index, e.object_id.clone(), e.region_id);
+    let key = |e: &SupportPlanEntry| (e.global_layer_index, e.object_id.clone(), e.region_id);
     native_entries.sort_by_key(|entry| key(entry));
     wasm_entries.sort_by_key(|entry| key(entry));
     for (n_entry, w_entry) in native_entries.iter().zip(&wasm_entries) {
@@ -840,18 +844,193 @@ fn compare_support_plan_ir(native: &SupportPlanIR, wasm: &SupportPlanIR) -> Resu
             "entry (global_layer_index={}, object_id={}, region_id={})",
             n_entry.global_layer_index, n_entry.object_id, n_entry.region_id
         );
-        if n_entry.family_id != w_entry.family_id
-            || n_entry.demand_ids != w_entry.demand_ids
-            || n_entry.body_ids != w_entry.body_ids
-            || n_entry.anchor_layer_index != w_entry.anchor_layer_index
-            || n_entry.anchor_z != w_entry.anchor_z
-            || n_entry.roles != w_entry.roles
-            || n_entry.skeleton != w_entry.skeleton
-            || n_entry.capabilities != w_entry.capabilities
-            || n_entry.provenance != w_entry.provenance
-            || n_entry.decline_reason != w_entry.decline_reason
-        {
-            return Err(format!("structural fields mismatch at {label}"));
+        compare_support_plan_entry(n_entry, w_entry, tol, &label)?;
+    }
+    Ok(())
+}
+
+/// Per-field comparison of one `SupportPlanEntry` (structural schema v2.0.0).
+///
+/// Every field is checked on its own so the error names the field that
+/// diverged. The single blanket `!=` this carried before packet 224 reported
+/// every divergence as "structural fields mismatch", which hid dropped role
+/// regions behind one undifferentiated message and never reached the
+/// skeleton's per-point geometry at all.
+fn compare_support_plan_entry(
+    native: &SupportPlanEntry,
+    wasm: &SupportPlanEntry,
+    tol: &ParityTolerance,
+    label: &str,
+) -> Result<(), String> {
+    if native.family_id != wasm.family_id {
+        return Err(format!(
+            "family_id mismatch at {label}: native={} wasm={}",
+            native.family_id, wasm.family_id
+        ));
+    }
+    if native.demand_ids != wasm.demand_ids {
+        return Err(format!(
+            "demand_ids mismatch at {label}: native={:?} wasm={:?}",
+            native.demand_ids, wasm.demand_ids
+        ));
+    }
+    if native.body_ids != wasm.body_ids {
+        return Err(format!(
+            "body_ids mismatch at {label}: native={:?} wasm={:?}",
+            native.body_ids, wasm.body_ids
+        ));
+    }
+    if native.anchor_layer_index != wasm.anchor_layer_index {
+        return Err(format!(
+            "anchor_layer_index mismatch at {label}: native={} wasm={}",
+            native.anchor_layer_index, wasm.anchor_layer_index
+        ));
+    }
+    // `anchor_z` is in canonical integer units (1 unit = 100 nm), so it is
+    // compared exactly; ParityTolerance governs float geometry only.
+    if native.anchor_z != wasm.anchor_z {
+        return Err(format!(
+            "anchor_z mismatch at {label}: native={} wasm={}",
+            native.anchor_z, wasm.anchor_z
+        ));
+    }
+    compare_support_plan_roles(&native.roles, &wasm.roles, label)?;
+    compare_support_plan_skeleton(&native.skeleton, &wasm.skeleton, tol, label)?;
+    if native.capabilities != wasm.capabilities {
+        return Err(format!(
+            "capabilities mismatch at {label}: native={:?} wasm={:?}",
+            native.capabilities, wasm.capabilities
+        ));
+    }
+    if native.provenance != wasm.provenance {
+        return Err(format!(
+            "provenance mismatch at {label}: native={:?} wasm={:?}",
+            native.provenance, wasm.provenance
+        ));
+    }
+    if native.decline_reason != wasm.decline_reason {
+        return Err(format!(
+            "decline_reason mismatch at {label}: native={:?} wasm={:?}",
+            native.decline_reason, wasm.decline_reason
+        ));
+    }
+    Ok(())
+}
+
+/// Role-attributed analysis polygons: group count, then per-group role kind
+/// and polygon geometry.
+fn compare_support_plan_roles(
+    native: &[SupportPlanRoleRegion],
+    wasm: &[SupportPlanRoleRegion],
+    label: &str,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "roles count mismatch at {label}: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (idx, (n_role, w_role)) in native.iter().zip(wasm).enumerate() {
+        let role_label = format!("{label} role {idx}");
+        if n_role.role != w_role.role {
+            return Err(format!(
+                "role kind mismatch at {role_label}: native={:?} wasm={:?}",
+                n_role.role, w_role.role
+            ));
+        }
+        if n_role.regions.len() != w_role.regions.len() {
+            return Err(format!(
+                "role regions count mismatch at {role_label}: native={} wasm={}",
+                n_role.regions.len(),
+                w_role.regions.len()
+            ));
+        }
+        for (poly_idx, (n_poly, w_poly)) in n_role.regions.iter().zip(&w_role.regions).enumerate() {
+            compare_expolygon(n_poly, w_poly, &format!("{role_label} polygon {poly_idx}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn compare_expolygon(native: &ExPolygon, wasm: &ExPolygon, label: &str) -> Result<(), String> {
+    compare_polygon(&native.contour, &wasm.contour, &format!("{label} contour"))?;
+    if native.holes.len() != wasm.holes.len() {
+        return Err(format!(
+            "holes count mismatch at {label}: native={} wasm={}",
+            native.holes.len(),
+            wasm.holes.len()
+        ));
+    }
+    for (idx, (n_hole, w_hole)) in native.holes.iter().zip(&wasm.holes).enumerate() {
+        compare_polygon(n_hole, w_hole, &format!("{label} hole {idx}"))?;
+    }
+    Ok(())
+}
+
+/// Polygon vertices are `Point2` — scaled integers (1 unit = 100 nm) — so they
+/// are compared exactly. `ParityTolerance` exists because floats cannot be
+/// compared with `==`; integer canonical coordinates carry no such hazard, and
+/// widening them to a float tolerance would let a real divergence pass.
+fn compare_polygon(native: &Polygon, wasm: &Polygon, label: &str) -> Result<(), String> {
+    if native.points.len() != wasm.points.len() {
+        return Err(format!(
+            "polygon points count mismatch at {label}: native={} wasm={}",
+            native.points.len(),
+            wasm.points.len()
+        ));
+    }
+    for (idx, (n_pt, w_pt)) in native.points.iter().zip(&wasm.points).enumerate() {
+        if n_pt.x != w_pt.x || n_pt.y != w_pt.y {
+            return Err(format!(
+                "polygon vertex mismatch at {label} vertex {idx}: \
+                 native=({}, {}) wasm=({}, {})",
+                n_pt.x, n_pt.y, w_pt.x, w_pt.y
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Structural skeleton: presence, point count, then per-point coordinates
+/// within `coord_mm`. `SupportPlanSkeleton.points` are `Point3` in
+/// millimeters, so the same `coord_mm` convention `compare_point_with_width`
+/// uses for path points applies here.
+fn compare_support_plan_skeleton(
+    native: &Option<SupportPlanSkeleton>,
+    wasm: &Option<SupportPlanSkeleton>,
+    tol: &ParityTolerance,
+    label: &str,
+) -> Result<(), String> {
+    let (n_skel, w_skel) = match (native, wasm) {
+        (None, None) => return Ok(()),
+        (Some(n), Some(w)) => (n, w),
+        _ => {
+            return Err(format!(
+                "skeleton presence mismatch at {label}: native={} wasm={}",
+                option_state(native),
+                option_state(wasm)
+            ))
+        }
+    };
+    if n_skel.points.len() != w_skel.points.len() {
+        return Err(format!(
+            "skeleton points count mismatch at {label}: native={} wasm={}",
+            n_skel.points.len(),
+            w_skel.points.len()
+        ));
+    }
+    for (idx, (np, wp)) in n_skel.points.iter().zip(&w_skel.points).enumerate() {
+        let d = (np.x - wp.x)
+            .abs()
+            .max((np.y - wp.y).abs())
+            .max((np.z - wp.z).abs());
+        if d > tol.coord_mm {
+            return Err(format!(
+                "skeleton point coordinates mismatch at {label} point {idx}: \
+                 max component delta {d:.6} mm > coord_mm {}",
+                tol.coord_mm
+            ));
         }
     }
     Ok(())

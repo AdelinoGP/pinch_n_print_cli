@@ -59,6 +59,7 @@ fn valid_seam_entry() -> SeamPlanEntry {
 }
 
 fn valid_support_entry() -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: "obj-a".to_string(),

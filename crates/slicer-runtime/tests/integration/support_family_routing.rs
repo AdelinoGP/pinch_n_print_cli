@@ -42,6 +42,7 @@ fn entry(
     region_id: u64,
     body: Option<ExPolygon>,
 ) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: object_id.into(),
@@ -147,6 +148,7 @@ fn support_entry(
     x1: f32,
     y1: f32,
 ) -> SupportEntry {
+    // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
     SupportEntry {
         family_id: family.into(),
         body_id: body.into(),
@@ -339,8 +341,21 @@ fn same_family_union() {
             Some(polygon(1_100_000, 100, 1_100_200, 200)),
         ),
     ])]);
-    assert!(output.entries.is_empty());
-    assert_eq!(diagnostics.iter().filter(|d| d.code == 1200).count(), 2);
+    // Both entries are the same planner-emitted complete body (`cross-cell-body`)
+    // seen from two demands that happen to sit far apart on the plate. Each is
+    // individually well inside one routing cell, so both pass the per-body
+    // territory gate; the union then combines them into a single entry carrying
+    // both demands. The merged envelope is wider than one cell, but the group is
+    // by construction not one planner-emitted body, so the per-body bound does
+    // not apply to it — canonical support-island merging (`union_` in
+    // OrcaSlicer's `SupportCommon.cpp` / `SupportMaterial.cpp`) caps no size.
+    // Previously this asserted `entries.is_empty()` plus two code-1200 unmet
+    // diagnostics, which captured the host re-validating merged groups and
+    // dropping legitimately-merged demands wholesale.
+    assert_eq!(output.entries.len(), 1);
+    assert_eq!(output.entries[0].body_ids, ["cross-cell-body"]);
+    assert_eq!(output.entries[0].demand_ids, ["demand-a", "demand-b"]);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
     let (output, diagnostics) = aggregate(vec![
         plan(vec![entry(

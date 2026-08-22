@@ -402,6 +402,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
 }
 
 fn support_plan_entry(family_id: &str) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: "cube".into(),

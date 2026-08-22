@@ -2721,6 +2721,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                 &response,
                 stage_export,
                 layer.index,
+                input.support_plan.as_deref(),
             )
             .map_err(|message| slicer_ir::LayerStageError::FatalModule {
                 stage_id: stage_id.clone(),

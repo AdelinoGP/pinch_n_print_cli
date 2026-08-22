@@ -8,6 +8,7 @@ use slicer_wasm_host::host::prepass_support_geometry::slicer::prepass_support_ge
 use slicer_wasm_host::host::{prepass_support_geometry, HostExecutionContextBuilder};
 
 fn structural_entry() -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 3,
         object_id: "object-a".into(),

@@ -44,16 +44,18 @@ Measured on 2026-08-18 against **regenerated** OrcaSlicer references, with `carg
 | `;TYPE:Support` blocks | 123 | 122 | 122 | 121 |
 | `;TYPE:Support interface` blocks | 2 | 2 | 1 | 3 |
 | distinct Z carrying support | 125 | 124 | 123 | 124 |
-| deposited support + interface filament (mm) | 388.73 | 683.96 | not re-measured | not re-measured |
-| support + interface XY path length (mm) | 11,687.5 | 22,774.9 | not re-measured | not re-measured |
+| deposited support + interface filament (mm) | 432.85 | 683.96 | not re-measured | not re-measured |
+| support + interface XY path length (mm) | 13,013.9 | 22,774.9 | not re-measured | not re-measured |
 
 **Support filament must be measured as DEPOSITED material (corrected 2026-08-18).** The earlier row read PnP tree 486.33 / Orca tree 1538.36 / PnP normal 852.02 / Orca normal 1158.87, and the "31.6%" derived from it. Those sums are the total of every positive `E` delta inside a support block, **including de-retraction prime `E`**, which deposits no material and travels zero distance. Orca carries ~853 mm of prime against PnP's ~96 mm precisely *because* it prints ~58 short separate loops per top layer and retracts between them — so the naive metric penalises PnP twice for the same defect (once for printing less, once for the granularity that is itself the finding). **Do not quote 486.33 / 1538.36 / 852.02 / 1158.87 or the 31.6% derived from them.** The normal-family cells are left `not re-measured` rather than restated, because only the tree pair was re-derived on deposited material; see `tree-density-diagnosis.md` for the parser and its anchoring against each file's own `; filament used [mm]` footer.
 
-The corrected tree deficit is **56.8%** of Orca's deposited material — a **1.76x** deficit, **not 3.2x**. It decomposes cleanly: PnP lays down 11,687.5 mm of support XY path against Orca's 22,774.9 mm (**1.949x short**), while PnP's flow per mm of path is **1.107x higher** than Orca's, and 1.949 / 1.107 = 1.76. The path-length row is the honest coverage metric; the filament row is path length scaled by a flow discrepancy that is a separate defect (see the gap register).
+The corrected tree deficit is **63.3%** of Orca's deposited material — a **1.58x** deficit, **not 3.2x**. It decomposes cleanly: PnP lays down 13,013.9 mm of support XY path against Orca's 22,774.9 mm (**1.75x short**), while PnP's flow per mm of path is **1.107x higher** than Orca's, and 1.75 / 1.107 = 1.58. The path-length row is the honest coverage metric; the filament row is path length scaled by a flow discrepancy that is a separate defect (see the gap register).
+
+**Re-measured 2026-08-20 after the RC-15 contact-sampling port (commit `ad9019ee`).** The PnP tree rows above were re-derived from a fresh slice (`target/pnp_support_tree.gcode`, config `tmp/support-family-config-tree-matched.json`, `--module-dir modules/core-modules`) with the same deposited-material parser as the 2026-08-18 measurement, anchored against each file's own `; filament used [mm]` footer (PnP 1908.02 vs 1908.03; Orca 2872.81 vs 2872.80). The port moved the tree deficit from 1.76x to 1.58x on deposited material (1.949x → 1.75x on XY path length); the structural rows (distinct Z, block counts, Z carrying support) are unchanged. The remaining deficit decomposes into the routed causes recorded in `tree-density-diagnosis.md` (wall/fill divergence W1/W2/W3, the uniform flow model, and top-interface area downstream of contact density) — none of which this packet implements.
 
 **Extruding-move counts are NOT a parity metric.** Orca's tree segments are roughly 15x shorter than PnP's, so a move count measures polygon granularity, not deposited material. Never gate on it, and never quote it as evidence of coverage.
 
-Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and the tree coverage deficit — 1.949x short on support XY path length, 1.76x short on deposited material — over an identical Z range and layer count (locked decision 5). Root-cause diagnosis was blocking and is now recorded as RC-15; bug-versus-gap classification follows from it.
+Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and the tree coverage deficit — 1.75x short on support XY path length, 1.58x short on deposited material (post-port, 2026-08-20) — over an identical Z range and layer count (locked decision 5). Root-cause diagnosis was blocking and is now recorded as RC-15; the RC-15 port landed in `ad9019ee` and the remaining deficit is attributable to the routed causes in `tree-density-diagnosis.md`.
 
 ### Orca reference profile (normal), regenerated 2026-08-18
 
@@ -239,7 +241,7 @@ Consequence: PnP has no object on which to hang gap-band behaviour, so anything 
 
 ## Out-of-Bounds Files
 - Orca source (delegated sub-agent reads only), target bundles, generated bindings, and packet 213 files.
-- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (224a/225/226/227). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
+- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (unnumbered stubs under `docs/spec_packets/stubs/`; the previously named 224a/225/226/227 are taken by unrelated packets). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
 - `docs/07_implementation_status.md` is updated only through delegated status work.
 
 ## Orca Differential Evidence
@@ -248,11 +250,43 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 
 **Gate shape (locked 2026-08-18).** Parity is gated by (a) structural invariants in the test suite and (b) a written human/LLM `/visual-debug` inspection checklist with **side-by-side Orca renders at matched physical heights**. No test may read the Orca G-code; no Orca-derived constant may be hardcoded into a test. Extruding-move counts are excluded as a metric.
 
-**Current state.** RC-4 has landed, so both families now emit support G-code and the differential is unblocked. The quantitative side is recorded in §Measured Baseline (2026-08-18). The inspection checklist itself is written into §Orca Inspection Checklist by implementation Step 6.
+**Current state.** RC-4 has landed, so both families now emit support G-code and the differential is unblocked. The quantitative side is recorded in §Measured Baseline (2026-08-18, re-measured 2026-08-20 after the RC-15 port). The inspection checklist itself is written into §Orca Inspection Checklist by implementation Step 6.
+
+**TASK-163b-orca-ref disposition (recorded 2026-08-20, AC-6 half (b)).** The task is **closed** with the existing authoritative references: `tmp/SupportTest_Tree_Orca.gcode` and `tmp/SupportTest_Normal_Orca.gcode`, regenerated 2026-08-18 from the OrcaSlicer checkout with the profile recorded in §Orca reference profile (normal) — `support_threshold_angle=30`, `support_object_xy_distance=0.35`, `support_top_z_distance=0.2`, `support_bottom_z_distance=0.2`, `support_interface_top_layers=2`, `support_interface_bottom_layers=2`, `support_interface_spacing=0.4`, `support_base_pattern=rectilinear`, `support_base_pattern_spacing=2`, `support_line_width=80%`, `support_on_build_plate_only=1`, `support_expansion=0`, `support_style=default`, `layer_height=0.2`, `initial_layer_print_height=0.2`, `nozzle_diameter=0.5`, `support_type=tree(auto)`/`normal(auto)`, `independent_support_layer_height` disabled. Both references were used for the primary differential review in §Orca Inspection Checklist. No external blocker remains. Exact path parity is never claimed.
 
 ## Orca Inspection Checklist
 
-*To be written by Step 6.* It must name, per family: the two per-family visual-debug requests, the matched physical heights inspected, the Orca G-code render placed beside each PnP render, and — for each of termination, coverage, collision freedom, interface placement/count, and independent heights — the inspected verdict with the layer and tap it was read from. Exact path identity is never claimed.
+*Written by Step 6, 2026-08-20, after the RC-15 port (`ad9019ee`) and the Step 2 interface-count fix (`ee27ac94`). All four bundles were rendered with `cargo xtask build-guests --check` clean; `matched_height_evidence` passed.*
+
+**Requests and bundles.** Per family, the PnP render is a model-source request and the Orca render is a standalone-G-code request over the regenerated reference, both at the same five layer indices:
+
+| family | PnP request | PnP bundle | Orca request | Orca bundle |
+| --- | --- | --- | --- | --- |
+| tree | `tmp/visual-debug-support-family-tree.json` | `target/vd-support-family-tree` | `tmp/visual-debug-orca-tree.json` (`tmp/SupportTest_Tree_Orca.gcode`) | `target/vd-orca-tree-compare` |
+| traditional | `tmp/visual-debug-support-family-normal.json` | `target/vd-support-family-normal` | `tmp/visual-debug-orca-normal.json` (`tmp/SupportTest_Normal_Orca.gcode`) | `target/vd-orca-normal-compare` |
+
+**Matched physical heights.** Layers 10, 30, 79, 119, 123 on the shared 150-layer / 0.2 mm schedule = z 2.0, 6.0, 15.8, 23.8, 24.8 mm. Layer 123 (z 24.8) is the topmost support-carrying layer in all four files; the originally authored layer 124 (z 25.0) was dropped because PnP traditional and both Orca references carry no support there (only PnP tree prints a small interface remnant at z 25.0 — see the independent-heights verdict).
+
+**Request-fixture notes (recorded so the evidence is not misread).** The tree request uses `filament_lines` only: the `PrePass::SupportGeometry` tap's skeleton paths carry no `Point3WithWidth.width`, and the renderer fails closed on `filled_areas` for width-less paths (`MissingWidth`, `crates/slicer-runtime/src/visual_debug_render.rs` — read-only context for this packet). The traditional request keeps both visualizations. Both Orca G-code requests carry `gcode_line_width_mm: 0.4` (the reference profile's support line width), which the G-code `filled_areas` renderer requires.
+
+**`PrePass::SupportAnalysis` evidence.** AC-2 names `PrePass::SupportAnalysis` as a tap; the implementation's tap inventory does not expose it (it is a host built-in writing `SupportAnalysisIR` to the blackboard — see the packet's Notes, "AC-2 tap-contract wording discrepancy"). Its intent is met by asserting the `SupportAnalysisIR` blackboard slot directly: `fixture_invariants` asserts non-empty candidates, per-family assignments, and empty candidates under support-disabled config (`crates/slicer-runtime/tests/integration/support_family_closure.rs`). The routing-cell half of the AC-2 evidence list is covered by `family_reaches_region_routing`, which asserts the promoted `ExecutionPlan.global_layers` route regions to the configured `support-family:<id>` claim (it does not read the SupportAnalysisIR slot). Those assertions are the SupportAnalysis candidates/occupancy/envelope/routing-cell evidence for this checklist.
+
+**Verdicts.** Each verdict names the layer and tap it was read from. Exact path identity is never claimed.
+
+| family | axis | verdict | layer | tap | what was seen |
+| --- | --- | --- | --- | --- | --- |
+| tree | termination | PASS | 123 | `Layer::Support` | Support is visible from the low layers through the top interface layer; no floating islands. |
+| tree | coverage | PASS | 79 | `Layer::Support` | PnP support spans the positive-x overhang footprint seen at the matched Orca height. |
+| tree | collision freedom | PASS | 79 | `Layer::Support` | The support footprint stays on the positive-x side and does not enter the model wall (x ∈ [-10, 0]). |
+| tree | interface placement/count | PASS | 123 | `Layer::Support` | Interface is the topmost support and is carved out of the body; 2 `;TYPE:Support interface` blocks, matching Orca's 2. |
+| tree | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. PnP tree additionally prints a small interface remnant at z 25.0 that Orca does not — the recorded top-Z gap-structure deviation (`design.md` §Recorded deviation). |
+| traditional | termination | PASS | 123 | `Layer::Support` | Support is present from the low layers through the top interface layer; no floating islands. |
+| traditional | coverage | PASS | 79 | `Layer::Support` | PnP support spans the positive-x cantilever footprint corresponding to the matched Orca layer. |
+| traditional | collision freedom | PASS | 79 | `Layer::Support` | Support remains offset from the model wall and does not visibly intersect it. |
+| traditional | interface placement/count | DIVERGENT (count) | 123 | `Layer::Support` | Placement is correct (topmost, carved out of the body). Count: PnP emits **2** `;TYPE:Support interface` blocks at `top_layers=2`/`bottom_layers=2` (the count follows the configured top band, pinned by `interface_layer_count_follows_config`), Orca emits **3** at the same config. The difference is canonical roof/floor layer-count semantics, registered as a gap (see the gap register). |
+| traditional | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. |
+
+**Per-family disposition (AC-3 half (b)).** Tree: the PnP render (`target/vd-support-family-tree`, source `tmp/visual-debug-support-family-tree.json`) was inspected beside the Orca render (`target/vd-orca-tree-compare`, source `tmp/SupportTest_Tree_Orca.gcode`) at layers 10/30/79/119/123; all five axes PASS, with the recorded top-Z gap-structure deviation noted under independent heights. Traditional: the PnP render (`target/vd-support-family-normal`, source `tmp/visual-debug-support-family-normal.json`) was inspected beside the Orca render (`target/vd-orca-normal-compare`, source `tmp/SupportTest_Normal_Orca.gcode`) at the same layers; four axes PASS and interface placement/count is DIVERGENT on count (2 vs 3), registered as gap G-18. Neither family claims exact path identity.
 
 ## Session Handoff (2026-08-17) — superseded
 
@@ -306,6 +340,21 @@ The open research question is therefore: **does grid-snapping and contour simpli
 ## Risks and Tradeoffs
 - `TASK-163b-orca-ref` may remain externally blocked only if provenance/authority cannot be established; the existing references must still be used for primary differential review.
 - Visual evidence is human-inspected and therefore cannot be reduced to a grep-only AC.
+
+## Final review dispositions (2026-08-20)
+
+The final packet-scope review returned CHANGES REQUESTED with five findings. Dispositions:
+
+- **AC-1 (per-demand termination).** The review noted `fixture_invariants` asserts one plate-terminated entry per family rather than per-demand termination. The per-demand termination invariant is pinned by `accepted_demands_terminate_on_plate_or_model` (every accepted demand terminates on plate or model, four tracked `resources/` models, both families); `fixture_invariants` pins per-entry attribution (body/demand/family), per-role exact-Z disjointness, plate termination, and support-disabled output. Together they cover AC-1 as written. No code change.
+- **AC-2 (SupportAnalysis capture).** The review noted the requests carry no `PrePass::SupportAnalysis` tap. The packet's Notes already adjudicate this (the tap does not exist in the implementation's inventory; the intent is met by asserting the `SupportAnalysisIR` blackboard slot directly). The checklist now names where that evidence lives (§Orca Inspection Checklist, "PrePass::SupportAnalysis evidence"). Doc fix applied.
+- **AC-6 (no-Orca-read assertion + docs/07 conflict).** Valid on both counts. The no-Orca-read static self-check was added to `task_163b_disposition` (recursive scan of `crates/slicer-runtime/tests/`, self-file excluded), and the `docs/07` TASK-163b-orca-ref row was reconciled with the recorded disposition. Fixed.
+- **AC-N1 (fatal conflict without diagnostic).** The review noted the cross-family-overlap branch accepts a fatal error without a structured diagnostic. The fatal same-identity family conflict is the packet-223 aggregation contract's documented behavior; the test accepts either drop-plus-code-1200-diagnostic or the fatal error naming `conflicting_family_id` — both are loud rejections, never a golden or fallback path. Recorded, no code change.
+- **AC-N2 (absence panic not exercised).** Rejected: the 2026-08-17 amendment deliberately deleted the dedicated missing-fixture test (`4c67ccd9`) and made the `support_test_path` resolver's panic contract the gate, exercised by every closure test. The review's finding contradicts the amendment, which is authoritative.
+
+## Inherited debt (recorded 2026-08-20, bisect-verified)
+- **32 pre-existing workspace test failures at `ed62090d`** — `cargo test --workspace` fails 32 tests (wedge plan-structure invariants, e2e support evidence, integrated-parity contracts, live-dispatch tests, tool-selection tests, `support_plan_validation`). A bisect at the pre-port baseline `ed62090d` (guests rebuilt, `cargo xtask build-guests --check` clean) shows all 32 fail there too: **0 attributable to this branch's work**. Registered as G-19; human-approved 2026-08-20 to record rather than fix in 224. The packet's own gates (closure 12/12, planner crate 8/8, clippy) are green.
+- `cargo xtask check-literals` exits 1 on 61 inherited violations across 34 files, 0 attributable to this branch (re-derived 2026-08-20; the port's diff adds no watched-type literal). Human-approved to commit over. Registered as G-15.
+- `cargo xtask test --summary --workspace` cannot run while the check-literals preflight fails: the wrapper hard-aborts before the test phase. The guest-WASM freshness gate was therefore verified separately (`cargo xtask build-guests --check`, exit 0) before the direct `cargo test --workspace` run.
 
 ## Context Cost Estimate
 - Aggregate: `M`

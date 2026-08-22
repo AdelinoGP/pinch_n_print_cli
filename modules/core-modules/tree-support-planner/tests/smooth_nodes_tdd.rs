@@ -48,6 +48,7 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
 
 /// Wrap a single point into a `SupportPlanEntry` at the given global layer.
 fn entry(global_layer_index: i32, p: Point3WithWidth) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index,
         object_id: "obj".to_string(),

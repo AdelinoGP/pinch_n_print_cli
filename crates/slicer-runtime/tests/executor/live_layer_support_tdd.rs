@@ -74,6 +74,7 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             patch: 0,
         },
         global_layer_index: 0,
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![SupportEntry {
             family_id: "fixture-family".into(),
             body_id: "fixture-body".into(),
@@ -540,6 +541,54 @@ fn body_region_expoly() -> ExPolygon {
     }
 }
 
+/// A one-entry `SupportPlanIR` for `obj-0` / region 0 carrying a single
+/// `SupportBody` role region.
+///
+/// `family_id` must match the renderer under test: both `tree-support` and
+/// `traditional-support` return a family-attribution `ModuleError` when an
+/// entry's family is not theirs.
+fn plan_for_obj0(
+    family_id: &str,
+    layer_index: u32,
+    layer_z: f32,
+) -> std::sync::Arc<slicer_ir::SupportPlanIR> {
+    std::sync::Arc::new(slicer_ir::SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        entries: vec![slicer_ir::SupportPlanEntry {
+            global_layer_index: layer_index as i32,
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            family_id: family_id.to_string(),
+            demand_ids: vec![],
+            body_ids: vec![],
+            anchor_layer_index: layer_index,
+            anchor_z: slicer_ir::mm_to_units(layer_z),
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::SupportBody,
+                regions: vec![body_region_expoly()],
+            }],
+            skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                points: vec![
+                    slicer_ir::Point3 {
+                        x: 1.0,
+                        y: 2.0,
+                        z: layer_z,
+                    },
+                    slicer_ir::Point3 {
+                        x: 7.0,
+                        y: 8.0,
+                        z: layer_z,
+                    },
+                ],
+            }),
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..Default::default()
+    })
+}
+
 /// AC-2: Tree-support live dispatch emits no SupportIR when no plan is
 /// committed (the legacy missing-plan grid-MST fallback filler was removed).
 #[test]
@@ -682,7 +731,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let bundle = compile_support_module(&engine, loaded, &traditional_support_wasm_path());
 
-    let blackboard = Blackboard::new(
+    let mut blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
             build_volume: BoundingBox3 {
                 min: slicer_ir::Point3::default(),
@@ -699,6 +748,15 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let layer_z = 0.2;
     let layer_index = 0u32;
+
+    // Packet 222 removed traditional-support's missing-plan scan-line filler.
+    // The renderer now `continue`s when `support_plan_entries_for` is empty, so
+    // this fixture must commit the plan it is meant to render.
+    blackboard
+        .commit_support_plan(plan_for_obj0("traditional", layer_index, layer_z))
+        .expect("commit_support_plan must succeed");
+    let blackboard = blackboard;
+
     // exhaustive: GlobalLayer support fixture specifies every layer field.
     let layer = GlobalLayer {
         index: layer_index,
@@ -1084,42 +1142,7 @@ mod planner_consuming_tier {
         // exhaustive: SupportIR explicit test fixture preserves boundary data
     }
 
-    fn plan_for_obj0(layer_index: u32, layer_z: f32) -> Arc<SupportPlanIR> {
-        Arc::new(SupportPlanIR {
-            entries: vec![SupportPlanEntry {
-                global_layer_index: layer_index as i32,
-                object_id: "obj-0".to_string(),
-                region_id: 0,
-                family_id: "tree".into(),
-                demand_ids: vec![],
-                body_ids: vec![],
-                anchor_layer_index: layer_index,
-                anchor_z: slicer_ir::mm_to_units(layer_z),
-                roles: vec![slicer_ir::SupportPlanRoleRegion {
-                    role: slicer_ir::SupportPlanRole::SupportBody,
-                    regions: vec![super::body_region_expoly()],
-                }],
-                skeleton: Some(slicer_ir::SupportPlanSkeleton {
-                    points: vec![
-                        slicer_ir::Point3 {
-                            x: 1.0,
-                            y: 2.0,
-                            z: layer_z,
-                        },
-                        slicer_ir::Point3 {
-                            x: 7.0,
-                            y: 8.0,
-                            z: layer_z,
-                        },
-                    ],
-                }),
-                capabilities: vec![],
-                provenance: vec![],
-                decline_reason: None,
-            }],
-            ..Default::default()
-        })
-    }
+    use super::plan_for_obj0;
 
     /// Drive the tree-support renderer directly (native `run_support`) with a
     /// plan-attached paint view. The structural plan does not cross the wasm
@@ -1170,7 +1193,7 @@ mod planner_consuming_tier {
     #[test]
     fn tree_support_consumes_support_plan_ir_from_support_geometry_stage() {
         let layer_z = 0.2f32;
-        let plan = plan_for_obj0(0, layer_z);
+        let plan = plan_for_obj0("tree", 0, layer_z);
 
         let paths = render_plan_directly(plan, 0, layer_z, make_slice_ir(0, layer_z));
 
@@ -1178,13 +1201,41 @@ mod planner_consuming_tier {
             !paths.is_empty(),
             "tree-support must render the planned SupportBody role region"
         );
+        // The planned role region is `body_region_expoly()` — a 10 mm square at
+        // the origin. Packet 224's `render_polygon` covers it with inset wall
+        // loops plus a density-pitched scan fill, so path shape is no longer a
+        // fixed vertex count (the old `== 2` snapshot predated walls). Assert
+        // the structure instead: closed walls are closed, fill lines are
+        // segments, and nothing escapes the region the planner declared.
+        let bound_mm = 10.0f32;
         for path in paths {
             assert_eq!(path.role, ExtrusionRole::SupportMaterial);
-            assert_eq!(path.points.len(), 2, "tree-edge branch paths are 2-point");
+            assert!(
+                path.points.len() >= 2,
+                "an extrusion path needs at least two vertices, got {}",
+                path.points.len()
+            );
+            if path.points.len() > 2 {
+                let first = &path.points[0];
+                let last = &path.points[path.points.len() - 1];
+                assert!(
+                    (first.x - last.x).abs() < 1e-4 && (first.y - last.y).abs() < 1e-4,
+                    "a multi-vertex wall pass must be a closed loop: {first:?} != {last:?}"
+                );
+            }
             assert!(path
                 .points
                 .iter()
                 .all(|point| (point.z - layer_z).abs() < 1e-4));
+            for point in &path.points {
+                assert!(
+                    point.x >= -1e-3
+                        && point.x <= bound_mm + 1e-3
+                        && point.y >= -1e-3
+                        && point.y <= bound_mm + 1e-3,
+                    "rendered vertex {point:?} escapes the planned SupportBody role region                      (0..{bound_mm} mm square)"
+                );
+            }
         }
     }
 
@@ -1210,51 +1261,71 @@ mod planner_consuming_tier {
         );
     }
 
-    /// AC-9: traditional-support live dispatch â€” its scan-line filler emits
-    /// byte-identical SupportIR with and without a committed SupportPlanIR
-    /// (proves the manifest-level read declaration gates the WIT accessor;
-    /// since traditional-support does not declare SupportPlanIR, the host
-    /// projects an empty plan even when one is committed... actually our
-    /// current contract surfaces the plan to any module that calls
-    /// `support-plan-segments`, regardless of manifest declaration. So this
-    /// test verifies traditional-support's behavioral choice not to call it).
+    /// AC-9: traditional-support live dispatch is **plan-gated**.
+    ///
+    /// This test used to assert the opposite — that traditional-support emitted
+    /// byte-identical `SupportIR` with and without a committed `SupportPlanIR`,
+    /// because its scan-line filler ran off the slice contour and ignored the
+    /// plan entirely. Packet 222 deleted that filler: `run_support` now
+    /// `continue`s when `support_plan_entries_for` returns nothing, so the
+    /// plan is the sole source of support geometry.
     #[test]
-    fn traditional_support_live_dispatch_ignores_support_plan_ir() {
+    fn traditional_support_live_dispatch_renders_only_the_planned_roles() {
         let layer_z = 0.2f32;
+        let reads = vec![
+            "SliceIR",
+            "SurfaceClassificationIR",
+            "PaintRegionIR",
+            "SupportPlanIR",
+        ];
 
-        let no_plan = dispatch_support(
+        let no_plan = dispatch_support_opt(
             traditional_support_wasm(),
             "com.core.traditional-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
+            reads.clone(),
             None,
         );
+        assert!(
+            no_plan.is_none(),
+            "traditional-support must commit no SupportIR when no plan is committed;              the missing-plan scan-line filler was removed in packet 222"
+        );
+
         let with_plan = dispatch_support(
             traditional_support_wasm(),
             "com.core.traditional-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
-            Some(plan_for_obj0(0, layer_z)),
+            reads,
+            Some(plan_for_obj0("traditional", 0, layer_z)),
         );
-
-        assert_eq!(
-            no_plan.entries[0].paths.len(),
-            with_plan.entries[0].paths.len(),
-            "traditional-support must produce identical path count irrespective of SupportPlanIR \
-             (no-plan={}, with-plan={})",
-            no_plan.entries[0].paths.len(),
-            with_plan.entries[0].paths.len()
-        );
-        for (a, b) in no_plan.entries[0]
-            .paths
+        let paths: Vec<_> = with_plan
+            .entries
             .iter()
-            .zip(with_plan.entries[0].paths.iter())
-        {
-            assert_eq!(a.role, b.role);
-            assert_eq!(a.points.len(), b.points.len());
-            for (pa, pb) in a.points.iter().zip(b.points.iter()) {
-                assert_eq!(pa.x.to_bits(), pb.x.to_bits());
-                assert_eq!(pa.y.to_bits(), pb.y.to_bits());
-                assert_eq!(pa.z.to_bits(), pb.z.to_bits());
-                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
+            .flat_map(|entry| entry.paths.iter())
+            .collect();
+        assert!(
+            !paths.is_empty(),
+            "traditional-support must render the planned SupportBody role region"
+        );
+        // The plan's only role is `SupportBody` over `body_region_expoly()` —
+        // a 10 mm square at the origin. Everything rendered must carry the body
+        // role and stay inside that declared region.
+        for entry in &with_plan.entries {
+            assert_eq!(entry.role, slicer_ir::SupportRole::SupportBody);
+        }
+        for path in &paths {
+            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
+            assert!(path.points.len() >= 2);
+            assert!(path
+                .points
+                .iter()
+                .all(|point| (point.z - layer_z).abs() < 1e-4));
+            for point in &path.points {
+                assert!(
+                    point.x >= -1e-3
+                        && point.x <= 10.0 + 1e-3
+                        && point.y >= -1e-3
+                        && point.y <= 10.0 + 1e-3,
+                    "rendered vertex {point:?} escapes the planned SupportBody role region"
+                );
             }
         }
     }
@@ -1275,6 +1346,7 @@ mod planner_consuming_tier {
 
         let plan = Arc::new(SupportPlanIR {
             entries: vec![
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
@@ -1303,6 +1375,7 @@ mod planner_consuming_tier {
                     provenance: vec![],
                     decline_reason: None,
                 },
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),

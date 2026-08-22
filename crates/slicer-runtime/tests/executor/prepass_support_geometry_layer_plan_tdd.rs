@@ -232,7 +232,7 @@ fn default_planner_config_map() -> HashMap<String, ConfigValue> {
     let mut map = HashMap::new();
     map.insert("enable_support".to_string(), ConfigValue::Bool(true));
     map.insert(
-        "support_branch_angle_deg".to_string(),
+        "tree_support_branch_angle".to_string(),
         ConfigValue::Float(45.0),
     );
     map.insert(

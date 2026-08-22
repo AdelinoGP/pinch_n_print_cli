@@ -42,7 +42,6 @@ use tree_support_planner::{point_in_polygon, tapered_radius, SupportPlanner};
 /// bottom > top + tan(diameter_angle) * height_diff.
 #[test]
 
-
 fn radius_tapers_with_distance_to_top() {
     // Test the actual tapered_radius() function from the planner (Step 5).
     // Formula: radius(dist_to_top) = branch_radius + tan(diameter_angle) * dist_to_top * layer_height
@@ -181,7 +180,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -191,7 +190,15 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("col"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("col"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -246,40 +253,73 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let &highest = interface_layers.keys().max().unwrap();
     assert!(
         top_interface_layers.contains(&highest),
-        "AC-4: the topmost support layer must be interface, not bare body;          highest={highest} interface={top_interface_layers:?}"
+        "AC-4: the topmost support layer must be interface, not bare body; highest={highest} interface={top_interface_layers:?}"
     );
-    // Interface must be carved out of the body, never printed on top of it.
-    for (&layer, roles) in interface_layers.iter() {
-        if roles.contains(&slicer_ir::SupportPlanRole::TopInterface) {
-            let entry = entries
-                .iter()
-                .find(|e| e.global_layer_index == layer)
-                .unwrap();
-            let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
-                .roles
-                .iter()
-                .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody)
-                .collect();
-            let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
-                .roles
-                .iter()
-                .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface)
-                .collect();
-            for b in &body {
-                for r in &roof {
-                    let overlap = slicer_sdk::host::clip_polygons(
-                        &b.regions,
-                        &r.regions,
-                        slicer_sdk::host::ClipOperation::Intersection,
-                    );
-                    assert!(
-                        overlap.is_empty(),
-                        "AC-4: body and interface overlap at layer {layer};                          interface must be subtracted out of the body"
-                    );
-                }
+    // Interface must be carved out of the body, never printed on top of it —
+    // and the body must SURVIVE the carve. Canonical
+    // `TreeSupport.cpp::draw_circles` computes
+    // `base_areas = diff_ex(base_areas, roofs)` and keeps the remainder, so an
+    // interface layer whose branch continues below the interface band still
+    // carries a `SupportBody` cross-section.
+    //
+    // The previous form of this block iterated `for b in &body { for r in &roof
+    // { .. } }`, which never executed: the planner clears the body on any layer
+    // that carries an interface, so `body` was always empty and the overlap
+    // assertion was unreachable.
+    let geometry_layers: Vec<i32> = entries
+        .iter()
+        .filter(|e| e.global_layer_index >= 0)
+        .filter(|e| e.roles.iter().any(|r| !r.regions.is_empty()))
+        .map(|e| e.global_layer_index)
+        .collect();
+    let interface_band_bottom = *top_interface_layers
+        .iter()
+        .min()
+        .expect("top_interface_layers is non-empty (asserted above)");
+    let mut carve_checks = 0usize;
+    for &layer in &top_interface_layers {
+        let entry = entries
+            .iter()
+            .find(|e| e.global_layer_index == layer)
+            .expect("interface layer must have an entry");
+        let body: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+            .roles
+            .iter()
+            .filter(|r| r.role == slicer_ir::SupportPlanRole::SupportBody && !r.regions.is_empty())
+            .collect();
+        let roof: Vec<&slicer_ir::SupportPlanRoleRegion> = entry
+            .roles
+            .iter()
+            .filter(|r| r.role == slicer_ir::SupportPlanRole::TopInterface && !r.regions.is_empty())
+            .collect();
+        let continues_below = geometry_layers
+            .iter()
+            .any(|&lower| lower < interface_band_bottom);
+        if continues_below {
+            carve_checks += 1;
+            assert!(
+                !body.is_empty(),
+                "AC-4: layer {layer} carries a TopInterface but no SupportBody, while the column continues below the interface band (band bottom={interface_band_bottom}, geometry layers={geometry_layers:?}). Canonical subtracts the roof out of `base_areas` and KEEPS the remainder; clearing the body leaves the branch cross-section unprinted on that layer."
+            );
+        }
+        for b in &body {
+            for r in &roof {
+                let overlap = slicer_sdk::host::clip_polygons(
+                    &b.regions,
+                    &r.regions,
+                    slicer_sdk::host::ClipOperation::Intersection,
+                );
+                assert!(
+                    overlap.is_empty(),
+                    "AC-4: body and interface overlap at layer {layer}; interface must be subtracted out of the body, not layered on top of it"
+                );
             }
         }
     }
+    assert!(
+        carve_checks > 0,
+        "AC-4: no interface layer had a column continuing below it, so the body-survives-the-carve check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
+    );
 }
 
 /// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * wall_count.
@@ -289,7 +329,7 @@ fn wall_count_scales_max_move_distance() {
     //   max_move_distance = tan(branch_angle) * effective_height * wall_count
     //
     // Config keys:
-    //   - support_branch_angle_deg (default 45.0)
+    //   - tree_support_branch_angle (default 45.0)
     //   - support_wall_count (default 0 = auto, typically 1-2)
     //
     // Current v1 behavior: step_xy = tan_angle * effective_height (no wall_count factor).
@@ -318,16 +358,16 @@ fn wall_count_scales_max_move_distance() {
     );
 }
 
-/// AC-6: Tree-support stability vs. self-captured golden.
+/// PnP self-capture regression tripwire for tree-support stability.
 ///
 /// ## Golden files (self-captured)
-/// The golden files at `resources/golden/benchy_tree_support_orca_*` are
+/// The golden files at `resources/golden/benchy_tree_support_regression_*` are
 /// **self-captured snapshots** of this planner's own output against a fixed
 /// synthetic overhang fixture, frozen to detect regressions. They prove
 /// determinism and stability across runs but do **not** prove parity with
-/// OrcaSlicer's reference output. A follow-up TASK in `docs/07` tracks
-/// replacing these with real OrcaSlicer reference data extracted from
-/// `resources/test_models/regression_wedge.stl` + `resources/test_config/benchy-tree-support.json`.
+/// OrcaSlicer's reference output. This test was renamed off `orca_parity` in
+/// packet 224 Step 8 (2026-08-20) and regenerated after the RC-15
+/// contact-sampling port.
 ///
 /// To regenerate the goldens after an intentional algorithm change, set
 /// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
@@ -335,7 +375,7 @@ fn wall_count_scales_max_move_distance() {
 ///
 /// Acceptance: branch count within ±10% of golden AND Hausdorff ≤ 0.5mm.
 #[test]
-fn benchy_orca_parity_within_tolerance() {
+fn benchy_tree_support_regression_tripwire() {
     // ── 1. Run the planner against a fixed synthetic fixture ──────────────
     let config = make_planner_config(&[
         ("enable_support", ConfigValue::Bool(true)),
@@ -349,7 +389,7 @@ fn benchy_orca_parity_within_tolerance() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -359,7 +399,15 @@ fn benchy_orca_parity_within_tolerance() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("benchy-stand-in"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("benchy-stand-in"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -390,15 +438,13 @@ fn benchy_orca_parity_within_tolerance() {
         .parent()
         .unwrap();
     let golden_dir = repo_root.join("resources/golden");
-    let branch_count_path = golden_dir.join("benchy_tree_support_orca_branch_count.txt");
-    let endpoints_path = golden_dir.join("benchy_tree_support_orca_endpoints.txt");
+    let branch_count_path = golden_dir.join("benchy_tree_support_regression_branch_count.txt");
+    let endpoints_path = golden_dir.join("benchy_tree_support_regression_endpoints.txt");
 
     let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
 
     // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# Source: Pinch 'n Print self-capture (synthetic overhang fixture, packet 31b)\n\
-                  # Replace with real OrcaSlicer reference data for regression_wedge.stl before promoting to status: implemented.\n\
-                  # Tracked by: docs/07 follow-up to packet 31b_support-planner-algorithmic-parity.\n";
+    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-20 after the RC-15 contact-sampling port (packet 224 Step 3b).\n";
 
     if regen {
         std::fs::create_dir_all(&golden_dir).expect("create golden dir");
@@ -423,12 +469,12 @@ fn benchy_orca_parity_within_tolerance() {
     // ── 3. Parse goldens (skip comment / empty lines) ────────────────────────
     if !branch_count_path.exists() || !endpoints_path.exists() {
         panic!(
-            "AC-6: golden files missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
-             cargo test -p tree-support-planner -- benchy_orca_parity_within_tolerance"
+            "Regression goldens missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
+             cargo test -p tree-support-planner -- benchy_tree_support_regression_tripwire"
         );
     }
     let count_raw = std::fs::read_to_string(&branch_count_path)
-        .expect("benchy_tree_support_orca_branch_count.txt must be readable");
+        .expect("benchy_tree_support_regression_branch_count.txt must be readable");
     let golden_branch_count: usize = count_raw
         .lines()
         .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
@@ -438,7 +484,7 @@ fn benchy_orca_parity_within_tolerance() {
         .expect("golden branch count must be a valid integer");
 
     let endpoints_raw = std::fs::read_to_string(&endpoints_path)
-        .expect("benchy_tree_support_orca_endpoints.txt must be readable");
+        .expect("benchy_tree_support_regression_endpoints.txt must be readable");
     let golden_endpoints: Vec<[f32; 3]> = endpoints_raw
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
@@ -463,7 +509,7 @@ fn benchy_orca_parity_within_tolerance() {
         ((golden_branch_count as f32 * (1.0 + tolerance_fraction)).ceil()) as usize;
     assert!(
         output_branch_count >= branch_count_min && output_branch_count <= branch_count_max,
-        "AC-6 FAILED: branch count {output_branch_count} outside ±10% of golden {golden_branch_count} \
+        "Regression tripwire FAILED: branch count {output_branch_count} outside ±10% of golden {golden_branch_count} \
          (range: {branch_count_min}–{branch_count_max}). Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate \
          after intentional algorithm changes."
     );
@@ -475,7 +521,7 @@ fn benchy_orca_parity_within_tolerance() {
     let tolerance_mm = 0.5_f32;
     assert!(
         hausdorff <= tolerance_mm,
-        "AC-6 FAILED: Hausdorff distance {hausdorff:.4}mm exceeds tolerance {tolerance_mm}mm. \
+        "Regression tripwire FAILED: Hausdorff distance {hausdorff:.4}mm exceeds tolerance {tolerance_mm}mm. \
          Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate after intentional algorithm changes."
     );
 }
@@ -522,21 +568,24 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 /// **Strengthened by packet 224.** The drop trigger changed, and the test gained
 /// a check that the original was missing.
 ///
-/// Previously code 1002 fired when a node's clamped *centre* landed inside
-/// `collision_polys`, and it only ever fired because `clamp_to_avoidance`'s
-/// guard was inverted: nodes safely outside avoidance were snapped onto the
-/// avoidance boundary, dragging branches into the model. Correcting that guard
-/// alone was not enough — pushing a node to the *nearest* point outside
-/// avoidance can move it arbitrarily far, so this fixture began planning
-/// support bodies metres away from the overhang they were meant to support.
+/// **Rewired by packet 224 step 5 (F-13).** This asserted a typed code-1002
+/// `node-clamped-out` diagnostic. That diagnostic reported a non-canonical
+/// mechanism — a fractional `max_move_xy` cap plus a post-hoc clamp out of
+/// avoidance, with an "escape budget" that dropped the node when the clamp
+/// exceeded it — and F-13 deletes all three. Canonical always takes a full
+/// `get_max_move_dist(&node)` step and never clamps, so there is no escape to
+/// go over budget and nothing for code 1002 to report.
 ///
-/// The trigger is now the branch-angle budget: a branch may travel at most
-/// `max_move_xy` per layer, escaping avoidance included. When no legal
-/// destination is within budget the node is dropped with code 1002.
+/// The canonical mechanism for this fixture is the `drop_nodes` rule "if the
+/// branch falls completely inside a collision area, delete it": with
+/// `support_on_buildplate_only = false` the node has `valid` cleared, which
+/// stops propagation but still draws the node on its own layer. So the
+/// observable is *pruning*, not a diagnostic: the column must not descend
+/// past the layer at which it meets the model.
 ///
-/// The added assertion is that nothing is planned at all. A diagnostic without
-/// an actual drop is a warning that support was printed through the object,
-/// which is precisely what the earlier version of this test failed to catch.
+/// The two surviving assertions are strictly stronger than the code-1002 one
+/// they replace — they check the drop actually happened rather than that a
+/// warning was printed about it.
 #[module_test]
 fn node_rejected_when_model_occupies_every_destination() {
     // Note: #[module_test] already drains and reinstalls log capture via
@@ -554,7 +603,7 @@ fn node_rejected_when_model_occupies_every_destination() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(0.5)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -562,13 +611,11 @@ fn node_rejected_when_model_occupies_every_destination() {
     let lp = make_layer_plan(11, 0.0, 0.2);
     let rs = make_region_segmentation("blocked", 11);
 
-    // Build a SupportGeometryView whose collision_polys cover the entire
-    // overhang region so any node move lands inside the collision union.
-    // The plate sits in [0..4, 0..4] xy; cover [-10..14, -10..14] which
-    // entirely contains it. avoidance_polys (collision inflated outward) will
-    // also contain the move targets, so clamp_to_avoidance is satisfied —
-    // but point_in_any_polygon(collision_polys, ...) hits and the node is
-    // dropped with a typed code-1002 diagnostic.
+    // Build a SupportGeometryView whose collision covers the entire overhang
+    // region so any node move lands inside the collision union. The plate sits
+    // in [0..4, 0..4] xy; cover [-10..14, -10..14], which entirely contains it.
+    // Every node is therefore further inside collision than its own branch
+    // radius, so canonical clears `valid` and the column stops descending.
     let big_box = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -593,24 +640,56 @@ fn node_rejected_when_model_occupies_every_destination() {
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("blocked"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("blocked"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let diagnostics = output.diagnostics();
     let rejected: Vec<&Diagnostic> = diagnostics
         .iter()
         .filter(|d| {
-            d.code == 1002
+            d.code == 1203
                 && matches!(d.severity, DiagnosticSeverity::Warn)
-                && d.message.contains("node-clamped-out")
+                && d.message.contains("intersects model occupancy")
         })
         .collect();
     assert!(
         !rejected.is_empty(),
-        "AC-N3: expected at least one code 1002 warn diagnostic containing \
-         'node-clamped-out'; got {} diagnostics: {:?}",
+        "AC-N3: expected at least one typed warn diagnostic recording that \
+         the branch intersects model occupancy; got {} diagnostics: {:?}",
         diagnostics.len(),
         diagnostics
+    );
+
+    // The column must be PRUNED, not merely warned about: a node that falls
+    // completely inside collision has `valid` cleared, so no descendant is
+    // created and no lower layer carries geometry. `rejected` records the
+    // topmost blocked layer; nothing may be planned below it.
+    let topmost_rejected = rejected
+        .iter()
+        .filter_map(|d| d.layer)
+        .max()
+        .expect("rejection diagnostics carry a layer");
+    assert!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.decline_reason.is_none())
+            .all(|entry| entry.global_layer_index >= topmost_rejected),
+        "AC-N3: the branch must not descend below the layer at which it \
+         meets the model (topmost rejected layer {topmost_rejected}); got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| e.global_layer_index)
+            .collect::<Vec<_>>()
     );
 
     // The rejection must be total: nothing may be planned inside a region the
@@ -626,7 +705,6 @@ fn node_rejected_when_model_occupies_every_destination() {
          destination; got {:?}",
         output.entries()
     );
-
 }
 
 // RC-1 lone-node column mid-air: a propagated node must still emit its segment.
@@ -642,7 +720,7 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -652,7 +730,15 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
     let sg = SupportGeometryView { entries: vec![] };
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry_with_analysis(&[obj], &lp, &rs, &tree_analysis("lone-node"), &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("lone-node"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -675,6 +761,74 @@ fn lone_node_emits_degenerate_segment_on_propagated_layers() {
             first.x == second.x && first.y == second.y && first.z == second.z
         }),
         "a lone propagated node must emit a degenerate two-point segment below the contact layer"
+    );
+}
+
+#[test]
+fn contact_count_follows_overhang_area_not_triangle_count() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("tree_support_branch_diameter", ConfigValue::Float(1.0)),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+    let layer_plan = make_layer_plan(11, 0.0, 0.2);
+    let region_small = make_region_segmentation("small", 11);
+    let region_large = make_region_segmentation("large", 11);
+    let support_geometry = SupportGeometryView { entries: vec![] };
+
+    let mut small_output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[overhang_plate_fixture("small")],
+            &layer_plan,
+            &region_small,
+            &support_geometry,
+            &mut small_output,
+            &ConfigView::new(),
+        )
+        .expect("small overhang planning");
+
+    let mut large = overhang_plate_fixture("large");
+    for vertex in large.vertices.iter_mut().skip(2) {
+        vertex[0] *= 3.0;
+        vertex[1] *= 3.0;
+    }
+    let mut large_output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[large],
+            &layer_plan,
+            &region_large,
+            &support_geometry,
+            &mut large_output,
+            &ConfigView::new(),
+        )
+        .expect("large overhang planning");
+
+    let top_points = |output: &SupportGeometryOutput| {
+        let top_layer = output
+            .entries()
+            .iter()
+            .map(|entry| entry.global_layer_index)
+            .max()
+            .expect("contact layer");
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index == top_layer)
+            .filter_map(|entry| entry.skeleton.as_ref())
+            .map(|skeleton| skeleton.points.len())
+            .sum::<usize>()
+    };
+    let small_count = top_points(&small_output);
+    let large_count = top_points(&large_output);
+    assert!(
+        large_count > small_count,
+        "same two-triangle overhangs must sample by area: small={small_count}, large={large_count}"
     );
 }
 
@@ -726,7 +880,7 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
 
 /// Build a single-overhang fixture: an anchor at the origin (so bounds span
 /// z=0..2.0 across ≥10 layers at 0.2mm height) plus a downward-facing quad
-/// plate floating at z=2.0 covering [0..4]×[0..4]. The two plate triangles
+/// plate floating at z=1.8 covering [0..0.2]×[0..0.2]. The two plate triangles
 /// register as overhang facets and seed a contact point near the top of the
 /// layer stack.
 fn overhang_plate_fixture(object_id: &str) -> MeshObjectView {
@@ -752,9 +906,9 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
     let vertices = vec![
         [0.0, 0.0, 0.0],
         [0.0, 0.0, 1.8],
-        [4.0, 0.0, 1.8],
-        [4.0, 4.0, 1.8],
-        [0.0, 4.0, 1.8],
+        [0.2, 0.0, 1.8],
+        [0.2, 0.2, 1.8],
+        [0.0, 0.2, 1.8],
     ];
     let triangles = vec![[1, 3, 2]];
     MeshObjectView {
@@ -767,6 +921,7 @@ fn single_contact_fixture(object_id: &str) -> MeshObjectView {
 
 /// Make a minimal SupportPlanEntry at a given layer index with given point width.
 fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),
@@ -792,6 +947,7 @@ fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry
 /// Make a SupportPlanEntry with a negative (raft) layer index.
 fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
     // global_layer_index is i32 to support negative indices for raft layers.
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: index,
         object_id: "test-object".to_string(),
@@ -867,7 +1023,7 @@ fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         ("support_top_z_distance_mm", ConfigValue::Float(gap_mm)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
@@ -902,13 +1058,17 @@ fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
 #[test]
 fn top_z_distance_lowers_the_tree_contact_layer() {
     // The fixture's overhang underside sits at z = 1.8mm on a 0.2mm layer
-    // stack, so the flush (zero-gap) contact belongs on the layer whose top
-    // plane is 1.8mm — index 8.
+    // stack — layer index 8. Canonical `generate_contact_points` inserts
+    // every contact into `contact_nodes[layer_nr - 1]`, commented "Support
+    // must always be 1 layer below overhang", so even a *zero* gap tops the
+    // column out at layer 7, not 8. Packet 224 defect F-34: this module used
+    // to walk real layer Z down from the overhang plane instead, which put
+    // the zero-gap contact flush on layer 8.
     let flush_top = top_support_layer_for_gap(0.0);
     assert_eq!(
-        flush_top, 8,
-        "with support_top_z_distance_mm = 0.0 the tree column must reach the \
-         overhang underside at z=1.8mm (layer 8); got layer {flush_top}"
+        flush_top, 7,
+        "with support_top_z_distance_mm = 0.0 the tree column must top out \
+         exactly one layer below the overhang layer 8; got layer {flush_top}"
     );
 
     // One 0.2mm layer of clearance must drop the column by exactly one layer.
@@ -948,7 +1108,7 @@ fn top_z_distance_defaults_to_traditional_two_tenths() {
         ),
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
         // support_top_z_distance_mm deliberately absent.
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");

@@ -485,6 +485,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
     .unwrap();
     let mut support = SupportGeometryOutput::new();
     support
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
         .push_support_plan_entry(SupportPlanEntry {
             global_layer_index: 0,
             object_id: "object".into(),

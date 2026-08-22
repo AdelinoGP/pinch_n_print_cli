@@ -86,6 +86,7 @@ fn mesh() -> MeshIR {
 }
 
 fn entry(body: &str, x: i64) -> slicer_ir::SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     slicer_ir::SupportPlanEntry {
         global_layer_index: 0,
         object_id: "object-a".into(),
@@ -227,4 +228,48 @@ fn support_body_straddling_absolute_cell_boundary_is_retained() {
     );
     assert_eq!(result.retained.len(), 1);
     assert_eq!(result.retained[0].body_ids, vec!["straddles_boundary"]);
+}
+
+/// Regression (packet 224): a repeated `(layer, object, region)` identity from
+/// ONE family is not a family conflict. It is two entries for one region from a
+/// single writer (body plus interface candidate, or two candidates at the same
+/// layer), and must be combined by same-family union rather than reported as a
+/// duplicate. Before this fix a wedge slice emitted a flood of code-1202
+/// "families 'traditional' and 'traditional'" diagnostics, and every
+/// non-`traditional` family additionally had the second entry silently dropped.
+#[test]
+fn same_family_duplicate_identity_unions_without_a_duplicate_diagnostic() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    // Same family, same identity (`entry` pins layer 0 / object-a / region 7),
+    // same body id so same-family union merges them into one entry.
+    let mut first = entry("tree-body", 20_000_000);
+    first.demand_ids = vec!["demand-a".into()];
+    let mut second = entry("tree-body", 20_100_000);
+    second.demand_ids = vec!["demand-b".into()];
+
+    let result = aggregate_support_plans(SupportAggregationInput {
+        plans: vec![slicer_ir::SupportPlanIR {
+            entries: vec![first, second],
+            ..Default::default()
+        }],
+        exact_z: &service,
+    });
+
+    assert!(
+        result.duplicates.is_empty(),
+        "same-family repeats are not duplicates: {:?}",
+        result.duplicates
+    );
+    assert!(!result.degraded, "same-family union must not degrade");
+    assert_eq!(result.retained.len(), 1);
+    assert_eq!(
+        result.retained[0].demand_ids,
+        vec!["demand-a", "demand-b"],
+        "both demands must survive the union"
+    );
+    assert_eq!(
+        result.retained[0].roles[0].regions.len(),
+        2,
+        "both bodies' geometry must survive the union"
+    );
 }

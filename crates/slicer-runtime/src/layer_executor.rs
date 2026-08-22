@@ -2235,13 +2235,26 @@ pub fn assemble_ordered_entities_with_support_identities(
                 region_id: entry.region_id,
                 variant_chain: Vec::new(),
             };
-            let tool = match entry.role {
+            // Canonical (OrcaSlicer `GCode.cpp::process_layer` / `ToolOrdering`)
+            // selects the interface extruder per EXTRUSION ROLE of the path
+            // being emitted, not per aggregate entry. Entry role stays
+            // authoritative when it is explicit; when it is the default
+            // `SupportBody` (which is also what an untagged marshal fallback
+            // produces, F-28), fall back to the per-path role so an interface
+            // or ironing path still lands on the interface tool.
+            let entry_tool = match entry.role {
                 slicer_ir::SupportRole::TopInterface
                 | slicer_ir::SupportRole::BottomInterface
-                | slicer_ir::SupportRole::Ironing => support_tools.interface_tool,
-                _ => support_tools.support_tool,
+                | slicer_ir::SupportRole::Ironing => Some(support_tools.interface_tool),
+                slicer_ir::SupportRole::SupportBody => None,
+                _ => Some(support_tools.support_tool),
             };
             for path in &entry.paths {
+                let tool = entry_tool.unwrap_or(match path.role {
+                    slicer_ir::ExtrusionRole::SupportInterface
+                    | slicer_ir::ExtrusionRole::Ironing => support_tools.interface_tool,
+                    _ => support_tools.support_tool,
+                });
                 push(
                     path.clone(),
                     path.role.clone(),

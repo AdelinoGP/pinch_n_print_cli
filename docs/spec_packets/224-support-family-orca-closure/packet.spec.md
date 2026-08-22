@@ -115,9 +115,9 @@ Root causes RC-0..RC-17 are recorded in `design.md` §Root Causes, with measured
 - **AC-N2** — amended above; the dedicated test was deleted in `4c67ccd9`.
 
 **Open 224 work.**
-- **RC-15 — tree contact-point derivation.** The dominant cause of the tree coverage deficit (1.949x short on support XY path length). Classified a GAP but agreed to be implemented **in 224**, not routed.
-- **Interface layer counts** — the normal family's 1-versus-3 `;TYPE:Support interface` block count.
-- **RC-17 — tree-family regressions from `9f4540bd`.** Ten failures across `tree-support-planner` and `tree-support` at HEAD, eight of them introduced by the renderer rewrite. Per-test attribution in `tree-failure-attribution.md`.
-- **The Orca inspection checklist** (`design.md` §Orca Inspection Checklist), required by amended AC-2/AC-3/AC-6.
+- **RC-15 — tree contact-point derivation.** ~~Classified a GAP but agreed to be implemented in 224, not routed.~~ **IMPLEMENTED 2026-08-20 (`ad9019ee`, Step 3b).** The three canonical sampling streams landed with the collision-gate narrowing reverted; closure 12/12, planner crate only RC-C red, tree deficit re-measured 1.58x deposited / 1.75x XY path.
+- **Interface layer counts** — ~~the normal family's 1-versus-3 `;TYPE:Support interface` block count.~~ **DONE (`ee27ac94`, Step 2).** Counts follow the configured top band (1/2/3 exact, pinned by `interface_layer_count_follows_config`). The remaining 2-vs-3 difference against Orca at `top=2`/`bottom=2` is canonical roof/floor band structure, registered as gap G-18.
+- **RC-17 — tree-family regressions from `9f4540bd`.** ~~Ten failures across `tree-support-planner` and `tree-support` at HEAD, eight of them introduced by the renderer rewrite.~~ **DONE (Step 3a, session-3 audit).** RC-A/RC-B fixed in production; RC-C left red for Step 8 regeneration; RC-D/RC-E carried the audit's verdicts.
+- **The Orca inspection checklist** (`design.md` §Orca Inspection Checklist), required by amended AC-2/AC-3/AC-6. **WRITTEN 2026-08-20 (`8cb60b91`, Step 6).**
 
 `TASK-335` stays unchecked in `docs/07_implementation_status.md`.

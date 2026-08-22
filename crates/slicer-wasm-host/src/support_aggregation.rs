@@ -40,6 +40,47 @@ pub struct SupportAggregationInput<'a> {
     pub exact_z: &'a ExactZQueryService,
 }
 
+/// What aggregation does when two *different* families claim one
+/// `(global_layer_index, object_id, region_id)` identity.
+///
+/// Packet 223 made this unconditionally fatal, which every infallible caller
+/// then turned into a total loss of the aggregate (`unwrap_or_else` yields an
+/// empty result, and the prepass mapped it to a fatal module error). Callers
+/// that must keep printing choose [`FamilyConflictPolicy::Degrade`]; the one
+/// caller that must refuse to publish keeps [`FamilyConflictPolicy::Fail`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FamilyConflictPolicy {
+    /// Retain the first-*arriving* claimant, record a
+    /// [`DuplicateSupportPlanEntry`] (surfaced as diagnostic code 1202), and
+    /// mark the aggregate degraded.
+    #[default]
+    Degrade,
+    /// Abort with [`SupportAggregationError`], publishing nothing.
+    Fail,
+}
+
+// ORDERING ASYMMETRY (deliberate; no OrcaSlicer basis for either half).
+//
+// Two different orders are live in this function and they disagree:
+//
+//   * `Fail` computes its `SupportAggregationError` payload from the SORTED
+//     entry list, so `expected_family_id` is whichever family sorts first
+//     under `compare_entries` (which keys on `body_ids.iter().min()`, so e.g.
+//     "traditional-body" < "tree-body").
+//   * `Degrade` retains the first entry in PLAN-ARRIVAL order -- the
+//     `(plan_index, entry_index)` ordinal captured before the sort -- because
+//     "the first writer to claim a region owns it" is the only rule that is
+//     stable against a body being renamed.
+//
+// Neither order is derived from canonical OrcaSlicer behaviour; canonical has
+// no multi-family merge point at all. They are kept apart because
+// `mismatched_family_fatal` (slicer-runtime `tests/integration/
+// support_family_routing.rs`) pins the sorted-order payload while the two
+// degrade tests pin arrival-order retention. Do NOT unify them without first
+// amending `mismatched_family_fatal`.
+//
+// The sort itself remains, and is now purely for output determinism.
+
 /// Structured unmet demand diagnostic emitted when a body is dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnmetSupportDemand {
@@ -132,23 +173,25 @@ pub struct DeclinedSupportResult {
 }
 
 /// Aggregate all family plans, preserving family attribution and validating
-/// entry identities before they can reach a renderer. Exact-Z geometry is
-/// checked by consumers using each entry's global layer Z; `anchor_z` is the
-/// termination height and is not the height where the entry is printed.
+/// every body against exact-Z occupancy before it can reach a renderer.
 pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAggregationResult {
-    try_aggregate_support_plans(input).unwrap_or_else(|error| {
-        let mut result = SupportAggregationResult {
-            degraded: true,
-            ..SupportAggregationResult::default()
-        };
-        result.diagnostics.push(SupportRoutingDiagnostics {
-            family_id: String::new(),
-            body_id: String::new(),
-            demand_id: String::new(),
-            reason: format!("fatal support family routing mismatch: {error:?}"),
-        });
-        result
-    })
+    try_aggregate_support_plans_with_policy(input, FamilyConflictPolicy::Degrade).unwrap_or_else(
+        |error| {
+            // Unreachable under `Degrade`, which never returns `Err`; kept so
+            // the signature stays total.
+            let mut result = SupportAggregationResult {
+                degraded: true,
+                ..SupportAggregationResult::default()
+            };
+            result.diagnostics.push(SupportRoutingDiagnostics {
+                family_id: String::new(),
+                body_id: String::new(),
+                demand_id: String::new(),
+                reason: format!("fatal support family routing mismatch: {error:?}"),
+            });
+            result
+        },
+    )
 }
 
 /// Fallible aggregate used by the prepass commit seam, which must not publish
@@ -156,49 +199,94 @@ pub fn aggregate_support_plans(input: SupportAggregationInput<'_>) -> SupportAgg
 pub fn try_aggregate_support_plans(
     input: SupportAggregationInput<'_>,
 ) -> Result<SupportAggregationResult, SupportAggregationError> {
+    try_aggregate_support_plans_with_policy(input, FamilyConflictPolicy::Fail)
+}
+
+/// Aggregate family plans under an explicit [`FamilyConflictPolicy`].
+///
+/// See the ORDERING ASYMMETRY note above: the `Fail` error payload is computed
+/// from the sorted entry list, while `Degrade` retention follows plan-arrival
+/// order.
+pub fn try_aggregate_support_plans_with_policy(
+    input: SupportAggregationInput<'_>,
+    conflict_policy: FamilyConflictPolicy,
+) -> Result<SupportAggregationResult, SupportAggregationError> {
     let mut result = SupportAggregationResult::default();
     let mut identities = HashMap::new();
+    // Arrival ordinal `(plan_index, entry_index)`, captured BEFORE the total
+    // sort below. Under `Degrade` this -- not sort position -- decides which
+    // family owns a contested identity.
     let mut entries = input
         .plans
         .iter()
-        .flat_map(|plan| plan.entries.iter().cloned())
+        .enumerate()
+        .flat_map(|(plan_index, plan)| {
+            plan.entries
+                .iter()
+                .enumerate()
+                .map(move |(entry_index, entry)| ((plan_index, entry_index), entry.clone()))
+        })
         .collect::<Vec<_>>();
-    entries.sort_by(compare_entries);
-    for plan in input.plans {
-        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
-    }
-    for entry in entries {
+    let mut arrival_owners: HashMap<(i32, String, u64), ((usize, usize), String)> = HashMap::new();
+    for (arrival, entry) in &entries {
         let identity = (
             entry.global_layer_index,
             entry.object_id.clone(),
             entry.region_id,
         );
-        if let Some(first_family_id) = identities.get(&identity).cloned() {
-            if first_family_id != entry.family_id {
-                return Err(SupportAggregationError {
-                    global_layer_index: identity.0,
-                    object_id: identity.1.clone(),
-                    region_id: identity.2,
-                    expected_family_id: first_family_id,
-                    conflicting_family_id: entry.family_id.clone(),
-                });
+        match arrival_owners.get(&identity) {
+            Some((incumbent, _)) if incumbent <= arrival => {}
+            _ => {
+                arrival_owners.insert(identity, (*arrival, entry.family_id.clone()));
             }
-            result.degraded = true;
-            result.duplicates.push(DuplicateSupportPlanEntry {
-                global_layer_index: identity.0,
-                object_id: identity.1.clone(),
-                region_id: identity.2,
-                first_family_id,
-                duplicate_family_id: entry.family_id.clone(),
-            });
-            if entry.family_id != "traditional" {
-                continue;
-            }
-            // Same-family entries are intentionally combined below.  Dropping
-            // the duplicate here made whichever role sorted first authoritative
-            // for the identity, losing interfaces or body geometry from another
-            // writer/candidate at the same layer.
         }
+    }
+    entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
+    for plan in input.plans {
+        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
+    }
+    for (_arrival, entry) in entries {
+        let identity = (
+            entry.global_layer_index,
+            entry.object_id.clone(),
+            entry.region_id,
+        );
+        match conflict_policy {
+            FamilyConflictPolicy::Fail => {
+                if let Some(first_family_id) = identities.get(&identity).cloned() {
+                    if first_family_id != entry.family_id {
+                        return Err(SupportAggregationError {
+                            global_layer_index: identity.0,
+                            object_id: identity.1.clone(),
+                            region_id: identity.2,
+                            expected_family_id: first_family_id,
+                            conflicting_family_id: entry.family_id.clone(),
+                        });
+                    }
+                }
+            }
+            FamilyConflictPolicy::Degrade => {
+                if let Some((_, owner_family_id)) = arrival_owners.get(&identity) {
+                    if owner_family_id != &entry.family_id {
+                        result.degraded = true;
+                        result.duplicates.push(DuplicateSupportPlanEntry {
+                            global_layer_index: identity.0,
+                            object_id: identity.1.clone(),
+                            region_id: identity.2,
+                            first_family_id: owner_family_id.clone(),
+                            duplicate_family_id: entry.family_id.clone(),
+                        });
+                        continue;
+                    }
+                }
+            }
+        }
+        // A repeated identity within ONE family is not a conflict: it is two
+        // entries for one region from one writer (body + interface candidates,
+        // or two candidates at the same layer). It is combined by
+        // `union_same_family_entries` below and carries no diagnostic. Dropping
+        // it made whichever role sorted first authoritative for the identity,
+        // losing interfaces or body geometry from the other entry.
         identities
             .entry(identity.clone())
             .or_insert_with(|| entry.family_id.clone());
@@ -216,39 +304,25 @@ pub fn try_aggregate_support_plans(
             }
             continue;
         }
-        let rejection_reason = validate_entry(&entry, input.exact_z);
-        if rejection_reason.is_none() {
-            result.retained.push(entry);
-        } else {
-            result.degraded = true;
-            let reason = rejection_reason.unwrap_or("body rejected");
-            for body_id in &entry.body_ids {
-                for demand_id in &entry.demand_ids {
-                    result.unmet.push(UnmetSupportDemand {
-                        demand_id: demand_id.clone(),
-                        body_id: body_id.clone(),
-                        reason: reason.into(),
-                    });
-                    result.diagnostics.push(SupportRoutingDiagnostics {
-                        family_id: entry.family_id.clone(),
-                        body_id: body_id.clone(),
-                        demand_id: demand_id.clone(),
-                        reason: reason.into(),
-                    });
-                }
+        match validate_entry(&entry, input.exact_z) {
+            None => result.retained.push(entry),
+            Some(reason) => {
+                result.degraded = true;
+                record_rejection(&mut result, &entry, reason);
             }
         }
     }
+    // Validation is a *per-body* gate and runs only here, before union.
+    // Re-running it on merged groups was a category error: a merged group is by
+    // construction not one planner-emitted body, so the per-body routing-cell
+    // territory bound does not apply to it, and two legitimately same-`body_id`
+    // entries far apart on the plate were dropped wholesale once their union
+    // envelope exceeded one cell. Canonical support-island merging (`union_` in
+    // OrcaSlicer's `SupportCommon.cpp` / `SupportMaterial.cpp`) imposes no size
+    // cap on the merged result. The occupancy predicate is set-monotone -- a
+    // union cannot introduce an overlap that was absent from every input -- so
+    // re-checking it after merging would be redundant as well.
     union_same_family_entries(&mut result.retained);
-    let retained = std::mem::take(&mut result.retained);
-    for entry in retained {
-        if let Some(reason) = validate_entry(&entry, input.exact_z) {
-            result.degraded = true;
-            record_rejection(&mut result, &entry, reason);
-        } else {
-            result.retained.push(entry);
-        }
-    }
     let mut rejected = vec![false; result.retained.len()];
     for left in 0..result.retained.len() {
         for right in (left + 1)..result.retained.len() {
@@ -320,23 +394,25 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
 }
 
 fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Option<&'static str> {
-    let regions: Vec<&ExPolygon> = entry
-        .roles
-        .iter()
-        .flat_map(|role| role.regions.iter())
-        .collect();
-    if let Some((min_x, max_x, min_y, max_y)) = body_bounds(&regions) {
-        if max_x - min_x > ROUTING_CELL_SIZE || max_y - min_y > ROUTING_CELL_SIZE {
-            return Some("body rejected: routing-cell territory exceeded");
-        }
-    }
     exact_z
         .query(
             &entry.object_id,
             entry.region_id,
             units_to_mm(entry.anchor_z),
         )
-        .map(|_| None)
+        .map(|query| {
+            if !in_routing_cell(entry) {
+                Some("body rejected: routing-cell collision")
+            } else if entry.roles.iter().any(|role| {
+                role.regions
+                    .iter()
+                    .any(|body| overlaps_any(body, &query.occupancy))
+            }) {
+                Some("body rejected: exact-Z occupancy")
+            } else {
+                None
+            }
+        })
         .unwrap_or(Some("body rejected: exact-Z query unavailable"))
 }
 
@@ -380,16 +456,21 @@ fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Op
 /// body identities, and demands are accumulated without duplicates.
 fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
     let mut merged: Vec<SupportPlanEntry> = Vec::new();
+    // Routing identity of each merged group, snapshotted when the group is
+    // created. Recomputing it from `merged[index]` mid-loop let a group's cell
+    // drift as it absorbed members, making the result order-sensitive.
+    let mut group_cells: Vec<Option<RoutingCell>> = Vec::new();
     for entry in entries.drain(..) {
         let entry_cell = routing_cell(&entry);
-        let matching = merged.iter().position(|existing| {
+        let matching = merged.iter().enumerate().position(|(index, existing)| {
             existing.family_id == entry.family_id
                 && existing.global_layer_index == entry.global_layer_index
                 && existing.object_id == entry.object_id
-                && (same_body(existing, &entry) || routing_cell(existing) == entry_cell)
+                && (same_body(existing, &entry) || group_cells[index] == entry_cell)
         });
         let Some(index) = matching else {
             merged.push(entry);
+            group_cells.push(entry_cell);
             continue;
         };
         let existing = &mut merged[index];
@@ -503,18 +584,57 @@ pub fn aggregate_support_plan_irs_with_diagnostics(
 }
 
 /// Fallible aggregation used when a caller must prevent publication on error.
+///
+/// Keeps [`FamilyConflictPolicy::Fail`]: a cross-family identity conflict is
+/// reported as `Err` and nothing is published.
 pub fn try_aggregate_support_plan_irs_with_diagnostics(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
+) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
+    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Fail)
+}
+
+/// Degrading aggregation used by the runtime prepass commit seam.
+///
+/// A cross-family identity conflict retains the first-arriving family, emits
+/// diagnostic code 1202, and still publishes every other entry, instead of
+/// discarding the whole aggregate.
+pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
+    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Degrade)
+        .unwrap_or_else(|error| {
+            // Unreachable under `Degrade`, which never returns `Err`.
+            (
+                SupportPlanIR::default(),
+                vec![slicer_ir::Diagnostic {
+                    severity: slicer_ir::DiagnosticSeverity::Error,
+                    code: 1204,
+                    layer: None,
+                    object_id: None,
+                    message: format!("support family routing mismatch: {error:?}"),
+                }],
+            )
+        })
+}
+
+fn aggregate_support_plan_irs_with_policy(
+    plans: Vec<SupportPlanIR>,
+    exact_z: &ExactZQueryService,
+    conflict_policy: FamilyConflictPolicy,
 ) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
     let schema_version = plans
         .first()
         .map(|plan| plan.schema_version)
         .unwrap_or_default();
-    let aggregate = try_aggregate_support_plans(SupportAggregationInput {
-        plans: plans.clone(),
-        exact_z,
-    })?;
+    let aggregate = try_aggregate_support_plans_with_policy(
+        SupportAggregationInput {
+            plans: plans.clone(),
+            exact_z,
+        },
+        conflict_policy,
+    )?;
     let mut diagnostics = aggregate
         .unmet
         .iter()
@@ -590,6 +710,28 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
     result
 }
 
+/// True when a body fits inside *some* routing-cell-sized territory, i.e. its
+/// envelope is no larger than one cell on either axis. Routing cells bound how
+/// much territory a single body may claim; the body is assigned to the cell
+/// that contains it rather than being measured against the absolute grid, so a
+/// small body that merely straddles a grid line (notably x = 0 or y = 0, which
+/// are cell boundaries) keeps its territory. Only bodies genuinely larger than
+/// one cell exceed their permitted territory and are rejected.
+///
+/// `saturating_sub` is deliberate: a malformed guest plan can place `minx`
+/// near `i64::MIN`, and a plain subtraction would panic in debug builds.
+fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
+    let regions: Vec<&ExPolygon> = entry
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .collect();
+    let Some((minx, maxx, miny, maxy)) = body_bounds(&regions) else {
+        return true;
+    };
+    maxx.saturating_sub(minx) <= ROUTING_CELL_SIZE && maxy.saturating_sub(miny) <= ROUTING_CELL_SIZE
+}
+
 /// Envelope union across all role regions of a support body.
 fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
     let mut acc: Option<(i64, i64, i64, i64)> = None;
@@ -606,6 +748,16 @@ fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
         });
     }
     acc
+}
+
+fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {
+    others.iter().any(|other| {
+        let overlap = slicer_core::polygon_ops::intersection(
+            std::slice::from_ref(a),
+            std::slice::from_ref(other),
+        );
+        overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
+    })
 }
 
 fn entries_overlap(a: &SupportPlanEntry, b: &SupportPlanEntry) -> bool {

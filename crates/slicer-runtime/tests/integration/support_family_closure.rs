@@ -911,6 +911,74 @@ pub fn supersedes_packet_213_and_task_329() -> Result<(), String> {
     Ok(())
 }
 
+/// Recursively collect Rust source file paths under `dir`.
+///
+/// Only `.rs` files are collected: they are the test sources that could
+/// reference an Orca-derived G-code path, and they are the only files under
+/// `tests/` guaranteed to be UTF-8 (binary fixtures like `.stl` are not).
+fn collect_test_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+    let entries =
+        fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read_dir entry {}: {error}", dir.display()))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("file_type {}: {error}", path.display()))?;
+        if file_type.is_dir() {
+            collect_test_files(&path, out)?;
+        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// AC-6 amendment, second half: no test may read the Orca-derived G-code
+/// references. Orca comparison is a recorded manual inspection, not something
+/// the automated suite may depend on, so no test source under `tests/` may
+/// reference `SupportTest_*_Orca.gcode` (nor the bare `Orca.gcode`).
+///
+/// The scan uses a recursive `read_dir` over `tests/` rather than `include_str!`
+/// of known files so that a new test file reading an Orca reference is caught
+/// without this assertion being updated. The assertion's own file is excluded:
+/// it must name the literals it searches for, so it would otherwise trip its own
+/// gate.
+fn assert_no_test_reads_orca_gcode() -> Result<(), String> {
+    const FORBIDDEN: &[&str] = &[
+        "SupportTest_Tree_Orca.gcode",
+        "SupportTest_Normal_Orca.gcode",
+        "Orca.gcode",
+    ];
+    let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut files = Vec::new();
+    collect_test_files(&tests_dir, &mut files)?;
+    let mut offenders: Vec<String> = Vec::new();
+    for path in files {
+        // The assertion's own source necessarily contains the literals it scans
+        // for; exclude it from the scan.
+        if path.file_name().and_then(|name| name.to_str()) == Some("support_family_closure.rs") {
+            continue;
+        }
+        let contents = fs::read_to_string(&path)
+            .map_err(|error| format!("read {}: {error}", path.display()))?;
+        for needle in FORBIDDEN {
+            if contents.contains(needle) {
+                offenders.push(format!("{} references `{needle}`", path.display()));
+                break;
+            }
+        }
+    }
+    if !offenders.is_empty() {
+        return Err(format!(
+            "AC-6: a test reads an Orca-derived G-code reference — no test may read \
+             SupportTest_*_Orca.gcode: {}",
+            offenders.join("; ")
+        ));
+    }
+    Ok(())
+}
+
 /// AC-6 (amended to invariant-plus-recorded-inspection): asserts the PnP-side
 /// disposition invariants only — both families plan geometry, every entry is
 /// attributed, and every declined entry records a reason.
@@ -918,12 +986,15 @@ pub fn supersedes_packet_213_and_task_329() -> Result<(), String> {
 /// The previous body probed two `tmp/*.gcode` paths and ran an empty `if`, so no
 /// Orca-side condition could fail it. Exact-path parity with OrcaSlicer is never
 /// claimed here; termination, coverage, collision and interface structure are
-/// covered by the invariant tests below.
+/// covered by the invariant tests below. The amendment's second half is the
+/// static self-check [`assert_no_test_reads_orca_gcode`]: no test source under
+/// `tests/` may read the Orca-derived G-code references.
 pub fn task_163b_disposition() -> Result<(), String> {
     for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
         let plan = pnp_support_evidence(family, support_type)?;
         assert_attribution_and_decline_reasons(family, &plan)?;
     }
+    assert_no_test_reads_orca_gcode()?;
     Ok(())
 }
 
@@ -1128,45 +1199,94 @@ pub fn accepted_demands_terminate_on_plate_or_model() -> Result<(), String> {
 
 /// Invariant 3: the interface is topmost and is carved OUT of the body.
 ///
-/// Three assertions per support column, keyed by `(object_id, region_id)`:
-/// 1. interface and `SupportBody` regions are disjoint within an entry (carved
-///    out, not layered on top — the pre-224 additive model extruded both over
-///    the same area);
+/// Assertions per support column, keyed by `(object_id, region_id)`:
+/// 1. on an interface layer whose column continues below the interface band,
+///    `SupportBody` geometry MUST be present, and it MUST be disjoint from the
+///    interface. Canonical `TreeSupport.cpp::draw_circles` does
+///    `base_areas = diff_ex(base_areas, roofs)`: the roof is carved out of the
+///    body and the remainder is KEPT. Dropping the body wholesale (or layering
+///    the interface additively on top of it, the pre-224 model) both fail here.
+///    This used to `continue` whenever either set was empty, which made the
+///    disjointness check unreachable on a planner that never emits both;
 /// 2. the topmost geometry-bearing layer of a column carries a `TopInterface`;
 /// 3. no interface layer floats above a gap — an interface layer above the
 ///    column's own bottom must have support geometry on the layer below it.
 pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
     let mut columns_checked = 0usize;
+    let mut interface_layers_checked = 0usize;
     for (family, support_type) in FAMILIES {
         for (model_rel, hazard) in INVARIANT_MODELS {
             let evidence = invariant_evidence(model_rel, support_type)?;
-            // Disjointness is per entry.
+            // Body/interface geometry, aggregated per column per layer. Body
+            // and interface may arrive on separate entries for the same
+            // (object, region, layer), so aggregating first is what makes the
+            // carve-out check total instead of per-entry.
+            let mut column_layers: std::collections::BTreeMap<
+                (String, u64),
+                std::collections::BTreeMap<i32, (Vec<ExPolygon>, Vec<ExPolygon>)>,
+            > = std::collections::BTreeMap::new();
             for entry in accepted_entries(&evidence.plan) {
-                let body: Vec<ExPolygon> = entry
-                    .roles
-                    .iter()
-                    .filter(|role| role.role == SupportPlanRole::SupportBody)
-                    .flat_map(|role| role.regions.iter().cloned())
-                    .collect();
-                let interface: Vec<ExPolygon> = entry
-                    .roles
-                    .iter()
-                    .filter(|role| is_interface(role.role))
-                    .flat_map(|role| role.regions.iter().cloned())
-                    .collect();
-                if body.is_empty() || interface.is_empty() {
-                    continue;
+                let slot = column_layers
+                    .entry((entry.object_id.to_string(), entry.region_id))
+                    .or_default()
+                    .entry(entry.global_layer_index)
+                    .or_default();
+                for role in &entry.roles {
+                    if role.regions.is_empty() {
+                        continue;
+                    }
+                    if role.role == SupportPlanRole::SupportBody {
+                        slot.0.extend(role.regions.iter().cloned());
+                    } else if is_interface(role.role) {
+                        slot.1.extend(role.regions.iter().cloned());
+                    }
                 }
-                let overlap = intersection_ex(&interface, &body);
-                if !overlap.is_empty() {
-                    return Err(format!(
-                        "{model_rel} [{hazard}] {family}: interface is not carved out of the body — \
-                         {} overlapping region(s) at layer {} obj={} region={}",
-                        overlap.len(),
-                        entry.global_layer_index,
-                        entry.object_id,
-                        entry.region_id
-                    ));
+            }
+            for ((object_id, region_id), layers) in &column_layers {
+                let geometry_layers: Vec<i32> = layers
+                    .iter()
+                    .filter(|(_, (body, interface))| !body.is_empty() || !interface.is_empty())
+                    .map(|(&layer, _)| layer)
+                    .collect();
+                for (&layer, (body, interface)) in layers.iter() {
+                    if interface.is_empty() {
+                        continue;
+                    }
+                    // Walk down the contiguous interface run this layer sits in;
+                    // the column "continues below" only if it still carries
+                    // geometry underneath that whole run.
+                    let mut run_bottom = layer;
+                    while layers
+                        .get(&(run_bottom - 1))
+                        .is_some_and(|(_, lower_interface)| !lower_interface.is_empty())
+                    {
+                        run_bottom -= 1;
+                    }
+                    let continues_below = geometry_layers.iter().any(|&lower| lower < run_bottom);
+                    if continues_below {
+                        // Canonical `TreeSupport.cpp::draw_circles` computes
+                        // `base_areas = diff_ex(base_areas, roofs)` and KEEPS the
+                        // remainder — the roof is carved OUT of the body, it does
+                        // not replace it. A column whose branch continues below
+                        // the interface band therefore still has a body
+                        // cross-section on the interface layer.
+                        interface_layers_checked += 1;
+                        if body.is_empty() {
+                            return Err(format!(
+                                "{model_rel} [{hazard}] {family}: layer {layer} of column obj={object_id} region={region_id} carries interface geometry but NO SupportBody, while the column continues below the interface band (run bottom={run_bottom}, geometry layers={geometry_layers:?}). Canonical carves the roof out of the body and keeps the remainder; discarding the body leaves the branch cross-section unprinted."
+                            ));
+                        }
+                    }
+                    if body.is_empty() {
+                        continue;
+                    }
+                    let overlap = intersection_ex(interface, body);
+                    if !overlap.is_empty() {
+                        return Err(format!(
+                            "{model_rel} [{hazard}] {family}: interface is not carved out of the body — {} overlapping region(s) at layer {layer} obj={object_id} region={region_id}",
+                            overlap.len(),
+                        ));
+                    }
                 }
             }
 
@@ -1233,6 +1353,12 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
                 .into(),
         );
     }
+    if interface_layers_checked == 0 {
+        return Err(
+            "no interface-bearing layer had a column continuing below it, on any invariant model for either family; the body-survives-the-carve check (canonical `draw_circles`' `base_areas = diff_ex(base_areas, roofs)`) was vacuous"
+                .into(),
+        );
+    }
     Ok(())
 }
 
@@ -1241,7 +1367,7 @@ pub fn interface_is_topmost_and_carved_out() -> Result<(), String> {
 ///
 /// `resources/20mm_cube.obj` is the substitution here: none of the four hazard
 /// models is overhang-free, and a cube's walls are vertical, so no facet can
-/// exceed the 30 degree `support_overhang_angle` in the matched config.
+/// exceed the 30 degree `support_threshold_angle` in the matched config.
 ///
 /// This guards a specific retracted regression: a planner fallback that
 /// fabricated support for every candidate layer of any non-empty mesh. Its own

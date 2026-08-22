@@ -44,6 +44,7 @@ fn fixture_with_config(
     family: &str,
     roles: Vec<SupportPlanRoleRegion>,
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let entry = slicer_ir::SupportPlanEntry {
         global_layer_index: 0,
         object_id: "obj1".into(),
