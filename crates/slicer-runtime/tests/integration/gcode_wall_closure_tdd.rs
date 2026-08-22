@@ -11,11 +11,11 @@
 //! the emitter is caught immediately.
 
 use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, Point3WithWidth, PrintEntity,
     RegionKey,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn point(x: f32, y: f32) -> Point3WithWidth {
     Point3WithWidth {
