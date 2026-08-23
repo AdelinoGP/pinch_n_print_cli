@@ -92,6 +92,10 @@ name = "sharp_corner_seam_threshold_tdd"
 name = "bridge_over_infill_tdd"
 
 [[test]]
+name = "bridge_false_site_gating_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "beading_distributed"
 path = "tests/beading/distributed.rs"
 

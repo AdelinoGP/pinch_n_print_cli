@@ -11,7 +11,7 @@
 ### Step 1: Port the unsupported-span test (pure function + unit tests)
 
 - Task IDs: none (backlog slot: `docs/specs/bridge-parity-plan.md` §4 W-A)
-- Objective: Add `gate_bridge_areas_by_unsupported_span(region: &mut SlicedRegion, lower_layer_slices: &[ExPolygon])` to `crates/slicer-core/src/algos/prepass_slice.rs`, computing `region.bridge_areas = difference(region.bridge_areas, grown_anchor_areas)` with expansion-zone growth (`expansion_step = 0.1 mm`, up to 5 steps), and write the net-new flat test file with AC-1/AC-2/AC-N1/AC-N2.
+- Objective: Add `gate_bridge_areas_by_unsupported_span(region: &mut SlicedRegion, lower_layer_slices: Option<&[ExPolygon]>)` to `crates/slicer-core/src/algos/prepass_slice.rs`. A missing lower layer clears candidates; a present lower layer subtracts its ungrown contours (an empty list subtracts nothing), with no expansion-zone growth. Write the net-new flat test file with AC-1/AC-2/AC-N1/AC-N2.
 - Precondition: `cargo build -p slicer-core --features host-algos` is green; the canonical `detect_bridging_direction`/`unsupported_edges` geometry has been summarized by a delegated OrcaSlicer read.
 - Postcondition: `gate_bridge_areas_by_unsupported_span` is pure and unit-tested; AC-1/AC-2/AC-N1/AC-N2 pass; `cargo xtask check-literals` is green.
 - Files allowed to read, with ranges when over 300 lines:
@@ -43,7 +43,7 @@
 ### Step 2: Wire the gate into `PrePass::ShellClassification` (post-slice)
 
 - Task IDs: none (backlog slot: `docs/specs/bridge-parity-plan.md` §4 W-A)
-- Objective: In `commit_shell_classification_builtin` (`crates/slicer-runtime/src/slice_postprocess_prepass.rs`), after `PrePass::OverhangAnnotation` has populated `prev_layer_boundaries`, iterate each region and call `gate_bridge_areas_by_unsupported_span` with `prev_layer_boundaries.get(&global_layer_index)` (the map is keyed by the CURRENT global layer index; value = previous-layer contours). Missing/empty value = first layer (no lower layer) → the gate removes the candidate from `bridge_areas` (canonical demotes `stBottomBridge && lower_layer == nullptr` to `stBottom`).
+- Objective: In `commit_shell_classification_builtin` (`crates/slicer-runtime/src/slice_postprocess_prepass.rs`), after `PrePass::OverhangAnnotation` has populated `prev_layer_boundaries`, iterate each region and call `gate_bridge_areas_by_unsupported_span` with `prev_layer_boundaries.get(&global_layer_index)` (the map is keyed by the CURRENT global layer index; value = previous-layer contours). A missing key means no lower layer and clears candidates; a present key, even when empty, means a lower layer exists and subtracts ungrown contours (empty subtracts nothing).
 - Precondition: Step 1 complete; the `prev_layer_boundaries` population semantics (which layers get an entry; empty-vs-missing) are confirmed by a delegated `LOCATIONS` read. The keying is already confirmed: current global layer index (per `crates/slicer-wasm-host/src/marshal/in_.rs`).
 - Postcondition: the gate runs post-slice for every region; `region.bridge_areas` is gated before `region_partition` consumes it; AC-3/AC-5 reslice commands pass.
 - Files allowed to read, with ranges when over 300 lines:
@@ -52,12 +52,12 @@
   - `docs/04_host_scheduler.md` - delegated SUMMARY of §"Fixed Stage Order" + §"PrePass Execution"
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
-  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (blast-radius fallout: re-scope the two `assemble_bridge_areas` non-empty assertions)
-  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` (add a gating-interaction disjointness test if AC-4's existing test does not cover the gated path)
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (blast-radius fallout: re-scope the two `assemble_bridge_areas` non-empty assertions — **outcome (2026-08-22): no edit needed**; both call sites still pass because the gate runs post-slice and direct stamper calls are unaffected)
+  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` (add a gating-interaction disjointness test if AC-4's existing test does not cover the gated path — **outcome (2026-08-22): no edit needed**; the existing AC-4 test covers precedence disjointness and the partition function is unchanged)
 - Files explicitly out of bounds:
   - `crates/slicer-core/src/algos/prepass_slice.rs` (Step 1's surface; only read the gate signature)
   - `OrcaSlicerDocumented/**`
-- Blast-radius discipline: this step changes the classification output consumed by `region_partition` (precedence inputs) and any golden/parity baseline asserting the current flooded behaviour. The `bridge_detector_tdd.rs` assertions at lines ~775 and ~886 are the known sites and are in this step's edit list. Visual-debug captures that snapshot `bridge_areas` during `PrePass::Slice` (now ungated) are enumerated by this step's dispatch but updated in Step 2b (conditional), not here — this step's three-file edit cap has no capacity for them.
+- Blast-radius discipline: this step changes the classification output consumed by `region_partition` (precedence inputs) and any golden/parity baseline asserting the current flooded behaviour. The `bridge_detector_tdd.rs` assertions at lines ~775 and ~886 are the known sites and are in this step's edit list — **outcome (2026-08-22): they pass unchanged** (the gate runs post-slice; direct stamper calls are unaffected). The file's 3 pre-existing failures at HEAD (`bridge_footprint_does_not_leak_outside_facet_z_span`, `invalid_bridge_excluded_from_slice_areas`, `supported_bridge_candidate_does_not_emit_bridge_fill`) are stash-verified as not this packet's and are out of scope. Visual-debug captures that snapshot `bridge_areas` during `PrePass::Slice` (now ungated) are enumerated by this step's dispatch but updated in Step 2b (conditional), not here — this step's three-file edit cap has no capacity for them.
 - Expected sub-agent dispatches:
   - Question: how `commit_overhang_annotation_builtin` populates `prev_layer_boundaries` — which layers get an entry, and whether an empty previous-layer contour set is stored as an empty `Vec` or omitted; scope: `crates/slicer-runtime/src/`; return: `LOCATIONS` (≤20 entries)
   - Question: every visual-debug capture or golden baseline that asserts on `bridge_areas` content; scope: `crates/slicer-runtime/tests/` + `crates/slicer-runtime/src/`; return: `LOCATIONS`

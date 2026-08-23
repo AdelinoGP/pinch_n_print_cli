@@ -54,6 +54,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
+use slicer_core::algos::prepass_slice::gate_bridge_areas_by_unsupported_span;
 use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
 use slicer_ir::{ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
@@ -171,6 +172,22 @@ pub fn commit_shell_classification_builtin(
                     region.bottom_solid_fill = fill;
                 }
             }
+        }
+    }
+
+    // Bridge candidates are produced during slicing, but only remain bridges
+    // where the overhang annotation found an unsupported lower span. A present
+    // entry represents an existing lower layer, even when its slice list is
+    // empty; a missing entry represents the true first layer.
+    let prev_layer_boundaries = blackboard
+        .surface_classification()
+        .map(|ir| &ir.as_ref().prev_layer_boundaries);
+    for slice in &mut new_vec {
+        let lower_layer_slices = prev_layer_boundaries
+            .and_then(|boundaries| boundaries.get(&slice.global_layer_index))
+            .map(Vec::as_slice);
+        for region in &mut slice.regions {
+            gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
         }
     }
 

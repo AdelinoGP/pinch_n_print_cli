@@ -253,6 +253,30 @@ pub fn assemble_bridge_areas(
     region.bridge_orientation_deg = best_orientation_deg;
 }
 
+/// Keep mesh-derived bridge candidates only where the lower layer does not
+/// provide an anchor.
+///
+/// `None` means the region has no lower layer at all (first layer): canonical
+/// demotes first-layer `stBottomBridge` candidates to `stBottom`, so all
+/// candidates are removed. `Some(slices)` means the lower layer exists; the
+/// candidates are reduced by the ungrown lower-layer contours (canonical
+/// `voids = diff(voids, *lower_layer_covered)`). An existing-but-empty lower
+/// layer subtracts nothing, so the whole span stays unsupported and every
+/// candidate is retained.
+pub fn gate_bridge_areas_by_unsupported_span(
+    region: &mut SlicedRegion,
+    lower_layer_slices: Option<&[ExPolygon]>,
+) {
+    let Some(lower_layer_slices) = lower_layer_slices else {
+        region.bridge_areas.clear();
+        return;
+    };
+
+    if !lower_layer_slices.is_empty() {
+        region.bridge_areas = difference(&region.bridge_areas, lower_layer_slices);
+    }
+}
+
 // ============================================================================
 // assemble_flat_bridge_areas
 // ============================================================================
