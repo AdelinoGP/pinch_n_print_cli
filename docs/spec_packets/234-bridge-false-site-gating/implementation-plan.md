@@ -52,12 +52,12 @@
   - `docs/04_host_scheduler.md` - delegated SUMMARY of §"Fixed Stage Order" + §"PrePass Execution"
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
-  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (blast-radius fallout: re-scope the two `assemble_bridge_areas` non-empty assertions — **outcome (2026-08-22): no edit needed**; both call sites still pass because the gate runs post-slice and direct stamper calls are unaffected)
-  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` (add a gating-interaction disjointness test if AC-4's existing test does not cover the gated path — **outcome (2026-08-22): no edit needed**; the existing AC-4 test covers precedence disjointness and the partition function is unchanged)
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (blast-radius fallout: re-scope the two `assemble_bridge_areas` non-empty assertions — **outcome (2026-08-23): no re-scope needed**; both call sites still pass because the gate runs post-slice and direct stamper calls are unaffected. The file WAS edited (12 lines) to close its 3 pre-existing failures — see Blast-radius discipline below)
+  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` (add a gating-interaction test if AC-4's existing test does not cover the gated path — **outcome (2026-08-23): edited (18 lines)**; the AC-4 disjointness test itself is unchanged, and a net-new gating-interaction case was added: a ceiling-layer bridge site survives the partition when `wall_inset` is empty (unconditional bridge claim))
 - Files explicitly out of bounds:
   - `crates/slicer-core/src/algos/prepass_slice.rs` (Step 1's surface; only read the gate signature)
   - `OrcaSlicerDocumented/**`
-- Blast-radius discipline: this step changes the classification output consumed by `region_partition` (precedence inputs) and any golden/parity baseline asserting the current flooded behaviour. The `bridge_detector_tdd.rs` assertions at lines ~775 and ~886 are the known sites and are in this step's edit list — **outcome (2026-08-22): they pass unchanged** (the gate runs post-slice; direct stamper calls are unaffected). The file's 3 pre-existing failures at HEAD (`bridge_footprint_does_not_leak_outside_facet_z_span`, `invalid_bridge_excluded_from_slice_areas`, `supported_bridge_candidate_does_not_emit_bridge_fill`) are stash-verified as not this packet's and are out of scope. Visual-debug captures that snapshot `bridge_areas` during `PrePass::Slice` (now ungated) are enumerated by this step's dispatch but updated in Step 2b (conditional), not here — this step's three-file edit cap has no capacity for them.
+- Blast-radius discipline: this step changes the classification output consumed by `region_partition` (precedence inputs) and any golden/parity baseline asserting the current flooded behaviour. The `bridge_detector_tdd.rs` assertions at lines ~775 and ~886 are the known sites and are in this step's edit list — **outcome (2026-08-23): they pass unchanged** (the gate runs post-slice; direct stamper calls are unaffected). The file's 3 pre-existing failures at HEAD (`bridge_footprint_does_not_leak_outside_facet_z_span`, `invalid_bridge_excluded_from_slice_areas`, `supported_bridge_candidate_does_not_emit_bridge_fill`) were CLOSED as part of this packet: the stamper now skips bridge regions with empty `facet_indices` (Z-span guard), `classify_region_surfaces` filters `is_valid` (invalid-candidate guard), and the gate resets `is_bridge` after gating (the supported-candidate test now applies the gate). All 16 tests pass. The partition function itself gained the unconditional bridge claim (`crates/slicer-runtime/src/region_partition.rs`) and the 233 seam gained the `difference(sparse_infill_area, bridge_areas)` candidate-voids filter (`crates/slicer-runtime/src/layer_executor.rs`) — both are declared in `design.md` Code Change Surface and their narrow verification commands are in the step-record addendum at the end of Step 2b. Visual-debug captures that snapshot `bridge_areas` during `PrePass::Slice` (now ungated) are enumerated by this step's dispatch but updated in Step 2b (conditional), not here.
 - Expected sub-agent dispatches:
   - Question: how `commit_overhang_annotation_builtin` populates `prev_layer_boundaries` — which layers get an entry, and whether an empty previous-layer contour set is stored as an empty `Vec` or omitted; scope: `crates/slicer-runtime/src/`; return: `LOCATIONS` (≤20 entries)
   - Question: every visual-debug capture or golden baseline that asserts on `bridge_areas` content; scope: `crates/slicer-runtime/tests/` + `crates/slicer-runtime/src/`; return: `LOCATIONS`
@@ -69,7 +69,7 @@
 - Verification:
   - `cargo test -p slicer-runtime --test integration -- region_partition_tdd::ac2_precedence_pairwise_disjoint_under_partial_overlap --nocapture` - FACT pass/fail
   - `cargo test -p slicer-runtime --test unit -- bridge_detector_tdd --nocapture` - FACT pass/fail (the re-scoped `assemble_bridge_areas` assertions at the two call sites)
-  - `cargo run --bin pnp_cli --release -- slice --model resources/bridge.obj --output target/bridge_false_site.gcode --module-dir modules/core-modules && python3 -c "…" target/bridge_false_site.gcode` - FACT `bridge_layers=N/M z=[…]`
+  - `cargo run --bin pnp_cli --release -- slice --model resources/bridge.obj --output target/bridge_false_site.gcode --module-dir modules/core-modules && python3 resources/check_bridge_sites.py target/bridge_false_site.gcode` - FACT `bridge_layers=N/M z=[…]`
   - `cargo xtask build-guests --check` - exit 0 (freshness gate; the `slicer-core` edit is host-only but the gate is cheap insurance)
 - Exit condition: AC-3, AC-4, AC-5 pass; `build-guests --check` exit 0.
 
@@ -100,6 +100,17 @@
   - Discovered-fallout procedure: if Step 2's `LOCATIONS` dispatch names a file not listed above, the worker MUST first write a step-record addendum to this plan naming the discovered file(s) and the exact narrow `cargo test` command for each; that addendum becomes part of the reviewed plan before any new test command runs. No new test command runs against an unnamed file.
 - Exit condition: every affected visual-debug/golden test passes; or the conditional is skipped (empty dispatch).
 
+### Step-Record Addendum (2026-08-23, discovered-fallout)
+
+Per Step 2b's discovered-fallout procedure, the following files were discovered and edited during implementation after this plan's edit lists were fixed. They are declared in `design.md` Code Change Surface / Files in Scope, and the narrow verification command for each is named here (each was run and passed):
+
+- `crates/slicer-runtime/src/region_partition.rs` — the partition bridge claim is now `slice_region.bridge_areas.clone()` unconditionally (was `intersection(&slice_region.bridge_areas, wall_inset)`), so gated ceiling-layer sites survive when the perimeter module's infill area is empty. Verified by `cargo test -p slicer-runtime --test integration -- region_partition_tdd::ac2_precedence_pairwise_disjoint_under_partial_overlap --nocapture` plus the net-new ceiling-survival assertions in `crates/slicer-runtime/tests/integration/region_partition_tdd.rs`.
+- `crates/slicer-runtime/src/layer_executor.rs` — the 233 internal-bridge seam feeds `construct_anchored_polygon` with `difference(sparse_infill_area, bridge_areas)` so gated external bridge sites are never re-bridged. Verified by the AC-3 reslice command (`bridge_layers=34/40`, 36 `;TYPE:Internal Bridge` markers) and `cargo test -p slicer-runtime --test e2e -- wedge_multi_layer_top_bottom_evidence --nocapture`.
+- `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs` — `wedge_multi_layer_top_bottom_evidence` slot-ceiling expectations moved from z=28.0 to print_z 28.2 (Bottom-absence guard kept at z=28.0). Verified by `cargo test -p slicer-runtime --test e2e -- wedge_multi_layer_top_bottom_evidence --nocapture`.
+- `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` — net-new gating-interaction assertions. Verified by `cargo test -p slicer-runtime --test integration -- region_partition_tdd::ac2_precedence_pairwise_disjoint_under_partial_overlap --nocapture`.
+
+Step 2's three-file edit cap was exceeded (7 files); the overflow is the documented fallout above, reconciled into this addendum and `design.md`.
+
 ### Step 3: Pre-filter measurement (keep/discard) + completion notes
 
 - Task IDs: none (backlog slot: `docs/specs/bridge-parity-plan.md` §4 W-A)
@@ -121,7 +132,7 @@
 - OrcaSlicer refs:
   - none
 - Verification:
-  - `cargo run --bin pnp_cli --release -- slice --model resources/bridge.obj --output target/bridge_false_site.gcode --module-dir modules/core-modules && python3 -c "…" target/bridge_false_site.gcode` - FACT (baseline)
+  - `cargo run --bin pnp_cli --release -- slice --model resources/bridge.obj --output target/bridge_false_site.gcode --module-dir modules/core-modules && python3 resources/check_bridge_sites.py target/bridge_false_site.gcode` - FACT (baseline)
 - Exit condition: the keep/discard decision and measured delta are recorded in `design.md`.
 
 ## Per-Step Budget Roll-Up

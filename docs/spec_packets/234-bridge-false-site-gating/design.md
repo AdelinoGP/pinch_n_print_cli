@@ -23,9 +23,14 @@
 - Exact functions, traits, manifests, tests, and fixtures:
   - `crates/slicer-core/src/algos/prepass_slice.rs` — add `gate_bridge_areas_by_unsupported_span` with ungrown lower-contour subtraction.
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` — `commit_shell_classification_builtin` gains a post-slice pass that, for each region, checks whether the committed `SliceIR` contains the same object at `global_layer_index - 1` and passes that slice's region polygons to the gate. A missing previous layer means no lower layer and clears candidates; an existing layer, including one with empty polygons, means a lower layer exists and subtracts ungrown contours.
+  - `crates/slicer-runtime/src/region_partition.rs` — `sync_perimeter_infill_areas_into_slice`'s bridge claim is now `slice_region.bridge_areas.clone()` unconditionally (was `intersection(&slice_region.bridge_areas, wall_inset)`): the gated areas are already stamped as `footprint ∩ region.infill_areas`, and re-intersecting with `wall_inset` is redundant and harmful — at a ceiling layer the perimeter module's infill area can be empty (the whole cross-section is top surface), which would drop a canonical bridge site (wedge interior-slot ceiling). Disclosed in Locked Assumptions as production fix (2); declared here as part of the change surface.
+  - `crates/slicer-runtime/src/layer_executor.rs` — the internal-bridge-over-infill seam now feeds `construct_anchored_polygon` with `difference(sparse_infill_area, bridge_areas)` (candidate voids exclude the areas already claimed by gated external `bridge_areas`), so 233's seam never re-bridges a site the gate retained.
   - `crates/slicer-core/Cargo.toml` — add `[[test]] name = "bridge_false_site_gating_tdd"` with `required-features = ["host-algos"]`.
   - `crates/slicer-core/tests/bridge_false_site_gating_tdd.rs` — net-new flat test (AC-1, AC-2, AC-N1, AC-N2).
-  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` — update the two `assemble_bridge_areas` call sites (lines ~775 and ~886) whose assertions expect non-empty `bridge_areas`; they must now either pass lower-layer slices or assert the ungated stamping behaviour separately from the gate.
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` — re-scope the two `assemble_bridge_areas` call sites (lines ~775 and ~886) whose assertions expect non-empty `bridge_areas`. **Outcome (2026-08-23): no re-scope needed** — both call sites pass unchanged because the gate runs post-slice — but the file was edited (12 lines) to close its 3 pre-existing failures (stamper empty-`facet_indices` guard, `classify_region_surfaces` `is_valid` filter, gate `is_bridge` reset with the supported-candidate test updated to apply the gate). All 16 tests pass.
+  - `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs` — `wedge_multi_layer_top_bottom_evidence` slot-ceiling assertions moved from z=28.0 to print_z 28.2 per the test's first-containing-layer convention (see Locked Assumptions, final resolution); the Bottom-absence guard at z=28.0 is kept.
+  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` — net-new gating-interaction assertions: a ceiling-layer bridge site survives the partition when `wall_inset` is empty (unconditional bridge claim).
+  - `resources/check_bridge_sites.py` — net-new AC-3/AC-5 G-code parser script (replaces the non-runnable inline `python3 -c` commands in `packet.spec.md`).
 - Rejected alternatives and reasons:
   - Gating inside `assemble_bridge_areas` during `PrePass::Slice` — rejected: lower-layer slices are not committed while layers slice in parallel (the packet 36-rev1 scheduler constraint); would require a new N±1 prepass data dependency.
   - A new dedicated prepass stage — rejected: `PrePass::ShellClassification` already runs post-slice and reads the committed `SliceIR`; a new stage would add `STAGE_ORDER`/manifest surface for no benefit.
@@ -34,16 +39,21 @@
 ## Files in Scope (read + edit)
 
 - `crates/slicer-core/src/algos/prepass_slice.rs` - role: primary change surface; expected change: add `gate_bridge_areas_by_unsupported_span` (ungrown lower-contour subtraction; no anchor-growth helper).
-- `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - role: integration point; expected change: invoke the gate post-annotation in `commit_shell_classification_builtin`.
+- `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - role: integration point; expected change: invoke `gate_bridge_areas_by_unsupported_span` post-annotation in `commit_shell_classification_builtin`.
+- `crates/slicer-runtime/src/region_partition.rs` - role: partition claim; expected change: `sync_perimeter_infill_areas_into_slice` takes `slice_region.bridge_areas.clone()` directly (was `intersection(bridge_areas, wall_inset)`); declared in Code Change Surface with rationale.
+- `crates/slicer-runtime/src/layer_executor.rs` - role: 233-seam interaction; expected change: internal-bridge seam feeds `construct_anchored_polygon` with `difference(sparse_infill_area, bridge_areas)`.
+- `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs` - role: flat-ceiling pin; expected change: `wedge_multi_layer_top_bottom_evidence` assertions moved to print_z 28.2 (Bottom-absence guard kept at z=28.0). Step-record addendum in `implementation-plan.md`.
+- `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` - role: gating-interaction coverage; expected change: net-new ceiling-layer survival assertions.
 - `crates/slicer-core/tests/bridge_false_site_gating_tdd.rs` - role: net-new test home; expected change: AC-1/AC-2/AC-N1/AC-N2 + `no_lower_layer_clears_bridge_areas` + `existing_empty_lower_layer_retains_bridge_area`.
 - `crates/slicer-core/Cargo.toml` - role: register the net-new test target; expected change: `[[test]]` entry.
 - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` - role: blast-radius fallout; **outcome (2026-08-23):** the two direct `assemble_bridge_areas` call sites (~775 non-empty assertion, ~886 simplicity loop) pass unchanged (the gate runs post-slice). The file's 3 pre-existing failures at HEAD were CLOSED: the stamper skips empty-`facet_indices` bridge regions, `classify_region_surfaces` filters `is_valid`, and the gate resets `is_bridge` after gating (the supported-candidate test now applies the gate). All 16 tests pass.
 - `resources/overhang.obj` - role: discovered-fallout fix; expected change: translated into the printable bed (XY −1346.56/−564.40, Z −17.0) because the slicer has no auto-centering and requires models to start at Z=0 (the model previously sliced to zero layers).
+- `resources/check_bridge_sites.py` - role: AC-3/AC-5 verification parser; expected change: net-new script replacing the non-runnable inline `python3 -c` commands (M83 relative-E semantics, Z-keyed, `;TYPE:` carried across layers).
 
 ## Read-Only Context
 
 - `crates/slicer-ir/src/slice_ir.rs` - lines 1478-1543 only - purpose: `SlicedRegion.polygons` and `SliceIR.global_layer_index` shape.
-- `crates/slicer-runtime/src/region_partition.rs` - lines 1-60 and 160-216 only - purpose: precedence `bridge > bottom > top > sparse` and the `bridge = intersection(&slice_region.bridge_areas, wall_inset)` claim.
+- `crates/slicer-runtime/src/region_partition.rs` - lines 1-60 and 160-216 only - purpose: precedence `bridge > bottom > top > sparse` and the bridge claim (now `slice_region.bridge_areas.clone()` directly, was `intersection(&slice_region.bridge_areas, wall_inset)`).
 - `crates/slicer-core/src/algos/prepass_slice.rs` - lines 197-256 only - purpose: current `assemble_bridge_areas` body.
 
 ## Out-of-Bounds Files

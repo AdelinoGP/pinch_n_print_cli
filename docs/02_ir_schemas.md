@@ -599,10 +599,17 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 /// `Layer::Perimeters` commit (see
 /// `crates/slicer-runtime/src/region_partition.rs`):
 ///
-/// 1. **`bridge_areas`**, **`bottom_solid_fill`**, **`top_solid_fill`**, and
+/// 1. **`bridge_areas`** is claimed directly from the gated
+///    `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
+///    may extend beyond the wall-inset polygon — at a ceiling layer the
+///    perimeter module's infill area can be empty (the whole cross-section is
+///    top surface) and the canonical bridge site must survive.
+///    **`bottom_solid_fill`**, **`top_solid_fill`**, and
 ///    **`sparse_infill_area`** are pairwise disjoint subsets of the
 ///    corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-///    polygon).
+///    polygon). All four sets remain pairwise disjoint from each other via the
+///    precedence dedup (`bottom`/`top`/`sparse` are differenced against the
+///    bridge claim in `sync_perimeter_infill_areas_into_slice`).
 /// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
 ///    (OrcaSlicer `PrintObject::prepare_infill` parity).
 /// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
