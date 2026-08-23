@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use slicer_core::algos::prepass_slice::{
     assemble_bridge_areas, gate_bridge_areas_by_unsupported_span,
 };
-use slicer_core::polygon_ops::intersection;
+use slicer_core::polygon_ops::{difference, intersection};
 use slicer_ir::{
     BridgeRegion, ExPolygon, ObjectSurfaceData, Point2, Polygon, SlicedRegion,
     SurfaceClassificationIR,
@@ -48,8 +48,10 @@ fn unsupported_span_retains_bridge_area() {
     let anchor = square(0.0, 0.0, 4.0, 10.0);
     let mut region = region_with_bridge(bridge.clone());
     gate_bridge_areas_by_unsupported_span(&mut region, Some(&[anchor.clone()]));
-    assert!(!region.bridge_areas.is_empty());
-    assert!(region.bridge_areas.iter().any(|area| area != &bridge));
+    // AC-2: the retained area equals the bridge minus the lower-layer anchor
+    // areas — the exact canonical difference, not merely non-empty.
+    let expected = difference(&[bridge.clone()], &[anchor.clone()]);
+    assert_eq!(region.bridge_areas, expected);
     assert!(intersection(&region.bridge_areas, &[anchor]).is_empty());
 }
 
