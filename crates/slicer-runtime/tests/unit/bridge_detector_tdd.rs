@@ -5,7 +5,8 @@
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
 use slicer_core::algos::prepass_slice::{
     assemble_bridge_areas, execute_prepass_slice_single_layer,
-    execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
+    execute_prepass_slice_single_layer_with_cache, gate_bridge_areas_by_unsupported_span,
+    PrepassSliceCache,
 };
 use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
 use slicer_ir::{
@@ -726,7 +727,7 @@ fn expansion_margin_grows_polygon_observably() {
     // exhaustive: expansion-margin fixture explicitly defines every BridgeRegion field
     let bridge_region = BridgeRegion {
         id: 0,
-        facet_indices: vec![],
+        facet_indices: vec![0],
         bridge_direction_deg: 0.0,
         anchor_width_mm: 5.0,
         bridge_length_mm: 20.0,
@@ -836,7 +837,7 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
     // exhaustive: sharp-anchor fixture explicitly defines every BridgeRegion field
     let bridge_region = BridgeRegion {
         id: 0,
-        facet_indices: vec![],
+        facet_indices: vec![0],
         bridge_direction_deg: 90.0,
         anchor_width_mm: 1.0,
         bridge_length_mm: 20.0,
@@ -1157,7 +1158,7 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
         ..GlobalLayer::default()
     };
 
-    let slice_ir = execute_prepass_slice_single_layer_with_cache(
+    let mut slice_ir = execute_prepass_slice_single_layer_with_cache(
         &mesh_ir,
         &layer,
         Some(&analysis),
@@ -1165,7 +1166,8 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
         &cache,
     )
     .expect("slice must succeed");
-    let region = slice_ir.regions.first().expect("region must be sliced");
+    let region = slice_ir.regions.first_mut().expect("region must be sliced");
+    gate_bridge_areas_by_unsupported_span(region, Some(&previous_by_object["bridge-obj"]));
 
     assert!(
         !region.is_bridge,

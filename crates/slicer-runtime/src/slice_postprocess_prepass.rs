@@ -49,7 +49,7 @@
 //! See `docs/DEVIATION_LOG.md` for documented divergences (hollow-object
 //! continue path not ported; `top_solid_fill` flattened across shell sources).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -176,17 +176,38 @@ pub fn commit_shell_classification_builtin(
     }
 
     // Bridge candidates are produced during slicing, but only remain bridges
-    // where the overhang annotation found an unsupported lower span. A present
-    // entry represents an existing lower layer, even when its slice list is
-    // empty; a missing entry represents the true first layer.
-    let prev_layer_boundaries = blackboard
-        .surface_classification()
-        .map(|ir| &ir.as_ref().prev_layer_boundaries);
+    // where the committed lower-layer slice leaves an unsupported span. Keep
+    // layer presence separate from its polygons: an existing empty layer must
+    // retain candidates, while a missing previous layer must clear them.
+    let mut object_layers: HashMap<ObjectId, HashSet<u32>> = HashMap::new();
+    let mut lower_layer_polygons: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+    for slice in &new_vec {
+        for region in &slice.regions {
+            object_layers
+                .entry(region.object_id.clone())
+                .or_default()
+                .insert(slice.global_layer_index);
+            lower_layer_polygons
+                .entry((region.object_id.clone(), slice.global_layer_index))
+                .or_default()
+                .extend(region.polygons.iter().cloned());
+        }
+    }
     for slice in &mut new_vec {
-        let lower_layer_slices = prev_layer_boundaries
-            .and_then(|boundaries| boundaries.get(&slice.global_layer_index))
-            .map(Vec::as_slice);
         for region in &mut slice.regions {
+            let lower_layer_slices = slice
+                .global_layer_index
+                .checked_sub(1)
+                .filter(|lower_index| {
+                    object_layers
+                        .get(&region.object_id)
+                        .is_some_and(|layers| layers.contains(lower_index))
+                })
+                .and_then(|lower_index| {
+                    lower_layer_polygons
+                        .get(&(region.object_id.clone(), lower_index))
+                        .map(Vec::as_slice)
+                });
             gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
         }
     }

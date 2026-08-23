@@ -415,14 +415,18 @@ fn ac5_no_perimeter_entry_leaves_region_polygons_untouched() {
 fn ac7_empty_wall_inset_preserves_top_solid_fill() {
     let top = square(0.0, 0.0, 10.0, 10.0);
     let bottom = square(0.0, 0.0, 10.0, 10.0);
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
+    // Disjoint from top/bottom: the bridge claim is unconditional (packet
+    // 234 — a ceiling layer can have gated bridge areas while the perimeter
+    // module produced no infill), so a bridge overlapping the top square
+    // would legitimately take it under precedence bridge > bottom > top.
+    let bridge = square(20.0, 0.0, 30.0, 10.0);
     let region_polys = square(0.0, 0.0, 10.0, 10.0);
 
     let mut slice = empty_slice_ir();
     let mut sr = sliced_region("obj-1", 0, vec![region_polys]);
     sr.top_solid_fill = vec![top.clone()];
     sr.bottom_solid_fill = vec![bottom.clone()];
-    sr.bridge_areas = vec![bridge];
+    sr.bridge_areas = vec![bridge.clone()];
     slice.regions.push(sr);
 
     // Empty wall_inset (perimeter stage produced no infill for this region).
@@ -433,11 +437,19 @@ fn ac7_empty_wall_inset_preserves_top_solid_fill() {
     sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition must not be fatal");
 
     let r = &arena.slice().expect("slice").regions[0];
-    // top_solid_fill preserved (minus bridge, which is empty here anyway).
+    // top_solid_fill preserved (minus the disjoint bridge, which claims its
+    // own area under the unconditional bridge claim).
     assert!(
         approx_eq(ex_area_mm2(&r.top_solid_fill), 100.0, 0.01),
         "top_solid_fill must be preserved when wall_inset is empty; got {} mm²",
         ex_area_mm2(&r.top_solid_fill)
+    );
+    // The gated bridge areas are claimed even when wall_inset is empty
+    // (packet 234: ceiling-layer bridge sites must survive the partition).
+    assert!(
+        approx_eq(ex_area_mm2(&r.bridge_areas), 100.0, 0.01),
+        "bridge_areas must be claimed when wall_inset is empty; got {} mm²",
+        ex_area_mm2(&r.bridge_areas)
     );
     // bottom_solid_fill is empty by contract when wall_inset is empty
     // (bottom role has no precedence over an empty infill center, so it

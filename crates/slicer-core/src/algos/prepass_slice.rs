@@ -156,6 +156,7 @@ pub fn classify_region_surfaces(
     let bridge_set: std::collections::HashSet<u32> = surface_data
         .bridge_regions
         .iter()
+        .filter(|br| br.is_valid)
         .flat_map(|br| br.facet_indices.iter().copied())
         .collect();
 
@@ -216,6 +217,9 @@ pub fn assemble_bridge_areas(
         if !br.is_valid {
             continue;
         }
+        if br.facet_indices.is_empty() {
+            continue;
+        }
         if br.xy_footprint.is_empty() {
             continue;
         }
@@ -269,11 +273,15 @@ pub fn gate_bridge_areas_by_unsupported_span(
 ) {
     let Some(lower_layer_slices) = lower_layer_slices else {
         region.bridge_areas.clear();
+        region.is_bridge = false;
         return;
     };
 
     if !lower_layer_slices.is_empty() {
         region.bridge_areas = difference(&region.bridge_areas, lower_layer_slices);
+    }
+    if region.bridge_areas.is_empty() {
+        region.is_bridge = false;
     }
 }
 

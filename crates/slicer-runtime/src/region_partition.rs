@@ -189,7 +189,14 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // improvement; the cube_4color test in
         // `cube_4color_ironing_per_painted_top_color_tdd` is a RED gate
         // tracking the open root cause.
-        let bridge = intersection(&slice_region.bridge_areas, wall_inset);
+        // The bridge claim takes the gated `bridge_areas` directly: the
+        // areas are already stamped as `footprint ∩ region.infill_areas`
+        // and gated post-slice, so intersecting with `wall_inset` again is
+        // redundant and harmful — at a ceiling layer the perimeter module's
+        // infill area can be empty (the whole cross-section is top surface),
+        // which would drop a canonical bridge site (wedge interior-slot
+        // ceiling, packet 234).
+        let bridge = slice_region.bridge_areas.clone();
         let bottom = if wall_inset.is_empty() {
             Vec::new()
         } else {

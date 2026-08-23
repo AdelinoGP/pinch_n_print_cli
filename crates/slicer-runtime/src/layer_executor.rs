@@ -2358,11 +2358,14 @@ pub(crate) fn apply(
                             }
                         }
                     }
-                    if anchors.is_empty() || slice_region.sparse_infill_area.is_empty() {
+                    let candidate_voids = slicer_core::difference(
+                        &slice_region.sparse_infill_area,
+                        &slice_region.bridge_areas,
+                    );
+                    if anchors.is_empty() || candidate_voids.is_empty() {
                         continue;
                     }
-                    let edges: Vec<Vec<Point2>> = slice_region
-                        .sparse_infill_area
+                    let edges: Vec<Vec<Point2>> = candidate_voids
                         .iter()
                         .map(|void| void.contour.points.clone())
                         .collect();
@@ -2372,7 +2375,7 @@ pub(crate) fn apply(
                         region.object_id,
                         region.region_id,
                         anchors.len(),
-                        slice_region.sparse_infill_area.len()
+                        candidate_voids.len()
                     );
                     let config = ctx.config_view;
                     let value = |key: &str, default: f32| {
@@ -2398,7 +2401,7 @@ pub(crate) fn apply(
                     let (bridge_polys, bridge_lines) =
                         slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
                             &anchors,
-                            &slice_region.sparse_infill_area,
+                            &candidate_voids,
                             angle,
                             flow.spacing_mm,
                             flow.thread_diameter_mm,

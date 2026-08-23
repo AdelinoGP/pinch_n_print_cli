@@ -78,6 +78,7 @@ fn ungated_candidates_cannot_silently_return() {
             ObjectSurfaceData {
                 bridge_regions: vec![BridgeRegion {
                     is_valid: true,
+                    facet_indices: vec![0],
                     xy_footprint: vec![bridge.clone()],
                     ..Default::default()
                 }],
