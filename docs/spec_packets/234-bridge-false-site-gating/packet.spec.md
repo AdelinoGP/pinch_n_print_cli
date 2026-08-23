@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 234-bridge-false-site-gating
 task_ids: []
 backlog_source: docs/specs/bridge-parity-plan.md §4 W-A row (new packet, no prior owner)
