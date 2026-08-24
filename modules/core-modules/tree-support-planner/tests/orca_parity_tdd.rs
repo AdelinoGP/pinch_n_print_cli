@@ -418,7 +418,35 @@ fn benchy_tree_support_regression_tripwire() {
     let obj = overhang_plate_fixture("benchy-stand-in");
     let lp = make_layer_plan(11, 0.0, 0.2);
     let rs = make_region_segmentation("benchy-stand-in", 11);
-    let sg = SupportGeometryView { entries: vec![] };
+    let plate_occupancy = ExPolygon {
+        contour: Polygon {
+            points: obj.vertices[1..]
+                .iter()
+                .map(|[x, y, _]| Point2::from_mm(*x, *y))
+                .collect(),
+        },
+        holes: vec![],
+    };
+    let sg = SupportGeometryView {
+        entries: (0..11)
+            .filter_map(|global_support_layer_index| {
+                // The fixture has material only at the floating plate's z=1.8
+                // cross-section; lower layers are empty space beneath it.
+                let plate_layer = (1.8_f32 / 0.2).round() as u32 - 1;
+                (global_support_layer_index == plate_layer).then(|| SupportGeometryViewEntry {
+                    global_support_layer_index,
+                    object_id: "benchy-stand-in".to_string(),
+                    region_id: "0".to_string(),
+                    outlines: vec![plate_occupancy.clone()],
+                })
+            })
+            .collect(),
+    };
+    // G-23 fixture precondition: collision/avoidance input must be real occupancy.
+    assert!(
+        !sg.entries.is_empty(),
+        "G-23 occupancy fixture must be non-empty"
+    );
     let mut output = SupportGeometryOutput::new();
     planner
         .run_support_geometry_with_analysis(
