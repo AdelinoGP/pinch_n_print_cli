@@ -8,7 +8,8 @@ use std::collections::HashMap;
 
 use slicer_ir::ConfigValue;
 use slicer_scheduler::{
-    resolve_global_config, BoundsDeclaration, ConfigBoundsIndex, ConfigResolutionError,
+    load_module_from_paths, resolve_global_config, BoundsDeclaration, ConfigBoundsIndex,
+    ConfigResolutionError,
 };
 
 fn single_module_bounds(key: &str, min: Option<f64>, max: Option<f64>) -> ConfigBoundsIndex {
@@ -73,6 +74,26 @@ fn out_of_range_support_threshold_angle_is_rejected() {
 
     let err = resolve_global_config(&source, &bounds)
         .expect_err("support threshold angle above max must reject");
+    assert_out_of_range(err, "support_threshold_angle", 200.0, None);
+}
+
+#[test]
+fn manifest_declared_bound_rejects_out_of_range_value() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../modules/core-modules/traditional-support-planner/traditional-support-planner.toml",
+    );
+    let wasm = manifest.with_extension("wasm");
+    let module = load_module_from_paths(&manifest, &wasm).expect("real support manifest must load");
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+
+    let mut source = HashMap::new();
+    source.insert(
+        "support_threshold_angle".to_string(),
+        ConfigValue::Float(200.0),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("manifest-declared support threshold bound must reject");
     assert_out_of_range(err, "support_threshold_angle", 200.0, None);
 }
 
