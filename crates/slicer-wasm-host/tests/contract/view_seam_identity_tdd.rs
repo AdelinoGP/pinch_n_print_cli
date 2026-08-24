@@ -43,6 +43,7 @@ fn native_and_wasm_layer_views_are_field_identical() {
         &claims,
         config,
     );
+    // exhaustive: projection identity test pins every input field
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
         paint_regions: None,

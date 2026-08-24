@@ -56,6 +56,7 @@ fn fixture() -> (Arc<MeshIR>, Arc<Vec<SliceIR>>, Arc<RegionMapIR>) {
         "subtype".to_owned(),
         ConfigValue::String("support_enforcer".to_owned()),
     );
+    // exhaustive: fixture pins every modifier volume field
     let volume = ModifierVolume {
         id: "paint-trigger".to_owned(),
         mesh: box_mesh(2.0, 8.0),
