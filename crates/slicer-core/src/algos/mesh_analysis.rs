@@ -216,11 +216,23 @@ fn classify_object(
         Vec::new()
     } else {
         let xy_footprint = compute_xy_footprint(mesh, transform, &overhang_facets);
+        let overhang_set: std::collections::HashSet<u32> =
+            overhang_facets.iter().copied().collect();
+        let region_facets: Vec<u32> = (0..tri_count as u32)
+            .filter(|facet| !overhang_set.contains(facet))
+            .collect();
+        let region_polygons = compute_xy_footprint(mesh, transform, &region_facets);
         vec![OverhangRegion {
             id: 0,
             facet_indices: overhang_facets,
             max_angle_deg: overhang_max_angle,
-            needs_support: true,
+            needs_support: if region_polygons.is_empty() {
+                // Degenerate projected region polygons are ambiguous; retain
+                // eligibility when there are non-overhang facets to support it.
+                !region_facets.is_empty() && !xy_footprint.is_empty()
+            } else {
+                footprints_overlap(&region_polygons, &xy_footprint)
+            },
             xy_footprint,
         }]
     };
@@ -573,6 +585,51 @@ fn compute_xy_footprint(
         .collect();
 
     union_ex(&tris)
+}
+
+/// Return whether two polygon sets overlap, rejecting disjoint bounding boxes
+/// before invoking the allocating polygon intersection operation.
+fn footprints_overlap(region_polygons: &[ExPolygon], overhang_footprint: &[ExPolygon]) -> bool {
+    fn bbox(poly: &ExPolygon) -> (i64, i64, i64, i64) {
+        poly.contour
+            .points
+            .iter()
+            .chain(poly.holes.iter().flat_map(|hole| hole.points.iter()))
+            .fold(
+                (i64::MAX, i64::MIN, i64::MAX, i64::MIN),
+                |(min_x, max_x, min_y, max_y), point| {
+                    (
+                        min_x.min(point.x),
+                        max_x.max(point.x),
+                        min_y.min(point.y),
+                        max_y.max(point.y),
+                    )
+                },
+            )
+    }
+
+    let overlaps_bbox = |a: &ExPolygon, b: &ExPolygon| {
+        let (a_min_x, a_max_x, a_min_y, a_max_y) = bbox(a);
+        let (b_min_x, b_max_x, b_min_y, b_max_y) = bbox(b);
+        a_min_x <= b_max_x && b_min_x <= a_max_x && a_min_y <= b_max_y && b_min_y <= a_max_y
+    };
+
+    if !region_polygons.iter().any(|region| {
+        overhang_footprint
+            .iter()
+            .any(|overhang| overlaps_bbox(region, overhang))
+    }) {
+        return false;
+    }
+
+    // Keep ambiguous boundary/Clipper cases eligible rather than suppressing
+    // support; the bbox candidate is the conservative fallback.
+    !crate::polygon_ops::intersection(region_polygons, overhang_footprint).is_empty()
+        || region_polygons.iter().any(|region| {
+            overhang_footprint
+                .iter()
+                .any(|overhang| overlaps_bbox(region, overhang))
+        })
 }
 
 /// XY footprint (union of per-facet triangle projections, transform applied)

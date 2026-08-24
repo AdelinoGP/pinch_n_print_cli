@@ -24,7 +24,9 @@
 //! Mirrors canonical `detect_overhangs` (`SupportMaterial.cpp`), which grows the
 //! lower layer by an angle-derived offset before differencing.
 
-use slicer_core::algos::overhang_annotation::{detect_support_contacts, SupportContactParams};
+use slicer_core::algos::overhang_annotation::{
+    detect_support_contacts, detect_support_contacts_with_annotations, SupportContactParams,
+};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
 /// Axis-aligned rectangle in mm.
@@ -133,6 +135,129 @@ fn sweep(layers: &[Vec<ExPolygon>], params: &SupportContactParams) -> Vec<(usize
             (!contacts.is_empty()).then_some((index, contacts))
         })
         .collect()
+}
+
+fn sharp_tail_profile() -> Vec<ExPolygon> {
+    let p = |x: f32, y: f32| Point2::from_mm(x, y);
+    vec![ExPolygon {
+        contour: Polygon {
+            points: vec![p(4.0, 2.0), p(4.01, 2.0), p(4.0, 2.01)],
+        },
+        holes: Vec::new(),
+    }]
+}
+
+#[test]
+fn sharp_tails_add_first_layer_contacts_when_enabled() {
+    let profile = sharp_tail_profile();
+    let contacts = detect_support_contacts(
+        &profile,
+        &[rect(0.0, 0.0, 4.0, 4.0)],
+        &[],
+        &SupportContactParams {
+            support_sharp_tails: true,
+            layer_id: 0,
+            ..params(45.0, 0.2)
+        },
+    );
+
+    assert!(!contacts.is_empty());
+}
+
+#[test]
+fn sharp_tails_disabled_by_default_emits_none() {
+    let profile = sharp_tail_profile();
+    let contacts = detect_support_contacts(
+        &profile,
+        &[rect(0.0, 0.0, 4.0, 4.0)],
+        &[],
+        &SupportContactParams {
+            layer_id: 0,
+            ..SupportContactParams::default()
+        },
+    );
+
+    assert!(contacts.is_empty());
+}
+
+#[test]
+fn enforce_support_layers_forces_full_contacts_in_leading_layers() {
+    let (lower, upper) = pillar_with_ledge(0.15);
+    let contacts = detect_support_contacts(
+        &upper,
+        &lower,
+        &[],
+        &SupportContactParams {
+            enforce_support_layers: 2,
+            layer_id: 1,
+            ..params(10.0, 0.2)
+        },
+    );
+
+    assert!((area_mm2(&contacts) - 2.0 * 0.15 * 4.0).abs() < 0.05);
+}
+
+#[test]
+fn enforce_support_layers_beyond_model_changes_nothing() {
+    let (lower, upper) = pillar_with_ledge(0.5);
+    let ordinary = detect_support_contacts(&upper, &lower, &[], &params(45.0, 0.2));
+    let enforced = detect_support_contacts(
+        &upper,
+        &lower,
+        &[],
+        &SupportContactParams {
+            enforce_support_layers: 2,
+            layer_id: 2,
+            ..params(45.0, 0.2)
+        },
+    );
+
+    assert!((area_mm2(&enforced) - area_mm2(&ordinary)).abs() < 1e-3);
+}
+
+#[test]
+fn bridge_areas_are_removed_from_contacts_under_bridge_no_support() {
+    let (lower, upper) = pillar_with_ledge(2.0);
+    let bridge = vec![rect(-2.0, 0.0, 0.0, 4.0)];
+    let contacts = detect_support_contacts(
+        &upper,
+        &lower,
+        &[],
+        &SupportContactParams {
+            bridge_no_support: true,
+            bridge_polygons: bridge,
+            ..params(45.0, 0.2)
+        },
+    );
+
+    assert!(area_mm2(&contacts) < 25.0);
+}
+
+#[test]
+fn bridge_removal_disabled_keeps_bridge_contacts() {
+    let (lower, upper) = pillar_with_ledge(2.0);
+    let bridge = vec![rect(-2.0, 0.0, 0.0, 4.0)];
+    let contacts = detect_support_contacts(
+        &upper,
+        &lower,
+        &[],
+        &SupportContactParams {
+            bridge_polygons: bridge,
+            ..params(45.0, 0.2)
+        },
+    );
+
+    assert!(area_mm2(&contacts) > 10.0);
+}
+
+#[test]
+fn cantilever_pass_records_wide_overhang_annotations() {
+    let (lower, upper) = pillar_with_ledge(4.0);
+    let result =
+        detect_support_contacts_with_annotations(&upper, &lower, &[], &plain_difference_params());
+
+    assert!(!result.contacts.is_empty());
+    assert_eq!(result.cantilever_surfaces, result.contacts);
 }
 
 #[test]

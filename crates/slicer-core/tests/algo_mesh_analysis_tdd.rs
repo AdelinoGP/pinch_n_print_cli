@@ -139,6 +139,37 @@ fn classifies_known_facets_and_emits_overhang_region() {
 }
 
 #[test]
+fn isolated_overhang_region_is_not_support_eligible() {
+    let mesh = MeshIR {
+        schema_version: sv(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "isolated-overhang".to_string(),
+            mesh: IndexedTriangleSet {
+                vertices: vec![p3(0.0, 0.0, 0.0), p3(0.0, 1.0, 0.0), p3(1.0, 0.0, -0.75)],
+                indices: vec![0, 1, 2],
+            },
+            transform: identity_transform(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![],
+            paint_data: None,
+            ..Default::default()
+        }],
+        build_volume: build_volume(),
+    };
+
+    let ir = execute_mesh_analysis(&mesh).expect("analysis should succeed");
+    let obj = ir
+        .per_object
+        .get("isolated-overhang")
+        .expect("isolated object present");
+
+    assert_eq!(obj.overhang_regions.len(), 1);
+    assert!(!obj.overhang_regions[0].needs_support);
+}
+
+#[test]
 fn rejects_index_buffer_not_multiple_of_three() {
     let mut mesh = triangle_mesh("bad");
     mesh.objects[0].mesh.indices.push(0);

@@ -3,10 +3,11 @@
 //! These tests verify the API defined in docs/05_module_sdk.md and docs/03_wit_and_manifest.md.
 //! Tests lock down trait signatures, ModuleError type, view types, and output builders.
 
+use slicer_ir::{ObjectSurfaceData, OverhangRegion, SurfaceClassificationIR};
 use slicer_sdk::prelude::*;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::wall_loop_base;
 use std::collections::HashMap;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Test 1: LayerModule trait exists with from_config
@@ -483,6 +484,93 @@ fn slice_region_view_set_needs_support_overrides() {
     assert!(!view.needs_support());
     view.set_needs_support(true);
     assert!(view.needs_support());
+}
+
+fn support_test_square(x: f32, y: f32, size: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, y),
+                Point2::from_mm(x + size, y),
+                Point2::from_mm(x + size, y + size),
+                Point2::from_mm(x, y + size),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+fn support_test_classification(footprint: ExPolygon) -> SurfaceClassificationIR {
+    SurfaceClassificationIR {
+        per_object: HashMap::from([(
+            "obj-1".to_string(),
+            ObjectSurfaceData {
+                overhang_regions: vec![OverhangRegion {
+                    xy_footprint: vec![footprint],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )]),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_disjoint_footprint_is_false() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+    let classification = support_test_classification(support_test_square(2.0, 0.0, 1.0));
+    assert!(!view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_overlapping_footprint_is_true() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+    let classification = support_test_classification(support_test_square(0.5, 0.0, 1.0));
+    assert!(view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_empty_overhang_regions_is_true() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+    let classification = SurfaceClassificationIR {
+        per_object: HashMap::from([("obj-1".to_string(), ObjectSurfaceData::default())]),
+        ..Default::default()
+    };
+    assert!(view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_empty_footprints_are_true() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+    let classification = SurfaceClassificationIR {
+        per_object: HashMap::from([(
+            "obj-1".to_string(),
+            ObjectSurfaceData {
+                overhang_regions: vec![OverhangRegion::default()],
+                ..Default::default()
+            },
+        )]),
+        ..Default::default()
+    };
+    assert!(view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_missing_classification_is_true() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+    assert!(view.derive_needs_support(None));
+    assert!(view.derive_needs_support(Some(&SurfaceClassificationIR::default())));
 }
 
 // =============================================================================

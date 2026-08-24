@@ -504,7 +504,7 @@ pub fn sliced_region_to_data(
         variant_chain,
         has_nonplanar: view.has_nonplanar(),
         segment_annotations,
-        needs_support: true,
+        needs_support: view.derive_needs_support(surface_classification),
         top_shell_index: view.top_shell_index(),
         bottom_shell_index: view.bottom_shell_index(),
         top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),

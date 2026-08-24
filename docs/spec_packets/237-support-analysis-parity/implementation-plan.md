@@ -50,18 +50,25 @@
 - Exit condition: the log shows exactly the authored tests failing/compiling-error; zero
   unrelated failures.
 
-### Step 2: Bridge-removal stage (red → green)
+### Step 2: In-core contact stages — bridge removal, sharp tails, enforce layers (red → green)
 
 - Task IDs: `TASK-354`
-- Objective: implement bridge removal inside `detect_support_contacts` behind a typed
-  parameter (`bridge_no_support: bool` + bridge polygons input), porting canonical
-  `SupportMaterialInternal::remove_bridges_from_contacts` semantics; add red-first pair
+- Objective: implement three stages inside `detect_support_contacts`: (a) bridge removal
+  behind a typed parameter (`bridge_no_support: bool` + bridge polygons input), porting
+  canonical `SupportMaterialInternal::remove_bridges_from_contacts` semantics (the host
+  stage receives bridge areas as input and subtracts them under the gate); (b) first-layer
+  sharp-tail emission behind `support_sharp_tails`; (c) `enforce_support_layers` zero-offset
+  forcing. (b)/(c) close Step 1's red tests — authoring-gap correction recorded by the run
+  coordinator: the original plan authored those tests but assigned their implementation to no
+  step; adding the missing params fields here also restores compilation of the shared test
+  binary. Red-first pair for bridge
   (`bridge_areas_are_removed_from_contacts_under_bridge_no_support`,
-  `bridge_removal_disabled_keeps_bridge_contacts`) then make them pass.
-- Precondition: Step 1 merged in-tree (its red tests may stay red; they are separate
-  behaviors).
-- Postcondition: AC-3 and AC-N2 commands return PASS; "Not modelled" doc list drops the
-  bridge entry.
+  `bridge_removal_disabled_keeps_bridge_contacts`) made passing together with Step 1's four
+  tests.
+- Precondition: Step 1 landed. Its red tests stay red only until this step's field additions
+  restore compilation; they must be GREEN at this step's exit.
+- Postcondition: AC-2, AC-3, AC-4, AC-N1, AC-N2, AC-N3 commands return PASS; "Not modelled"
+  doc list drops the bridge, sharp-tail, and enforce-layer entries.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-core/src/algos/overhang_annotation.rs` - lines 100–360
   - `crates/slicer-core/tests/support_overhang_detection_tdd.rs` - full
@@ -71,18 +78,21 @@
 - Files explicitly out of bounds:
   - `crates/slicer-runtime/**` (param plumbing is later steps), manifests, WIT
 - Expected sub-agent dispatches:
-  - Question: exact offset magnitudes and polygon inputs of
-    `remove_bridges_from_contacts`; scope: `OrcaSlicerDocumented/.../SupportMaterial.cpp`;
-    return: `SNIPPETS` ≤30 lines; purpose: faithful port (E8 constants).
+  - none needed (canonical semantics pre-pinned by the coordinator's research dispatch:
+    bridge areas arrive as stage input; `SUPPORT_MATERIAL_MARGIN 1.2` fork fragment is the
+    E8 provenance; sharp-tail trigger geometry not derivable from disk — AC fixture language
+    governs, gap recorded in evidence)
 - Context cost: `S`
 - Authoritative docs:
   - `docs/08_coordinate_system.md` - mm↔unit boundary checklist (delegated SUMMARY acceptable)
 - OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` -
-    `SupportMaterialInternal::remove_bridges_from_contacts`; delegate
+  - canonical `SupportMaterialInternal::remove_bridges_from_contacts`
+    (`SupportMaterial.cpp`; absent on disk — fork fragment `PrintObject.cpp`
+    `remove_bridges_from_contacts` + `SUPPORT_MATERIAL_MARGIN 1.2` pinned instead)
 - Verification:
-  - AC-3 command from `packet.spec.md`, then AC-N2 command — each must print PASS
-- Exit condition: both commands PASS and `cargo check -p slicer-core --all-targets` clean.
+  - AC-3 command from `packet.spec.md`, then AC-N2, AC-2, AC-N1, AC-4, AC-N3 commands — each
+    must print PASS
+- Exit condition: all six commands PASS and `cargo check -p slicer-core --all-targets` clean.
 
 ### Step 3: Cantilever pass + SupportAnalysisIR schema bump
 
@@ -354,7 +364,7 @@
 - Files explicitly out of bounds:
   - any `src/` file (fix-forward only via new step if a gate fails)
 - Expected sub-agent dispatches:
-  - Question: run `cargo xtask test --summary -p slicer-core -- --no-fail-fast --features
+  - Question: run `cargo xtask test --summary -p slicer-core --no-fail-fast --features
     host-algos` equivalent narrow reconciliation and return binary count; scope: workspace
     test runner; return: `FACT`; purpose: E6 binary-count reconciliation against expectations.
 - Context cost: `M`
@@ -430,7 +440,7 @@ Aggregate M; no L steps; split not required.
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
 - Freshness first: `cargo xtask build-guests --check` exit 0 before any guest-facing claim.
 - Broad-suite discipline: the only permitted whole-suite run is
-  `cargo xtask test --summary --workspace -- --no-fail-fast` at closure, per AGENTS Test
+  `cargo xtask test --summary --workspace --no-fail-fast` at closure, per AGENTS Test
   Discipline condition 2, after every narrower verification has passed; totals read from
   `target/test-output.log` (E5), never re-run.
 - Record remaining packet-local risk (buildplate `[FWD]`, enforced-flag choice, golden-drift

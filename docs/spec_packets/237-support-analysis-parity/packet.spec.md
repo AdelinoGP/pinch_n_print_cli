@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 237-support-analysis-parity
 task_ids:
   - TASK-353
@@ -37,8 +37,8 @@ sharp-tail, bridge-removal, cantilever, and enforce-support-layers stages to
 
 ## Prerequisites and Blockers
 
-- Depends on: `236-support-stabilization` — FORWARD DEPENDENCY on a `status: draft` packet.
-  This packet composes with 236's per-region
+- Depends on: `236-support-stabilization` — satisfied: 236 reached `status: implemented`
+  before this packet's implementation run, so its per-region
   `family_assignments` minting in `commit_support_analysis_builtin` — this packet must not
   revert minting to per-candidate. Steps that touch the shared routing/consumer code path
   (Steps 4, 7) are gated: they may author red-first tests against the current tree, but their
@@ -64,7 +64,7 @@ State ACs only here; `requirements.md` references their IDs.
   gate) alongside any thresholded contacts. The test lives in the producer's in-file
   `#[cfg(test)]` module, reached through the crate's library test target (`--lib`); the
   `tests/unit/` aggregator does NOT mount source modules.
-  | `mkdir -p target && cargo test -p slicer-runtime --lib auto_support_type_unions_enforcer_contacts_with_thresholded -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-runtime --lib auto_support_type_unions_enforcer_contacts_with_thresholded 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-2. Given** `support_sharp_tails` behavior enabled in `SupportContactParams` and a
   layer-0 sharp-tail profile, **when** `detect_support_contacts` runs, **then** it returns
   non-empty tail contacts for the first layer (canonical `detect_overhangs` sharp-tail branch,
@@ -107,7 +107,7 @@ State ACs only here; `requirements.md` references their IDs.
   auto-detected candidate exists for that region while its structured
   `family_assignments` entry (per-region minting, Ruling 1) is still present — producers
   proven to flow, downstream planners proven to see the decline.
-  | `mkdir -p target && cargo test -p slicer-runtime --test integration needs_support_false_region_yields_no_auto_candidates -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-runtime --test integration needs_support_false_region_yields_no_auto_candidates 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 
 ## Negative Test Cases
 
@@ -193,7 +193,7 @@ inspection, never a test claim):
 Evidence file: `tmp/237-human-validation.md` recording commands run, artifact paths, layer
 indices inspected, and the block-count deltas.
 
-Sign-off: `YYYY-MM-DD — <verdict>` (pending).
+Sign-off: `2026-08-24 — PASS` (both G-code artifacts passed human inspection; evidence in `tmp/237-human-validation.md`).
 
 ## Doc Impact Statement (Required)
 

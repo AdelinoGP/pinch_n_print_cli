@@ -16,6 +16,7 @@ mod anchored_z_span_validation;
 mod anchored_z_validation;
 mod structured_support_identity;
 mod support_disabled_no_output;
+mod support_eligibility_signal_tdd;
 mod support_family_closure;
 mod support_family_routing;
 

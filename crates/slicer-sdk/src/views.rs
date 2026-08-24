@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     ConfigView, ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth,
-    RegionId, RegionKey, SeamCandidate, SeamPosition, SurfaceGroup, WallLoop,
+    RegionId, RegionKey, SeamCandidate, SeamPosition, SurfaceClassificationIR, SurfaceGroup,
+    WallLoop,
 };
 
 /// Read-only view of a slice region.
@@ -296,6 +297,43 @@ impl SliceRegionView {
     /// docs/01_system_architecture.md and docs/02_ir_schemas.md.
     pub fn needs_support(&self) -> bool {
         self.needs_support
+    }
+
+    /// Derive support eligibility from the object's overhang footprints.
+    ///
+    /// The decision table is conservative: `classification is None`, a
+    /// missing object entry, an empty `overhang_regions` list, or only empty
+    /// `xy_footprint` lists all return `true` (absence of evidence is not a
+    /// decline). The method returns `false` only when at least one non-empty
+    /// footprint exists and every such footprint is disjoint from this
+    /// region. Enforcer coverage is intentionally left to the support
+    /// consumer.
+    pub fn derive_needs_support(
+        &self,
+        surface_classification: Option<&SurfaceClassificationIR>,
+    ) -> bool {
+        let Some(object) = surface_classification
+            .and_then(|classification| classification.per_object.get(&self.object_id))
+        else {
+            return true;
+        };
+
+        let non_empty_footprints = object
+            .overhang_regions
+            .iter()
+            .filter(|overhang| !overhang.xy_footprint.is_empty());
+
+        let mut found_non_empty_footprint = false;
+        for overhang in non_empty_footprints {
+            found_non_empty_footprint = true;
+            if !slicer_core::polygon_ops::intersection_ex(&self.polygons, &overhang.xy_footprint)
+                .is_empty()
+            {
+                return true;
+            }
+        }
+
+        !found_non_empty_footprint
     }
 
     /// Returns the minimum top-shell depth for this region.

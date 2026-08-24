@@ -158,7 +158,7 @@ count grep) after tee, so a zero-match run can never read green.
 | Guest-facing failure attribution | `cargo xtask build-guests --check` FIRST (exit 0 fresh / 1 stale / 3 infra) | E4/T4; rebuild before re-running if stale |
 | Type gate | `cargo check --workspace --all-targets` | catches struct-literal blast radius of the schema bump |
 | Lint gate | `cargo clippy --workspace --all-targets -- -D warnings` | required before commit |
-| Whole-suite (closure only) | `cargo xtask test --summary --workspace -- --no-fail-fast` | E5/T3; only at acceptance ceremony per AGENTS Test Discipline |
+| Whole-suite (closure only) | `cargo xtask test --summary --workspace --no-fail-fast` | E5/T3; only at acceptance ceremony per AGENTS Test Discipline |
 
 Cross-step expectations:
 

@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use slicer_core::algos::overhang_annotation::{detect_support_contacts, SupportContactParams};
+use slicer_core::algos::overhang_annotation::{
+    detect_support_contacts_with_annotations, SupportContactParams,
+};
 use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
 use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
@@ -69,7 +71,8 @@ pub fn commit_support_analysis_builtin(
             // and (b) one work item per (layer, object, region).
             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
                 BTreeMap::new();
-            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>)> = Vec::new();
+            let surface_classification = blackboard.surface_classification().cloned();
+            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
             for slice in slices.iter() {
                 for region in &slice.regions {
                     if region.polygons.is_empty() {
@@ -108,11 +111,15 @@ pub fn commit_support_analysis_builtin(
                         .entry((region.object_id.clone(), slice.global_layer_index))
                         .or_default()
                         .extend(region.polygons.iter().cloned());
+                    let needs_support =
+                        slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
+                            .derive_needs_support(surface_classification.as_deref());
                     contact_work.push((
                         slice.global_layer_index,
                         region.object_id.clone(),
                         region.region_id,
                         region.polygons.clone(),
+                        needs_support,
                     ));
                 }
             }
@@ -148,71 +155,91 @@ pub fn commit_support_analysis_builtin(
             contact_work.sort_by(|a, b| (a.0, &a.1, a.2).cmp(&(b.0, &b.1, b.2)));
             let contacts: Vec<Contact> = contact_work
                 .par_iter()
-                .filter_map(|(layer_index, object_id, region_id, polygons)| {
-                    // Layer 0 rests on the bed and has no layer below it.
-                    let lower_index = layer_index.checked_sub(1)?;
-                    let empty: Vec<ExPolygon> = Vec::new();
-                    let lower = object_layer_union
-                        .get(&(object_id.clone(), lower_index))
-                        .unwrap_or(&empty);
-                    let params = SupportContactParams {
-                        // Canonical scales the offset by the *lower* layer's
-                        // height.
-                        lower_layer_height_mm: layer_height_mm(&plan.global_layers, lower_index),
-                        ..base_params
-                    };
-                    let enforcers = modifiers.enforcers_at(object_id, *layer_index);
-                    let blockers = modifiers.blockers_at(object_id, *layer_index);
-                    // F-19: the auto/manual axis is a *per-region* setting --
-                    // an object's regions may carry different `support_type`
-                    // values -- so it is resolved from the region's own config,
-                    // never from the run config.
-                    let support_type = effective_support_type(
-                        region_config(region_map.as_deref(), *layer_index, object_id, *region_id)
+                .filter_map(
+                    |(layer_index, object_id, region_id, polygons, needs_support)| {
+                        // Layer 0 rests on the bed and has no layer below it.
+                        let lower_index = layer_index.checked_sub(1)?;
+                        let empty: Vec<ExPolygon> = Vec::new();
+                        let lower = object_layer_union
+                            .get(&(object_id.clone(), lower_index))
+                            .unwrap_or(&empty);
+                        let params = SupportContactParams {
+                            // Canonical scales the offset by the *lower* layer's
+                            // height.
+                            lower_layer_height_mm: layer_height_mm(
+                                &plan.global_layers,
+                                lower_index,
+                            ),
+                            // `layer_id` is trivially available here; the other
+                            // new knobs ride neutral from `base_params` (OFF).
+                            // Clone (not move) the base: `bridge_polygons` is a
+                            // non-Copy field and this `Fn` closure may run
+                            // multiple times under rayon.
+                            layer_id: *layer_index,
+                            ..base_params.clone()
+                        };
+                        let enforcers = modifiers.enforcers_at(object_id, *layer_index);
+                        let blockers = modifiers.blockers_at(object_id, *layer_index);
+                        // F-19: the auto/manual axis is a *per-region* setting --
+                        // an object's regions may carry different `support_type`
+                        // values -- so it is resolved from the region's own config,
+                        // never from the run config.
+                        let support_type = effective_support_type(
+                            region_config(
+                                region_map.as_deref(),
+                                *layer_index,
+                                object_id,
+                                *region_id,
+                            )
                             .unwrap_or(config),
-                    );
-                    let geometry = if support_type.is_auto() {
-                        // Canonical `detect_overhangs` (`SupportMaterial.cpp`)
-                        // gates this branch on
-                        // `auto_normal_support = support_type == stNormalAuto`.
-                        // Blockers are subtracted inside the detector (its step
-                        // 3), so they are wired into that parameter rather than
-                        // re-subtracted here.
-                        detect_support_contacts(polygons, lower, blockers, &params)
-                    } else {
-                        // Manual: "If Normal (manual) or Tree (manual) is
-                        // selected, only support enforcers are generated"
-                        // (OrcaSlicer `support_type` tooltip). The
-                        // angle-thresholded branch is skipped entirely -- a
-                        // region with no enforcer over it yields no candidate
-                        // however steep it is.
-                        enforcer_contacts(
-                            polygons,
-                            lower,
-                            enforcers,
-                            blockers,
-                            params.external_perimeter_width_mm,
-                        )?
-                    };
-                    if geometry.is_empty() {
-                        return None;
-                    }
-                    // `enforced` / `blocked` describe how the region relates to
-                    // the painted modifier volumes. `blocked` is tested against
-                    // the region's own cross-section, not the surviving
-                    // geometry, so it stays true for a candidate whose blocked
-                    // part has already been subtracted away.
-                    let enforced = !intersection_ex(&geometry, enforcers).is_empty();
-                    let blocked = !intersection_ex(polygons, blockers).is_empty();
-                    Some(Contact {
-                        layer_index: *layer_index,
-                        object_id: object_id.clone(),
-                        region_id: *region_id,
-                        geometry,
-                        enforced,
-                        blocked,
-                    })
-                })
+                        );
+                        // Canonical `detect_contacts` applies enforcers under every
+                        // support type; only its angle-thresholded branch is
+                        // auto-gated. Keep the annotation attached to the
+                        // thresholded result, before the enforcer union.
+                        let mut cantilever_surfaces = Vec::new();
+                        let mut geometry = if support_type.is_auto() && *needs_support {
+                            let annotations = detect_support_contacts_with_annotations(
+                                polygons, lower, blockers, &params,
+                            );
+                            cantilever_surfaces = annotations.cantilever_surfaces;
+                            annotations.contacts
+                        } else {
+                            Vec::new()
+                        };
+                        if !enforcers.is_empty() {
+                            if let Some(enforcer_geometry) = enforcer_contacts(
+                                polygons,
+                                lower,
+                                enforcers,
+                                blockers,
+                                params.external_perimeter_width_mm,
+                            ) {
+                                geometry.extend(enforcer_geometry);
+                                geometry = union_ex(&geometry);
+                            }
+                        }
+                        if geometry.is_empty() {
+                            return None;
+                        }
+                        // `enforced` / `blocked` describe how the region relates to
+                        // the painted modifier volumes. `blocked` is tested against
+                        // the region's own cross-section, not the surviving
+                        // geometry, so it stays true for a candidate whose blocked
+                        // part has already been subtracted away.
+                        let enforced = !intersection_ex(&geometry, enforcers).is_empty();
+                        let blocked = !intersection_ex(polygons, blockers).is_empty();
+                        Some(Contact {
+                            layer_index: *layer_index,
+                            object_id: object_id.clone(),
+                            region_id: *region_id,
+                            geometry,
+                            cantilever_surfaces,
+                            enforced,
+                            blocked,
+                        })
+                    },
+                )
                 .collect();
 
             for Contact {
@@ -220,10 +247,21 @@ pub fn commit_support_analysis_builtin(
                 object_id,
                 region_id,
                 geometry,
+                cantilever_surfaces,
                 enforced,
                 blocked,
             } in contacts
             {
+                if !cantilever_surfaces.is_empty() {
+                    ir.cantilever_surfaces.insert(
+                        SupportGeometryKey {
+                            global_support_layer_index: layer_index,
+                            object_id: object_id.clone(),
+                            region_id,
+                        },
+                        cantilever_surfaces,
+                    );
+                }
                 let z = plan
                     .global_layers
                     .get(layer_index as usize)
@@ -398,6 +436,7 @@ struct Contact {
     object_id: String,
     region_id: u64,
     geometry: Vec<ExPolygon>,
+    cantilever_surfaces: Vec<ExPolygon>,
     enforced: bool,
     blocked: bool,
 }
@@ -577,6 +616,14 @@ fn resolve_contact_params(
         external_perimeter_width_mm,
         threshold_overlap_mm,
         xy_expansion_mm: extension_float(config, "support_expansion").unwrap_or(0.0),
+        // New bridge / sharp-tail / enforce / layer-index knobs have no
+        // production config source yet; neutral values keep the candidate
+        // stream unchanged (all stages OFF).
+        bridge_no_support: false,
+        bridge_polygons: Vec::new(),
+        support_sharp_tails: false,
+        enforce_support_layers: 0,
+        layer_id: 0,
     }
 }
 
@@ -1206,6 +1253,25 @@ mod tests {
         assert!(
             difference_ex(&candidate.geometry, &[enforcer]).is_empty(),
             "manual candidates must not extend beyond the enforcer footprint"
+        );
+    }
+
+    #[test]
+    fn auto_support_type_unions_enforcer_contacts_with_thresholded() {
+        // The enforcer reaches a shallow 0.2mm edge overhang, while the other
+        // sides of the upper layer remain angle-thresholded contacts.
+        let (lower, upper) = overhang_stack();
+        let mesh = mesh_with_modifiers(&[("support_enforcer", modifier_box(0.8, 2.5, 1.0, 3.5))]);
+        let mut blackboard = blackboard_with_stack_and_mesh(&lower, &upper, mesh);
+
+        commit_support_analysis_builtin(&mut blackboard, &config_with_support_type("normal(auto)"))
+            .unwrap();
+        let candidates = &blackboard.support_analysis().unwrap().candidates;
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].enforced);
+        assert!(
+            !intersection_ex(&candidates[0].geometry, &[square(0.8, 2.5, 0.2)]).is_empty(),
+            "auto mode must retain the enforcer-derived contact"
         );
     }
 

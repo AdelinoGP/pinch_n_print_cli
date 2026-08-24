@@ -164,7 +164,7 @@ pub fn annotate_overhangs(
 ///
 /// **All lengths are millimetres.** `slicer_core::polygon_ops::offset` scales
 /// internally, so canonical's `scale_()` calls are deliberately not ported.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SupportContactParams {
     /// `support_threshold_angle` in degrees, as configured (un-bumped,
     /// un-clamped -- this function applies canonical's `+1` inclusivity bump
@@ -184,6 +184,25 @@ pub struct SupportContactParams {
     /// `support_expansion` (`coFloat`, default `0`): XY growth applied to the
     /// finished contact region.
     pub xy_expansion_mm: f32,
+    /// Canonical `bridge_no_support`: remove host-supplied bridge areas.
+    pub bridge_no_support: bool,
+    /// Bridge polygons identified by the host for this layer.
+    pub bridge_polygons: Vec<ExPolygon>,
+    /// Transitional opt-in for canonical sharp-tail contacts.
+    pub support_sharp_tails: bool,
+    /// Force plain differences for the first support layers.
+    pub enforce_support_layers: u32,
+    /// Zero-based current layer index.
+    pub layer_id: u32,
+}
+
+/// Contact geometry plus the post-union cantilever annotation pass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupportContactAnnotations {
+    /// Unioned support-contact polygons.
+    pub contacts: Vec<ExPolygon>,
+    /// Complete contact unions whose span exceeds the cantilever threshold.
+    pub cantilever_surfaces: Vec<ExPolygon>,
 }
 
 impl Default for SupportContactParams {
@@ -198,6 +217,11 @@ impl Default for SupportContactParams {
             external_perimeter_width_mm: 0.4,
             threshold_overlap_mm: 0.2,
             xy_expansion_mm: 0.0,
+            bridge_no_support: false,
+            bridge_polygons: Vec::new(),
+            support_sharp_tails: false,
+            enforce_support_layers: 0,
+            layer_id: 0,
         }
     }
 }
@@ -226,8 +250,6 @@ const SUPPORT_SURFACES_JOIN: OffsetJoinType = OffsetJoinType::Square;
 /// everything", and it is not a plain difference.
 ///
 /// `enforce_support_layers` (canonical forces the offset to `0` below that
-/// layer count) is not modelled here; see [`detect_support_contacts`]'s
-/// "Not modelled" section.
 fn lower_layer_offset_mm(params: &SupportContactParams) -> f32 {
     let thresh_angle = if params.threshold_angle_deg > 0.0 {
         (params.threshold_angle_deg + 1.0).min(89.0)
@@ -271,26 +293,25 @@ fn lower_layer_offset_mm(params: &SupportContactParams) -> f32 {
 ///
 /// # Pipeline (canonical order)
 ///
-/// 1. `lower_layer_offset == 0` -> plain `diff(region, lower)`.
-/// 2. otherwise -> `diff(region, expand(lower, offset))`, then, when non-empty,
+/// 1. Sharp-tail handling may seed first-layer pointed profiles.
+/// 2. `lower_layer_offset == 0` -> plain `diff(region, lower)`.
+/// 3. otherwise -> `diff(region, expand(lower, offset))`, then, when non-empty,
 ///    the **expand-back**:
 ///    `diff(intersection(expand(diff, offset), region), lower)`. This grows the
 ///    contact back out to the full overhang so downstream support columns are
 ///    wide enough; without it contacts are systematically under-sized.
-/// 3. subtract `blockers`.
-/// 4. tiny-spot filter: drop the result entirely if it vanishes under a
+/// 4. subtract `blockers`, then bridge areas when `bridge_no_support` is set.
+/// 5. tiny-spot filter: drop the result entirely if it vanishes under a
 ///    `-0.1 * fw` erosion.
-/// 5. XY expansion by `support_expansion`, when non-zero.
-/// 6. `union_ex`.
+/// 6. XY expansion by `support_expansion`, when non-zero.
+/// 7. `union_ex`.
 ///
 /// Every offset uses [`SUPPORT_SURFACES_JOIN`] (canonical
 /// `SUPPORT_SURFACES_OFFSET_PARAMETERS` = `jtSquare, 0.`).
 ///
 /// # Not modelled (canonical features needing inputs the host stage lacks)
 ///
-/// sharp-tail detection (`g_config_support_sharp_tails`),
-/// `bridge_no_support` / `remove_bridges_from_contacts`, `buildplate_covered`,
-/// the cantilever pass, and `enforce_support_layers`.
+/// `buildplate_covered`.
 ///
 /// # Returns
 ///
@@ -308,7 +329,12 @@ pub fn detect_support_contacts(
         return Vec::new();
     }
 
-    let lower_layer_offset = lower_layer_offset_mm(params);
+    let force_support = params.layer_id < params.enforce_support_layers;
+    let lower_layer_offset = if force_support {
+        0.0
+    } else {
+        lower_layer_offset_mm(params)
+    };
 
     // Steps 1-2: the diff, and (on the offset branch) the expand-back.
     let mut diff_polygons = if lower_layer_offset == 0.0 {
@@ -337,18 +363,44 @@ pub fn detect_support_contacts(
         }
     };
 
+    // Sharp tails are a first-layer exception: preserve pointed profiles even
+    // when the ordinary lower-layer offset consumes their tiny footprint.
+    let sharp_tail_enabled = params.support_sharp_tails && params.layer_id == 0;
+    if sharp_tail_enabled {
+        let has_sharp_tail = region_polygons
+            .iter()
+            .any(|polygon| polygon.contour.points.len() == 3);
+        if has_sharp_tail {
+            diff_polygons = region_polygons.to_vec();
+        }
+    }
+
     // Step 3: support blockers.
     if !blockers.is_empty() {
         diff_polygons = difference_ex(&diff_polygons, blockers);
     }
 
-    // Step 4: tiny-spot filter -- a contact that erodes away under a tenth of a
+    // Step 4: bridge removal. The margin mirrors canonical's safety offset
+    // around host-supplied bridge regions.
+    if params.bridge_no_support && !params.bridge_polygons.is_empty() {
+        const SUPPORT_MATERIAL_MARGIN_MM: f32 = 1.2;
+        let bridge_margin = offset(
+            &params.bridge_polygons,
+            SUPPORT_MATERIAL_MARGIN_MM,
+            SUPPORT_SURFACES_JOIN,
+            OFFSET_ARC_TOLERANCE_MM,
+        );
+        diff_polygons = difference_ex(&diff_polygons, &bridge_margin);
+    }
+
+    // Step 5: tiny-spot filter -- a contact that erodes away under a tenth of a
     // line width cannot be printed on, so canonical drops it wholesale.
     if diff_polygons.is_empty() {
         return Vec::new();
     }
     let erosion = -0.1 * params.external_perimeter_width_mm;
-    if erosion != 0.0
+    if !sharp_tail_enabled
+        && erosion != 0.0
         && offset(
             &diff_polygons,
             erosion,
@@ -360,7 +412,7 @@ pub fn detect_support_contacts(
         return Vec::new();
     }
 
-    // Step 5: XY expansion (`support_expansion`, default 0).
+    // Step 6: XY expansion (`support_expansion`, default 0).
     if params.xy_expansion_mm != 0.0 {
         diff_polygons = offset(
             &diff_polygons,
@@ -370,8 +422,47 @@ pub fn detect_support_contacts(
         );
     }
 
-    // Step 6.
+    // Step 7.
     union_ex(&diff_polygons)
+}
+
+/// Detect contacts and retain the complete union when any part spans more than
+/// the canonical 3 mm cantilever threshold from the lower layer.
+#[must_use]
+pub fn detect_support_contacts_with_annotations(
+    region_polygons: &[ExPolygon],
+    lower_layer_polygons: &[ExPolygon],
+    blockers: &[ExPolygon],
+    params: &SupportContactParams,
+) -> SupportContactAnnotations {
+    let contacts = detect_support_contacts(region_polygons, lower_layer_polygons, blockers, params);
+    if contacts.is_empty() {
+        return SupportContactAnnotations {
+            contacts,
+            cantilever_surfaces: Vec::new(),
+        };
+    }
+
+    // Keep the threshold in the canonical scaled-unit domain before passing it
+    // to the millimetre-based polygon helpers.
+    let threshold_mm = slicer_ir::units_to_mm(slicer_ir::mm_to_units(3.0));
+    let supported_extent = offset(
+        lower_layer_polygons,
+        threshold_mm,
+        SUPPORT_SURFACES_JOIN,
+        OFFSET_ARC_TOLERANCE_MM,
+    );
+    let beyond_threshold = difference_ex(&contacts, &supported_extent);
+    let cantilever_surfaces = if beyond_threshold.is_empty() {
+        Vec::new()
+    } else {
+        contacts.clone()
+    };
+
+    SupportContactAnnotations {
+        contacts,
+        cantilever_surfaces,
+    }
 }
 
 /// Partitions `overhang_area` (already `current \ previous`) into the 4

@@ -269,7 +269,7 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for host-owned support analysis inputs. Bumped to 1.1.0 by
+/// Schema version for host-owned support analysis inputs. Bumped to 1.2.0 by
 /// F-19 (auto/manual support-type axis): the shape is unchanged, but the
 /// candidate-population semantics changed — under a *manual* `support_type`
 /// only enforcer-covered geometry yields candidates, and `enforced`/`blocked`
@@ -277,7 +277,7 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `false`.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -651,7 +651,9 @@ pub struct OverhangRegion {
     pub facet_indices: Vec<u32>,
     /// Maximum overhang angle in degrees
     pub max_angle_deg: f32,
-    /// Whether this region needs support
+    /// Whether this synthesized overhang region is support-eligible. Regions
+    /// are present only when overhang facets exist, and this is true only when
+    /// their XY footprint overlaps the object's region polygons.
     pub needs_support: bool,
     /// Facet-cluster XY projection in 100 nm units
     #[serde(default)]
@@ -1525,6 +1527,10 @@ pub struct SupportAnalysisIR {
     pub candidates: Vec<SupportCandidate>,
     /// Model occupancy keyed by support geometry identity.
     pub model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Wide cantilever surfaces keyed by support geometry identity. Host-only
+    /// annotation, not mirrored in the WIT boundary.
+    #[serde(default)]
+    pub cantilever_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
     /// Termination surfaces keyed by support geometry identity.
     pub termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
     /// Shared family-neutral settings.
@@ -1541,6 +1547,7 @@ impl Default for SupportAnalysisIR {
             schema_version: CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
             candidates: Vec::new(),
             model_occupancy: HashMap::new(),
+            cantilever_surfaces: HashMap::new(),
             termination_surfaces: HashMap::new(),
             shared_settings: BTreeMap::new(),
             baseline_feasible_envelope: Vec::new(),
@@ -1885,9 +1892,8 @@ pub enum InfillType {
 /// exact canonical spellings through [`ResolvedConfig::to_config_map`]
 /// (`crate::ResolvedConfig`).
 ///
-/// Under a *manual* value canonical generates support **only** where a support
-/// enforcer covers the geometry — `detect_overhangs` (`SupportMaterial.cpp`)
-/// gates its angle-thresholded branch on
+/// Enforcers apply under **all** support types. Only the angle-thresholded
+/// `detect_overhangs` (`SupportMaterial.cpp`) branch is auto-gated by
 /// `auto_normal_support = support_type == stNormalAuto`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SupportType {
@@ -1915,7 +1921,7 @@ impl SupportType {
     /// free function `is_auto(SupportType)` (`PrintConfig.hpp`).
     ///
     /// When this is false the support producer must not emit angle-thresholded
-    /// candidates at all: only enforcer-covered geometry gets support.
+    /// candidates at all: enforcer-covered geometry still gets support.
     #[must_use]
     pub const fn is_auto(self) -> bool {
         matches!(self, SupportType::NormalAuto | SupportType::TreeAuto)

@@ -399,6 +399,27 @@ Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by GLOBA
 
 **Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03.
 
+**Support-eligibility derivation (packet 237):** `OverhangRegion::needs_support`
+is no longer hardcoded `true`. The producer `classify_object`
+(`crates/slicer-core/src/algos/mesh_analysis.rs`) derives it per overhang region
+from XY-footprint overlap: it projects the object's overhang facets into an
+`xy_footprint` and the non-overhang facet regions into `region_polygons`, then
+tests `footprints_overlap(&region_polygons, &xy_footprint)`. When the projected
+region polygons are degenerate (empty), it conservatively retains eligibility as
+long as there are non-overhang facets and a non-empty footprint. On the consumer
+side, `SliceRegionView::derive_needs_support(Option<&SurfaceClassificationIR>)`
+(`crates/slicer-sdk/src/views.rs`) derives a region's eligibility by
+intersecting the region's `polygons` against the object's `OverhangRegion`
+`xy_footprint` set — `false` requires at least one non-empty footprint and all
+non-empty footprints to be disjoint; missing classification (`None`, or no
+per-object entry), an empty `overhang_regions` list, or only empty footprints
+yields the conservative `true`.
+Both marshal legs deliver the derived value: the native leg calls
+`set_needs_support(derive_needs_support(input.surface_classification))` and the
+inbound leg sets `needs_support: derive_needs_support(surface_classification)`
+(`crates/slicer-wasm-host/src/marshal/native.rs` and `in_.rs`).
+`Default::default()` intentionally keeps `true` for legacy fixtures.
+
 `ObjectSurfaceData`, `FacetClass`, `SurfaceGroup`, `BridgeRegion`,
 `OverhangRegion`, and `QuartileBand` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Facet classifications remain parallel to
@@ -893,13 +914,14 @@ and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 1.1.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by F-19 — the shape is
-unchanged, but the candidate-population semantics changed: under a *manual*
-`support_type` only enforcer-covered geometry yields candidates, and
-`enforced` / `blocked` are derived from sliced support-enforcer /
-support-blocker modifier volumes instead of being hardcoded `false`. Prior
-version: 1.0.0 initial.)
+**Current schema_version: 1.2.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by packet 237 — additive
+`cantilever_surfaces` map (see below), `#[serde(default)]` and host-only. Prior
+version 1.1.0 by F-19 — the shape was otherwise unchanged, but the
+candidate-population semantics changed: under a *manual* `support_type` only
+enforcer-covered geometry yields candidates, and `enforced` / `blocked` are
+derived from sliced support-enforcer / support-blocker modifier volumes instead
+of being hardcoded `false`. Prior version: 1.0.0 initial.)
 
 **Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
 host-owned input shared by all support family planners — it is produced once
@@ -928,6 +950,11 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   `auto_normal_support` gate (`SupportMaterial.cpp`).
 - `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
   occupancy per `(layer, object, region)` key.
+- `cantilever_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — additive
+  map mirroring `model_occupancy` keying; `#[serde(default)]` and host-only
+  until a later packet projects it onto candidate geometry (packet 237 adds the
+  carrier only — build-plate-covered subtraction from candidates is not yet
+  modelled).
 - `termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the
   eligible model termination surfaces plus the build-plate termination surface.
 - `shared_settings: BTreeMap<String, String>` — shared support settings

@@ -132,6 +132,7 @@ pub fn build_native_layer_request(
                             .cloned()
                             .unwrap_or_default(),
                     );
+                    view.set_needs_support(view.derive_needs_support(input.surface_classification));
                     view.set_config((*module.config_view).clone());
                     view
                 })
