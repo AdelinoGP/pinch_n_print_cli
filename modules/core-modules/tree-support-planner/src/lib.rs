@@ -3212,14 +3212,27 @@ impl SupportPlanner {
                 || !floor_areas.is_empty()
             {
                 // Find all regions for this (layer, object) pair.
-                let regions_for_this: Vec<_> = region_segmentation
+                let mut regions_for_this: Vec<String> = region_segmentation
                     .entries
                     .iter()
                     .filter(|e| {
                         e.object_id == obj.object_id && e.layer_index == current_global_layer_index
                     })
-                    .flat_map(|e| e.region_ids.iter())
+                    .flat_map(|e| e.region_ids.iter().cloned())
                     .collect();
+                regions_for_this.extend(
+                    support_analysis
+                        .family_assignments
+                        .iter()
+                        .filter(|assignment| {
+                            assignment.object_id == obj.object_id
+                                && canonical_support_family_alias(Some(&assignment.family_id))
+                                    == "tree"
+                        })
+                        .map(|assignment| assignment.region_id.clone()),
+                );
+                regions_for_this.sort();
+                regions_for_this.dedup();
                 for region_id in regions_for_this {
                     // No self-default: a region the host did not assign to this
                     // family is not this planner's to plan. See `candidate_family`.
@@ -3348,6 +3361,47 @@ impl SupportPlanner {
                         provenance: vec!["support-planner".to_string()],
                         decline_reason: None,
                     });
+                }
+            }
+        }
+
+        // Family assignments can cover regions absent from either the
+        // segmentation projection or the candidate geometry path. Stamp each
+        // object/layer from one deterministic successful entry, without
+        // replacing a blocked candidate record.
+        let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
+            std::collections::BTreeMap::new();
+        let mut covered_regions: std::collections::BTreeSet<(String, i32, String)> =
+            std::collections::BTreeSet::new();
+        for entry in &entries_in_order {
+            if entry.decline_reason.is_none() && entry.skeleton.is_some() {
+                covered_regions.insert((
+                    entry.object_id.clone(),
+                    entry.global_layer_index,
+                    entry.region_id.clone(),
+                ));
+                templates
+                    .entry((entry.object_id.clone(), entry.global_layer_index))
+                    .or_insert_with(|| entry.clone());
+            }
+        }
+        for ((object_id, layer_index), template) in templates {
+            let mut assigned_regions: Vec<String> = support_analysis
+                .family_assignments
+                .iter()
+                .filter(|assignment| {
+                    assignment.object_id == object_id
+                        && canonical_support_family_alias(Some(&assignment.family_id)) == "tree"
+                })
+                .map(|assignment| assignment.region_id.clone())
+                .collect();
+            assigned_regions.sort();
+            assigned_regions.dedup();
+            for region_id in assigned_regions {
+                if covered_regions.insert((object_id.clone(), layer_index, region_id.clone())) {
+                    let mut stamped = template.clone();
+                    stamped.region_id = region_id;
+                    entries_in_order.push(stamped);
                 }
             }
         }
@@ -4247,10 +4301,7 @@ fn euclidean_distance(a: (f32, f32), b: (f32, f32)) -> f32 {
 ///
 /// Reference: canonical `TreeSupport::drop_nodes` (`TreeSupport.cpp`), the
 /// `move_to_neighbor_center` accumulation.
-pub fn neighbour_direction_sum(
-    node: (f32, f32),
-    neighbour_positions: &[(f32, f32)],
-) -> (f32, f32) {
+pub fn neighbour_direction_sum(node: (f32, f32), neighbour_positions: &[(f32, f32)]) -> (f32, f32) {
     let mut sum_x = 0.0_f64;
     let mut sum_y = 0.0_f64;
     for &(nx, ny) in neighbour_positions {
@@ -4306,10 +4357,7 @@ fn projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
         }
     }
     match best {
-        Some(cp) => (
-            cp[0] / SCALING_FACTOR as f32,
-            cp[1] / SCALING_FACTOR as f32,
-        ),
+        Some(cp) => (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32),
         None => pt,
     }
 }
@@ -4331,7 +4379,12 @@ struct LineCutCache {
 }
 
 impl LineCutCache {
-    fn is_line_cut_by_contour(&mut self, outlines: &[ExPolygon], a: (f32, f32), b: (f32, f32)) -> bool {
+    fn is_line_cut_by_contour(
+        &mut self,
+        outlines: &[ExPolygon],
+        a: (f32, f32),
+        b: (f32, f32),
+    ) -> bool {
         let ka = (mm_to_units(a.0), mm_to_units(a.1));
         let kb = (mm_to_units(b.0), mm_to_units(b.1));
         if let Some(hit) = self.cache.get(&(ka, kb)) {
@@ -4347,20 +4400,10 @@ impl LineCutCache {
                 for i in 0..n {
                     let p0 = &ring.points[i];
                     let p1 = &ring.points[(i + 1) % n];
-                    let c = (
-                        units_to_mm(p0.x) as f64,
-                        units_to_mm(p0.y) as f64,
-                    );
-                    let d = (
-                        units_to_mm(p1.x) as f64,
-                        units_to_mm(p1.y) as f64,
-                    );
-                    if segments_intersect(
-                        (a.0 as f64, a.1 as f64),
-                        (b.0 as f64, b.1 as f64),
-                        c,
-                        d,
-                    ) {
+                    let c = (units_to_mm(p0.x) as f64, units_to_mm(p0.y) as f64);
+                    let d = (units_to_mm(p1.x) as f64, units_to_mm(p1.y) as f64);
+                    if segments_intersect((a.0 as f64, a.1 as f64), (b.0 as f64, b.1 as f64), c, d)
+                    {
                         cut = true;
                         break 'outer;
                     }
@@ -4562,7 +4605,9 @@ fn get_max_move_dist(
     support_extrusion_width: f32,
     power: u32,
 ) -> f32 {
-    let d = (tan_angle * node.height).min(support_extrusion_width).max(0.0);
+    let d = (tan_angle * node.height)
+        .min(support_extrusion_width)
+        .max(0.0);
     if power == 2 {
         d * d
     } else {
@@ -4769,13 +4814,8 @@ mod tests {
     /// smoothed neighbours.
     #[test]
     fn smooth_nodes_sets_movement_to_the_neighbour_half_difference() {
-        let (mut arena, records) = chain_arena(&[
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 1.0),
-            (2.0, 1.0),
-            (2.0, 0.0),
-        ]);
+        let (mut arena, records) =
+            chain_arena(&[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (2.0, 1.0), (2.0, 0.0)]);
         smooth_nodes(&mut arena, &records, DEFAULT_SUPPORT_LINE_WIDTH_MM);
         let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
         // `chain_arena` creates the column top-first, and the smoother walks
@@ -4817,19 +4857,16 @@ mod tests {
     /// A zig-zag chain must come out straighter than it went in.
     #[test]
     fn smooth_nodes_reduces_chain_deviation() {
-        let offsets = [
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (0.0, 0.0),
-        ];
+        let offsets = [(0.0, 0.0), (1.0, 0.0), (0.0, 0.0), (1.0, 0.0), (0.0, 0.0)];
         let (mut arena, records) = chain_arena(&offsets);
         let ids: Vec<NodeId> = records.iter().map(|r| r.active[0]).collect();
         let before: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
         smooth_nodes(&mut arena, &records, DEFAULT_SUPPORT_LINE_WIDTH_MM);
         let after: i64 = ids.iter().map(|id| arena[*id].position.x.abs()).sum();
-        assert!(after < before, "smoothing must flatten the zig-zag: {after} !< {before}");
+        assert!(
+            after < before,
+            "smoothing must flatten the zig-zag: {after} !< {before}"
+        );
     }
 
     /// A chain shorter than three nodes has no interior node to relax.
@@ -4868,15 +4905,25 @@ mod tests {
         let radius_units = mm_to_units(2.0) as f64;
         let base = branch_circle(CIRCLE_RESOLUTION_FINE, radius_units, 0.0);
         let center = Point2 { x: 0, y: 0 };
-        let still =
-            node_ellipse(&base, center, 1.0, Point2 { x: 0, y: 0 }, radius_units, false).unwrap();
+        let still = node_ellipse(
+            &base,
+            center,
+            1.0,
+            Point2 { x: 0, y: 0 },
+            radius_units,
+            false,
+        )
+        .unwrap();
         let extent = |poly: &ExPolygon, axis: fn(&Point2) -> i64| {
             poly.contour.points.iter().map(axis).max().unwrap()
                 - poly.contour.points.iter().map(axis).min().unwrap()
         };
         let still_x = extent(&still, |p| p.x);
         let still_y = extent(&still, |p| p.y);
-        assert!((still_x - still_y).abs() <= 2, "a stationary node draws a circle");
+        assert!(
+            (still_x - still_y).abs() <= 2,
+            "a stationary node draws a circle"
+        );
 
         let diagonal = Point2 {
             x: mm_to_units(1.0),
@@ -5880,7 +5927,10 @@ mod tests {
     fn move_out_expolys_pushes_out_and_respects_the_budget() {
         let polys = vec![square_mm(0.0, 0.0, 10.0)];
         // A point outside is left alone.
-        assert_eq!(move_out_expolys(&polys, (20.0, 5.0), 0.2, 100.0), (20.0, 5.0));
+        assert_eq!(
+            move_out_expolys(&polys, (20.0, 5.0), 0.2, 100.0),
+            (20.0, 5.0)
+        );
         // A point just inside the left edge exits through it.
         let moved = move_out_expolys(&polys, (0.5, 5.0), 0.2, 100.0);
         assert!(!is_inside_ex(&polys, moved.0, moved.1));

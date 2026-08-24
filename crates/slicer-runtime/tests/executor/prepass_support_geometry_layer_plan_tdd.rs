@@ -15,13 +15,14 @@ use std::sync::Arc;
 
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportPlanIR,
-    Transform3d,
+    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
+    SupportPlanIR, SupportType, Transform3d,
 };
 use slicer_runtime::{
-    build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
-    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LoadedModule,
-    LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
+    build_wasm_instance_pool, execute_prepass_with_builtins,
+    execute_prepass_with_builtins_configured, instance_pool::WasmArtifactMetadata, Blackboard,
+    CompiledModule, CompiledModuleBuilder, CompiledStage, ConfigBoundsIndex, ExecutionPlan,
+    LoadedModule, LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 
 use crate::common::{wasm_cache, TestModuleBundle};
@@ -204,6 +205,11 @@ fn multi_region_layer_plan() -> LayerPlanIR {
 /// Single-region RegionMapIR for the given object.
 fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
     let mut entries = HashMap::new();
+    let mut region_map = RegionMapIR::default();
+    let tree_config = region_map.intern_config(ResolvedConfig {
+        support_type: SupportType::TreeAuto,
+        ..ResolvedConfig::default()
+    });
     for layer_idx in 0..num_layers {
         entries.insert(
             RegionKey {
@@ -212,13 +218,14 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
                 region_id: 0,
                 variant_chain: Vec::new(),
             },
-            RegionPlan::default(),
+            RegionPlan {
+                config: tree_config,
+                ..RegionPlan::default()
+            },
         );
     }
-    RegionMapIR {
-        entries,
-        ..Default::default()
-    }
+    region_map.entries = entries;
+    region_map
 }
 
 /// Multi-region RegionMapIR: two regions (7, 42) for "obj-multi" on every
@@ -228,6 +235,11 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
 /// itself (see `multi_region_layer_plan`).
 fn multi_region_map() -> RegionMapIR {
     let mut entries = HashMap::new();
+    let mut region_map = RegionMapIR::default();
+    let tree_config = region_map.intern_config(ResolvedConfig {
+        support_type: SupportType::TreeAuto,
+        ..ResolvedConfig::default()
+    });
     for global_layer_index in 2..=5 {
         for region_id in [7, 42] {
             entries.insert(
@@ -237,14 +249,15 @@ fn multi_region_map() -> RegionMapIR {
                     region_id,
                     variant_chain: Vec::new(),
                 },
-                RegionPlan::default(),
+                RegionPlan {
+                    config: tree_config,
+                    ..RegionPlan::default()
+                },
             );
         }
     }
-    RegionMapIR {
-        entries,
-        ..Default::default()
-    }
+    region_map.entries = entries;
+    region_map
 }
 
 fn default_planner_config_map() -> HashMap<String, ConfigValue> {
@@ -377,9 +390,21 @@ fn run_prepass(
     let plan = execution_plan_with_support_geometry(module);
 
     let mut blackboard = blackboard_with_layer_plan_and_region_map(mesh, layer_plan, region_map);
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
-        .expect("execute_prepass_with_builtins must succeed");
-
+    let enabled_config = ResolvedConfig {
+        support_enabled: true,
+        ..ResolvedConfig::default()
+    };
+    execute_prepass_with_builtins_configured(
+        &plan,
+        &mut blackboard,
+        &dispatcher,
+        &std::collections::BTreeMap::new(),
+        &enabled_config,
+        &HashMap::new(),
+        &ConfigBoundsIndex::empty(),
+        &wasm_handles,
+    )
+    .expect("execute_prepass_with_builtins_configured must succeed");
     Arc::clone(
         blackboard
             .support_plan()

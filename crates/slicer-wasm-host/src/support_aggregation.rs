@@ -506,6 +506,11 @@ fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
             existing.family_id == entry.family_id
                 && existing.global_layer_index == entry.global_layer_index
                 && existing.object_id == entry.object_id
+                // Ruling 1 assigns support per source region. Same-family
+                // union may combine duplicate writes for one region, but it
+                // must not erase distinct tree-assigned regions that share a
+                // routing cell.
+                && existing.region_id == entry.region_id
                 && (same_body(existing, &entry) || group_cells[index] == entry_cell)
         });
         let Some(index) = matching else {

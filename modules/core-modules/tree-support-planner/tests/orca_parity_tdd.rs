@@ -461,19 +461,30 @@ fn benchy_tree_support_regression_tripwire() {
         .expect("run_support_geometry");
 
     let entries = output.entries();
-    let output_branch_count = entries.len();
+    // Family-assigned regions may intentionally receive identical skeletons.
+    // Count physical branch sets once, while preserving every per-region entry
+    // in the planner output contract.
+    let mut physical_skeletons: Vec<(String, i32, Vec<slicer_ir::Point3>)> = Vec::new();
+    for entry in entries {
+        if let Some(skeleton) = &entry.skeleton {
+            let key = (
+                entry.object_id.clone(),
+                entry.global_layer_index,
+                skeleton.points.clone(),
+            );
+            if !physical_skeletons.contains(&key) {
+                physical_skeletons.push(key);
+            }
+        }
+    }
+    let output_branch_count = physical_skeletons.len();
 
     // Endpoints: every point of every branch_segment polyline, sorted lex
     // for stability. SDK SupportPlanEntry.branch_segments is
     // Vec<Vec<Point3WithWidth>>: outer=branch, inner=polyline points.
-    let mut output_endpoints: Vec<[f32; 3]> = entries
+    let mut output_endpoints: Vec<[f32; 3]> = physical_skeletons
         .iter()
-        .flat_map(|e| {
-            e.skeleton
-                .as_ref()
-                .into_iter()
-                .flat_map(|s| s.points.iter())
-        })
+        .flat_map(|(_, _, points)| points.iter())
         .map(|p| [round4(p.x), round4(p.y), round4(p.z)])
         .collect();
     sort_endpoints(&mut output_endpoints);
