@@ -20,9 +20,10 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins,
-    execute_prepass_with_builtins_configured, instance_pool::WasmArtifactMetadata, Blackboard,
-    CompiledModule, CompiledModuleBuilder, CompiledStage, ConfigBoundsIndex, ExecutionPlan,
-    LoadedModule, LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
+    execute_prepass_with_builtins_configured_collecting, instance_pool::WasmArtifactMetadata,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ConfigBoundsIndex,
+    ExecutionPlan, LoadedModule, LoadedModuleBuilder, PrepassExecutionError, WasmEngine,
+    WasmRuntimeDispatcher,
 };
 
 use crate::common::{wasm_cache, TestModuleBundle};
@@ -394,7 +395,7 @@ fn run_prepass(
         support_enabled: true,
         ..ResolvedConfig::default()
     };
-    execute_prepass_with_builtins_configured(
+    let (_, harvested_plan_entries) = execute_prepass_with_builtins_configured_collecting(
         &plan,
         &mut blackboard,
         &dispatcher,
@@ -405,11 +406,10 @@ fn run_prepass(
         &wasm_handles,
     )
     .expect("execute_prepass_with_builtins_configured must succeed");
-    Arc::clone(
-        blackboard
-            .support_plan()
-            .expect("SupportPlanIR must be committed after live dispatch"),
-    )
+    Arc::new(SupportPlanIR {
+        entries: harvested_plan_entries,
+        ..SupportPlanIR::default()
+    })
 }
 
 /// Run the full prepass pipeline and return the result (or error).

@@ -177,6 +177,7 @@ pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use postpass::execute_postpass;
 pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
+    execute_prepass_with_builtins_configured_collecting,
     execute_prepass_with_builtins_configured_instr, PrepassExecutionError,
 };
 // Re-exported so consumers of the profiling surface (pnp-cli, tests) can name

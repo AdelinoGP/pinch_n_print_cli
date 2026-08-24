@@ -8,7 +8,7 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
-use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId};
+use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId, SupportPlanEntry};
 
 use crate::builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
@@ -228,6 +228,31 @@ pub fn execute_prepass_with_instrumentation(
         ),
     >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_instrumentation_collecting(
+        plan,
+        blackboard,
+        runner,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+fn execute_prepass_with_instrumentation_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    mut harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let mut audits = Vec::new();
 
     for stage in &plan.prepass_stages {
@@ -372,6 +397,13 @@ pub fn execute_prepass_with_instrumentation(
             }
         }
         if !support_plans.is_empty() {
+            if let Some(entries) = harvested_plan_entries.as_deref_mut() {
+                entries.extend(
+                    support_plans
+                        .iter()
+                        .flat_map(|support_plan| support_plan.entries.iter().cloned()),
+                );
+            }
             let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
             // Degrading policy: two families claiming one
             // `(layer, object, region)` is a planner defect, but it must not
@@ -535,6 +567,41 @@ pub fn execute_prepass_with_builtins_configured(
     )
 }
 
+/// Executes the configured prepass while exposing support entries harvested before
+/// host aggregation so tests can observe invariant 15 per-region planner emission (packet-236).
+pub fn execute_prepass_with_builtins_configured_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+) -> Result<(Vec<ModuleAccessAudit>, Vec<SupportPlanEntry>), PrepassExecutionError> {
+    let mut harvested = Vec::new();
+    let audits = execute_prepass_with_builtins_configured_instr_collecting(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        &NoopInstrumentation,
+        wasm_handles,
+        Some(&mut harvested),
+    )?;
+    Ok((audits, harvested))
+}
+
 /// Instrumented version of [`execute_prepass_with_builtins_configured`] that
 /// brackets each prepass stage and module (including host built-ins) via
 /// `instrumentation`.
@@ -562,6 +629,39 @@ pub fn execute_prepass_with_builtins_configured_instr(
             Option<slicer_sdk::native::NativeStageEntry>,
         ),
     >,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_builtins_configured_instr_collecting(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+fn execute_prepass_with_builtins_configured_instr_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,
@@ -873,12 +973,13 @@ pub fn execute_prepass_with_builtins_configured_instr(
             prepass_stages: late_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        let late_audits = execute_prepass_with_instrumentation(
+        let late_audits = execute_prepass_with_instrumentation_collecting(
             &late_plan,
             blackboard,
             runner,
             instrumentation,
             wasm_handles,
+            harvested_plan_entries,
         )?;
         audits.extend(late_audits);
     }
