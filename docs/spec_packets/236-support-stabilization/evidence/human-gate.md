@@ -37,4 +37,4 @@ Outputs: `tmp/vd-p236-tree` (0 PNG files) and `tmp/vd-p236-normal` (0 PNG files)
 
 - **AC-1 planner emission — GREEN as of 2026-08-24.** The planner-layer invariant-15 observation is green, and host aggregation consolidation is preserved.
 
-- Sign-off (human, blocking): pending — <date + verdict to be recorded by the human>.
+- Sign-off (human, blocking): SIGNED 2026-08-24 — human inspected `tmp/p236-tree.gcode` and `tmp/p236-normal.gcode` in session; verdict: PASS ("both pass" — both family slices accepted).

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: "236-support-stabilization"
 spec: support-stabilization
 depends_on: none
@@ -127,4 +127,4 @@ Inspection checklist (each item named verdict in the evidence file — E2: inspe
 
 Artifact locations: `tmp/p236-tree.gcode`, `tmp/p236-normal.gcode`, visual-debug PNG bundles under `tmp/`, evidence file `docs/spec_packets/236-support-stabilization/evidence/human-gate.md`.
 
-- Sign-off (human, blocking): pending — record date + verdict here. Until signed, the packet stays `draft`/in-flight regardless of green gates.
+- Sign-off (human, blocking): SIGNED 2026-08-24 — human verdict PASS on both family slices (`tmp/p236-tree.gcode`, `tmp/p236-normal.gcode`); recorded in `evidence/human-gate.md`. Packet may proceed to `status: implemented`.
