@@ -45,4 +45,4 @@ tmp/
 # Harness-local settings and imports
 .claude/settings.local.json
 .claude/worktrees/
-.commandcode/*
+.commandcode/

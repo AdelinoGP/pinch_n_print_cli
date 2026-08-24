@@ -21,7 +21,9 @@ use slicer_runtime::{
     ExecutionPlanError, LoadDiagnostic, STAGE_ORDER,
 };
 use slicer_scheduler::{IntegratedModuleRegistration, ModuleProvenance};
-use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
+use slicer_wasm_host::execution_plan_live::{
+    load_live_modules_for_plan_with_integrated, LiveModuleLoadError,
+};
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -267,6 +269,66 @@ fn integrated_without_native_entry_fails_loud() {
     assert!(message.contains("com.example.no-native"));
     assert!(message.contains("Layer::Infill"));
     assert!(message.contains("no native entry"));
+}
+
+/// An unpaired support family is diagnosed but does not abort module loading;
+/// its regions safely degrade because no complete planner/renderer route exists.
+#[test]
+fn live_loader_degrades_unpaired_support_family() {
+    let dir = TempDir::new().unwrap();
+    let manifest_toml: &'static str = r#"
+[module]
+id = "com.example.planner"
+version = "1.0.0"
+display-name = "Fixture"
+description = "fixture"
+author = "test"
+license = "MIT"
+homepage = "https://example.invalid/planner"
+[stage]
+id = "PrePass::SupportGeometry"
+
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["support-planner", "support-family:missing"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "2.0.0"
+
+[config.schema]
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+layer-parallel-safe = false
+"#;
+    let registration = IntegratedModuleRegistration {
+        manifest_toml,
+        origin_label: "test-fixture",
+    };
+
+    let error = load_live_modules_for_plan_with_integrated(
+        std::slice::from_ref(&PathBuf::from(dir.path())),
+        1,
+        &HashMap::new(),
+        false,
+        std::slice::from_ref(&registration),
+        &[],
+    )
+    .expect_err("fixture must fail later on its missing native entry");
+    assert!(matches!(*error, LiveModuleLoadError::NativeEntry { .. }));
 }
 
 #[test]

@@ -35,6 +35,7 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "gcode_resolution" => c.gcode_resolution as f64,
         "infill_resolution" => c.infill_resolution as f64,
         "support_resolution" => c.support_resolution as f64,
+        "support_threshold_angle" => c.support_threshold_angle as f64,
         "min_segment_length" => c.min_segment_length as f64,
         "slice_closing_radius" => c.slice_closing_radius as f64,
         _ => return None,

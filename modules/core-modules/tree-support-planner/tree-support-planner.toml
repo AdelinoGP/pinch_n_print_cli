@@ -1,0 +1,188 @@
+[module]
+id           = "com.core.tree-support-planner"
+version      = "0.1.0"
+display-name = "Support Planner"
+description  = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
+author       = "modular-slicer"
+license      = "MIT"
+
+[stage]
+id = "PrePass::SupportGeometry"
+
+[ir-access]
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "SupportGeometryIR"]
+writes = ["SupportPlanIR"]
+
+[claims]
+    holds    = ["support-planner", "support-family:tree"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema]
+[config.schema.enable_support]
+type    = "bool"
+default = true
+display = "Support Enabled"
+group   = "Support"
+
+[config.schema.tree_support_branch_angle]
+type    = "float"
+default = 45.0
+min     = 0.0
+max     = 75.0
+display = "Tree Support Branch Angle"
+group   = "Support"
+
+[config.schema.support_line_width]
+type    = "float"
+default = 0.35
+min     = 0.0
+max     = 2.0
+display = "Support Line Width"
+group   = "Support"
+
+[config.schema.line_width]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 2.0
+display = "Line Width"
+group   = "Support"
+
+[config.schema.tree_support_branch_diameter]
+type    = "float"
+default = 5.0
+min     = 0.5
+max     = 20.0
+display = "Tree Support Branch Diameter"
+group   = "Support"
+
+[config.schema.tree_support_branch_diameter_angle]
+type    = "float"
+default = 5.0
+min     = 0.0
+max     = 90.0
+display = "Tree Support Branch Diameter Angle"
+group   = "Support"
+
+[config.schema.tree_support_branch_distance]
+type    = "float"
+default = 1.0
+min     = 0.1
+max     = 10.0
+display = "Tree Support Branch Distance"
+group   = "Support"
+
+[config.schema.tree_support_wall_count]
+type    = "int"
+default = 1
+min     = 1
+max     = 10
+display = "Tree Support Wall Count"
+group   = "Support"
+
+[config.schema.support_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Support Raft Layers"
+group   = "Support"
+
+[config.schema.raft_first_layer_density]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 1.0
+display = "Raft First Layer Density"
+group   = "Support"
+
+[config.schema.base_raft_layers]
+type    = "int"
+default = 1
+min     = 0
+max     = 20
+display = "Base Raft Layers"
+group   = "Support"
+
+[config.schema.interface_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Interface Raft Layers"
+group   = "Support"
+
+[config.schema.support_interface_top_layers]
+type    = "int"
+default = 2
+min     = 0
+max     = 10
+display = "Support Interface Top Layers"
+group   = "Support"
+
+# Not yet implemented — see docs/specs/support-modules-orca-port.md
+[config.schema.support_interface_bottom_layers]
+type    = "int"
+default = -1
+min     = -1
+max     = 10
+display = "Support Interface Bottom Layers"
+group   = "Support"
+
+# `0.0` is the documented "same as the model layer height" sentinel, so the
+# declared range must admit it. A `min` of 0.05 made the declared default
+# illegal and rejected any config that stated the key explicitly.
+[config.schema.support_layer_height_mm]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 1.0
+display = "Support Layer Height"
+group   = "Support"
+
+# Canonical `TreeSupportData::m_xy_distance`: the horizontal clearance every
+# collision volume is inflated by. Declaration copied verbatim from
+# traditional-support-planner.toml so both families read one key.
+[config.schema.support_object_xy_distance]
+type    = "float"
+default = 0.35
+min     = 0.0
+max     = 10.0
+display = "Support/Object XY Distance"
+group   = "Support"
+
+[config.schema.support_top_z_distance_mm]
+type    = "float"
+default = 0.2
+min     = 0.0
+max     = 5.0
+display = "Support Top Z Distance"
+group   = "Support"
+
+# Packet 123: when true, contacts whose XY lies inside the object's
+# projected footprint at the contact's layer (to_buildplate = false)
+# are rejected at creation time. Default false keeps the planner's
+# prior behavior of admitting both build-plate-bound and to-model
+# branches.
+[config.schema.support_on_build_plate_only]
+type    = "bool"
+default = false
+display = "Support On Build Plate Only"
+group   = "Support"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 5
+layer-parallel-safe    = false

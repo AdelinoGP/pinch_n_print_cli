@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR, ModuleId,
-    PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportGeometryIR, SupportPlanIR,
-    SurfaceClassificationIR,
+    PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR, SupportGeometryIR,
+    SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::instance::WasmComponent;
@@ -117,6 +117,8 @@ pub struct PrepassStageInput<'a> {
     pub slice_ir: Option<Arc<Vec<SliceIR>>>,
     /// Arc-cloned from `blackboard.region_map()` at the call site.
     pub region_map: Option<Arc<RegionMapIR>>,
+    /// Arc-cloned from `blackboard.support_analysis()` at the call site.
+    pub support_analysis: Option<Arc<SupportAnalysisIR>>,
     /// Arc-cloned from `blackboard.support_geometry()` at the call site.
     /// Carries the coarse support-geometry IR (not the support plan) — used by
     /// `PrePass::SupportGeometry` as an input to subsequent prepass stages.

@@ -1,10 +1,14 @@
 //! Geometric invariants for traditional support scan-line filling.
 
-use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
+use slicer_ir::{
+    ConfigView, ExPolygon, Point2, Polygon, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    SupportPlanRoleRegion,
+};
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
+use std::sync::Arc;
 use traditional_support::TraditionalSupport;
 
 fn config(angle: f64, line_width: f64) -> ConfigView {
@@ -31,6 +35,40 @@ fn region(points: &[(f32, f32)]) -> SliceRegionView {
         .build()
 }
 
+/// Since packets 220–222 the module renders ONLY planned structural entries
+/// (no legacy filler over raw slice regions), so every fixture must seed a
+/// plan carrying the region under test as a `SupportBody` polygon.
+fn paint_with_plan(points: &[(f32, f32)]) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    let entry = SupportPlanEntry {
+        global_layer_index: 0,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: "traditional".into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![ExPolygon {
+                contour: Polygon {
+                    points: points.iter().map(|&(x, y)| Point2::from_mm(x, y)).collect(),
+                },
+                holes: vec![],
+            }],
+        }],
+        demand_ids: vec!["fill-geometry-demand".into()],
+        body_ids: vec!["fill-geometry-body".into()],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
 fn run_support(
     points: &[(f32, f32)],
     angle: f64,
@@ -38,7 +76,7 @@ fn run_support(
 ) -> Vec<slicer_ir::ExtrusionPath3D> {
     let config = config(angle, line_width);
     let module = TraditionalSupport::from_config(&config).unwrap();
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan(points);
     let mut output = SupportOutputBuilder::new();
     module
         .run_support(0, &[region(points)], &paint, &mut output, &config)

@@ -20,7 +20,7 @@
 
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommit, Point3WithWidth, SemVer,
-    SupportIR,
+    SupportEntry, SupportIR, SupportRole,
 };
 use slicer_runtime::{apply_for_test, StageApplyContext};
 
@@ -74,9 +74,15 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             patch: 0,
         },
         global_layer_index: 0,
-        regions: vec![slicer_ir::slice_ir::SupportRegion {
-            support_paths: paths,
-            ..Default::default()
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+        entries: vec![SupportEntry {
+            family_id: "fixture-family".into(),
+            body_id: "fixture-body".into(),
+            demand_ids: vec!["fixture-demand".into()],
+            object_id: "".into(),
+            region_id: 0,
+            role: SupportRole::SupportBody,
+            paths,
         }],
     }))
 }
@@ -122,17 +128,17 @@ fn tree_support_dispatch_commits_support_material_paths() {
         .expect("SupportIR must be set after Layer::Support commit");
 
     assert!(
-        !support_ir.regions[0].support_paths.is_empty(),
+        !support_ir.entries[0].paths.is_empty(),
         "SupportIR.support_paths must be non-empty after tree-support commit"
     );
     assert_eq!(
-        support_ir.regions[0].support_paths.len(),
+        support_ir.entries[0].paths.len(),
         3,
         "tree-support must produce 3 support paths, got {}",
-        support_ir.regions[0].support_paths.len()
+        support_ir.entries[0].paths.len()
     );
 
-    for path in &support_ir.regions[0].support_paths {
+    for path in &support_ir.entries[0].paths {
         assert_eq!(
             path.role,
             IrExtrusionRole::SupportMaterial,
@@ -179,17 +185,17 @@ fn traditional_support_dispatch_commits_support_material_paths() {
         .expect("SupportIR must be set after traditional-support commit");
 
     assert!(
-        !support_ir.regions[0].support_paths.is_empty(),
+        !support_ir.entries[0].paths.is_empty(),
         "SupportIR.support_paths must be non-empty after traditional-support commit"
     );
     assert_eq!(
-        support_ir.regions[0].support_paths.len(),
+        support_ir.entries[0].paths.len(),
         4,
         "traditional-support must produce 4 support paths, got {}",
-        support_ir.regions[0].support_paths.len()
+        support_ir.entries[0].paths.len()
     );
 
-    for path in &support_ir.regions[0].support_paths {
+    for path in &support_ir.entries[0].paths {
         assert_eq!(
             path.role,
             IrExtrusionRole::SupportMaterial,
@@ -232,9 +238,9 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
 
     assert!(
         support_ir
-            .regions
+            .entries
             .iter()
-            .any(|r| !r.support_paths.is_empty()),
+            .any(|entry| !entry.paths.is_empty()),
         "enforcer override must commit non-empty SupportIR even with needs_support=false"
     );
 }
@@ -330,15 +336,15 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     let ir2 = arena2.support().expect("second run must produce SupportIR");
 
     assert_eq!(
-        ir1.regions[0].support_paths.len(),
-        ir2.regions[0].support_paths.len(),
+        ir1.entries[0].paths.len(),
+        ir2.entries[0].paths.len(),
         "path count must be identical across runs"
     );
 
-    for (i, (p1, p2)) in ir1.regions[0]
-        .support_paths
+    for (i, (p1, p2)) in ir1.entries[0]
+        .paths
         .iter()
-        .zip(ir2.regions[0].support_paths.iter())
+        .zip(ir2.entries[0].paths.iter())
         .enumerate()
     {
         assert_eq!(
@@ -529,9 +535,78 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
     }
 }
 
-/// AC-2: Tree-support live dispatch produces non-empty SupportIR.
+/// A 10 mm square `ExPolygon` in canonical units, used as a planned
+/// `SupportBody` role region that the tree-support renderer can fill.
+fn body_region_expoly() -> ExPolygon {
+    let extent = slicer_ir::mm_to_units(10.0);
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 { x: 0, y: 0 },
+                Point2 { x: extent, y: 0 },
+                Point2 {
+                    x: extent,
+                    y: extent,
+                },
+                Point2 { x: 0, y: extent },
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
+/// A one-entry `SupportPlanIR` for `obj-0` / region 0 carrying a single
+/// `SupportBody` role region.
+///
+/// `family_id` must match the renderer under test: both `tree-support` and
+/// `traditional-support` return a family-attribution `ModuleError` when an
+/// entry's family is not theirs.
+fn plan_for_obj0(
+    family_id: &str,
+    layer_index: u32,
+    layer_z: f32,
+) -> std::sync::Arc<slicer_ir::SupportPlanIR> {
+    std::sync::Arc::new(slicer_ir::SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        entries: vec![slicer_ir::SupportPlanEntry {
+            global_layer_index: layer_index as i32,
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            family_id: family_id.to_string(),
+            demand_ids: vec![],
+            body_ids: vec![],
+            anchor_layer_index: layer_index,
+            anchor_z: slicer_ir::mm_to_units(layer_z),
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::SupportBody,
+                regions: vec![body_region_expoly()],
+            }],
+            skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                points: vec![
+                    slicer_ir::Point3 {
+                        x: 1.0,
+                        y: 2.0,
+                        z: layer_z,
+                    },
+                    slicer_ir::Point3 {
+                        x: 7.0,
+                        y: 8.0,
+                        z: layer_z,
+                    },
+                ],
+            }),
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..Default::default()
+    })
+}
+
+/// AC-2: Tree-support live dispatch emits no SupportIR when no plan is
+/// committed (the legacy missing-plan grid-MST fallback filler was removed).
 #[test]
-fn tree_support_live_dispatch_produces_non_empty_support_ir() {
+fn tree_support_live_dispatch_emits_nothing_when_no_plan_committed() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
@@ -573,6 +648,8 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let bundle = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
+    let layer_z = 0.2;
+    let layer_index = 0u32;
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
             build_volume: BoundingBox3 {
@@ -588,8 +665,6 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
         1,
     );
 
-    let layer_z = 0.2;
-    let layer_index = 0u32;
     // exhaustive: GlobalLayer support fixture specifies every layer field.
     // exhaustive: GlobalLayer support fixture specifies every layer field.
     // exhaustive: GlobalLayer support fixture specifies every layer field.
@@ -615,31 +690,15 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     )
     .expect("tree-support Layer::Support dispatch must succeed");
 
-    let support_ir = arena
-        .support()
-        .expect("SupportIR must be committed after tree-support live dispatch");
-
+    // New contract: tree-support renders only validated planned role regions.
+    // The structural plan does not cross the wasm layer-paint boundary, so a
+    // live wasm dispatch with no committed plan emits no SupportIR at all.
+    let support_ir = arena.support();
     assert!(
+        support_ir.is_none(),
+        "tree-support must emit no SupportIR when no plan is committed, got {:?}",
         support_ir
-            .regions
-            .iter()
-            .any(|r| !r.support_paths.is_empty()),
-        "tree-support must produce non-empty support_paths, got {} paths",
-        support_ir
-            .regions
-            .iter()
-            .map(|r| r.support_paths.len())
-            .sum::<usize>()
     );
-
-    for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
-        assert_eq!(
-            path.role,
-            slicer_ir::ExtrusionRole::SupportMaterial,
-            "all tree-support paths must have ExtrusionRole::SupportMaterial, got {:?}",
-            path.role
-        );
-    }
 }
 
 /// AC-3: Traditional-support live dispatch produces non-empty SupportIR.
@@ -686,7 +745,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let bundle = compile_support_module(&engine, loaded, &traditional_support_wasm_path());
 
-    let blackboard = Blackboard::new(
+    let mut blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
             build_volume: BoundingBox3 {
                 min: slicer_ir::Point3::default(),
@@ -703,6 +762,15 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let layer_z = 0.2;
     let layer_index = 0u32;
+
+    // Packet 222 removed traditional-support's missing-plan scan-line filler.
+    // The renderer now `continue`s when `support_plan_entries_for` is empty, so
+    // this fixture must commit the plan it is meant to render.
+    blackboard
+        .commit_support_plan(plan_for_obj0("traditional", layer_index, layer_z))
+        .expect("commit_support_plan must succeed");
+    let blackboard = blackboard;
+
     // exhaustive: GlobalLayer support fixture specifies every layer field.
     let layer = GlobalLayer {
         index: layer_index,
@@ -731,18 +799,18 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     assert!(
         support_ir
-            .regions
+            .entries
             .iter()
-            .any(|r| !r.support_paths.is_empty()),
+            .any(|entry| !entry.paths.is_empty()),
         "traditional-support must produce non-empty support_paths, got {} paths",
         support_ir
-            .regions
+            .entries
             .iter()
-            .map(|r| r.support_paths.len())
+            .map(|entry| entry.paths.len())
             .sum::<usize>()
     );
 
-    for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
+    for path in support_ir.entries.iter().flat_map(|entry| &entry.paths) {
         assert_eq!(
             path.role,
             slicer_ir::ExtrusionRole::SupportMaterial,
@@ -752,7 +820,9 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     }
 }
 
-/// AC-4: Identical Layer::Support dispatches produce byte-identical SupportIR.
+/// AC-4: Identical Layer::Support dispatches are deterministic — with no
+/// committed plan, every run emits no SupportIR (the legacy missing-plan
+/// grid-MST fallback filler was removed).
 #[test]
 fn support_deterministic_across_repeated_runs() {
     let engine = wasm_cache::shared_engine();
@@ -796,6 +866,8 @@ fn support_deterministic_across_repeated_runs() {
 
     let bundle = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
+    let layer_index = 0u32;
+    let layer_z = 0.2;
     let blackboard = || {
         Blackboard::new(
             Arc::new(slicer_ir::MeshIR {
@@ -813,8 +885,6 @@ fn support_deterministic_across_repeated_runs() {
         )
     };
 
-    let layer_index = 0u32;
-    let layer_z = 0.2;
     let layer = GlobalLayer {
         index: layer_index,
         z: layer_z,
@@ -850,46 +920,19 @@ fn support_deterministic_across_repeated_runs() {
             )
             .expect("commit must succeed");
         }
-        arena.support().expect("SupportIR must be present").regions[0]
-            .support_paths
-            .clone()
+        arena.support().is_some()
     };
 
+    // New contract: with no committed plan the wasm dispatch emits no
+    // SupportIR, deterministically, on every identical run.
     let first = run_dispatch(&blackboard(), &layer);
     let second = run_dispatch(&blackboard(), &layer);
 
-    assert_eq!(
-        first.len(),
-        second.len(),
-        "path count must match across identical dispatches"
+    assert!(
+        !first && !second,
+        "tree-support must emit no SupportIR on either run when no plan is committed \
+         (first={first}, second={second})"
     );
-
-    for (i, (p1, p2)) in first.iter().zip(second.iter()).enumerate() {
-        assert_eq!(
-            p1.points.len(),
-            p2.points.len(),
-            "path {} point count must match across runs",
-            i
-        );
-        for (j, (pt1, pt2)) in p1.points.iter().zip(p2.points.iter()).enumerate() {
-            assert!(
-                (pt1.x - pt2.x).abs() < 0.001
-                    && (pt1.y - pt2.y).abs() < 0.001
-                    && (pt1.z - pt2.z).abs() < 0.001
-                    && (pt1.width - pt2.width).abs() < 0.001,
-                "path {} point {} coords must be byte-identical across runs: ({:?}, {:?})",
-                i,
-                j,
-                pt1,
-                pt2
-            );
-        }
-        assert_eq!(
-            p1.role, p2.role,
-            "path {} role must match across runs: {:?} vs {:?}",
-            i, p1.role, p2.role
-        );
-    }
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -910,14 +953,12 @@ fn support_deterministic_across_repeated_runs() {
 /// contract via the WIT `paint-region-layer-view::support-plan-segments`
 /// accessor. No direct Rust trait calls into the modules.
 mod planner_consuming_tier {
-    use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
     use std::sync::Arc;
 
     use crate::common::{run_layer_and_commit_with_bundle, wasm_cache, TestModuleBundle};
     use slicer_ir::{
-        BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-        GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
-        SupportPlanEntry, SupportPlanIR,
+        BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionRole, GlobalLayer, MeshIR,
+        Point2, Point3, Polygon, SemVer, SlicedRegion, SupportPlanEntry, SupportPlanIR,
     };
     use slicer_runtime::{
         build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard,
@@ -1069,6 +1110,19 @@ mod planner_consuming_tier {
         plan: Option<Arc<SupportPlanIR>>,
         // exhaustive: SupportIR explicit test fixture preserves boundary data
     ) -> slicer_ir::SupportIR {
+        dispatch_support_opt(wasm_path, manifest_id, manifest_reads, plan)
+            .expect("SupportIR must be committed")
+    }
+
+    /// Like `dispatch_support` but returns `None` when the module commits no
+    /// `SupportIR` (e.g. tree-support with no planned entries for the demand).
+    fn dispatch_support_opt(
+        wasm_path: std::path::PathBuf,
+        manifest_id: &str,
+        manifest_reads: Vec<&str>,
+        plan: Option<Arc<SupportPlanIR>>,
+        // exhaustive: SupportIR explicit test fixture preserves boundary data
+    ) -> Option<slicer_ir::SupportIR> {
         let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let loaded = loaded_support_module(manifest_id, wasm_path.clone(), manifest_reads);
@@ -1099,46 +1153,53 @@ mod planner_consuming_tier {
         )
         .expect("Layer::Support dispatch must succeed");
 
-        arena.take_support().expect("SupportIR must be committed")
+        arena.take_support()
         // exhaustive: SupportIR explicit test fixture preserves boundary data
     }
 
-    fn make_planned_segment(layer_z: f32) -> ExtrusionPath3D {
-        ExtrusionPath3D {
-            points: vec![
-                // exhaustive: Point3WithWidth support-path fixture specifies every point field.
-                Point3WithWidth {
-                    x: 1.0,
-                    y: 2.0,
-                    z: layer_z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    ..Default::default()
-                },
-                // exhaustive: Point3WithWidth support-path fixture specifies every point field.
-                Point3WithWidth {
-                    x: 7.0,
-                    y: 8.0,
-                    z: layer_z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    ..Default::default()
-                },
-            ],
-            ..extrusion_path3d_base(ExtrusionRole::SupportMaterial)
-        }
-    }
+    use super::plan_for_obj0;
 
-    fn plan_for_obj0(layer_index: u32, layer_z: f32) -> Arc<SupportPlanIR> {
-        Arc::new(SupportPlanIR {
-            entries: vec![SupportPlanEntry {
-                global_layer_index: layer_index as i32,
-                object_id: "obj-0".to_string(),
-                region_id: 0,
-                branch_segments: vec![make_planned_segment(layer_z)],
-            }],
-            ..Default::default()
-        })
+    /// Drive the tree-support renderer directly (native `run_support`) with a
+    /// plan-attached paint view. The structural plan does not cross the wasm
+    /// layer-paint boundary, so the plan-consuming contract is exercised here
+    /// rather than through a live wasm dispatch.
+    fn render_plan_directly(
+        plan: Arc<SupportPlanIR>,
+        layer_index: u32,
+        layer_z: f32,
+        slice_ir: slicer_ir::SliceIR,
+    ) -> Vec<slicer_ir::ExtrusionPath3D> {
+        use slicer_sdk::builders::SupportOutputBuilder;
+        use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+        use slicer_sdk::views::SliceRegionView;
+        use tree_support::TreeSupport;
+
+        let config = slicer_ir::ConfigView::from_map(std::collections::HashMap::from([
+            (
+                "enable_support".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            ),
+            (
+                "support_density".to_string(),
+                slicer_ir::ConfigValue::Float(20.0),
+            ),
+        ]));
+        let module =
+            TreeSupport::from_config(&config).expect("TreeSupport::from_config must succeed");
+
+        let regions: Vec<SliceRegionView> = slice_ir
+            .regions
+            .iter()
+            .map(|r| SliceRegionView::from_ir(r, layer_z, vec![]))
+            .collect();
+        let paint = PaintRegionLayerView::new(layer_index)
+            .with_support_plan(plan)
+            .with_slice_ir(Arc::new(slice_ir));
+        let mut output = SupportOutputBuilder::new();
+        module
+            .run_support(layer_index, &regions, &paint, &mut output, &config)
+            .expect("run_support must succeed");
+        output.support_paths().to_vec()
     }
 
     /// AC-7: `Layer::Support` (tree-support) consumes `SupportPlanIR` that was
@@ -1147,66 +1208,58 @@ mod planner_consuming_tier {
     #[test]
     fn tree_support_consumes_support_plan_ir_from_support_geometry_stage() {
         let layer_z = 0.2f32;
-        let plan = plan_for_obj0(0, layer_z);
+        let plan = plan_for_obj0("tree", 0, layer_z);
 
-        let support_ir = dispatch_support(
-            tree_support_wasm(),
-            "com.core.tree-support",
-            vec![
-                "SliceIR",
-                "SurfaceClassificationIR",
-                "PaintRegionIR",
-                "SupportPlanIR",
-            ],
-            Some(Arc::clone(&plan)),
-        );
+        let paths = render_plan_directly(plan, 0, layer_z, make_slice_ir(0, layer_z));
 
-        assert_eq!(
-            support_ir
-                .regions
-                .iter()
-                .map(|r| r.support_paths.len())
-                .sum::<usize>(),
-            1,
-            "tree-support live dispatch must emit exactly the planner's branch count; got {}",
-            support_ir
-                .regions
-                .iter()
-                .map(|r| r.support_paths.len())
-                .sum::<usize>()
+        assert!(
+            !paths.is_empty(),
+            "tree-support must render the planned SupportBody role region"
         );
-        let path = &support_ir.regions[0].support_paths[0];
-        assert_eq!(path.role, ExtrusionRole::SupportMaterial);
-        let expected = &plan.entries[0].branch_segments[0];
-        assert_eq!(path.points.len(), expected.points.len());
-        for (a, b) in path.points.iter().zip(expected.points.iter()) {
+        // The planned role region is `body_region_expoly()` — a 10 mm square at
+        // the origin. Packet 224's `render_polygon` covers it with inset wall
+        // loops plus a density-pitched scan fill, so path shape is no longer a
+        // fixed vertex count (the old `== 2` snapshot predated walls). Assert
+        // the structure instead: closed walls are closed, fill lines are
+        // segments, and nothing escapes the region the planner declared.
+        let bound_mm = 10.0f32;
+        for path in paths {
+            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
             assert!(
-                (a.x - b.x).abs() < 1e-4,
-                "x mismatch: got {} expected {}",
-                a.x,
-                b.x
+                path.points.len() >= 2,
+                "an extrusion path needs at least two vertices, got {}",
+                path.points.len()
             );
-            assert!(
-                (a.y - b.y).abs() < 1e-4,
-                "y mismatch: got {} expected {}",
-                a.y,
-                b.y
-            );
-            assert!(
-                (a.z - b.z).abs() < 1e-4,
-                "z mismatch: got {} expected {}",
-                a.z,
-                b.z
-            );
-            assert!((a.width - b.width).abs() < 1e-4);
+            if path.points.len() > 2 {
+                let first = &path.points[0];
+                let last = &path.points[path.points.len() - 1];
+                assert!(
+                    (first.x - last.x).abs() < 1e-4 && (first.y - last.y).abs() < 1e-4,
+                    "a multi-vertex wall pass must be a closed loop: {first:?} != {last:?}"
+                );
+            }
+            assert!(path
+                .points
+                .iter()
+                .all(|point| (point.z - layer_z).abs() < 1e-4));
+            for point in &path.points {
+                assert!(
+                    point.x >= -1e-3
+                        && point.x <= bound_mm + 1e-3
+                        && point.y >= -1e-3
+                        && point.y <= bound_mm + 1e-3,
+                    "rendered vertex {point:?} escapes the planned SupportBody role region                      (0..{bound_mm} mm square)"
+                );
+            }
         }
     }
 
     /// AC-10: tree-support live dispatch â€” when no SupportPlanIR is
-    /// committed, tree-support falls back to its per-layer grid-MST filler.
+    /// committed (no planned entries for the demand), tree-support emits
+    /// nothing: the legacy missing-plan grid-MST fallback filler was removed.
     #[test]
-    fn tree_support_live_dispatch_falls_back_to_grid_when_plan_absent() {
-        let support_ir = dispatch_support(
+    fn tree_support_live_dispatch_emits_nothing_when_plan_absent() {
+        let support_ir = dispatch_support_opt(
             tree_support_wasm(),
             "com.core.tree-support",
             vec![
@@ -1218,70 +1271,83 @@ mod planner_consuming_tier {
             None,
         );
         assert!(
-            support_ir
-                .regions
-                .iter()
-                .any(|r| !r.support_paths.is_empty()),
-            "tree-support must fall back to the grid-MST filler; got 0 paths"
+            support_ir.is_none(),
+            "tree-support must emit no SupportIR when the plan has no entries for the demand"
         );
-        for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
-            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
-        }
     }
 
-    /// AC-9: traditional-support live dispatch â€” its scan-line filler emits
-    /// byte-identical SupportIR with and without a committed SupportPlanIR
-    /// (proves the manifest-level read declaration gates the WIT accessor;
-    /// since traditional-support does not declare SupportPlanIR, the host
-    /// projects an empty plan even when one is committed... actually our
-    /// current contract surfaces the plan to any module that calls
-    /// `support-plan-segments`, regardless of manifest declaration. So this
-    /// test verifies traditional-support's behavioral choice not to call it).
+    /// AC-9: traditional-support live dispatch is **plan-gated**.
+    ///
+    /// This test used to assert the opposite — that traditional-support emitted
+    /// byte-identical `SupportIR` with and without a committed `SupportPlanIR`,
+    /// because its scan-line filler ran off the slice contour and ignored the
+    /// plan entirely. Packet 222 deleted that filler: `run_support` now
+    /// `continue`s when `support_plan_entries_for` returns nothing, so the
+    /// plan is the sole source of support geometry.
     #[test]
-    fn traditional_support_live_dispatch_ignores_support_plan_ir() {
+    fn traditional_support_live_dispatch_renders_only_the_planned_roles() {
         let layer_z = 0.2f32;
+        let reads = vec![
+            "SliceIR",
+            "SurfaceClassificationIR",
+            "PaintRegionIR",
+            "SupportPlanIR",
+        ];
 
-        let no_plan = dispatch_support(
+        let no_plan = dispatch_support_opt(
             traditional_support_wasm(),
             "com.core.traditional-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
+            reads.clone(),
             None,
         );
+        assert!(
+            no_plan.is_none(),
+            "traditional-support must commit no SupportIR when no plan is committed;              the missing-plan scan-line filler was removed in packet 222"
+        );
+
         let with_plan = dispatch_support(
             traditional_support_wasm(),
             "com.core.traditional-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
-            Some(plan_for_obj0(0, layer_z)),
+            reads,
+            Some(plan_for_obj0("traditional", 0, layer_z)),
         );
-
-        assert_eq!(
-            no_plan.regions[0].support_paths.len(),
-            with_plan.regions[0].support_paths.len(),
-            "traditional-support must produce identical path count irrespective of SupportPlanIR \
-             (no-plan={}, with-plan={})",
-            no_plan.regions[0].support_paths.len(),
-            with_plan.regions[0].support_paths.len()
-        );
-        for (a, b) in no_plan.regions[0]
-            .support_paths
+        let paths: Vec<_> = with_plan
+            .entries
             .iter()
-            .zip(with_plan.regions[0].support_paths.iter())
-        {
-            assert_eq!(a.role, b.role);
-            assert_eq!(a.points.len(), b.points.len());
-            for (pa, pb) in a.points.iter().zip(b.points.iter()) {
-                assert_eq!(pa.x.to_bits(), pb.x.to_bits());
-                assert_eq!(pa.y.to_bits(), pb.y.to_bits());
-                assert_eq!(pa.z.to_bits(), pb.z.to_bits());
-                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
+            .flat_map(|entry| entry.paths.iter())
+            .collect();
+        assert!(
+            !paths.is_empty(),
+            "traditional-support must render the planned SupportBody role region"
+        );
+        // The plan's only role is `SupportBody` over `body_region_expoly()` —
+        // a 10 mm square at the origin. Everything rendered must carry the body
+        // role and stay inside that declared region.
+        for entry in &with_plan.entries {
+            assert_eq!(entry.role, slicer_ir::SupportRole::SupportBody);
+        }
+        for path in &paths {
+            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
+            assert!(path.points.len() >= 2);
+            assert!(path
+                .points
+                .iter()
+                .all(|point| (point.z - layer_z).abs() < 1e-4));
+            for point in &path.points {
+                assert!(
+                    point.x >= -1e-3
+                        && point.x <= 10.0 + 1e-3
+                        && point.y >= -1e-3
+                        && point.y <= 10.0 + 1e-3,
+                    "rendered vertex {point:?} escapes the planned SupportBody role region"
+                );
             }
         }
     }
 
-    /// AC-9: tree-support live dispatch â€” when SupportPlanIR carries entries
-    /// for multiple region_ids, dispatching against a LayerView whose
-    /// region_id matches a specific entry picks up only that entry's
-    /// branch segments.
+    /// AC-9: tree-support â€” when SupportPlanIR carries entries for multiple
+    /// region_ids, rendering against a LayerView whose region_id matches a
+    /// specific entry picks up only that entry's planned role regions.
     #[test]
     fn tree_support_live_dispatch_finds_branches_for_real_region_id() {
         use slicer_ir::{
@@ -1293,46 +1359,68 @@ mod planner_consuming_tier {
         let target_region_id: u64 = 42;
         let other_region_id: u64 = 7;
 
-        // Build two planned segments for the two different region_ids.
-        let seg_for = |_rid: u64, z: f32| -> ExtrusionPath3D {
-            ExtrusionPath3D {
-                points: vec![
-                    // exhaustive: Point3WithWidth support-path fixture specifies every point field.
-                    Point3WithWidth {
-                        x: 1.0,
-                        y: 2.0,
-                        z,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        ..Default::default()
-                    },
-                    // exhaustive: Point3WithWidth support-path fixture specifies every point field.
-                    Point3WithWidth {
-                        x: 7.0,
-                        y: 8.0,
-                        z,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        ..Default::default()
-                    },
-                ],
-                ..extrusion_path3d_base(IrExtrusionRole::SupportMaterial)
-            }
-        };
-
         let plan = Arc::new(SupportPlanIR {
             entries: vec![
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
                     region_id: other_region_id,
-                    branch_segments: vec![seg_for(other_region_id, layer_z)],
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: slicer_ir::mm_to_units(layer_z),
+                    roles: vec![],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            slicer_ir::Point3 {
+                                x: 1.0,
+                                y: 2.0,
+                                z: layer_z,
+                            },
+                            slicer_ir::Point3 {
+                                x: 7.0,
+                                y: 8.0,
+                                z: layer_z,
+                            },
+                        ],
+                    }),
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 },
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
                     region_id: target_region_id,
-                    branch_segments: vec![seg_for(target_region_id, layer_z)],
+                    family_id: "tree".into(),
+                    demand_ids: vec![],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: slicer_ir::mm_to_units(layer_z),
+                    roles: vec![slicer_ir::SupportPlanRoleRegion {
+                        role: slicer_ir::SupportPlanRole::SupportBody,
+                        regions: vec![super::body_region_expoly()],
+                    }],
+                    skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                        points: vec![
+                            slicer_ir::Point3 {
+                                x: 1.0,
+                                y: 2.0,
+                                z: layer_z,
+                            },
+                            slicer_ir::Point3 {
+                                x: 7.0,
+                                y: 8.0,
+                                z: layer_z,
+                            },
+                        ],
+                    }),
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
                 },
             ],
             ..Default::default()
@@ -1369,64 +1457,15 @@ mod planner_consuming_tier {
             ..Default::default()
         };
 
-        // Dispatch tree-support with the multi-region plan.
-        let engine = wasm_cache::shared_engine();
-        let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-        let wasm_path = tree_support_wasm();
-        let loaded = loaded_support_module(
-            "com.core.tree-support",
-            wasm_path.clone(),
-            vec![
-                "SliceIR",
-                "SurfaceClassificationIR",
-                "PaintRegionIR",
-                "SupportPlanIR",
-            ],
-        );
-        let bundle = compile_module(&engine, loaded, &wasm_path);
-
-        let blackboard = empty_blackboard_with_support_plan(Some(Arc::clone(&plan)));
-
-        // exhaustive: GlobalLayer support fixture specifies every layer field.
-        let layer = GlobalLayer {
-            index: layer_index,
-            z: layer_z,
-            ..Default::default()
-        };
-
-        let mut arena = LayerArena::new();
-        arena.set_slice(slice_ir).unwrap();
-        run_layer_and_commit_with_bundle(
-            &dispatcher,
-            "Layer::Support",
-            &layer,
-            &bundle,
-            &blackboard,
-            &mut arena,
-        )
-        .expect("Layer::Support dispatch must succeed");
-
-        let support_ir = arena.take_support().expect("SupportIR must be committed");
+        // Render the multi-region plan directly against the region-42 slice.
+        let paths = render_plan_directly(plan, layer_index, layer_z, slice_ir);
 
         assert!(
-            support_ir
-                .regions
-                .iter()
-                .any(|r| !r.support_paths.is_empty()),
-            "tree-support must find branches for region_id={target_region_id}; got 0 paths"
+            !paths.is_empty(),
+            "tree-support must render the planned role region for region_id={target_region_id}; got 0 paths"
         );
-        let target_region = support_ir
-            .regions
-            .iter()
-            .find(|region| region.region_id == target_region_id)
-            .expect("tree-support output must preserve the requested region identity");
-        assert_eq!(target_region.support_paths.len(), 1);
-        assert!(support_ir
-            .regions
-            .iter()
-            .filter(|region| region.region_id == other_region_id)
-            .all(|region| region.support_paths.is_empty()));
-        for path in support_ir.regions.iter().flat_map(|r| &r.support_paths) {
+        assert!(paths.iter().any(|path| path.points.len() == 2));
+        for path in paths {
             assert_eq!(
                 path.role,
                 IrExtrusionRole::SupportMaterial,

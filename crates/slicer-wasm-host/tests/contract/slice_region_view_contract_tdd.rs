@@ -181,6 +181,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
                 regions_by_semantic: HashMap::new(),
                 custom_regions: HashMap::new(),
                 support_plan_segments: HashMap::new(),
+                support_plan_entries: HashMap::new(),
                 lightning_tree_segments: HashMap::new(),
             },
         )

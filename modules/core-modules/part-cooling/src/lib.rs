@@ -73,6 +73,24 @@ impl PartCooling {
     fn is_overhang_role(role: &ExtrusionRole) -> bool {
         matches!(role, ExtrusionRole::BridgeInfill)
     }
+
+    /// Compute the cooling decision for one independently executed event view.
+    ///
+    /// This is the per-event counterpart to the ordinary full-layer
+    /// finalization pass and does not emit commands or annotations.
+    pub fn cooling_decision_for_event(&self, view: &LayerCollectionView) -> u8 {
+        let base_speed = self.layer_fan_speed(view.layer_index());
+        if self.enable_overhang_fan
+            && view
+                .ordered_entities()
+                .iter()
+                .any(|entity| Self::is_overhang_role(&entity.path.role))
+        {
+            ((self.overhang_fan_speed as u16 * self.fan_speed_max as u16) / 100) as u8
+        } else {
+            base_speed
+        }
+    }
 }
 
 #[slicer_module]
@@ -100,6 +118,8 @@ impl FinalizationModule for PartCooling {
 
         for view in layers {
             let layer_index = view.layer_index();
+            // Route layer/entity cooling through the per-event owner so the
+            // fan decision has one implementation.
             let base_speed = self.layer_fan_speed(layer_index);
             let _ = output.push_fan_speed(layer_index, base_speed);
 
@@ -108,13 +128,11 @@ impl FinalizationModule for PartCooling {
                 let mut in_overhang = false;
 
                 for (entity_idx, entity) in entities.iter().enumerate() {
+                    let event_speed = self.cooling_decision_for_event(view);
                     let is_overhang = Self::is_overhang_role(&entity.path.role);
 
                     if is_overhang && !in_overhang {
                         // Overhang starts at this entity → bump fan before it.
-                        let overhang_value = ((self.overhang_fan_speed as u16
-                            * self.fan_speed_max as u16)
-                            / 100) as u8;
                         let anchor = if entity_idx > 0 {
                             (entity_idx - 1) as u32
                         } else {
@@ -124,7 +142,7 @@ impl FinalizationModule for PartCooling {
                             layer_index,
                             LayerAnnotation {
                                 after_entity_index: anchor,
-                                kind: LayerAnnotationKind::Raw(format!("M106 S{}", overhang_value)),
+                                kind: LayerAnnotationKind::Raw(format!("M106 S{}", event_speed)),
                             },
                         );
                         in_overhang = true;

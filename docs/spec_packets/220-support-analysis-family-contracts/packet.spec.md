@@ -1,11 +1,11 @@
 ---
-status: draft
+status: implemented
 packet: 220-support-analysis-family-contracts
 task_ids:
   - TASK-331
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Depends on the draft anchored-entity-execution packet in this batch.
+copy_note: Depends on the implemented anchored-entity-execution packet (TASK-330).
 ---
 
 # Packet Contract: support-analysis-family-contracts
@@ -20,7 +20,7 @@ This packet owns `PrePass::SupportAnalysis`, exact-Z occupancy/envelope service,
 
 ## Prerequisites and Blockers
 
-- Depends on: draft `anchored-entity-execution` (TASK-330), with exported `AnchoredEntity`, `AnchoredGeometryContract`, `CapabilityDerivedEventClosure`, `OrderedEventCollection`, and `AnchoredEventRuntimeHooks`.
+- Depends on: implemented `anchored-entity-execution` (TASK-330), with exported `AnchoredEntity`, `AnchoredGeometryContract`, `CapabilityDerivedEventClosure`, `OrderedEventCollection`, and `AnchoredEventRuntimeHooks`.
 - Unblocks: `tree-support-family` (TASK-332) and `traditional-support-family` (TASK-333).
 - Activation blockers: exact universal role/schema migration and region-level loader representation must be reconciled with generated WIT consumers.
 

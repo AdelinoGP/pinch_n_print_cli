@@ -305,12 +305,16 @@ pub struct PaintRegionLayerData {
     /// Custom regions by module ID.
     pub custom_regions:
         HashMap<String, Vec<layer_perimeters::slicer::ir_handles::ir_handles::SemanticRegion>>,
-    /// Pre-planned support-branch segments indexed by `(object_id, region_id)`,
-    /// projected from `SupportPlanIR.entries` filtered to this layer index.
-    /// Empty when no `SupportPlanIR` is committed on the blackboard.
+    /// Legacy segment carrier retained empty; structural plans use view entries.
     pub support_plan_segments: HashMap<
         (String, String),
         Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+    >,
+    /// Structural support plan entries indexed by `(object_id, region_id)`,
+    /// projected from `SupportPlanIR.entries` filtered to this layer index.
+    pub support_plan_entries: HashMap<
+        (String, String),
+        Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>,
     >,
     /// Pre-planned lightning tree-edge segments indexed by
     /// `(object_id, region_id)`, projected from `LightningTreeIR.entries`
@@ -1280,6 +1284,8 @@ pub struct HostExecutionContext {
     catchup_z_bottom: Option<f32>,
     /// Host-owned mesh IR used by mesh-query host services.
     pub(crate) mesh_ir: Option<Arc<MeshIR>>,
+    /// Host-owned exact-Z support geometry service available to family planners.
+    pub(crate) exact_z_query: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
 
     /// Fill-role claim IDs held by `module_id` per `(object_id, region_id)`,
     /// resolved by `validation::resolve_held_claims` against the per-region
@@ -1364,6 +1370,7 @@ pub struct HostExecutionContextBuilder {
     effective_layer_height: f32,
     catchup_z_bottom: Option<f32>,
     mesh_ir: Option<Arc<MeshIR>>,
+    exact_z_query: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
 }
 
 impl HostExecutionContextBuilder {
@@ -1380,6 +1387,7 @@ impl HostExecutionContextBuilder {
             effective_layer_height,
             catchup_z_bottom: None,
             mesh_ir: None,
+            exact_z_query: None,
         }
     }
 
@@ -1394,6 +1402,15 @@ impl HostExecutionContextBuilder {
     /// Set the host-owned mesh IR for mesh-query host services.
     pub fn mesh_ir(mut self, v: Option<Arc<MeshIR>>) -> Self {
         self.mesh_ir = v;
+        self
+    }
+
+    /// Set the exact-Z support geometry service for support family planning.
+    pub fn exact_z_query(
+        mut self,
+        v: Option<Arc<crate::exact_z_query::ExactZQueryService>>,
+    ) -> Self {
+        self.exact_z_query = v;
         self
     }
 
@@ -1433,6 +1450,7 @@ impl HostExecutionContextBuilder {
             effective_layer_height: self.effective_layer_height,
             catchup_z_bottom: self.catchup_z_bottom,
             mesh_ir: self.mesh_ir,
+            exact_z_query: self.exact_z_query,
             held_claims_per_region: std::collections::HashMap::new(),
             mem_tracker: MemTracker::default(),
             profiling_enabled: false,
@@ -2821,6 +2839,7 @@ pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionL
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        support_plan_entries: HashMap::new(),
         lightning_tree_segments: HashMap::new(),
     }
 }
@@ -4057,6 +4076,21 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         let data = self.table.get(&self_)?;
         Ok(data
             .support_plan_segments
+            .get(&(object_id, region_id))
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn support_plan_entries(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>>
+    {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let data = self.table.get(&self_)?;
+        Ok(data
+            .support_plan_entries
             .get(&(object_id, region_id))
             .cloned()
             .unwrap_or_default())

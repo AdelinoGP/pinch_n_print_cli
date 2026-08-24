@@ -406,6 +406,21 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
 
+### Anchored event contract (additive)
+
+The WIT boundary carries anchored execution through additive records in
+`deps/ir-types.wit`. These records describe anchored entities, their planar or
+Z-spanning geometry, capability declarations, provenance, path points, and
+ordered event collections. The anchor field is named
+`anchor-global-layer-index` in WIT (kebab-case); it identifies the global layer
+whose ordinary model event anchors the collection.
+
+The SDK exposes the corresponding anchored collection builder API in
+`crates/slicer-sdk/src/layer_collection_builder.rs`. Host validation and
+ordering remain authoritative: a collection is committed as one event, and
+the additive WIT records do not change the existing layer collection schema
+version or ordinary builder contract.
+
 ### `lightning-tree-segments` read-view (packet 137)
 
 Available to `Layer::Infill` modules on the `paint-region-layer-view` resource.
@@ -696,6 +711,35 @@ requires = []                     # claim slots that MUST be held by another mod
 | Claim ID                 | Kind     | Dedup          | Owner                                                                    |
 |--------------------------|----------|----------------|--------------------------------------------------------------------------|
 | `claim:infill-link`      | non-fill | first-winner   | `infill-linker` (`Layer::InfillPostProcess`, packet 130; ADR-0025)       |
+
+### Support-family claims (Normative — packet 220)
+
+Support families use a claims vocabulary of the form `support-family:<id>`,
+where `<id>` is the family identifier. A family planner and its renderer are
+paired by holding the **same** `support-family:<id>` claim:
+
+- **Planners** hold `support-planner` (the PrePass claim emitting
+  `SupportPlanIR`) **and** `support-family:<id>`.
+- **Renderers** hold `support-generator` (the `Layer::Support` claim) **and**
+  the same `support-family:<id>`.
+
+`support_family` is the canonical per-region selector. `support_type` is a
+**compatibility alias** only: values starting with `normal*` or `classic*`
+select the traditional family; values starting with `tree*` or `hybrid*`
+select the tree family. A missing or mismatched planner/renderer pair — a
+planner or renderer whose `support-family:<id>` has no matching counterpart
+holding the same `<id>` — is **not** fatal: it yields a structured warning
+diagnostic at load (see `docs/04_host_scheduler.md` § "Planner-Renderer
+Pairing"), and the affected family's regions simply produce no support plan
+(degraded, not aborted) until the pair is completed. Complete pairs such as
+`support-family:tree` dispatch normally.
+
+The tree family pairs `tree-support-planner` (planner role, `support-family:tree`)
+with `tree-support` (generator role, `support-family:tree`).
+
+The traditional family pairs `traditional-support-planner` (planner role,
+`support-family:traditional`) with `traditional-support` (generator role,
+`support-family:traditional`).
 
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 

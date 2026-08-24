@@ -65,6 +65,8 @@ pub struct NativePrepassRequest {
     pub layer_plan: Option<crate::prepass_types::LayerPlanView>,
     /// Region segmentation view, when this stage runs segmentation.
     pub region_segmentation: Option<crate::prepass_types::RegionSegmentationView>,
+    /// Strategy-neutral support analysis, when this stage plans support.
+    pub support_analysis: Option<crate::prepass_types::SupportAnalysisView>,
     /// Support geometry view, when this stage plans support.
     pub support_geometry: Option<crate::prepass_types::SupportGeometryView>,
     /// Paint segmentation objects, when this stage handles paint.

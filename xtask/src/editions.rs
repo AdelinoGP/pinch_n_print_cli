@@ -131,7 +131,7 @@ mod tests {
             vec![
                 "classic-perimeters",
                 "arachne-perimeters",
-                "support-planner"
+                "tree-support-planner"
             ]
         );
         assert!(!editions["hybrid"].integrate_all);

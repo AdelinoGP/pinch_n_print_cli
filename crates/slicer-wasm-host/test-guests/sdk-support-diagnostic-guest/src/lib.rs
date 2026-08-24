@@ -35,7 +35,7 @@ impl PrepassModule for SdkSupportDiagnosticGuest {
                 global_layer_index: 0,
                 object_id: "cube".to_string(),
                 region_id: "0".to_string(),
-                branch_segments: Vec::new(),
+                ..Default::default()
             })
             .map_err(|e| ModuleError::fatal(2, e))?;
 

@@ -272,6 +272,8 @@ pub enum BlackboardPrepassSlot {
     SliceIR,
     /// Support geometry coarse outlines produced by `PrePass::SupportGeometry`.
     SupportGeometry,
+    /// Strategy-neutral host support analysis.
+    SupportAnalysis,
     /// Lightning tree-edge segments produced by `PrePass::LightningTreeGen`.
     /// Packet 137 lands the seam; the algorithm ships in 138/139. Skipped
     /// (slot stays `None`) when no region's `sparse_fill_holder` is
@@ -289,6 +291,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::RegionMap => "region-map",
             Self::SliceIR => "slice-ir",
             Self::SupportGeometry => "support-geometry",
+            Self::SupportAnalysis => "support-analysis",
             Self::LightningTreeIR => "lightning-tree-ir",
         };
 
@@ -316,6 +319,17 @@ pub enum BlackboardError {
     DuplicateSeamPlanEntry {
         /// The first duplicate `RegionKey` encountered, in entry order.
         region_key: crate::slice_ir::RegionKey,
+    },
+    /// A merged `SupportPlanIR` contains two entries sharing the same
+    /// `(global_layer_index, object_id, region_id)` identity. Family
+    /// provenance does not make two entries distinct at this seam.
+    DuplicateSupportPlanEntry {
+        /// Global layer index of the duplicate support region.
+        global_layer_index: i32,
+        /// Object ID of the duplicate support region.
+        object_id: crate::slice_ir::ObjectId,
+        /// Region ID of the duplicate support region.
+        region_id: crate::slice_ir::RegionId,
     },
     /// A requested prepass output has not been committed yet.
     MissingRequiredPrepass {
@@ -359,6 +373,15 @@ impl fmt::Display for BlackboardError {
                     region_key.global_layer_index, region_key.object_id, region_key.region_id, region_key.variant_chain
                 )
             }
+            Self::DuplicateSupportPlanEntry {
+                global_layer_index,
+                object_id,
+                region_id,
+            } => write!(
+                f,
+                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={})",
+                global_layer_index, object_id, region_id
+            ),
             Self::MissingRequiredPrepass { slot } => {
                 write!(f, "required prepass output missing for {slot}")
             }
@@ -569,6 +592,8 @@ pub enum LayerStageCommit {
     /// `Layer::PathOptimization`: apply the entity-order proposal, then
     /// accumulate the g-code side-effects onto the deferred queues.
     PathOptimization(PathOptimizationCommit),
+    /// Commit anchored physical events at their owning model-event boundaries.
+    AnchoredEvents(Vec<crate::OrderedEventCollection>),
     /// Test-only escape hatch: pre-seed a `LayerCollectionIR` into the arena so a
     /// downstream stage consumes a known entity list. Named for its arena effect,
     /// not its caller; never produced by a production runner. See ADR-0020.
@@ -592,6 +617,7 @@ impl LayerStageCommit {
             Self::SupportPostProcess(_) => "Layer::SupportPostProcess",
             Self::SlicePostProcess { .. } => "Layer::SlicePostProcess",
             Self::PathOptimization(_) => "Layer::PathOptimization",
+            Self::AnchoredEvents(_) => "Layer::AnchoredEvents",
             Self::SeedLayerCollection(_) => return None,
         })
     }

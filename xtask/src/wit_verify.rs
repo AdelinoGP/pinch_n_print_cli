@@ -188,7 +188,9 @@ impl fmt::Display for StageResolutionError {
 
 impl std::error::Error for StageResolutionError {}
 
-pub fn resolve_stage_from_world(world: &WorldModel) -> Result<StageExpectation, StageResolutionError> {
+pub fn resolve_stage_from_world(
+    world: &WorldModel,
+) -> Result<StageExpectation, StageResolutionError> {
     let mut candidates: Vec<String> = Vec::new();
     for pkg_name in world.packages.keys() {
         let stripped = strip_version(pkg_name);
@@ -1073,6 +1075,15 @@ mod tests {
             .to_path_buf()
     }
 
+    // NOTE: the packet-221-era regression tests built on `canonical_type_blocks`
+    // / `module_stage_wit_dir` were retired during the parity/support-planners
+    // merge: packets 229/230 replaced that text-block declaration model with the
+    // package-qualified `WorldModel` verifier, whose own suite below covers the
+    // same contracts more strictly (`detects_drift_against_a_real_built_artifact`
+    // perturbs exactly the extrusion-role/raft-infill shape those tests pinned;
+    // `unexpected_package_is_drift` and `shared_packages_use_subset_direction`
+    // subsume the region-key shadowing and ambiguous-name cases).
+
     /// End-to-end proof that the gate detects real drift, exercising the actual
     /// component-decode path rather than synthetic strings.
     ///
@@ -1193,16 +1204,24 @@ mod tests {
             }
 
             let stage_id = {
-                let text = std::fs::read_to_string(dir.join(format!("{name}.toml"))).unwrap_or_default();
+                let text =
+                    std::fs::read_to_string(dir.join(format!("{name}.toml"))).unwrap_or_default();
                 let mut sid: Option<&str> = None;
                 let mut in_stage = false;
                 for line in text.lines() {
                     let t = line.trim();
-                    if t.starts_with('[') { in_stage = t == "[stage]"; continue; }
-                    if !in_stage { continue; }
+                    if t.starts_with('[') {
+                        in_stage = t == "[stage]";
+                        continue;
+                    }
+                    if !in_stage {
+                        continue;
+                    }
                     if let Some(rest) = t.strip_prefix("id") {
                         if let Some((_, v)) = rest.split_once('=') {
-                            sid = Some(Box::leak(v.trim().trim_matches('"').to_string().into_boxed_str()) as &str);
+                            sid = Some(Box::leak(
+                                v.trim().trim_matches('"').to_string().into_boxed_str(),
+                            ) as &str);
                             break;
                         }
                     }

@@ -9,7 +9,96 @@
 mod common;
 
 mod adapt_slice_regions_completeness_tdd;
+mod anchored_event_accounting;
+mod anchored_event_ordering;
+mod anchored_parallel_determinism;
+mod anchored_z_span_validation;
+mod anchored_z_validation;
+mod structured_support_identity;
+mod support_disabled_no_output;
+mod support_family_closure;
+mod support_family_routing;
+
+#[test]
+fn support_disabled_no_output() {
+    support_disabled_no_output::support_disabled_no_output();
+}
+
+#[test]
+fn fixture_invariants() {
+    support_family_closure::fixture_invariants().expect("SupportTest fixture invariants must hold");
+}
+
+#[test]
+fn family_reaches_region_routing() {
+    support_family_closure::family_reaches_region_routing()
+        .expect("selected support family must reach region routing");
+}
+
+#[test]
+fn invalid_geometry_fails() {
+    support_family_closure::invalid_geometry_fails()
+        .expect("invalid support geometry must be rejected");
+}
+
+#[test]
+fn matched_height_evidence() {
+    support_family_closure::matched_height_evidence().unwrap();
+}
+
+#[test]
+fn differential_evidence() {
+    support_family_closure::differential_evidence().unwrap();
+}
+
+#[test]
+fn final_gcode_roles() {
+    support_family_closure::final_gcode_roles().unwrap();
+}
+
+#[test]
+fn supersedes_packet_213_and_task_329() {
+    support_family_closure::supersedes_packet_213_and_task_329().unwrap();
+}
+
+#[test]
+fn task_163b_disposition() {
+    support_family_closure::task_163b_disposition().unwrap();
+}
+
+#[test]
+fn anchored_event_ordering() {
+    anchored_event_ordering::anchored_event_ordering();
+}
+#[test]
+fn anchored_event_accounting() {
+    anchored_event_accounting::anchored_event_accounting();
+}
+#[test]
+fn anchored_parallel_determinism() {
+    anchored_parallel_determinism::anchored_parallel_determinism();
+}
+#[test]
+fn anchored_z_validation() {
+    anchored_z_validation::anchored_z_validation();
+}
+#[test]
+fn anchored_entity_planar_z_mismatch() {
+    anchored_z_validation::anchored_entity_planar_z_mismatch();
+}
+#[test]
+fn anchored_z_span_validation() {
+    anchored_z_span_validation::anchored_z_span_validation();
+}
+#[test]
+fn rejects_out_of_range_point() {
+    anchored_z_span_validation::rejects_out_of_range_point();
+}
 mod arachne_seam_paint_bias_tdd;
+#[test]
+fn structured_support_identity() {
+    structured_support_identity::structured_support_identity();
+}
 mod arachne_wall_width_follows_config_tdd;
 mod classic_min_width_top_surface_tdd;
 mod classic_wall_width_resolution_tdd;
@@ -62,4 +151,26 @@ mod support_invariants_wedge_tdd;
 mod thin_wall_emission_tdd;
 mod threemf_paint_drop_on_modifier_tdd;
 mod threemf_transform_tdd;
+mod traditional_support_family;
+mod tree_support_family;
 mod wasm_instance_pool_tdd;
+
+#[test]
+fn support_never_intersects_model_at_exact_z() {
+    support_family_closure::support_never_intersects_model_at_exact_z().unwrap();
+}
+
+#[test]
+fn accepted_demands_terminate_on_plate_or_model() {
+    support_family_closure::accepted_demands_terminate_on_plate_or_model().unwrap();
+}
+
+#[test]
+fn interface_is_topmost_and_carved_out() {
+    support_family_closure::interface_is_topmost_and_carved_out().unwrap();
+}
+
+#[test]
+fn no_overhang_mesh_produces_zero_support() {
+    support_family_closure::no_overhang_mesh_produces_zero_support().unwrap();
+}

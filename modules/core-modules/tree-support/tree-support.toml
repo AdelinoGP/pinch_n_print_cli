@@ -14,7 +14,7 @@ reads  = ["SliceIR", "SurfaceClassificationIR", "SupportPlanIR", "PaintRegionIR"
 writes = ["SupportIR"]
 
 [claims]
-holds    = ["support-generator"]
+holds    = ["support-generator", "support-family:tree"]
 requires = []
 
 [compatibility]
@@ -39,12 +39,12 @@ max     = 100.0
 display = "Support Density"
 group   = "Support"
 
-[config.schema.support_angle]
-type    = "float"
-default = 60.0
-min     = 0.0
-max     = 90.0
-display = "Support Angle"
+[config.schema.tree_support_wall_count]
+type    = "int"
+default = 1
+min     = 1
+max     = 10
+display = "Tree Support Wall Count"
 group   = "Support"
 
 [config.schema.support_speed]
@@ -63,20 +63,20 @@ max     = 2.0
 display = "Line Width"
 group   = "Support"
 
-[config.schema.support_layer_height_mm]
+[config.schema.support_interface_spacing]
 type    = "float"
-default = 0.0
-min     = 0.05
-max     = 1.0
-display = "Support Layer Height"
+default = 0.4
+min     = 0.0
+max     = 2.0
+display = "Support Interface Spacing"
 group   = "Support"
 
-[config.schema.support_top_z_distance_mm]
+[config.schema.support_bottom_interface_spacing]
 type    = "float"
-default = 0.0
-min     = 0.0
-max     = 5.0
-display = "Support Top Z Distance"
+default = -1.0
+min     = -1.0
+max     = 2.0
+display = "Support Bottom Interface Spacing"
 group   = "Support"
 
 [config.overridable-per-region]

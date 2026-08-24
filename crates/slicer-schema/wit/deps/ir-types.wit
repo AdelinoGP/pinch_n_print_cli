@@ -12,6 +12,76 @@ interface ir-handles {
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
 
+    // One-way host projection of structural support plans into the paint
+    // boundary. These VIEW records are owned here to avoid importing the
+    // prepass package (which already imports ir-handles).
+    enum support-plan-view-role { support-body, top-interface, bottom-interface, raft-related }
+    record support-plan-view-role-region {
+        role: support-plan-view-role,
+        regions: list<ex-polygon>,
+    }
+    record support-plan-view-skeleton { points: list<point3> }
+    enum support-plan-view-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
+    record support-plan-entry-view {
+        global-layer-index: s32,
+        object-id: object-id,
+        region-id: region-id,
+        family-id: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        anchor-layer-index: u32,
+        anchor-z: s64,
+        roles: list<support-plan-view-role-region>,
+        skeleton: option<support-plan-view-skeleton>,
+        capabilities: list<string>,
+        provenance: list<string>,
+        decline-reason: option<support-plan-view-decline-reason>,
+    }
+
+    /// The declared Z extent of anchored work, in canonical 100 nm units.
+    variant anchored-geometry-contract {
+        planar(s64),
+        z-spanning(tuple<s64, s64>),
+    }
+
+    /// Provenance retained when anchored work moves between execution stages.
+    record anchored-entity-provenance {
+        requesting-feature: string,
+        source-plan-entry: string,
+    }
+
+    /// Printable work assigned to a global-layer execution anchor.
+    record anchored-entity {
+        local-id: u64,
+        anchor-global-layer-index: u32,
+        geometry: anchored-geometry-contract,
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        provenance: anchored-entity-provenance,
+        path-points: list<point3>,
+    }
+
+    /// Capability closure used to derive execution stages without event kinds.
+    record capability-derived-event-closure {
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        derived-capabilities: list<string>,
+    }
+
+    /// Runtime accounting and optimization policies for one anchored event.
+    record anchored-event-runtime-hooks {
+        optimize-paths: bool,
+        account-cooling: bool,
+        account-time: bool,
+    }
+
+    /// Atomically ordered anchored work owned by one global-layer anchor.
+    record ordered-event-collection {
+        anchor-global-layer-index: u32,
+        events: list<anchored-entity>,
+        runtime-hooks: anchored-event-runtime-hooks,
+    }
+
     record region-key {
         layer-index: layer-idx,
         object-id: object-id,
@@ -217,6 +287,8 @@ interface ir-handles {
         layer-index: func() -> layer-idx;
         support-plan-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
+        support-plan-entries: func(object-id: object-id, region-id: region-id)
+            -> list<support-plan-entry-view>;
         lightning-tree-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
     }

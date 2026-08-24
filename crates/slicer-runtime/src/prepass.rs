@@ -8,7 +8,7 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
-use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId};
+use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId, SupportPlanEntry};
 
 use crate::builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
@@ -24,6 +24,8 @@ use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
+    exact_z_query::ExactZQueryService,
+    support_aggregation::aggregate_support_plan_irs_degrading_with_attributed_diagnostics,
     CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
@@ -226,10 +228,43 @@ pub fn execute_prepass_with_instrumentation(
         ),
     >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_instrumentation_collecting(
+        plan,
+        blackboard,
+        runner,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+fn execute_prepass_with_instrumentation_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    mut harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let mut audits = Vec::new();
 
     for stage in &plan.prepass_stages {
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
+        let mut support_plans = Vec::new();
+        // Kept index-parallel with `support_plans`: element `i` is the audit
+        // that belongs to the module which produced `support_plans[i]`, so an
+        // aggregate diagnostic attributed to plan `i` lands on the audit of
+        // the module actually at fault. `None` means that module produced no
+        // audit, in which case the diagnostic must stay unattributed rather
+        // than be pinned on some other module.
+        let mut support_plan_audits: Vec<Option<usize>> = Vec::new();
 
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
@@ -254,6 +289,7 @@ pub fn execute_prepass_with_instrumentation(
                 layer_plan: blackboard.layer_plan().cloned(),
                 slice_ir: blackboard.slice_ir().cloned(),
                 region_map: blackboard.region_map().cloned(),
+                support_analysis: blackboard.support_analysis().cloned(),
                 support_geometry: blackboard.support_geometry().cloned(),
                 _phantom: std::marker::PhantomData,
             };
@@ -303,7 +339,20 @@ pub fn execute_prepass_with_instrumentation(
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);
 
-            if let Err(e) =
+            let support_plan_output = matches!(
+                (stage.stage_id.as_str(), &output),
+                (
+                    "PrePass::SupportGeometry",
+                    PrepassStageOutput::SupportPlan(_)
+                )
+            );
+            if support_plan_output {
+                let PrepassStageOutput::SupportPlan(plan) = output else {
+                    unreachable!("matched support plan output")
+                };
+                support_plans.push((*plan).clone());
+                support_plan_audits.push(None);
+            } else if let Err(e) =
                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
                 instrumentation.on_module_error(
@@ -323,6 +372,7 @@ pub fn execute_prepass_with_instrumentation(
             // no IR output still have their reads audited).
             let diagnostics: Vec<slicer_ir::Diagnostic> = runner.last_diagnostics();
             if let Some(ir_path) = ir_path {
+                let audit_index = audits.len();
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
@@ -330,6 +380,11 @@ pub fn execute_prepass_with_instrumentation(
                     batch_calls,
                     diagnostics,
                 });
+                if support_plan_output {
+                    if let Some(slot) = support_plan_audits.last_mut() {
+                        *slot = Some(audit_index);
+                    }
+                }
             } else if !runtime_reads.is_empty() || !batch_calls.is_empty() {
                 // Module performed reads but produced no output — still record audit.
                 audits.push(ModuleAccessAudit {
@@ -339,6 +394,72 @@ pub fn execute_prepass_with_instrumentation(
                     batch_calls,
                     diagnostics,
                 });
+            }
+        }
+        if !support_plans.is_empty() {
+            if let Some(entries) = harvested_plan_entries.as_deref_mut() {
+                entries.extend(
+                    support_plans
+                        .iter()
+                        .flat_map(|support_plan| support_plan.entries.iter().cloned()),
+                );
+            }
+            let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
+            // Degrading policy: two families claiming one
+            // `(layer, object, region)` is a planner defect, but it must not
+            // discard every other retained entry and abort the prepass. The
+            // first-arriving family keeps the region and the loser is reported
+            // as a non-fatal 1202 diagnostic on the family writer's audit.
+            let (plan, diagnostics) =
+                aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
+                    support_plans,
+                    &exact_z,
+                );
+            let aggregation_module = ModuleId::from("host:support_plan_aggregation");
+            // The aggregate is a host-owned stage result, but its diagnostics
+            // are per-family. Attach each one to the audit of the module that
+            // produced the offending plan.
+            //
+            // This used to extend the LAST family writer's audit with the
+            // whole flat vector, and `emit_host_support_diagnostics`
+            // (slicer-runtime `run.rs`) names `audit.module_id` in the
+            // resulting `module_error` event. So a traditional-planner
+            // `NoRoute` decline (code 1201) was reported against
+            // `com.core.tree-support-planner` -- a module whose sources do not
+            // contain `NoRoute` at all. Two debugging sessions were spent in
+            // the wrong crate because of it.
+            //
+            // Unattributable diagnostics go onto a host audit rather than onto
+            // an arbitrary module: "the host said so" is honest, naming the
+            // wrong module is not.
+            let mut host_audit_index: Option<usize> = None;
+            for entry in diagnostics {
+                let target = entry
+                    .plan_index
+                    .and_then(|index| support_plan_audits.get(index).copied().flatten());
+                let target = match target {
+                    Some(index) => index,
+                    None => *host_audit_index.get_or_insert_with(|| {
+                        audits.push(ModuleAccessAudit {
+                            module_id: aggregation_module.clone(),
+                            runtime_reads: Vec::new(),
+                            runtime_writes: Vec::new(),
+                            batch_calls: Vec::new(),
+                            diagnostics: Vec::new(),
+                        });
+                        audits.len() - 1
+                    }),
+                };
+                audits[target].diagnostics.push(entry.diagnostic);
+            }
+            if let Err(e) = commit_stage_output(
+                &stage.stage_id,
+                &aggregation_module,
+                blackboard,
+                PrepassStageOutput::SupportPlan(Arc::new(plan)),
+            ) {
+                instrumentation.on_stage_end(&stage.stage_id, None);
+                return Err(e);
             }
         }
         instrumentation.on_stage_end(&stage.stage_id, None);
@@ -446,6 +567,41 @@ pub fn execute_prepass_with_builtins_configured(
     )
 }
 
+/// Executes the configured prepass while exposing support entries harvested before
+/// host aggregation so tests can observe invariant 15 per-region planner emission (packet-236).
+pub fn execute_prepass_with_builtins_configured_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+) -> Result<(Vec<ModuleAccessAudit>, Vec<SupportPlanEntry>), PrepassExecutionError> {
+    let mut harvested = Vec::new();
+    let audits = execute_prepass_with_builtins_configured_instr_collecting(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        &NoopInstrumentation,
+        wasm_handles,
+        Some(&mut harvested),
+    )?;
+    Ok((audits, harvested))
+}
+
 /// Instrumented version of [`execute_prepass_with_builtins_configured`] that
 /// brackets each prepass stage and module (including host built-ins) via
 /// `instrumentation`.
@@ -473,6 +629,39 @@ pub fn execute_prepass_with_builtins_configured_instr(
             Option<slicer_sdk::native::NativeStageEntry>,
         ),
     >,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_builtins_configured_instr_collecting(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+fn execute_prepass_with_builtins_configured_instr_collecting(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,
@@ -712,6 +901,28 @@ pub fn execute_prepass_with_builtins_configured_instr(
                 })
         },
     )?;
+    // PrePass::SupportAnalysis — host built-in. Runs strictly AFTER Slice (it
+    // derives candidates from committed SliceIR polygons) and BEFORE
+    // SupportGeometry, matching the declared `STAGE_ORDER` position as closely
+    // as the runtime flow allows.
+    run_builtin_stage(
+        blackboard,
+        instrumentation,
+        "PrePass::SupportAnalysis",
+        "host:support_analysis",
+        |bb| bb.support_analysis().is_none() && bb.slice_ir().is_some(),
+        |bb| {
+            crate::builtins::support_analysis_producer::commit_support_analysis_builtin(
+                bb,
+                default_resolved_config,
+            )
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::SupportAnalysis".to_string(),
+                module_id: "host:support_analysis".to_string(),
+                source,
+            })
+        },
+    )?;
     // PrePass::SupportGeometry — host built-in. Moved from the pre-RegionMap
     // position so it can consume SliceIR (Commit 4 will replace the
     // collect_polygons_at_z stub with real SliceIR reads). For Commit 2,
@@ -762,12 +973,13 @@ pub fn execute_prepass_with_builtins_configured_instr(
             prepass_stages: late_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        let late_audits = execute_prepass_with_instrumentation(
+        let late_audits = execute_prepass_with_instrumentation_collecting(
             &late_plan,
             blackboard,
             runner,
             instrumentation,
             wasm_handles,
+            harvested_plan_entries,
         )?;
         audits.extend(late_audits);
     }
@@ -830,6 +1042,7 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::SupportPlan => blackboard.support_plan().is_some(),
             BlackboardPrepassSlot::SliceIR => blackboard.slice_ir().is_some(),
             BlackboardPrepassSlot::SupportGeometry => blackboard.support_geometry().is_some(),
+            BlackboardPrepassSlot::SupportAnalysis => blackboard.support_analysis().is_some(),
             BlackboardPrepassSlot::LightningTreeIR => blackboard.lightning_tree_ir().is_some(),
         };
 
@@ -864,6 +1077,7 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SliceIR,
             BlackboardPrepassSlot::SupportGeometry,
         ],
+        "PrePass::SupportAnalysis" => &[BlackboardPrepassSlot::SliceIR],
         "PrePass::LightningTreeGen" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,

@@ -50,10 +50,31 @@ fn full_coverage_external_override_forces_wasm() {
     assert_eq!(registrations.len(), inventory.len());
     assert_eq!(entries.len(), inventory.len());
 
-    for (module, (stem, manifest)) in inventory.iter().zip(manifests) {
+    for (module, (stem, manifest)) in inventory.iter().zip(manifests.iter()) {
         let id = module.id;
         let dir = TempDir::new().unwrap();
-        write_external_module(dir.path(), stem, &manifest);
+        write_external_module(dir.path(), stem, manifest);
+        if manifest.contains("support-family:tree") {
+            let paired = [
+                ("tree-support", "tree-support/tree-support.toml"),
+                (
+                    "tree-support-planner",
+                    "tree-support-planner/tree-support-planner.toml",
+                ),
+            ];
+            for (paired_stem, relative_path) in paired {
+                if paired_stem != *stem {
+                    let paired_manifest = fs::read_to_string(
+                        repo_root()
+                            .join("modules")
+                            .join("core-modules")
+                            .join(relative_path),
+                    )
+                    .expect("read tree family pair");
+                    write_external_module(dir.path(), paired_stem, &paired_manifest);
+                }
+            }
+        }
         let registration = registrations
             .iter()
             .find(|registration| {

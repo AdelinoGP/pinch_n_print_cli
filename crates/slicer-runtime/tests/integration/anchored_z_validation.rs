@@ -1,0 +1,123 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use slicer_ir::{
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, GlobalLayer, MeshIR,
+    Point3, SliceIR,
+};
+use slicer_runtime::layer_executor::execute_per_layer_with_anchored_events;
+use slicer_runtime::{Blackboard, NoopLayerProgressSink};
+use slicer_scheduler::execution_plan::ExecutionPlan;
+
+fn plan() -> ExecutionPlan {
+    ExecutionPlan {
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+}
+
+fn entity(local_id: u64, path_points: Vec<Point3>) -> AnchoredEntity {
+    // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
+    AnchoredEntity {
+        local_id,
+        anchor_global_layer_index: 0,
+        geometry: AnchoredGeometryContract::Planar { z: 2_000 },
+        input_capabilities: Vec::new(),
+        output_capabilities: Vec::new(),
+        provenance: AnchoredEntityProvenance {
+            requesting_feature: "planar-z-test".to_string(),
+            source_plan_entry: "planar-z-test".to_string(),
+        },
+        path_points,
+    }
+}
+
+fn commit(
+    entities: &[AnchoredEntity],
+) -> Result<
+    Vec<slicer_ir::OrderedEventCollection>,
+    slicer_runtime::layer_executor::LayerExecutionError,
+> {
+    let plan = plan();
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    blackboard
+        .commit_slice_ir(Arc::new(vec![SliceIR {
+            global_layer_index: 0,
+            z: 0.2,
+            ..Default::default()
+        }]))
+        .expect("slice prepass output must be committed");
+    let (_layers, _audits, collections) = execute_per_layer_with_anchored_events(
+        &plan,
+        &blackboard,
+        &NoopLayerRunner,
+        &NoopLayerProgressSink,
+        &HashMap::new(),
+        entities,
+    )?;
+    Ok(collections)
+}
+
+pub fn anchored_z_validation() {
+    let collections = commit(&[entity(
+        1,
+        vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.20005,
+            },
+        ],
+    )])
+    .expect("planar path within coordinate tolerance must commit");
+    assert_eq!(collections.len(), 1);
+    assert_eq!(collections[0].events.len(), 1);
+}
+
+pub fn anchored_entity_planar_z_mismatch() {
+    let error = commit(&[
+        entity(
+            1,
+            vec![Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+            }],
+        ),
+        entity(
+            2,
+            vec![Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2020,
+            }],
+        ),
+    ])
+    .expect_err("planar path outside coordinate tolerance must be rejected");
+    assert!(error
+        .to_string()
+        .contains("anchored entity planar z mismatch"));
+}
+
+struct NoopLayerRunner;
+
+impl slicer_runtime::LayerStageRunner for NoopLayerRunner {
+    fn run_stage(
+        &self,
+        _stage_id: &slicer_ir::StageId,
+        _layer: &GlobalLayer,
+        _module: &slicer_runtime::CompiledModuleLive<'_>,
+        _input: slicer_runtime::LayerStageInput<'_>,
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+        Ok(None)
+    }
+}

@@ -48,6 +48,9 @@ pub type StageId = String;
 /// the factor has a single authoritative source.
 pub const UNITS_PER_MM: f64 = 10_000.0;
 
+/// Repository coordinate comparison tolerance (1e-3 mm) in canonical units.
+pub const COORDINATE_TOLERANCE_UNITS: i64 = 10;
+
 /// Convert millimeters to scaled integer units
 ///
 /// # Arguments
@@ -251,11 +254,11 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Bumped to 1.3.0 by packet 124 (additive
-/// `ExtrusionRole::RaftInfill` per ADR-0009).
+/// Schema version for `SupportPlanIR`. Bumped to 2.0.0 by packet 220
+/// (breaking structural support-family migration; branch extrusion paths removed).
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 3,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
@@ -264,6 +267,18 @@ pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
 pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
+    patch: 0,
+};
+
+/// Schema version for host-owned support analysis inputs. Bumped to 1.1.0 by
+/// F-19 (auto/manual support-type axis): the shape is unchanged, but the
+/// candidate-population semantics changed — under a *manual* `support_type`
+/// only enforcer-covered geometry yields candidates, and `enforced`/`blocked`
+/// are now derived from sliced modifier volumes instead of being hardcoded
+/// `false`.
+pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 1,
     patch: 0,
 };
 
@@ -278,8 +293,13 @@ pub const CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `RegionMapIR`. Bumped to 2.0.0 by packet 91 — breaking
 /// field changes: `RegionPlan.config` is now a `ConfigId` (interner index),
 /// `configs` Vec added to `RegionMapIR`, `RegionKey.variant_chain` added.
+///
+/// Bumped to 3.0.0 by F-19: `ResolvedConfig` is interned in
+/// `RegionMapIR.configs`, and `SupportType`'s serde representation changed
+/// breakingly to the canonical four-value `s_keys_map_SupportType` spellings —
+/// the old `Traditional` / `Tree` tokens no longer deserialize.
 pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 2,
+    major: 3,
     minor: 0,
     patch: 0,
 };
@@ -301,10 +321,10 @@ pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `SupportIR`. Bumped to 2.0.0 by packet 220: support
+/// output is now represented as attributed family/body/role entries.
 pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
+    major: 2,
     minor: 0,
     patch: 0,
 };
@@ -1028,6 +1048,134 @@ pub struct GlobalLayer {
     pub is_sync_layer: bool,
 }
 
+/// The declared Z extent of an anchored entity, in canonical 100 nm units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnchoredGeometryContract {
+    /// Geometry whose every point must lie on one plane.
+    Planar {
+        /// Declared plane height in canonical units.
+        z: i64,
+    },
+    /// One atomic entity whose points may span this inclusive Z range.
+    ZSpanning {
+        /// Inclusive lower height in canonical units.
+        min_z: i64,
+        /// Inclusive upper height in canonical units.
+        max_z: i64,
+    },
+}
+
+impl AnchoredGeometryContract {
+    /// Repository coordinate comparison tolerance in canonical units.
+    pub const COORDINATE_TOLERANCE_UNITS: i64 = COORDINATE_TOLERANCE_UNITS;
+
+    /// Returns whether a canonical Z coordinate satisfies this contract.
+    pub fn contains_z(&self, z: i64) -> bool {
+        match *self {
+            Self::Planar { z: plane } => z == plane,
+            Self::ZSpanning { min_z, max_z } => (min_z..=max_z).contains(&z),
+        }
+    }
+}
+
+/// Provenance retained when anchored work is moved between execution stages.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchoredEntityProvenance {
+    /// Feature that requested the entity.
+    pub requesting_feature: String,
+    /// Source plan entry that produced the entity.
+    pub source_plan_entry: String,
+}
+
+/// Printable work assigned to one global layer while retaining its own Z contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnchoredEntity {
+    /// Stable identifier unique within the anchor global layer.
+    pub local_id: u64,
+    /// Global layer index that owns execution ordering for this entity.
+    pub anchor_global_layer_index: u32,
+    /// Declared planar or atomic Z-spanning geometry.
+    pub geometry: AnchoredGeometryContract,
+    /// Capabilities available to the entity's producer.
+    pub input_capabilities: Vec<String>,
+    /// Capabilities requested from downstream execution.
+    pub output_capabilities: Vec<String>,
+    /// Origin of the entity.
+    pub provenance: AnchoredEntityProvenance,
+    /// The entity's committed output path in millimeters.
+    pub path_points: Vec<Point3>,
+}
+
+/// Capability closure used to derive stages without an event-kind table.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilityDerivedEventClosure {
+    /// Capabilities supplied by the producer.
+    pub input_capabilities: Vec<String>,
+    /// Capabilities requested by the producer.
+    pub output_capabilities: Vec<String>,
+    /// Deterministically ordered union of input and requested capabilities.
+    pub derived_capabilities: Vec<String>,
+}
+
+impl CapabilityDerivedEventClosure {
+    /// Derive the closure directly from declared capabilities.
+    pub fn derive(input: &[String], output: &[String]) -> Self {
+        let mut derived = input.iter().chain(output).cloned().collect::<Vec<_>>();
+        derived.sort();
+        derived.dedup();
+        Self {
+            input_capabilities: input.to_vec(),
+            output_capabilities: output.to_vec(),
+            derived_capabilities: derived,
+        }
+    }
+}
+
+/// Per-event accounting and optimization policies applied by the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AnchoredEventRuntimeHooks {
+    /// Run path optimization for this event.
+    pub optimize_paths: bool,
+    /// Include cooling accounting for this event.
+    pub account_cooling: bool,
+    /// Include execution-time accounting for this event.
+    pub account_time: bool,
+}
+
+impl Default for AnchoredEventRuntimeHooks {
+    fn default() -> Self {
+        Self {
+            optimize_paths: true,
+            account_cooling: true,
+            account_time: true,
+        }
+    }
+}
+
+/// Deterministically ordered anchored work returned by a global-layer worker.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderedEventCollection {
+    /// Anchor owning this collection's execution position.
+    pub anchor_global_layer_index: u32,
+    /// Ordered entities, retaining identity and provenance on every item.
+    pub events: Vec<AnchoredEntity>,
+    /// Runtime policies applied to each event in order.
+    pub runtime_hooks: AnchoredEventRuntimeHooks,
+}
+
+impl OrderedEventCollection {
+    /// Sort events by physical Z and then stable local identity.
+    pub fn sort_deterministically(&mut self) {
+        self.events.sort_by_key(|event| {
+            let z = match event.geometry {
+                AnchoredGeometryContract::Planar { z } => z,
+                AnchoredGeometryContract::ZSpanning { min_z, .. } => min_z,
+            };
+            (z, event.local_id)
+        });
+    }
+}
+
 /// Object layer reference
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObjectLayerRef {
@@ -1144,13 +1292,56 @@ impl Default for SeamPlanIR {
 // Support Plan IR Types
 // ============================================================================
 
-/// One entry in the global support plan.
+/// Semantic role of a polygon carried by a structural support plan entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SupportPlanRole {
+    /// Printable support body geometry.
+    SupportBody,
+    /// Geometry supporting the top interface.
+    TopInterface,
+    /// Geometry supporting the bottom interface.
+    BottomInterface,
+    /// Geometry associated with raft generation.
+    RaftRelated,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Support polygons grouped by semantic role.
+pub struct SupportPlanRoleRegion {
+    /// Semantic role assigned to the polygons.
+    pub role: SupportPlanRole,
+    /// Analysis polygons for this role.
+    pub regions: Vec<ExPolygon>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Optional structural skeleton for a support plan.
+pub struct SupportPlanSkeleton {
+    /// Structural skeleton points in model coordinates.
+    pub points: Vec<Point3>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Why a support plan candidate was declined.
+pub enum SupportPlanDeclineReason {
+    /// Declined by configured policy.
+    DeclinedPolicy,
+    /// No valid route exists.
+    NoRoute,
+    /// Candidate was blocked by geometry.
+    Blocked,
+    /// The requested mode is unavailable.
+    UnsupportedMode,
+}
+
+/// One structural entry in the global support plan.
 ///
 /// Produced once per `(global_layer_index, object_id, region_id)` triple
 /// by `PrePass::SupportGeometry` and stored immutably on the blackboard.
-/// Consumed at dispatch time by `Layer::Support` modules (notably
-/// `tree-support`) that emit pre-planned organic branch geometry instead
-/// of running a per-layer filler.
+/// Carries strategy-neutral role-attributed analysis geometry plus an
+/// optional structural skeleton that downstream support families consume
+/// to emit their own printable output. The plan is universal across support
+/// families and carries no family-specific branch geometry.
 ///
 /// `global_layer_index` uses a signed integer to support raft prefix layers:
 /// raft entries carry negative indices (`-1, -2, ..., -raft_layers`) so raft
@@ -1165,10 +1356,26 @@ pub struct SupportPlanEntry {
     pub object_id: ObjectId,
     /// Region inside the object the branches belong to.
     pub region_id: RegionId,
-    /// Planned branch geometry for this `(layer, object, region)` triple.
-    /// Each `ExtrusionPath3D` is typically a two-point segment (a single
-    /// MST edge) but may be multi-point for long merged branches.
-    pub branch_segments: Vec<ExtrusionPath3D>,
+    /// Support family that produced the entry.
+    pub family_id: String,
+    /// Planner demand identities represented by this entry.
+    pub demand_ids: Vec<String>,
+    /// Physical support body identities represented by this entry.
+    pub body_ids: Vec<String>,
+    /// Layer on which the support is anchored.
+    pub anchor_layer_index: u32,
+    /// Anchor height in canonical units.
+    pub anchor_z: i64,
+    /// Role-attributed analysis polygons.
+    pub roles: Vec<SupportPlanRoleRegion>,
+    /// Optional structural skeleton.
+    pub skeleton: Option<SupportPlanSkeleton>,
+    /// Capabilities required by the downstream renderer.
+    pub capabilities: Vec<String>,
+    /// Producer provenance labels.
+    pub provenance: Vec<String>,
+    /// Structured reason when this candidate was declined.
+    pub decline_reason: Option<SupportPlanDeclineReason>,
 }
 
 /// Configuration-only raft plan emitted during support planning.
@@ -1190,19 +1397,18 @@ pub struct RaftPlan {
 /// Support plan IR — committed once to the blackboard by
 /// `PrePass::SupportGeometry`.
 ///
-/// Carries per-layer organic branch geometry produced by a simplified
-/// OrcaSlicer-style top-down propagation (see the `support-planner`
-/// core module). The per-layer `Layer::Support` tree-support module
-/// consumes the plan when it is committed and emits branch segments
-/// directly; modules whose algorithm is inherently per-layer (e.g.
-/// `traditional-support`) do not read this IR.
+/// Carries strategy-neutral structural geometry — role-attributed analysis
+/// polygons plus an optional structural skeleton — shared universally across
+/// support families. Downstream `Layer::Support` families consume this plan
+/// and derive their own printable output from it. The plan itself no longer
+/// carries family-specific branch extrusion geometry (removed in packet 220).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanIR {
     /// Schema version of this IR.
     pub schema_version: SemVer,
     /// One entry per active `(layer, object, region)` triple that received
-    /// planned branches. Multiple entries may share `(layer, object)` when
-    /// a single object has multiple regions on the same layer.
+    /// planned structural support. Multiple entries may share `(layer, object)`
+    /// when a single object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
     /// Optional raft configuration. Geometry is emitted by a later packet.
     #[serde(default)]
@@ -1216,6 +1422,28 @@ impl Default for SupportPlanIR {
             entries: Vec::new(),
             raft_plan: None,
         }
+    }
+}
+
+impl SupportPlanIR {
+    /// Returns the first duplicate support region identity, preserving entry
+    /// order. `family_id` is producer provenance and is intentionally not part
+    /// of the identity used at the blackboard merge seam.
+    pub fn duplicate_region_identity(&self) -> Option<(i32, ObjectId, RegionId)> {
+        use std::collections::HashSet;
+
+        let mut seen = HashSet::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            let identity = (
+                entry.global_layer_index,
+                entry.object_id.clone(),
+                entry.region_id,
+            );
+            if !seen.insert(identity.clone()) {
+                return Some(identity);
+            }
+        }
+        None
     }
 }
 
@@ -1257,6 +1485,67 @@ impl Default for SupportGeometryIR {
             support_layer_height_mm: 0.0,
             support_top_z_distance_mm: 0.0,
             entries: HashMap::new(),
+        }
+    }
+}
+
+/// Evidence identifying the geometry from which a conservative candidate came.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportCandidateSource {
+    /// Object from which the candidate originated.
+    pub object_id: ObjectId,
+    /// Region from which the candidate originated.
+    pub region_id: RegionId,
+    /// Global layer containing the candidate.
+    pub global_layer_index: u32,
+    /// Exact source height in canonical units.
+    pub z_units: i64,
+}
+
+/// A strategy-neutral surface that a support family may accept or decline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportCandidate {
+    /// Stable candidate identifier.
+    pub id: u64,
+    /// Candidate analysis geometry.
+    pub geometry: Vec<ExPolygon>,
+    /// Source identity and height.
+    pub source: SupportCandidateSource,
+    /// Whether policy requires retaining this candidate.
+    pub enforced: bool,
+    /// Whether the candidate is blocked by geometry.
+    pub blocked: bool,
+}
+
+/// Host-owned support inputs shared by all support family planners.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// Strategy-neutral candidates shared by support families.
+    pub candidates: Vec<SupportCandidate>,
+    /// Model occupancy keyed by support geometry identity.
+    pub model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Termination surfaces keyed by support geometry identity.
+    pub termination_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Shared family-neutral settings.
+    pub shared_settings: BTreeMap<String, String>,
+    /// Conservative feasible envelope shared by planners.
+    pub baseline_feasible_envelope: Vec<ExPolygon>,
+    /// Per-object/per-region family assignments.
+    pub family_assignments: BTreeMap<(ObjectId, RegionId), String>,
+}
+
+impl Default for SupportAnalysisIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
+            candidates: Vec::new(),
+            model_occupancy: HashMap::new(),
+            termination_surfaces: HashMap::new(),
+            shared_settings: BTreeMap::new(),
+            baseline_feasible_envelope: Vec::new(),
+            family_assignments: BTreeMap::new(),
         }
     }
 }
@@ -1592,14 +1881,135 @@ pub enum InfillType {
     Concentric,
 }
 
-/// Support type
+/// Support type: the canonical two-axis `support_type` setting.
+///
+/// Mirrors OrcaSlicer's `s_keys_map_SupportType` (`PrintConfig.cpp`), which has
+/// **four** values, not two: the *family* axis (normal / tree) is crossed with
+/// the *placement* axis (auto / manual). The two axes are modelled as one enum
+/// rather than an enum plus a bool because they are one config key: the pair
+/// can never disagree, and [`SupportType::as_canonical_str`] round-trips the
+/// exact canonical spellings through [`ResolvedConfig::to_config_map`]
+/// (`crate::ResolvedConfig`).
+///
+/// Under a *manual* value canonical generates support **only** where a support
+/// enforcer covers the geometry — `detect_overhangs` (`SupportMaterial.cpp`)
+/// gates its angle-thresholded branch on
+/// `auto_normal_support = support_type == stNormalAuto`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SupportType {
-    /// Traditional support generation
+    /// Canonical `stNormalAuto` (`normal(auto)`): traditional family,
+    /// auto-detected overhangs plus enforcers.
     #[default]
-    Traditional,
-    /// Tree support generation
-    Tree,
+    #[serde(rename = "normal(auto)")]
+    NormalAuto,
+    /// Canonical `stTreeAuto` (`tree(auto)`): tree family, auto-detected
+    /// overhangs plus enforcers.
+    #[serde(rename = "tree(auto)")]
+    TreeAuto,
+    /// Canonical `stNormal` (`normal(manual)`): traditional family, support
+    /// enforcers only.
+    #[serde(rename = "normal(manual)")]
+    NormalManual,
+    /// Canonical `stTree` (`tree(manual)`): tree family, support enforcers
+    /// only.
+    #[serde(rename = "tree(manual)")]
+    TreeManual,
+}
+
+impl SupportType {
+    /// True for the *auto* half of the placement axis, mirroring canonical's
+    /// free function `is_auto(SupportType)` (`PrintConfig.hpp`).
+    ///
+    /// When this is false the support producer must not emit angle-thresholded
+    /// candidates at all: only enforcer-covered geometry gets support.
+    #[must_use]
+    pub const fn is_auto(self) -> bool {
+        matches!(self, SupportType::NormalAuto | SupportType::TreeAuto)
+    }
+
+    /// True for the *tree* half of the family axis, mirroring canonical's free
+    /// function `is_tree(SupportType)` (`PrintConfig.hpp`).
+    #[must_use]
+    pub const fn is_tree(self) -> bool {
+        matches!(self, SupportType::TreeAuto | SupportType::TreeManual)
+    }
+
+    /// The exact canonical `support_type` spelling for this value, as accepted
+    /// by [`canonical_support_family`] and by OrcaSlicer's config parser.
+    #[must_use]
+    pub const fn as_canonical_str(self) -> &'static str {
+        match self {
+            SupportType::NormalAuto => "normal(auto)",
+            SupportType::TreeAuto => "tree(auto)",
+            SupportType::NormalManual => "normal(manual)",
+            SupportType::TreeManual => "tree(manual)",
+        }
+    }
+
+    /// The support-**family** claim this typed value contributes to
+    /// [`canonical_support_family`], or `None` when it carries none.
+    ///
+    /// [`SupportType::NormalAuto`] is the `Default`, so a config that never
+    /// touched `support_type` is indistinguishable from one that set it to
+    /// `normal(auto)`. Treating the default as *no claim* is what lets an
+    /// explicit `support_family` extension still select the tree family on an
+    /// otherwise-default config — the behaviour the scheduler has always had,
+    /// back when this axis was the two-variant `Traditional` / `Tree` enum and
+    /// `Traditional` mapped to `None`.
+    ///
+    /// This is the family axis only; the auto/manual axis is read separately
+    /// via [`SupportType::is_auto`] and is deliberately invisible to family
+    /// selection (`canonical_support_family` prefix-matches `tree*`/`normal*`).
+    #[must_use]
+    pub const fn family_claim(self) -> Option<&'static str> {
+        match self {
+            SupportType::NormalAuto => None,
+            other => Some(other.as_canonical_str()),
+        }
+    }
+
+    /// Parse a canonical `support_type` spelling. Returns `None` for anything
+    /// outside `s_keys_map_SupportType`, leaving the fallback policy to the
+    /// caller (canonical config parsing rejects unknown values outright).
+    #[must_use]
+    pub fn from_canonical_str(value: &str) -> Option<Self> {
+        match value {
+            "normal(auto)" => Some(SupportType::NormalAuto),
+            "tree(auto)" => Some(SupportType::TreeAuto),
+            "normal(manual)" => Some(SupportType::NormalManual),
+            "tree(manual)" => Some(SupportType::TreeManual),
+            _ => None,
+        }
+    }
+}
+
+/// Canonical support-family identifier for the tree family.
+pub const SUPPORT_FAMILY_TREE: &str = "tree";
+/// Canonical support-family identifier for the traditional family.
+pub const SUPPORT_FAMILY_TRADITIONAL: &str = "traditional";
+
+/// Map a raw support-family or `support_type` value onto the canonical family
+/// vocabulary shared by the host scheduler, both family planners, and both
+/// family renderers.
+///
+/// This is the single source of truth for the alias table. It lives in
+/// `slicer-ir` because that crate is a dependency of both the host scheduler
+/// and every guest module — the same table was previously copy-pasted into
+/// `slicer-scheduler` and both planner crates, where the three copies were
+/// free to drift.
+///
+/// Accepted spellings follow OrcaSlicer's `support_type`: `tree(auto)` /
+/// `tree(manual)` and the legacy `hybrid(auto)` select the tree family;
+/// `normal(auto)` / `normal(manual)` and `classic*` select the traditional
+/// family. `None` and every unrecognised value fall back to traditional, which
+/// is also the historical default.
+pub fn canonical_support_family(value: Option<&str>) -> &'static str {
+    match value {
+        Some(value) if value.starts_with("tree") || value.starts_with("hybrid") => {
+            SUPPORT_FAMILY_TREE
+        }
+        _ => SUPPORT_FAMILY_TRADITIONAL,
+    }
 }
 
 /// A segment of a material boundary transition on a wall polygon.
@@ -2195,21 +2605,39 @@ impl Default for InfillIR {
 // Support IR Types
 // ============================================================================
 
-/// Support region
+/// Role of printable support geometry.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SupportRole {
+    /// Printable support body.
+    #[default]
+    SupportBody,
+    /// Printable top interface.
+    TopInterface,
+    /// Printable bottom interface.
+    BottomInterface,
+    /// Raft geometry.
+    Raft,
+    /// Ironing geometry.
+    Ironing,
+}
+
+/// Attributed printable support output for one family/body/role.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SupportRegion {
-    /// Object ID this region belongs to
+pub struct SupportEntry {
+    /// Support family that produced the paths.
+    pub family_id: String,
+    /// Physical body identity.
+    pub body_id: String,
+    /// Planner demand identities represented by the body.
+    pub demand_ids: Vec<String>,
+    /// Object owning the support.
     pub object_id: ObjectId,
-    /// Region ID
+    /// Region owning the support.
     pub region_id: RegionId,
-    /// Support paths
-    pub support_paths: Vec<ExtrusionPath3D>,
-    /// Interface paths
-    pub interface_paths: Vec<ExtrusionPath3D>,
-    /// Raft paths
-    pub raft_paths: Vec<ExtrusionPath3D>,
-    /// Ironing paths
-    pub ironing_paths: Vec<ExtrusionPath3D>,
+    /// Printable role of the paths.
+    pub role: SupportRole,
+    /// Printable extrusion paths.
+    pub paths: Vec<ExtrusionPath3D>,
 }
 
 /// Support IR
@@ -2219,8 +2647,8 @@ pub struct SupportIR {
     pub schema_version: SemVer,
     /// Global layer index
     pub global_layer_index: u32,
-    /// Support regions in this layer
-    pub regions: Vec<SupportRegion>,
+    /// Attributed support entries in this layer.
+    pub entries: Vec<SupportEntry>,
 }
 
 impl Default for SupportIR {
@@ -2228,7 +2656,7 @@ impl Default for SupportIR {
         Self {
             schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: 0,
-            regions: Vec::new(),
+            entries: Vec::new(),
         }
     }
 }
@@ -2316,6 +2744,23 @@ pub struct PrintEntity {
     pub tool_index: u32,
 }
 
+/// Support attribution for one assembled print entity.
+///
+/// This is kept in a `LayerCollectionIR` side table keyed by `entity_id` so
+/// non-support entities remain attribution-free while path ordering can move
+/// support entities without losing their family/body/demand provenance.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupportEntityIdentity {
+    /// Stable identifier of the support `PrintEntity` this attribution belongs to.
+    pub entity_id: u64,
+    /// Support family that produced the entity.
+    pub family_id: String,
+    /// Physical support body represented by the entity.
+    pub body_id: String,
+    /// Planner demand identities represented by the body.
+    pub demand_ids: Vec<String>,
+}
+
 /// Kind of a guest-emitted layer annotation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayerAnnotationKind {
@@ -2365,6 +2810,10 @@ pub struct LayerCollectionIR {
     pub z: f32,
     /// Ordered, ready-to-emit extrusion entities
     pub ordered_entities: Vec<PrintEntity>,
+    /// Support-family attribution for support entities, keyed by
+    /// `PrintEntity.entity_id`. Non-support entities have no row here.
+    #[serde(default)]
+    pub support_entity_identities: Vec<SupportEntityIdentity>,
     /// Tool changes in this layer
     pub tool_changes: Vec<ToolChange>,
     /// Z hops in this layer
@@ -2389,6 +2838,7 @@ impl Default for LayerCollectionIR {
             global_layer_index: 0,
             z: 0.0,
             ordered_entities: Vec::new(),
+            support_entity_identities: Vec::new(),
             tool_changes: Vec::new(),
             z_hops: Vec::new(),
             annotations: Vec::new(),

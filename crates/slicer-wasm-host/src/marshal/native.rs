@@ -16,7 +16,7 @@ use slicer_sdk::native::{
 };
 use slicer_sdk::postpass_types::GcodeOutputCommand;
 use slicer_sdk::prepass_types::{
-    LayerPlanView, MeshObjectView, RegionSegmentationView, SupportGeometryView,
+    LayerPlanView, MeshObjectView, RegionSegmentationView, SupportAnalysisView, SupportGeometryView,
 };
 use slicer_sdk::traits::LayerCollectionView;
 use slicer_sdk::traits::PaintRegionLayerView;
@@ -27,9 +27,10 @@ use crate::binding::{
     PrepassStageInput,
 };
 use crate::marshal::{
-    convert_infill_output, convert_perimeter_output, convert_support_output, ir_to_wit_expolygons,
-    ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop, GcodeCommandCollected,
-    InfillOutputCollected, OriginId, PerimeterOutputCollected, SupportOutputCollected,
+    convert_infill_output, convert_perimeter_output, convert_support_output_with_plan,
+    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop,
+    GcodeCommandCollected, InfillOutputCollected, OriginId, PerimeterOutputCollected,
+    SupportOutputCollected,
 };
 
 fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId> {
@@ -169,6 +170,34 @@ pub fn build_native_layer_request(
     if let Some(ir) = input.lightning_tree_ir.as_ref() {
         paint = paint.with_lightning_tree_ir(std::sync::Arc::clone(ir));
     }
+    // Mirror the wasm leg's paint-view construction. `dispatch_layer_call`
+    // indexes the committed `SupportPlanIR` into `PaintRegionLayerData` via
+    // `build_paint_layer_data_with_plan` for exactly two stages (`Layer::Infill`
+    // and `Layer::Support`); the guest shim then rebuilds an SDK
+    // `PaintRegionLayerView` with `with_support_plan`. Until this call the
+    // native leg handed the module a plan-less view, so any renderer that keys
+    // off `support_plan_entries_for` (traditional-support and
+    // tree-support-family, since packet 222 removed their plan-less fallback)
+    // emitted nothing and `commit_native_layer_response` returned `Ok(None)`.
+    if matches!(stage_export, "Layer::Infill" | "Layer::Support") {
+        paint = paint.with_support_plan(
+            input
+                .support_plan
+                .as_ref()
+                .map(std::sync::Arc::clone)
+                .unwrap_or_default(),
+        );
+    }
+    // `build_layer_support_glue` (crates/slicer-macros) attaches a SliceIR
+    // rebuilt from the region views on the support stage only, so that
+    // `paint_policy_for` can surface enforcer/blocker annotations. Same scope
+    // here: attaching it unconditionally would give native stages a view the
+    // wasm leg does not have.
+    if stage_export == "Layer::Support" {
+        if let Some(slice) = input.slice {
+            paint = paint.with_slice_ir(std::sync::Arc::new(slice.clone()));
+        }
+    }
 
     NativeLayerRequest {
         layer_index,
@@ -279,6 +308,24 @@ pub fn build_native_prepass_request(
                     }
                 })
                 .collect(),
+            region_support_configs: map
+                .entries
+                .iter()
+                .map(|(key, plan)| {
+                    let config = map.config_for_raw(plan.config).to_config_map();
+                    let string_value = |name: &str| match config.get(name) {
+                        Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
+                        _ => None,
+                    };
+                    slicer_sdk::prepass_types::RegionSupportConfig {
+                        object_id: key.object_id.clone(),
+                        layer_index: key.global_layer_index,
+                        region_id: key.region_id.to_string(),
+                        support_family: string_value("support_family"),
+                        support_type: string_value("support_type"),
+                    }
+                })
+                .collect(),
         }
     });
     let support_geometry = input
@@ -298,6 +345,78 @@ pub fn build_native_prepass_request(
                 )
                 .collect(),
         });
+    let support_analysis = input.support_analysis.as_deref().map(|analysis| {
+        let mut candidates: Vec<_> = analysis
+            .candidates
+            .iter()
+            .map(
+                |candidate| slicer_sdk::prepass_types::SupportAnalysisCandidate {
+                    id: candidate.id,
+                    geometry: candidate.geometry.clone(),
+                    object_id: candidate.source.object_id.clone(),
+                    region_id: candidate.source.region_id.to_string(),
+                    global_layer_index: candidate.source.global_layer_index,
+                    z_units: candidate.source.z_units,
+                    enforced: candidate.enforced,
+                    blocked: candidate.blocked,
+                },
+            )
+            .collect();
+        candidates.sort_by_key(|candidate| {
+            (
+                candidate.global_layer_index,
+                candidate.object_id.clone(),
+                candidate.region_id.clone(),
+                candidate.id,
+            )
+        });
+        let project_geometry = |entries: &std::collections::HashMap<
+            slicer_ir::SupportGeometryKey,
+            Vec<slicer_ir::ExPolygon>,
+        >| {
+            let mut entries: Vec<_> = entries
+                .iter()
+                .map(
+                    |(key, polygons)| slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                        global_support_layer_index: key.global_support_layer_index,
+                        object_id: key.object_id.clone(),
+                        region_id: key.region_id.to_string(),
+                        polygons: polygons.clone(),
+                    },
+                )
+                .collect();
+            entries.sort_by_key(|entry| {
+                (
+                    entry.global_support_layer_index,
+                    entry.object_id.clone(),
+                    entry.region_id.clone(),
+                )
+            });
+            entries
+        };
+        SupportAnalysisView {
+            candidates,
+            model_occupancy: project_geometry(&analysis.model_occupancy),
+            termination_surfaces: project_geometry(&analysis.termination_surfaces),
+            shared_settings: analysis
+                .shared_settings
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            baseline_feasible_envelope: analysis.baseline_feasible_envelope.clone(),
+            family_assignments: analysis
+                .family_assignments
+                .iter()
+                .map(|((object_id, region_id), family_id)| {
+                    slicer_sdk::prepass_types::SupportFamilyAssignment {
+                        object_id: object_id.clone(),
+                        region_id: region_id.to_string(),
+                        family_id: family_id.clone(),
+                    }
+                })
+                .collect(),
+        }
+    });
     let seam_regions =
         input
             .slice_ir
@@ -340,6 +459,7 @@ pub fn build_native_prepass_request(
         ),
         layer_plan,
         region_segmentation,
+        support_analysis,
         support_geometry,
         // Unlike the mesh-analysis view, paint segmentation needs the richer
         // object view: facet paint, identity transform, and layer participation.
@@ -354,6 +474,19 @@ pub fn build_native_prepass_request(
 pub fn commit_native_prepass_response(
     response: &NativePrepassResponse,
     stage_export: &str,
+) -> Result<slicer_core::PrepassStageOutput, String> {
+    commit_native_prepass_response_with_inputs(response, stage_export, None, None, None)
+}
+
+/// Commit a native prepass response while retaining the per-region config from
+/// the already committed plan or region map. Native layer proposals do not
+/// carry this host-only field themselves.
+pub fn commit_native_prepass_response_with_inputs(
+    response: &NativePrepassResponse,
+    stage_export: &str,
+    input_layer_plan: Option<&slicer_ir::LayerPlanIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    module_config: Option<&slicer_ir::ConfigView>,
 ) -> Result<slicer_core::PrepassStageOutput, String> {
     use std::sync::Arc;
     match stage_export {
@@ -374,12 +507,45 @@ pub fn commit_native_prepass_response(
                     .active_regions
                     .iter()
                     .map(|region| {
+                        let region_id = region
+                            .region_id
+                            .parse()
+                            .map_err(|e| format!("invalid region id: {e}"))?;
+                        let resolved_config = input_layer_plan
+                            .and_then(|plan| plan.global_layers.get(index))
+                            .and_then(|layer| {
+                                layer.active_regions.iter().find(|candidate| {
+                                    candidate.object_id == region.object_id
+                                        && candidate.region_id == region_id
+                                })
+                            })
+                            .map(|candidate| candidate.resolved_config.clone())
+                            .or_else(|| {
+                                region_map.and_then(|map| {
+                                    map.entries.iter().find_map(|(key, _)| {
+                                        (key.global_layer_index == index as u32
+                                            && key.object_id == region.object_id
+                                            && key.region_id == region_id)
+                                            .then(|| map.config_for(key).clone())
+                                    })
+                                })
+                            })
+                            .unwrap_or_else(|| {
+                                let mut config = slicer_ir::ResolvedConfig::default();
+                                if let Some(slicer_ir::ConfigValue::String(value)) =
+                                    module_config.and_then(|view| view.get("support_type"))
+                                {
+                                    config.extensions.insert(
+                                        "support_type".to_string(),
+                                        slicer_ir::ConfigValue::String(value.clone()),
+                                    );
+                                }
+                                config
+                            });
                         Ok(slicer_ir::ActiveRegion {
                             object_id: region.object_id.clone(),
-                            region_id: region
-                                .region_id
-                                .parse()
-                                .map_err(|e| format!("invalid region id: {e}"))?,
+                            region_id,
+                            resolved_config,
                             effective_layer_height: region.effective_layer_height,
                             is_catchup_layer: region.is_catchup,
                             catchup_z_bottom: region.catchup_z_bottom,
@@ -482,16 +648,16 @@ pub fn commit_native_prepass_response(
                                 region_id: entry.region_id.parse().map_err(|e| {
                                     format!("invalid support region id '{}': {e}", entry.region_id)
                                 })?,
-                                branch_segments: entry
-                                    .branch_segments
-                                    .iter()
-                                    .map(|segment| slicer_ir::ExtrusionPath3D {
-                                        points: segment.clone(),
-                                        role: slicer_ir::ExtrusionRole::SupportMaterial,
-                                        speed_factor: 1.0,
-                                        tool_index: None,
-                                    })
-                                    .collect(),
+                                family_id: entry.family_id.clone(),
+                                demand_ids: entry.demand_ids.clone(),
+                                body_ids: entry.body_ids.clone(),
+                                anchor_layer_index: entry.anchor_layer_index,
+                                anchor_z: entry.anchor_z,
+                                roles: entry.roles.clone(),
+                                skeleton: entry.skeleton.clone(),
+                                capabilities: entry.capabilities.clone(),
+                                provenance: entry.provenance.clone(),
+                                decline_reason: entry.decline_reason,
                             })
                         })
                         .collect::<Result<Vec<_>, String>>()?,
@@ -830,10 +996,19 @@ fn collect_support(builder: &SupportOutputBuilder) -> SupportOutputCollected {
 }
 
 /// Commit a native layer response through the existing output converters.
+///
+/// `support_plan` is the committed `SupportPlanIR` for this slice, threaded in
+/// from `dispatch_layer_call`'s `input.support_plan`. It exists so the native
+/// path consumes the **same** plan the wasm path does: `deconstruct_layer_ctx`
+/// forwards it to `convert_support_output_with_plan`, and until packet 224 the
+/// native branch passed `None` there, silently discarding plan-derived
+/// identity (family_id / body_id / demand_ids / object_id) on every
+/// native-dispatched support stage.
 pub fn commit_native_layer_response(
     response: &NativeLayerResponse,
     stage_export: &str,
     layer_index: u32,
+    support_plan: Option<&slicer_ir::SupportPlanIR>,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, String> {
     use slicer_ir::LayerStageCommit;
     match stage_export {
@@ -868,7 +1043,7 @@ pub fn commit_native_layer_response(
             {
                 return Ok(None);
             }
-            let ir = convert_support_output(&collected, layer_index)?;
+            let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
             Ok(Some(if stage_export.ends_with("PostProcess") {
                 LayerStageCommit::SupportPostProcess(ir)
             } else {

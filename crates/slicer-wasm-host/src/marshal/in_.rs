@@ -228,7 +228,33 @@ pub fn project_region_segmentation_view(
             .cmp(&b.layer_index)
             .then_with(|| a.object_id.cmp(&b.object_id))
     });
-    host::prepass::RegionSegmentationView { entries }
+    let mut region_support_configs = Vec::new();
+    for key in region_map_ir.entries.keys() {
+        let config = region_map_ir.config_for(key).to_config_map();
+        let string_value = |name: &str| match config.get(name) {
+            Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
+            _ => None,
+        };
+        region_support_configs.push(
+            crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::RegionSupportConfig {
+            object_id: key.object_id.clone(),
+            layer_index: key.global_layer_index,
+            region_id: key.region_id.to_string(),
+            support_family: string_value("support_family"),
+            support_type: string_value("support_type"),
+            },
+        );
+    }
+    region_support_configs.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then_with(|| a.object_id.cmp(&b.object_id))
+            .then_with(|| a.region_id.cmp(&b.region_id))
+    });
+    host::prepass::RegionSegmentationView {
+        entries,
+        region_support_configs,
+    }
 }
 
 /// Project `SupportGeometryIR` into a deterministic WIT `SupportGeometryView`.
@@ -267,6 +293,76 @@ pub fn project_support_geometry_view(
     });
     host::prepass::SupportGeometryView {
         entries: sorted_entries,
+    }
+}
+
+/// Project host-owned support analysis into the planner's strategy-neutral view.
+pub fn project_support_analysis_view(
+    analysis: &slicer_ir::SupportAnalysisIR,
+) -> host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView{
+    use crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types as types;
+
+    let mut candidates: Vec<_> = analysis
+        .candidates
+        .iter()
+        .map(|candidate| types::SupportAnalysisCandidate {
+            id: candidate.id,
+            geometry: ir_to_wit_expolygons(&candidate.geometry),
+            object_id: candidate.source.object_id.clone(),
+            region_id: candidate.source.region_id.to_string(),
+            global_layer_index: candidate.source.global_layer_index,
+            z_units: candidate.source.z_units,
+            enforced: candidate.enforced,
+            blocked: candidate.blocked,
+        })
+        .collect();
+    candidates.sort_by(|left, right| {
+        left.global_layer_index
+            .cmp(&right.global_layer_index)
+            .then_with(|| left.object_id.cmp(&right.object_id))
+            .then_with(|| left.region_id.cmp(&right.region_id))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let project_geometry = |entries: &std::collections::HashMap<
+        slicer_ir::SupportGeometryKey,
+        Vec<slicer_ir::ExPolygon>,
+    >| {
+        let mut projected: Vec<_> = entries
+            .iter()
+            .map(|(key, polygons)| types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: key.global_support_layer_index,
+                object_id: key.object_id.clone(),
+                region_id: key.region_id.to_string(),
+                polygons: ir_to_wit_expolygons(polygons),
+            })
+            .collect();
+        projected.sort_by(|left, right| {
+            left.global_support_layer_index
+                .cmp(&right.global_support_layer_index)
+                .then_with(|| left.object_id.cmp(&right.object_id))
+                .then_with(|| left.region_id.cmp(&right.region_id))
+        });
+        projected
+    };
+    host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
+        candidates,
+        model_occupancy: project_geometry(&analysis.model_occupancy),
+        termination_surfaces: project_geometry(&analysis.termination_surfaces),
+        shared_settings: analysis
+            .shared_settings
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        baseline_feasible_envelope: ir_to_wit_expolygons(&analysis.baseline_feasible_envelope),
+        family_assignments: analysis
+            .family_assignments
+            .iter()
+            .map(|((object_id, region_id), family_id)| types::SupportFamilyAssignment {
+                object_id: object_id.clone(),
+                region_id: region_id.to_string(),
+                family_id: family_id.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -595,6 +691,72 @@ pub(crate) fn harvest_layer_plan_ir_from(
     })
 }
 
+/// Restore host-only per-region configuration after a WASM layer-plan harvest.
+pub(crate) fn restore_layer_plan_configs(
+    plan: &mut slicer_ir::LayerPlanIR,
+    input_layer_plan: Option<&slicer_ir::LayerPlanIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    module_config: Option<&slicer_ir::ConfigView>,
+) {
+    for layer in &mut plan.global_layers {
+        for region in &mut layer.active_regions {
+            let resolved_config = region_map
+                .and_then(|map| {
+                    map.entries.iter().find_map(|(key, _)| {
+                        (key.object_id == region.object_id && key.region_id == region.region_id)
+                            .then(|| map.config_for(key).clone())
+                    })
+                })
+                .or_else(|| {
+                    input_layer_plan.and_then(|input| {
+                        input.global_layers.iter().find_map(|input_layer| {
+                            input_layer.active_regions.iter().find_map(|candidate| {
+                                (candidate.object_id == region.object_id
+                                    && candidate.region_id == region.region_id)
+                                    .then(|| candidate.resolved_config.clone())
+                            })
+                        })
+                    })
+                })
+                .or_else(|| {
+                    input_layer_plan.and_then(|input| {
+                        input.global_layers.iter().find_map(|input_layer| {
+                            input_layer
+                                .active_regions
+                                .iter()
+                                .find(|candidate| candidate.region_id == region.region_id)
+                                .map(|candidate| candidate.resolved_config.clone())
+                        })
+                    })
+                })
+                .or_else(|| {
+                    region_map.and_then(|map| {
+                        map.entries.iter().find_map(|(key, _)| {
+                            (key.region_id == region.region_id).then(|| map.config_for(key).clone())
+                        })
+                    })
+                })
+                .or_else(|| {
+                    let mut config = slicer_ir::ResolvedConfig::default();
+                    if let Some(value) = module_config.and_then(|view| view.get("support_type")) {
+                        config
+                            .extensions
+                            .insert("support_type".to_string(), value.clone());
+                    }
+                    if let Some(value) = module_config.and_then(|view| view.get("support_family")) {
+                        config
+                            .extensions
+                            .insert("support_family".to_string(), value.clone());
+                    }
+                    (!config.extensions.is_empty()).then_some(config)
+                });
+            if let Some(resolved_config) = resolved_config {
+                region.resolved_config = resolved_config;
+            }
+        }
+    }
+}
+
 #[allow(unreachable_patterns)]
 fn convert_variant_chain(
     wit: &[(String, host::prepass::PaintValue)],
@@ -714,7 +876,8 @@ pub(crate) fn harvest_support_plan_ir_from(
     raft_plan: Option<host::prepass::RaftPlan>,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
     use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RaftPlan, SupportPlanEntry, SupportPlanIR,
+        RaftPlan, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+        SupportPlanRoleRegion, SupportPlanSkeleton,
     };
 
     let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
@@ -727,35 +890,59 @@ pub(crate) fn harvest_support_plan_ir_from(
             )
         })?;
 
-        let mut branch_segments: Vec<ExtrusionPath3D> =
-            Vec::with_capacity(entry.branch_segments.len());
-        for segment in entry.branch_segments.into_iter() {
-            let points: Vec<Point3WithWidth> = segment
-                .into_iter()
-                .map(|p| Point3WithWidth {
-                    x: p.x,
-                    y: p.y,
-                    z: p.z,
-                    width: p.width,
-                    flow_factor: p.flow_factor,
-                    overhang_quartile: p.overhang_quartile,
-                    dist_to_top_mm: p.dist_to_top_mm,
-                    overhang_distance_mm: p.overhang_distance_mm,
-                })
-                .collect();
-            branch_segments.push(ExtrusionPath3D {
-                points,
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
-                tool_index: None,
-            });
-        }
-
         entries.push(SupportPlanEntry {
             global_layer_index: entry.global_layer_index,
             object_id: entry.object_id,
             region_id,
-            branch_segments,
+            family_id: entry.family_id,
+            demand_ids: entry.demand_ids,
+            body_ids: entry.body_ids,
+            anchor_layer_index: entry.anchor_layer_index,
+            anchor_z: entry.anchor_z,
+            roles: entry
+                .roles
+                .into_iter()
+                .map(|r| SupportPlanRoleRegion {
+                    role: match r.role {
+                        host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::SupportBody => SupportPlanRole::SupportBody,
+                        host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::TopInterface => {
+                            SupportPlanRole::TopInterface
+                        }
+                        host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::BottomInterface => {
+                            SupportPlanRole::BottomInterface
+                        }
+                        host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::RaftRelated => SupportPlanRole::RaftRelated,
+                    },
+                    regions: crate::marshal::wit_to_ir_expolygons(&r.regions),
+                })
+                .collect(),
+            skeleton: entry.skeleton.map(|s| SupportPlanSkeleton {
+                points: s
+                    .points
+                    .into_iter()
+                    .map(|p| slicer_ir::Point3 {
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                    })
+                    .collect(),
+            }),
+            capabilities: entry.capabilities,
+            provenance: entry.provenance,
+            decline_reason: entry.decline_reason.map(|r| match r {
+                host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanDeclineReason::DeclinedPolicy => {
+                    SupportPlanDeclineReason::DeclinedPolicy
+                }
+                host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanDeclineReason::NoRoute => {
+                    SupportPlanDeclineReason::NoRoute
+                }
+                host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanDeclineReason::Blocked => {
+                    SupportPlanDeclineReason::Blocked
+                }
+                host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanDeclineReason::UnsupportedMode => {
+                    SupportPlanDeclineReason::UnsupportedMode
+                }
+            }),
         });
     }
 

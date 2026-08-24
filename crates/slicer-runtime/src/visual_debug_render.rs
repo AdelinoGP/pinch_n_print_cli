@@ -469,16 +469,8 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
             }
         }
         CapturedIr::Support(s) => {
-            for region in &s.regions {
-                for path in region
-                    .support_paths
-                    .iter()
-                    .chain(region.interface_paths.iter())
-                    .chain(region.raft_paths.iter())
-                    .chain(region.ironing_paths.iter())
-                {
-                    push_path_points(path, &mut pts);
-                }
+            for path in s.entries.iter().flat_map(|entry| entry.paths.iter()) {
+                push_path_points(path, &mut pts);
             }
         }
         CapturedIr::LayerCollection(l) => {
@@ -537,8 +529,15 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
                 }
             }
             for entry in &plan.entries {
-                for path in &entry.branch_segments {
-                    push_path_points(path, &mut pts);
+                for role in &entry.roles {
+                    for polygon in &role.regions {
+                        push_expolygon_points(polygon, &mut pts);
+                    }
+                }
+                if let Some(skeleton) = &entry.skeleton {
+                    for point in &skeleton.points {
+                        pts.push((point.x, point.y));
+                    }
                 }
             }
         }
@@ -831,13 +830,7 @@ fn infill_shapes(
 }
 
 fn support_paths(s: &slicer_ir::SupportIR) -> impl Iterator<Item = &ExtrusionPath3D> {
-    s.regions.iter().flat_map(|r| {
-        r.support_paths
-            .iter()
-            .chain(r.interface_paths.iter())
-            .chain(r.raft_paths.iter())
-            .chain(r.ironing_paths.iter())
-    })
+    s.entries.iter().flat_map(|entry| entry.paths.iter())
 }
 
 fn support_shapes(
@@ -1121,17 +1114,48 @@ fn support_geometry_shapes(
         .collect();
     plan_entries.sort_by(|a, b| (&a.object_id, a.region_id).cmp(&(&b.object_id, b.region_id)));
     for entry in plan_entries {
-        for path in &entry.branch_segments {
+        for role in &entry.roles {
+            for polygon in &role.regions {
+                match view {
+                    GeometryView::FilledAreas => {
+                        shapes.push(expolygon_fill_shape(polygon, palette::SUPPORT_BRANCH));
+                    }
+                    GeometryView::FilamentLines => {
+                        shapes.extend(expolygon_outline_shapes(polygon, palette::SUPPORT_BRANCH));
+                    }
+                }
+            }
+        }
+        if let Some(skeleton) = &entry.skeleton {
+            let path = ExtrusionPath3D {
+                points: skeleton
+                    .points
+                    .iter()
+                    .map(|point| Point3WithWidth {
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        width: 0.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    })
+                    .collect(),
+                role: ExtrusionRole::SupportMaterial,
+                speed_factor: 1.0,
+                tool_index: None,
+            };
             match view {
                 GeometryView::FilledAreas => {
                     if let Some(shape) =
-                        swept_fill_shape(path, palette::SUPPORT_BRANCH, tap, layer_index)?
+                        swept_fill_shape(&path, palette::SUPPORT_BRANCH, tap, layer_index)?
                     {
                         shapes.extend(expand_swept_shape(shape));
                     }
                 }
                 GeometryView::FilamentLines => {
-                    shapes.extend(filament_lines_from_path(path));
+                    shapes.extend(filament_lines_from_path(&path));
                 }
             }
         }
@@ -1140,7 +1164,7 @@ fn support_geometry_shapes(
         return Err(RenderError::MissingGeometryField {
             tap: tap.to_string(),
             layer_index,
-            field: "SupportGeometryIR.entries / SupportPlanIR.entries[].branch_segments",
+            field: "SupportGeometryIR.entries / SupportPlanIR.entries[].roles or skeleton",
         });
     }
     Ok(shapes)

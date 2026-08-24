@@ -220,29 +220,46 @@ fn is_numeric_field_type(field_type: &str) -> bool {
     )
 }
 
-const INITIAL_LAYER_LINE_WIDTH_KEY: &str = "initial_layer_line_width";
-const LEGACY_FIRST_LAYER_LINE_WIDTH_KEY: &str = "first_layer_line_width";
+/// Legacy config-key spellings and the canonical key each resolves to.
+///
+/// Entries are `(legacy, canonical)`. Supplying **both** spellings in one
+/// source is rejected rather than silently resolved: with a `HashMap` source
+/// there is no defined ordering between the two keys, so last-writer-wins would
+/// make the resolved value depend on hash iteration order — non-deterministic
+/// across runs. Rejecting is the pre-existing precedent set by
+/// `first_layer_line_width`, and is applied uniformly here.
+const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
+    ("first_layer_line_width", "initial_layer_line_width"),
+    // Renamed to the canonical OrcaSlicer spelling (`PrintConfig.cpp`'s
+    // `support_threshold_angle`); the old in-tree name stays accepted so
+    // existing profiles and 3MF project settings keep resolving.
+    ("support_overhang_angle", "support_threshold_angle"),
+];
 
-fn reject_initial_layer_line_width_alias_conflict(
-    canonical_present: bool,
-    legacy_present: bool,
-) -> Result<(), ConfigResolutionError> {
-    if canonical_present && legacy_present {
-        return Err(ConfigResolutionError::TypeMismatch {
-            key: format!("{INITIAL_LAYER_LINE_WIDTH_KEY} and {LEGACY_FIRST_LAYER_LINE_WIDTH_KEY}"),
-            expected: "one config key",
-            actual: "both config keys supplied".into(),
-        });
+/// Rejects any source that supplies both spellings of an aliased key.
+fn reject_alias_conflicts<F>(contains: F) -> Result<(), ConfigResolutionError>
+where
+    F: Fn(&str) -> bool,
+{
+    for (legacy, canonical) in CONFIG_KEY_ALIASES {
+        if contains(canonical) && contains(legacy) {
+            return Err(ConfigResolutionError::TypeMismatch {
+                key: format!("{canonical} and {legacy}"),
+                expected: "one config key",
+                actual: "both config keys supplied".into(),
+            });
+        }
     }
     Ok(())
 }
 
 fn canonical_config_key(key: &str) -> &str {
-    if key == LEGACY_FIRST_LAYER_LINE_WIDTH_KEY {
-        INITIAL_LAYER_LINE_WIDTH_KEY
-    } else {
-        key
+    for (legacy, canonical) in CONFIG_KEY_ALIASES {
+        if key == legacy {
+            return canonical;
+        }
     }
+    key
 }
 
 fn check_value(
@@ -419,10 +436,7 @@ pub fn resolve_global_config(
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
     let mut cfg = ResolvedConfig::default();
 
-    reject_initial_layer_line_width_alias_conflict(
-        source.contains_key(INITIAL_LAYER_LINE_WIDTH_KEY),
-        source.contains_key(LEGACY_FIRST_LAYER_LINE_WIDTH_KEY),
-    )?;
+    reject_alias_conflicts(|key| source.contains_key(key))?;
 
     for (key, value) in source {
         // Skip per-object overlay keys â€” handled by resolve_per_object_configs.
@@ -617,10 +631,7 @@ fn apply_overlay(
     // Simplest correct approach: clone base, then patch each override key.
     let mut cfg = base.clone();
 
-    reject_initial_layer_line_width_alias_conflict(
-        overrides.contains_key(INITIAL_LAYER_LINE_WIDTH_KEY),
-        overrides.contains_key(LEGACY_FIRST_LAYER_LINE_WIDTH_KEY),
-    )?;
+    reject_alias_conflicts(|key| overrides.contains_key(key))?;
 
     for (key, value) in overrides {
         // object_config / object_height prefixes won't appear here (already

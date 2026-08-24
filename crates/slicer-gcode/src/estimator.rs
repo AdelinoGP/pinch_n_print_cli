@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, ResolvedConfig};
+use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, Point3, ResolvedConfig};
 
 /// Default filament diameter (mm) when a tool is absent from the caller's
 /// diameter map (schema default, matches `DefaultGCodeSerializer`).
@@ -158,6 +158,71 @@ fn junction_speed(a: &Segment, b: &Segment) -> f64 {
         }
     }
     a.jerk.min(b.jerk).min(v)
+}
+
+fn estimate_segments_time(segments: &[Segment]) -> Vec<f64> {
+    let mut elapsed_deltas_s = vec![0.0; segments.len()];
+    for (i, seg) in segments.iter().enumerate() {
+        let entry = if i == 0 {
+            seg.jerk.min(seg.v_target)
+        } else {
+            junction_speed(&segments[i - 1], seg)
+        };
+        let exit = if i + 1 < segments.len() {
+            junction_speed(seg, &segments[i + 1])
+        } else {
+            seg.jerk.min(seg.v_target)
+        };
+        let v_reach = |from: f64| (from * from + 2.0 * seg.accel * seg.dist).sqrt();
+        let exit = exit.min(v_reach(entry));
+        let entry = entry.min(v_reach(exit));
+        elapsed_deltas_s[i] = segment_time(seg.dist, entry, exit, seg.v_target, seg.accel);
+    }
+    elapsed_deltas_s
+}
+
+/// Estimate the execution time of one physical event path in isolation.
+///
+/// Event boundaries are treated as kinematic boundaries, so junction planning
+/// never crosses into an adjacent event.
+pub fn estimate_event_time(path: &[Point3], feedrate_mm_s: f64, limits: &EstimatorLimits) -> f64 {
+    let max_xy = limits.max_speed_xy as f64;
+    let max_z = limits.max_speed_z as f64;
+    let accel = limits.max_acceleration as f64;
+    let jerk_xy = limits.jerk_xy as f64;
+    let jerk_z = limits.jerk_z as f64;
+    let segments = path
+        .windows(2)
+        .filter_map(|points| {
+            let dx = (points[1].x - points[0].x) as f64;
+            let dy = (points[1].y - points[0].y) as f64;
+            let dz = (points[1].z - points[0].z) as f64;
+            let dist_xy = (dx * dx + dy * dy).sqrt();
+            let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+            if dist <= 1e-9 {
+                return None;
+            }
+            let (axis, cap, jerk, dir) = if dist_xy > 1e-9 {
+                (AxisClass::Xy, max_xy, jerk_xy, (dx / dist_xy, dy / dist_xy))
+            } else {
+                (AxisClass::Z, max_z, jerk_z, (0.0, 0.0))
+            };
+            let speed = if feedrate_mm_s > 0.0 {
+                feedrate_mm_s
+            } else {
+                cap
+            };
+            Some(Segment {
+                dist,
+                v_target: speed.min(cap).max(1e-6),
+                accel,
+                jerk,
+                dir,
+                axis,
+            })
+        })
+        .collect::<Vec<_>>();
+    estimate_segments_time(&segments).iter().sum()
 }
 
 struct CommandEstimate {
@@ -337,23 +402,21 @@ fn estimate_command_deltas(gcode_ir: &GCodeIR, limits: &EstimatorLimits) -> Comm
 
     // Plan junction speeds and integrate time.
     let mut elapsed_deltas_s = vec![0.0; gcode_ir.commands.len()];
-    for (i, (command_index, seg)) in segments.iter().enumerate() {
-        let entry = if i == 0 {
-            seg.jerk.min(seg.v_target)
-        } else {
-            junction_speed(&segments[i - 1].1, seg)
-        };
-        let exit = if i + 1 < segments.len() {
-            junction_speed(seg, &segments[i + 1].1)
-        } else {
-            seg.jerk.min(seg.v_target)
-        };
-        // Clamp entry/exit to what is physically reachable within `dist`.
-        let v_reach = |from: f64| (from * from + 2.0 * seg.accel * seg.dist).sqrt();
-        let exit = exit.min(v_reach(entry));
-        let entry = entry.min(v_reach(exit));
-        elapsed_deltas_s[*command_index] +=
-            segment_time(seg.dist, entry, exit, seg.v_target, seg.accel);
+    let segment_times = estimate_segments_time(
+        &segments
+            .iter()
+            .map(|(_, segment)| Segment {
+                dist: segment.dist,
+                v_target: segment.v_target,
+                accel: segment.accel,
+                jerk: segment.jerk,
+                dir: segment.dir,
+                axis: segment.axis,
+            })
+            .collect::<Vec<_>>(),
+    );
+    for ((command_index, _), delta_s) in segments.iter().zip(segment_times) {
+        elapsed_deltas_s[*command_index] += delta_s;
     }
 
     CommandEstimate {

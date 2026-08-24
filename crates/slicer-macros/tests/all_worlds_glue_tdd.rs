@@ -358,16 +358,34 @@ fn macro_layer_stages_each_delegate_to_their_sdk_trait_method() {
 #[test]
 fn macro_prepass_stages_each_delegate_to_their_sdk_trait_method() {
     let src = macro_src();
-    for method in [
-        "run_mesh_analysis",
-        "run_layer_planning",
-        "run_seam_planning",
-        "run_support_geometry",
+    // Each stage lists every trait method whose presence satisfies delegation.
+    //
+    // `PrePass::SupportGeometry` accepts two spellings. The glue calls
+    // `PrepassModule::run_support_geometry_with_analysis`, which is a *trait*
+    // method on `PrepassModule` whose SDK default impl (see
+    // `run_support_geometry_with_analysis` in `crates/slicer-sdk/src/traits.rs`)
+    // forwards to `run_support_geometry`. Delegation still lands on the trait —
+    // one hop later — so accepting either spelling is not a weakened assertion;
+    // requiring the bare name would demand the glue skip the analysis argument.
+    // The other three stages have no such default-delegation chain and must
+    // match their method directly.
+    for (stage_method, accepted) in [
+        ("run_mesh_analysis", &["run_mesh_analysis"][..]),
+        ("run_layer_planning", &["run_layer_planning"][..]),
+        ("run_seam_planning", &["run_seam_planning"][..]),
+        (
+            "run_support_geometry",
+            &[
+                "run_support_geometry",
+                "run_support_geometry_with_analysis",
+            ][..],
+        ),
     ] {
-        let delegation = format!("<#self_ty as ::slicer_sdk::traits::PrepassModule>::{method}(");
         assert!(
-            src.contains(&delegation),
-            "per-stage prepass glue must delegate to PrepassModule::{method}"
+            accepted.iter().any(|method| src.contains(&format!(
+                "<#self_ty as ::slicer_sdk::traits::PrepassModule>::{method}("
+            ))),
+            "per-stage prepass glue must delegate to PrepassModule::{stage_method}              (accepted spellings: {accepted:?})"
         );
     }
 }

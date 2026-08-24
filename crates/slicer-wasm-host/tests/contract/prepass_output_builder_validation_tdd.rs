@@ -59,11 +59,21 @@ fn valid_seam_entry() -> SeamPlanEntry {
 }
 
 fn valid_support_entry() -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: 0,
         object_id: "obj-a".to_string(),
         region_id: "region-1".to_string(),
-        branch_segments: vec![],
+        family_id: "tree".to_string(),
+        demand_ids: vec!["demand-1".to_string()],
+        body_ids: vec!["body-1".to_string()],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        roles: vec![],
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 

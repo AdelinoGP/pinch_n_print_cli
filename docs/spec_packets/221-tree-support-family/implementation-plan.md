@@ -3,7 +3,7 @@
 ## Execution Rules
 - Work one atomic step at a time; map every step to `TASK-332`.
 - Use TDD, implementation, then the narrowest falsifying validation.
-- TASK-331 remains a draft forward dependency; do not activate this packet until its blockers close.
+- TASK-331 blockers closed; TASK-331 implemented (packet 220). Activation pending only this packet's own preflight.
 
 ## Steps
 ### Step 1: Establish the tree family package and claims
@@ -24,7 +24,7 @@
 ### Step 2: Implement distributed tree planning and exact-Z geometry
 - Task IDs: `TASK-332`
 - Objective: turn assigned candidates into distributed contacts, radius-aware routed bodies, interfaces, and terminations.
-- Precondition: TASK-331 exports `SupportAnalysisIR` and resolves the host exact-Z support query service contract with its final name and shape.
+- Precondition: satisfied — TASK-331 exports `SupportAnalysisIR`, and the host exact-Z support query service is `ExactZQueryService` (`crates/slicer-wasm-host/src/exact_z_query.rs`) with its final shape.
 - Postcondition: complete structural entries are collision-safe at every body Z and preserve demand/body identity.
 - Files allowed to read: `modules/core-modules/support-planner/src/lib.rs` bounded algorithm ranges; delegated exact-Z API.
 - Files allowed to edit (at most 3): `modules/core-modules/tree-support-planner/src/lib.rs`; `modules/core-modules/tree-support-planner/Cargo.toml`; `modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs`.

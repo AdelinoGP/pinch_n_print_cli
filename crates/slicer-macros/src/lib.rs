@@ -300,10 +300,11 @@ fn generate_slicer_module_impl(
                 let objects = req.mesh_objects.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing mesh objects".to_string()))?;
                 let layer_plan = req.layer_plan.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer plan".to_string()))?;
                 let regions = req.region_segmentation.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing region segmentation".to_string()))?;
+                let analysis = req.support_analysis.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing support analysis".to_string()))?;
                 let support = req.support_geometry.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing support geometry".to_string()))?;
                 let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
                 let mut output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
-                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(&module, objects, layer_plan, regions, support, &mut output, &req.config)?;
+                <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(&module, objects, layer_plan, regions, analysis, support, &mut output, &req.config)?;
                 Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: None, layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: Some(output) })
             },
             _ => quote! { unreachable!() },
@@ -1431,6 +1432,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             global_layer_index: wit_layer.layer_index(),
                             z: wit_layer.z(),
                             ordered_entities,
+                            support_entity_identities: ::std::vec::Vec::new(),
                             tool_changes,
                             z_hops,
                             annotations: ::std::vec::Vec::new(),
@@ -2039,6 +2041,13 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 layer_index: e.layer_index,
                 region_ids: e.region_ids.clone(),
             }).collect(),
+            region_support_configs: region_segmentation.region_support_configs.iter().map(|e| ::slicer_sdk::prepass_types::RegionSupportConfig {
+                object_id: e.object_id.clone(),
+                layer_index: e.layer_index,
+                region_id: e.region_id.clone(),
+                support_family: e.support_family.clone(),
+                support_type: e.support_type.clone(),
+            }).collect(),
         };
         let sdk_support_geometry = ::slicer_sdk::prepass_types::SupportGeometryView {
             entries: support_geometry.entries.iter().map(|e| ::slicer_sdk::prepass_types::SupportGeometryViewEntry {
@@ -2048,30 +2057,63 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 outlines: e.outlines.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
+        let sdk_support_analysis = ::slicer_sdk::prepass_types::SupportAnalysisView {
+            candidates: support_analysis.candidates.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisCandidate {
+                id: e.id, geometry: e.geometry.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(), global_layer_index: e.global_layer_index,
+                z_units: e.z_units, enforced: e.enforced, blocked: e.blocked,
+            }).collect(),
+            model_occupancy: support_analysis.model_occupancy.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
+            termination_surfaces: support_analysis.termination_surfaces.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
+            shared_settings: support_analysis.shared_settings.clone(),
+            baseline_feasible_envelope: support_analysis.baseline_feasible_envelope.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
+            }).collect(),
+        };
         let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
-        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(
-            &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_geometry, &mut sdk_output, &ir_config,
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(
+            &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_analysis, &sdk_support_geometry, &mut sdk_output, &ir_config,
         );
         for __slicer_entry in sdk_output.entries() {
-            let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
-                .branch_segments
-                .iter()
-                .map(|seg| seg.iter().map(|pt| Point3WithWidth {
-                    x: pt.x,
-                    y: pt.y,
-                    z: pt.z,
-                    width: pt.width,
-                    flow_factor: pt.flow_factor,
-                    overhang_quartile: pt.overhang_quartile,
-                    dist_to_top_mm: pt.dist_to_top_mm,
-                    overhang_distance_mm: pt.overhang_distance_mm,
-                }).collect())
-                .collect();
             let __slicer_wit_entry = SupportPlanEntry {
                 global_layer_index: __slicer_entry.global_layer_index,
                 object_id: __slicer_entry.object_id.clone(),
                 region_id: __slicer_entry.region_id.clone(),
-                branch_segments: __slicer_wit_segments,
+                family_id: __slicer_entry.family_id.clone(),
+                demand_ids: __slicer_entry.demand_ids.clone(),
+                body_ids: __slicer_entry.body_ids.clone(),
+                anchor_layer_index: __slicer_entry.anchor_layer_index,
+                anchor_z: __slicer_entry.anchor_z,
+                roles: __slicer_entry.roles.iter().map(|role| SupportPlanRoleRegion {
+                    role: match role.role {
+                        ::slicer_ir::SupportPlanRole::SupportBody => SupportPlanRole::SupportBody,
+                        ::slicer_ir::SupportPlanRole::TopInterface => SupportPlanRole::TopInterface,
+                        ::slicer_ir::SupportPlanRole::BottomInterface => SupportPlanRole::BottomInterface,
+                        ::slicer_ir::SupportPlanRole::RaftRelated => SupportPlanRole::RaftRelated,
+                    },
+                    regions: role.regions.iter().map(|ep| ExPolygon {
+                        contour: Polygon { points: ep.contour.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect() },
+                        holes: ep.holes.iter().map(|h| Polygon { points: h.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect() }).collect(),
+                    }).collect(),
+                }).collect(),
+                skeleton: __slicer_entry.skeleton.as_ref().map(|s| SupportPlanSkeleton {
+                    points: s.points.iter().map(|p| Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                }),
+                capabilities: __slicer_entry.capabilities.clone(),
+                provenance: __slicer_entry.provenance.clone(),
+                decline_reason: __slicer_entry.decline_reason.map(|reason| match reason {
+                    ::slicer_ir::SupportPlanDeclineReason::DeclinedPolicy => SupportPlanDeclineReason::DeclinedPolicy,
+                    ::slicer_ir::SupportPlanDeclineReason::NoRoute => SupportPlanDeclineReason::NoRoute,
+                    ::slicer_ir::SupportPlanDeclineReason::Blocked => SupportPlanDeclineReason::Blocked,
+                    ::slicer_ir::SupportPlanDeclineReason::UnsupportedMode => SupportPlanDeclineReason::UnsupportedMode,
+                }),
             };
             if let Err(e) = output.push_support_plan_entry(&__slicer_wit_entry) {
                 return Err(ModuleError { code: 11, message: e, fatal: true });
@@ -2129,9 +2171,10 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 Diagnostic, ObjectId, RaftPlan,
                 RegionId, RegionSegmentationView, RegionSegmentationViewEntry,
                 SeverityLevel, SupportGeometryOutput, SupportGeometryView,
-                SupportGeometryViewEntry, SupportPlanEntry,
+                SupportGeometryViewEntry, SupportAnalysisView, SupportPlanEntry, SupportPlanRole,
+                SupportPlanRoleRegion, SupportPlanSkeleton, SupportPlanDeclineReason,
             };
-            use slicer::types::geometry::{ExPolygon, Point3WithWidth};
+            use slicer::types::geometry::{ExPolygon, Point2, Point3, Point3WithWidth, Polygon};
             #preamble
             #helpers
             struct __SlicerPrepassSupportGeometryComponent;
@@ -2140,6 +2183,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                     objects: Vec<MeshObjectView>,
                     layer_plan: LayerPlanView,
                     region_segmentation: RegionSegmentationView,
+                    support_analysis: SupportAnalysisView,
                     support_geometry: SupportGeometryView,
                     output: SupportGeometryOutput,
                     config: ConfigView,
@@ -2239,6 +2283,11 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
         _ => quote! {
             use self::slicer::ir_handles::ir_handles::{
                 InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                SupportPlanEntryView as WitSupportPlanEntryView,
+                SupportPlanViewRole as WitSupportPlanViewRole,
+                SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
+                SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
+                SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 PerimeterOutputBuilder, PerimeterRegionView,
                 QuartileBand as WitQuartileBand,
@@ -2374,6 +2423,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_infill_areas(infill);
                 sdk_view.set_effective_layer_height(r.effective_layer_height());
                 sdk_view.set_z(r.z());
+                sdk_view.set_needs_support(r.needs_support());
                 sdk_view.set_has_nonplanar(r.has_nonplanar());
                 sdk_view.set_segment_annotations(segment_annotations);
                 let variant_chain: ::std::vec::Vec<(
@@ -2457,7 +2507,8 @@ fn layer_light_helpers() -> TokenStream2 {
             keys: &[(::std::string::String, ::slicer_ir::RegionId)],
         ) -> ::slicer_sdk::traits::PaintRegionLayerView {
             let layer_idx = paint.layer_index() as u32;
-            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx);
+            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys));
             match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
                 Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
                 None => sdk_paint,
@@ -2513,47 +2564,45 @@ fn layer_light_helpers() -> TokenStream2 {
         fn __slicer_support_plan_from_view(
             wit_paint: &PaintRegionLayerView,
             layer_idx: u32,
-            keys: &::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)>,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
         ) -> ::std::sync::Arc<::slicer_ir::SupportPlanIR> {
             let mut entries = ::std::vec::Vec::new();
-            for (object_id, region_id) in keys {
-                let segments = wit_paint.support_plan_segments(object_id, &region_id.to_string());
-                if segments.is_empty() {
-                    continue;
+            for (object_id, region_id) in keys.iter() {
+                let region_id_str = region_id.to_string();
+                for entry in wit_paint.support_plan_entries(object_id, &region_id_str) {
+                    entries.push(::slicer_ir::SupportPlanEntry {
+                        global_layer_index: entry.global_layer_index,
+                        object_id: entry.object_id,
+                        region_id: entry.region_id.parse().unwrap_or(*region_id),
+                        family_id: entry.family_id,
+                        demand_ids: entry.demand_ids,
+                        body_ids: entry.body_ids,
+                        anchor_layer_index: entry.anchor_layer_index,
+                        anchor_z: entry.anchor_z,
+                        roles: entry.roles.into_iter().map(|role| ::slicer_ir::SupportPlanRoleRegion {
+                            role: match role.role {
+                                WitSupportPlanViewRole::SupportBody => ::slicer_ir::SupportPlanRole::SupportBody,
+                                WitSupportPlanViewRole::TopInterface => ::slicer_ir::SupportPlanRole::TopInterface,
+                                WitSupportPlanViewRole::BottomInterface => ::slicer_ir::SupportPlanRole::BottomInterface,
+                                WitSupportPlanViewRole::RaftRelated => ::slicer_ir::SupportPlanRole::RaftRelated,
+                            },
+                            regions: role.regions.iter().map(__slicer_wit_expolygon_to_ir).collect(),
+                        }).collect(),
+                        skeleton: entry.skeleton.map(|s| ::slicer_ir::SupportPlanSkeleton {
+                            points: s.points.into_iter().map(|p| ::slicer_ir::Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                        }),
+                        capabilities: entry.capabilities,
+                        provenance: entry.provenance,
+                        decline_reason: entry.decline_reason.map(|reason| match reason {
+                            WitSupportPlanViewDeclineReason::DeclinedPolicy => ::slicer_ir::SupportPlanDeclineReason::DeclinedPolicy,
+                            WitSupportPlanViewDeclineReason::NoRoute => ::slicer_ir::SupportPlanDeclineReason::NoRoute,
+                            WitSupportPlanViewDeclineReason::Blocked => ::slicer_ir::SupportPlanDeclineReason::Blocked,
+                            WitSupportPlanViewDeclineReason::UnsupportedMode => ::slicer_ir::SupportPlanDeclineReason::UnsupportedMode,
+                        }),
+                    });
                 }
-                let branch_segments = segments
-                    .into_iter()
-                    .map(|segment| ::slicer_ir::ExtrusionPath3D {
-                        points: segment
-                            .into_iter()
-                            .map(|point| ::slicer_ir::Point3WithWidth {
-                                x: point.x,
-                                y: point.y,
-                                z: point.z,
-                                width: point.width,
-                                flow_factor: point.flow_factor,
-                                overhang_quartile: point.overhang_quartile,
-                                dist_to_top_mm: point.dist_to_top_mm,
-                                overhang_distance_mm: point.overhang_distance_mm,
-                            })
-                            .collect(),
-                        role: ::slicer_ir::ExtrusionRole::SupportMaterial,
-                        speed_factor: 1.0,
-                        tool_index: None,
-                    })
-                    .collect();
-                entries.push(::slicer_ir::SupportPlanEntry {
-                    global_layer_index: layer_idx as i32,
-                    object_id: object_id.clone(),
-                    region_id: *region_id,
-                    branch_segments,
-                });
             }
-            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR {
-                schema_version: ::slicer_ir::CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
-                entries,
-                raft_plan: None,
-            })
+            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, ..::core::default::Default::default() })
         }
 
     }
@@ -3430,8 +3479,6 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
                 ..::core::default::Default::default()
             }).collect(),
         }));
-        let support_keys = sdk_regions.iter().map(|r| (r.object_id().clone(), *r.region_id())).collect();
-        let sdk_paint = sdk_paint.with_support_plan(__slicer_support_plan_from_view(&paint, layer_index, &support_keys));
         let mut sdk_output = ::slicer_sdk::builders::SupportOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,

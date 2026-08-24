@@ -603,8 +603,46 @@ mod tests {
 
     #[test]
     fn test_support_type() {
-        test_serde_roundtrip!(SupportType::Traditional);
-        test_serde_roundtrip!(SupportType::Tree);
+        test_serde_roundtrip!(SupportType::NormalAuto);
+        test_serde_roundtrip!(SupportType::TreeAuto);
+        test_serde_roundtrip!(SupportType::NormalManual);
+        test_serde_roundtrip!(SupportType::TreeManual);
+    }
+
+    /// F-19: the serde wire tokens are the canonical `s_keys_map_SupportType`
+    /// spellings, and the two axes agree with canonical's `is_auto` / `is_tree`
+    /// free functions (`PrintConfig.hpp`).
+    #[test]
+    fn support_type_wire_tokens_are_canonical_spellings() {
+        for (value, spelling, is_auto, is_tree) in [
+            (SupportType::NormalAuto, "normal(auto)", true, false),
+            (SupportType::TreeAuto, "tree(auto)", true, true),
+            (SupportType::NormalManual, "normal(manual)", false, false),
+            (SupportType::TreeManual, "tree(manual)", false, true),
+        ] {
+            assert_eq!(
+                serde_json::to_string(&value).unwrap(),
+                format!("\"{spelling}\"")
+            );
+            assert_eq!(SupportType::from_canonical_str(spelling), Some(value));
+            assert_eq!(value.as_canonical_str(), spelling);
+            assert_eq!(value.is_auto(), is_auto);
+            assert_eq!(value.is_tree(), is_tree);
+            assert_eq!(
+                slicer_ir::canonical_support_family(Some(spelling)),
+                if is_tree { "tree" } else { "traditional" }
+            );
+        }
+        assert_eq!(SupportType::from_canonical_str("Tree"), None);
+        assert_eq!(SupportType::from_canonical_str("normal"), None);
+    }
+
+    /// The pre-F-19 tokens must **not** deserialize — that breakage is what
+    /// `CURRENT_REGION_MAP_IR_SCHEMA_VERSION` 3.0.0 records.
+    #[test]
+    fn support_type_rejects_pre_f19_tokens() {
+        assert!(serde_json::from_str::<SupportType>("\"Traditional\"").is_err());
+        assert!(serde_json::from_str::<SupportType>("\"Tree\"").is_err());
     }
 
     #[test]

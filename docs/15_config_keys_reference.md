@@ -214,22 +214,6 @@ is the authoritative catalog of their defaults and ranges.
 | `skirt_distance` | float | `3.0` | [0.0, 20.0] | `skirt-brim` |
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
-| `base_raft_layers` | int | `1` | [0.0, 20.0] | `support-planner` |
-| `enable_support` | bool | `true` | — | `support-planner` |
-| `interface_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
-| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `support-planner` |
-| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `support-planner` |
-| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `support-planner` |
-| `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `support-planner` |
-| `support_on_build_plate_only` | bool | `false` | — | `support-planner` |
-| `support_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
-| `support_top_z_distance_mm` | float | `0.0` | [0.0, 5.0] | `support-planner` |
-| `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `support-planner` |
-| `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `support-planner` |
-| `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `support-planner` |
-| `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | `support-planner` |
-| `tree_support_interface_spacing_mm` | float | `0.4` | [0.1, 2.0] | `support-planner` |
-| `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `support-planner` |
 | `ironing_enabled` | bool | `false` | — | `support-surface-ironing` |
 | `ironing_flow_rate` | float | `100.0` | [1.0, 200.0] | `support-surface-ironing` |
 | `ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
@@ -243,15 +227,46 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `true` | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
+| `support_bottom_interface_spacing` | float | `-1.0` | [-1.0, 2.0] | `traditional-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `traditional-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
+| `support_style` | string | `"default"` | — | `traditional-support` |
+| `enable_support` | bool | `true` | — | `traditional-support-planner` |
+| `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
+| `support_base_pattern` | string | `"rectilinear"` | — | `traditional-support-planner` |
+| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
+| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
+| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `traditional-support-planner` |
+| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `traditional-support-planner` |
+| `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
+| `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
+| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
 | `enable_support` | bool | `true` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
-| `support_angle` | float | `60.0` | [0.0, 90.0] | `tree-support` |
+| `support_bottom_interface_spacing` | float | `-1.0` | [-1.0, 2.0] | `tree-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `tree-support` |
-| `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `tree-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
-| `support_top_z_distance_mm` | float | `0.0` | [0.0, 5.0] | `tree-support` |
+| `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
+| `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
+| `enable_support` | bool | `true` | — | `tree-support-planner` |
+| `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
+| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `tree-support-planner` |
+| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |
+| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `tree-support-planner` |
+| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `tree-support-planner` |
+| `support_line_width` | float | `0.35` | [0.0, 2.0] | `tree-support-planner` |
+| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `tree-support-planner` |
+| `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
+| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `tree-support-planner` |
+| `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `tree-support-planner` |
+| `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `tree-support-planner` |
+| `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `tree-support-planner` |
+| `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | `tree-support-planner` |
+| `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support-planner` |
 | `bed_shape` | float-list | `—` | — | `wipe-tower` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `wipe-tower` |
 | `retract_length` | float | `2.0` | [0.0, 20.0] | `wipe-tower` |
@@ -346,6 +361,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | `resolved_config.rs::ResolvedConfig` |
 | `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | `resolved_config.rs::ResolvedConfig` |
+| `support_threshold_angle` | float | `30.0` | [0, 90] (overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves.) | `resolved_config.rs::ResolvedConfig` |
 | `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | `resolved_config.rs::ResolvedConfig` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
@@ -400,13 +416,17 @@ upstream or has no upstream equivalent.
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
 | `support_angle` | `traditional-support` | `60.0` | `0.0` |
-| `support_angle` | `tree-support` | `60.0` | `0.0` |
-| `support_interface_top_layers` | `support-planner` | `2` | `3.0` |
+| `support_bottom_interface_spacing` | `traditional-support` | `-1.0` | `0.5` |
+| `support_bottom_interface_spacing` | `tree-support` | `-1.0` | `0.5` |
+| `support_interface_spacing` | `traditional-support` | `0.4` | `0.5` |
+| `support_interface_spacing` | `tree-support` | `0.4` | `0.5` |
+| `support_interface_top_layers` | `traditional-support-planner` | `2` | `3.0` |
+| `support_interface_top_layers` | `tree-support-planner` | `2` | `3.0` |
 | `support_speed` | `traditional-support` | `50.0` | `80.0` |
 | `support_speed` | `tree-support` | `50.0` | `80.0` |
 | `top_shell_layers` | `resolved_config.rs::ResolvedConfig` | `3` | `4.0` |
-| `tree_support_branch_angle` | `support-planner` | `45.0` | `40.0` |
-| `tree_support_branch_distance` | `support-planner` | `1.0` | `5.0` |
+| `tree_support_branch_angle` | `tree-support-planner` | `45.0` | `40.0` |
+| `tree_support_branch_distance` | `tree-support-planner` | `1.0` | `5.0` |
 | `wipe_tower_x` | `wipe-tower` | `10.0` | `15.0` |
 | `wipe_tower_y` | `wipe-tower` | `10.0` | `220.0` |
 <!-- END GENERATED: orca-deviations -->
@@ -435,10 +455,22 @@ layer's print time falls below `slow_down_layer_time`.
 
 ## Support (packet 31b + packet 28/30)
 
-Keys split across the `support-planner` and `tree-support` core modules.
+Keys split across the `tree-support-planner` and `tree-support` core modules.
 Defaults and ranges are in the generated **Module-owned config keys** table
-above (modules `support-planner`, `tree-support`). Note `support_layer_height_mm
+above (modules `tree-support-planner`, `tree-support`). Note `support_layer_height_mm
 = 0.0` means "use the model layer height".
+
+**Tree support family configuration (packet 221).** `support_family` is the
+canonical per-region family selector: values starting with `tree*` or `hybrid*`
+select the tree family, `normal*`/`classic*` the traditional family (absent
+defaults to traditional). It drives which `tree-support-planner`/`tree-support`
+pair serves each region (see `docs/04_host_scheduler.md` § "Planner-Renderer
+Pairing").
+
+**Traditional support base pattern (packet 222).** `support_base_pattern`
+selects the traditional family's base fill pattern (e.g. `rectilinear`); it is
+owned by `traditional-support-planner` and recorded in each plan entry's
+`capabilities` as `traditional-base-pattern`.
 
 ---
 

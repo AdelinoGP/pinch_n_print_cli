@@ -26,12 +26,12 @@ use slicer_ir::{
     WallFeatureFlags,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::{
     square_polygon, ConfigViewBuilder, PerimeterRegionViewBuilder,
 };
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 /// Build a small axis-aligned square `ExPolygon` (paint "coverage box") in mm.
 fn box_poly(cx_mm: f32, cy_mm: f32, half_mm: f32) -> ExPolygon {

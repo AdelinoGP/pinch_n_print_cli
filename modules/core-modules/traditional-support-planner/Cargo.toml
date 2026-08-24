@@ -1,0 +1,28 @@
+[package]
+name = "traditional-support-planner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Plans cross-layer contact, base, interface, obstacle, and termination geometry for traditional support"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
+
+# Required by the `#[slicer_module]` macro's wasm32-only component export
+# glue. On native builds the emitted `wit_bindgen::generate!` call is
+# gated behind `#[cfg(target_arch = "wasm32")]` and never expanded.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "traditional_family_tdd"
+path = "tests/traditional_family_tdd.rs"

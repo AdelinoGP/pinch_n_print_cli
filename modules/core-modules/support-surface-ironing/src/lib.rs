@@ -221,6 +221,13 @@ impl LayerModule for SupportSurfaceIroning {
         let speed_factor = self.ironing_speed / BASE_SPEED;
 
         for region in regions {
+            // Tag every path pushed below with this region's identity. Without
+            // it the builder leaves `current_origin` unset, the host commits
+            // through the untagged branch of `convert_support_output_with_plan`
+            // (empty object_id / family_id), and the native leg diverges from
+            // the wasm leg — which recovers an origin anyway via the host's
+            // `touch_slice_region` fallback on the first view accessor call.
+            output.begin_region(region.object_id(), *region.region_id());
             let z = region.z();
 
             let polygons = region.polygons();

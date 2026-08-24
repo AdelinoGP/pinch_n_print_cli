@@ -59,7 +59,7 @@ use rayon::prelude::*;
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::ExPolygon;
 
-use crate::polygon_ops::{difference_ex, intersection_ex, offset, OffsetJoinType};
+use crate::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 
 /// Arc tolerance (mm) passed to the underlying `clipper2` offset calls.
 /// Small relative to expected line-width-scale thresholds (0.2-0.8mm range);
@@ -157,6 +157,221 @@ pub fn annotate_overhangs(
         prev_map.insert(layer_index, prev);
     }
     (bands_map, prev_map)
+}
+
+/// Parameters for [`detect_support_contacts`], mirroring the config inputs
+/// canonical `detect_overhangs` (`SupportMaterial.cpp`) reads per layer.
+///
+/// **All lengths are millimetres.** `slicer_core::polygon_ops::offset` scales
+/// internally, so canonical's `scale_()` calls are deliberately not ported.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SupportContactParams {
+    /// `support_threshold_angle` in degrees, as configured (un-bumped,
+    /// un-clamped -- this function applies canonical's `+1` inclusivity bump
+    /// and 89-degree clamp itself). `0` selects canonical's *overlap* branch,
+    /// **not** "support everything".
+    pub threshold_angle_deg: f32,
+    /// Printed height of the **lower** layer (canonical scales the offset by
+    /// `lower_layer.height`).
+    pub lower_layer_height_mm: f32,
+    /// External-perimeter extrusion width (`fw` in canonical). Drives both the
+    /// zero-angle overlap offset and the tiny-spot filter.
+    pub external_perimeter_width_mm: f32,
+    /// `support_threshold_overlap` already resolved against `fw`
+    /// (`ConfigOptionFloatOrPercent(50., true)` by default, i.e. `fw / 2`).
+    /// Only consulted on the zero-angle branch.
+    pub threshold_overlap_mm: f32,
+    /// `support_expansion` (`coFloat`, default `0`): XY growth applied to the
+    /// finished contact region.
+    pub xy_expansion_mm: f32,
+}
+
+impl Default for SupportContactParams {
+    /// Canonical defaults for a 0.4mm external perimeter: threshold angle 30
+    /// (`PrintConfig.cpp` `support_threshold_angle`), overlap 50% of `fw`,
+    /// no XY expansion. `lower_layer_height_mm` has no canonical default and
+    /// is 0 here -- callers that care must set it.
+    fn default() -> Self {
+        Self {
+            threshold_angle_deg: 30.0,
+            lower_layer_height_mm: 0.0,
+            external_perimeter_width_mm: 0.4,
+            threshold_overlap_mm: 0.2,
+            xy_expansion_mm: 0.0,
+        }
+    }
+}
+
+/// Canonical `SUPPORT_SURFACES_OFFSET_PARAMETERS` is
+/// `ClipperLib::jtSquare, 0.` -- every offset in the support-contact pipeline
+/// uses a square join, never a miter or round one.
+const SUPPORT_SURFACES_JOIN: OffsetJoinType = OffsetJoinType::Square;
+
+/// The angle-derived `lower_layer_offset` (mm) canonical grows the lower layer
+/// by before differencing.
+///
+/// Canonical, in order:
+///
+/// ```text
+/// thresh_angle = support_threshold_angle > 0 ? support_threshold_angle + 1 : 0;
+/// thresh_angle = min(thresh_angle, 89.);
+/// threshold_rad = deg2rad(thresh_angle);
+/// lower_layer_offset = threshold_rad > 0 ? lower_layer.height / tan(threshold_rad)
+///                                        : fw - support_threshold_overlap;
+/// ```
+///
+/// The `+1` is an inclusivity bump (an overhang exactly at the configured angle
+/// must still be caught); the 89-degree clamp keeps `tan` finite. A configured
+/// angle of `0` takes the **overlap** branch -- it does not mean "support
+/// everything", and it is not a plain difference.
+///
+/// `enforce_support_layers` (canonical forces the offset to `0` below that
+/// layer count) is not modelled here; see [`detect_support_contacts`]'s
+/// "Not modelled" section.
+fn lower_layer_offset_mm(params: &SupportContactParams) -> f32 {
+    let thresh_angle = if params.threshold_angle_deg > 0.0 {
+        (params.threshold_angle_deg + 1.0).min(89.0)
+    } else {
+        0.0
+    };
+    let threshold_rad = thresh_angle.to_radians();
+    if threshold_rad > 0.0 {
+        params.lower_layer_height_mm / threshold_rad.tan()
+    } else {
+        params.external_perimeter_width_mm - params.threshold_overlap_mm
+    }
+}
+
+/// Angle-thresholded support-contact detection for **one region of one layer**,
+/// the support-generation sibling of [`annotate_overhangs`].
+///
+/// The two functions diff the same consecutive slices but answer different
+/// questions and mirror **different** canonical functions, so neither may be
+/// substituted for the other:
+///
+/// - [`annotate_overhangs`] mirrors `detect_overhangs_for_lift`
+///   (`PrintObject.cpp`) and partitions *all* unsupported area into fixed
+///   `line_width`-multiple distance bands, for lift and speed classification.
+/// - This function mirrors `detect_overhangs` (`SupportMaterial.cpp`) and
+///   returns only the area steep enough to *require support*.
+///
+/// # Layer-major, whole-lower-layer union (the caller's job)
+///
+/// Canonical reads `lower_layer_polygons` from
+/// `object.layers()[layer_id - 1]->lslices` -- an **object-level** slice set,
+/// the union of *all* regions of the layer below -- then loops the current
+/// layer's regions, each contributing its own `layerm->slices.surfaces`.
+/// This entry point is therefore per-`(layer, region)`: the caller computes the
+/// lower-layer union **once per layer** and passes it in for every region.
+///
+/// Keying the lower layer per-region instead (the pre-parity in-tree shape)
+/// makes a region that first appears at layer `k` while sitting squarely on a
+/// *different* region below emit its entire cross-section as a support contact
+/// -- spurious full-area support on every multi-region / multi-material object.
+///
+/// # Pipeline (canonical order)
+///
+/// 1. `lower_layer_offset == 0` -> plain `diff(region, lower)`.
+/// 2. otherwise -> `diff(region, expand(lower, offset))`, then, when non-empty,
+///    the **expand-back**:
+///    `diff(intersection(expand(diff, offset), region), lower)`. This grows the
+///    contact back out to the full overhang so downstream support columns are
+///    wide enough; without it contacts are systematically under-sized.
+/// 3. subtract `blockers`.
+/// 4. tiny-spot filter: drop the result entirely if it vanishes under a
+///    `-0.1 * fw` erosion.
+/// 5. XY expansion by `support_expansion`, when non-zero.
+/// 6. `union_ex`.
+///
+/// Every offset uses [`SUPPORT_SURFACES_JOIN`] (canonical
+/// `SUPPORT_SURFACES_OFFSET_PARAMETERS` = `jtSquare, 0.`).
+///
+/// # Not modelled (canonical features needing inputs the host stage lacks)
+///
+/// sharp-tail detection (`g_config_support_sharp_tails`),
+/// `bridge_no_support` / `remove_bridges_from_contacts`, `buildplate_covered`,
+/// the cantilever pass, and `enforce_support_layers`.
+///
+/// # Returns
+///
+/// The contact polygons for this region, or an empty `Vec` when the region is
+/// self-supporting (callers keying a map should omit the key entirely, matching
+/// this module's "Empty-layer semantics").
+#[must_use]
+pub fn detect_support_contacts(
+    region_polygons: &[ExPolygon],
+    lower_layer_polygons: &[ExPolygon],
+    blockers: &[ExPolygon],
+    params: &SupportContactParams,
+) -> Vec<ExPolygon> {
+    if region_polygons.is_empty() {
+        return Vec::new();
+    }
+
+    let lower_layer_offset = lower_layer_offset_mm(params);
+
+    // Steps 1-2: the diff, and (on the offset branch) the expand-back.
+    let mut diff_polygons = if lower_layer_offset == 0.0 {
+        difference_ex(region_polygons, lower_layer_polygons)
+    } else {
+        let grown = offset(
+            lower_layer_polygons,
+            lower_layer_offset,
+            SUPPORT_SURFACES_JOIN,
+            OFFSET_ARC_TOLERANCE_MM,
+        );
+        let trimmed = difference_ex(region_polygons, &grown);
+        if trimmed.is_empty() {
+            trimmed
+        } else {
+            let expanded_back = offset(
+                &trimmed,
+                lower_layer_offset,
+                SUPPORT_SURFACES_JOIN,
+                OFFSET_ARC_TOLERANCE_MM,
+            );
+            difference_ex(
+                &intersection_ex(&expanded_back, region_polygons),
+                lower_layer_polygons,
+            )
+        }
+    };
+
+    // Step 3: support blockers.
+    if !blockers.is_empty() {
+        diff_polygons = difference_ex(&diff_polygons, blockers);
+    }
+
+    // Step 4: tiny-spot filter -- a contact that erodes away under a tenth of a
+    // line width cannot be printed on, so canonical drops it wholesale.
+    if diff_polygons.is_empty() {
+        return Vec::new();
+    }
+    let erosion = -0.1 * params.external_perimeter_width_mm;
+    if erosion != 0.0
+        && offset(
+            &diff_polygons,
+            erosion,
+            SUPPORT_SURFACES_JOIN,
+            OFFSET_ARC_TOLERANCE_MM,
+        )
+        .is_empty()
+    {
+        return Vec::new();
+    }
+
+    // Step 5: XY expansion (`support_expansion`, default 0).
+    if params.xy_expansion_mm != 0.0 {
+        diff_polygons = offset(
+            &diff_polygons,
+            params.xy_expansion_mm,
+            SUPPORT_SURFACES_JOIN,
+            OFFSET_ARC_TOLERANCE_MM,
+        );
+    }
+
+    // Step 6.
+    union_ex(&diff_polygons)
 }
 
 /// Partitions `overhang_area` (already `current \ previous`) into the 4

@@ -10,6 +10,7 @@ pub mod overhang_annotation_producer;
 pub mod prepass_slice_producer;
 /// BuiltinProducer for region mapping.
 pub mod region_mapping_producer;
+pub mod support_analysis_producer;
 /// BuiltinProducer for support geometry.
 pub mod support_geometry_producer;
 

@@ -1,6 +1,8 @@
 //! TDD tests for the traditional-support module.
 
-use slicer_ir::{ConfigView, ExtrusionRole};
+use std::sync::Arc;
+
+use slicer_ir::{ConfigView, ExtrusionRole, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion};
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -27,6 +29,36 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
         .build()
 }
 
+fn paint_with_plan(family_id: &str) -> PaintRegionLayerView {
+    paint_with_plan_at(family_id, 0)
+}
+
+fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: layer_index as i32,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(layer_index).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
 /// Test 1: enable_support=false produces no output.
 #[test]
 fn support_disabled_no_output() {
@@ -34,7 +66,7 @@ fn support_disabled_no_output() {
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -55,7 +87,7 @@ fn single_region_generates_support() {
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -78,7 +110,7 @@ fn extrusion_role_is_support_material() {
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -102,7 +134,7 @@ fn speed_factor_from_config() {
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -131,7 +163,7 @@ fn density_affects_line_count() {
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
     let mut output_low = SupportOutputBuilder::new();
     let mut output_high = SupportOutputBuilder::new();
 
@@ -162,7 +194,8 @@ fn alternating_angle() {
     let region0 = make_square_region(10.0, 0.3);
     let region1 = make_square_region(10.0, 0.5);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan("traditional");
+    let paint1 = paint_with_plan_at("traditional", 1);
     let mut output0 = SupportOutputBuilder::new();
     let mut output1 = SupportOutputBuilder::new();
 
@@ -170,7 +203,7 @@ fn alternating_angle() {
         .run_support(0, &[region0], &paint, &mut output0, &config)
         .unwrap();
     module
-        .run_support(1, &[region1], &paint, &mut output1, &config)
+        .run_support(1, &[region1], &paint1, &mut output1, &config)
         .unwrap();
 
     let paths0 = output0.support_paths();
@@ -244,7 +277,7 @@ fn zero_density_no_output() {
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_with_plan_at("traditional", 1);
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -256,4 +289,19 @@ fn zero_density_no_output() {
         0,
         "zero density should produce no paths"
     );
+}
+
+#[test]
+fn opposite_family_plan_is_rejected() {
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let module = TraditionalSupport::from_config(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let paint = paint_with_plan("tree");
+    let mut output = SupportOutputBuilder::new();
+
+    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+
+    assert!(result.is_err(), "non-traditional family must be rejected");
+    assert!(output.support_paths().is_empty());
+    assert!(output.interface_paths().is_empty());
 }

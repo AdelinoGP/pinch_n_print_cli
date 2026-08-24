@@ -121,11 +121,15 @@ impl ResolvedConfig {
         );
         m.insert(
             "support_type".into(),
-            ConfigValue::String(format!("{:?}", self.support_type)),
+            // Canonical spelling, not the Rust variant name: this map is read
+            // back by `canonical_support_family`, whose alias table matches
+            // `tree*` / `normal*` case-sensitively. `format!("{:?}")` emitted
+            // `Tree`, which fell through to the traditional family.
+            ConfigValue::String(self.support_type.as_canonical_str().to_string()),
         );
         m.insert(
-            "support_overhang_angle".into(),
-            ConfigValue::Float(f64::from(self.support_overhang_angle)),
+            "support_threshold_angle".into(),
+            ConfigValue::Float(f64::from(self.support_threshold_angle)),
         );
         if let Some(v) = self.nonplanar_max_angle_deg {
             m.insert(
@@ -950,9 +954,18 @@ declare_resolved_config! {
      /// Whether to suppress M73 progress commands.
      cli "disable_m73"             disable_m73: bool = false => extract_bool;
      /// Support generation type. Not CLI-bound today.
-    plain                        support_type: SupportType = SupportType::Traditional;
-    /// Support overhang angle threshold in degrees.
-    cli "support_overhang_angle" support_overhang_angle: f32 = 45.0 => extract_float;
+    plain                        support_type: SupportType = SupportType::NormalAuto;
+    /// Overhang angle threshold in degrees above which support is generated.
+    ///
+    /// Canonical name and default: OrcaSlicer's `support_threshold_angle`
+    /// (`PrintConfig.cpp`) is a `coInt` with min 0, max 90 and
+    /// `set_default_value(new ConfigOptionInt(30))`. Held as `f32` in-tree.
+    /// The legacy in-tree name `support_overhang_angle` remains accepted as an
+    /// alias (`slicer_scheduler::config_resolution::canonical_config_key`).
+    ///
+    /// This macro line is the **single source of truth** for the default; host
+    /// consumers must read the typed field, never re-derive a fallback.
+    cli "support_threshold_angle" support_threshold_angle: f32 = 30.0 => extract_float;
     /// Support layer height in millimeters. `0.0` means "use the object's
     /// effective layer height". Non-zero values must be at least the
     /// object's effective layer height (printers cannot extrude a layer
@@ -1067,7 +1080,7 @@ impl PartialEq for ResolvedConfig {
             && self.flat_bridge_closing_join == other.flat_bridge_closing_join
             && self.support_enabled == other.support_enabled
             && self.support_type == other.support_type
-            && self.support_overhang_angle.to_bits() == other.support_overhang_angle.to_bits()
+            && self.support_threshold_angle.to_bits() == other.support_threshold_angle.to_bits()
             && self.support_layer_height_mm.to_bits() == other.support_layer_height_mm.to_bits()
             && self.nonplanar_max_angle_deg.map(|f| f.to_bits())
                 == other.nonplanar_max_angle_deg.map(|f| f.to_bits())
@@ -1164,7 +1177,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.flat_bridge_closing_join.hash(state);
         self.support_enabled.hash(state);
         self.support_type.hash(state);
-        self.support_overhang_angle.to_bits().hash(state);
+        self.support_threshold_angle.to_bits().hash(state);
         self.support_layer_height_mm.to_bits().hash(state);
         self.nonplanar_max_angle_deg
             .map(|f| f.to_bits())

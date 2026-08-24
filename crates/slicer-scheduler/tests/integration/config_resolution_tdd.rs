@@ -259,6 +259,71 @@ fn legacy_first_layer_line_width_alias_resolves() {
     assert!(!resolved.extensions.contains_key("first_layer_line_width"));
 }
 
+/// F-2 regression: `support_threshold_angle` is a CLI-bound typed field, so it
+/// must land on `ResolvedConfig::support_threshold_angle` and NOT in
+/// `extensions`. Before packet 224 the support-analysis producer read this key
+/// out of `extensions` only, where `resolve_*` never puts a CLI-bound key — so
+/// every configured overhang angle was silently ignored.
+#[test]
+fn support_threshold_angle_lands_on_typed_field_not_extensions() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "support_threshold_angle".to_string(),
+        ConfigValue::Float(55.0),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let resolved = resolve_global_config(&source, &bounds).expect("canonical key should resolve");
+
+    assert_eq!(resolved.support_threshold_angle, 55.0);
+    assert!(!resolved.extensions.contains_key("support_threshold_angle"));
+}
+
+/// The pre-rename in-tree spelling stays accepted through `canonical_config_key`.
+#[test]
+fn legacy_support_overhang_angle_alias_resolves() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "support_overhang_angle".to_string(),
+        ConfigValue::Float(55.0),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let resolved = resolve_global_config(&source, &bounds).expect("legacy alias should resolve");
+
+    assert_eq!(resolved.support_threshold_angle, 55.0);
+    assert!(!resolved.extensions.contains_key("support_overhang_angle"));
+}
+
+/// Same conflict-guard precedent as `initial_layer_line_width`: a `HashMap`
+/// source has no key ordering, so accepting both spellings would make the
+/// resolved value depend on hash iteration order.
+#[test]
+fn both_support_threshold_angle_spellings_rejected() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "support_threshold_angle".to_string(),
+        ConfigValue::Float(30.0),
+    );
+    source.insert(
+        "support_overhang_angle".to_string(),
+        ConfigValue::Float(55.0),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let err = resolve_global_config(&source, &bounds).expect_err("both keys must be rejected");
+    let message = err.to_string();
+
+    assert!(
+        message.contains("support_threshold_angle"),
+        "error should name the canonical key: {message}"
+    );
+    assert!(
+        message.contains("support_overhang_angle"),
+        "error should name the legacy key: {message}"
+    );
+}
+
 #[test]
 fn both_keys_rejected() {
     let mut source: HashMap<String, ConfigValue> = HashMap::new();

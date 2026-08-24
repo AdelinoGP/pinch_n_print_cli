@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan,
-    StageId,
+    ActiveRegion, AnchoredEntity, CapabilityDerivedEventClosure, ConfigKey, ConfigValue,
+    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId,
 };
 
 use crate::manifest::DiagnosticLevel;
@@ -28,6 +28,7 @@ pub const STAGE_ORDER: &[&str] = &[
     // so it runs strictly AFTER Slice — never re-slicing the mesh.
     "PrePass::OverhangAnnotation",
     "PrePass::ShellClassification",
+    "PrePass::SupportAnalysis",
     "PrePass::SupportGeometry",
     "PrePass::LightningTreeGen",
     "Layer::PaintRegionAnnotation",
@@ -79,6 +80,21 @@ pub fn bind_module_config_view(
             }
         } else {
             effective.push(declared_key.clone());
+        }
+    }
+    // Support-family dispatch is a host-level selection shared by the
+    // planner and renderers. Its keys are not module-specific tuning knobs,
+    // so expose them to paired support modules even when their manifests do
+    // not repeat the common declaration.
+    if module
+        .claims()
+        .iter()
+        .any(|claim| claim.starts_with("support-family:"))
+    {
+        for key in [SUPPORT_GENERATOR_CONFIG_KEY, SUPPORT_FAMILY_CONFIG_KEY] {
+            if source.contains_key(key) && !effective.iter().any(|entry| entry == key) {
+                effective.push(key.to_string());
+            }
         }
     }
     Arc::new(ConfigView::from_declared(
@@ -230,10 +246,11 @@ const ARACHNE_PERIMETERS_MODULE_ID: &str = "com.core.arachne-perimeters";
 /// `ResolvedConfig` is built (module loading / claim dedup runs first; see
 /// `crates/slicer-runtime/src/run.rs`).
 pub const SUPPORT_GENERATOR_CONFIG_KEY: &str = "support_type";
+/// Config key carrying the canonical per-region support family.
+pub const SUPPORT_FAMILY_CONFIG_KEY: &str = "support_family";
 
 const SUPPORT_GENERATOR_CLAIM: &str = "support-generator";
-const TRADITIONAL_SUPPORT_MODULE_ID: &str = "com.core.traditional-support";
-const TREE_SUPPORT_MODULE_ID: &str = "com.core.tree-support";
+const SUPPORT_PLANNER_CLAIM: &str = "support-planner";
 
 /// Resolve a raw `support_type` config value (`config_source.get("support_type")`,
 /// e.g. `Some("tree(auto)")` — OrcaSlicer's spelling) to the module id it
@@ -244,10 +261,106 @@ const TREE_SUPPORT_MODULE_ID: &str = "com.core.tree-support";
 /// `com.core.tree-support`. Absent (`None`) and every other value fall back
 /// to `com.core.traditional-support` — which is also the alphabetical first
 /// winner, so an absent key keeps historical behaviour byte-for-byte.
-fn support_generator_preferred_module_id(support_type: Option<&str>) -> &'static str {
-    match support_type {
-        Some(v) if v.starts_with("tree") || v.starts_with("hybrid") => TREE_SUPPORT_MODULE_ID,
-        _ => TRADITIONAL_SUPPORT_MODULE_ID,
+/// Resolve canonical support-family selection, including legacy aliases.
+/// `support_type`, when present, intentionally overrides the canonical value.
+pub fn select_support_family(
+    support_family: Option<&str>,
+    support_type: Option<&str>,
+) -> &'static str {
+    slicer_ir::canonical_support_family(support_type.or(support_family))
+}
+
+/// Returns whether a module may receive an active region under support-family
+/// dispatch. Modules without a support-family claim remain region-agnostic.
+pub fn module_claims_match_active_region(claims: &[String], region: &ActiveRegion) -> bool {
+    let mut has_support_family_claim = false;
+    for claim in claims {
+        let Some(family) = claim.strip_prefix("support-family:") else {
+            continue;
+        };
+        has_support_family_claim = true;
+        let support_family = region
+            .resolved_config
+            .extensions
+            .get(SUPPORT_FAMILY_CONFIG_KEY)
+            .and_then(|value| match value {
+                ConfigValue::String(value) => Some(value.as_str()),
+                _ => None,
+            });
+        // `support_type` remains a compatibility alias. `normal(auto)` is the
+        // default enum value, so only an explicit legacy extension or a
+        // non-default enum value overrides the canonical family (see
+        // `SupportType::family_claim`).
+        let support_type = region
+            .resolved_config
+            .extensions
+            .get(SUPPORT_GENERATOR_CONFIG_KEY)
+            .and_then(|value| match value {
+                ConfigValue::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .or(region.resolved_config.support_type.family_claim());
+        let selected = select_support_family(support_family, support_type);
+        if family == selected {
+            return true;
+        }
+    }
+    !has_support_family_claim
+}
+
+/// Structured diagnostic for an incomplete support planner/renderer pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportFamilyPairingError {
+    /// Family IDs that have a planner but no renderer.
+    pub missing_renderers: Vec<String>,
+    /// Family IDs that have a renderer but no planner.
+    pub missing_planners: Vec<String>,
+}
+
+impl std::fmt::Display for SupportFamilyPairingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "support family pairing invalid: missing renderers {:?}, missing planners {:?}",
+            self.missing_renderers, self.missing_planners
+        )
+    }
+}
+
+impl std::error::Error for SupportFamilyPairingError {}
+
+/// Validate support family pairs, returning warnings for incomplete families.
+///
+/// Incomplete families are intentionally non-fatal: their regions simply have
+/// no complete planner/renderer route and therefore produce no support plan.
+pub fn validate_support_family_pairing(
+    modules: &[LoadedModule],
+) -> Result<Vec<SupportFamilyPairingError>, SupportFamilyPairingError> {
+    use std::collections::BTreeSet;
+    let mut planners = BTreeSet::new();
+    let mut renderers = BTreeSet::new();
+    for module in modules {
+        for claim in module.claims() {
+            if let Some(family) = claim.strip_prefix("support-family:") {
+                if module.claims().iter().any(|c| c == "support-planner") {
+                    planners.insert(family.to_string());
+                }
+                if module.claims().iter().any(|c| c == SUPPORT_GENERATOR_CLAIM) {
+                    renderers.insert(family.to_string());
+                }
+            }
+        }
+    }
+    let missing_renderers = planners.difference(&renderers).cloned().collect();
+    let missing_planners = renderers.difference(&planners).cloned().collect();
+    let error = SupportFamilyPairingError {
+        missing_renderers,
+        missing_planners,
+    };
+    if error.missing_renderers.is_empty() && error.missing_planners.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(vec![error])
     }
 }
 
@@ -278,12 +391,28 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// dedup with no config input and silently selected `arachne-perimeters`
 /// (alphabetically first) with no way for a user's config to express intent,
 /// and `incompatible-with` never fired because dedup runs before
-/// `validate_startup_dag`. The `support-generator` claim: when both
-/// `com.core.traditional-support` and `com.core.tree-support` are
-/// candidates, the winner is resolved by the raw `support_type` config (see
-/// [`support_generator_preferred_module_id`]) — without it, `tree-support`
-/// always lost by alphabetical accident (`traditional` sorts before
-/// `tree`) and OrcaSlicer's support-type dropdown could never select it.
+/// `validate_startup_dag`. The `support-generator` claim (and the
+/// family-scoped half of `support-planner`) is the second exception, but in
+/// the opposite direction: it is **not deduplicated at all**. Packet 221
+/// moved support-family selection from load time to dispatch time, where
+/// [`module_claims_match_active_region`] picks a renderer/planner pair per
+/// region from that region's resolved `support_family` / `support_type`.
+/// Every family candidate must therefore survive this pass; collapsing them
+/// to one winner would make the losing family undispatchable for any region
+/// that selects it.
+///
+/// Consequence: the `support_type` argument threaded through
+/// [`dedup_same_claim_modules_with_wall_generator`] no longer influences this
+/// function's result. It is retained (as `_support_type`) rather than removed
+/// because it is part of a `pub` signature that the production live-loader
+/// `slicer_wasm_host::load_live_modules_for_plan_with_config` calls, and
+/// because the same raw value is what the region-mapping pass later resolves
+/// into `ResolvedConfig`. **There is no support_type-preferred-module branch
+/// here any more — do not add one back.** An earlier revision selected
+/// `com.core.tree-support` over `com.core.traditional-support` here (without
+/// it, `tree-support` lost by alphabetical accident, `traditional` sorting
+/// before `tree`); that selection now lives entirely in
+/// [`select_support_family`] / [`module_claims_match_active_region`].
 ///
 /// Matches docs/04 §2 "Global claim conflicts" (exactly one holder
 /// globally per claim) and docs/10 §Glossary ("Exactly one holder per
@@ -294,8 +423,9 @@ fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static 
 /// tests can exercise the claim dedup path without building a full
 /// `LoadModulesReport`. Behaviour is identical to the private helper with
 /// `wall_generator` and `support_type` absent (`None`), i.e.
-/// [`DEFAULT_WALL_GENERATOR`] (`"classic"`) and the traditional support
-/// holder apply if a claim collision is present. See
+/// [`DEFAULT_WALL_GENERATOR`] (`"classic"`) applies if a
+/// `perimeter-generator` collision is present. `support_type` is inert here
+/// (see above); support claims are never deduplicated. See
 /// [`dedup_same_claim_modules_with_wall_generator`] for the config-aware
 /// entry point the production live-loader uses.
 #[doc(hidden)]
@@ -311,11 +441,15 @@ pub fn dedup_same_claim_modules_for_test(
 /// string value, or `None` if the key is absent), `spiral_vase` (the raw
 /// `config_source.get("spiral_vase")` bool value, or `false` if absent) and
 /// `support_type` (the raw `config_source.get("support_type")` string value,
-/// or `None` if the key is absent) are threaded through to resolve the
-/// `perimeter-generator` and `support-generator` claims. When `spiral_vase`
-/// is `true`, the classic perimeter generator is forced for that claim
-/// regardless of `wall_generator` (Arachne is incompatible with spiral-vase
-/// mode). This is the entry point
+/// or `None` if the key is absent) are threaded through. Only
+/// `wall_generator` / `spiral_vase` affect the outcome, resolving the
+/// `perimeter-generator` claim; when `spiral_vase` is `true`, the classic
+/// perimeter generator is forced for that claim regardless of
+/// `wall_generator` (Arachne is incompatible with spiral-vase mode).
+/// `support_type` is accepted but **unreachable** as a selector: support
+/// claims are not deduplicated post-packet-221 (see
+/// [`dedup_same_claim_modules_for_test`]'s doc comment). This is the entry
+/// point
 /// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
@@ -339,7 +473,13 @@ fn dedup_same_claim_modules(
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
     spiral_vase: bool,
-    support_type: Option<&str>,
+    // Intentionally unused, and intentionally still in the signature. Support
+    // renderers/planners are selected per region at dispatch time
+    // (`module_claims_match_active_region`), never here — see this module's
+    // `dedup_same_claim_modules_for_test` doc comment. Reading `support_type`
+    // in this function would re-introduce the pre-221 mutual exclusion and
+    // make one support family undispatchable.
+    _support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
 
@@ -353,7 +493,9 @@ fn dedup_same_claim_modules(
     let mut candidates_for: BTreeMap<(StageId, String), Vec<ModuleId>> = BTreeMap::new();
     for module in &sorted {
         for claim in &module.claims {
-            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+                || claim.starts_with("support-family:")
+            {
                 continue;
             }
             candidates_for
@@ -368,6 +510,19 @@ fn dedup_same_claim_modules(
     // can be resolved by `wall_generator` config rather than by iteration
     // order (packet 112 Step 10 — see this function's doc comment).
     let mut winner_for: BTreeMap<(StageId, String), ModuleId> = BTreeMap::new();
+    // Family-scoped support planners coexist per family (mirroring how
+    // `support-generator` is retained per region); only planners without a
+    // `support-family:` claim fall back to global alphabetical resolution.
+    let family_scoped: std::collections::HashSet<ModuleId> = sorted
+        .iter()
+        .filter(|module| {
+            module
+                .claims
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"))
+        })
+        .map(|module| module.id.clone())
+        .collect();
     for ((stage, claim), candidate_ids) in &candidates_for {
         if candidate_ids.len() < 2 {
             continue; // sole holder; nothing to resolve
@@ -391,20 +546,23 @@ fn dedup_same_claim_modules(
             // the alphabetical default below.
         }
         if claim == SUPPORT_GENERATOR_CLAIM {
-            // `tree-support` always lost the default alphabetical dedup
-            // (`traditional` sorts before `tree`), so OrcaSlicer's
-            // `support_type` dropdown could never select it. The raw
-            // `support_type` config value (the same channel the raw
-            // `enable_support` reaches pnp through) resolves the claim
-            // instead.
-            let preferred = support_generator_preferred_module_id(support_type);
-            if candidate_ids.iter().any(|id| id == preferred) {
-                winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
+            // Support renderers are selected per region. Retaining every family
+            // candidate here is required for atomic planner/renderer dispatch.
+            continue;
+        }
+        if claim == SUPPORT_PLANNER_CLAIM {
+            // Support planners are selected per family, exactly like renderers
+            // are selected per region. Family-scoped planners coexist; only
+            // non-family planners are deduplicated alphabetically (fallback).
+            let global_candidates: Vec<&ModuleId> = candidate_ids
+                .iter()
+                .filter(|id| !family_scoped.contains(*id))
+                .collect();
+            if global_candidates.len() < 2 {
                 continue;
             }
-            // Preferred module isn't actually among the candidates (e.g. a
-            // community module reusing this claim name) — fall through to
-            // the alphabetical default below.
+            winner_for.insert((stage.clone(), claim.clone()), global_candidates[0].clone());
+            continue;
         }
         // Default: alphabetically-first candidate wins (docs/04 §2 "Global
         // claim conflicts").
@@ -425,7 +583,10 @@ fn dedup_same_claim_modules(
             // alphabetically and rectilinear (which holds all four) is dropped
             // whole, defeating any user config that names rectilinear for
             // top/bottom/bridge — see DEV-065 and docs/04 §"Validation Passes".
-            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+                || claim == SUPPORT_GENERATOR_CLAIM
+                || (claim == SUPPORT_PLANNER_CLAIM && family_scoped.contains(&module.id))
+            {
                 continue;
             }
             let key = (module.stage.clone(), claim.clone());
@@ -510,6 +671,34 @@ pub struct ExecutionPlan {
     pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
+/// Scheduler metadata for one anchored invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchoredInvocation {
+    /// Global layer that owns this invocation's execution ordering.
+    pub anchor_global_layer_index: u32,
+    /// Capability-derived stage closure for the invocation.
+    pub closure: CapabilityDerivedEventClosure,
+    /// Provenance retained from the anchored entity.
+    pub provenance: slicer_ir::AnchoredEntityProvenance,
+    /// Whether this invocation may run concurrently with other layer work.
+    pub layer_parallel_safe: bool,
+}
+
+impl AnchoredInvocation {
+    /// Derive scheduling metadata from the entity's declared capabilities.
+    pub fn from_entity(entity: &AnchoredEntity, layer_parallel_safe: bool) -> Self {
+        Self {
+            anchor_global_layer_index: entity.anchor_global_layer_index,
+            closure: CapabilityDerivedEventClosure::derive(
+                &entity.input_capabilities,
+                &entity.output_capabilities,
+            ),
+            provenance: entity.provenance.clone(),
+            layer_parallel_safe,
+        }
+    }
+}
+
 impl Default for ExecutionPlan {
     fn default() -> Self {
         Self {
@@ -526,6 +715,15 @@ impl Default for ExecutionPlan {
 }
 
 impl ExecutionPlan {
+    /// Derive an anchored invocation without an event-kind or feature stage table.
+    pub fn anchored_invocation(
+        &self,
+        entity: &AnchoredEntity,
+        layer_parallel_safe: bool,
+    ) -> AnchoredInvocation {
+        AnchoredInvocation::from_entity(entity, layer_parallel_safe)
+    }
+
     /// Build an ExecutionPlan with a precomputed module_region_index.
     #[cfg(test)]
     #[allow(dead_code)]
@@ -544,7 +742,15 @@ impl ExecutionPlan {
                 for module in &stage.modules {
                     let key = (layer.index, module.module_id.clone());
                     let entry = module_region_index.entry(key).or_default();
-                    entry.extend(layer.active_regions.iter().cloned());
+                    entry.extend(
+                        layer
+                            .active_regions
+                            .iter()
+                            .filter(|region| {
+                                module_claims_match_active_region(module.claims(), region)
+                            })
+                            .cloned(),
+                    );
                 }
             }
         }
@@ -915,7 +1121,15 @@ pub fn build_execution_plan(
         // upheld by `bind_module_config_view`; enforce it at plan-build
         // time so any caller bypassing the helper still fails closed.
         for key in binding.config_view.keys() {
-            if !config_key_declared(&binding.module.config_schema.entries, &key) {
+            let support_family_module = binding
+                .module
+                .claims()
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"));
+            if !config_key_declared(&binding.module.config_schema.entries, &key)
+                && !(support_family_module
+                    && (key == SUPPORT_GENERATOR_CONFIG_KEY || key == SUPPORT_FAMILY_CONFIG_KEY))
+            {
                 return Err(ExecutionPlanError::UndeclaredConfigKey { module_id, key });
             }
         }
@@ -1032,7 +1246,18 @@ pub fn build_execution_plan(
                     let entry = module_region_index
                         .entry((layer.index, module_id.clone()))
                         .or_default();
-                    entry.extend(layer.active_regions.iter().cloned());
+                    let module = bindings_by_module_id
+                        .get(module_id)
+                        .expect("module binding checked above");
+                    entry.extend(
+                        layer
+                            .active_regions
+                            .iter()
+                            .filter(|region| {
+                                module_claims_match_active_region(module.module.claims(), region)
+                            })
+                            .cloned(),
+                    );
                 }
             }
         }
@@ -1214,19 +1439,19 @@ mod dedup_tests {
     #[test]
     fn support_type_tree_selects_tree_support_holder() {
         // OrcaSlicer's `support_type` spelling `tree(auto)` — the raw value
-        // the GUI's 3MF sidecar carries — must flip the `support-generator`
-        // holder from `com.core.traditional-support` (the default /
-        // alphabetical winner) to `com.core.tree-support`.
+        // the GUI's 3MF sidecar carries — must resolve the `tree` support
+        // family. Support renderers are selected per region by family claim,
+        // so dedup retains BOTH family holders rather than collapsing to one.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1238,50 +1463,58 @@ mod dedup_tests {
             Some("tree(auto)"),
         );
 
-        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
-        assert_eq!(kept[0].id, "com.core.tree-support");
-        assert_eq!(diagnostics.len(), 1);
-        assert!(diagnostics[0].message.contains("com.core.tree-support"));
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(auto)")),
+            "tree",
+            "tree(auto) resolves the tree family"
+        );
     }
 
     #[test]
     fn support_type_absent_defaults_to_traditional_support_holder() {
-        // No `support_type` config: traditional-support keeps winning — both
-        // because it is the documented default and because it sorts first
-        // alphabetically, so every existing slice is unchanged.
+        // No `support_type` config: the traditional family is the documented
+        // default. Both family holders survive dedup; the absent config
+        // resolves the traditional family for a region.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, None);
 
-        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, None),
+            "traditional",
+            "absent support_type resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_normal_falls_back_to_traditional_support_holder() {
-        // `normal(auto)` — and by extension `normal(manual)` — selects the
-        // traditional holder explicitly.
+        // `normal(auto)` — and by extension `normal(manual)` — resolves the
+        // traditional family explicitly. Both family holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1293,25 +1526,31 @@ mod dedup_tests {
             Some("normal(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("normal(auto)")),
+            "traditional",
+            "normal(auto) resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_tree_manual_selects_tree_support_holder() {
         // Orca's manual variant (enforcer-only mode) carries the same
         // tree/normal geometry prefix; pnp has no enforcer-only concept, so
-        // it selects the same holder as `tree(auto)`.
+        // it resolves the same tree family as `tree(auto)`. Both family
+        // holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1323,8 +1562,13 @@ mod dedup_tests {
             Some("tree(manual)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.tree-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(manual)")),
+            "tree",
+            "tree(manual) resolves the tree family"
+        );
     }
 
     #[test]
@@ -1332,17 +1576,18 @@ mod dedup_tests {
         // Legacy `hybrid(auto)` spellings (old OrcaSlicer files) are
         // migrated by Orca itself to `tree(auto)` at config load; a raw 3MF
         // sidecar may still carry the old spelling, so the resolver honours
-        // Orca's own migration.
+        // Orca's own migration and resolves the tree family. Both family
+        // holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1354,40 +1599,52 @@ mod dedup_tests {
             Some("hybrid(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.tree-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("hybrid(auto)")),
+            "tree",
+            "hybrid(auto) resolves the tree family"
+        );
     }
 
     #[test]
     fn support_type_unrecognized_value_falls_back_to_traditional_support_holder() {
         // An unrecognized `support_type` string (typo, unsupported value)
         // must not panic or drop both candidates — it falls back to the
-        // traditional holder, the same winner alphabetical order would pick.
+        // traditional family. Both family holders survive dedup.
         let mut modules = vec![
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let kept =
             dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false, Some("bogus"));
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.core.traditional-support");
+        assert_eq!(kept.len(), 2, "both family holders survive per claim");
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("bogus")),
+            "traditional",
+            "unrecognized support_type resolves the traditional family"
+        );
     }
 
     #[test]
     fn support_type_preferred_module_not_among_candidates_keeps_alphabetical_default() {
         // A community module reusing the claim name is not in the preferred
-        // set: the config cannot name it, so the alphabetical first-winner
-        // default applies (docs/04 §2).
+        // set. Support renderers are selected per region by family claim, so
+        // dedup retains BOTH candidates; the community module carries no
+        // family claim and is therefore region-agnostic, while the core
+        // traditional holder is selected for traditional regions.
         let mut modules = vec![
             loaded(
                 "com.community.fancy-support",
@@ -1397,7 +1654,7 @@ mod dedup_tests {
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -1409,8 +1666,17 @@ mod dedup_tests {
             Some("tree(auto)"),
         );
 
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, "com.community.fancy-support");
+        assert_eq!(
+            kept.len(),
+            2,
+            "both support-generator candidates survive per claim"
+        );
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            super::select_support_family(None, Some("tree(auto)")),
+            "tree",
+            "tree(auto) resolves the tree family"
+        );
     }
 
     #[test]
@@ -1557,12 +1823,12 @@ mod dedup_tests {
             loaded(
                 "com.core.traditional-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:traditional"],
             ),
             loaded(
                 "com.core.tree-support",
                 "Layer::Support",
-                &["support-generator"],
+                &["support-generator", "support-family:tree"],
             ),
         ];
         let mut diagnostics = Vec::new();
@@ -1570,8 +1836,9 @@ mod dedup_tests {
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // All three infill modules survive — per-region resolution picks the
-        // active holder per (object, region). Perimeters and support collapse
-        // to one holder per stage as before.
+        // active holder per (object, region). Perimeters collapse to one
+        // holder per stage; support renderers are selected per region by
+        // family claim, so BOTH family holders survive.
         assert_eq!(
             ids,
             [
@@ -1580,12 +1847,13 @@ mod dedup_tests {
                 "com.core.lightning-infill",
                 "com.core.rectilinear-infill",
                 "com.core.traditional-support",
+                "com.core.tree-support",
             ]
         );
-        // Two drops: arachne-perimeters (loses to classic, the default
-        // wall_generator) and tree-support (loses to traditional). Fill-role
-        // drops are NOT emitted.
-        assert_eq!(diagnostics.len(), 2);
+        // One drop: arachne-perimeters (loses to classic, the default
+        // wall_generator). tree-support is retained alongside
+        // traditional-support. Fill-role drops are NOT emitted.
+        assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics.iter().all(|d| !d.message.contains("fill")));
     }
 }

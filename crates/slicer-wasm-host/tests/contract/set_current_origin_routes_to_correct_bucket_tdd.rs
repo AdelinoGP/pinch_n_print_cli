@@ -23,7 +23,7 @@ use slicer_wasm_host::host::{
 
 fn make_feature_flag() -> WallFeatureFlag {
     WallFeatureFlag {
-    tool_index: None,
+        tool_index: None,
         fuzzy_skin: false,
         is_bridge: false,
         is_thin_wall: false,

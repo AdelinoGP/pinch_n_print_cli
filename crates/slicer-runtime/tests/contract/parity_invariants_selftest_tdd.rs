@@ -9,12 +9,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, InfillIR,
+    ActiveRegion, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, InfillIR,
     InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit, LoopType, ObjectLayerRef,
-    PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point3WithWidth, PrintEntity, RegionKey,
-    ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SeamReason, SupportIR,
-    SupportPlanEntry, SupportPlanIR, TravelMoveDest, WallBoundaryType, WallFeatureFlags, WallLoop,
-    WidthProfile,
+    PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
+    PrintEntity, RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition,
+    SeamReason, SupportEntry, SupportIR, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    SupportPlanRoleRegion, SupportPlanSkeleton, SupportRole, TravelMoveDest, WallBoundaryType,
+    WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -173,12 +174,69 @@ fn support_segment(point_count: usize, role: ExtrusionRole, jitter: f32) -> Extr
     }
 }
 
-fn support_entry(layer: i32, segments: Vec<ExtrusionPath3D>) -> SupportPlanEntry {
+/// Unit square analysis polygon in canonical scaled integer units, offset by
+/// `index` mm so distinct polygons in one role group stay distinguishable.
+fn support_polygon(index: usize) -> ExPolygon {
+    let base = index as f32;
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(base, base),
+                Point2::from_mm(base + 1.0, base),
+                Point2::from_mm(base + 1.0, base + 1.0),
+                Point2::from_mm(base, base + 1.0),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+/// A role group carrying REAL polygons. An empty `regions` vector would make
+/// every downstream geometry invariant vacuous, which is exactly the hole
+/// packet 224 closes.
+fn support_role(role: SupportPlanRole, polygon_count: usize) -> SupportPlanRoleRegion {
+    SupportPlanRoleRegion {
+        role,
+        regions: (0..polygon_count).map(support_polygon).collect(),
+    }
+}
+
+/// Structural skeleton with real `Point3` millimeter coordinates. `jitter`
+/// perturbs every coordinate to simulate ULP-scale drift (polygon vertices are
+/// scaled integers and are never jittered).
+fn support_skeleton(point_count: usize, jitter: f32) -> SupportPlanSkeleton {
+    SupportPlanSkeleton {
+        points: (0..point_count)
+            .map(|i| Point3 {
+                x: i as f32 + jitter,
+                y: jitter,
+                z: 1.0 + jitter,
+            })
+            .collect(),
+    }
+}
+
+fn support_entry(
+    layer: i32,
+    roles: Vec<SupportPlanRoleRegion>,
+    skeleton_points: usize,
+    jitter: f32,
+) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     SupportPlanEntry {
         global_layer_index: layer,
         object_id: "parity-object".to_string(),
         region_id: 0,
-        branch_segments: segments,
+        family_id: "tree".into(),
+        demand_ids: vec!["demand".into()],
+        body_ids: vec!["body".into()],
+        anchor_layer_index: layer.max(0) as u32,
+        anchor_z: 100,
+        roles,
+        skeleton: Some(support_skeleton(skeleton_points, jitter)),
+        capabilities: vec![],
+        provenance: vec![],
+        decline_reason: None,
     }
 }
 
@@ -189,20 +247,31 @@ fn support_plan(entries: Vec<SupportPlanEntry>) -> PrepassStageOutput {
     }))
 }
 
-fn base_plan(jitter: f32) -> PrepassStageOutput {
-    support_plan(vec![
+/// SupportPlanIR v2.0.0 shape: role-attributed analysis polygons plus an
+/// optional structural skeleton. Entry 0 carries one role group; entry 1
+/// carries two, so a dropped role group is observable.
+fn base_entries(jitter: f32) -> Vec<SupportPlanEntry> {
+    vec![
         support_entry(
             0,
-            vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
+            vec![support_role(SupportPlanRole::SupportBody, 2)],
+            3,
+            jitter,
         ),
         support_entry(
             1,
             vec![
-                support_segment(3, ExtrusionRole::SupportMaterial, jitter),
-                support_segment(2, ExtrusionRole::SupportInterface, jitter),
+                support_role(SupportPlanRole::SupportBody, 2),
+                support_role(SupportPlanRole::TopInterface, 1),
             ],
+            4,
+            jitter,
         ),
-    ])
+    ]
+}
+
+fn base_plan(jitter: f32) -> PrepassStageOutput {
+    support_plan(base_entries(jitter))
 }
 
 #[test]
@@ -216,10 +285,9 @@ fn parity_comparator_rejects_dropped_support_entry_whole_entry() {
         .expect("ULP-scale perturbation must be accepted");
 
     // AC-N6(a): second plan missing one whole SupportPlanEntry.
-    let wasm = support_plan(vec![support_entry(
-        0,
-        vec![support_segment(3, ExtrusionRole::SupportMaterial, 0.0)],
-    )]);
+    let mut entries = base_entries(0.0);
+    entries.pop();
+    let wasm = support_plan(entries);
     let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
         .expect_err("dropped entry must be rejected");
     assert!(
@@ -233,19 +301,9 @@ fn parity_comparator_rejects_dropped_support_entry_shifted_layer_index() {
     // AC-N6(b): same (object_id, region_id) but a shifted global_layer_index
     // must fail — the entry key is the FULL triple, not the id pair.
     let native = base_plan(0.0);
-    let wasm = support_plan(vec![
-        support_entry(
-            7,
-            vec![support_segment(3, ExtrusionRole::SupportMaterial, 0.0)],
-        ),
-        support_entry(
-            1,
-            vec![
-                support_segment(3, ExtrusionRole::SupportMaterial, 0.0),
-                support_segment(2, ExtrusionRole::SupportInterface, 0.0),
-            ],
-        ),
-    ]);
+    let mut entries = base_entries(0.0);
+    entries[0].global_layer_index = 7;
+    let wasm = support_plan(entries);
     let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
         .expect_err("shifted global_layer_index must be rejected");
     assert!(
@@ -256,48 +314,91 @@ fn parity_comparator_rejects_dropped_support_entry_shifted_layer_index() {
 
 #[test]
 fn parity_comparator_rejects_dropped_support_entry_dropped_segment() {
-    // AC-N6(c): one ExtrusionPath3D missing from an entry's branch_segments.
+    // AC-N6(c): one role group missing from an entry's role-attributed
+    // analysis geometry (v2.0.0 replacement for the deleted branch_segments).
     let native = base_plan(0.0);
-    let wasm = support_plan(vec![
-        support_entry(
-            0,
-            vec![support_segment(3, ExtrusionRole::SupportMaterial, 0.0)],
-        ),
-        support_entry(
-            1,
-            vec![support_segment(3, ExtrusionRole::SupportMaterial, 0.0)],
-        ),
-    ]);
+    let mut entries = base_entries(0.0);
+    entries[1].roles.pop();
+    let wasm = support_plan(entries);
     let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
-        .expect_err("dropped branch segment must be rejected");
+        .expect_err("dropped role group must be rejected");
     assert!(
-        err.contains("branch_segments count"),
-        "error must name the branch_segments count invariant: {err}"
+        err.contains("roles count"),
+        "error must name the roles count invariant: {err}"
+    );
+
+    // A dropped POLYGON inside a surviving role group must also fail — the
+    // role-group count alone is not a sufficient gate.
+    let mut entries = base_entries(0.0);
+    entries[1].roles[0].regions.pop();
+    let wasm = support_plan(entries);
+    let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
+        .expect_err("dropped analysis polygon must be rejected");
+    assert!(
+        err.contains("role regions count"),
+        "error must name the role regions count invariant: {err}"
     );
 }
 
 #[test]
 fn parity_comparator_rejects_dropped_support_entry_dropped_point() {
-    // AC-N6(d): one Point3WithWidth missing from a segment.
+    // AC-N6(d): one point missing from an entry's structural skeleton. Before
+    // packet 224 this returned Ok(()) — the comparator never reached any
+    // per-point geometry on the SupportPlan path, so a real point drop in
+    // either transport passed the gate silently.
     let native = base_plan(0.0);
-    let wasm = support_plan(vec![
-        support_entry(
-            0,
-            vec![support_segment(2, ExtrusionRole::SupportMaterial, 0.0)],
-        ),
-        support_entry(
-            1,
-            vec![
-                support_segment(3, ExtrusionRole::SupportMaterial, 0.0),
-                support_segment(2, ExtrusionRole::SupportInterface, 0.0),
-            ],
-        ),
-    ]);
+    let mut entries = base_entries(0.0);
+    entries[0]
+        .skeleton
+        .as_mut()
+        .expect("fixture skeleton")
+        .points
+        .pop();
+    let wasm = support_plan(entries);
     let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
-        .expect_err("dropped point must be rejected");
+        .expect_err("dropped skeleton point must be rejected");
     assert!(
         err.contains("points count"),
         "error must name the points count invariant: {err}"
+    );
+
+    // Same count, one point displaced well beyond coord_mm: a moved point is
+    // as much a parity failure as a dropped one.
+    let mut entries = base_entries(0.0);
+    entries[0]
+        .skeleton
+        .as_mut()
+        .expect("fixture skeleton")
+        .points[1]
+        .y += 0.5;
+    let wasm = support_plan(entries);
+    let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
+        .expect_err("displaced skeleton point must be rejected");
+    assert!(
+        err.contains("skeleton point coordinates mismatch"),
+        "error must name the skeleton coordinate invariant: {err}"
+    );
+
+    // A dropped VERTEX inside an analysis polygon must fail too.
+    let mut entries = base_entries(0.0);
+    entries[0].roles[0].regions[0].contour.points.pop();
+    let wasm = support_plan(entries);
+    let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
+        .expect_err("dropped polygon vertex must be rejected");
+    assert!(
+        err.contains("polygon points count"),
+        "error must name the polygon points count invariant: {err}"
+    );
+
+    // Presence divergence on the skeleton itself.
+    let mut entries = base_entries(0.0);
+    entries[1].skeleton = None;
+    let wasm = support_plan(entries);
+    let err = assert_prepass_parity_structural(&native, &wasm, ParityTolerance::default())
+        .expect_err("dropped skeleton must be rejected");
+    assert!(
+        err.contains("skeleton presence"),
+        "error must name the skeleton presence invariant: {err}"
     );
 }
 
@@ -752,13 +853,31 @@ fn support_ir(jitter: f32) -> SupportIR {
     SupportIR {
         schema_version: semver(),
         global_layer_index: 0,
-        regions: vec![slicer_ir::slice_ir::SupportRegion {
-            support_paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
-            interface_paths: vec![support_segment(2, ExtrusionRole::SupportInterface, jitter)],
-            raft_paths: vec![support_segment(2, ExtrusionRole::RaftInfill, jitter)],
-            ironing_paths: vec![],
-            ..Default::default()
-        }],
+        entries: vec![
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+            SupportEntry {
+                family_id: "fixture-family".into(),
+                body_id: "fixture-body".into(),
+                demand_ids: vec!["fixture-demand".into()],
+                object_id: "obj".into(),
+                region_id: 0,
+                role: SupportRole::SupportBody,
+                paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
+            },
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+            SupportEntry {
+                family_id: "fixture-family".into(),
+                body_id: "fixture-body".into(),
+                demand_ids: vec!["fixture-demand".into()],
+                object_id: "obj".into(),
+                region_id: 0,
+                role: SupportRole::TopInterface,
+                paths: vec![
+                    support_segment(2, ExtrusionRole::SupportInterface, jitter),
+                    support_segment(2, ExtrusionRole::RaftInfill, jitter),
+                ],
+            },
+        ],
     }
 }
 
@@ -778,17 +897,17 @@ fn parity_comparator_accepts_support_ulp_perturbation() {
 
 #[test]
 fn parity_comparator_rejects_dropped_support_path() {
-    // One ExtrusionPath3D missing from interface_paths must fail on the
+    // One ExtrusionPath3D missing from the interface entry must fail on the
     // per-field path count, naming the field.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut dropped = support_ir(0.0);
-    dropped.regions[0].interface_paths.pop();
+    dropped.entries[1].paths.pop();
     let wasm = LayerStageCommit::Support(dropped);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("dropped support path must be rejected");
     assert!(
-        err.contains("interface_paths"),
-        "error must name the interface_paths field: {err}"
+        err.contains("entry[1] paths"),
+        "error must name the interface entry paths: {err}"
     );
 }
 
@@ -798,7 +917,7 @@ fn parity_comparator_rejects_moved_support_point() {
     // the point coordinates invariant.
     let native = LayerStageCommit::Support(support_ir(0.0));
     let mut moved = support_ir(0.0);
-    moved.regions[0].support_paths[0].points[1].x += 0.5;
+    moved.entries[0].paths[0].points[1].x += 0.5;
     let wasm = LayerStageCommit::Support(moved);
     let err = assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect_err("moved support point must be rejected");

@@ -9,7 +9,8 @@ use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPlanIR, MeshIR,
     ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, Point2, Point3, RegionKey,
-    RegionMapIR, RegionPlan, SemVer, SurfaceClassificationIR, Transform3d,
+    RegionMapIR, RegionPlan, SemVer, SupportGeometryIR, SupportPlanEntry, SupportPlanIR,
+    SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, BlackboardError, BlackboardPrepassSlot,
@@ -114,6 +115,63 @@ fn prepass_executor_surfaces_duplicate_commit_as_a_deterministic_blackboard_erro
             },
         })
     );
+}
+
+#[test]
+fn support_geometry_aggregates_family_outputs_before_one_final_commit() {
+    let mesh = Arc::new(mesh_fixture());
+    let mut blackboard = Blackboard::new(mesh, 0);
+    blackboard
+        .commit_surface_classification(Arc::new(surface_fixture()))
+        .unwrap();
+    blackboard
+        .commit_layer_plan(Arc::new(layer_plan_fixture()))
+        .unwrap();
+    blackboard
+        .commit_region_map(Arc::new(region_map_fixture()))
+        .unwrap();
+    blackboard.commit_slice_ir(Arc::new(Vec::new())).unwrap();
+    blackboard
+        .commit_support_geometry(Arc::new(SupportGeometryIR::default()))
+        .unwrap();
+
+    let plan = execution_plan_fixture(vec![compiled_stage(
+        "PrePass::SupportGeometry",
+        &["com.example.tree", "com.example.traditional"],
+    )]);
+    let runner = ScriptedRunner::new(
+        &["com.example.tree", "com.example.traditional"],
+        vec![
+            (
+                "com.example.tree".into(),
+                Ok(PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR {
+                    entries: vec![support_plan_entry("tree")],
+                    ..Default::default()
+                }))),
+            ),
+            (
+                "com.example.traditional".into(),
+                Ok(PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR {
+                    entries: vec![support_plan_entry("traditional")],
+                    ..Default::default()
+                }))),
+            ),
+        ],
+        0,
+    );
+
+    let audits = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
+        .expect("duplicate support families must degrade rather than abort prepass");
+
+    let committed = blackboard
+        .support_plan()
+        .expect("the aggregate must be committed once after both planners run");
+    assert_eq!(committed.entries.len(), 1);
+    assert_eq!(committed.entries[0].family_id, "tree");
+    assert!(audits[1]
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == 1202));
 }
 
 #[test]
@@ -341,6 +399,25 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build()
+}
+
+fn support_plan_entry(family_id: &str) -> SupportPlanEntry {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    SupportPlanEntry {
+        global_layer_index: 0,
+        object_id: "cube".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        demand_ids: vec![format!("{family_id}-demand")],
+        body_ids: vec![format!("{family_id}-body")],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        roles: Vec::new(),
+        skeleton: None,
+        capabilities: Vec::new(),
+        provenance: Vec::new(),
+        decline_reason: None,
+    }
 }
 
 fn mesh_fixture() -> MeshIR {

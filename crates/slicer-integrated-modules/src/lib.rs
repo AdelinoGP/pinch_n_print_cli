@@ -42,8 +42,8 @@ use wipe_tower::WipeTower;
 use arachne_perimeters::ArachnePerimeters;
 #[cfg(feature = "classic-perimeters")]
 use classic_perimeters::ClassicPerimeters;
-#[cfg(feature = "support-planner")]
-use support_planner::SupportPlanner;
+#[cfg(feature = "tree-support-planner")]
+use tree_support_planner::SupportPlanner;
 
 #[cfg(feature = "classic-perimeters")]
 const CLASSIC_PERIMETERS_MANIFEST: &str =
@@ -51,9 +51,9 @@ const CLASSIC_PERIMETERS_MANIFEST: &str =
 #[cfg(feature = "arachne-perimeters")]
 const ARACHNE_PERIMETERS_MANIFEST: &str =
     include_str!("../../../modules/core-modules/arachne-perimeters/arachne-perimeters.toml");
-#[cfg(feature = "support-planner")]
+#[cfg(feature = "tree-support-planner")]
 const SUPPORT_PLANNER_MANIFEST: &str =
-    include_str!("../../../modules/core-modules/support-planner/support-planner.toml");
+    include_str!("../../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
 macro_rules! manifest_const {
     ($name:ident, $feature:literal, $path:literal) => {
         #[cfg(feature = $feature)]
@@ -252,10 +252,10 @@ integrated_registry!(
         Layer
     ),
     (
-        "support-planner",
+        "tree-support-planner",
         SUPPORT_PLANNER_MANIFEST,
         SupportPlanner,
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
         "integrated://support-planner",
         Prepass
     ),
@@ -427,7 +427,7 @@ mod classic_perimeters_tests {
     test,
     not(feature = "classic-perimeters"),
     not(feature = "arachne-perimeters"),
-    not(feature = "support-planner"),
+    not(feature = "tree-support-planner"),
     not(feature = "fuzzy-skin"),
     not(feature = "gyroid-infill"),
     not(feature = "infill-linker"),
@@ -456,7 +456,7 @@ fn integrated_registrations_are_empty_by_default() {
     test,
     feature = "classic-perimeters",
     feature = "arachne-perimeters",
-    feature = "support-planner",
+    feature = "tree-support-planner",
     not(feature = "fuzzy-skin"),
     not(feature = "gyroid-infill"),
     not(feature = "infill-linker"),
@@ -483,7 +483,7 @@ mod hybrid_pilot_tests {
     const IDS: [&str; 3] = [
         "com.core.classic-perimeters",
         "com.core.arachne-perimeters",
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
     ];
 
     #[test]
@@ -526,7 +526,7 @@ mod hybrid_pilot_tests {
 
         let support = entries
             .iter()
-            .find(|(id, _)| id == "com.core.support-planner")
+            .find(|(id, _)| id == "com.core.tree-support-planner")
             .unwrap();
         assert!(matches!(support.1, NativeStageEntry::Prepass(_)));
     }
@@ -536,7 +536,7 @@ mod hybrid_pilot_tests {
     test,
     feature = "classic-perimeters",
     feature = "arachne-perimeters",
-    feature = "support-planner",
+    feature = "tree-support-planner",
     feature = "fuzzy-skin",
     feature = "gyroid-infill",
     feature = "infill-linker",

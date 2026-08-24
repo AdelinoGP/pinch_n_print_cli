@@ -12,10 +12,11 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
-    ConfigValue, ExtrusionPath3D, ExtrusionRole, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR,
-    LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point3WithWidth,
-    PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId, SupportGeometryIR,
-    SupportIR, SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
+    ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeIR, GlobalLayer, InfillIR,
+    LayerCollectionIR, LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR,
+    Point2, Point3WithWidth, Polygon, PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR,
+    StageId, SupportGeometryIR, SupportIR, SupportPlanIR, SurfaceClassificationIR,
+    WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -97,6 +98,13 @@ pub enum LayerExecutionError {
         /// Underlying paint-annotation failure.
         source: SlicePostProcessPaintAnnotationError,
     },
+    /// An anchored entity contains a path point outside its declared Z contract.
+    AnchoredGeometry {
+        /// Entity whose committed path failed validation.
+        local_id: u64,
+        /// Stable validation detail.
+        message: String,
+    },
 }
 
 impl fmt::Display for LayerExecutionError {
@@ -130,6 +138,9 @@ impl fmt::Display for LayerExecutionError {
                 f,
                 "built-in paint-annotation failed at layer {layer_index}: {source:?}"
             ),
+            Self::AnchoredGeometry { local_id, message } => {
+                write!(f, "anchored entity {local_id} geometry validation failed: {message}")
+            }
         }
     }
 }
@@ -200,6 +211,266 @@ pub fn execute_per_layer_with_events(
         wasm_handles,
         SupportToolSelection::default(),
     )
+}
+
+/// Execute the ordinary per-layer worker and commit anchored events owned by
+/// the same execution plan. The compatibility wrappers above intentionally do
+/// not expose the additional collections.
+pub fn execute_per_layer_with_anchored_events(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<
+    (
+        Vec<LayerCollectionIR>,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
+    let (committed, audits) = execute_per_layer_with_committed_anchored_events(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        wasm_handles,
+        anchored_entities,
+    )?;
+    let mut layers = Vec::new();
+    let mut collections = Vec::new();
+    for event in committed {
+        match event {
+            CommittedLayerEvent::Anchored(collection) => collections.push(collection),
+            CommittedLayerEvent::Model(layer) => layers.push(layer),
+        }
+    }
+    Ok((layers, audits, collections))
+}
+
+/// One committed item in global-layer execution order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommittedLayerEvent {
+    /// Planar work that executes before its anchor's ordinary model event.
+    Anchored(slicer_ir::OrderedEventCollection),
+    /// The ordinary model event for a global layer.
+    Model(LayerCollectionIR),
+}
+
+/// Execute ordinary layers and return the structurally committed event stream.
+pub fn execute_per_layer_with_committed_anchored_events(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    let (layers, audits) =
+        execute_per_layer_with_events(plan, blackboard, runner, sink, wasm_handles)?;
+    let mut layers = layers;
+    append_same_z_entities(&mut layers, plan, anchored_entities)?;
+    let collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    let mut committed = Vec::with_capacity(layers.len() + collections.len());
+    let mut collections = collections.into_iter().peekable();
+    for layer in layers {
+        while collections.peek().is_some_and(|collection| {
+            collection.anchor_global_layer_index == layer.global_layer_index
+        }) {
+            committed.push(CommittedLayerEvent::Anchored(
+                collections.next().expect("peeked anchored collection"),
+            ));
+        }
+        committed.push(CommittedLayerEvent::Model(layer));
+    }
+    committed.extend(collections.map(CommittedLayerEvent::Anchored));
+    Ok((committed, audits))
+}
+
+/// Promote the `LayerPlanIR` committed by prepass into the execution plan.
+///
+/// The plan is built before prepass runs (`global_layers` is empty) because the
+/// layer schedule is decided by modules such as `layer-planner-default` during
+/// prepass itself. Promotion also backfills each region's resolved config from
+/// the committed `RegionMapIR` — see [`backfill_active_region_configs`] for why
+/// the configs are not already present.
+///
+/// No-op when prepass committed no layer plan.
+pub fn promote_global_layers(plan: &mut ExecutionPlan, blackboard: &Blackboard) {
+    let Some(layer_plan) = blackboard.layer_plan() else {
+        return;
+    };
+    let mut global_layers = layer_plan.global_layers.clone();
+    if let Some(region_map) = blackboard.region_map() {
+        backfill_active_region_configs(&mut global_layers, region_map);
+    }
+    plan.global_layers = Arc::new(global_layers);
+}
+
+/// Backfill every `ActiveRegion.resolved_config` from the committed `RegionMapIR`.
+///
+/// `PrePass::LayerPlanning` runs before `PrePass::RegionMapping` (the latter's
+/// slot dependency requires `LayerPlan`), so when `restore_layer_plan_configs`
+/// reconstructs the configs the WIT proposal dropped, it has neither a region
+/// map nor a prior layer plan to read. Every `ActiveRegion` is therefore
+/// committed carrying `ResolvedConfig::default()`.
+///
+/// That default is what `module_claims_match_active_region` reads when routing
+/// a region to a `support-family:<id>` module, so without this backfill every
+/// region resolves to the `select_support_family(None, None)` fallback and only
+/// the traditional family is ever routed anything.
+///
+/// This runs at plan promotion — after prepass, so `RegionMapIR` exists and
+/// carries the authoritative *per-region* config, which is what the mixed
+/// per-object family case needs. Threading the run config into
+/// `PrePass::LayerPlanning` instead could only ever supply the global default.
+///
+/// Regions with no matching region-map entry are left untouched.
+pub fn backfill_active_region_configs(
+    global_layers: &mut [slicer_ir::slice_ir::GlobalLayer],
+    region_map: &slicer_ir::RegionMapIR,
+) {
+    for layer in global_layers.iter_mut() {
+        for region in layer.active_regions.iter_mut() {
+            let config_id = config_for_region_smallest_chain(
+                region_map,
+                layer.index,
+                &region.object_id,
+                region.region_id,
+            );
+            if let Some(config_id) = config_id {
+                region.resolved_config = region_map.config_for_raw(config_id).clone();
+            }
+        }
+    }
+}
+
+/// Resolve a region's `ConfigId` in a `RegionMapIR`, tolerating painted regions.
+///
+/// Two-stage lookup: an exact hit on the empty-`variant_chain` `RegionKey`
+/// first, else the entry with the **smallest** `variant_chain` among all
+/// entries matching `(global_layer_index, object_id, region_id)`. Painted
+/// regions are keyed by a non-empty `variant_chain`, so the exact lookup misses
+/// them; taking the smallest chain rather than an arbitrary `HashMap` hit keeps
+/// the choice deterministic across runs.
+///
+/// This is shared on purpose. [`backfill_active_region_configs`] uses it to
+/// decide which `support-family:<id>` module a region is routed to, and
+/// `commit_support_analysis_builtin` uses it to record
+/// `SupportAnalysisIR.family_assignments`. When the two lookups diverged
+/// (F-44), a painted tree region was routed to the tree planner but recorded as
+/// `"traditional"`. Call this from both sites; do not reinline the fallback.
+pub fn config_for_region_smallest_chain(
+    region_map: &slicer_ir::RegionMapIR,
+    global_layer_index: u32,
+    object_id: &slicer_ir::slice_ir::ObjectId,
+    region_id: slicer_ir::slice_ir::RegionId,
+) -> Option<slicer_ir::slice_ir::ConfigId> {
+    let exact = RegionKey {
+        global_layer_index,
+        object_id: object_id.clone(),
+        region_id,
+        variant_chain: Vec::new(),
+    };
+    region_map
+        .entries
+        .get(&exact)
+        .map(|plan| plan.config)
+        .or_else(|| {
+            region_map
+                .entries
+                .iter()
+                .filter(|(key, _)| {
+                    key.global_layer_index == global_layer_index
+                        && key.object_id == *object_id
+                        && key.region_id == region_id
+                })
+                .min_by(|(a, _), (b, _)| a.variant_chain.cmp(&b.variant_chain))
+                .map(|(_, plan)| plan.config)
+        })
+}
+
+fn is_same_z_entity(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> bool {
+    if entity.provenance.requesting_feature != "same-z-support" {
+        return false;
+    }
+    let Some(anchor) = plan
+        .global_layers
+        .iter()
+        .find(|layer| layer.index == entity.anchor_global_layer_index)
+    else {
+        return false;
+    };
+    matches!(
+        entity.geometry,
+        slicer_ir::AnchoredGeometryContract::Planar { z }
+            if (z - slicer_ir::mm_to_units(anchor.z)).abs()
+                <= slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+    )
+}
+
+fn append_same_z_entities(
+    layers: &mut [LayerCollectionIR],
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(), LayerExecutionError> {
+    for entity in entities
+        .iter()
+        .filter(|entity| is_same_z_entity(entity, plan))
+    {
+        validate_anchored_entity(entity).map_err(|message| {
+            LayerExecutionError::AnchoredGeometry {
+                local_id: entity.local_id,
+                message,
+            }
+        })?;
+        let Some(layer) = layers
+            .iter_mut()
+            .find(|layer| layer.global_layer_index == entity.anchor_global_layer_index)
+        else {
+            continue;
+        };
+        let topo_order = layer.ordered_entities.len() as u32;
+        layer.ordered_entities.push(PrintEntity {
+            entity_id: entity.local_id,
+            path: slicer_ir::ExtrusionPath3D {
+                points: entity
+                    .path_points
+                    .iter()
+                    .map(|point| slicer_ir::Point3WithWidth {
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        ..Default::default()
+                    })
+                    .collect(),
+                role: slicer_ir::ExtrusionRole::SupportMaterial,
+                speed_factor: 1.0,
+                tool_index: None,
+            },
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
+            region_key: RegionKey::default(),
+            topo_order,
+            tool_index: 0,
+        });
+    }
+    Ok(())
 }
 
 /// Like [`execute_per_layer_with_events`] but selects the filament indices
@@ -443,6 +714,25 @@ fn execute_single_layer_inner(
             if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
                 continue;
             }
+            if module
+                .claims()
+                .iter()
+                .any(|claim| claim.starts_with("support-family:"))
+                // `resolved_config` is backfilled from `RegionMapIR` at plan
+                // promotion (`promote_global_layers`), so the region can be
+                // matched as-is. This gate used to patch a local clone here,
+                // which left every other consumer of `layer.active_regions`
+                // — `module_receives_slice_region`, `module_region_index` —
+                // reading defaults and resolving the wrong family.
+                && !layer.active_regions.iter().any(|region| {
+                    slicer_scheduler::execution_plan::module_claims_match_active_region(
+                        module.claims(),
+                        region,
+                    )
+                })
+            {
+                continue;
+            }
 
             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), module.module_id());
 
@@ -634,19 +924,21 @@ fn execute_single_layer_inner(
     // Otherwise fall back to direct assembly from arena slots (stages without
     // a PathOptimization module, or tests that omit it).
     let mut layer_output = arena.take_layer_collection().unwrap_or_else(|| {
-        let ordered_entities = assemble_ordered_entities(
-            layer.index,
-            arena.perimeter(),
-            arena.infill(),
-            arena.support(),
-            blackboard.region_map().map(|arc| arc.as_ref()),
-            arena.slice(),
-            support_tools,
-        );
+        let (ordered_entities, support_entity_identities) =
+            assemble_ordered_entities_with_support_identities(
+                layer.index,
+                arena.perimeter(),
+                arena.infill(),
+                arena.support(),
+                blackboard.region_map().map(|arc| arc.as_ref()),
+                arena.slice(),
+                support_tools,
+            );
         LayerCollectionIR {
             global_layer_index: layer.index,
             z: layer.z,
             ordered_entities,
+            support_entity_identities,
             ..Default::default()
         }
     });
@@ -795,19 +1087,21 @@ fn prestage_layer_collection_if_path_optimization(
     if stage.stage_id != "Layer::PathOptimization" || arena.layer_collection().is_some() {
         return;
     }
-    let ordered_entities = assemble_ordered_entities(
-        layer.index,
-        arena.perimeter(),
-        arena.infill(),
-        arena.support(),
-        blackboard.region_map().map(|arc| arc.as_ref()),
-        arena.slice(),
-        support_tools,
-    );
+    let (ordered_entities, support_entity_identities) =
+        assemble_ordered_entities_with_support_identities(
+            layer.index,
+            arena.perimeter(),
+            arena.infill(),
+            arena.support(),
+            blackboard.region_map().map(|arc| arc.as_ref()),
+            arena.slice(),
+            support_tools,
+        );
     arena.set_layer_collection(LayerCollectionIR {
         global_layer_index: layer.index,
         z: layer.z,
         ordered_entities,
+        support_entity_identities,
         ..Default::default()
     });
 }
@@ -1620,10 +1914,11 @@ fn run_paint_annotation(
 /// `InfillRegion` in committed order, emit sparse / solid / ironing paths in
 /// that order, then internal-bridge paths; finally emit `SupportIR` paths (support / interface / raft /
 /// ironing). `region_key` carries `(global_layer_index, object_id, region_id)`
-/// for perimeter and infill entities. `SupportIR` is flat in the current IR
-/// model and has no per-region identity, so support entities use an empty
-/// `object_id` and `region_id = 0` rather than inventing synthetic identity.
-/// `topo_order` is the entity's 0-based position in the emitted sequence.
+/// for perimeter and infill entities. `SupportIR` entries are attributed with
+/// their own `(object_id, region_id)`, so support `PrintEntity`s carry the
+/// owning identity from the `SupportEntry` rather than inventing synthetic
+/// identity. `topo_order` is the entity's 0-based position in the emitted
+/// sequence.
 fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
     let mut counts: HashMap<u64, usize> = HashMap::new();
     for f in flags {
@@ -1634,7 +1929,11 @@ fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
     counts.iter().max_by_key(|(_, c)| **c).map(|(ti, _)| *ti)
 }
 
-pub(crate) fn assemble_ordered_entities(
+/// Assemble ordered entities and their support-attribution side table.
+///
+/// The side table is keyed by the stable `PrintEntity.entity_id`, so a path
+/// optimizer may permute entities without needing to rewrite attribution.
+pub fn assemble_ordered_entities_with_support_identities(
     global_layer_index: u32,
     perimeter: Option<&PerimeterIR>,
     infill: Option<&InfillIR>,
@@ -1642,17 +1941,29 @@ pub(crate) fn assemble_ordered_entities(
     region_map: Option<&RegionMapIR>,
     slice: Option<&SliceIR>,
     support_tools: SupportToolSelection,
-) -> Vec<PrintEntity> {
+) -> (Vec<PrintEntity>, Vec<slicer_ir::SupportEntityIdentity>) {
     let mut out: Vec<PrintEntity> = Vec::new();
+    let mut support_entity_identities = Vec::new();
     let id_gen = LayerEntityIdGen::new();
     let push = |path: slicer_ir::ExtrusionPath3D,
                 role: slicer_ir::ExtrusionRole,
                 tool_index: u32,
                 key: RegionKey,
+                support_identity: Option<&slicer_ir::SupportEntry>,
+                identities: &mut Vec<slicer_ir::SupportEntityIdentity>,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
+        let entity_id = id_gen.next();
+        if let Some(entry) = support_identity {
+            identities.push(slicer_ir::SupportEntityIdentity {
+                entity_id,
+                family_id: entry.family_id.clone(),
+                body_id: entry.body_id.clone(),
+                demand_ids: entry.demand_ids.clone(),
+            });
+        }
         acc.push(PrintEntity {
-            entity_id: id_gen.next(),
+            entity_id,
             path,
             role,
             // Tool is now an explicit SELECTOR; `region_key.region_id` stays a
@@ -1857,6 +2168,8 @@ pub(crate) fn assemble_ordered_entities(
                     role,
                     resolved_tool as u32,
                     entity_key,
+                    None,
+                    &mut support_entity_identities,
                     &mut out,
                 );
             }
@@ -1875,9 +2188,9 @@ pub(crate) fn assemble_ordered_entities(
             // need per-path tool resolution when host bucketing collapsed.
             let infill_region_key = (region.object_id.clone(), region.region_id);
             let infill_region_is_tagged = variant_tool_by_region.contains_key(&infill_region_key);
-            let infill_push = |path: &slicer_ir::ExtrusionPath3D,
-                               role: slicer_ir::ExtrusionRole,
-                               acc: &mut Vec<PrintEntity>| {
+            let mut infill_push = |path: &slicer_ir::ExtrusionPath3D,
+                                   role: slicer_ir::ExtrusionRole,
+                                   acc: &mut Vec<PrintEntity>| {
                 let spatial_tool: Option<u64> = path
                     .points
                     .first()
@@ -1921,7 +2234,15 @@ pub(crate) fn assemble_ordered_entities(
                     region_id: region.region_id,
                     variant_chain: Vec::new(),
                 };
-                push(path.clone(), role, resolved_tool as u32, key, acc);
+                push(
+                    path.clone(),
+                    role,
+                    resolved_tool as u32,
+                    key,
+                    None,
+                    &mut support_entity_identities,
+                    acc,
+                );
             };
             for path in &region.sparse_infill {
                 infill_push(path, path.role.clone(), &mut out);
@@ -1939,53 +2260,47 @@ pub(crate) fn assemble_ordered_entities(
     }
 
     if let Some(sup) = support {
-        for region in &sup.regions {
+        for entry in &sup.entries {
             let key = RegionKey {
                 global_layer_index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
+                object_id: entry.object_id.clone(),
+                region_id: entry.region_id,
                 variant_chain: Vec::new(),
             };
-            for path in &region.support_paths {
+            // Canonical (OrcaSlicer `GCode.cpp::process_layer` / `ToolOrdering`)
+            // selects the interface extruder per EXTRUSION ROLE of the path
+            // being emitted, not per aggregate entry. Entry role stays
+            // authoritative when it is explicit; when it is the default
+            // `SupportBody` (which is also what an untagged marshal fallback
+            // produces, F-28), fall back to the per-path role so an interface
+            // or ironing path still lands on the interface tool.
+            let entry_tool = match entry.role {
+                slicer_ir::SupportRole::TopInterface
+                | slicer_ir::SupportRole::BottomInterface
+                | slicer_ir::SupportRole::Ironing => Some(support_tools.interface_tool),
+                slicer_ir::SupportRole::SupportBody => None,
+                _ => Some(support_tools.support_tool),
+            };
+            for path in &entry.paths {
+                let tool = entry_tool.unwrap_or(match path.role {
+                    slicer_ir::ExtrusionRole::SupportInterface
+                    | slicer_ir::ExtrusionRole::Ironing => support_tools.interface_tool,
+                    _ => support_tools.support_tool,
+                });
                 push(
                     path.clone(),
                     path.role.clone(),
-                    support_tools.support_tool,
+                    tool,
                     key.clone(),
-                    &mut out,
-                );
-            }
-            for path in &region.interface_paths {
-                push(
-                    path.clone(),
-                    path.role.clone(),
-                    support_tools.interface_tool,
-                    key.clone(),
-                    &mut out,
-                );
-            }
-            for path in &region.raft_paths {
-                push(
-                    path.clone(),
-                    path.role.clone(),
-                    support_tools.support_tool,
-                    key.clone(),
-                    &mut out,
-                );
-            }
-            for path in &region.ironing_paths {
-                push(
-                    path.clone(),
-                    path.role.clone(),
-                    support_tools.interface_tool,
-                    key.clone(),
+                    Some(entry),
+                    &mut support_entity_identities,
                     &mut out,
                 );
             }
         }
     }
 
-    out
+    (out, support_entity_identities)
 }
 
 // ── Runtime-side per-stage commit (ADR-0020) ───────────────────────────────
@@ -2033,6 +2348,19 @@ pub struct OrderedEntityView {
     pub point_count: u32,
 }
 
+/// Per-physical-event accounting recorded while anchored work is committed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnchoredEventAccounting {
+    /// Stable identity of the physical event.
+    pub event_local_id: u64,
+    /// Position assigned by the committed entity-order proposal.
+    pub topo_order: u32,
+    /// Cooling fan speed selected for this event, or zero when not requested.
+    pub cooling_fan_speed: f32,
+    /// Independently estimated execution time, or zero when not requested.
+    pub time_s: f64,
+}
+
 /// Project the host-staged `LayerCollectionIR.ordered_entities` into
 /// a snapshot list of [`OrderedEntityView`] for one
 /// `Layer::PathOptimization` invocation.
@@ -2069,6 +2397,274 @@ pub fn project_ordered_entities(arena: &LayerArena) -> Vec<OrderedEntityView> {
         .collect()
 }
 
+/// Commit the ordered event collections returned by a global-layer worker.
+///
+/// Collections are deliberately kept separate from the ordinary model event
+/// stream. Within an anchored collection, events execute in physical-Z order;
+/// the caller inserts the collection at its anchor's ordinary event boundary.
+pub fn commit_ordered_event_collections(collections: &mut [slicer_ir::OrderedEventCollection]) {
+    for collection in collections {
+        collection.sort_deterministically();
+        if collection.runtime_hooks.optimize_paths {
+            // Anchored execution uses the same proposal core as
+            // Layer::PathOptimization: permutation, reversal, and slot
+            // reassignment happen atomically after full proposal validation.
+            let proposal = (0..collection.events.len())
+                .rev()
+                .map(|index| (index as u32, true))
+                .collect::<Vec<_>>();
+            apply_order_proposal(
+                &mut collection.events,
+                &proposal,
+                |event| event.path_points.reverse(),
+                |_, _| {},
+            )
+            .expect("generated anchored optimization proposal is valid");
+        }
+    }
+}
+
+fn validate_anchored_entity(entity: &slicer_ir::AnchoredEntity) -> Result<(), String> {
+    for point in &entity.path_points {
+        let Some(z) = point.z.is_finite().then(|| slicer_ir::mm_to_units(point.z)) else {
+            return Err(match entity.geometry {
+                slicer_ir::AnchoredGeometryContract::Planar { .. } => {
+                    "anchored entity planar z mismatch: path point Z is not finite".to_string()
+                }
+                slicer_ir::AnchoredGeometryContract::ZSpanning { .. } => {
+                    "anchored entity z-span violation: path point Z is not finite".to_string()
+                }
+            });
+        };
+        match entity.geometry {
+            slicer_ir::AnchoredGeometryContract::Planar { z: plane }
+                if (z - plane).abs()
+                    > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity planar z mismatch: path point Z {z} differs from plane {plane}"
+                ));
+            }
+            slicer_ir::AnchoredGeometryContract::ZSpanning { min_z, max_z }
+                if z < min_z - slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                    || z > max_z
+                        + slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity z-span violation: path point Z {z} is outside [{min_z}, {max_z}]"
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Build and commit the anchored event collections owned by the supplied plan.
+///
+/// Anchored events remain separate from the ordinary model event stream. The
+/// scheduler closure is derived for every event before the collection is
+/// committed, preserving the capability-based execution boundary.
+pub fn execute_anchored_event_collections(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+) -> Result<Vec<slicer_ir::OrderedEventCollection>, LayerExecutionError> {
+    execute_anchored_event_collections_with_accounting(plan, entities, 0.0)
+        .map(|(collections, _accounting)| collections)
+}
+
+/// Build anchored collections and record runtime accounting independently for
+/// each physical event, retaining event boundaries and deterministic order.
+pub fn execute_anchored_event_collections_with_accounting(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    feedrate_mm_s: f64,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    execute_anchored_event_collections_with_mode_and_feedrate(
+        plan,
+        entities,
+        true,
+        true,
+        feedrate_mm_s,
+    )
+}
+
+/// Build anchored collections using the requested execution mode. A parallel
+/// request is honored only when the anchored invocation declares parallel
+/// safety; immutable entity snapshots make both modes deterministic.
+pub fn execute_anchored_event_collections_with_mode(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    force_parallel: bool,
+    module: &slicer_scheduler::manifest::LoadedModule,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    execute_anchored_event_collections_with_mode_and_feedrate(
+        plan,
+        entities,
+        force_parallel,
+        module.layer_parallel_safe(),
+        0.0,
+    )
+}
+
+fn execute_anchored_event_collections_with_mode_and_feedrate(
+    plan: &ExecutionPlan,
+    entities: &[slicer_ir::AnchoredEntity],
+    force_parallel: bool,
+    layer_parallel_safe: bool,
+    feedrate_mm_s: f64,
+) -> Result<
+    (
+        Vec<slicer_ir::OrderedEventCollection>,
+        Vec<AnchoredEventAccounting>,
+    ),
+    LayerExecutionError,
+> {
+    let invoke = |entity: &slicer_ir::AnchoredEntity| {
+        let invocation = plan.anchored_invocation(entity, layer_parallel_safe);
+        let optimize_paths = invocation
+            .closure
+            .derived_capabilities
+            .iter()
+            .any(|capability| capability == "Layer::PathOptimization");
+        let mut executed = entity.clone();
+        executed.input_capabilities = invocation.closure.input_capabilities;
+        executed.output_capabilities = invocation.closure.output_capabilities;
+        (executed, invocation.layer_parallel_safe, optimize_paths)
+    };
+    // Same-plane support belongs to the ordinary model layer. Anchored
+    // collections contain only physically distinct events below that plane.
+    for entity in entities {
+        validate_anchored_entity(entity).map_err(|message| {
+            LayerExecutionError::AnchoredGeometry {
+                local_id: entity.local_id,
+                message,
+            }
+        })?;
+    }
+    let anchored_entities = entities
+        .iter()
+        .filter(|entity| !is_same_z_entity(entity, plan));
+    let anchored_entities = anchored_entities.collect::<Vec<_>>();
+    let invoked: Vec<(slicer_ir::AnchoredEntity, bool, bool)> = if force_parallel
+        && anchored_entities.iter().all(|entity| {
+            plan.anchored_invocation(entity, layer_parallel_safe)
+                .layer_parallel_safe
+        }) {
+        anchored_entities
+            .par_iter()
+            .map(|entity| invoke(entity))
+            .collect()
+    } else {
+        anchored_entities
+            .iter()
+            .map(|entity| invoke(entity))
+            .collect()
+    };
+
+    let mut collections = Vec::new();
+    for (entity, _parallel_safe, optimize_paths) in &invoked {
+        let Some(collection) =
+            collections
+                .iter_mut()
+                .find(|collection: &&mut slicer_ir::OrderedEventCollection| {
+                    collection.anchor_global_layer_index == entity.anchor_global_layer_index
+                })
+        else {
+            collections.push(slicer_ir::OrderedEventCollection {
+                anchor_global_layer_index: entity.anchor_global_layer_index,
+                events: Vec::new(),
+                runtime_hooks: slicer_ir::AnchoredEventRuntimeHooks {
+                    optimize_paths: *optimize_paths,
+                    ..Default::default()
+                },
+            });
+            let collection = collections.last_mut().expect("collection was just pushed");
+            collection.events.push(entity.clone());
+            continue;
+        };
+        collection.runtime_hooks.optimize_paths |= optimize_paths;
+        collection.events.push(entity.clone());
+    }
+    collections.sort_by_key(|collection| collection.anchor_global_layer_index);
+    let mut arena = LayerArena::new();
+    apply(
+        &mut arena,
+        LayerStageCommit::AnchoredEvents(collections),
+        &StageApplyContext {
+            stage_id: "Anchored::Event",
+            module_id: "host:anchored-events",
+            layer_index: 0,
+            seam_plan: None,
+            // Synthetic host-side context: no module config channel exists for
+            // anchored-event commits, so bridge post-processing falls back to
+            // canonical defaults.
+            config_view: None,
+        },
+    )
+    .map_err(|error| LayerExecutionError::AnchoredGeometry {
+        local_id: entities.first().map_or(0, |entity| entity.local_id),
+        message: error.to_string(),
+    })?;
+    let collections = arena
+        .take_anchored_event_collections()
+        .expect("successful anchored apply commits collections to the arena");
+    let accounting = collections
+        .iter()
+        .flat_map(|collection| {
+            collection
+                .events
+                .iter()
+                .enumerate()
+                .map(|(topo_order, event)| AnchoredEventAccounting {
+                    event_local_id: event.local_id,
+                    topo_order: topo_order as u32,
+                    cooling_fan_speed: if collection.runtime_hooks.account_cooling {
+                        // Anchored events do not carry extrusion roles. Use
+                        // their committed geometry as the local cooling-demand
+                        // criterion: longer toolpaths request proportionally
+                        // more fan, capped at the firmware's 8-bit maximum.
+                        event
+                            .path_points
+                            .windows(2)
+                            .map(|segment| {
+                                let dx = segment[1].x - segment[0].x;
+                                let dy = segment[1].y - segment[0].y;
+                                let dz = segment[1].z - segment[0].z;
+                                (dx * dx + dy * dy + dz * dz).sqrt()
+                            })
+                            .sum::<f32>()
+                            .clamp(0.0, 255.0)
+                    } else {
+                        0.0
+                    },
+                    time_s: if collection.runtime_hooks.account_time {
+                        slicer_gcode::estimator::estimate_event_time(
+                            &event.path_points,
+                            feedrate_mm_s,
+                            &slicer_gcode::estimator::EstimatorLimits::default(),
+                        )
+                    } else {
+                        0.0
+                    },
+                })
+        })
+        .collect();
+    Ok((collections, accounting))
+}
+
 /// Validate a `set-entity-order` proposal from a `Layer::PathOptimization`
 /// module and apply it to the arena's staged `LayerCollectionIR.ordered_entities`.
 ///
@@ -2089,11 +2685,31 @@ pub fn apply_entity_order_proposal(
     arena: &mut LayerArena,
     proposal: &[(u32, bool)],
 ) -> Result<(), String> {
-    let n = arena
+    arena
         .layer_collection()
         .ok_or_else(|| "set-entity-order: no LayerCollectionIR staged on arena".to_string())?
         .ordered_entities
         .len();
+    let mut lc = arena
+        .take_layer_collection()
+        .expect("layer_collection presence verified above");
+    let result = apply_order_proposal(
+        &mut lc.ordered_entities,
+        proposal,
+        |entity| entity.path.points.reverse(),
+        |entity, topo_order| entity.topo_order = topo_order,
+    );
+    arena.set_layer_collection(lc);
+    result
+}
+
+fn apply_order_proposal<T>(
+    items: &mut Vec<T>,
+    proposal: &[(u32, bool)],
+    mut reverse_item: impl FnMut(&mut T),
+    mut set_topo_order: impl FnMut(&mut T, u32),
+) -> Result<(), String> {
+    let n = items.len();
     if proposal.len() != n {
         return Err(format!(
             "set-entity-order: expected {} indices, got {}",
@@ -2120,24 +2736,20 @@ pub fn apply_entity_order_proposal(
 
     // Validation passed — apply permutation, per-entity reversal, and
     // topo_order reassignment.
-    let mut lc = arena
-        .take_layer_collection()
-        .expect("layer_collection presence verified above");
-    let original = std::mem::take(&mut lc.ordered_entities);
-    let mut buckets: Vec<Option<slicer_ir::PrintEntity>> = original.into_iter().map(Some).collect();
-    let mut new_entities: Vec<slicer_ir::PrintEntity> = Vec::with_capacity(n);
+    let original = std::mem::take(items);
+    let mut buckets: Vec<Option<T>> = original.into_iter().map(Some).collect();
+    let mut new_entities: Vec<T> = Vec::with_capacity(n);
     for (new_slot, (orig_idx, reverse)) in proposal.iter().enumerate() {
         let mut entity = buckets[*orig_idx as usize]
             .take()
             .expect("uniqueness validated above");
         if *reverse {
-            entity.path.points.reverse();
+            reverse_item(&mut entity);
         }
-        entity.topo_order = new_slot as u32;
+        set_topo_order(&mut entity, new_slot as u32);
         new_entities.push(entity);
     }
-    lc.ordered_entities = new_entities;
-    arena.set_layer_collection(lc);
+    *items = new_entities;
     Ok(())
 }
 
@@ -2187,6 +2799,81 @@ fn backfill_resolved_seam(
     }
 }
 
+fn support_entries_overlap(
+    left: &slicer_ir::SupportEntry,
+    right: &slicer_ir::SupportEntry,
+) -> bool {
+    fn swept(entry: &slicer_ir::SupportEntry) -> Vec<ExPolygon> {
+        let mut out = Vec::new();
+        for path in &entry.paths {
+            for pair in path.points.windows(2) {
+                let a = &pair[0];
+                let b = &pair[1];
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let length = (dx * dx + dy * dy).sqrt();
+                if length <= f32::EPSILON {
+                    continue;
+                }
+                let half = a.width.max(b.width).max(0.0) * 0.5;
+                let nx = -dy / length * half;
+                let ny = dx / length * half;
+                out.push(ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2 {
+                                x: slicer_ir::mm_to_units(a.x + nx),
+                                y: slicer_ir::mm_to_units(a.y + ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(b.x + nx),
+                                y: slicer_ir::mm_to_units(b.y + ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(b.x - nx),
+                                y: slicer_ir::mm_to_units(b.y - ny),
+                            },
+                            Point2 {
+                                x: slicer_ir::mm_to_units(a.x - nx),
+                                y: slicer_ir::mm_to_units(a.y - ny),
+                            },
+                        ],
+                    },
+                    holes: Vec::new(),
+                });
+            }
+        }
+        out
+    }
+    let left = swept(left);
+    let right = swept(right);
+    left.iter().any(|a| {
+        right.iter().any(|b| {
+            let overlap = slicer_core::polygon_ops::intersection(
+                std::slice::from_ref(a),
+                std::slice::from_ref(b),
+            );
+            overlap
+                .iter()
+                .map(|p| {
+                    p.contour
+                        .points
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| {
+                            let y = &p.contour.points[(i + 1) % p.contour.points.len()];
+                            (x.x as f64) * (y.y as f64) - (y.x as f64) * (x.y as f64)
+                        })
+                        .sum::<f64>()
+                        .abs()
+                        * 0.5
+                })
+                .sum::<f64>()
+                > 0.0
+        })
+    })
+}
+
 /// Apply one module invocation's [`LayerStageCommit`] to the per-layer arena,
 /// including the stage's own pre/post hooks (ADR-0020).
 ///
@@ -2216,6 +2903,21 @@ pub(crate) fn apply(
         LayerStageCommit::SeedLayerCollection(lc) => {
             let _ = arena.take_layer_collection(); // clear any auto-assembled one
             arena.set_layer_collection(lc);
+        }
+        LayerStageCommit::AnchoredEvents(mut collections) => {
+            for collection in &collections {
+                for entity in &collection.events {
+                    validate_anchored_entity(entity).map_err(|message| {
+                        slicer_ir::LayerStageError::FatalModule {
+                            stage_id: ctx.stage_id.to_string(),
+                            module_id: ctx.module_id.to_string(),
+                            message,
+                        }
+                    })?;
+                }
+            }
+            commit_ordered_event_collections(&mut collections);
+            arena.set_anchored_event_collections(collections);
         }
         LayerStageCommit::Perimeters(mut ir) => {
             let _ = arena.take_perimeter();
@@ -2363,8 +3065,65 @@ pub(crate) fn apply(
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
         LayerStageCommit::Support(ir) => {
+            let mut incoming = ir;
+            if let Some(mut existing) = arena.take_support() {
+                let mut drop_existing = vec![false; existing.entries.len()];
+                let mut drop_incoming = vec![false; incoming.entries.len()];
+                for (incoming_index, incoming_entry) in incoming.entries.iter().enumerate() {
+                    for (existing_index, existing_entry) in existing.entries.iter().enumerate() {
+                        if incoming_entry.family_id != existing_entry.family_id
+                            && support_entries_overlap(incoming_entry, existing_entry)
+                        {
+                            drop_incoming[incoming_index] = true;
+                            drop_existing[existing_index] = true;
+                        }
+                    }
+                }
+                for (index, entry) in existing.entries.iter().enumerate() {
+                    if drop_existing[index] {
+                        for demand_id in &entry.demand_ids {
+                            arena.push_support_routing_diagnostic(
+                                crate::blackboard::SupportRoutingDiagnostic {
+                                    family_id: entry.family_id.clone(),
+                                    body_id: entry.body_id.clone(),
+                                    demand_id: demand_id.clone(),
+                                    reason: "cross-family swept-path overlap".to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                for (index, entry) in incoming.entries.iter().enumerate() {
+                    if drop_incoming[index] {
+                        for demand_id in &entry.demand_ids {
+                            arena.push_support_routing_diagnostic(
+                                crate::blackboard::SupportRoutingDiagnostic {
+                                    family_id: entry.family_id.clone(),
+                                    body_id: entry.body_id.clone(),
+                                    demand_id: demand_id.clone(),
+                                    reason: "cross-family swept-path overlap".to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                existing.entries = existing
+                    .entries
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| (!drop_existing[index]).then_some(entry))
+                    .collect();
+                incoming.entries = incoming
+                    .entries
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| (!drop_incoming[index]).then_some(entry))
+                    .collect();
+                existing.entries.extend(incoming.entries);
+                incoming = existing;
+            }
             arena
-                .set_support(ir)
+                .set_support(incoming)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
         LayerStageCommit::SupportPostProcess(ir) => {
@@ -2603,13 +3362,24 @@ mod tests {
         }
 
         let support = slicer_ir::SupportIR {
-            regions: vec![slicer_ir::slice_ir::SupportRegion {
-                support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-                interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
-                raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-                ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
-                ..Default::default()
-            }],
+            entries: vec![
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         };
         let mut raw_config = std::collections::HashMap::new();
@@ -2617,7 +3387,7 @@ mod tests {
         raw_config.insert("support_interface_filament", slicer_ir::ConfigValue::Int(3));
         let support_tools = crate::run::parse_support_tool_selection(&raw_config);
 
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             None,
             None,
@@ -2625,7 +3395,8 @@ mod tests {
             None,
             None,
             support_tools,
-        );
+        )
+        .0;
 
         assert_eq!(
             entities
@@ -2658,17 +3429,28 @@ mod tests {
         }
 
         let support = slicer_ir::SupportIR {
-            regions: vec![slicer_ir::slice_ir::SupportRegion {
-                support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-                interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
-                raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
-                ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
-                ..Default::default()
-            }],
+            entries: vec![
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         };
 
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             None,
             None,
@@ -2676,7 +3458,8 @@ mod tests {
             None,
             None,
             super::SupportToolSelection::default(),
-        );
+        )
+        .0;
 
         assert!(entities.iter().all(|entity| entity.tool_index == 0));
     }
@@ -2788,7 +3571,7 @@ mod tests {
 
         // No slice (no variant_tool), no region_map (no modifier_tool),
         // no support — all four resolvers will return None at both sites.
-        let entities = super::assemble_ordered_entities(
+        let entities = super::assemble_ordered_entities_with_support_identities(
             0,
             Some(&perimeter),
             Some(&infill),
@@ -2796,7 +3579,8 @@ mod tests {
             None, // region_map  → modifier_tool = None
             None, // slice       → variant_tool = None, spatial_tool = None
             super::SupportToolSelection::default(),
-        );
+        )
+        .0;
 
         assert!(
             !entities.is_empty(),

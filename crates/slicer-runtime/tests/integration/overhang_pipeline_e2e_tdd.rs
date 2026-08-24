@@ -23,10 +23,10 @@
 //! guest performs, applied to production-real vertex data instead of a mocked
 //! struct.
 
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, IndexedTriangleSet,

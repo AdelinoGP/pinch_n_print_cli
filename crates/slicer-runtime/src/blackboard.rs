@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportAnalysisIR;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
     LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR,
@@ -12,6 +13,20 @@ use slicer_ir::{
     RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
     SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
+
+/// Structured diagnostic emitted when a cross-family support body is dropped
+/// at the per-layer swept-path commit seam.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportRoutingDiagnostic {
+    /// Family that produced the rejected body.
+    pub family_id: String,
+    /// Rejected complete body identity.
+    pub body_id: String,
+    /// Demand made unmet by the rejection.
+    pub demand_id: String,
+    /// Stable rejection explanation.
+    pub reason: String,
+}
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
 ///
@@ -63,6 +78,7 @@ pub struct Blackboard {
     region_map: Option<Arc<RegionMapIR>>,
     slice_ir: Option<Arc<Vec<SliceIR>>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
+    support_analysis: Option<Arc<SupportAnalysisIR>>,
     lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
@@ -80,6 +96,7 @@ impl Blackboard {
             region_map: None,
             slice_ir: None,
             support_geometry: None,
+            support_analysis: None,
             lightning_tree_ir: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
@@ -122,6 +139,9 @@ impl Blackboard {
         }
         if let Some(arc) = self.support_geometry.as_ref() {
             total = total.saturating_add(estimated_support_geometry_bytes(arc));
+        }
+        if let Some(arc) = self.support_analysis.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
         }
         if let Some(arc) = self.lightning_tree_ir.as_ref() {
             total = total.saturating_add(estimated_lightning_tree_ir_bytes(arc));
@@ -202,13 +222,49 @@ impl Blackboard {
         self.seam_plan.as_ref()
     }
 
-    /// Commit `SupportPlanIR` exactly once.
+    /// Commit or merge a family-produced `SupportPlanIR`.
+    ///
+    /// Family planners are independent writers of family-attributed entries,
+    /// so their outputs must be combined at this seam before the immutable
+    /// blackboard slot is published.
     pub fn commit_support_plan(&mut self, ir: Arc<SupportPlanIR>) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.support_plan,
-            ir,
-            BlackboardPrepassSlot::SupportPlan,
-        )
+        let Some(existing) = self.support_plan.as_ref() else {
+            if let Some((global_layer_index, object_id, region_id)) = ir.duplicate_region_identity()
+            {
+                return Err(BlackboardError::DuplicateSupportPlanEntry {
+                    global_layer_index,
+                    object_id,
+                    region_id,
+                });
+            }
+            self.support_plan = Some(ir);
+            return Ok(());
+        };
+
+        if existing.schema_version != ir.schema_version {
+            return Err(BlackboardError::DuplicatePrepassCommit {
+                slot: BlackboardPrepassSlot::SupportPlan,
+            });
+        }
+
+        let mut merged = (**existing).clone();
+        merged.entries.extend(ir.entries.iter().cloned());
+        if let Some((global_layer_index, object_id, region_id)) = merged.duplicate_region_identity()
+        {
+            return Err(BlackboardError::DuplicateSupportPlanEntry {
+                global_layer_index,
+                object_id,
+                region_id,
+            });
+        }
+        merged.raft_plan = match (merged.raft_plan.take(), ir.raft_plan.clone()) {
+            (None, None) => None,
+            (Some(current), None) => Some(current),
+            (None, Some(incoming)) => Some(incoming),
+            (Some(current), Some(incoming)) => Some(raft_plan_min(current, incoming)),
+        };
+        self.support_plan = Some(Arc::new(merged));
+        Ok(())
     }
 
     /// Return the committed support plan, if available.
@@ -286,6 +342,24 @@ impl Blackboard {
     #[must_use]
     pub fn support_geometry(&self) -> Option<&Arc<SupportGeometryIR>> {
         self.support_geometry.as_ref()
+    }
+
+    /// Commit host support analysis exactly once.
+    pub fn commit_support_analysis(
+        &mut self,
+        ir: Arc<SupportAnalysisIR>,
+    ) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.support_analysis,
+            ir,
+            BlackboardPrepassSlot::SupportAnalysis,
+        )
+    }
+
+    /// Return committed host support analysis.
+    #[must_use]
+    pub fn support_analysis(&self) -> Option<&Arc<SupportAnalysisIR>> {
+        self.support_analysis.as_ref()
     }
 
     /// Commit `LightningTreeIR` exactly once.
@@ -470,11 +544,16 @@ pub struct LayerArena {
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
+    /// Structured diagnostics emitted while committing support entries.
+    support_routing_diagnostics: Vec<SupportRoutingDiagnostic>,
     /// Pre-assembled `LayerCollectionIR` staged by the executor immediately
     /// before `Layer::PathOptimization` runs. Once present, any subsequent
     /// `commit_layer_outputs` call for that stage consumes
     /// guest-emitted GCode overrides and appends them onto this staged IR.
     layer_collection: Option<LayerCollectionIR>,
+    /// Anchored event collections committed through the same arena-side apply
+    /// seam as ordinary layer output.
+    anchored_event_collections: Option<Vec<slicer_ir::OrderedEventCollection>>,
     /// Tool-change entries collected from `Layer::PathOptimization` guest
     /// output and destined for the final `LayerCollectionIR.tool_changes`.
     deferred_tool_changes: Vec<ToolChange>,
@@ -561,6 +640,17 @@ impl LayerArena {
         self.support.take()
     }
 
+    /// Borrow diagnostics emitted by the support commit seam.
+    #[must_use]
+    pub fn support_routing_diagnostics(&self) -> &[SupportRoutingDiagnostic] {
+        &self.support_routing_diagnostics
+    }
+
+    /// Record a support routing diagnostic.
+    pub(crate) fn push_support_routing_diagnostic(&mut self, diagnostic: SupportRoutingDiagnostic) {
+        self.support_routing_diagnostics.push(diagnostic);
+    }
+
     /// Stage a pre-assembled `LayerCollectionIR` (idempotent replace).
     pub fn set_layer_collection(&mut self, ir: LayerCollectionIR) {
         self.layer_collection = Some(ir);
@@ -575,6 +665,21 @@ impl LayerArena {
     /// Take ownership of the staged `LayerCollectionIR`, if present.
     pub fn take_layer_collection(&mut self) -> Option<LayerCollectionIR> {
         self.layer_collection.take()
+    }
+
+    /// Stage committed anchored event collections (idempotent replace).
+    pub fn set_anchored_event_collections(
+        &mut self,
+        collections: Vec<slicer_ir::OrderedEventCollection>,
+    ) {
+        self.anchored_event_collections = Some(collections);
+    }
+
+    /// Take ownership of committed anchored event collections, if present.
+    pub fn take_anchored_event_collections(
+        &mut self,
+    ) -> Option<Vec<slicer_ir::OrderedEventCollection>> {
+        self.anchored_event_collections.take()
     }
 
     /// Append a guest-emitted `ToolChange` onto the per-layer deferred queue.
@@ -656,6 +761,24 @@ fn commit_prepass<T>(
 
     *slot = Some(ir);
     Ok(())
+}
+
+/// Pick a stable raft configuration when family writers disagree. Bit-ordering
+/// keeps the decision defined even for malformed NaN density values.
+fn raft_plan_min(a: slicer_ir::RaftPlan, b: slicer_ir::RaftPlan) -> slicer_ir::RaftPlan {
+    let key = |plan: &slicer_ir::RaftPlan| {
+        (
+            plan.raft_layers,
+            plan.raft_first_layer_density.to_bits(),
+            plan.base_raft_layers,
+            plan.interface_raft_layers,
+        )
+    };
+    if key(&a) <= key(&b) {
+        a
+    } else {
+        b
+    }
 }
 
 fn set_arena_slot<T>(

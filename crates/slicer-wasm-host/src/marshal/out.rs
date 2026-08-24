@@ -275,15 +275,29 @@ pub fn convert_support_output(
     collected: &SupportOutputCollected,
     layer_index: u32,
 ) -> Result<slicer_ir::SupportIR, String> {
+    convert_support_output_with_plan(collected, layer_index, None)
+}
+
+/// Convert support output while joining each origin to the committed plan.
+pub fn convert_support_output_with_plan(
+    collected: &SupportOutputCollected,
+    layer_index: u32,
+    plan: Option<&slicer_ir::SupportPlanIR>,
+) -> Result<slicer_ir::SupportIR, String> {
     let support: Vec<_> = collected
         .support_paths
         .iter()
         .map(convert_extrusion_path)
         .collect::<Result<_, _>>()?;
-    let interface: Vec<_> = collected
+    // The `is_top_interface` flag must survive: it is the only thing that
+    // distinguishes a roof from a floor downstream, and dropping it collapsed
+    // every interface path onto `SupportRole::TopInterface`, so
+    // `SupportRole::BottomInterface` was never produced in production and the
+    // bottom-interface tool could never be selected.
+    let interface: Vec<(slicer_ir::ExtrusionPath3D, bool)> = collected
         .interface_paths
         .iter()
-        .map(|(p, _)| convert_extrusion_path(p))
+        .map(|(p, is_top)| convert_extrusion_path(p).map(|path| (path, *is_top)))
         .collect::<Result<_, _>>()?;
     let raft: Vec<_> = collected
         .raft_paths
@@ -296,21 +310,40 @@ pub fn convert_support_output(
         || collected.raft_path_origins.iter().any(Option::is_some);
 
     if !any_tagged {
+        // F-28: previously this branch collapsed support + interface + raft into
+        // ONE entry whose `role` fell through to `SupportRole::default()` ==
+        // `SupportBody`, relabelling interface and raft paths as body and
+        // discarding `is_top`.  Emit one entry per non-empty role bucket over
+        // the same (empty) identity instead, so the untagged path carries the
+        // same role fidelity as the tagged path below.
+        let (interface_top, interface_bottom): (Vec<_>, Vec<_>) =
+            interface.into_iter().partition(|(_, is_top)| *is_top);
+        let buckets = [
+            (slicer_ir::SupportRole::SupportBody, support),
+            (
+                slicer_ir::SupportRole::TopInterface,
+                interface_top.into_iter().map(|(path, _)| path).collect(),
+            ),
+            (
+                slicer_ir::SupportRole::BottomInterface,
+                interface_bottom.into_iter().map(|(path, _)| path).collect(),
+            ),
+            (slicer_ir::SupportRole::Raft, raft),
+        ];
         return Ok(slicer_ir::SupportIR {
-            schema_version: slicer_ir::SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
+            schema_version: slicer_ir::CURRENT_SUPPORT_IR_SCHEMA_VERSION,
             global_layer_index: layer_index,
-            regions: vec![slicer_ir::slice_ir::SupportRegion {
-                object_id: String::new(),
-                region_id: 0,
-                support_paths: support,
-                interface_paths: interface,
-                raft_paths: raft,
-                ironing_paths: Vec::new(),
-            }],
+            entries: buckets
+                .into_iter()
+                .filter(|(_, paths): &(_, Vec<slicer_ir::ExtrusionPath3D>)| !paths.is_empty())
+                .map(|(role, paths)| slicer_ir::SupportEntry {
+                    object_id: String::new(),
+                    region_id: 0,
+                    role,
+                    paths,
+                    ..Default::default()
+                })
+                .collect(),
         });
     }
 
@@ -320,8 +353,12 @@ pub fn convert_support_output(
     struct SupportRegion {
         object_id: String,
         region_id: u64,
+        family_id: String,
+        body_id: String,
+        demand_ids: Vec<String>,
         support: Vec<slicer_ir::ExtrusionPath3D>,
-        interface: Vec<slicer_ir::ExtrusionPath3D>,
+        interface_top: Vec<slicer_ir::ExtrusionPath3D>,
+        interface_bottom: Vec<slicer_ir::ExtrusionPath3D>,
         raft: Vec<slicer_ir::ExtrusionPath3D>,
     }
 
@@ -329,8 +366,12 @@ pub fn convert_support_output(
         SupportRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            family_id: String::new(),
+            body_id: String::new(),
+            demand_ids: Vec::new(),
             support: Vec::new(),
-            interface: Vec::new(),
+            interface_top: Vec::new(),
+            interface_bottom: Vec::new(),
             raft: Vec::new(),
         }
     }
@@ -351,7 +392,13 @@ pub fn convert_support_output(
             "interface",
             interface,
             &collected.interface_path_origins,
-            |r, p| r.interface.push(p),
+            |r, (path, is_top)| {
+                if is_top {
+                    r.interface_top.push(path)
+                } else {
+                    r.interface_bottom.push(path)
+                }
+            },
         )
         .map_err(|e| support_untagged_msg(e, "interface"))?;
 
@@ -361,27 +408,69 @@ pub fn convert_support_output(
         })
         .map_err(|e| support_untagged_msg(e, "raft"))?;
 
-    let regions = bucket
+    let entries = bucket
         .into_regions()
         .into_iter()
-        .map(|r| slicer_ir::slice_ir::SupportRegion {
-            object_id: r.object_id,
-            region_id: r.region_id,
-            support_paths: r.support,
-            interface_paths: r.interface,
-            raft_paths: r.raft,
-            ironing_paths: Vec::new(),
+        .flat_map(|r| {
+            let mut identities: Vec<_> = plan
+                .into_iter()
+                .flat_map(|p| p.entries.iter())
+                .filter(|e| {
+                    e.global_layer_index == layer_index as i32
+                        && e.object_id == r.object_id
+                        && e.region_id == r.region_id
+                })
+                .flat_map(|e| {
+                    let body_ids = if e.body_ids.is_empty() {
+                        vec![String::new()]
+                    } else {
+                        e.body_ids.clone()
+                    };
+                    body_ids
+                        .into_iter()
+                        .map(move |body_id| (e.family_id.clone(), body_id, e.demand_ids.clone()))
+                })
+                .collect();
+            if identities.is_empty() {
+                identities.push((r.family_id, r.body_id, r.demand_ids));
+            }
+            let roles = [
+                (slicer_ir::SupportRole::SupportBody, r.support),
+                (slicer_ir::SupportRole::TopInterface, r.interface_top),
+                (slicer_ir::SupportRole::BottomInterface, r.interface_bottom),
+                (slicer_ir::SupportRole::Raft, r.raft),
+            ];
+            identities
+                .into_iter()
+                .flat_map(move |(family_id, body_id, demand_ids)| {
+                    roles
+                        .iter()
+                        .filter(|(_, paths)| !paths.is_empty())
+                        .map({
+                            let object_id = r.object_id.clone();
+                            move |(role, paths)| slicer_ir::SupportEntry {
+                                family_id: family_id.clone(),
+                                body_id: body_id.clone(),
+                                demand_ids: demand_ids.clone(),
+                                object_id: object_id.clone(),
+                                region_id: r.region_id,
+                                role: *role,
+                                paths: paths.clone(),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
         })
         .collect();
 
     Ok(slicer_ir::SupportIR {
         schema_version: slicer_ir::SemVer {
-            major: 1,
+            major: 2,
             minor: 0,
             patch: 0,
         },
         global_layer_index: layer_index,
-        regions,
+        entries,
     })
 }
 

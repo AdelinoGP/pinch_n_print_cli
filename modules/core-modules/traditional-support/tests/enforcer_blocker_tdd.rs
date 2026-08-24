@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
-    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -86,29 +86,31 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
         z,
         regions: vec![region_with_annotations(vec![enclosing_square()], semantics)],
     };
-    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
-}
-
-/// Test 1: A fully blocked region generates zero support paths.
-#[test]
-fn fully_blocked_region_generates_zero_support() {
-    let config = enabled_config();
-    let module = TraditionalSupport::from_config(&config).unwrap();
-    let mut region = square_region(0.3);
-    region.set_needs_support(true);
-
-    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportBlocker]);
-
-    let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        output.support_paths().len(),
-        0,
-        "SupportBlocker annotation must suppress support generation (D14 + blocker precedence)"
-    );
+    let plan = SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        entries: vec![slicer_ir::SupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "obj1".into(),
+            region_id: 1,
+            family_id: "traditional".into(),
+            roles: vec![SupportPlanRoleRegion {
+                role: SupportPlanRole::SupportBody,
+                regions: vec![square_expoly()],
+            }],
+            demand_ids: vec!["test-demand".into()],
+            body_ids: vec!["test-body".into()],
+            anchor_layer_index: 0,
+            anchor_z: 0,
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec!["test".into()],
+            decline_reason: None,
+        }],
+        ..Default::default()
+    };
+    PaintRegionLayerView::new(0)
+        .with_slice_ir(Arc::new(slice))
+        .with_support_plan(Arc::new(plan))
 }
 
 /// Test 2: A fully enforced region generates support paths at 0-degree overhang.
@@ -132,35 +134,6 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
     );
 }
 
-/// Test 3: A region that is both blocked and enforced generates zero support
-/// (blocker takes precedence over enforcer).
-#[test]
-fn blocked_plus_enforced_resolves_to_zero_support() {
-    let config = enabled_config();
-    let module = TraditionalSupport::from_config(&config).unwrap();
-    let mut region = square_region(0.3);
-    region.set_needs_support(true);
-
-    let paint = paint_view_with_annotations(
-        0.3,
-        &[
-            PaintSemantic::SupportBlocker,
-            PaintSemantic::SupportEnforcer,
-        ],
-    );
-
-    let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        output.support_paths().len(),
-        0,
-        "blocker > enforcer precedence: zero support when both annotations apply"
-    );
-}
-
 /// Test 4: Unpainted regions keep existing behaviour — support is generated
 /// normally when no SupportBlocker or SupportEnforcer paint is present.
 #[test]
@@ -170,7 +143,7 @@ fn unpainted_region_keeps_existing_behaviour() {
     let region = square_region(0.3);
 
     // No paint data at all
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_view_with_annotations(0.3, &[]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -186,28 +159,6 @@ fn unpainted_region_keeps_existing_behaviour() {
 // ── SurfaceClassificationIR-driven default eligibility ────────────────────
 // docs/02_ir_schemas.md and docs/01_system_architecture.md §"Layer::Support".
 
-/// Default eligibility: `needs_support=false` and no paint → zero support.
-#[test]
-fn default_ineligible_region_generates_zero_support() {
-    let config = enabled_config();
-    let module = TraditionalSupport::from_config(&config).unwrap();
-    let mut region = square_region(0.3);
-    region.set_needs_support(false);
-
-    let paint = PaintRegionLayerView::new(0);
-
-    let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        output.support_paths().len(),
-        0,
-        "needs_support=false with no paint must yield zero support paths",
-    );
-}
-
 /// Default eligibility: `needs_support=true` and no paint → support generated.
 #[test]
 fn default_eligible_region_generates_support() {
@@ -216,7 +167,7 @@ fn default_eligible_region_generates_support() {
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
-    let paint = PaintRegionLayerView::new(0);
+    let paint = paint_view_with_annotations(0.3, &[]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -247,28 +198,6 @@ fn enforcer_overrides_needs_support_false() {
     assert!(
         !output.support_paths().is_empty(),
         "SupportEnforcer must override needs_support=false (D14 precedence)"
-    );
-}
-
-/// Test 8: Blocker still wins even when `needs_support=true`.
-#[test]
-fn blocker_overrides_needs_support_true() {
-    let config = enabled_config();
-    let module = TraditionalSupport::from_config(&config).unwrap();
-    let mut region = square_region(0.3);
-    region.set_needs_support(true);
-
-    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportBlocker]);
-
-    let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region], &paint, &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        output.support_paths().len(),
-        0,
-        "SupportBlocker must override needs_support=true (D14 precedence)"
     );
 }
 
@@ -321,7 +250,30 @@ fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerVi
         z,
         regions: vec![l_shape_region_with_annotations(semantics)],
     };
-    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
+    PaintRegionLayerView::new(0)
+        .with_slice_ir(Arc::new(slice))
+        .with_support_plan(Arc::new(SupportPlanIR {
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+            entries: vec![slicer_ir::SupportPlanEntry {
+                global_layer_index: 0,
+                object_id: "obj1".into(),
+                region_id: 1,
+                family_id: "traditional".into(),
+                roles: vec![SupportPlanRoleRegion {
+                    role: SupportPlanRole::SupportBody,
+                    regions: vec![l_shape_expoly()],
+                }],
+                demand_ids: vec!["test-demand".into()],
+                body_ids: vec!["test-body".into()],
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                skeleton: None,
+                capabilities: vec![],
+                provenance: vec!["test".into()],
+                decline_reason: None,
+            }],
+            ..Default::default()
+        }))
 }
 
 #[test]

@@ -209,6 +209,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::Slice",                // host-built-in
     "PrePass::OverhangAnnotation",   // host-built-in; derives overhang from the committed SliceIR
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
+    "PrePass::SupportAnalysis",      // host-built-in; derives support candidates from the colour-resolved SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
     "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
@@ -240,9 +241,13 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportGeometry` → `LightningTreeGen`) — see
+  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry` →
+  `LightningTreeGen`) — see
   `01_system_architecture.md` §"PrePass Stage Order", which documents the
-  executed chain and the known divergence between the two.
+  executed chain and the known divergence between the two. `PrePass::SupportAnalysis`
+  runs strictly after the Slice/paint stages (it derives support candidates from
+  the committed, colour-resolved `SliceIR`) and before `PrePass::SupportGeometry`
+  (which consumes that analysis), matching its declared `STAGE_ORDER` position.
 
   `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
   stages producing sparse-infill outlines and **before** `Layer::Infill`
@@ -406,7 +411,7 @@ active per region at a time.
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. See DEV-065 (2026-06-09) for the regression history.
+2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. See DEV-065 (2026-06-09) for the regression history. family-scoped support claims are likewise exempted globally, while family planner writes to `SupportPlanIR` and `SupportIR` are orderable through host aggregation rather than blanket-exempted.
 3. **Per-region claim conflicts** — same claim remains after region-level filtering
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
@@ -512,36 +517,108 @@ Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):
 the resolved holder must remain constant across every layer for a given object.
 
-### Support-generator selection (`support_type` dedup)
+### Support-generator selection (retained family candidates, per-region pairing)
 
 Both `com.core.traditional-support` and `com.core.tree-support` declare
-`holds = ["support-generator"]`. Like `perimeter-generator`, the claim is
-resolved at module-load dedup time (before `validate_startup_dag` runs) by
+`holds = ["support-generator"]`, and each pairs with its planner by holding a
+shared `support-family:<id>` claim (see `docs/03_wit_and_manifest.md` §
+"Support-family claims" and the Planner-Renderer Pairing section below).
+
+Unlike `perimeter-generator`, `support-generator` is **not** resolved to a
+stable single owner by global startup dedup. It is excluded from
 `dedup_same_claim_modules_with_wall_generator`
-(`crates/slicer-scheduler/src/execution_plan.rs`), so the two support modules
-never trip the startup conflict for each other.
+(`crates/slicer-scheduler/src/execution_plan.rs`), exactly like the fill-role
+claims: every family candidate is **retained** through load and dispatch, and
+the active renderer is selected **per region** at dispatch time via the
+planner-renderer family pairing. There is no global "first winner"
+`support-generator` dedup that drops losing families.
 
 Selection rules:
 
-1. **`support_type` config key** — read directly from the raw config source
-   at module-load time (before `ResolvedConfig` exists) via
-   `SUPPORT_GENERATOR_CONFIG_KEY` (`"support_type"`). Values are OrcaSlicer's
-   raw spellings, carried in the 3MF sidecar next to the raw `enable_support`
-   key: values starting with `tree` (`tree(auto)`, `tree(manual)`) or with
-   `hybrid` (legacy `hybrid(auto)`, which OrcaSlicer itself migrates to
-   `tree(auto)` at config load) select `com.core.tree-support`; absent values
-   and everything else select `com.core.traditional-support`. Falling back to
-   traditional matches the historical alphabetical winner, so configs without
-   the key slice exactly as before. Manual (enforcer-only) variants select the
-   same holder as their auto counterpart — pnp has no enforcer-only concept.
+1. **`support_family` config key** — the canonical per-region selector
+   (`SUPPORT_FAMILY_CONFIG_KEY`). `support_type` (`SUPPORT_GENERATOR_CONFIG_KEY`,
+   `"support_type"`) is a **compatibility alias** that, when present, overrides
+   the canonical value. Values are OrcaSlicer's raw spellings carried in the 3MF
+   sidecar next to the raw `enable_support` key: values starting with `tree`
+   (`tree(auto)`, `tree(manual)`) or with `hybrid` (legacy `hybrid(auto)`,
+   which OrcaSlicer itself migrates to `tree(auto)` at config load) select the
+   tree family; values starting with `normal*` or `classic*` select the
+   traditional family; absent values default to traditional. Manual
+   (enforcer-only) variants select the same family as their auto counterpart —
+   pnp has no enforcer-only concept. Resolution is `select_support_family`
+   (`crates/slicer-scheduler/src/execution_plan.rs`), applied per region, and
+   drives per-region dispatch: `module_receives_slice_region`
+   (`crates/slicer-wasm-host/src/dispatch.rs`) checks a module holds a
+   `support-family:` claim and, if so, only routes it a region when
+   `module_claims_match_active_region`
+   (`crates/slicer-scheduler/src/execution_plan.rs`) confirms the module's
+   `support-family:<id>` matches the region's resolved family. Modules with no
+   `support-family:` claim receive every region unconditionally.
 
-2. **Alphabetical fallback** — when the preferred module is not among the
-   loaded candidates (e.g. a community module reusing the claim name), the
-   first-winner alphabetical default applies, as for `perimeter-generator`.
+2. **Pairing validation is warning-only** — a planner or renderer whose
+   `support-family:<id>` has no matching counterpart holding the same `<id>`
+   produces a structured warning diagnostic at load
+   (`validate_support_family_pairing`); it does not abort startup. The
+   incomplete family's regions simply have no complete planner/renderer route
+   and produce no support plan (degraded) until the pair is completed. There
+   is no alphabetical fallback that promotes a lone `support-generator`
+   candidate.
 
-Unlike the fill claims, `support-generator` is a stable single-owner claim:
-the resolved holder must remain constant across every layer for a given object
-(see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`).
+Because selection is per region and family-atomic, `support-generator` is
+**not** a stable single-owner claim: the Allowed Claim Transition Matrix in
+`docs/01_system_architecture.md` permits it to transition across geometry
+phases, and the retained-candidate / per-region pairing semantics are
+normative in the Planner-Renderer Pairing section below.
+
+### Planner-Renderer Pairing (Normative — packet 220)
+
+Support family selection is **atomic per region**: the planner and the
+renderer are resolved together from one family, never independently. This
+`planner-renderer` pairing is the unit of family selection. For a
+given region, the selected `support_family` determines both the
+`support-planner` module (PrePass) and the `support-generator` renderer
+(`Layer::Support`) that serve it — they are paired by the shared
+`support-family:<id>` claim (see `docs/03_wit_and_manifest.md` §
+"Support-family claims"). There is no global "first winner" `support-generator`
+dedup that drops losing families.
+
+**Tree family dispatch (packet 221).** When `support_family` resolves to the
+tree family for a region, the host dispatches the tree pair —
+`tree-support-planner` (PrePass) + `tree-support` (renderer) — via the shared
+`support-family:tree` claim, per region.
+
+**Traditional family dispatch (packet 222).** When `support_family` resolves to
+the traditional family for a region, the host dispatches the traditional pair —
+`traditional-support-planner` (PrePass) + `traditional-support` (renderer) — via
+the shared `support-family:traditional` claim, per region. The renderer emits
+only the planner's polygons; disabled or declined inputs produce no fallback
+support paths.
+
+- **Per-region candidate retention.** All family candidates are retained
+  through load and dispatch. The host does not globally dedup away a
+  `support-generator`; each region keeps its own candidate set so a family
+  can be selected per region.
+- **Pairing validation is warning-only.** A planner or renderer whose
+  `support-family:<id>` has no matching counterpart holding the same `<id>`
+  (missing or mismatched pair) yields a structured warning diagnostic at load,
+  not a fatal startup error and not a runtime fallback. The incomplete
+  family's regions produce no support plan (degraded) until the pair is
+  completed; complete pairs such as `tree-support-planner` + `tree-support`
+  dispatch normally.
+- **Host aggregation as the sole multi-writer merge point.** The host is the
+  only place that merges output from multiple family writers. Aggregation
+  assigns each body to a deterministic routing cell, so the merged result is
+  reproducible regardless of which family produced which body.
+- **Complete-body validation.** A complete body is validated against the
+  exact-Z occupancy and routing cells (see the host `exact_z_query` service in
+  `crates/slicer-wasm-host/src/exact_z_query.rs`). An invalid complete body is
+  dropped, not clipped or replaced by a fallback filler.
+- **Structured unmet diagnostics with degraded continuation.** A declined or
+  unroutable candidate surfaces a structured unmet diagnostic and the pipeline
+  continues in a degraded state; it is not silently filled.
+- **No missing-plan fallback filler.** When a family's plan is missing, the
+  host does not substitute a fallback filler — the region is left without
+  that family's output and the unmet condition is reported.
 
 ### Write Conflict vs Claim Conflict — Enforcement Level Summary
 
@@ -982,6 +1059,22 @@ The scheduler is wasmtime-free (packet 85): no `WasmInstancePool` lives on
 the plan — WASM instance pools are owned by the runtime
 (`slicer-wasm-host`), keyed by module, sized by `layer_parallel_safe`
 (N instances for parallel-safe modules, 1 for sequential).
+
+### Anchored invocation closure
+
+An anchored event is scheduled through `AnchoredInvocation`, constructed by
+`ExecutionPlan::anchored_invocation`. Its stage closure is
+**capability-derived**: the scheduler derives the required stages from the
+entity's declared input and output capabilities rather than consulting a
+hardcoded event-kind table or feature-owned stage list. The resulting
+`CapabilityDerivedEventClosure` is carried with the invocation and checked
+as part of the frozen plan.
+
+The invocation also preserves the manifest's `layer_parallel_safe` hint.
+Parallel-safe anchored invocations may run concurrently against immutable
+prepass state; serial modules retain the single-instance execution path.
+Either mode produces the same ordered event collections, while the closure
+keeps capability requirements explicit in the scheduler plan.
 
 ### Runner-Trait Input Borrow Structs (Normative — Packet 83)
 

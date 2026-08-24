@@ -13,6 +13,11 @@ slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
+
+[[test]]
+name = "traditional_family_tdd"
+path = "tests/traditional_family_tdd.rs"
 
 # Required by the `#[slicer_module]` macro's wasm32-only component export
 # glue. On native builds the emitted `wit_bindgen::generate!` call is

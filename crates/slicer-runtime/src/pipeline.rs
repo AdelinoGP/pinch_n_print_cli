@@ -26,7 +26,8 @@ use slicer_gcode::{
 
 use crate::layer_executor::{
     execute_per_layer_with_events_and_support_tools,
-    execute_per_layer_with_instrumentation_and_support_tools, SupportToolSelection,
+    execute_per_layer_with_instrumentation_and_support_tools, promote_global_layers,
+    SupportToolSelection,
 };
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization,
@@ -230,9 +231,7 @@ pub fn run_pipeline_with_events(
     // plan so that the per-layer loop iterates real layers. The plan is built
     // before prepass runs (global_layers = []) because the layer schedule is
     // determined by modules such as layer-planner-default during prepass itself.
-    if let Some(layer_plan) = blackboard.layer_plan() {
-        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
-    }
+    promote_global_layers(&mut plan, &blackboard);
 
     // Step 3: Execute per-layer stages in parallel via rayon
     let (mut layer_irs, layer_audits) = execute_per_layer_with_events_and_support_tools(
@@ -382,9 +381,7 @@ fn run_pipeline_core(
 
     dump_prepass_ir_if_requested(&blackboard);
 
-    if let Some(layer_plan) = blackboard.layer_plan() {
-        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
-    }
+    promote_global_layers(&mut plan, &blackboard);
 
     if cancel_flag
         .as_ref()

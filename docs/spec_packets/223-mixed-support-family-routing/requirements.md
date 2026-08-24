@@ -20,7 +20,7 @@ The host currently has one generic support-plan ownership path while the approve
 ## Out of Scope
 - Tree or traditional planning/rendering algorithms.
 - Planner negotiation or cross-family structural sharing.
-- Exact-Z service naming and WIT migration decision owned by TASK-331.
+- Exact-Z service naming and WIT migration decision (owned by TASK-331) — RESOLVED in packet 220: `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs` (injected into `HostExecutionContext`, normalized to repo units, immutable per-(object,region,Z) caching); breaking in-place WIT replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`.
 - Final Orca closure, fixture regeneration, or packet 213/TASK-329 disposition.
 
 ## Authoritative Docs
@@ -55,4 +55,4 @@ Files to inspect for this packet:
 Routing, validation, and rendered conflict checks use the same deterministic tolerance and diagnostic identity fields. No invalid body may be clipped or replaced by fallback geometry.
 
 ## Context Discipline Notes
-The exact-Z service remains role-based until TASK-331 resolves its name. Delegate broad IR and scheduler documents and never inspect target artifacts.
+The exact-Z service is resolved (`ExactZQueryService`, packet 220) and consumed from its implemented seam. Delegate broad IR and scheduler documents and never inspect target artifacts.

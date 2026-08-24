@@ -545,17 +545,18 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 21 core modules as of 2026-07-19: packet 97 deleted the dead
+    // We expect exactly 22 core modules as of 2026-08-15: packet 97 deleted the dead
     // mesh-segmentation WASM-guest module (21 -> 20), packet 108 deleted the fake
     // iterative-inset `arachne-perimeters` module (20 -> 19; the former
     // `classic-perimeters` was the sole perimeter generator until real Arachne landed),
     // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
-    // BeadingStrategy pipeline via the host-service bridge (19 -> 20), and packet 133 added
-    // the real `infill-linker` guest (20 -> 21).
+    // BeadingStrategy pipeline via the host-service bridge (19 -> 20), packet 133 added
+    // the real `infill-linker` guest (20 -> 21), and packet 222 added the
+    // `traditional-support-planner` guest (21 -> 22).
     assert_eq!(
         report.modules.len(),
-        21,
-        "expected 21 core modules, got {}: {:?}",
+        22,
+        "expected 22 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -756,7 +757,8 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.part-cooling",
         "com.core.seam-placer",
         "com.core.seam-planner-default",
-        "com.core.support-planner",
+        "com.core.tree-support-planner",
+        "com.core.traditional-support-planner",
         "com.core.fuzzy-skin",
         "com.core.machine-gcode-emit",
         "com.core.support-surface-ironing",

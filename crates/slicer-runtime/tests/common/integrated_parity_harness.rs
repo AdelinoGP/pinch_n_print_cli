@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use slicer_ir::{ConfigView, SemVer};
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
@@ -24,6 +25,65 @@ pub struct IntegratedParitySpec {
     pub native_entry: NativeStageEntry,
 }
 
+/// Assert that the component is not older than the guest manifest and sources.
+///
+/// This is intentionally a conservative mtime-only check rather than a copy of
+/// the full guest dependency fingerprint walk. It prevents parity comparisons
+/// from treating a stale component's geometry as an implementation divergence.
+pub fn assert_guest_freshness(wasm_path: &Path) {
+    let artifact_mtime = std::fs::metadata(wasm_path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok());
+    let guest_root = wasm_path
+        .ancestors()
+        .find(|path| path.join("Cargo.toml").is_file())
+        .unwrap_or_else(|| {
+            panic!(
+                "guest freshness cannot locate Cargo.toml for artifact {}",
+                wasm_path.display()
+            )
+        });
+    let newest_source_mtime = newest_source_mtime(guest_root);
+    let reason = match artifact_mtime {
+        None => Some("guest artifact is absent".to_string()),
+        Some(artifact_mtime) if newest_source_mtime > artifact_mtime => {
+            Some("newest-source mtime is newer than artifact mtime".to_string())
+        }
+        Some(_) => None,
+    };
+    if let Some(reason) = reason {
+        panic!(
+            "guest artifact is stale: {reason}; artifact: {}",
+            wasm_path.display()
+        );
+    }
+}
+
+fn newest_source_mtime(guest_root: &Path) -> SystemTime {
+    let mut newest = SystemTime::UNIX_EPOCH;
+    let mut pending = vec![(guest_root.to_path_buf(), false)];
+    while let Some((path, under_src)) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|name| name == "target") {
+                    continue;
+                }
+                let in_src = under_src || path.file_name().is_some_and(|name| name == "src");
+                pending.push((path, in_src));
+            } else if path.file_name().is_some_and(|name| name == "Cargo.toml") || under_src {
+                if let Ok(mtime) = entry.metadata().and_then(|metadata| metadata.modified()) {
+                    newest = newest.max(mtime);
+                }
+            }
+        }
+    }
+    newest
+}
+
 /// Build the native and real-component bindings once, then let the family test
 /// own its input carriers, stage invocation, and comparator result.
 pub fn run_integrated_parity<F, R>(spec: IntegratedParitySpec, execute: F) -> R
@@ -34,6 +94,7 @@ where
         &CompiledModuleLive<'a>,
     ) -> R,
 {
+    assert_guest_freshness(&spec.wasm_path);
     let wasm_module = CompiledModuleBuilder::new(spec.module_id.clone())
         .claims(spec.claims.clone())
         .config_view(Arc::clone(&spec.config))

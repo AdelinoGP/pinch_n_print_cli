@@ -1,0 +1,119 @@
+[module]
+id           = "com.core.traditional-support-planner"
+version      = "0.1.0"
+display-name = "Traditional Support Planner"
+description  = "Plans cross-layer contact, base, interface, obstacle, and termination geometry for traditional support"
+author       = "modular-slicer"
+license      = "MIT"
+
+[stage]
+id = "PrePass::SupportGeometry"
+
+[ir-access]
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "SupportGeometryIR", "SupportAnalysisIR"]
+writes = ["SupportPlanIR"]
+
+[claims]
+    holds    = ["support-planner", "support-family:traditional"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema]
+[config.schema.enable_support]
+type    = "bool"
+default = true
+display = "Support Enabled"
+group   = "Support"
+
+[config.schema.support_interface_top_layers]
+type    = "int"
+default = 2
+min     = 0
+max     = 10
+display = "Support Interface Top Layers"
+group   = "Support"
+
+[config.schema.support_interface_bottom_layers]
+type    = "int"
+default = -1
+min     = -1
+max     = 10
+display = "Support Interface Bottom Layers"
+group   = "Support"
+
+[config.schema.support_object_xy_distance]
+type    = "float"
+default = 0.35
+min     = 0.0
+max     = 10.0
+display = "Support/Object XY Distance"
+group   = "Support"
+
+[config.schema.support_top_z_distance_mm]
+type    = "float"
+default = 0.2
+min     = 0.0
+max     = 5.0
+display = "Support Top Z Distance"
+group   = "Support"
+
+# Canonical support threshold angle; `support_overhang_angle` is the legacy
+# alias and uses the same bounds and default.
+[config.schema.support_threshold_angle]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 90.0
+display = "Support Threshold Angle"
+group   = "Support"
+
+# Legacy alias for `support_threshold_angle`; keep its schema bounds aligned
+# with the canonical key.
+[config.schema.support_overhang_angle]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 90.0
+display = "Support Overhang Angle"
+group   = "Support"
+
+# `0.0` is the documented "same as the model layer height" sentinel, so the
+# declared range must admit it. A `min` of 0.05 made the declared default
+# illegal and rejected any config that stated the key explicitly.
+[config.schema.support_layer_height_mm]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 1.0
+display = "Support Layer Height"
+group   = "Support"
+
+[config.schema.support_base_pattern]
+type    = "string"
+default = "rectilinear"
+display = "Support Base Pattern"
+group   = "Support"
+
+[config.schema.line_width]
+type    = "float"
+default = 0.4
+min     = 0.1
+max     = 2.0
+display = "Line Width"
+group   = "Support"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 5
+layer-parallel-safe    = false

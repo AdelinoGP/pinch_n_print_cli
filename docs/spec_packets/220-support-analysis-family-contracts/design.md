@@ -86,6 +86,6 @@
 
 ## Open Questions
 
-- [BLOCK] Which exact host mesh/occupancy abstraction should own normalized exact-Z caching? No generic exact-Z service symbol was found in the grounded host ranges; activation requires a bounded location dispatch to choose or create the seam.
-- [BLOCK] Should the structural support schema be a breaking replacement or an additive parallel WIT package? The live packages are `1.0.0`, but generated guest compatibility and schema policy must be resolved before activation.
+- [RESOLVED] Q1 (exact-Z seam): a new host query service `crates/slicer-wasm-host/src/exact_z_query.rs` was created beside the `HostExecutionContext` mesh-query block. It normalizes exact-Z results to repository units, and caches immutably per `(object, region, Z)`.
+- [RESOLVED] Q2 (WIT migration): breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0` (no external consumers; all consumers regenerated). `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` moved 1.3.0 → 2.0.0 and `CURRENT_SUPPORT_IR_SCHEMA_VERSION` moved 1.0.0 → 2.0.0.
 - [FWD] TASK-330's anchored exports are accepted as draft forward dependencies only if its final names and shapes remain exactly those listed in `requirements.md`.

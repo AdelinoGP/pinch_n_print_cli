@@ -12,6 +12,7 @@ use tree_support::TreeSupport;
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
     parity_invariants::{assert_parity_structural, ParityTolerance},
+    support_wedge,
 };
 
 fn support_slice() -> SliceIR {
@@ -61,8 +62,27 @@ fn integrated_parity_tree_support() {
     native_arena
         .set_slice(support_slice())
         .expect("set native slice");
-    let wasm_bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
-    let native_bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    // Packet 220/222 removed tree-support's missing-plan grid-MST filler: it
+    // `continue`s when `support_plan_entries_for` is empty, so a bare Blackboard
+    // now yields no `SupportIR` and the harness's `expect("… commit")` panicked.
+    // Both sides get the identical plan so the parity comparison stays honest.
+    let plan = support_wedge::single_region_support_plan(
+        "tree",
+        "obj-0",
+        0,
+        0,
+        0.2,
+        support_wedge::square_expolygon(10.0),
+    );
+    let mut wasm_bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    wasm_bb
+        .commit_support_plan(Arc::clone(&plan))
+        .expect("commit_support_plan must succeed");
+    let mut native_bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    native_bb
+        .commit_support_plan(plan)
+        .expect("commit_support_plan must succeed");
+    let (wasm_bb, native_bb) = (wasm_bb, native_bb);
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,

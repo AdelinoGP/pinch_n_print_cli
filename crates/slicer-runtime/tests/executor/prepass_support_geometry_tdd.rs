@@ -31,7 +31,7 @@ use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
     LayerPlanIR, MeshIR, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    SupportGeometryIR, SupportPlanEntry, SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
@@ -62,7 +62,7 @@ fn support_planner_wasm() -> std::path::PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("modules/core-modules/support-planner/support-planner.wasm")
+        .join("modules/core-modules/tree-support-planner/tree-support-planner.wasm")
 }
 
 /// Construct a mesh containing an overhanging plate (downward-facing
@@ -231,7 +231,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
             .compile_component(&bytes)
             .expect("support-planner.wasm must compile"),
     );
-    let loaded = loaded_support_planner_module("com.core.support-planner", wasm_path);
+    let loaded = loaded_support_planner_module("com.core.tree-support-planner", wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
@@ -258,7 +258,7 @@ fn default_planner_config_map() -> HashMap<String, ConfigValue> {
     let mut map = HashMap::new();
     map.insert("enable_support".to_string(), ConfigValue::Bool(true));
     map.insert(
-        "support_branch_angle_deg".to_string(),
+        "tree_support_branch_angle".to_string(),
         ConfigValue::Float(45.0),
     );
     map.insert(
@@ -389,21 +389,12 @@ fn support_planner_produces_branches_for_overhang_fixture() {
 
     for entry in &plan.entries {
         assert!(
-            !entry.branch_segments.is_empty(),
-            "every entry must carry at least one branch segment (entry layer={})",
+            entry.skeleton.as_ref().is_some_and(|s| s.points.len() >= 2),
+            "every entry must carry a structural skeleton (entry layer={})",
             entry.global_layer_index
         );
-        for segment in &entry.branch_segments {
-            assert!(
-                segment.points.len() >= 2,
-                "every segment must have â‰¥2 points; got {}",
-                segment.points.len()
-            );
-            for p in &segment.points {
-                assert!(p.width.is_finite());
-                assert!(p.flow_factor.is_finite());
-                assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
-            }
+        for p in &entry.skeleton.as_ref().unwrap().points {
+            assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
         }
     }
 }
@@ -426,19 +417,21 @@ fn support_planner_is_deterministic_across_runs() {
         assert_eq!(a.object_id, b.object_id);
         assert_eq!(a.region_id, b.region_id);
         assert_eq!(
-            a.branch_segments.len(),
-            b.branch_segments.len(),
-            "branch_segments.len() must match across runs"
+            a.skeleton.as_ref().unwrap().points.len(),
+            b.skeleton.as_ref().unwrap().points.len(),
+            "skeleton point count must match across runs"
         );
-        for (seg_a, seg_b) in a.branch_segments.iter().zip(b.branch_segments.iter()) {
-            assert_eq!(seg_a.points.len(), seg_b.points.len());
-            for (pa, pb) in seg_a.points.iter().zip(seg_b.points.iter()) {
-                assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must match");
-                assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must match");
-                assert_eq!(pa.z.to_bits(), pb.z.to_bits(), "z bits must match");
-                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
-                assert_eq!(pa.flow_factor.to_bits(), pb.flow_factor.to_bits());
-            }
+        for (pa, pb) in a
+            .skeleton
+            .as_ref()
+            .unwrap()
+            .points
+            .iter()
+            .zip(b.skeleton.as_ref().unwrap().points.iter())
+        {
+            assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must match");
+            assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must match");
+            assert_eq!(pa.z.to_bits(), pb.z.to_bits(), "z bits must match");
         }
     }
 }
@@ -497,12 +490,12 @@ fn prepass_support_geometry_fails_without_layer_plan() {
 fn support_planner_claim_dedup() {
     let mut modules = vec![
         loaded_support_planner_module(
-            "com.core.support-planner-b",
-            PathBuf::from("fixtures/com.core.support-planner-b.wasm"),
+            "com.core.tree-support-planner-b",
+            PathBuf::from("fixtures/com.core.tree-support-planner-b.wasm"),
         ),
         loaded_support_planner_module(
-            "com.core.support-planner-a",
-            PathBuf::from("fixtures/com.core.support-planner-a.wasm"),
+            "com.core.tree-support-planner-a",
+            PathBuf::from("fixtures/com.core.tree-support-planner-a.wasm"),
         ),
     ];
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -515,7 +508,7 @@ fn support_planner_claim_dedup() {
     );
     assert_eq!(
         kept[0].id(),
-        "com.core.support-planner-a",
+        "com.core.tree-support-planner-a",
         "alphabetical first winner (support-planner-a) must be kept"
     );
     assert_eq!(diagnostics.len(), 1);
@@ -539,18 +532,65 @@ fn support_planner_claim_dedup() {
 fn blackboard_accepts_and_returns_support_plan_ir() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(mesh, 0);
-    let ir = Arc::new(SupportPlanIR::default());
+    let ir = Arc::new(SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        entries: vec![SupportPlanEntry {
+            global_layer_index: 0,
+            object_id: "plate".into(),
+            region_id: 0,
+            family_id: "tree".into(),
+            demand_ids: vec!["demand-tree".into()],
+            body_ids: vec!["body-tree".into()],
+            anchor_layer_index: 0,
+            anchor_z: 0,
+            roles: vec![],
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..SupportPlanIR::default()
+    });
     blackboard
         .commit_support_plan(Arc::clone(&ir))
         .expect("first commit must succeed");
     assert!(blackboard.support_plan().is_some());
 
-    let second = Arc::clone(&ir);
-    match blackboard.commit_support_plan(second) {
-        Err(slicer_runtime::BlackboardError::DuplicatePrepassCommit { slot }) => {
-            assert_eq!(slot, BlackboardPrepassSlot::SupportPlan);
+    let distinct = Arc::new(SupportPlanIR {
+        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        entries: vec![SupportPlanEntry {
+            global_layer_index: 1,
+            object_id: "plate".into(),
+            region_id: 0,
+            family_id: "traditional".into(),
+            demand_ids: vec!["demand-traditional".into()],
+            body_ids: vec!["body-traditional".into()],
+            anchor_layer_index: 1,
+            anchor_z: 0,
+            roles: vec![],
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        }],
+        ..SupportPlanIR::default()
+    });
+    blackboard
+        .commit_support_plan(distinct)
+        .expect("distinct support plan identities must merge");
+    assert_eq!(blackboard.support_plan().unwrap().entries.len(), 2);
+
+    match blackboard.commit_support_plan(ir) {
+        Err(slicer_runtime::BlackboardError::DuplicateSupportPlanEntry {
+            global_layer_index,
+            object_id,
+            region_id,
+        }) => {
+            assert_eq!(global_layer_index, 0);
+            assert_eq!(object_id, "plate");
+            assert_eq!(region_id, 0);
         }
-        other => panic!("expected DuplicatePrepassCommit for SupportPlan; got {other:?}"),
+        other => panic!("expected duplicate support-plan identity; got {other:?}"),
     }
 }
 

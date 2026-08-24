@@ -14,6 +14,8 @@
 use std::path::PathBuf;
 
 use slicer_ir::SemVer;
+use slicer_scheduler::dag::ModuleNode;
+use slicer_scheduler::validation::{ClaimHolder, ConflictScope, StageDag};
 use slicer_scheduler::{
     validate_startup_dag, DagValidationPass, DagValidationRequest, SchedulerError,
 };
@@ -80,6 +82,124 @@ fn dag_validation_request_base() -> DagValidationRequest {
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     }
+}
+
+fn support_claim_holders(module_ids: &[&str]) -> Vec<ClaimHolder> {
+    [
+        "support-generator",
+        "support-planner",
+        "support-family:traditional",
+        "support-family:tree",
+    ]
+    .into_iter()
+    .flat_map(|claim| {
+        module_ids.iter().map(move |module_id| ClaimHolder {
+            claim: claim.to_string(),
+            module_id: (*module_id).to_string(),
+            scope: ConflictScope::Global,
+        })
+    })
+    .collect()
+}
+
+fn support_write_stage(module_ids: &[&str]) -> StageDag {
+    StageDag {
+        stage: "PrePass::SupportGeometry".to_string(),
+        nodes: module_ids
+            .iter()
+            .map(|module_id| ModuleNode {
+                module_id: (*module_id).to_string(),
+                edges_to: Vec::new(),
+                ir_reads: Vec::new(),
+                ir_writes: vec!["SupportPlanIR".to_string(), "SupportIR".to_string()],
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn family_scoped_support_claims_do_not_conflict_globally() {
+    let module_ids = ["support-traditional", "support-tree"];
+    let request = DagValidationRequest {
+        modules: module_ids
+            .iter()
+            .map(|id| {
+                module(
+                    id,
+                    "PrePass::SupportGeometry",
+                    &["SupportPlanIR", "SupportIR"],
+                )
+            })
+            .collect(),
+        claim_holders: support_claim_holders(&module_ids),
+        stage_dags: vec![support_write_stage(&module_ids)],
+        ..dag_validation_request_base()
+    };
+
+    let report = validate_startup_dag(&request);
+    assert!(
+        report.errors.iter().all(|diagnostic| {
+            !matches!(diagnostic.detail, SchedulerError::ClaimConflict { .. })
+                && !matches!(diagnostic.detail, SchedulerError::WriteConflict { .. })
+        }),
+        "family-scoped support topology emitted advisories: {:?}",
+        report.errors
+    );
+}
+
+#[test]
+fn genuine_claim_conflict_still_rejected_after_family_exemption() {
+    let request = DagValidationRequest {
+        claim_holders: vec![
+            ClaimHolder {
+                claim: "mesh-analyzer".to_string(),
+                module_id: "analyzer-a".to_string(),
+                scope: ConflictScope::Global,
+            },
+            ClaimHolder {
+                claim: "mesh-analyzer".to_string(),
+                module_id: "analyzer-b".to_string(),
+                scope: ConflictScope::Global,
+            },
+        ],
+        ..dag_validation_request_base()
+    };
+
+    let report = validate_startup_dag(&request);
+    assert!(report.errors.iter().any(|diagnostic| matches!(
+        diagnostic.detail,
+        SchedulerError::ClaimConflict { ref claim, .. } if claim == "mesh-analyzer"
+    )));
+}
+
+#[test]
+fn genuine_write_conflict_still_rejected_after_aggregation_recognition() {
+    let module_ids = ["unrelated-a", "unrelated-b"];
+    let request = DagValidationRequest {
+        modules: module_ids
+            .iter()
+            .map(|id| module(id, "PrePass::SupportGeometry", &["SharedIR.field"]))
+            .collect(),
+        stage_dags: vec![StageDag {
+            stage: "PrePass::SupportGeometry".to_string(),
+            nodes: module_ids
+                .iter()
+                .map(|module_id| ModuleNode {
+                    module_id: (*module_id).to_string(),
+                    edges_to: Vec::new(),
+                    ir_reads: Vec::new(),
+                    ir_writes: vec!["SharedIR.field".to_string()],
+                })
+                .collect(),
+        }],
+        ..dag_validation_request_base()
+    };
+
+    let report = validate_startup_dag(&request);
+    assert!(report.errors.iter().any(|diagnostic| matches!(
+        diagnostic.detail,
+        SchedulerError::WriteConflict { ref field, .. } if field == "SharedIR.field"
+    )));
 }
 
 #[test]

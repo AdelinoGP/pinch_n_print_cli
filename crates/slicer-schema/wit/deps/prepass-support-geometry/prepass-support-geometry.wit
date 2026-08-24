@@ -1,16 +1,33 @@
 package slicer:prepass-support-geometry@1.0.0;
 
 interface support-geometry-types {
-    use slicer:types/geometry.{ex-polygon, point3-with-width};
+    use slicer:types/geometry.{ex-polygon, point3};
 
     type object-id = string;
     type region-id = string;
+
+    enum support-plan-role { support-body, top-interface, bottom-interface, raft-related }
+    record support-plan-role-region {
+        role: support-plan-role,
+        regions: list<ex-polygon>,
+    }
+    record support-plan-skeleton { points: list<point3> }
+    enum support-plan-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
 
     record support-plan-entry {
         global-layer-index: s32,
         object-id: object-id,
         region-id: region-id,
-        branch-segments: list<list<point3-with-width>>,
+        family-id: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        anchor-layer-index: u32,
+        anchor-z: s64,
+        roles: list<support-plan-role-region>,
+        skeleton: option<support-plan-skeleton>,
+        capabilities: list<string>,
+        provenance: list<string>,
+        decline-reason: option<support-plan-decline-reason>,
     }
 
     record raft-plan {
@@ -27,6 +44,14 @@ interface support-geometry-types {
     }
     record region-segmentation-view {
         entries: list<region-segmentation-view-entry>,
+        region-support-configs: list<region-support-config>,
+    }
+    record region-support-config {
+        object-id: object-id,
+        layer-index: u32,
+        region-id: region-id,
+        support-family: option<string>,
+        support-type: option<string>,
     }
 
     record support-geometry-view-entry {
@@ -37,6 +62,36 @@ interface support-geometry-types {
     }
     record support-geometry-view {
         entries: list<support-geometry-view-entry>,
+    }
+
+    record support-analysis-candidate {
+        id: u64,
+        geometry: list<ex-polygon>,
+        object-id: object-id,
+        region-id: region-id,
+        global-layer-index: u32,
+        z-units: s64,
+        enforced: bool,
+        blocked: bool,
+    }
+    record support-analysis-geometry-entry {
+        global-support-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        polygons: list<ex-polygon>,
+    }
+    record support-family-assignment {
+        object-id: object-id,
+        region-id: region-id,
+        family-id: string,
+    }
+    record support-analysis-view {
+        candidates: list<support-analysis-candidate>,
+        model-occupancy: list<support-analysis-geometry-entry>,
+        termination-surfaces: list<support-analysis-geometry-entry>,
+        shared-settings: list<tuple<string, string>>,
+        baseline-feasible-envelope: list<ex-polygon>,
+        family-assignments: list<support-family-assignment>,
     }
 
     enum severity-level {
@@ -64,7 +119,7 @@ interface support-geometry-types {
 interface support-geometry {
     use slicer:prepass-types/prepass-types.{mesh-object-view, layer-plan-view};
     use support-geometry-types.{region-segmentation-view, region-segmentation-view-entry,
-        support-geometry-view, support-geometry-view-entry,
+        support-analysis-view, support-geometry-view, support-geometry-view-entry,
         support-geometry-output};
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
@@ -73,10 +128,23 @@ interface support-geometry {
         objects: list<mesh-object-view>,
         layer-plan: layer-plan-view,
         region-segmentation: region-segmentation-view,
+        support-analysis: support-analysis-view,
         support-geometry: support-geometry-view,
         output: support-geometry-output,
         config: config-view,
     ) -> result<_, module-error>;
+}
+
+interface exact-z-support-query {
+    use slicer:types/geometry.{ex-polygon};
+    record query-result {
+        z-units: s64,
+        occupancy: list<ex-polygon>,
+        blockers: list<ex-polygon>,
+        termination-surfaces: list<ex-polygon>,
+        baseline-envelope: list<ex-polygon>,
+    }
+    query: func(object-id: string, region-id: u64, physical-z-mm: f32) -> result<query-result, string>;
 }
 
 world support-geometry-module {
@@ -86,5 +154,6 @@ world support-geometry-module {
     import slicer:ir-handles/ir-handles;
     import slicer:prepass-types/prepass-types;
     import support-geometry-types;
+    import exact-z-support-query;
     export support-geometry;
 }

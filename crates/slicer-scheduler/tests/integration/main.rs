@@ -5,6 +5,12 @@
 
 #![allow(missing_docs)]
 
+mod capability_derived_anchor_closure;
+
+#[test]
+fn capability_derived_anchor_closure() {
+    capability_derived_anchor_closure::capability_derived_anchor_closure();
+}
 mod config_bounds_enforcement_tdd;
 mod config_resolution_paint_semantic_tdd;
 mod config_resolution_tdd;
@@ -12,3 +18,17 @@ mod dag_cli_integration;
 mod integrated_tier_tdd;
 mod manifest_ingestion_tdd;
 mod manifest_unknown_stage_tdd;
+mod support_family_pairing_rejected;
+mod support_family_selection;
+
+#[test]
+fn support_family_selection() {
+    support_family_selection::support_family_selection();
+    support_family_selection::support_family_candidates_are_retained();
+    support_family_selection::support_family_selection_two_planners_coexist();
+}
+
+#[test]
+fn support_family_pairing_rejected() {
+    support_family_pairing_rejected::support_family_pairing_rejected();
+}

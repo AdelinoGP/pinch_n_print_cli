@@ -1334,7 +1334,7 @@ fn make_wall_loop_view() -> WallLoopView {
             tool_index: None,
         },
         feature_flags: vec![WallFeatureFlag {
-        tool_index: None,
+            tool_index: None,
             fuzzy_skin: false,
             is_bridge: false,
             is_thin_wall: false,
@@ -1396,7 +1396,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
         },
         feature_flags: vec![
             WallFeatureFlag {
-            tool_index: None,
+                tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
@@ -1404,7 +1404,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
                 custom: Vec::new(),
             },
             WallFeatureFlag {
-            tool_index: None,
+                tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,
