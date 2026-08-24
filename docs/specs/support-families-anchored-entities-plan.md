@@ -744,12 +744,12 @@ the column records what was allocated.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | support-stabilization | AC-8 per-region ruling, G-23 tripwire rebless, G-21/G-22/G-24 hygiene, delete drafts 215–218, accept ADR-0059, branch fully green. | - | - | pending | - |
-| 2 | support-analysis-parity | Canonical-faithful host analysis: real `needs_support` signal (G-17), enforcers under auto, five missing `detect_overhangs` steps. | - | #1 | pending | - |
-| 3 | support-pattern-config-keys | Declare/wire pattern/expansion/bottom-z/line-width config surface with canonical semantics and reconciled transports. | - | #1 | pending | - |
-| 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | - | #3 | pending | - |
-| 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | - | #4 | pending | - |
-| 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | - | #5 | pending | - |
-| 7 | support-raft | Raft geometry: `raft-default` synthesizer, `claim:raft-fill`, signed negative layer indices, raft keys. | - | #1 | pending | - |
-| 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | - | #5 | pending | - |
-| 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | - | #2,#3,#4,#5,#6,#7,#8 | pending | - |
+| 1 | support-stabilization | AC-8 per-region ruling, G-23 tripwire rebless, G-21/G-22/G-24 hygiene, delete drafts 215–218, accept ADR-0059, branch fully green. | TASK-344..TASK-352 | - | generated | docs/spec_packets/236-support-stabilization |
+| 2 | support-analysis-parity | Canonical-faithful host analysis: real `needs_support` signal (G-17), enforcers under auto, five missing `detect_overhangs` steps. | TASK-353..TASK-362 | #1 | generated | docs/spec_packets/237-support-analysis-parity |
+| 3 | support-pattern-config-keys | Declare/wire pattern/expansion/bottom-z/line-width config surface with canonical semantics and reconciled transports. | TASK-363..TASK-368 | #1 | generated | docs/spec_packets/238a-support-pattern-config-keys |
+| 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | TASK-369..TASK-380 | #3 | generated | docs/spec_packets/238b-tree-planner-canonical-fidelity |
+| 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | TASK-381..TASK-398 | #4 | generated | docs/spec_packets/238c-support-renderer-flow-interfaces |
+| 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | TASK-399..TASK-408 | #5 | generated | docs/spec_packets/239-support-independent-layer-z |
+| 7 | support-raft | Raft geometry: `raft-default` synthesizer, `claim:raft-fill`, signed negative layer indices, raft keys. | TASK-409..TASK-418 | #1 | generated | docs/spec_packets/240-support-raft |
+| 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | TASK-419..TASK-428 | #5 | generated | docs/spec_packets/241-support-agg-rasterizer |
+| 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | TASK-429..TASK-440 | #2,#3,#4,#5,#6,#7,#8 | generated | docs/spec_packets/242-support-family-orca-closure |
