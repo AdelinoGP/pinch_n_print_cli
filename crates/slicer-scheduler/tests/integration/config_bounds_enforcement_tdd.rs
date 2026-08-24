@@ -63,6 +63,20 @@ fn rejects_value_above_max() {
 }
 
 #[test]
+fn out_of_range_support_threshold_angle_is_rejected() {
+    let bounds = single_module_bounds("support_threshold_angle", Some(0.0), Some(90.0));
+    let mut source = HashMap::new();
+    source.insert(
+        "support_threshold_angle".to_string(),
+        ConfigValue::Float(200.0),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("support threshold angle above max must reject");
+    assert_out_of_range(err, "support_threshold_angle", 200.0, None);
+}
+
+#[test]
 fn accepts_boundary_min() {
     // `wall_count` is an Int-typed declared field so the value lands on the
     // matching `ResolvedConfig` slot via `apply_cli_key`.

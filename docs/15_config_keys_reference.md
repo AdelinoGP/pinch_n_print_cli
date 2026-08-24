@@ -236,6 +236,8 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `traditional-support-planner` |
 | `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `traditional-support-planner` |
+| `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
+| `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
 | `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
 | `enable_support` | bool | `true` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |

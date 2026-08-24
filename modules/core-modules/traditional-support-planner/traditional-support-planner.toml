@@ -63,6 +63,26 @@ max     = 5.0
 display = "Support Top Z Distance"
 group   = "Support"
 
+# Canonical support threshold angle; `support_overhang_angle` is the legacy
+# alias and uses the same bounds and default.
+[config.schema.support_threshold_angle]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 90.0
+display = "Support Threshold Angle"
+group   = "Support"
+
+# Legacy alias for `support_threshold_angle`; keep its schema bounds aligned
+# with the canonical key.
+[config.schema.support_overhang_angle]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 90.0
+display = "Support Overhang Angle"
+group   = "Support"
+
 # `0.0` is the documented "same as the model layer height" sentinel, so the
 # declared range must admit it. A `min` of 0.05 made the declared default
 # illegal and rejected any config that stated the key explicitly.
