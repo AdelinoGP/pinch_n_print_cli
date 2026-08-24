@@ -35,4 +35,6 @@ Outputs: `tmp/vd-p236-tree` (0 PNG files) and `tmp/vd-p236-normal` (0 PNG files)
 - **Interfaces — MEASURED.** `;TYPE:Support interface` counts: PnP tree 2, PnP normal 2, Orca tree 2, Orca normal 3. `support_interface_top_layers=2` is configured; the normal-family PnP/Orca interface count differs.
 - **Block counts — MEASURED DELTAS (PnP minus Orca).** Exact `;TYPE:Support` counts are PnP tree 122, PnP normal 122, Orca tree 122, Orca normal 121: tree delta 0, normal delta +1. Exact `;TYPE:Support interface` counts are PnP tree 2, PnP normal 2, Orca tree 2, Orca normal 3: tree delta 0, normal delta -1. Support-plus-interface totals are 124, 124, 124, 124 respectively.
 
+- **AC-1 planner emission — GREEN as of 2026-08-24.** The planner-layer invariant-15 observation is green, and host aggregation consolidation is preserved.
+
 - Sign-off (human, blocking): pending — <date + verdict to be recorded by the human>.
