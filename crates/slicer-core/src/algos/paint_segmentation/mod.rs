@@ -856,10 +856,18 @@ pub fn execute_paint_segmentation(
                     .collect();
                 if matching_base.is_empty() {
                     if let Some(existing) = working[i].regions.first() {
+                        let polygons = if multi_object {
+                            per_object_contours
+                                .get(&existing.object_id)
+                                .cloned()
+                                .unwrap_or_default()
+                        } else {
+                            base_polygons.clone()
+                        };
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: existing.object_id.clone(),
                             region_id: existing.region_id,
-                            polygons: base_polygons.clone(),
+                            polygons,
                             variant_chain: base_chain_key.clone(),
                             segment_annotations: base_segment_annotations,
                             ..Default::default()
