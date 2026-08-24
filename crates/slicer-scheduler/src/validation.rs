@@ -483,6 +483,12 @@ fn validate_claim_conflicts(
     global_only: bool,
     report: &mut DagValidationReport,
 ) {
+    const FAMILY_SCOPED_SUPPORT_CLAIMS: &[&str] = &[
+        "support-generator",
+        "support-planner",
+        "support-family:traditional",
+        "support-family:tree",
+    ];
     let non_transitionable_claims: BTreeSet<&'static str> = [
         "perimeter-generator",
         "seam-placer",
@@ -551,6 +557,9 @@ fn validate_claim_conflicts(
         // claim to a different module"). The per-region pass still flags
         // genuine collisions at the (layer, object, region) level.
         if global_only && FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            continue;
+        }
+        if global_only && FAMILY_SCOPED_SUPPORT_CLAIMS.contains(&claim.as_str()) {
             continue;
         }
 
@@ -682,6 +691,19 @@ fn validate_cycles(request: &DagValidationRequest, report: &mut DagValidationRep
 }
 
 fn validate_write_conflicts(request: &DagValidationRequest, report: &mut DagValidationReport) {
+    const FAMILY_SCOPED_SUPPORT_CLAIMS: &[&str] = &[
+        "support-generator",
+        "support-planner",
+        "support-family:traditional",
+        "support-family:tree",
+    ];
+    let family_support_modules: BTreeSet<ModuleId> = request
+        .claim_holders
+        .iter()
+        .filter(|holder| FAMILY_SCOPED_SUPPORT_CLAIMS.contains(&holder.claim.as_str()))
+        .map(|holder| holder.module_id.clone())
+        .collect();
+
     for stage_dag in &request.stage_dags {
         let reachability = compute_reachability(&stage_dag.nodes);
         for i in 0..stage_dag.nodes.len() {
@@ -698,7 +720,14 @@ fn validate_write_conflicts(request: &DagValidationRequest, report: &mut DagVali
                         && can_reach(&reachability, &left.module_id, &right.module_id);
                     let right_transforms_left = left.ir_reads.contains(&field)
                         && can_reach(&reachability, &right.module_id, &left.module_id);
-                    let orderable = left_transforms_right || right_transforms_left;
+                    let aggregation_orderable = family_support_modules.contains(&left.module_id)
+                        && family_support_modules.contains(&right.module_id)
+                        && (field == "SupportPlanIR"
+                            || field.starts_with("SupportPlanIR.")
+                            || field == "SupportIR"
+                            || field.starts_with("SupportIR."));
+                    let orderable =
+                        left_transforms_right || right_transforms_left || aggregation_orderable;
                     if orderable {
                         continue;
                     }
