@@ -250,32 +250,55 @@ pub fn commit_support_analysis_builtin(
                     candidate.id,
                 )
             });
+            let mut candidate_layers: BTreeMap<(String, u64), u32> = BTreeMap::new();
             for candidate in &ir.candidates {
-                ir.family_assignments
+                candidate_layers
                     .entry((
                         candidate.source.object_id.clone(),
                         candidate.source.region_id,
                     ))
-                    .or_insert_with(|| {
-                        // Must use the same two-stage lookup the executor uses to
-                        // route the region (`backfill_active_region_configs`), or a
-                        // painted region — keyed by a non-empty `variant_chain` —
-                        // goes to the tree planner while being recorded here as
-                        // "traditional" (F-44).
-                        region_map
-                            .as_deref()
-                            .and_then(|map| {
-                                config_for_region_smallest_chain(
-                                    map,
-                                    candidate.source.global_layer_index,
-                                    &candidate.source.object_id,
-                                    candidate.source.region_id,
-                                )
-                                .map(|config| map.config_for_raw(config))
-                            })
+                    .or_insert(candidate.source.global_layer_index);
+            }
+            if let Some(map) = region_map.as_deref() {
+                // Mint one assignment for every mapped region, including regions
+                // with no support contact. Candidate regions use their first
+                // candidate layer to preserve the previous resolution.
+                for region_key in map.entries.keys() {
+                    let assignment_key = (region_key.object_id.clone(), region_key.region_id);
+                    let layer_index = candidate_layers
+                        .get(&assignment_key)
+                        .copied()
+                        .unwrap_or(region_key.global_layer_index);
+                    ir.family_assignments
+                        .entry(assignment_key)
+                        .or_insert_with(|| {
+                            // Must use the same two-stage lookup the executor uses to
+                            // route the region (`backfill_active_region_configs`), or a
+                            // painted region — keyed by a non-empty `variant_chain` —
+                            // goes to the tree planner while being recorded here as
+                            // "traditional" (F-44).
+                            config_for_region_smallest_chain(
+                                map,
+                                layer_index,
+                                &region_key.object_id,
+                                region_key.region_id,
+                            )
+                            .map(|config| map.config_for_raw(config))
                             .map(support_family)
                             .unwrap_or_else(|| "traditional".to_string())
-                    });
+                        });
+                }
+            } else {
+                // Unit fixtures may omit RegionMapIR; retain their candidate-based
+                // traditional fallback in that case.
+                for candidate in &ir.candidates {
+                    ir.family_assignments
+                        .entry((
+                            candidate.source.object_id.clone(),
+                            candidate.source.region_id,
+                        ))
+                        .or_insert_with(|| "traditional".to_string());
+                }
             }
             // SliceIR has no facet classification, so the highest observed
             // cross-section is the narrowest truthful model-termination
