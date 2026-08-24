@@ -601,7 +601,7 @@ fn xy_footprint_is_facet_projection_not_aabb() {
 /// Bridge orientation is derived later from gated geometry by the pre-pass;
 /// the mesh-analysis compatibility field remains at its default value.
 #[test]
-fn bridge_direction_follows_anchor_edge_orientation() {
+fn bridge_direction_stays_default_after_heuristic_retirement() {
     let mesh_ir = make_rotated_bridge_mesh(5.0, 20.0, 30.0, false);
 
     let result = execute_mesh_analysis_with(&mesh_ir, MeshAnalysisConfig::default())
