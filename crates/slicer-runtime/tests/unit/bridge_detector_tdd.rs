@@ -597,11 +597,9 @@ fn xy_footprint_is_facet_projection_not_aabb() {
     );
 }
 
-/// AC-4 (bridge direction follows anchor edge orientation, not bbox aspect).
-/// With long-side anchor walls the bridge direction tracks the long-axis
-/// orientation. For rotation_deg=30Â° the long sides run at 30Â°+90Â°=120Â°,
-/// so bridge_direction_deg â‰ˆ 120Â°.
-/// The critical negative assertion: must NOT be 0Â° (bbox aspect-ratio default).
+/// AC-4 (mesh-analysis bridge direction is no longer heuristic-fed).
+/// Bridge orientation is derived later from gated geometry by the pre-pass;
+/// the mesh-analysis compatibility field remains at its default value.
 #[test]
 fn bridge_direction_follows_anchor_edge_orientation() {
     let mesh_ir = make_rotated_bridge_mesh(5.0, 20.0, 30.0, false);
@@ -621,18 +619,9 @@ fn bridge_direction_follows_anchor_edge_orientation() {
 
     let d = obj_data.bridge_regions[0].bridge_direction_deg;
 
-    // Must NOT be 0Â° (bbox default) â€” the direction must track the actual
-    // anchor-edge orientation, not a hardcoded bbox-aspect heuristic.
     assert!(
-        (d - 0.0_f32).abs() > 2.0,
-        "bridge_direction_deg ({}) must NOT be 0.0 (bbox-aspect regression)",
-        d
-    );
-
-    // Must be within Â±2Â° of 30.0 (anchor edge orientation for 30Â°-rotated bridge).
-    assert!(
-        (d - 30.0).abs() <= 2.0,
-        "bridge_direction_deg ({}) must be within Â±2Â° of 30.0",
+        (d - 0.0_f32).abs() <= f32::EPSILON,
+        "bridge_direction_deg ({}) must remain at its default after heuristic retirement",
         d
     );
 }

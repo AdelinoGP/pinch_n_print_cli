@@ -54,7 +54,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use slicer_core::algos::prepass_slice::gate_bridge_areas_by_unsupported_span;
+use slicer_core::algos::prepass_slice::{
+    gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
+};
 use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
 use slicer_ir::{ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
@@ -209,6 +211,9 @@ pub fn commit_shell_classification_builtin(
                         .map(Vec::as_slice)
                 });
             gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
+            // Packet 235 Step 2: orientation derives from the GATED geometry
+            // + RAW lower contours, overwriting the Slice-stage heuristic.
+            update_external_bridge_orientation(region, lower_layer_slices);
         }
     }
 

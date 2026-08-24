@@ -242,9 +242,21 @@ fn default_emits_fewer_lines_than_legacy() {
 /// omit `line_width`. Geometry-only drift; re-blessed with the documented
 /// justification.
 ///
+/// Re-blessed 2026-08-23 (packet 235 closure). Proven stale at HEAD: the
+/// golden predated packets 233/234 (`Internal Bridge` role emission from
+/// bridge-over-infill construction and false-site gating) — the baseline
+/// test failed on the untouched tree before this packet's changes were
+/// applied. Packet 235 additionally replaced the external bridge
+/// orientation heuristic with the canonical `detect_bridging_direction`
+/// port at the post-gate seam, shifting external-site bridge angles.
+/// Delta verified composition-safe: 100 layers and identical Z-set; the
+/// only section-count change is `Internal Bridge` 0 -> 94; all other
+/// `;TYPE:` sections unchanged in count. Re-blessed as canonical-correct
+/// drift per Test Discipline, never to mask a defect.
+///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text
-/// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd -- legacy_zero_matches_golden --nocapture
+/// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test e2e -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture
 /// ```
 #[test]
 fn legacy_zero_matches_golden() {
@@ -273,8 +285,8 @@ fn legacy_zero_matches_golden() {
         golden.exists(),
         "NEG-2 BLOCKED: golden file missing at {}. \
          Run with BLESS_GOLDEN=1 to record it:\n  \
-         BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd \
-         -- legacy_zero_matches_golden --nocapture",
+         BLESS_GOLDEN=1 cargo test -p slicer-runtime --test e2e \
+         -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture",
         golden.display()
     );
 

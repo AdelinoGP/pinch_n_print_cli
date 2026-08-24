@@ -44,6 +44,10 @@ name = "algo_prepass_slice_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "bridge_orientation_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "algo_support_geometry_tdd"
 required-features = ["host-algos"]
 

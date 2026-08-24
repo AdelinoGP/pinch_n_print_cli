@@ -4,6 +4,8 @@
 // version 3 (AGPLv3).
 //
 // Original C++ source path: src/libslic3r/Slicing.cpp
+// Additional portion (bridge-orientation detection, `detect_bridging_direction_deg`
+// and `floating_edges_of_gated_area`): src/libslic3r/BridgeDetector.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
@@ -15,7 +17,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::polygon_ops::{closing_ex, difference, intersection, offset, OffsetJoinType};
+use crate::polygon_ops::{
+    clip_polylines, closing_ex, difference, intersection, offset, OffsetJoinType,
+};
 use crate::slice_mesh_ex;
 use crate::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
@@ -283,6 +287,329 @@ pub fn gate_bridge_areas_by_unsupported_span(
     if region.bridge_areas.is_empty() {
         region.is_bridge = false;
     }
+}
+
+// ============================================================================
+// detect_bridging_direction_deg
+// ============================================================================
+
+/// Growth applied to the raw anchors before floating-edge extraction.
+///
+/// Canonical OrcaSlicer expands anchors by `SCALED_EPSILON`, where canonical
+/// `EPSILON` = 1e-4 mm == exactly 1 internal unit (1 unit = 100 nm). The
+/// polyline-difference below is expressed as an intersection against the
+/// complement of the grown anchors via [`clip_polylines`], which pre-inflates
+/// its clip universe by 1 unit — shrinking the anchor holes back by 1 unit.
+/// Growing by one extra unit makes the NET anchor growth exactly
+/// `SCALED_EPSILON` (1 unit), so boundary-coincident anchor edges are
+/// absorbed exactly as canonical.
+const BRIDGE_ANCHOR_GROWTH_MM: f32 = 2.0e-4;
+
+/// Quantization key multiplier for candidate-normal dedup, matching
+/// canonical's `ceil(atan2(n.y, n.x) * 1000.0)` (radians x 1000, ceiled).
+const ORIENTATION_QUANTIZATION_SCALE: f64 = 1000.0;
+
+/// Canonical covariance threshold for the axis-aligned principal-component
+/// shortcut (canonical `EPSILON` = 1e-4, mirrored as-is).
+const COVARIANCE_AXIS_ALIGNED_EPSILON: f64 = 1e-4;
+
+/// Extract the floating (non-anchored) boundary segments of a gated bridge
+/// area, as canonical's polyline-difference of the overhang boundary against
+/// `expand(anchors, SCALED_EPSILON)`.
+///
+/// `gated_area` is the already-differenced overhang area
+/// (`difference(to_cover, anchors)`); `anchors` are the RAW, unexpanded
+/// anchor polygons. Boundary segments lying on an anchor boundary are inside
+/// the 1-unit growth and are absorbed; everything else is returned as
+/// directed `(from, to)` segments following contour winding.
+///
+/// `pub` as part of this crate's algo surface (like its neighbors) so tests
+/// can observe candidate counts directly.
+pub fn floating_edges_of_gated_area(
+    gated_area: &[ExPolygon],
+    anchors: &[ExPolygon],
+) -> Vec<(Point2, Point2)> {
+    // Boundary rings (outer contours + holes) as closed polylines.
+    let mut rings: Vec<Vec<Point2>> = Vec::new();
+    for ex in gated_area {
+        for poly in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+            if poly.points.len() >= 2 {
+                let mut ring = poly.points.clone();
+                ring.push(poly.points[0]);
+                rings.push(ring);
+            }
+        }
+    }
+    if rings.is_empty() {
+        return Vec::new();
+    }
+
+    let grown_anchors = offset(anchors, BRIDGE_ANCHOR_GROWTH_MM, OffsetJoinType::Miter, 0.0);
+    let kept: Vec<Vec<Point2>> = if grown_anchors.is_empty() {
+        rings
+    } else {
+        // Polyline-difference against the grown anchors, expressed as an
+        // intersection with their complement inside a generous bounding box
+        // (`clip_polylines` performs open-path intersection only).
+        let mut min = Point2 {
+            x: i64::MAX,
+            y: i64::MAX,
+        };
+        let mut max = Point2 {
+            x: i64::MIN,
+            y: i64::MIN,
+        };
+        for ring in &rings {
+            for p in ring {
+                min.x = min.x.min(p.x);
+                min.y = min.y.min(p.y);
+                max.x = max.x.max(p.x);
+                max.y = max.y.max(p.y);
+            }
+        }
+        const PAD_UNITS: i64 = 10_000; // 1 mm
+        let bbox = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: min.x - PAD_UNITS,
+                        y: min.y - PAD_UNITS,
+                    },
+                    Point2 {
+                        x: max.x + PAD_UNITS,
+                        y: min.y - PAD_UNITS,
+                    },
+                    Point2 {
+                        x: max.x + PAD_UNITS,
+                        y: max.y + PAD_UNITS,
+                    },
+                    Point2 {
+                        x: min.x - PAD_UNITS,
+                        y: max.y + PAD_UNITS,
+                    },
+                ],
+            },
+            holes: vec![],
+        };
+        let complement = difference(&[bbox], &grown_anchors);
+        if complement.is_empty() {
+            return Vec::new();
+        }
+        clip_polylines(&rings, &complement)
+    };
+
+    let mut segments = Vec::new();
+    for polyline in &kept {
+        for w in polyline.windows(2) {
+            if w[0] != w[1] {
+                segments.push((w[0], w[1]));
+            }
+        }
+    }
+    segments
+}
+
+/// Convert a direction vector to degrees in the half-open range [0, 180).
+fn direction_deg(dx: f64, dy: f64) -> f32 {
+    dy.atan2(dx).to_degrees().rem_euclid(180.0) as f32
+}
+
+/// Canonical empty-candidate fallback: principal components of the overhang
+/// area via triangle-fan signed-area moment accumulation (each contour fanned
+/// from its first point, every fan triangle weighted by the sign of
+/// `cross(p1 - p0, p2 - p1)`). Returns the MINOR axis as degrees in [0, 180).
+/// Fully-degenerate input (signed area <= 0) falls back to canonical `{1, 0}`
+/// -> 0.0 degrees.
+fn principal_minor_axis_deg(overhang: &[ExPolygon]) -> f32 {
+    let mut area = 0.0_f64;
+    let (mut mx, mut my) = (0.0_f64, 0.0_f64);
+    let (mut ixx, mut iyy, mut ixy) = (0.0_f64, 0.0_f64, 0.0_f64);
+
+    for ex in overhang {
+        for poly in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+            let pts = &poly.points;
+            if pts.len() < 3 {
+                continue;
+            }
+            let p0 = (pts[0].x as f64, pts[0].y as f64);
+            for w in pts.windows(2).skip(1) {
+                let p1 = (w[0].x as f64, w[0].y as f64);
+                let p2 = (w[1].x as f64, w[1].y as f64);
+                let signed_double_area =
+                    (p1.0 - p0.0) * (p2.1 - p1.1) - (p1.1 - p0.1) * (p2.0 - p1.0);
+                let a = 0.5 * signed_double_area;
+                if a == 0.0 {
+                    continue;
+                }
+                let sx = p0.0 + p1.0 + p2.0;
+                let sy = p0.1 + p1.1 + p2.1;
+                area += a;
+                mx += a * sx / 3.0;
+                my += a * sy / 3.0;
+                ixx += a / 12.0 * (sx * sx + p0.0 * p0.0 + p1.0 * p1.0 + p2.0 * p2.0);
+                iyy += a / 12.0 * (sy * sy + p0.1 * p0.1 + p1.1 * p1.1 + p2.1 * p2.1);
+                ixy += a / 12.0 * (sx * sy + p0.0 * p0.1 + p1.0 * p1.1 + p2.0 * p2.1);
+            }
+        }
+    }
+
+    if area <= 0.0 {
+        return 0.0; // canonical fully-degenerate fallback: {1, 0}.
+    }
+
+    let cx = mx / area;
+    let cy = my / area;
+    let cxx = ixx / area - cx * cx;
+    let cyy = iyy / area - cy * cy;
+    let cxy = ixy / area - cx * cy;
+
+    if cxy.abs() < COVARIANCE_AXIS_ALIGNED_EPSILON {
+        // Axis-aligned shortcut: diagonal variances sorted larger-first; the
+        // MINOR axis is the smaller-variance axis.
+        let minor = if cxx <= cyy { (1.0, 0.0) } else { (0.0, 1.0) };
+        direction_deg(minor.0, minor.1)
+    } else {
+        // Closed-form 2x2 eigendecomposition, eigenpairs sorted major-first;
+        // take the MINOR eigenvector (smaller eigenvalue).
+        let half_trace = 0.5 * (cxx + cyy);
+        let half_diff = 0.5 * (cxx - cyy);
+        let root = (half_diff * half_diff + cxy * cxy).sqrt();
+        let lambda_minor = half_trace - root;
+        // Eigenvector candidates for lambda_minor; pick the stabler one.
+        let a = (cxy, lambda_minor - cxx);
+        let b = (lambda_minor - cyy, cxy);
+        let (vx, vy) = if a.0 * a.0 + a.1 * a.1 >= b.0 * b.0 + b.1 * b.1 {
+            a
+        } else {
+            b
+        };
+        let len = vx.hypot(vy);
+        if len == 0.0 {
+            0.0 // numerically isotropic: canonical {1, 0}.
+        } else {
+            direction_deg(vx / len, vy / len)
+        }
+    }
+}
+
+/// Bridge-orientation detection: a faithful port of canonical OrcaSlicer's
+/// active inline `detect_bridging_direction` overload pair declared in
+/// `BridgeDetector.hpp` (the active call path is `LayerRegion::
+/// process_external_surfaces`, `LayerRegion.cpp`), polygons-overload feeding
+/// the lines-overload scoring.
+///
+/// Pipeline: `overhang = difference(to_cover, anchors)`; floating edges =
+/// [`floating_edges_of_gated_area`]; candidate normals are the RIGHT normal
+/// `(dy, -dx)` of each floating edge, unit-normalized and deduped by the
+/// quantization key `ceil(atan2(n.y, n.x) * 1000)` keeping the first-seen
+/// normal per key. Cost of a candidate is the sum of `|edge . n|` over ALL
+/// floating edges with the edge vector UNNORMALIZED (cost embeds edge
+/// length). The winner is the minimal-cost candidate; exact-cost ties resolve
+/// to the SMALLEST quantized-angle key (ADR-0061, intentional deterministic
+/// divergence from canonical's hash-iteration order). The returned direction
+/// is the winning normal flipped — `dir = (n.y, -n.x)`, parallel to the
+/// winning floating edge — converted once to degrees mod 180 in [0, 180).
+///
+/// Empty candidate sets fall back to the principal-component minor axis of
+/// the overhang area; fully-degenerate input yields canonical `{1, 0}` ->
+/// 0.0 degrees (never NaN, never panics).
+///
+/// Pure and deterministic. NOTE: not yet wired into
+/// [`assemble_bridge_areas`] — see packet 235 (later steps wire the seam).
+pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygon]) -> f32 {
+    // Clipper2 boolean ops with an empty clip set do not reliably return the
+    // subject, so short-circuit the no-anchor case.
+    let overhang = if anchors.is_empty() {
+        to_cover.to_vec()
+    } else {
+        difference(to_cover, anchors)
+    };
+    let floating = floating_edges_of_gated_area(&overhang, anchors);
+
+    // Candidate set: right normal (dy, -dx) of each floating edge,
+    // unit-normalized, deduped by quantized angle (first-seen wins).
+    let mut edges: Vec<(f64, f64)> = Vec::with_capacity(floating.len());
+    let mut candidates: Vec<(i64, f64, f64)> = Vec::new();
+    for (from, to) in &floating {
+        let dx = (to.x - from.x) as f64;
+        let dy = (to.y - from.y) as f64;
+        let len = dx.hypot(dy);
+        if len == 0.0 {
+            continue;
+        }
+        edges.push((dx, dy));
+        let nx = dy / len;
+        let ny = -dx / len;
+        // Canonicalize negative zero so atan2 takes its (+0, -1) -> +pi
+        // branch rather than -pi; keeps every quantization key on the
+        // canonical (-pi, pi] atan2 range. Required by ADR-0061's
+        // "Key-space well-definedness" section: under the smallest-key
+        // tie-break, signed-zero keys would order geometrically identical
+        // normals 2*pi apart and invert tie outcomes.
+        let nx = if nx == 0.0 { 0.0 } else { nx };
+        let ny = if ny == 0.0 { 0.0 } else { ny };
+        let key = (ny.atan2(nx) * ORIENTATION_QUANTIZATION_SCALE).ceil() as i64;
+        if !candidates.iter().any(|&(k, _, _)| k == key) {
+            candidates.push((key, nx, ny));
+        }
+    }
+
+    if candidates.is_empty() {
+        return principal_minor_axis_deg(&overhang);
+    }
+
+    // Minimal-cost candidate; exact-cost ties resolve to the smallest
+    // quantized-angle key (ADR-0061).
+    let mut best: Option<(i64, f64, f64)> = None; // (key, nx, ny) at min cost
+    let mut best_cost = f64::INFINITY;
+    for &(key, nx, ny) in &candidates {
+        let cost: f64 = edges
+            .iter()
+            .map(|&(dx, dy)| (dx * nx + dy * ny).abs())
+            .sum();
+        let wins = match best {
+            None => true,
+            Some((best_key, _, _)) => cost < best_cost || (cost == best_cost && key < best_key),
+        };
+        if wins {
+            best = Some((key, nx, ny));
+            best_cost = cost;
+        }
+    }
+    let (_, nx, ny) = best.expect("candidates is non-empty");
+
+    // Return direction = winning normal flipped: parallel to the winning
+    // floating edge, in degrees mod 180, half-open [0, 180).
+    direction_deg(ny, -nx)
+}
+
+// ============================================================================
+// update_external_bridge_orientation
+// ============================================================================
+
+/// Re-derive a region's bridge orientation from its GATED bridge areas and
+/// the RAW previous-layer contours (packet 235 Step 2, AC-6).
+///
+/// Invoked from `commit_shell_classification_builtin` immediately after
+/// [`gate_bridge_areas_by_unsupported_span`], so `region.bridge_areas` is
+/// already the gated (unsupported-span-only) geometry and
+/// `lower_layer_slices` are the same raw lower-layer contours the gate
+/// subtracted. This call OVERWRITES the mesh-heuristic orientation that
+/// [`assemble_bridge_areas`] wrote during `PrePass::Slice`; that earlier
+/// value is retired in a later step.
+///
+/// No-op when the gated areas are empty (fully supported span, or `None`
+/// lower layer — the gate already cleared the candidates in that case):
+/// the pre-existing field value is left untouched.
+pub fn update_external_bridge_orientation(
+    region: &mut SlicedRegion,
+    lower_layer_slices: Option<&[ExPolygon]>,
+) {
+    if region.bridge_areas.is_empty() {
+        return;
+    }
+    let anchors = lower_layer_slices.unwrap_or(&[]);
+    region.bridge_orientation_deg = detect_bridging_direction_deg(&region.bridge_areas, anchors);
 }
 
 // ============================================================================

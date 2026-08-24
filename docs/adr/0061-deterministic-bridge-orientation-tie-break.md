@@ -12,6 +12,21 @@ a DEVIATION_LOG entry, which this repository reserves for wrongful deviations.
 
 Status: accepted
 
+## Key-space well-definedness: signed-zero canonicalization (packet 235)
+
+The quantization key is only a valid total order over candidate normals if
+geometrically identical normals always produce the same key. IEEE-754 signed
+zero breaks that: the right normal `(dy, −dx)` of an exactly vertical edge
+yields `-0.0` for the x-component, and `atan2(-0.0, -1.0) = −π` while
+`atan2(0.0, -1.0) = +π` — two keys ≈ 6283 apart for the same direction. Under
+canonical's hash-order first-wins selection this never matters; under this
+ADR's smallest-key rule it would silently invert tie outcomes (e.g. the
+equal-cost cross fixture of AC-N1 would resolve to 90° instead of 0°).
+Implementation rule: canonicalize `-0.0` component values to `0.0` BEFORE
+computing `atan2` for the key (and before any angle conversion). This is not a
+semantic divergence from canonical — it removes an artifact canonical never
+observes because it never orders by key.
+
 ## Consequences
 
 - Orientation output is stable across builds and runs, so invariant tests may assert

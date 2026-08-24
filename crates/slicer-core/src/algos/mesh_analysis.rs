@@ -481,9 +481,10 @@ fn build_anchor_runs(
     runs
 }
 
+/// Internal projection axis for anchor-width/bridge-length metrics only. NOT the external bridge orientation source — that heuristic (formerly compute_bridge_direction_deg) was retired by packet 235; orientation now derives from detect_bridging_direction_deg at the post-gate seam.
 /// Bridge direction = filament travel direction = perpendicular to the longest anchor-edge run,
 /// normalized to [0, 180).
-fn compute_bridge_direction_deg(runs: &[AnchorRun]) -> f32 {
+fn metrics_projection_axis_deg(runs: &[AnchorRun]) -> f32 {
     let longest = match runs.iter().max_by(|a, b| {
         a.length_mm
             .partial_cmp(&b.length_mm)
@@ -659,14 +660,11 @@ fn compute_bridge_metrics(
         .enumerate()
         .map(|(idx, cluster)| {
             let runs = build_anchor_runs(&cluster.anchor_edges, mesh, transform);
-            let bridge_direction_deg = compute_bridge_direction_deg(&runs);
-            let anchor_width_mm = compute_anchor_width_mm(&runs, bridge_direction_deg);
-            let bridge_length_mm = compute_bridge_length_mm(
-                mesh,
-                transform,
-                &cluster.facet_indices,
-                bridge_direction_deg,
-            );
+            let metrics_axis_deg = metrics_projection_axis_deg(&runs);
+            let bridge_direction_deg = 0.0;
+            let anchor_width_mm = compute_anchor_width_mm(&runs, metrics_axis_deg);
+            let bridge_length_mm =
+                compute_bridge_length_mm(mesh, transform, &cluster.facet_indices, metrics_axis_deg);
             let xy_footprint = compute_xy_footprint(mesh, transform, &cluster.facet_indices);
 
             let is_valid = anchor_width_mm >= config.anchor_width_mm
