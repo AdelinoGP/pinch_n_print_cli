@@ -116,7 +116,10 @@ pub fn decline_is_attributed_to_producing_family_not_last_writer() {
         "decline must point at the plan that produced it (index 0, family 'traditional'),          not the last writer"
     );
     assert!(
-        declines[0].diagnostic.message.contains("family 'traditional'"),
+        declines[0]
+            .diagnostic
+            .message
+            .contains("family 'traditional'"),
         "message must name the producing family, got: {}",
         declines[0].diagnostic.message
     );
