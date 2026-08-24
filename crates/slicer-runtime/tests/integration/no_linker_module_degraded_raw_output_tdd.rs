@@ -144,23 +144,26 @@ fn no_linker_module_degraded_raw_output() {
         "no-linker wedge slice must still produce at least 2 sparse-infill blocks (got {})",
         sparse_moves.len()
     );
-    // Calibrated discriminator (measured 2026-07-20 on this tree):
-    //   with linker, mean G1 moves per sparse-infill block ≈ 33.4
-    //   without linker, mean G1 moves per sparse-infill block ≈ 11.36
-    // The threshold 12.0 is a coarse linker-discrimination guard, leaving a
-    // measured margin of about 0.64 above the raw mean and 21.4 below the
-    // linked output (33.4 - 12.0). The AC's
+    // Calibrated discriminator (re-measured 2026-08-24 on this tree):
+    //   with linker, mean G1 moves per sparse-infill block ≈ 36.86 (198 blocks)
+    //   without linker, mean G1 moves per sparse-infill block ≈ 21.48
+    // History: raw ≈ 4.68 with ±90° alternation (threshold 6.0); packet 233's
+    // D11/F7 constant-direction infill raised the degraded mean to ≈ 11.36
+    // (threshold 12.0, margin 0.64 — too thin); packets 234/235 bridge gating
+    // reshaped the wedge's sparse-infill islands further → raw ≈ 21.48.
+    // Threshold 28.0 keeps ≈ 30% headroom above the observed degraded mean and
+    // ≈ 24% below the linked mean. The AC's
     // literal claim is "mean points-per-path ≤ 2" (which is the raw
     // 2-point disjoint baseline); the gcode proxy uses G1-moves-per-block
     // (N-point path = N-1 G1 moves, so 2-point = 1 G1 move on average).
     // This guard accepts the measured raw-path band while rejecting the
-    // measured linked output; the observed separation is about 2.9x.
+    // measured linked output; the observed separation is about 1.7x.
     let mean = (sparse_moves.iter().sum::<u32>() as f32) / (sparse_moves.len() as f32);
     // Packet 233 (D11/F7): rectilinear alternation removed (canonical _layer_angle == 0); degraded-mode mean G1 density shifts accordingly.
     assert!(
-        mean < 12.0,
+        mean < 28.0,
         "AC-N1: without the linker, mean G1 moves per sparse-infill block should be at the \
-         raw baseline (< 12.0); got {mean:.2}. If this is high, the linker is wired even \
+         raw baseline (< 28.0); got {mean:.2}. If this is high, the linker is wired even \
          though its module-dir was excluded. Block counts: {sparse_moves:?}"
     );
 }
