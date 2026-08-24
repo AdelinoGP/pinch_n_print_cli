@@ -10,11 +10,137 @@
 // -----------------------------------------------------------------------------
 //! Deterministic geometry for internal bridges over sparse infill.
 
-use crate::polygon_ops::intersection;
+use crate::polygon_ops::{closing_ex, difference, intersection, offset, OffsetJoinType};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 use std::f32::consts::PI;
 
 const SAMPLE_STEP: f64 = 20_000.0;
+
+const SCALED_EPSILON_MM: f64 = 0.0001;
+const UNITS_PER_MM: f64 = 10_000.0;
+
+/// Compute the unsupported portion left after accounting for lower-layer fills
+/// and solids. Distances follow the workspace's 100 nm coordinate units.
+pub fn unsupported_span_areas(
+    lower_fills: &[ExPolygon],
+    lower_solids: &[ExPolygon],
+    spacing_mm: f32,
+    expansion_multiplier: f64,
+) -> Vec<ExPolygon> {
+    if lower_fills.is_empty() || spacing_mm <= 0.0 {
+        return Vec::new();
+    }
+    let spacing = spacing_mm as f64;
+    let closed_fills = closing_ex(lower_fills, SCALED_EPSILON_MM, OffsetJoinType::Miter);
+    let Some(envelope) = fill_envelope(lower_fills) else {
+        return Vec::new();
+    };
+    let mut unsupported = difference(&[envelope], &closed_fills);
+    unsupported = offset(
+        &unsupported,
+        -(expansion_multiplier * spacing) as f32,
+        OffsetJoinType::Miter,
+        0.0,
+    );
+    if lower_solids.is_empty() || unsupported.is_empty() {
+        return unsupported;
+    }
+    let solids_shrunk = offset(lower_solids, -spacing as f32, OffsetJoinType::Miter, 0.0);
+    let solids_grown = offset(
+        &solids_shrunk,
+        ((1.0 + expansion_multiplier) * spacing) as f32,
+        OffsetJoinType::Miter,
+        0.0,
+    );
+    difference(&unsupported, &solids_grown)
+}
+
+fn fill_envelope(polygons: &[ExPolygon]) -> Option<ExPolygon> {
+    let points = polygons.iter().flat_map(|p| p.contour.points.iter());
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    let mut any = false;
+    for point in points {
+        any = true;
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    any.then(|| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 { x: min_x, y: min_y },
+                Point2 { x: max_x, y: min_y },
+                Point2 { x: max_x, y: max_y },
+                Point2 { x: min_x, y: max_y },
+            ],
+        },
+        holes: Vec::new(),
+    })
+}
+
+/// Qualify the genuinely unsupported part of one internal bridge surface.
+pub fn qualify_internal_bridge_surface(
+    surface: &ExPolygon,
+    unsupported: &[ExPolygon],
+    spacing_mm: f32,
+    nofilter: bool,
+) -> Option<Vec<ExPolygon>> {
+    if spacing_mm <= 0.0 {
+        return None;
+    }
+    let unsupported_surface = intersection(std::slice::from_ref(surface), unsupported);
+    if unsupported_surface.is_empty() {
+        return None;
+    }
+    let spacing_units = spacing_mm as f64 * UNITS_PER_MM;
+    let unsupported_area = expolygons_area(&unsupported_surface);
+    let surface_area = expolygon_area(surface);
+    let partially_supported = unsupported_area < surface_area - 1.0;
+    if !nofilter && partially_supported && unsupported_area <= 9.0 * spacing_units * spacing_units {
+        return None;
+    }
+
+    let mut worth = intersection(
+        std::slice::from_ref(surface),
+        &offset(
+            &unsupported_surface,
+            4.0 * spacing_mm,
+            OffsetJoinType::Miter,
+            0.0,
+        ),
+    );
+    let expanded_worth = offset(&worth, spacing_mm, OffsetJoinType::Miter, 0.0);
+    for polygon in difference(std::slice::from_ref(surface), &expanded_worth) {
+        let area = expolygon_area(&polygon);
+        if area > spacing_units * spacing_units && area < spacing_units * 120_000.0 {
+            worth.push(polygon);
+        }
+    }
+    let closed = closing_ex(&worth, SCALED_EPSILON_MM, OffsetJoinType::Miter);
+    Some(intersection(&closed, std::slice::from_ref(surface)))
+}
+
+fn expolygons_area(polygons: &[ExPolygon]) -> f64 {
+    polygons.iter().map(expolygon_area).sum()
+}
+
+fn expolygon_area(polygon: &ExPolygon) -> f64 {
+    fn ring_area(ring: &Polygon) -> f64 {
+        ring.points
+            .iter()
+            .zip(ring.points.iter().cycle().skip(1))
+            .take(ring.points.len())
+            .map(|(a, b)| a.x as f64 * b.y as f64 - b.x as f64 * a.y as f64)
+            .sum::<f64>()
+            .abs()
+            / 2.0
+    }
+    ring_area(&polygon.contour) - polygon.holes.iter().map(ring_area).sum::<f64>()
+}
 
 /// Select a bridge direction from arc-length-weighted nearest anchor samples.
 pub fn determine_bridging_angle(

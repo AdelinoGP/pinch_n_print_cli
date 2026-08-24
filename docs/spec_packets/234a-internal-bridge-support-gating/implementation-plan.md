@@ -35,30 +35,38 @@
   - `cargo xtask build-guests --check` - FACT exit code (expected 0)
 - Exit condition: AC-1..AC-3 and AC-N1 green; Q1/Q2 answers written into design.md Open Questions verbatim; no runtime files touched.
 
-### Step 2: Relocate construction into the sequential prepass
+### Step 2: Relocate construction into the sequential prepass (Option-A revision)
 
 - Task IDs: none (backlog slot ISSUE-82)
-- Objective: Delete the InfillPostProcess construction block from `crates/slicer-runtime/src/layer_executor.rs`; add the relocated pass to `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs` strictly after 234's `gate_bridge_areas_by_unsupported_span` invocation — iterate region timelines, qualify layer-L surfaces against committed L-1 using Step-1 functions, construct anchored lines via `construct_anchored_polygon` with flow values from the same ConfigView keys (`bridge_line_width`, `internal_bridge_flow`, `nozzle_diameter`, `internal_bridge_angle`), populate `InfillRegion.internal_bridge_infill` (confirming the committed infill artifact is reachable at ShellClassification and mirroring the existing commit-key pattern; if it is NOT reachable, STOP and report — that is a stage-boundary blocker, not a local choice), apply the Q2-decided sparse-material mechanism, honour the `dont_filter_internal_bridges` mapping (false = full gates, true = bypass area/partial gate).
-- Precondition: Step 1 exit met; Q1/Q2 answers recorded in design.md.
+- Objective: Add net-new host-only field `pub internal_bridge_lines: Vec<Vec<Point2>>` to `SlicedRegion` in `crates/slicer-ir/src/slice_ir.rs` (derives Default; un-mirrored — do NOT touch `SliceRegionView::from_ir`); update the ONE exhaustive production literal (`crates/slicer-core/src/algos/prepass_slice.rs` ~1085, `execute_prepass_slice_single_layer_impl`) explicitly, and convert broken test literals to FRU. Add the relocated pass to `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs`, ordered AFTER the shell-classification passes (verify `top_solid_fill` is populated for every layer by that point — if not, STOP and report) and strictly after 234's `gate_bridge_areas_by_unsupported_span` invocation: iterate region timelines, qualify each region's upper-layer `top_solid_fill` surfaces against committed L-1 (`lower_fills` = lower-layer `region.polygons`; `lower_solids` = lower-layer top+bottom solid fills) using Step 1's `unsupported_span_areas` + `qualify_internal_bridge_surface`; resolve flow/spacing/angle/nofilter via `region_map.config_for(&key)` keys `bridge_line_width`, `internal_bridge_flow`, `nozzle_diameter`, `internal_bridge_angle`, `dont_filter_internal_bridges` (false = full gates, true = bypass area/partial gate); construct anchored lines via `construct_anchored_polygon` (anchors from current-region `polygons`/`infill_areas` contours); write centerlines into `region.internal_bridge_lines` and extend `region.bridge_areas` with the qualified polygons. Reduce the InfillPostProcess arm in `crates/slicer-runtime/src/layer_executor.rs` to a pure emitter: map `slice_region.internal_bridge_lines` → `ExtrusionRole::InternalBridgeInfill` `ExtrusionPath3D`s (z = `slice.z`, width = `flow.thread_diameter_mm` via `ctx.config_view`) into `region.internal_bridge_infill`; DELETE anchor-gathering, candidate_voids, `construct_anchored_polygon`/`determine_bridging_angle` calls, the sliver/dont-filter gate logic, and the post-hoc `sparse_infill_area` subtraction.
+- Precondition: Step 1 exit met (landed); Q1/Q2 answers recorded in design.md (done); verified scheduler facts in design.md Architecture Constraints.
 - Postcondition: old arm constructs nothing (AC-4 rg half); prepass pass present after the gate (AC-4 rg half); wedge e2e green UNCHANGED (AC-6); any wedge assertion drift is a STOP-and-report blocker per design.md Risks.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/layer_executor.rs` - rg-locate InfillPostProcess arm, read ±120 lines
-  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - rg-locate `commit_shell_classification_builtin` and the gate call, read ±120 lines
-- Files allowed to edit (at most 2):
-  - `crates/slicer-runtime/src/layer_executor.rs`
+  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - rg-locate `commit_shell_classification_builtin`, the shell passes, and the gate call, read ±120 lines
+  - `crates/slicer-ir/src/slice_ir.rs` - lines ~1450-1560 only
+  - `crates/slicer-core/src/algos/prepass_slice.rs` - rg-locate the SlicedRegion literal (~1085), read ±60 lines
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` - rg-locate exhaustive literals (:746/:856/:1088), ±20 lines each
+- Files allowed to edit (at most 6):
+  - `crates/slicer-ir/src/slice_ir.rs` (the one field only)
+  - `crates/slicer-core/src/algos/prepass_slice.rs` (the one literal only)
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (FRU fixes only)
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
+  - `crates/slicer-runtime/src/layer_executor.rs`
+  - any additional file ONLY where `cargo check --workspace --all-targets` proves another exhaustive-literal break — fix minimally with FRU or explicit field, note it in the return
 - Files explicitly out of bounds:
-  - `modules/core-modules/**`, `crates/slicer-schema/wit/**`, `crates/slicer-ir/**`, `OrcaSlicerDocumented/**`
-- Blast-radius discipline: removing the block may orphan imports/helpers in layer_executor.rs — compile-clean with `cargo check --workspace --all-targets` before proceeding. Any watched-type literal edits need FRU/waiver.
-- Expected sub-agent dispatches: none required beyond Step 1's; if the wedge e2e shifts, one FACT dispatch identifying the exact shifted assertion BEFORE anything else — then STOP and report per the postcondition.
-- Context cost: `S`
-- Authoritative docs: `docs/04_host_scheduler.md` stage-ordering SUMMARY (if not already captured in Step 1).
+  - `modules/core-modules/**`, `crates/slicer-schema/**`, `OrcaSlicerDocumented/**`, `crates/slicer-sdk/**`
+- Blast-radius discipline: production literals stay EXHAUSTIVE (extend `prepass_slice.rs:1085` explicitly per docs/21); test literals use FRU. Compile-clean with `cargo check --workspace --all-targets` before running suites. After slicer-ir/slicer-core edits run `cargo xtask build-guests --check`; if stale (exit 1) rebuild guests before attributing failures elsewhere.
+- Expected sub-agent dispatches: none required; if the wedge e2e shifts, one FACT dispatch identifying the exact shifted assertion BEFORE anything else — then STOP and report per the postcondition.
+- Context cost: `M`
+- Authoritative docs: `docs/04_host_scheduler.md` stage-ordering facts already captured in design.md Architecture Constraints.
 - OrcaSlicer refs: none new.
 - Verification:
   - AC-4's two rg halves + `cargo test -p slicer-core --features host-algos --test bridge_over_infill_tdd && cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd` - FACT
   - `cargo test -p slicer-runtime --test e2e wedge_linked_infill_report_tdd` - FACT (AC-6)
   - `cargo check --workspace --all-targets` - FACT
-- Exit condition: all listed verifications pass with NO wedge assertions changed; any wedge drift is a STOP-and-report blocker, not a local re-pin.
+  - `cargo xtask build-guests --check` - FACT exit code
+- Exit condition: all listed verifications pass with NO wedge assertions changed; `internal_bridge_lines` populated by prepass and consumed by arm (proven by AC-5 in Step 3); any wedge drift is a STOP-and-report blocker, not a local re-pin.
 
 ### Step 3: Calicat regression surface + blast radius + gates
 
@@ -112,8 +120,8 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | M | Math fidelity + discovery dispatches + AC-N1 fixture |
-| Step 2 | S | Deletion + prepass pass |
+| Step 1 | M | Math fidelity + discovery dispatches + AC-N1 fixture (LANDED) |
+| Step 2 | M | Option-A field + prepass pass + arm reduction |
 | Step 3 | M | Model import, e2e, gates |
 | Step 4 | S | Doc Impact edits |
 

@@ -16,9 +16,10 @@ Canonical (`PrintObject.cpp::bridge_over_infill`) qualifies candidates completel
 ## In Scope
 
 - Pure support-math port in `crates/slicer-core/src/algos/bridge_over_infill.rs`: unsupported-area computation (closing, shrink/grow with `expansion_multiplier`, solid subtraction), per-surface intersection, qualification gates, `expand(4*spacing)` clip, leftover-island remerge.
-- Relocation of construction from `crates/slicer-runtime/src/layer_executor.rs` (InfillPostProcess arm) into `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs`, ordered after 234's gate.
+- Relocation of construction into `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs`, ordered after the shell-classification passes and 234's gate: qualification + anchored-line construction write a net-new host-only `SlicedRegion.internal_bridge_lines: Vec<Vec<Point2>>` field (`crates/slicer-ir/src/slice_ir.rs`) and extend `bridge_areas` with the qualified polygons; the InfillPostProcess arm is reduced to a pure emitter mapping those centerlines into `InfillRegion.internal_bridge_infill`.
 - Canonical enum mapping for `dont_filter_internal_bridges`: `false` → full filter; `true` → bypass area/partial gate (`ibfNofilter`). (`ibfLimited`'s `expansion_multiplier = 1` behaviour is represented through the same multiplier parameter.)
-- Resolution of two discovery questions before edits: (Q1) which existing `SliceRegion` field is our `stInternalSolid` equivalent (`bottom_solid_fill` is the leading suspect; verify by writers + calicat outcome under gating); (Q2) whether sparse-infill PATHS regenerate after ShellClassification — determines whether area subtraction alone prevents double-printing, mirroring how today's InfillPostProcess subtraction coexists with module-generated paths.
+- RESOLVED Q1 (2026-08-24): `bottom_solid_fill` is ruled out (writer evidence: it is the exposed-bottom shell — `difference(region_polys, lower_polys)`, the opposite of an internal interface). Candidate source = the upper layer's `top_solid_fill` (dense ceiling interfaces; available at prepass once the shell-classification passes complete). AC-5's frozen calicat bar arbitrates empirically; if gating yields ZERO qualifying sites on calicat, that is a STOP-and-report with measurements, not a local re-pick.
+- RESOLVED Q2 (2026-08-24): material exclusion flows through `bridge_areas`, not sparse mutation — `sparse_infill_area` is derived at Perimeters commit (`region_partition.rs`: `sparse = difference(wall_inset, bridge ∪ bottom ∪ top)`) AFTER the prepass, so a prepass subtraction would be overwritten. Extending gated `bridge_areas` suppresses module sparse infill by construction (module emits only over `sparse_infill_area`; precedent: 234's gate dataflow).
 - Import of the measured model as `resources/calicat.stl` and a deterministic double-slice e2e test asserting the flood is gone.
 - Net-new test targets: `crates/slicer-core/tests/bridge_support_gating_tdd.rs` ([[test]], `required-features = ["host-algos"]`); the relocated pass itself is exercised end-to-end by AC-5.
 
@@ -26,7 +27,7 @@ Canonical (`PrintObject.cpp::bridge_over_infill`) qualifies candidates completel
 
 - The angle algorithm: `determine_bridging_angle` stays as-is (its calicat divergence at Z≈29.4 — ours ≈90° vs canonical ≈30.2° mean — is expected to shrink once candidate areas are correct; if it persists after this packet's fix, that is follow-up work, measured and filed separately).
 - External-site orientation (packet 235 surface) — must not regress; guarded by AC-5.
-- Any IR field addition, WIT change, schema bump, manifest key addition, or scheduler stage addition (relocation reuses ShellClassification).
+- Any WIT change, schema bump, manifest key addition, scheduler stage addition, or module-facing view change — the single new `SlicedRegion` field is host-only and un-mirrored (`SliceRegionView::from_ir` copies selected fields only; guest views are filtered in dispatch).
 - `counterbore_hole_bridging`; the user-facing `internal_bridge_angle` override semantics beyond passing it through unchanged.
 - Module-side changes in `modules/core-modules/**` (host-only relocation).
 

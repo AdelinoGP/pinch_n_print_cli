@@ -262,6 +262,17 @@ is the authoritative catalog of their defaults and ranges.
 | `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
 
+**Note — `dont_filter_internal_bridges`:** since packet 234a the value selects
+between canonical lower-layer support filtering semantics, not merely a sliver
+guard: `false` maps to canonical `ibfDisabled` (full filtering — internal-bridge
+sites are qualified against the committed layer below via
+`unsupported_span_areas`/`qualify_internal_bridge_surface`, with the partial-area
+`9*spacing^2` gate applied; expansion multiplier 3), and `true` maps to canonical
+`ibfNofilter` (bypass of the area/partial gate; expansion multiplier 1). The
+qualification runs in the ShellClassification prepass
+(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`); the InfillPostProcess
+arm only emits the authored centerlines.
+
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
 default `-1`, but bottom interface layers are not yet implemented; `support-planner`
 emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic`,

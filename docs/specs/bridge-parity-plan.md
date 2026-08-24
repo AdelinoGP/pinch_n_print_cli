@@ -122,6 +122,23 @@ clipped to anchors/walls), emits `stInternalBridge` surfaces and subtracts them 
 where no infill paths exist; `Layer::InfillPostProcess` exists as the natural seam.
 Stash: **open** (prepass placement kept; grid-parity fallback lands 0°).
 
+**Addendum (packet 234a, 2026-08-24):** post-series calicat re-slice measured the
+filtering half of this gap: after packets 233–235 the tree emitted
+`;TYPE:Internal Bridge` on 148 of 174 layers totalling 86675.76 mm (canonical:
+exactly one layer near Z≈29.45 / ≈526 mm) because the InfillPostProcess seam
+treated every sparse-infill area as candidate voids with zero lower-layer support
+testing. Packet `234a-internal-bridge-support-gating` ported canonical's
+unsupported-span arithmetic (`unsupported_span_areas` /
+`qualify_internal_bridge_surface`), relocated qualification + anchored-line
+construction into the ShellClassification prepass writing a host-only
+`SlicedRegion.internal_bridge_lines` carrier field, and reduced InfillPostProcess
+to a pure emitter. Post-fix calicat: byte-identical double slice,
+Internal-Bridge layers 0 (bar ≤6), external Bridge row at Z≈3.2 unchanged
+(90.0° / 74 segs / 324.6 mm). Known residual divergence vs canonical's single
+site: our IR has no dense-interior (`stInternalSolid`) surface taxonomy —
+`top_solid_fill` is the candidate proxy and canonical gates currently reject all
+calicat candidates; coverage/anchoring parity follow-up stays under ISSUE-82.
+
 ### F4 — HIGH — Coverage/anchoring far below canonical (known gap #3)
 Even at matched sites the WIP reaches ~30–35% of Orca's extruded length: canonical
 anchors and expands candidates (`construct_anchored_polygon`, expansion zones grown

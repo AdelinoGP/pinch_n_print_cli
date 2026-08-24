@@ -742,24 +742,14 @@ fn expansion_margin_grows_polygon_observably() {
         prev_layer_boundaries: std::collections::HashMap::new(),
     };
 
-    // exhaustive: expansion-margin fixture explicitly defines every SlicedRegion field
     let mut sliced_region = SlicedRegion {
         object_id: object_id.clone(),
         region_id: RegionId::default(),
         polygons: vec![infill_area.clone()],
         infill_areas: vec![infill_area.clone()],
-        nonplanar_surface: None,
         effective_layer_height: 0.2,
-        segment_annotations: HashMap::new(),
-        variant_chain: Vec::new(),
-        top_shell_index: None,
-        bottom_shell_index: None,
-        top_solid_fill: Vec::new(),
-        bottom_solid_fill: Vec::new(),
         is_bridge: true,
-        bridge_areas: vec![],
-        bridge_orientation_deg: 0.0,
-        sparse_infill_area: Vec::new(),
+        ..Default::default()
     };
 
     assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
@@ -852,24 +842,14 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         prev_layer_boundaries: std::collections::HashMap::new(),
     };
 
-    // exhaustive: sharp-anchor fixture explicitly defines every SlicedRegion field
     let mut sliced_region = SlicedRegion {
         object_id: object_id.clone(),
         region_id: RegionId::default(),
         polygons: vec![infill_area.clone()],
         infill_areas: vec![infill_area.clone()],
-        nonplanar_surface: None,
         effective_layer_height: 0.2,
-        segment_annotations: HashMap::new(),
-        variant_chain: Vec::new(),
-        top_shell_index: None,
-        bottom_shell_index: None,
-        top_solid_fill: Vec::new(),
-        bottom_solid_fill: Vec::new(),
         is_bridge: true,
-        bridge_areas: vec![],
-        bridge_orientation_deg: 0.0,
-        sparse_infill_area: Vec::new(),
+        ..Default::default()
     };
 
     // Must not panic.
@@ -1084,24 +1064,13 @@ fn bridge_footprint_does_not_leak_outside_facet_z_span() {
         overhang_quartile_polygons: HashMap::new(),
         prev_layer_boundaries: HashMap::new(),
     };
-    // exhaustive: bridge-z-guard fixture explicitly defines every SlicedRegion field
     let mut region = SlicedRegion {
         object_id,
         region_id: RegionId::default(),
         polygons: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
         infill_areas: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
-        nonplanar_surface: None,
         effective_layer_height: 0.2,
-        segment_annotations: HashMap::new(),
-        variant_chain: Vec::new(),
-        top_shell_index: None,
-        bottom_shell_index: None,
-        top_solid_fill: vec![],
-        bottom_solid_fill: vec![],
-        is_bridge: false,
-        bridge_areas: vec![],
-        bridge_orientation_deg: 0.0,
-        sparse_infill_area: vec![],
+        ..Default::default()
     };
 
     assemble_bridge_areas(&mut region, Some(&classification));

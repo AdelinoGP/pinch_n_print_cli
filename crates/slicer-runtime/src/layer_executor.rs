@@ -13,9 +13,9 @@ use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
     ConfigValue, ExtrusionPath3D, ExtrusionRole, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR,
-    LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point2,
-    Point3WithWidth, PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId,
-    SupportGeometryIR, SupportIR, SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
+    LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point3WithWidth,
+    PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId, SupportGeometryIR,
+    SupportIR, SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -2299,7 +2299,6 @@ pub(crate) fn apply(
         LayerStageCommit::InfillPostProcess(ir) => {
             let mut ir = ir;
             if let Some(mut slice) = arena.take_slice() {
-                let perimeter = arena.perimeter();
                 for region in &mut ir.regions {
                     let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
                         candidate.object_id == region.object_id
@@ -2307,76 +2306,16 @@ pub(crate) fn apply(
                     }) else {
                         continue;
                     };
-                    let mut anchors: Vec<Vec<Point2>> = region
-                        .sparse_infill
-                        .iter()
-                        .map(|path| {
-                            path.points
-                                .iter()
-                                .map(|point| Point2::from_mm(point.x, point.y))
-                                .collect()
-                        })
-                        .filter(|path: &Vec<Point2>| path.len() >= 2)
-                        .collect();
-                    // Canonical `boundary_plines` are walls plus the limiting
-                    // area, not sparse infill alone. Keep all sources in one
-                    // anchor set because angle selection uses nearest anchors.
-                    if let Some(perim) = perimeter.and_then(|perimeter| {
-                        perimeter.regions.iter().find(|candidate| {
-                            candidate.object_id == region.object_id
-                                && candidate.region_id == region.region_id
-                        })
-                    }) {
-                        for wall in &perim.walls {
-                            if matches!(
-                                wall.path.role,
-                                ExtrusionRole::OuterWall | ExtrusionRole::InnerWall
-                            ) {
-                                let path: Vec<Point2> = wall
-                                    .path
-                                    .points
-                                    .iter()
-                                    .map(|point| Point2::from_mm(point.x, point.y))
-                                    .collect();
-                                if path.len() >= 2 {
-                                    anchors.push(path);
-                                }
-                            }
-                        }
-                        // The inset contours implement the canonical limiting
-                        // area boundary when wall extrusion paths do not reach
-                        // the sparse-infill void endpoints.
-                        for area in &perim.infill_areas {
-                            for polygon in std::iter::once(&area.contour).chain(area.holes.iter()) {
-                                let mut path: Vec<Point2> = polygon.points.to_vec();
-                                if path.len() >= 2 {
-                                    if path.first() != path.last() {
-                                        path.push(path[0]);
-                                    }
-                                    anchors.push(path);
-                                }
-                            }
-                        }
-                    }
-                    let candidate_voids = slicer_core::difference(
-                        &slice_region.sparse_infill_area,
-                        &slice_region.bridge_areas,
-                    );
-                    if anchors.is_empty() || candidate_voids.is_empty() {
+                    // Packet 234a: the ShellClassification prepass qualifies
+                    // internal-bridge sites against committed lower layers and
+                    // authors centerlines into `internal_bridge_lines`
+                    // (extending `bridge_areas` there keeps the gated area out
+                    // of module sparse infill via the Perimeters-commit
+                    // partition). This arm is the pure emitter: map authored
+                    // centerlines to InternalBridgeInfill paths.
+                    if slice_region.internal_bridge_lines.is_empty() {
                         continue;
                     }
-                    let edges: Vec<Vec<Point2>> = candidate_voids
-                        .iter()
-                        .map(|void| void.contour.points.clone())
-                        .collect();
-                    log::debug!(
-                        "internal bridge seam layer={} object={} region={} anchors={} candidate_voids={}",
-                        ctx.layer_index,
-                        region.object_id,
-                        region.region_id,
-                        anchors.len(),
-                        candidate_voids.len()
-                    );
                     let config = ctx.config_view;
                     let value = |key: &str, default: f32| {
                         config
@@ -2384,64 +2323,17 @@ pub(crate) fn apply(
                             .map(|value| value as f32)
                             .unwrap_or(default)
                     };
-                    let bridge_line_width = value("bridge_line_width", 0.0);
-                    let bridge_flow_ratio = value("internal_bridge_flow", 1.0);
-                    let nozzle_diameter = value("nozzle_diameter", 0.4);
                     let flow = slicer_core::flow::canonical_bridging_flow(
-                        bridge_line_width,
-                        bridge_flow_ratio,
-                        nozzle_diameter,
+                        value("bridge_line_width", 0.0),
+                        value("internal_bridge_flow", 1.0),
+                        value("nozzle_diameter", 0.4),
                     );
-                    let angle_override = value("internal_bridge_angle", 0.0);
-                    let angle = slicer_core::algos::bridge_over_infill::determine_bridging_angle(
-                        &anchors,
-                        &edges,
-                        angle_override,
-                    );
-                    let (bridge_polys, bridge_lines) =
-                        slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
-                            &anchors,
-                            &candidate_voids,
-                            angle,
-                            flow.spacing_mm,
-                            flow.thread_diameter_mm,
-                        );
-                    log::debug!(
-                        "internal bridge construction layer={} object={} region={} polygons={} lines={}",
-                        ctx.layer_index,
-                        region.object_id,
-                        region.region_id,
-                        bridge_polys.len(),
-                        bridge_lines.len()
-                    );
-                    // Strict filtering is the default: construction itself requires
-                    // anchor-flanked scan sections, and no-filter only bypasses the
-                    // final sliver guard. Extra bridge layers need N +/- 1 and are
-                    // intentionally parse-only here (packet 234).
-                    if bridge_polys.is_empty()
-                        || bridge_lines.is_empty()
-                        || (!config.is_some_and(|view| {
-                            view.get_bool("dont_filter_internal_bridges")
-                                .unwrap_or(false)
-                        }) && bridge_lines.iter().any(|line| {
-                            line.windows(2)
-                                .map(|pair| {
-                                    let dx = pair[1].x - pair[0].x;
-                                    let dy = pair[1].y - pair[0].y;
-                                    ((dx * dx + dy * dy) as f32).sqrt()
-                                })
-                                .sum::<f32>()
-                                < flow.thread_diameter_mm
-                        }))
-                    {
-                        continue;
-                    }
-                    slice_region.sparse_infill_area =
-                        slicer_core::difference(&slice_region.sparse_infill_area, &bridge_polys);
-                    region
-                        .internal_bridge_infill
-                        .extend(bridge_lines.into_iter().map(|line| {
-                            ExtrusionPath3D {
+                    region.internal_bridge_infill.extend(
+                        slice_region
+                            .internal_bridge_lines
+                            .iter()
+                            .cloned()
+                            .map(|line| ExtrusionPath3D {
                                 points: line
                                     .into_iter()
                                     .map(|point| Point3WithWidth {
@@ -2458,8 +2350,8 @@ pub(crate) fn apply(
                                 role: ExtrusionRole::InternalBridgeInfill,
                                 speed_factor: 1.0,
                                 tool_index: None,
-                            }
-                        }));
+                            }),
+                    );
                 }
                 arena
                     .set_slice(slice)

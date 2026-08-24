@@ -254,6 +254,19 @@ fn default_emits_fewer_lines_than_legacy() {
 /// `;TYPE:` sections unchanged in count. Re-blessed as canonical-correct
 /// drift per Test Discipline, never to mask a defect.
 ///
+/// Re-blessed 2026-08-24 (packet 234a closure). The ShellClassification
+/// internal-bridge gating relocation (canonical `bridge_over_infill`
+/// support-math port) removes the flood-era `Internal Bridge` construction
+/// that packet 233's InfillPostProcess seam emitted on every sparse layer:
+/// qualification now requires an unsupported span against the committed
+/// lower layer under `top_solid_fill` candidates, and this fixture has no
+/// qualifying site. Delta verified composition-safe: 100 layers and
+/// identical Z-set; the only section-count change is `Internal Bridge`
+/// 94 -> 0; all other `;TYPE:` sections unchanged in count (100 Inner
+/// wall / 100 Outer wall / 94 Sparse infill / 4 Internal solid infill).
+/// Re-blessed as canonical-correct drift per Test Discipline, never to
+/// mask a defect.
+///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text
 /// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test e2e -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture

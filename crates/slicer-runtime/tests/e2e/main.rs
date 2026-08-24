@@ -9,6 +9,7 @@
 mod common;
 
 mod acceptance_gate_gaps_tdd;
+mod calicat_internal_bridge_gating_e2e_tdd;
 mod cube_4color_modifier_part_e2e_tdd;
 mod cube_painted_e2e_tdd;
 mod cube_painted_overrides_e2e_tdd;

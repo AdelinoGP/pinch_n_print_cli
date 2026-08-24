@@ -58,7 +58,9 @@ use slicer_core::algos::prepass_slice::{
     gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
 };
 use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
-use slicer_ir::{ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
+use slicer_ir::{
+    ConfigValue, ExPolygon, ObjectId, Point2, RegionId, RegionKey, RegionMapIR, SliceIR,
+};
 
 use slicer_ir::BlackboardError;
 
@@ -216,6 +218,22 @@ pub fn commit_shell_classification_builtin(
             update_external_bridge_orientation(region, lower_layer_slices);
         }
     }
+
+    // Packet 234a: qualify internal-bridge sites against the committed layer
+    // below and author anchored bridge centerlines per region. Runs after the
+    // shell passes (top/bottom solid fills are populated for every layer
+    // above) and strictly after 234's false-site gate. Material exclusion
+    // flows through `bridge_areas`: the partition derives `sparse_infill_area`
+    // from it at Perimeters commit, so module sparse infill never covers the
+    // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
+    // not exist yet at this stage and would be overwritten.)
+    gate_internal_bridge_sites(
+        &mut new_vec,
+        &timelines,
+        &region_map,
+        &object_layers,
+        &lower_layer_polygons,
+    );
 
     blackboard.replace_slice_ir(Arc::new(new_vec))?;
     Ok(())
@@ -517,6 +535,251 @@ fn resolve_opening_radius(
 // ============================================================================
 // Internal helpers
 // ============================================================================
+
+/// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
+/// functions landed in `slicer_core::algos::bridge_over_infill`). For each
+/// region timeline, qualifies the upper layer's `top_solid_fill` surfaces
+/// against the committed layer below and authors anchored internal-bridge
+/// centerlines into `SlicedRegion::internal_bridge_lines` for the same-layer
+/// InfillPostProcess arm to emit. Extends `bridge_areas` with the qualified
+/// polygons so the existing partition dataflow (`region_partition` derives
+/// `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at
+/// Perimeters commit) keeps module sparse infill out of the gated area.
+///
+/// Sequential by construction: only this prepass legally sees every committed
+/// layer; per-layer stage arms run under rayon with private arenas. Config
+/// resolves through `region_map.config_for(...).extensions`, mirroring how
+/// undeclared module keys are routed there by the host resolver (same keys the
+/// old arm read from the module config view).
+fn gate_internal_bridge_sites(
+    slices: &mut [SliceIR],
+    timelines: &HashMap<(ObjectId, RegionId), Vec<usize>>,
+    region_map: &RegionMapIR,
+    object_layers: &HashMap<ObjectId, HashSet<u32>>,
+    lower_layer_polygons: &HashMap<(ObjectId, u32), Vec<ExPolygon>>,
+) {
+    // Lower-layer solid support: top + bottom shell fills per (object, layer).
+    // Populated above by this stage's shell passes, so every committed layer
+    // contributes.
+    let mut lower_layer_solids: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+    for slice in slices.iter() {
+        for region in &slice.regions {
+            let entry = lower_layer_solids
+                .entry((region.object_id.clone(), slice.global_layer_index))
+                .or_default();
+            entry.extend(region.top_solid_fill.iter().cloned());
+            entry.extend(region.bottom_solid_fill.iter().cloned());
+        }
+    }
+
+    for ((object_id, region_id), timeline) in timelines {
+        // Resolve this region's flow settings once from its first timeline
+        // entry, mirroring `resolve_opening_radius`'s key construction and
+        // contains_key guard (`config_for` panics on unknown keys).
+        let Some(&first_idx) = timeline.first() else {
+            continue;
+        };
+        let key = RegionKey {
+            global_layer_index: first_idx as u32,
+            object_id: object_id.clone(),
+            region_id: *region_id,
+            variant_chain: Vec::new(),
+        };
+        let resolved = if region_map.entries.contains_key(&key) {
+            Some(region_map.config_for(&key))
+        } else {
+            None
+        };
+        let ext_float = |name: &str, default: f32| -> f32 {
+            resolved
+                .and_then(|config| config.extensions.get(name))
+                .and_then(|value| match value {
+                    ConfigValue::Float(f) => Some(*f as f32),
+                    ConfigValue::Int(i) => Some(*i as f32),
+                    _ => None,
+                })
+                .unwrap_or(default)
+        };
+        let nofilter = resolved
+            .and_then(|config| config.extensions.get("dont_filter_internal_bridges"))
+            .and_then(|value| match value {
+                ConfigValue::Bool(flag) => Some(*flag),
+                _ => None,
+            })
+            .unwrap_or(false);
+        let flow = slicer_core::flow::canonical_bridging_flow(
+            ext_float("bridge_line_width", 0.0),
+            ext_float("internal_bridge_flow", 1.0),
+            ext_float("nozzle_diameter", 0.4),
+        );
+        let angle_override = ext_float("internal_bridge_angle", 0.0);
+        // Canonical: expansion_multiplier 3 under strict filtering, 1 when the
+        // filter is relaxed in any way (ibfLimited / ibfNofilter).
+        let expansion_multiplier: f64 = if nofilter { 1.0 } else { 3.0 };
+
+        for &slice_idx in timeline {
+            // The first layer has no lower layer — nothing can span it.
+            let Some(lower_index) =
+                slices[slice_idx]
+                    .global_layer_index
+                    .checked_sub(1)
+                    .filter(|lower_index| {
+                        object_layers
+                            .get(object_id)
+                            .is_some_and(|layers| layers.contains(lower_index))
+                    })
+            else {
+                continue;
+            };
+            let Some(lower_fills) = lower_layer_polygons.get(&(object_id.clone(), lower_index))
+            else {
+                continue;
+            };
+            let empty_solids: Vec<ExPolygon> = Vec::new();
+            let lower_solids = lower_layer_solids
+                .get(&(object_id.clone(), lower_index))
+                .unwrap_or(&empty_solids);
+            let layer_index = slices[slice_idx].global_layer_index;
+            let Some(region) = find_region_mut(&mut slices[slice_idx], object_id, *region_id)
+            else {
+                continue;
+            };
+            if region.top_solid_fill.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} reason=top_solid_fill_empty",
+                    object_id,
+                    region_id,
+                    layer_index
+                );
+                continue;
+            }
+            // Canonical gather arithmetic: closing of lower fills shrunk by
+            // mult*spacing minus grown lower solids (Step 1 port), then the
+            // per-surface gates with the expand(4*spacing) clip.
+            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
+                lower_fills,
+                lower_solids,
+                flow.spacing_mm,
+                expansion_multiplier,
+            );
+            if unsupported.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} reason=unsupported_empty",
+                    object_id,
+                    region_id,
+                    layer_index
+                );
+                continue;
+            }
+            let mut qualified: Vec<ExPolygon> = Vec::new();
+            let mut edges: Vec<Vec<Point2>> = Vec::new();
+            for surface in &region.top_solid_fill {
+                if let Some(polys) =
+                    slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+                        surface,
+                        &unsupported,
+                        flow.spacing_mm,
+                        nofilter,
+                    )
+                {
+                    edges.extend(polys.iter().map(|poly| poly.contour.points.clone()));
+                    qualified.extend(polys);
+                }
+            }
+            if qualified.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} reason=qualified_empty surfaces={}",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    region.top_solid_fill.len()
+                );
+                continue;
+            }
+            // Anchors: current-region outlines plus inset contours — walls do
+            // not exist until Layer::Perimeters, so these stand in for the old
+            // arm's walls + limiting-area anchor set. Closed loops, matching
+            // the limiting-area collection shape.
+            let mut anchors: Vec<Vec<Point2>> = Vec::new();
+            for areas in
+                std::iter::once(&region.polygons).chain(std::iter::once(&region.infill_areas))
+            {
+                for area in areas {
+                    for polygon in std::iter::once(&area.contour).chain(area.holes.iter()) {
+                        let mut path: Vec<Point2> = polygon.points.to_vec();
+                        if path.len() >= 2 {
+                            if path.first() != path.last() {
+                                path.push(path[0]);
+                            }
+                            anchors.push(path);
+                        }
+                    }
+                }
+            }
+            if anchors.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} reason=anchors_empty",
+                    object_id,
+                    region_id,
+                    layer_index
+                );
+                continue;
+            }
+            let angle = slicer_core::algos::bridge_over_infill::determine_bridging_angle(
+                &anchors,
+                &edges,
+                angle_override,
+            );
+            let (bridge_polys, bridge_lines) =
+                slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
+                    &anchors,
+                    &qualified,
+                    angle,
+                    flow.spacing_mm,
+                    flow.thread_diameter_mm,
+                );
+            if bridge_polys.is_empty() || bridge_lines.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} reason=construction_empty polys={} lines={}",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    bridge_polys.len(),
+                    bridge_lines.len()
+                );
+                continue;
+            }
+            // Preserve 233's sliver-guard semantics: strict filtering rejects
+            // any constructed strip thinner than one thread; no-filter bypasses
+            // it (canonical ibfNofilter behaviour in this tree).
+            if !nofilter
+                && bridge_lines.iter().any(|line| {
+                    line.windows(2)
+                        .map(|pair| {
+                            let dx = pair[1].x - pair[0].x;
+                            let dy = pair[1].y - pair[0].y;
+                            ((dx * dx + dy * dy) as f32).sqrt()
+                        })
+                        .sum::<f32>()
+                        < flow.thread_diameter_mm
+                })
+            {
+                continue;
+            }
+            log::debug!(
+                "internal bridge gating object={} region={} layer={} qualified={} polygons={} lines={}",
+                object_id,
+                region_id,
+                layer_index,
+                qualified.len(),
+                bridge_polys.len(),
+                bridge_lines.len()
+            );
+            region.internal_bridge_lines = bridge_lines;
+            region.bridge_areas.extend(bridge_polys);
+        }
+    }
+}
 
 fn build_region_timelines(slices: &[SliceIR]) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
     let mut timelines: HashMap<(ObjectId, RegionId), Vec<usize>> = HashMap::new();

@@ -100,6 +100,10 @@ name = "bridge_false_site_gating_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "bridge_support_gating_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "beading_distributed"
 path = "tests/beading/distributed.rs"
 

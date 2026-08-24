@@ -1527,6 +1527,11 @@ pub struct SlicedRegion {
     /// `crates/slicer-runtime/src/region_partition.rs`.
     #[serde(default)]
     pub sparse_infill_area: Vec<ExPolygon>,
+    /// Centerlines of gated internal-bridge strips authored by the
+    /// ShellClassification prepass; consumed by the InfillPostProcess emitter.
+    /// Host-only — never mirrored into module views.
+    #[serde(default)]
+    pub internal_bridge_lines: Vec<Vec<Point2>>,
 }
 
 /// Slice IR
