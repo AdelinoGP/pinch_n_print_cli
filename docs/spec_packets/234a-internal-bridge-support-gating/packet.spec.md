@@ -2,63 +2,122 @@
 status: draft
 packet: 234a-internal-bridge-support-gating
 task_ids: []
-backlog_source: docs/specs/orca-feature-gap/issues/82-author-packet-p75-quality-bridging-bridge-over-infill.md (internal-bridge filtering-parity half; see task-map.md)
+backlog_source: docs/specs/orca-feature-gap/issues/82-author-packet-p75-quality-bridging-bridge-over-infill.md; decisions frozen in docs/specs/orca-feature-gap/issues/82-parity-closure-decision-brief.md
 context_cost_estimate: M
 ---
 
 # Packet Contract: 234a-internal-bridge-support-gating
 
+**Closure edition (in-place revision, 2026-08-24).** The original edition's landed work
+(Step-1 support math, ShellClassification relocation, pure-emitter reduction) stays; this
+revision extends the SAME packet to close its recorded parity deviation (calicat qualifies
+ZERO internal-bridge sites vs canonical's ONE near Z≈29.45) and to absorb F4
+coverage/anchoring parity. Pre-revision artifact text remains recoverable in git history.
+
 ## Goal
 
-Gate internal bridge-over-infill construction by canonical `PrintObject.cpp::bridge_over_infill` lower-layer support semantics — candidates are upper-layer internal-solid interface surfaces qualified by unsupported span against the layer below, never raw current-layer sparse infill — relocating construction from the parallel-slicing InfillPostProcess arm into the sequential ShellClassification prepass beside 234's false-site gate, so internal bridges appear only where infill is genuinely unsupported (measured target: canonical emits exactly ONE internal-bridge site on calicat; our tree currently emits 148).
+Make internal-bridge-over-infill site selection, anchoring construction, and coverage
+canonically faithful end-to-end: restore the fills-as-initial unsupported-span semantics,
+author a WIT-visible dense-interior classification (`internal_solid_fill`), split venue so
+qualification stays in the prepass while anchored construction consumes real walls and
+sparse-infill anchors at InfillPostProcess, port F4's expansion/harvesting/clustering
+machinery, and prove exactly-one-site parity on calicat via bundle-primary arbitration.
 
 ## Scope Boundaries
 
-This packet replaces the unqualified candidate selection at `LayerStageCommit::InfillPostProcess` in `crates/slicer-runtime/src/layer_executor.rs` (the `candidate_voids = difference(sparse_infill_area, bridge_areas)` block with its sliver-guard filter) with: (1) pure support-math functions in `crates/slicer-core/src/algos/bridge_over_infill.rs` porting canonical's unsupported-area computation (closing of lower-layer fill polygons, shrink by `expansion_multiplier*spacing` with mult=3 default, subtraction of grown lower-layer solids, per-surface unsupported intersection, `9*spacing^2` partially-supported area gate, `expand(unsupported, 4*spacing)` clip to surface); (2) a new sequential pass in `crates/slicer-runtime/src/slice_postprocess_prepass.rs` inside `commit_shell_classification_builtin`'s stage, ordered after the shell-classification passes and 234's `gate_bridge_areas_by_unsupported_span`, that walks region timelines across committed layers and performs qualification + anchored-line construction, writing the constructed centerlines into a net-new HOST-ONLY `SlicedRegion.internal_bridge_lines` field (`crates/slicer-ir/src/slice_ir.rs`) and extending `SlicedRegion.bridge_areas` with the qualified polygons — the existing partition dataflow (`region_partition.rs` derives `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at Perimeters commit) then excludes the area from module-generated sparse infill; (3) reduction of the InfillPostProcess-time construction to a pure emitter: the arm reads `internal_bridge_lines`, maps them to `ExtrusionRole::InternalBridgeInfill` `ExtrusionPath3D`s into `InfillRegion.internal_bridge_infill`, and no longer gathers anchors, computes candidate voids, calls `construct_anchored_polygon`/`determine_bridging_angle`, or subtracts `sparse_infill_area` (verified post-hoc: the module emitted at `Layer::Infill`, one stage earlier). Placement note (verified 2026-08-24): per-layer execution is `rayon::par_iter` with private per-layer arenas and cross-layer arena reads are forbidden, so the prepass cannot populate `InfillRegion` directly — hence the host-only carrier field consumed by the same-layer arm. This is the packet's Option-A revision (approved by the user 2026-08-24). It maps the boolean `dont_filter_internal_bridges` onto canonical's enum behaviour (`false` = `ibfDisabled` full filter, `true` = `ibfNofilter` bypass of the area/partial gate). It does NOT change the angle algorithm (`determine_bridging_angle` stays; its call site moves to the prepass), does not change WIT types, schema, or module-facing views (the one new `SlicedRegion` field is host-only and un-mirrored — `SliceRegionView::from_ir` copies selected fields only), does not touch `counterbore_hole_bridging` or the external-site orientation path from 235, and does not alter module manifests.
+In: arithmetic correction in `crates/slicer-core/src/algos/bridge_over_infill.rs`; net-new
+`SlicedRegion.internal_solid_fill` (WIT-mirrored) and `SlicedRegion.internal_bridge_areas`
+(host-only) with `internal_bridge_lines` retired; per-region density>=100% supporter branch;
+prepass qualification rewrite; InfillPostProcess constructor; F4 expansion zones,
+`gather_areas_w_depth` harvesting, thread clustering, `enable_extra_bridge_layer` emission
+semantics; arbitration/regression harness incl. golden policy. Out: F5/F6/F7 flow-speed and
+alternation rows, other core-modules, scheduler stage set, runnable-oracle claims.
 
 ## Prerequisites and Blockers
 
-- Depends on: `docs/spec_packets/233-internal-bridge-over-infill/` (net-new symbols `ExtrusionRole::InternalBridgeInfill`, `determine_bridging_angle`, `construct_anchored_polygon` in `crates/slicer-core/src/algos/bridge_over_infill.rs`, field `InfillRegion.internal_bridge_infill`), `docs/spec_packets/234-bridge-false-site-gating/` (the ShellClassification seam pattern: `gate_bridge_areas_by_unsupported_span` in `crates/slicer-core/src/algos/prepass_slice.rs`, invoked from `commit_shell_classification_builtin` in `crates/slicer-runtime/src/slice_postprocess_prepass.rs`; `build_region_timelines(slices: &[SliceIR])` multi-layer access), and `docs/spec_packets/235-external-bridge-orientation/` (post-gate ordering precedent; external row must not regress). All prerequisite symbols verified present on disk during this packet's authoring session (2026-08-24); verify symbol presence directly at implementation time rather than re-deriving from those packets' status lines.
-- Supersedes part of 233's delivered design: 233's AC-N2 recorded "prepass stays free of internal-bridge logic". This packet reverses that placement decision explicitly — rationale in `design.md` Architecture Constraints. The reversal is a designed consequence of the same parallel-slicing limitation 234 itself hit, not an undocumented deviation.
-- Revision (2026-08-24, user-approved Option A): the original "no IR field addition" constraint is superseded — exactly one host-only `SlicedRegion` field (`internal_bridge_lines: Vec<Vec<Point2>>`) is allowed. Verified scheduler facts underpinning the revision: per-layer stages run under `rayon::par_iter` with private per-layer `LayerArena`s (cross-layer arena reads forbidden, `docs/04_host_scheduler.md` LayerCollectionIR Lifecycle); `blackboard.infill` is empty throughout PrePass; `sparse_infill_area` is derived at Perimeters commit (post-prepass), so material exclusion flows through gated/extended `bridge_areas`, never through prepass sparse mutation.
-- Unblocks: honest I2 (no-flooding) parity on real models; future coverage/anchoring work that assumes filtered internal-bridge sites.
-- Activation blockers: none.
+- Depends on: landed 233 (construction seam, angle port), 234 (false-site gate),
+  235 (external orientation); the original 234a edition (in substance on this tree —
+  support math, ShellClassification relocation, pure-emitter reduction are all present;
+  the packet directory itself reopened as `draft` for this closure revision).
+- Unblocks: ISSUE-82 closure; F4 row of `docs/specs/bridge-parity-plan.md`.
+- Activation blockers: none known at emission; S4 begins with a feasibility probe whose
+  failure path is STOP-and-report, not silent redesign.
 
 ## Acceptance Criteria
 
-State ACs only here; `requirements.md` references their IDs.
-
-- **AC-1. Given** a lower layer whose dense-fill polygons fully cover an upper internal-solid surface (no voids), **when** the new support-math function runs, **then** it returns an empty unsupported-area set — the surface does NOT qualify for bridging. | `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd -- fully_supported_surface_yields_no_unsupported_area --nocapture`
-- **AC-2. Given** a lower layer with a rectangular void under an upper surface such that the computed unsupported region is larger than `9*spacing^2` after closing/shrink/grow math (mult=3), **when** qualification runs with filtering enabled, **then** the surface qualifies and the returned bridge polygon equals `expand(unsupported_intersection, 4*spacing)` clipped to the surface within polygon-equality tolerance. | `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd -- unsupported_span_qualifies_and_clip_expand_matches_canonical --nocapture`
-- **AC-3. Given** a partially-supported surface whose unsupported intersection area lies between zero and `9*spacing^2`, **when** qualification runs with `dont_filter_internal_bridges=false`, **then** it rejects the surface; with the key set `true` (`ibfNofilter`), **then** it accepts. | `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd -- partial_support_area_gate_and_nofilter_bypass --nocapture`
-- **AC-4. Given** the relocation, **when** the change surface is inspected and the bridging suites run, **then** `construct_anchored_polygon` no longer appears in `crates/slicer-runtime/src/layer_executor.rs` (name-resolution-tolerant rg), the new prepass pass appears in `crates/slicer-runtime/src/slice_postprocess_prepass.rs` at a LINE NUMBER strictly greater than the `gate_bridge_areas_by_unsupported_span` invocation line (order-falsifying comparison), and `bridge_over_infill_tdd` plus `bridge_false_site_gating_tdd` stay green. | `bash -c 'rg -q "construct_anchored_polygon" crates/slicer-runtime/src/layer_executor.rs && exit 1 || exit 0' && bash -c 'gate=$(rg -n "gate_bridge_areas_by_unsupported_span" crates/slicer-runtime/src/slice_postprocess_prepass.rs | head -1 | cut -d: -f1); pass=$(rg -n "construct_anchored_polygon|bridge_over_infill::" crates/slicer-runtime/src/slice_postprocess_prepass.rs | head -1 | cut -d: -f1); test -n "$gate" && test -n "$pass" && test "$pass" -gt "$gate"' && cargo test -p slicer-core --features host-algos --test bridge_over_infill_tdd && cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd`
-- **AC-5. Given** `resources/calicat.stl` imported from this packet's measured baseline, **when** the model is sliced twice with the core modules and both outputs are parsed with M83-relative-E semantics keyed by Z with `;TYPE:` carried across layer changes, **then** the two slices are byte-identical, Internal-Bridge-labelled layers number at most 6 (canonical: exactly 1, near Z≈29.45), total bridge-labelled extrusion is at most 5000 mm (baseline before this packet: 86675.76 mm across 148 layers; OrcaSlicer reference: 950.56 mm), and the external Bridge row at Z≈3.2 keeps dominant angle within [85°, 95°] (packet-235 regression guard; baseline after 235: 90.0° / 74 segs / 324.6 mm). | `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_gating_e2e_tdd --nocapture`
-- **AC-6. Given** the wedge regression model, **when** the existing wedge-linked-infill e2e suite runs with its slot-ceiling assertions at print_z 28.2, **then** every assertion passes unchanged — the relocation must not shift Bottom/Bridge classifications the wedge pins. | `cargo test -p slicer-runtime --test e2e wedge_linked_infill_report_tdd`
+- **AC-1. Given** lower-layer fill polygons F and solid polygons S, **when**
+  `unsupported_span_areas` runs, **then** the result equals `shrink(closing(F), mult*spacing)`
+  minus `expand(shrink(S, 1*spacing), (1+mult)*spacing)` — F itself is the initial unsupported
+  carrier and no bounding-box complement is computed (`fill_envelope` removed from the dataflow).
+  | `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd -- fills_are_the_initial_unsupported_carrier --nocapture 2>&1 | tee target/test-output.log`
+- **AC-2. Given** the net-new IR/WIT surface, **when** `SliceRegionView::from_ir` mirrors a
+  region, **then** `internal_solid_fill` is copied into the view and declared in the canonical
+  WIT region type, while `internal_bridge_areas` stays host-only (absent from the view and
+  WIT) and both new `SlicedRegion` fields carry `#[serde(default)]`.
+  | `rg -q 'internal_solid_fill' crates/slicer-sdk/src/views.rs && rg -q 'internal_solid_fill' crates/slicer-schema/wit && ! rg -q 'internal_bridge_areas' crates/slicer-schema/wit && rg -q -U '#\[serde\(default\)\]\s+(pub )?internal_solid_fill' crates/slicer-ir/src/slice_ir.rs && rg -q -U '#\[serde\(default\)\]\s+(pub )?internal_bridge_areas' crates/slicer-ir/src/slice_ir.rs`
+- **AC-3. Given** committed region timelines with a dense-band candidate over sparse lower
+  fills, **when** the prepass qualification pass runs, **then** qualified polygons land in BOTH
+  `region.bridge_areas` and `region.internal_bridge_areas`, and every skip log line carries the
+  visited layer's `print_z`. | `cargo test -p slicer-runtime --test integration -- internal_bridge_qualification_writes_gated_areas --nocapture 2>&1 | tee target/test-output.log`
+- **AC-4. Given** a committed `internal_bridge_areas` polygon set, **when** the
+  `LayerStageCommit::InfillPostProcess` arm executes, **then** it constructs anchor-snapped
+  strips via `construct_anchored_polygon` using perimeter-wall geometry and `Layer::Infill`
+  sparse polylines as anchors, emits `ExtrusionRole::InternalBridgeInfill` paths, and
+  `internal_bridge_lines` no longer exists anywhere in the tree.
+  | `cargo test -p slicer-runtime --test contract -- infill_postprocess_constructs_anchored_paths --nocapture 2>&1 | tee target/test-output.log && ! rg -q 'internal_bridge_lines' crates/ modules/`
+- **AC-5. Given** a visual-debug capture of a calicat slice, **when** the bundle-primary
+  arbiter test inspects `typed_capture` payloads, **then** Internal-Bridge qualified areas
+  appear on EXACTLY ONE layer with print_z in [29.15, 29.75], their total area corresponds to
+  [300, 700] mm of extruded length at bridging flow, and NO other layer carries qualified
+  internal-bridge geometry. | `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_arbiter_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
+- **AC-6. Given** the emitted calicat G-code, **when** the secondary consistency parser runs,
+  **then** `;TYPE:Internal Bridge` sections appear on exactly one layer within print_z
+  [29.15, 29.75] totalling [300, 700] mm, the external Bridge row nearest Z=3.2 keeps
+  length-weighted dominant angle in [85, 95] degrees, and two consecutive slices are
+  byte-identical. | `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_gating_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
 
 ## Negative Test Cases
 
-- **AC-N1. Given** an internal-solid surface sitting ENTIRELY above lower-layer dense material so its unsupported intersection is empty, **when** `qualify_internal_bridge_surface` runs, **then** it returns None and no bridge polygon is produced — proving construction cannot fire without genuine unsupported span (root cause of the 148-layer flood). | `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd -- fully_supported_surface_qualifies_nothing --nocapture`
+- **AC-N1. Given** an object with one fully-dense region (resolved `infill_density >= 0.999`)
+  beside one sparse region under a shared ceiling, **when** the pipeline slices it, **then**
+  ZERO internal-bridge geometry qualifies above the dense half while qualification above the
+  sparse half is preserved. | `cargo test -p slicer-runtime --test e2e -- mixed_density_internal_bridge_rejection_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N2. Given** the legacy-precision golden flow, **when**
+  `legacy_zero_matches_golden` runs after the re-bless ceremony, **then** emitted bytes equal
+  `precision_legacy_20mmbox.gcode`, whose re-bless comment documents the full section-count
+  diff table, Z-set identity, and per-diff-class canonical reasoning (zero-sites is not
+  privileged). | `cargo test -p slicer-runtime --test e2e -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N3. Given** the wedge regression set, **when** the existing wedge suites run UNMODIFIED,
+  **then** all pins hold; any failure is STOP-and-report with measurements, never an in-step
+  re-pin. | `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report_tdd --nocapture 2>&1 | tee target/test-output.log`
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo xtask check-literals`
-- `cargo xtask build-guests --check` (exit 0 expected; host-only change surface)
-- `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd`
-- `cargo xtask test --summary --workspace` (closure run only, at acceptance ceremony)
+- `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_arbiter_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
+
+At acceptance ceremony ONLY: `cargo xtask test --workspace` dispatched to a sub-agent
+returning FACT pass/fail (AGENTS.md gate; guest freshness preflight included).
 
 ## Authoritative Docs
 
-- `docs/specs/bridge-parity-plan.md` - direct read (F3 finding, §4 W-C row, §6 invariant list: I2/I3/I7 wording).
-- `docs/15_config_keys_reference.md` - direct read of the `dont_filter_internal_bridges` entry only (semantics change to canonical enum mapping).
-- `docs/04_host_scheduler.md` - delegated SUMMARY of the `ShellClassification` stage section (stage-ordering rules the relocation must respect).
+- `docs/specs/orca-feature-gap/issues/82-parity-closure-decision-brief.md` - direct read; authoritative decisions/approvals record
+- `docs/specs/bridge-parity-plan.md` - sections F3/F4 only (delegated SUMMARY acceptable)
+- `docs/04_host_scheduler.md` - delegated SUMMARY of ShellClassification/InfillPostProcess commit payloads
+- `docs/21_data_defaults_and_fixtures.md` - struct-literal gate rules (ranged read)
+- `docs/19_visual_debug.md` - tap classes/bundle guarantees (delegated SUMMARY)
+- `docs/ORCASLICER_ATTRIBUTION.md` - porting-header obligation for S5 ports
+- `docs/08_coordinate_system.md` - conversion checklist (snippet below carries the factor)
 
 ## Doc Impact Statement (Required)
 
-- **`docs/15_config_keys_reference.md`** — update the `dont_filter_internal_bridges` row: value now selects between canonical full-filtering (`false`) and bypass (`true`) of the lower-layer support gate instead of only a sliver guard. Verification grep: `rg -n "dont_filter_internal_bridges" docs/15_config_keys_reference.md` must show the updated semantics line.
-- **`docs/specs/bridge-parity-plan.md`** — append a dated addendum row to §3/F3 noting the filtering gap found by post-series calicat re-slice (148 layers / 86675.76 mm vs canonical 1 / 526.27 mm) and pointing at this packet. Verification grep: `rg -n "234a" docs/specs/bridge-parity-plan.md` must return a hit.
-- No other doc sections are touched: no IR/WIT/schema/claim changes, no scheduler stage addition (relocation reuses the existing ShellClassification stage).
+Specific same-packet doc edits:
+
+- `docs/specs/bridge-parity-plan.md` section "F3" - replace the 234a addendum's residual-
+  divergence text with the closure outcome - `rg -q '### F3 — HIGH' docs/specs/bridge-parity-plan.md`
+- `docs/specs/bridge-parity-plan.md` section "F4" - mark coverage/anchoring closed by this
+  packet with measured numbers - `rg -q '### F4 — HIGH' docs/specs/bridge-parity-plan.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -67,9 +126,8 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `bridge_over_infill` gather pass: `unsupported_area` computation (closing of lower fills, shrink `expansion_multiplier*spacing`, minus grown lower solids), per-surface `unsupported = intersection(s, unsupported_area)`, empty + `9*spacing^2` partial gates, `expand(unsupported, 4*spacing)` clip, leftover-island remerge (`spacing^2 < area < 12*spacing^2`), and the apply phase reclassifying `stInternalSolid` → `stInternalBridge`.
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp` / `PrintConfig.cpp` — `InternalBridgeFilter` enum `{ibfDisabled, ibfLimited, ibfNofilter}` and `dont_filter_internal_bridges` option definition (default `ibfDisabled`; `ibfLimited` sets `expansion_multiplier = 1`).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` — `erInternalBridgeInfill` assignment when `surface.is_internal_bridge()` (role-emission precedent already mirrored by 233).
+- `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `bridge_over_infill` gather initialization (fills-as-initial), candidate `filter_by_type(stInternalSolid)` loop, `stInternalBridge` subtraction block; `discover_horizontal_shells` `extra_solid_infills` (deliberately NOT borrowed); `generate_sparse_infill_polylines_for_anchoring`; `gather_areas_w_depth` downward harvesting; thread clustering and `filled_polyons_on_lower_layers` removal; expansion-zone application (`expansion_step`, `expansion_bottom_bridge`)
+- `OrcaSlicerDocumented/src/libslic3r/Fill.hpp` — filler/spacing constants used by anchored construction spacing, if referenced by S5 snippets
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

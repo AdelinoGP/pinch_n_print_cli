@@ -1,143 +1,398 @@
-# Implementation Plan: 234a-internal-bridge-support-gating
+# Implementation Plan: 234a-internal-bridge-support-gating (closure edition)
 
 ## Execution Rules
 
-- Work one atomic step at a time; map every step to grouped task IDs (none — backlog slot is ISSUE-82's internal-bridge filtering half).
+- Work one atomic step at a time; backlog source for every row is ISSUE-82 closure edition
+  (`task_ids` N-A per task-map.md).
 - Use TDD, then implementation, then the narrowest falsifying validation.
-- Every field below is a context-budget contract and must be filled independently; never write "see Step 1".
-- Guest freshness: after any slicer-core edit, `cargo xtask build-guests --check` exit code arbitrates (0 fresh / 1 stale → rebuild / 3 wasm-tools infra) before attributing guest-touching failures elsewhere.
+- Every field below is a context-budget contract; never write "see Step N".
+- After ANY step touching slicer-ir/slicer-core/slicer-sdk/slicer-schema/wit: run
+  `cargo xtask build-guests --check` and honor its exit code (design.md snippet rule).
 
 ## Steps
 
-### Step 1: Pure support-math port + Q1/Q2 discovery
+### Step 1: RC-A arithmetic fix
 
-- Task IDs: none (backlog slot ISSUE-82)
-- Objective: Add `unsupported_span_areas(lower_fills, lower_solids, spacing_mm, expansion_multiplier)` and `qualify_internal_bridge_surface(surface, unsupported, spacing_mm, nofilter)` to `crates/slicer-core/src/algos/bridge_over_infill.rs` implementing the canonical arithmetic in design.md (closing of lower fills; shrink `mult*spacing`; minus lower solids shrunk 1*spacing then expanded `(1+mult)*spacing`; per-surface intersection; empty + `9*spacing^2` partial gates; `expand(4*spacing)` clip; leftover remerge `spacing^2 < area < 12*spacing^2`) — plus net-new `crates/slicer-core/tests/bridge_support_gating_tdd.rs` with AC-1..AC-3 AND AC-N1 (`fully_supported_surface_qualifies_nothing`) polygon-primitive fixtures — PLUS resolve Q1/Q2 via the design.md dispatches and record answers in design.md Open Questions.
-- Precondition: prerequisite symbols verified present (`determine_bridging_angle`, `construct_anchored_polygon`, `InfillRegion.internal_bridge_infill`, `build_region_timelines`, `gate_bridge_areas_by_unsupported_span` call site); canonical gather-lambda SNIPPETS dispatch returned.
-- Postcondition: all `bridge_support_gating_tdd` tests pass under `-p slicer-core --features host-algos` (AC-1..AC-3 and AC-N1); Q1 names the candidate field with writer evidence; Q2 names the mechanism (area-subtract vs path-replace) with consumer evidence; both recorded in design.md.
+- Task IDs: `N-A` (backlog: ISSUE-82 filter half, closure)
+- Objective: `unsupported_span_areas` initializes from pooled lower FILLS themselves;
+  delete `fill_envelope`; AUTHOR net-new test fn `fills_are_the_initial_unsupported_carrier`
+  in the suite and re-bless fixtures to canonical-correct outputs.
+- Precondition: clean `cargo check --workspace --all-targets`.
+- Postcondition: AC-1 named test exists and passes; old complement semantics absent.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-core/src/algos/bridge_over_infill.rs` - full (existing fns are the neighbours)
-  - `crates/slicer-ir/src/slice_ir.rs` - lines ~1480-1540 only
-  - delegated reads only for everything else per design.md dispatches
+  - `crates/slicer-core/src/algos/bridge_over_infill.rs` - full (≈400 lines; ranged reads by symbol)
+  - decision brief - sections §0.1/§4
 - Files allowed to edit (at most 3):
   - `crates/slicer-core/src/algos/bridge_over_infill.rs`
-  - `crates/slicer-core/tests/bridge_support_gating_tdd.rs` (net-new)
-  - `crates/slicer-core/Cargo.toml` ([[test]] entry with `required-features = ["host-algos"]`)
+  - `crates/slicer-core/tests/bridge_support_gating_tdd.rs`
 - Files explicitly out of bounds:
-  - `crates/slicer-runtime/**` (Step 2), `modules/core-modules/**`, `crates/slicer-schema/wit/**`, `OrcaSlicerDocumented/**`
-- Blast-radius discipline: new pure functions add no fields/constants — no struct-literal blast radius. Test literals constructing watched types use `..` rest or waiver.
-- Expected sub-agent dispatches: the two design.md LOCATIONS dispatches (Q1 writers; Q2 consumers) + the PrintObject.cpp SNIPPETS dispatch if not already satisfied at authoring.
-- Context cost: `M`
-- Authoritative docs: `docs/specs/bridge-parity-plan.md` §3/F3 only (direct); `docs/04_host_scheduler.md` ShellClassification section (delegated SUMMARY).
-- OrcaSlicer refs: `PrintObject.cpp` (delegate; never load)
-- Verification:
-  - `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd` - FACT pass/fail or bounded failure SNIPPETS
-  - `cargo xtask build-guests --check` - FACT exit code (expected 0)
-- Exit condition: AC-1..AC-3 and AC-N1 green; Q1/Q2 answers written into design.md Open Questions verbatim; no runtime files touched.
-
-### Step 2: Relocate construction into the sequential prepass (Option-A revision)
-
-- Task IDs: none (backlog slot ISSUE-82)
-- Objective: Add net-new host-only field `pub internal_bridge_lines: Vec<Vec<Point2>>` to `SlicedRegion` in `crates/slicer-ir/src/slice_ir.rs` (derives Default; un-mirrored — do NOT touch `SliceRegionView::from_ir`); update the ONE exhaustive production literal (`crates/slicer-core/src/algos/prepass_slice.rs` ~1085, `execute_prepass_slice_single_layer_impl`) explicitly, and convert broken test literals to FRU. Add the relocated pass to `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs`, ordered AFTER the shell-classification passes (verify `top_solid_fill` is populated for every layer by that point — if not, STOP and report) and strictly after 234's `gate_bridge_areas_by_unsupported_span` invocation: iterate region timelines, qualify each region's upper-layer `top_solid_fill` surfaces against committed L-1 (`lower_fills` = lower-layer `region.polygons`; `lower_solids` = lower-layer top+bottom solid fills) using Step 1's `unsupported_span_areas` + `qualify_internal_bridge_surface`; resolve flow/spacing/angle/nofilter via `region_map.config_for(&key)` keys `bridge_line_width`, `internal_bridge_flow`, `nozzle_diameter`, `internal_bridge_angle`, `dont_filter_internal_bridges` (false = full gates, true = bypass area/partial gate); construct anchored lines via `construct_anchored_polygon` (anchors from current-region `polygons`/`infill_areas` contours); write centerlines into `region.internal_bridge_lines` and extend `region.bridge_areas` with the qualified polygons. Reduce the InfillPostProcess arm in `crates/slicer-runtime/src/layer_executor.rs` to a pure emitter: map `slice_region.internal_bridge_lines` → `ExtrusionRole::InternalBridgeInfill` `ExtrusionPath3D`s (z = `slice.z`, width = `flow.thread_diameter_mm` via `ctx.config_view`) into `region.internal_bridge_infill`; DELETE anchor-gathering, candidate_voids, `construct_anchored_polygon`/`determine_bridging_angle` calls, the sliver/dont-filter gate logic, and the post-hoc `sparse_infill_area` subtraction.
-- Precondition: Step 1 exit met (landed); Q1/Q2 answers recorded in design.md (done); verified scheduler facts in design.md Architecture Constraints.
-- Postcondition: old arm constructs nothing (AC-4 rg half); prepass pass present after the gate (AC-4 rg half); wedge e2e green UNCHANGED (AC-6); any wedge assertion drift is a STOP-and-report blocker per design.md Risks.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/src/layer_executor.rs` - rg-locate InfillPostProcess arm, read ±120 lines
-  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - rg-locate `commit_shell_classification_builtin`, the shell passes, and the gate call, read ±120 lines
-  - `crates/slicer-ir/src/slice_ir.rs` - lines ~1450-1560 only
-  - `crates/slicer-core/src/algos/prepass_slice.rs` - rg-locate the SlicedRegion literal (~1085), read ±60 lines
-  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` - rg-locate exhaustive literals (:746/:856/:1088), ±20 lines each
-- Files allowed to edit (at most 6):
-  - `crates/slicer-ir/src/slice_ir.rs` (the one field only)
-  - `crates/slicer-core/src/algos/prepass_slice.rs` (the one literal only)
-  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (FRU fixes only)
-  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
-  - `crates/slicer-runtime/src/layer_executor.rs`
-  - any additional file ONLY where `cargo check --workspace --all-targets` proves another exhaustive-literal break — fix minimally with FRU or explicit field, note it in the return
-- Files explicitly out of bounds:
-  - `modules/core-modules/**`, `crates/slicer-schema/**`, `OrcaSlicerDocumented/**`, `crates/slicer-sdk/**`
-- Blast-radius discipline: production literals stay EXHAUSTIVE (extend `prepass_slice.rs:1085` explicitly per docs/21); test literals use FRU. Compile-clean with `cargo check --workspace --all-targets` before running suites. After slicer-ir/slicer-core edits run `cargo xtask build-guests --check`; if stale (exit 1) rebuild guests before attributing failures elsewhere.
-- Expected sub-agent dispatches: none required; if the wedge e2e shifts, one FACT dispatch identifying the exact shifted assertion BEFORE anything else — then STOP and report per the postcondition.
-- Context cost: `M`
-- Authoritative docs: `docs/04_host_scheduler.md` stage-ordering facts already captured in design.md Architecture Constraints.
-- OrcaSlicer refs: none new.
-- Verification:
-  - AC-4's two rg halves + `cargo test -p slicer-core --features host-algos --test bridge_over_infill_tdd && cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd` - FACT
-  - `cargo test -p slicer-runtime --test e2e wedge_linked_infill_report_tdd` - FACT (AC-6)
-  - `cargo check --workspace --all-targets` - FACT
-  - `cargo xtask build-guests --check` - FACT exit code
-- Exit condition: all listed verifications pass with NO wedge assertions changed; `internal_bridge_lines` populated by prepass and consumed by arm (proven by AC-5 in Step 3); any wedge drift is a STOP-and-report blocker, not a local re-pin.
-
-### Step 3: Calicat regression surface + blast radius + gates
-
-- Task IDs: none (backlog slot ISSUE-82)
-- Objective: Import the measured model as `resources/calicat.stl` (from this packet's authoring-session artifact; binary import, no regeneration); write `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs` (registered through the e2e aggregator) slicing twice, asserting byte-identity, Internal-Bridge layer count ≤6, total bridge-labelled extrusion ≤5000 mm, and Z≈3.2 external angle ∈ [85°,95°] using M83-relative-E/Z-keyed parsing mirrored from the existing e2e parsing helpers; run the full verification ladder including clippy/check/check-literals/build-guests; recalibrate `no_linker_module_degraded_raw_output_tdd` ONLY if legitimately shifted (both sides re-measured, numbers in-comment).
-- Precondition: Step 2 exits green.
-- Postcondition: AC-5 green on the committed model; all gates clean; closure suite run once at ceremony.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/e2e/` existing parsing helpers (rg-locate, ±60 lines each)
-- Files allowed to edit (at most 3):
-  - `resources/calicat.stl` (imported binary)
-  - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs` (net-new)
-  - `crates/slicer-runtime/tests/e2e/main.rs` (aggregator registration for the net-new test)
-- Files explicitly out of bounds:
-  - `tmp/**` (session-local evidence stays uncommitted), `modules/core-modules/**`, `OrcaSlicerDocumented/**`
-- Blast-radius discipline: the aggregator registration is MANDATORY — an unregistered file compiles to zero tests and looks green (known trap). Watched-type literals need FRU/waiver.
-- Conditional follow-up OUTSIDE this packet's edit contract: if `no_linker_module_degraded_raw_output_tdd` legitimately shifts, recalibrate in a SEPARATE commit with both sides freshly measured and documented in-comment — never inside this packet's commits.
-- Expected sub-agent dispatches: none new.
-- Context cost: `M`
-- Authoritative docs: none new.
-- OrcaSlicer refs: none new.
-- Verification:
-  - AC-5 command exactly as written in packet.spec.md - FACT + printed counts
-  - `cargo clippy --workspace --all-targets -- -D warnings` / `cargo check --workspace --all-targets` / `cargo xtask check-literals` / `cargo xtask build-guests --check` - FACT each
-- Exit condition: AC-5 and AC-6 green; gates clean.
-
-### Step 4: Doc Impact edits
-
-- Task IDs: none (backlog slot ISSUE-82)
-- Objective: Apply the two Doc Impact edits from packet.spec.md — update the `dont_filter_internal_bridges` semantics row in `docs/15_config_keys_reference.md` (false = canonical full filtering of internal bridges by lower-layer support, true = bypass) and append the dated F3 addendum row to `docs/specs/bridge-parity-plan.md` pointing at this packet with the authoring-session measurements.
-- Precondition: Step 3 exits green.
-- Postcondition: both Doc Impact verification greps return hits.
-- Files allowed to read, with ranges when over 300 lines:
-  - `docs/15_config_keys_reference.md` - rg-locate the key row, read ±30 lines
-  - `docs/specs/bridge-parity-plan.md` - §3/F3 only
-- Files allowed to edit (at most 2):
-  - `docs/15_config_keys_reference.md`
-  - `docs/specs/bridge-parity-plan.md`
-- Files explicitly out of bounds: everything else.
-- Blast-radius discipline: doc-only edits; no code targets recompile.
-- Expected sub-agent dispatches: one FACT re-running both Doc Impact greps after the edits.
+  - `OrcaSlicerDocumented/**`, IR, runtime, modules, WIT
+- Blast-radius discipline: n/a (no struct/schema change).
+- Expected sub-agent dispatches:
+  - Question: confirm no other caller depends on `fill_envelope`'s envelope output; scope
+    `crates/**`; return LOCATIONS ≤10.
 - Context cost: `S`
-- Authoritative docs: the two files being edited.
-- OrcaSlicer refs: none new.
+- Authoritative docs:
+  - `docs/specs/orca-feature-gap/issues/82-parity-closure-decision-brief.md` - §0.1, §4
+- OrcaSlicer refs:
+  - `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` - delegate; gather init snippets already captured in brief
 - Verification:
-  - `rg -n "dont_filter_internal_bridges" docs/15_config_keys_reference.md` shows updated semantics - FACT
-  - `rg -n "234a" docs/specs/bridge-parity-plan.md` returns a hit - FACT
-- Exit condition: both greps hit; no other doc content changed.
+  - `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: whole suite file green under `--features host-algos`; probe note recorded
+  (does a candidate clear the opening?) without any tuning change.
+
+### Step 2a: `internal_solid_fill` + `internal_bridge_areas` on the IR
+
+- Task IDs: `N-A` (backlog: ISSUE-82 dense-interior taxonomy)
+- Objective: add both `SlicedRegion` fields with `#[serde(default)]`; keep tree compiling.
+- Precondition: Step 1 exit.
+- Postcondition: fields exist host-side; all literals satisfy docs/21 gate.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-ir/src/slice_ir.rs` - `SlicedRegion` block only
+  - `docs/21_data_defaults_and_fixtures.md` - gate rules section
+- Files allowed to edit (at most 3):
+  - `crates/slicer-ir/src/slice_ir.rs`
+  - `crates/slicer-core/src/algos/prepass_slice.rs` (production exhaustive literal)
+  - `crates/slicer-runtime/tests/unit/bridge_detector_tdd.rs` (expected sole test-literal
+    home; if the dispatch returns ANY further file, STOP and split this step rather than
+    exceed the cap)
+- Files explicitly out of bounds:
+  - WIT, views, renderer (Step 2b); runtime passes (Step 3)
+- Blast-radius discipline (MANDATORY): dispatch LOCATIONS for every `SlicedRegion` struct
+  literal + every hard assertion on `internal_bridge_lines` BEFORE editing; cite results
+  inline; FRU for test sites, exhaustive for production.
+- Expected sub-agent dispatches:
+  - Question: list all `SlicedRegion {` literal sites and `internal_bridge_lines`
+    assertions; scope `crates/**`; return LOCATIONS ≤20.
+- Context cost: `M`
+- Authoritative docs: `docs/21_data_defaults_and_fixtures.md` - gate section
+- OrcaSlicer refs: none this step
+- Verification:
+  - `cargo check --workspace --all-targets 2>&1 | tail -5` - FACT pass/fail
+  - `cargo xtask check-literals` - exit 0
+- Exit condition: both verifications clean; guest freshness check run.
+
+### Step 2b: WIT mirror + view + render arms
+
+- Task IDs: `N-A` (backlog: ISSUE-82 dense-interior taxonomy)
+- Objective: `internal_solid_fill` mirrored through canonical WIT region type and
+  `SliceRegionView::from_ir`; PNG render arms for both new fields.
+- Precondition: Step 2a exit.
+- Postcondition: AC-2 greps pass; bundles carry both fields automatically.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-sdk/src/views.rs` - `from_ir` only
+  - `crates/slicer-runtime/src/visual_debug_render.rs` - `slice_shapes`, `geometry_points_mm`, palette
+- Files allowed to edit (at most 3):
+  - `crates/slicer-schema/wit/**` (region type file)
+  - `crates/slicer-sdk/src/views.rs`
+  - `crates/slicer-runtime/src/visual_debug_render.rs`
+- Files explicitly out of bounds:
+  - guest module sources; manifest TOMLs
+- Blast-radius discipline: WIT-change checklist — search `wit_host.rs`/dispatch/guest
+  consumers for the touched type; verify identity across the boundary; `cargo build --tests`.
+- Expected sub-agent dispatches:
+  - Question: which generated/host files reference the region WIT type after the edit; scope
+    `crates/slicer-wasm-host/**` + `crates/slicer-sdk/**`; return LOCATIONS ≤15.
+- Context cost: `M`
+- Authoritative docs: `docs/19_visual_debug.md` - delegated SUMMARY
+- OrcaSlicer refs: none this step
+- Verification:
+  - `cargo build --tests 2>&1 | tail -5` - FACT pass/fail
+  - `cargo xtask build-guests --check; echo EXIT=$?` - expect EXIT=0 after rebuild
+- Exit condition: AC-2 command string returns success; guests fresh.
+
+### Step 3: Qualification rewrite
+
+- Task IDs: `N-A` (backlog: ISSUE-82 site-selection parity)
+- Objective: prepass pass qualifies `internal_solid_fill` against lower `infill_areas` fills
+  and per-region solids (incl. density≥0.999 branch via per-region `RegionKey`); persists to
+  `internal_bridge_areas` + extends `bridge_areas`; print_z-keyed skip logs.
+- Precondition: Step 2b exit; walls still untouched (construction stays put until Step 4).
+- Postcondition: AC-3 test green; qualified polygons visible in committed state.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - shell passes +
+    `gate_internal_bridge_sites` region only
+  - decision brief - §0.2/§0.3, Item 2 decisions
+- Files allowed to edit (at most 3):
+  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
+  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` (net-new
+    `internal_bridge_qualification_writes_gated_areas`)
+- Files explicitly out of bounds:
+  - `crates/slicer-runtime/src/layer_executor.rs` (Step 4); modules
+- Blast-radius discipline: n/a beyond Step 2a sweep.
+- Expected sub-agent dispatches:
+  - Question: confirm `config_for` accepts per-lower-layer `RegionKey`s for every timeline
+    entry pattern used here; scope `crates/slicer-runtime/src/**` + `crates/slicer-ir/src/**`
+    (`config_for`/`RegionKey` live in `slice_ir.rs`, not slicer-runtime); return FACT ≤5 lines.
+- Context cost: `M`
+- Authoritative docs: `docs/04_host_scheduler.md` - delegated SUMMARY (commit payloads)
+- OrcaSlicer refs: `PrintObject.cpp` density branch - delegate SNIPPETS if needed
+- Verification:
+  - `cargo test -p slicer-runtime --test integration -- internal_bridge_qualification_writes_gated_areas --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: AC-3 command green; interim calicat probe recorded (presence-in-window),
+  no tuning changes.
+
+### Step 4a: Construction-reachability probe
+
+- Task IDs: `N-A` (backlog: ISSUE-82 venue split)
+- Objective: prove perimeter-wall paths and Layer::Infill polylines are reachable in the
+  InfillPostProcess commit arm.
+- Precondition: Step 3 exit.
+- Postcondition: named payload/accessor symbols recorded, or STOP-and-report.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/src/layer_executor.rs` - InfillPostProcess arm + stage-payload plumbing
+  - `crates/slicer-ir/src/stage_io.rs` - payload types
+- Files allowed to edit (at most 3): NONE (read-only step)
+- Files explicitly out of bounds: everything writable
+- Blast-radius discipline: n/a.
+- Expected sub-agent dispatches: design.md dispatch #3 (FACT ≤5 lines).
+- Context cost: `S`
+- Authoritative docs: `docs/04_host_scheduler.md` - delegated SUMMARY
+- OrcaSlicer refs: none
+- Verification: dispatch return recorded verbatim in this file's step notes.
+- Exit condition: FACT names concrete accessors, OR packet stops for redesign approval.
+
+### Step 4b: Constructor relocation
+
+- Task IDs: `N-A` (backlog: ISSUE-82 venue split)
+- Objective: InfillPostProcess arm constructs anchored strips from
+  `internal_bridge_areas` + real anchors; `internal_bridge_lines` retired tree-wide.
+- Precondition: Step 4a FACT positive.
+- Postcondition: emitter-only logic gone; field absent; tree compiles.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/src/layer_executor.rs` - arm + anchor sources
+- Files allowed to edit (at most 3):
+  - `crates/slicer-runtime/src/layer_executor.rs`
+  - `crates/slicer-ir/src/slice_ir.rs` (field removal)
+  - `crates/slicer-core/src/algos/prepass_slice.rs` (literal follow-up)
+- Files explicitly out of bounds: contract test rewrite (Step 4c); prepass pass (done Step 3)
+- Blast-radius discipline: re-dispatch the Step 2a LOCATIONS worker for
+  `internal_bridge_lines` before removing; fix every cited site in this step or 4c.
+- Expected sub-agent dispatches: reuse Step 2a worker session if fresh.
+- Context cost: `M`
+- Authoritative docs: decision brief - Item 3
+- OrcaSlicer refs: `generate_sparse_infill_polylines_for_anchoring` - delegate SUMMARY
+- Verification:
+  - `cargo check --workspace --all-targets 2>&1 | tail -5` - FACT pass/fail
+  - `rg -q 'internal_bridge_lines' crates/ && echo STILL_PRESENT || echo RETIRED` - expect RETIRED (code sites; test rewrites land in 4c)
+- Exit condition: compiles; construction path exercised by existing runtime tests except
+  the rewritten contract (4c).
+
+### Step 4c: Contract rewrite + literal completion
+
+- Task IDs: `N-A` (backlog: ISSUE-82 venue split)
+- Objective: rewrite `infill_postprocess_contract_tdd.rs` asserting anchored construction
+  from committed areas + anchors (234a pure-emitter check reversed deliberately); finish any
+  residual literal/assertion sites.
+- Precondition: Step 4b exit.
+- Postcondition: AC-4 command green end-to-end.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/tests/contract/infill_postprocess_contract_tdd.rs` - full
+- Files allowed to edit (at most 3):
+  - `crates/slicer-runtime/tests/contract/infill_postprocess_contract_tdd.rs`
+  - `crates/slicer-sdk/src/test_support/fixtures.rs` (known residual literal home)
+  - at most ONE further residual site from the Step 4b dispatch; any more ⇒ split the step
+- Files explicitly out of bounds: production code (should need nothing)
+- Blast-radius discipline: same worker as 4b; zero uncited sites may remain.
+- Expected sub-agent dispatches: none beyond 4b reuse.
+- Context cost: `M`
+- Authoritative docs: decision brief - Item 7 AC-4
+- OrcaSlicer refs: none
+- Verification:
+  - `cargo test -p slicer-runtime --test contract -- infill_postprocess_constructs_anchored_paths --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: AC-4 full command string (test AND absence grep) succeeds.
+
+### Step 5a: Expansion-zone parity
+
+- Task IDs: `N-A` (backlog: ISSUE-82 coverage half, F4)
+- Objective: port expansion zones onto anchored construction: `expansion_step = scaled(0.1)`
+  up to 5 steps, `expansion_bottom_bridge = shell_width*sqrt(2)`, frSolidInfill-spacing
+  closing radius; attribution header on ported sections.
+- Precondition: Step 4c exit.
+- Postcondition: construction grows candidates canonically; unit tests pin constants.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-core/src/algos/bridge_over_infill.rs` - full
+- Files allowed to edit (at most 3):
+  - `crates/slicer-core/src/algos/bridge_over_infill.rs`
+  - `crates/slicer-runtime/src/layer_executor.rs` (parameter threading)
+  - `crates/slicer-core/tests/bridge_support_gating_tdd.rs` (or sibling core test file)
+- Files explicitly out of bounds: modules (5c); WIT/IR
+- Blast-radius discipline: constant additions are internal; no schema bump.
+- Expected sub-agent dispatches: design.md dispatch #1 (SNIPPETS ≤3x30).
+- Context cost: `M`
+- Authoritative docs: `docs/ORCASLICER_ATTRIBUTION.md` - header obligation
+- OrcaSlicer refs: expansion-zone block in `PrintObject.cpp::bridge_over_infill` - delegate
+- Verification:
+  - `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: suite green incl. new expansion cases; attribution headers present.
+
+### Step 5b: Depth harvesting + clustering
+
+- Task IDs: `N-A` (backlog: ISSUE-82 coverage half, F4)
+- Objective: port `gather_areas_w_depth` downward harvesting and thread clustering +
+  filled-polygons-on-lower-layers removal as pure helpers consumed at the construction site.
+- Precondition: Step 5a exit.
+- Postcondition: thick-span anchoring behaves canonically; determinism preserved.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-core/src/algos/bridge_over_infill.rs` - full
+- Files allowed to edit (at most 3):
+  - `crates/slicer-core/src/algos/bridge_over_infill.rs`
+  - `crates/slicer-runtime/src/layer_executor.rs`
+  - one core/runtime test file for the new behaviour
+- Files explicitly out of bounds: modules; scheduler stage set
+- Blast-radius discipline: n/a.
+- Expected sub-agent dispatches: design.md dispatch #4 (SUMMARY ≤200 words).
+- Context cost: `M`
+- Authoritative docs: `docs/ORCASLICER_ATTRIBUTION.md` - header obligation
+- OrcaSlicer refs: `gather_areas_w_depth`, cluster loops - delegate
+- Verification:
+  - `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report_tdd --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: both green; any wedge failure = STOP-and-report.
+
+### Step 5c: Extra-bridge-layer emission alignment
+
+- Task IDs: `N-A` (backlog: P75 key `enable_extra_bridge_layer`)
+- Objective: align `rectilinear-infill`'s extra-layer behaviour with canonical emission
+  semantics (duplicate bridge support layer above qualified areas when enabled).
+- Precondition: Step 5b exit.
+- Postcondition: key changes observable output only when enabled; default output unchanged
+  unless canonical demands it (record which).
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/rectilinear-infill/src/lib.rs` - config + emission sections
+- Files allowed to edit (at most 3):
+  - `modules/core-modules/rectilinear-infill/src/lib.rs`
+  - module test file (net-new or existing)
+- Files explicitly out of bounds: any other module; WIT
+- Blast-radius discipline: guest rebuild mandatory (module source feeds WASM).
+- Expected sub-agent dispatches:
+  - Question: canonical extra-layer condition and placement; scope `PrintObject.cpp`;
+    return SNIPPETS ≤30 lines.
+- Context cost: `S`
+- Authoritative docs: `docs/15_config_keys_reference.md` - key row (delegated check)
+- OrcaSlicer refs: extra-bridge-layer handling - delegate
+- Verification:
+  - `cargo xtask build-guests --check; echo EXIT=$?` - EXIT=0 after rebuild
+  - module test binary per repo convention - FACT pass/fail
+- Exit condition: module tests green; freshness clean.
+
+### Step 6a: Arbitration harness (net-new e2e)
+
+- Task IDs: `N-A` (backlog: ISSUE-82 arbitration protocol)
+- Objective: bundle-primary calicat arbiter test (AC-5) + mixed-density rejection test
+  (AC-N1), registered through the e2e aggregator.
+- Precondition: Steps 4c and 5 exits.
+- Postcondition: both net-new tests exist and assert the frozen bars.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs` - as the house pattern
+  - `docs/19_visual_debug.md` - delegated SUMMARY for capture invocation
+- Files allowed to edit (at most 3):
+  - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_arbiter_e2e_tdd.rs` (net-new)
+  - `crates/slicer-runtime/tests/e2e/mixed_density_internal_bridge_rejection_e2e_tdd.rs` (net-new)
+  - `crates/slicer-runtime/tests/e2e/main.rs` (registrations)
+- Files explicitly out of bounds: production code
+- Blast-radius discipline: n/a.
+- Expected sub-agent dispatches:
+  - Question: minimal in-test invocation of the capture pipeline used by visual-debug;
+    scope `crates/pnp-cli/src/visual_debug.rs` + `crates/slicer-runtime/src/visual_debug_render.rs`;
+    return SNIPPETS ≤30 lines.
+- Context cost: `M`
+- Authoritative docs: decision brief - Items 5/7
+- OrcaSlicer refs: none
+- Verification:
+  - `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_arbiter_e2e_tdd --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test e2e -- mixed_density_internal_bridge_rejection_e2e_tdd --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: AC-5 and AC-N1 commands green.
+
+### Step 6b: Gcode bars + golden ceremony
+
+- Task IDs: `N-A` (backlog: ISSUE-82 regression set)
+- Objective: revise `calicat_internal_bridge_gating_e2e_tdd` to AC-6 bars; run the NEG-2
+  re-bless ceremony with the mandated evidence table; keep wedge tripwire green (AC-N3).
+- Precondition: Step 6a exit.
+- Postcondition: AC-6/AC-N2/AC-N3 commands green; golden comment carries evidence.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs` - full
+  - `crates/slicer-runtime/tests/e2e/slicing_precision_integration_tdd.rs` - NEG-2 test only
+- Files allowed to edit (at most 3):
+  - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs`
+  - `crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode` (BLESS only,
+    with in-comment evidence)
+  - `crates/slicer-runtime/tests/e2e/slicing_precision_integration_tdd.rs` (doc-comment only)
+- Files explicitly out of bounds: production code
+- Blast-radius discipline: re-bless ONLY via `BLESS_GOLDEN=1` documented flow; diff table +
+  Z-set identity + per-diff-class reasoning recorded BEFORE blessing.
+- Expected sub-agent dispatches:
+  - Question: run legacy precision slice twice, return section-count diff table vs current
+    golden + Z-set comparison; scope `target/test-output.log`; return FACT ≤5 lines.
+- Context cost: `M`
+- Authoritative docs: decision brief - golden policy
+- OrcaSlicer refs: none
+- Verification: AC-6, AC-N2, AC-N3 command strings - FACT pass/fail each.
+- Exit condition: all three green; evidence table present in golden comment.
+
+### Step 6c: Doc impact + closure gates
+
+- Task IDs: `N-A` (backlog: ISSUE-82 closure)
+- Objective: execute Doc Impact (F3/F4 rows with measured numbers); final gates.
+- Precondition: Step 6b exit.
+- Postcondition: doc greps hit; all packet-level gates green.
+- Files allowed to read, with ranges when over 300 lines:
+  - `docs/specs/bridge-parity-plan.md` - F3/F4 sections only
+- Files allowed to edit (at most 3):
+  - `docs/specs/bridge-parity-plan.md`
+  - `docs/spec_packets/234a-internal-bridge-support-gating/task-map.md` (status notes)
+- Files explicitly out of bounds: source code
+- Blast-radius discipline: n/a.
+- Expected sub-agent dispatches: measured-number extraction from `target/test-output.log`
+  (FACT ≤5 lines).
+- Context cost: `S`
+- Authoritative docs: `docs/specs/bridge-parity-plan.md` - F3/F4
+- OrcaSlicer refs: none
+- Verification:
+  - `cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -3` - FACT pass/fail
+  - `cargo xtask check-literals` - exit 0
+  - `rg -q '### F3 — HIGH' docs/specs/bridge-parity-plan.md && rg -q '### F4 — HIGH' docs/specs/bridge-parity-plan.md && echo DOCS_OK`
+- Exit condition: all green; packet ready for status transition review.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | M | Math fidelity + discovery dispatches + AC-N1 fixture (LANDED) |
-| Step 2 | M | Option-A field + prepass pass + arm reduction |
-| Step 3 | M | Model import, e2e, gates |
-| Step 4 | S | Doc Impact edits |
+| 1 | S | RC-A init flip + fixtures |
+| 2a | M | IR fields + literal sweep |
+| 2b | M | WIT/view/render |
+| 3 | M | qualification rewrite |
+| 4a | S | feasibility probe |
+| 4b | M | constructor + retirement |
+| 4c | M | contract rewrite |
+| 5a | M | expansion zones |
+| 5b | M | depth harvest + clustering |
+| 5c | S | extra-layer module alignment |
+| 6a | M | net-new e2e pair |
+| 6b | M | gcode bars + golden |
+| 6c | S | docs + gates |
 
-Split before activation if aggregate cost exceeds M or any step is L.
+Aggregate `M`; no step is `L`.
 
 ## Packet Completion Gate
 
-- All steps and exits complete; every pipe-suffixed AC command returned PASS.
-- Q1/Q2 answers present in design.md Open Questions.
-- Doc Impact greps verified by dispatched FACT.
+- All steps and exits complete; 4a probe outcome recorded (positive or STOP handled).
+- Every pipe-suffixed AC command returns PASS (AC-1..AC-6, AC-N1..AC-N3).
+- Gates: `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets --
+  -D warnings`, `cargo xtask check-literals`, `cargo xtask build-guests --check` exit 0.
+- Update `docs/07_implementation_status.md` through a worker dispatch, never a full read.
+- Reconcile reopened/superseded status transitions (this packet revises itself in place).
 - `packet.spec.md` ready for `status: implemented`.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Run `cargo xtask test --summary --workspace` ONCE (closure requirement), dispatched, FACT return.
-- Record remaining packet-local risk.
+- THEN, and only then: `cargo xtask test --workspace` dispatched to a sub-agent returning
+  FACT pass/fail (AGENTS.md acceptance rule; includes guest-freshness preflight).
+- Record remaining packet-local risk (opening-radius audit outcome; 20mm-box steady-state
+  classification).
+- Confirm context stayed ≤150k standard, or ≤300k only with a logged swarm ESCALATION;
+  otherwise record a packet-authoring lesson.
 
-All `cargo check`/`clippy` gate invocations must use `--all-targets`; whole-suite runs only via `cargo xtask test --summary` at ceremony.
+All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands use `--all-targets` so the test, bench, and example targets compile.
