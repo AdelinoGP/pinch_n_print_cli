@@ -74,7 +74,7 @@
 
 ## Risks and Tradeoffs
 
-- Wedge e2e assertions (print_z 28.2 slot-ceiling) may have been calibrated against the UNFILTERED internal-bridge behaviour; if AC-6 fails after relocation, re-pin assertions to post-fix reality with justification comments — never weaken to green blindly.
+- Wedge e2e assertions (print_z 28.2 slot-ceiling) may have been calibrated against the UNFILTERED internal-bridge behaviour; if AC-6 fails after relocation, STOP and report — assertion re-pins are a post-packet decision with measured justification, never an in-step edit.
 - `no_linker_module_degraded_raw_output_tdd` threshold 28.0 was calibrated today against flood-era output; recalibrate again ONLY with freshly measured both-sides numbers documented in-comment.
 - If Q1 resolves to "no existing field represents internal-solid interfaces", the packet STOPS before Step 2 edits and reports — candidate-source invention is out of bounds here.
 

@@ -12,9 +12,9 @@
 ### Step 1: Pure support-math port + Q1/Q2 discovery
 
 - Task IDs: none (backlog slot ISSUE-82)
-- Objective: Add `unsupported_span_areas(lower_fills, lower_solids, spacing_mm, expansion_multiplier)` and `qualify_internal_bridge_surface(surface, unsupported, spacing_mm, nofilter)` to `crates/slicer-core/src/algos/bridge_over_infill.rs` implementing the canonical arithmetic in design.md (closing of lower fills; shrink `mult*spacing`; minus lower solids shrunk 1*spacing then expanded `(1+mult)*spacing`; per-surface intersection; empty + `9*spacing^2` partial gates; `expand(4*spacing)` clip; leftover remerge `spacing^2 < area < 12*spacing^2`) — plus net-new `crates/slicer-core/tests/bridge_support_gating_tdd.rs` with AC-1..AC-3 polygon-primitive fixtures — PLUS resolve Q1/Q2 via the design.md dispatches and record answers in design.md Open Questions.
+- Objective: Add `unsupported_span_areas(lower_fills, lower_solids, spacing_mm, expansion_multiplier)` and `qualify_internal_bridge_surface(surface, unsupported, spacing_mm, nofilter)` to `crates/slicer-core/src/algos/bridge_over_infill.rs` implementing the canonical arithmetic in design.md (closing of lower fills; shrink `mult*spacing`; minus lower solids shrunk 1*spacing then expanded `(1+mult)*spacing`; per-surface intersection; empty + `9*spacing^2` partial gates; `expand(4*spacing)` clip; leftover remerge `spacing^2 < area < 12*spacing^2`) — plus net-new `crates/slicer-core/tests/bridge_support_gating_tdd.rs` with AC-1..AC-3 AND AC-N1 (`fully_supported_surface_qualifies_nothing`) polygon-primitive fixtures — PLUS resolve Q1/Q2 via the design.md dispatches and record answers in design.md Open Questions.
 - Precondition: prerequisite symbols verified present (`determine_bridging_angle`, `construct_anchored_polygon`, `InfillRegion.internal_bridge_infill`, `build_region_timelines`, `gate_bridge_areas_by_unsupported_span` call site); canonical gather-lambda SNIPPETS dispatch returned.
-- Postcondition: three gating tests pass under `-p slicer-core --features host-algos`; Q1 names the candidate field with writer evidence; Q2 names the mechanism (area-subtract vs path-replace) with consumer evidence; both recorded in design.md.
+- Postcondition: all `bridge_support_gating_tdd` tests pass under `-p slicer-core --features host-algos` (AC-1..AC-3 and AC-N1); Q1 names the candidate field with writer evidence; Q2 names the mechanism (area-subtract vs path-replace) with consumer evidence; both recorded in design.md.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-core/src/algos/bridge_over_infill.rs` - full (existing fns are the neighbours)
   - `crates/slicer-ir/src/slice_ir.rs` - lines ~1480-1540 only
@@ -33,34 +33,32 @@
 - Verification:
   - `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd` - FACT pass/fail or bounded failure SNIPPETS
   - `cargo xtask build-guests --check` - FACT exit code (expected 0)
-- Exit condition: AC-1..AC-3 green; Q1/Q2 answers written into design.md Open Questions verbatim; no runtime files touched.
+- Exit condition: AC-1..AC-3 and AC-N1 green; Q1/Q2 answers written into design.md Open Questions verbatim; no runtime files touched.
 
 ### Step 2: Relocate construction into the sequential prepass
 
 - Task IDs: none (backlog slot ISSUE-82)
-- Objective: Delete the InfillPostProcess construction block from `crates/slicer-runtime/src/layer_executor.rs`; add the relocated pass to `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs` strictly after 234's `gate_bridge_areas_by_unsupported_span` invocation — iterate region timelines, qualify layer-L surfaces against committed L-1 using Step-1 functions, construct anchored lines via `construct_anchored_polygon` with flow values from the same ConfigView keys (`bridge_line_width`, `internal_bridge_flow`, `nozzle_diameter`, `internal_bridge_angle`), populate `InfillRegion.internal_bridge_infill` (confirming the committed infill artifact is reachable at ShellClassification and mirroring the existing commit-key pattern; if it is NOT reachable, STOP and report — that is a stage-boundary blocker, not a local choice), apply the Q2-decided sparse-material mechanism, honour the `dont_filter_internal_bridges` mapping (false = full gates, true = bypass area/partial gate). Add the runtime unit fixture for AC-N1.
+- Objective: Delete the InfillPostProcess construction block from `crates/slicer-runtime/src/layer_executor.rs`; add the relocated pass to `commit_shell_classification_builtin`'s stage in `crates/slicer-runtime/src/slice_postprocess_prepass.rs` strictly after 234's `gate_bridge_areas_by_unsupported_span` invocation — iterate region timelines, qualify layer-L surfaces against committed L-1 using Step-1 functions, construct anchored lines via `construct_anchored_polygon` with flow values from the same ConfigView keys (`bridge_line_width`, `internal_bridge_flow`, `nozzle_diameter`, `internal_bridge_angle`), populate `InfillRegion.internal_bridge_infill` (confirming the committed infill artifact is reachable at ShellClassification and mirroring the existing commit-key pattern; if it is NOT reachable, STOP and report — that is a stage-boundary blocker, not a local choice), apply the Q2-decided sparse-material mechanism, honour the `dont_filter_internal_bridges` mapping (false = full gates, true = bypass area/partial gate).
 - Precondition: Step 1 exit met; Q1/Q2 answers recorded in design.md.
-- Postcondition: old arm constructs nothing (AC-4 rg half); prepass pass present after the gate (AC-4 rg half); AC-N1 green; wedge e2e still green (AC-6) or re-pins justified per design.md Risks.
+- Postcondition: old arm constructs nothing (AC-4 rg half); prepass pass present after the gate (AC-4 rg half); wedge e2e green UNCHANGED (AC-6); any wedge assertion drift is a STOP-and-report blocker per design.md Risks.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/layer_executor.rs` - rg-locate InfillPostProcess arm, read ±120 lines
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - rg-locate `commit_shell_classification_builtin` and the gate call, read ±120 lines
-- Files allowed to edit (at most 3):
+- Files allowed to edit (at most 2):
   - `crates/slicer-runtime/src/layer_executor.rs`
   - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
-  - `crates/slicer-runtime/tests/unit/internal_bridge_support_gating_tdd.rs` (net-new; registered via the unit aggregator main.rs)
 - Files explicitly out of bounds:
   - `modules/core-modules/**`, `crates/slicer-schema/wit/**`, `crates/slicer-ir/**`, `OrcaSlicerDocumented/**`
 - Blast-radius discipline: removing the block may orphan imports/helpers in layer_executor.rs — compile-clean with `cargo check --workspace --all-targets` before proceeding. Any watched-type literal edits need FRU/waiver.
-- Expected sub-agent dispatches: none required beyond Step 1's; if wedge assertions break, one FACT dispatch identifying the exact shifted assertion before any re-pin.
+- Expected sub-agent dispatches: none required beyond Step 1's; if the wedge e2e shifts, one FACT dispatch identifying the exact shifted assertion BEFORE anything else — then STOP and report per the postcondition.
 - Context cost: `S`
 - Authoritative docs: `docs/04_host_scheduler.md` stage-ordering SUMMARY (if not already captured in Step 1).
 - OrcaSlicer refs: none new.
 - Verification:
   - AC-4's two rg halves + `cargo test -p slicer-core --features host-algos --test bridge_over_infill_tdd && cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd` - FACT
   - `cargo test -p slicer-runtime --test e2e wedge_linked_infill_report_tdd` - FACT (AC-6)
-  - `cargo test -p slicer-runtime --test unit -- internal_bridge_support_gating_tdd::fully_supported_pair_emits_no_internal_bridges` - FACT (AC-N1)
   - `cargo check --workspace --all-targets` - FACT
-- Exit condition: all listed verifications pass; no module files touched.
+- Exit condition: all listed verifications pass with NO wedge assertions changed; any wedge drift is a STOP-and-report blocker, not a local re-pin.
 
 ### Step 3: Calicat regression surface + blast radius + gates
 
@@ -73,27 +71,51 @@
 - Files allowed to edit (at most 3):
   - `resources/calicat.stl` (imported binary)
   - `crates/slicer-runtime/tests/e2e/calicat_internal_bridge_gating_e2e_tdd.rs` (net-new)
-  - `crates/slicer-runtime/tests/integration/no_linker_module_degraded_raw_output_tdd.rs` (only under the recalibration condition above)
+  - `crates/slicer-runtime/tests/e2e/main.rs` (aggregator registration for the net-new test)
 - Files explicitly out of bounds:
   - `tmp/**` (session-local evidence stays uncommitted), `modules/core-modules/**`, `OrcaSlicerDocumented/**`
-- Blast-radius discipline: new [[test]]-free e2e registration goes through the existing aggregator main.rs mod list — confirm registration so the binary-count cannot silently drop. Watched-type literals need FRU/waiver.
-- Expected sub-agent dispatches: one FACT for doc-impact greps (`dont_filter_internal_bridges` row updated in docs/15; `234a` hit in bridge-parity-plan.md).
+- Blast-radius discipline: the aggregator registration is MANDATORY — an unregistered file compiles to zero tests and looks green (known trap). Watched-type literals need FRU/waiver.
+- Conditional follow-up OUTSIDE this packet's edit contract: if `no_linker_module_degraded_raw_output_tdd` legitimately shifts, recalibrate in a SEPARATE commit with both sides freshly measured and documented in-comment — never inside this packet's commits.
+- Expected sub-agent dispatches: none new.
 - Context cost: `M`
-- Authoritative docs: `docs/15_config_keys_reference.md` entry edit is Doc Impact, executed here.
+- Authoritative docs: none new.
 - OrcaSlicer refs: none new.
 - Verification:
   - AC-5 command exactly as written in packet.spec.md - FACT + printed counts
   - `cargo clippy --workspace --all-targets -- -D warnings` / `cargo check --workspace --all-targets` / `cargo xtask check-literals` / `cargo xtask build-guests --check` - FACT each
-  - Doc-impact grep FACTs listed above
-- Exit condition: AC-5/AC-6/AC-N1 green; gates clean; doc impact greps return hits.
+- Exit condition: AC-5 and AC-6 green; gates clean.
+
+### Step 4: Doc Impact edits
+
+- Task IDs: none (backlog slot ISSUE-82)
+- Objective: Apply the two Doc Impact edits from packet.spec.md — update the `dont_filter_internal_bridges` semantics row in `docs/15_config_keys_reference.md` (false = canonical full filtering of internal bridges by lower-layer support, true = bypass) and append the dated F3 addendum row to `docs/specs/bridge-parity-plan.md` pointing at this packet with the authoring-session measurements.
+- Precondition: Step 3 exits green.
+- Postcondition: both Doc Impact verification greps return hits.
+- Files allowed to read, with ranges when over 300 lines:
+  - `docs/15_config_keys_reference.md` - rg-locate the key row, read ±30 lines
+  - `docs/specs/bridge-parity-plan.md` - §3/F3 only
+- Files allowed to edit (at most 2):
+  - `docs/15_config_keys_reference.md`
+  - `docs/specs/bridge-parity-plan.md`
+- Files explicitly out of bounds: everything else.
+- Blast-radius discipline: doc-only edits; no code targets recompile.
+- Expected sub-agent dispatches: one FACT re-running both Doc Impact greps after the edits.
+- Context cost: `S`
+- Authoritative docs: the two files being edited.
+- OrcaSlicer refs: none new.
+- Verification:
+  - `rg -n "dont_filter_internal_bridges" docs/15_config_keys_reference.md` shows updated semantics - FACT
+  - `rg -n "234a" docs/specs/bridge-parity-plan.md` returns a hit - FACT
+- Exit condition: both greps hit; no other doc content changed.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | M | Math fidelity + discovery dispatches |
-| Step 2 | S | Deletion + prepass pass + unit fixture |
+| Step 1 | M | Math fidelity + discovery dispatches + AC-N1 fixture |
+| Step 2 | S | Deletion + prepass pass |
 | Step 3 | M | Model import, e2e, gates |
+| Step 4 | S | Doc Impact edits |
 
 Split before activation if aggregate cost exceeds M or any step is L.
 

@@ -20,7 +20,7 @@ Canonical (`PrintObject.cpp::bridge_over_infill`) qualifies candidates completel
 - Canonical enum mapping for `dont_filter_internal_bridges`: `false` → full filter; `true` → bypass area/partial gate (`ibfNofilter`). (`ibfLimited`'s `expansion_multiplier = 1` behaviour is represented through the same multiplier parameter.)
 - Resolution of two discovery questions before edits: (Q1) which existing `SliceRegion` field is our `stInternalSolid` equivalent (`bottom_solid_fill` is the leading suspect; verify by writers + calicat outcome under gating); (Q2) whether sparse-infill PATHS regenerate after ShellClassification — determines whether area subtraction alone prevents double-printing, mirroring how today's InfillPostProcess subtraction coexists with module-generated paths.
 - Import of the measured model as `resources/calicat.stl` and a deterministic double-slice e2e test asserting the flood is gone.
-- Net-new test targets: `crates/slicer-core/tests/bridge_support_gating_tdd.rs` ([[test]], `required-features = ["host-algos"]`) and a runtime unit test for the relocated pass.
+- Net-new test targets: `crates/slicer-core/tests/bridge_support_gating_tdd.rs` ([[test]], `required-features = ["host-algos"]`); the relocated pass itself is exercised end-to-end by AC-5.
 
 ## Out of Scope
 
@@ -52,7 +52,7 @@ Files to inspect for this packet:
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` through `AC-6`. Measurable refinements absent from their Given/When/Then text: AC-1..AC-3 fixtures are polygon-primitive constructions (no mesh dependency); AC-5's thresholds are frozen from this authoring session's measurements and must not be tightened without re-measurement; AC-5's byte-identity requirement covers determinism of the new prepass pass across repeated slices.
-- Negative: `AC-N1` proves construction cannot fire on fully-supported pairs (the flood's root cause).
+- Negative: `AC-N1` proves qualification returns nothing for a fully-supported surface (the flood root cause), asserted at the pure-function level in Step 1's test file.
 - Cross-packet impact: supersedes 233's "prepass stays free of internal-bridge logic" placement constraint (rationale recorded in design.md); preserves 234's gate ordering (support gating runs strictly after false-site gating); preserves 235's external-site output (AC-5 Z≈3.2 guard).
 
 ## Verification Commands
@@ -61,7 +61,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd` | All support-math ACs (AC-1..AC-3) | FACT pass/fail; SNIPPETS ≤20 lines on failure |
+| `cargo test -p slicer-core --features host-algos --test bridge_support_gating_tdd` | All support-math ACs (AC-1..AC-3, AC-N1) | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `bash -c 'rg -q "construct_anchored_polygon" crates/slicer-runtime/src/layer_executor.rs && exit 1 || exit 0'` plus `rg -q "construct_anchored_polygon\|bridge_over_infill::" crates/slicer-runtime/src/slice_postprocess_prepass.rs` | Structural halves of AC-4 (absence in old arm; presence at prepass) | FACT exit codes |
 | `cargo run --bin pnp_cli --release -- slice --model resources/calicat.stl --output target/calicat_a.gcode --module-dir modules/core-modules && cargo run --bin pnp_cli --release -- slice --model resources/calicat.stl --output target/calicat_b.gcode --module-dir modules/core-modules && cmp target/calicat_a.gcode target/calicat_b.gcode` then the e2e assertions inside `calicat_internal_bridge_gating_e2e_tdd` | Determinism + flood bar + external-row guard (AC-5) | FACT pass/fail + printed counts |
 | `cargo test -p slicer-runtime --test e2e wedge_linked_infill_report_tdd` | Wedge regression guard (AC-6) | FACT pass/fail |
