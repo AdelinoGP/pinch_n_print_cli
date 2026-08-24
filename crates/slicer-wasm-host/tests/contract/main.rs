@@ -27,6 +27,7 @@ mod support_plan_structural_contract;
 mod support_plan_validation;
 mod surface_group_resolution_tdd;
 mod typed_config_boundary_tdd;
+mod view_seam_identity_tdd;
 mod wit_boundary_tdd;
 mod z_envelope_contract_tdd;
 
