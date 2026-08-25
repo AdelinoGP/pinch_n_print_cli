@@ -45,6 +45,8 @@ pub struct SliceRegionView {
     top_solid_fill: Vec<ExPolygon>,
     /// Polygon-precise area to solid-fill from bottom shell projection.
     bottom_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from internal fill projection.
+    internal_solid_fill: Vec<ExPolygon>,
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
@@ -105,6 +107,7 @@ impl Default for SliceRegionView {
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
+            internal_solid_fill: Vec::new(),
             is_bridge: false,
             is_internal_bridge: false,
             bridge_areas: Vec::new(),
@@ -138,6 +141,7 @@ impl SliceRegionView {
             bottom_shell_index: region.bottom_shell_index,
             top_solid_fill: region.top_solid_fill.clone(),
             bottom_solid_fill: region.bottom_solid_fill.clone(),
+            internal_solid_fill: region.internal_solid_fill.clone(),
             is_bridge: region.is_bridge,
             bridge_areas: region.bridge_areas.clone(),
             bridge_orientation_deg: region.bridge_orientation_deg,
@@ -343,6 +347,14 @@ impl SliceRegionView {
     /// hook) it returns the raw `PrePass::ShellClassification` projection.
     pub fn top_solid_fill(&self) -> &[ExPolygon] {
         &self.top_solid_fill
+    }
+
+    /// Returns the polygon-precise internal solid fill area for this region.
+    ///
+    /// The dense-interior band mirror of `top_solid_fill`/`bottom_solid_fill`,
+    /// populated by `PrePass::ShellClassification`.
+    pub fn internal_solid_fill(&self) -> &[ExPolygon] {
+        &self.internal_solid_fill
     }
 
     /// Returns the polygon-precise bottom solid fill area for this region.

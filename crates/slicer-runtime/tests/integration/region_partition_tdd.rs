@@ -14,15 +14,18 @@
 //!   subtracting the three solid/bridge polygons.
 
 use slicer_core::polygon_ops::intersection;
+use std::sync::Arc;
+
 use slicer_ir::{
-    ExPolygon, ObjectId, PerimeterIR, PerimeterRegion, Point2, Polygon, RegionId, SemVer, SliceIR,
-    SlicedRegion,
+    ExPolygon, ObjectId, PerimeterIR, PerimeterRegion, Point2, Polygon, RegionId, RegionKey,
+    RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
 };
 use slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice;
 use slicer_runtime::wit_host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, OriginId,
 };
 use slicer_runtime::LayerArena;
+use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
 
 use crate::common::{commit_hec_for_test, point3_with_width};
 
@@ -130,6 +133,145 @@ fn ex_area_mm2(polys: &[ExPolygon]) -> f64 {
     }
     // 1 internal unit = 100 nm = 1e-4 mm; area unit² → mm² requires divide by 1e8.
     signed_sum.abs() / 1.0e8
+}
+
+#[test]
+fn internal_bridge_qualification_writes_gated_areas() {
+    let object_id = ObjectId::from("qualification-cube");
+    let candidate_square = square(-5.0, -5.0, 5.0, 5.0);
+    let lower_fill = candidate_square.clone();
+    let slices = (0..3)
+        .map(|index| SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: index,
+            z: 0.2 * (index + 1) as f32,
+            regions: vec![SlicedRegion {
+                object_id: object_id.clone(),
+                region_id: 0,
+                polygons: vec![candidate_square.clone()],
+                infill_areas: if index == 0 {
+                    vec![lower_fill.clone()]
+                } else {
+                    vec![candidate_square.clone()]
+                },
+                ..Default::default()
+            }],
+        })
+        .collect::<Vec<_>>();
+    let mut region_map = RegionMapIR::default();
+    let resolved = slicer_ir::ResolvedConfig {
+        infill_density: 0.2,
+        top_shell_layers: 3,
+        bottom_shell_layers: 0,
+        ..Default::default()
+    };
+    let config = region_map.intern_config(resolved);
+    for index in 0..3 {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: index,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 3);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("region map");
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("slice IR");
+
+    commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
+    let classified = blackboard.slice_ir().expect("classified slices");
+    let candidate = &classified[1].regions[0];
+    assert!(!candidate.internal_solid_fill.is_empty());
+    assert_eq!(candidate.internal_bridge_areas, candidate.bridge_areas);
+    assert!(candidate.internal_bridge_areas.len() <= candidate.bridge_areas.len());
+}
+
+#[test]
+fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
+    let object_id = ObjectId::from("seed-square");
+    let full_square = square(0.0, 0.0, 10.0, 10.0);
+    let covered = square(5.0, 0.0, 10.0, 10.0);
+    let slices = vec![
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![sliced_region("seed-square", 0, vec![full_square])],
+        },
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![sliced_region("seed-square", 0, vec![covered])],
+        },
+    ];
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+        top_shell_layers: 2,
+        bottom_shell_layers: 0,
+        ..Default::default()
+    });
+    for index in 0..2 {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: index,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 2);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("region map");
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("slice IR");
+
+    commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
+    let classified = blackboard.slice_ir().expect("classified slices");
+    let lower = &classified[0].regions[0].internal_solid_fill;
+    let exposed_half = square(0.0, 0.0, 5.0, 10.0);
+    let propagated_half = square(5.0, 0.0, 10.0, 10.0);
+    assert!(intersection(lower, &[exposed_half]).is_empty());
+    let propagated_area = ex_area_mm2(&intersection(lower, &[propagated_half]));
+    // Pass-2 propagation shrinks each intersected step by one extrusion line
+    // width. The pre-shrink expectation was 50 mm2; canonical propagation is
+    // 38.64 mm2 for this 10 mm x 5 mm band.
+    assert!(
+        approx_eq(propagated_area, 38.64, 0.1),
+        "lower={} propagated={}",
+        ex_area_mm2(lower),
+        propagated_area
+    );
+    assert!(approx_eq(ex_area_mm2(lower), 38.64, 0.1));
 }
 
 fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
@@ -551,9 +693,12 @@ fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
     let sparse = &arena.slice().expect("slice").regions[0].sparse_infill_area;
     let infill = arena.infill().expect("infill");
     let bridge = &infill.regions[0].internal_bridge_infill;
+    // This fixture has no persisted qualified internal-bridge carrier. The
+    // pre-shrink pin expected paths from any overlap; canonical gating drops
+    // the candidate before executor construction, so no paths are emitted.
     assert!(
-        !bridge.is_empty(),
-        "executor must emit InternalBridgeInfill"
+        bridge.is_empty(),
+        "unqualified candidates must not emit InternalBridgeInfill"
     );
     for path in bridge {
         let min_x = path

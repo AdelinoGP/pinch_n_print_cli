@@ -274,6 +274,7 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
             layer_index,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit must succeed");

@@ -118,6 +118,7 @@ fn tree_support_dispatch_commits_support_material_paths() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit must succeed");
@@ -175,6 +176,7 @@ fn traditional_support_dispatch_commits_support_material_paths() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit must succeed");
@@ -227,6 +229,7 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit must succeed");
@@ -268,6 +271,7 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit must succeed (empty commit is not an error)");
@@ -308,6 +312,7 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("first commit must succeed");
@@ -326,6 +331,7 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("second commit must succeed");
@@ -399,6 +405,7 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
                 layer_index,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit must succeed for blocker case (empty is valid)");
@@ -916,6 +923,7 @@ fn support_deterministic_across_repeated_runs() {
                     layer_index: layer.index,
                     seam_plan: None,
                     config_view: None,
+                    committed_slices: None,
                 },
             )
             .expect("commit must succeed");

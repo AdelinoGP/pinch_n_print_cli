@@ -183,6 +183,8 @@ pub struct SliceRegionData {
     pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Polygon-precise bottom solid fill from shrinking-shadow projection.
     pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Polygon-precise internal solid fill.
+    pub internal_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
@@ -2911,6 +2913,7 @@ mod region_origin_tests {
                     bottom_shell_index: None,
                     top_solid_fill: Vec::new(),
                     bottom_solid_fill: Vec::new(),
+                    internal_solid_fill: Vec::new(),
                     is_bridge: false,
                     bridge_areas: Vec::new(),
                     bridge_orientation_deg: 0.0,
@@ -3249,6 +3252,13 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     ) -> wasmtime::Result<Vec<layer_perimeters::slicer::types::geometry::ExPolygon>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.top_solid_fill.clone())
+    }
+    fn internal_solid_fill(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::types::geometry::ExPolygon>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.internal_solid_fill.clone())
     }
     fn bottom_solid_fill(
         &mut self,

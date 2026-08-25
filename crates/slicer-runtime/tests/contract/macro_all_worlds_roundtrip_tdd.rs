@@ -560,6 +560,7 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
             layer_index: 9,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit must succeed");
@@ -658,6 +659,7 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
                 layer_index: 2,
                 seam_plan: None,
                 config_view: None,
+                committed_slices: None,
             },
         )
         .expect("commit");

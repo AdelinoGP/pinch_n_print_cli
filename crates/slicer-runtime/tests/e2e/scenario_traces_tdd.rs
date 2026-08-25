@@ -13,8 +13,8 @@
 
 #![allow(missing_docs)]
 
-use std::path::PathBuf;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::path::PathBuf;
 
 // paint_region module removed in packet 95 sub-step 16
 use slicer_ir::{

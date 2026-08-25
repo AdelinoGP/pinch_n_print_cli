@@ -3,10 +3,10 @@
 ## Motivation
 
 The landed 234a edition ported canonical support qualification and relocated it into the
-ShellClassification prepass; every frozen flood-era bar passed, but the recorded deviation
-stands: calicat qualifies ZERO internal-bridge sites where canonical produces EXACTLY ONE
-near Z≈29.45 (skip histogram over 174 layer-visits: 156x `top_solid_fill_empty`, 9x
-`unsupported_empty`, 9x `qualified_empty`). The grilling session
+ShellClassification prepass. Canonical-faithful machinery is delivered end-to-end, and the
+matched-oracle-profile arbiter pins the documented baseline set; residual low-z qualification
+and coverage breadth diverge from canonical and are owned by the shell-classification / infill /
+support tracks (DEV-149/DEV-150), as restated on 2026-08-25. The grilling session
 (`docs/specs/orca-feature-gap/issues/82-parity-closure-decision-brief.md`) established a NEW,
 dispatch-verified root cause candidate (RC-A): `unsupported_span_areas`
 (`crates/slicer-core/src/algos/bridge_over_infill.rs`) initializes the unsupported carrier as a
@@ -15,8 +15,8 @@ BOUNDING-BOX COMPLEMENT of the lower fills (`fill_envelope`), while canonical
 ("initially consider the whole layer unsupported"), then closes/shrinks/diffs grown solids.
 RC-A predicts the measured histogram exactly. Independently, our IR lacks any dense-interior
 (`stInternalSolid`) taxonomy and construction anchors on polygon stand-ins instead of walls.
-This packet closes the deviation AND absorbs F4 (coverage/anchoring ~30–35% extruded-length
-deficit) so ISSUE-82 reaches terminus.
+This packet records the closure machinery and absorbs F4's ported machinery; its residual
+coverage deficit remains owned by the infill/construction track.
 
 Relation to prior work: builds on landed 233/234/235 and the original 234a edition; revises
 THIS packet directory in place (pre-revision text in git history); no other packet directory
@@ -48,16 +48,20 @@ is modified or superseded.
 5. **S5 F4 coverage parity:** expansion zones (`expansion_step = scaled(0.1)`, up to 5 steps;
    `expansion_bottom_bridge = shell_width*sqrt(2)`); frSolidInfill-spacing closing radius in
    construction; `gather_areas_w_depth` downward harvesting; thread clustering +
-   filled-polygons-on-lower-layers removal; `enable_extra_bridge_layer` emission-semantics
-   alignment in `modules/core-modules/rectilinear-infill`. New ports carry the attribution
-   header per `docs/ORCASLICER_ATTRIBUTION.md`.
+   filled-polygons-on-lower-layers removal; host-side `enable_extra_bridge_layer`
+   emission-semantics alignment via net-new prepass authoring that appends gated duplicates to
+   the upper layer's existing `internal_bridge_areas` (no new field; carrier-free),
+   constructed at the
+   InfillPostProcess arm beside anchored construction via the EXISTING path, gated by resolved
+   `enable_extra_bridge_layer`, with default-off byte-stability. New ports carry the
+   attribution header per `docs/ORCASLICER_ATTRIBUTION.md`.
 6. **S6 Arbitration harness:** bundle-primary calicat arbiter (AC-5), revised gcode e2e
    (AC-6), mixed-density fixture (AC-N1), golden re-bless ceremony with evidence table
    (AC-N2), wedge tripwire (AC-N3).
 
 Out of scope: F5/F6/F7 rows of the bridge-parity plan (flow spacing/speed coupling, sparse
-alternation); runnable OrcaSlicer oracle claims; scheduler stage-set changes; modules beyond
-the scoped rectilinear-infill alignment.
+alternation); runnable OrcaSlicer oracle claims; scheduler stage-set changes; all module
+changes.
 
 ## AC-ID Summary
 
@@ -67,8 +71,9 @@ the scoped rectilinear-infill alignment.
 | AC-2 | IR/WIT/view mirror + serde default | static greps (views.rs, wit/, slice_ir.rs) |
 | AC-3 | Prepass qualification persistence | slicer-runtime `integration` |
 | AC-4 | InfillPostProcess constructor + field retirement | slicer-runtime `contract` |
-| AC-5 | Bundle-primary one-site arbiter | slicer-runtime `e2e` (net-new) |
+| AC-5 | Bundle-primary matched-oracle baseline arbiter | slicer-runtime `e2e` (net-new) |
 | AC-6 | G-code secondary consistency bars | slicer-runtime `e2e` (revised) |
+| AC-7 | carrier-free duplicate emission | slicer-runtime `integration` |
 | AC-N1 | Mixed-density rejection (negative) | slicer-runtime `e2e` (net-new) |
 | AC-N2 | Golden equality after evidence-documented re-bless | slicer-runtime `e2e` |
 | AC-N3 | Wedge regression tripwire | slicer-runtime `e2e` |
@@ -83,11 +88,12 @@ Repeat of every pipe-suffixed command (authoritative strings live in `packet.spe
 4. AC-4: `cargo test -p slicer-runtime --test contract -- infill_postprocess_constructs_anchored_paths --nocapture 2>&1 | tee target/test-output.log && ! rg -q 'internal_bridge_lines' crates/ modules/`
 5. AC-5: `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_arbiter_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
 6. AC-6: `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_gating_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
-7. AC-N1: `cargo test -p slicer-runtime --test e2e -- mixed_density_internal_bridge_rejection_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
-8. AC-N2: `cargo test -p slicer-runtime --test e2e -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture 2>&1 | tee target/test-output.log`
-9. AC-N3: `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report_tdd --nocapture 2>&1 | tee target/test-output.log`
-10. Gates: `cargo check --workspace --all-targets`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo xtask check-literals`; `cargo xtask build-guests --check` (exit 0).
-11. Ceremony only: `cargo xtask test --workspace` via sub-agent FACT pass/fail.
+7. AC-7: `cargo test -p slicer-runtime --test integration -- extra_bridge_layer_emission_semantics --nocapture 2>&1 | tee target/test-output.log`
+8. AC-N1: `cargo test -p slicer-runtime --test e2e -- mixed_density_internal_bridge_rejection_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
+9. AC-N2: `cargo test -p slicer-runtime --test e2e -- slicing_precision_integration_tdd::legacy_zero_matches_golden --nocapture 2>&1 | tee target/test-output.log`
+10. AC-N3: `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report_tdd --nocapture 2>&1 | tee target/test-output.log`
+11. Gates: `cargo check --workspace --all-targets`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo xtask check-literals`; `cargo xtask build-guests --check` (exit 0).
+12. Ceremony only: `cargo xtask test --workspace` via sub-agent FACT pass/fail.
 
 ## Cross-Step Expectations
 

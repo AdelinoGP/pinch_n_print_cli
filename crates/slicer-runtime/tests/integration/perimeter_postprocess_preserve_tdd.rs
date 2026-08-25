@@ -227,6 +227,7 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
             layer_index: 0,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit");
@@ -327,6 +328,7 @@ fn pairs_regions_by_object_id_not_by_position() {
             layer_index: 0,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit");
@@ -431,6 +433,7 @@ fn partition_re_fires_under_post_process_only_path() {
             layer_index: 0,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit");

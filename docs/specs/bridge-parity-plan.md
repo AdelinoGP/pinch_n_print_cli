@@ -138,6 +138,19 @@ Internal-Bridge layers 0 (bar ≤6), external Bridge row at Z≈3.2 unchanged
 site: our IR has no dense-interior (`stInternalSolid`) surface taxonomy —
 `top_solid_fill` is the candidate proxy and canonical gates currently reject all
 calicat candidates; coverage/anchoring parity follow-up stays under ISSUE-82.
+The Internal-Bridge layers 0 statement is historical (superseded 2026-08-25: see closure addendum below).
+
+**Closure addendum (packet 234a, 2026-08-25):** this packet closed RC-A fills-as-initial
+arithmetic; the `internal_solid_fill` taxonomy is WIT-mirrored; the qualification-prepass /
+`InfillPostProcess` venue split is landed; expansion, harvesting, and clustering ports are
+landed; and the bundle-primary arbiter plus G-code bars and carrier-free
+`enable_extra_bridge_layer` emission are covered. The oracle provenance is corrected:
+`tmp/calicat_orcaSlicer.gcode` exists untracked, and the brief's numbers were verified
+bit-exact against it. The matched-profile arbiter baseline is {(4.45, 23.2 mm²),
+(18.45, 8.4 mm²), (29.45, 143.2 mm²)}. Residual low-z mid-stack qualification is
+DEV-149 and cavity-site coverage deficit is DEV-150; both are out of scope here and owned
+by the shell-classification / infill / support tracks. Carrier-free duplicate angle delivery
+is DEV-151, and the unrepresentable `top_solid_infill_flow_ratio` is DEV-152.
 
 ### F4 — HIGH — Coverage/anchoring far below canonical (known gap #3)
 Even at matched sites the WIP reaches ~30–35% of Orca's extruded length: canonical
@@ -146,6 +159,13 @@ by `expansion_step = scaled(0.1)` up to 5 steps, `expansion_bottom_bridge =
 shell_width·sqrt(2)`, closing radius from `frSolidInfill` spacing); the stash's
 contour-band approximation (`INTERNAL_BRIDGE_EXPANSION_MULTIPLIER = 3.0` in the
 stashed `slice_postprocess_prepass.rs`) shrinks instead. Stash: **partial at best**.
+
+**Closure-partial addendum (2026-08-25).** Expansion zones, `gather_areas_w_depth`
+harvesting, thread clustering, and filled-lower-layer removal are all ported and green.
+Measured qualified cavity area is approximately 143 mm² versus approximately 262 mm²-equivalent
+in the oracle (about 55%). Residual coverage breadth is owned by the infill/construction track
+via DEV-150; this packet records the ported machinery and does not tune production toward the
+oracle bar.
 
 ### F5 — MEDIUM-HIGH — `bridging_flow` ignores configured bridge width; spacing constant absent (NEW)
 `bridging_flow` (`crates/slicer-core/src/flow.rs`) derives `dmr` from

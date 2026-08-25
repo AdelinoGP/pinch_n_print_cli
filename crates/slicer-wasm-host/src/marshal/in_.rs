@@ -509,6 +509,7 @@ pub fn sliced_region_to_data(
         bottom_shell_index: view.bottom_shell_index(),
         top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),
         bottom_solid_fill: ir_to_wit_expolygons(view.bottom_solid_fill()),
+        internal_solid_fill: ir_to_wit_expolygons(view.internal_solid_fill()),
         is_bridge: view.is_bridge(),
         bridge_areas: ir_to_wit_expolygons(view.bridge_areas()),
         bridge_orientation_deg: view.bridge_orientation_deg(),

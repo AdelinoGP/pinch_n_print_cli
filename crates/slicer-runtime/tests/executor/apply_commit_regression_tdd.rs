@@ -135,6 +135,7 @@ fn pathopt_ctx() -> StageApplyContext<'static> {
         layer_index: 0,
         seam_plan: None,
         config_view: None,
+        committed_slices: None,
     }
 }
 
@@ -193,6 +194,7 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
             layer_index: 0,
             seam_plan: Some(&seam),
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("apply(Perimeters)");

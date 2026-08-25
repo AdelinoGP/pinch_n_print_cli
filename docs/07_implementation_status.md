@@ -347,6 +347,8 @@ and reflect state at time of writing, so treat any specific count, task id, or
 
 - [x] **P203 — Integrated CLI + provenance** (no TASK row; packet 203-integrated-cli-provenance, status: active, closing to implemented; ADR-0056, ADR-0057). Delivered the CLI-and-provenance slice of the multi-edition distribution program: the `--no-integrated-modules` flag on the seven verbs (`slice`, `module diagnose`, `module config-schema`, `dag stages`/`stage`/`depends`/`claims`), `SliceRunOptions.no_integrated_modules`, the integrated-aware `run_diagnose` with the `modules: [{id, provenance}]` provenance array, integrated-aware `dag`/`config-schema` loading, the `integrated-classic-perimeters` pnp-cli passthrough feature, and the six-test feature-gated `integrated_provenance_tdd` suite. **Known gap (deliberate):** `support-preview`/`visual-debug` still load the integrated tier with no disable flag — tracked in 203's requirements.md, unassigned pending 205. Delivered 2026-08-10.
 
+- [x] **ISSUE-82 / bridge-over-infill — packet 234a-internal-bridge-support-gating (no TASK row; backlog issue `docs/specs/orca-feature-gap/issues/82-author-packet-p75-quality-bridging-bridge-over-infill.md`).** 2026-08-25: 234a closed — P75 key set machinery complete (`dont_filter_internal_bridges` arithmetic, `internal_bridge_angle` venue split, `enable_extra_bridge_layer` carrier-free emission); parity residuals DEV-149..DEV-153 owned by shell-classification/infill/support tracks.
+
 ## Open Deviation Map
 
 `docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a

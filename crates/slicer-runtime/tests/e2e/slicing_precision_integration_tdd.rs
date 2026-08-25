@@ -28,6 +28,11 @@
 //! correction in git history
 //! for why straight rectilinear lines give D-P/min-segment simplification
 //! nothing to reduce.
+//!
+//! S6b evidence (2026-08-25): section counts changed only at Internal solid infill
+//! (4 -> 3) and Bridge (0 -> 1); all other counts and the 100-value Z set are identical.
+//! The changed extrusion distribution is expected from packet 234a's spacing-source fix
+//! and carrier-free extra-layer feature; no unexpected diff class was observed.
 
 #![allow(missing_docs)]
 

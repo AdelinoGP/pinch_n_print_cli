@@ -14,7 +14,17 @@ This packet has no `docs/07_implementation_status.md` task ID; the docs/07 cross
 | N-A (ISSUE-82 closure) | Steps 2a–2b | `docs/21_data_defaults_and_fixtures.md`; `docs/19_visual_debug.md` | `slice_ir.rs`, `prepass_slice.rs` literal, WIT region type, `views.rs`, `visual_debug_render.rs` | — | `M` | `internal_solid_fill` WIT-mirrored; `internal_bridge_areas` host-only; serde defaults |
 | N-A (ISSUE-82 closure) | Step 3 | `docs/04_host_scheduler.md` (delegated) | `slice_postprocess_prepass.rs`, integration test | density==100 branch | `M` | per-lower-region config resolution |
 | N-A (ISSUE-82 closure) | Steps 4a–4c | decision brief Item 3 | `layer_executor.rs` arm, field retirement, contract rewrite | `generate_sparse_infill_polylines_for_anchoring` | `M` | probe-first; AC-4 reversal recorded |
-| N-A (ISSUE-82 closure) | Steps 5a–5c | `docs/ORCASLICER_ATTRIBUTION.md`; F4 row | core helpers + executor threading; `rectilinear-infill` extra-layer | expansion zones, `gather_areas_w_depth`, clustering | `M` | attribution headers mandatory |
+| N-A (ISSUE-82 closure) | Steps 5a–5b, 5c-host | `docs/ORCASLICER_ATTRIBUTION.md`; F4 row; P75 `enable_extra_bridge_layer` (host-side) | core helpers + executor threading; carrier-free duplicate authoring (prepass) + existing InfillPostProcess construction | expansion zones, `gather_areas_w_depth`, clustering | `M` | attribution headers mandatory |
 | N-A (ISSUE-82 closure) | Steps 6a–6c | decision brief Items 5–7; `bridge-parity-plan.md` F3/F4 | net-new e2e pair, gcode bars, golden ceremony, doc rows | — | `M` | bundle-primary arbiter; conditional re-bless policy |
 
 Copy costs from `implementation-plan.md`. Aggregate `M`; no row is `L`.
+
+## Closure (2026-08-25)
+
+Steps 1–5b, 5c-host, and 6a–6c delivered. AC-1..AC-7 and N1..N3 green after restatements
+(AC-5/AC-6 carry matched-oracle-profile baselines per the owner out-of-scope ruling).
+Deviations DEV-149..DEV-153 carry the residual fronts: low-z mid-stack qualification,
+cavity coverage breadth, duplicate angle anchor-derived, flow-ratio omission, and
+Internal-Bridge role labeling. ISSUE-82 terminus is PARTIAL by owner ruling — machinery
+terminus achieved; behavioral parity residuals are owned by the shell-classification,
+infill, and support tracks.

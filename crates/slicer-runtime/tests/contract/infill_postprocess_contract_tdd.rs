@@ -506,6 +506,130 @@ fn infill_postprocess_wall_source() {
     );
 }
 
+// ── AC-4: anchored internal bridge construction ────────────────────────────
+
+#[test]
+fn infill_postprocess_constructs_anchored_paths() {
+    let area = expoly(
+        &[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)],
+        &[],
+    );
+    let mut slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
+    slice.regions[0].bridge_areas = vec![area.clone()];
+    slice.regions[0].internal_bridge_areas = vec![area.clone()];
+    slice.regions[0].sparse_infill_area = vec![area.clone()];
+
+    let sparse = path(
+        ExtrusionRole::SparseInfill,
+        &[(0.0, 5.0, 0.2), (10.0, 5.0, 0.2)],
+    );
+    let prior = InfillIR {
+        regions: vec![InfillRegion {
+            object_id: "obj-0".into(),
+            region_id: 0,
+            sparse_infill: vec![sparse],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    // The bridge area is 10 mm square.  The generic wall-loop fixture uses
+    // unit-spaced points, so expand two wall paths to the area's bottom and
+    // top edges to provide real-scale flanking anchors.
+    let mut lower_wall = ir_builders::wall_loop().points(2).build();
+    lower_wall.path.points[0].x = 0.0;
+    lower_wall.path.points[0].y = 0.0;
+    lower_wall.path.points[1].x = 10.0;
+    lower_wall.path.points[1].y = 0.0;
+    let mut upper_wall = lower_wall.clone();
+    upper_wall
+        .path
+        .points
+        .iter_mut()
+        .for_each(|point| point.y = 10.0);
+
+    let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(slice)
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)])
+                .walls_with(vec![lower_wall, upper_wall])
+                .infill(1)
+                .build(),
+        )
+        .build();
+    fx.arena.set_infill(prior).expect("stage prior InfillIR");
+    let layer = layer_at(0, 0.2);
+    run_echo_postprocess(&mut fx, &layer, ConfigView::from_map(HashMap::new()));
+
+    let committed = fx.arena.infill().expect("postprocess output committed");
+    let region = &committed.regions[0];
+    assert!(
+        !region.internal_bridge_infill.is_empty(),
+        "qualified internal bridge area must emit anchored strips"
+    );
+    assert!(
+        region
+            .internal_bridge_infill
+            .iter()
+            .all(|p| p.role == ExtrusionRole::InternalBridgeInfill),
+        "all constructed strips must carry the internal bridge role"
+    );
+    assert!(
+        region.internal_bridge_infill.iter().all(|p| {
+            p.points.iter().all(|point| {
+                (-0.001..=10.001).contains(&point.x) && (-0.001..=10.001).contains(&point.y)
+            })
+        }),
+        "constructed strips must remain within the qualified area"
+    );
+    assert!(
+        region.internal_bridge_infill.iter().any(|p| {
+            p.points
+                .iter()
+                .any(|point| point.y.abs() <= 0.001 || (point.y - 5.0).abs() <= 0.001)
+        }),
+        "constructed strips must touch a harvested wall or sparse anchor line"
+    );
+
+    let mut empty_slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
+    empty_slice.regions[0].internal_bridge_areas = Vec::new();
+    let mut empty_fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(empty_slice)
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)])
+                .walls_with(vec![ir_builders::wall_loop().points(11).build()])
+                .infill(1)
+                .build(),
+        )
+        .build();
+    empty_fx
+        .arena
+        .set_infill(InfillIR {
+            regions: vec![InfillRegion {
+                object_id: "obj-0".into(),
+                region_id: 0,
+                sparse_infill: vec![path(
+                    ExtrusionRole::SparseInfill,
+                    &[(0.0, 5.0, 0.2), (10.0, 5.0, 0.2)],
+                )],
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .expect("stage empty-area prior InfillIR");
+    run_echo_postprocess(&mut empty_fx, &layer, ConfigView::from_map(HashMap::new()));
+    assert!(
+        empty_fx
+            .arena
+            .infill()
+            .expect("empty-area output committed")
+            .regions[0]
+            .internal_bridge_infill
+            .is_empty(),
+        "without qualified internal bridge areas no bridge strips are emitted"
+    );
+}
+
 // ── AC-N1: absent module fails without mutating the committed InfillIR ───
 
 #[test]

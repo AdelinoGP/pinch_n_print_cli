@@ -257,6 +257,7 @@ pub fn commit_hec_for_test(
         layer_index,
         seam_plan: seam_plan_ir,
         config_view: None,
+        committed_slices: None,
     };
 
     let commit_opt: Option<LayerStageCommit> = match stage_id {
@@ -572,6 +573,7 @@ pub fn run_layer_and_commit_with_bundle(
         layer_index: layer.index,
         seam_plan: seam_plan_arc.as_deref(),
         config_view: Some(bundle.module.config_view().as_ref()),
+        committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
     };
     // PerimetersPostProcess(None) still needs apply so seam back-fill runs on
     // the existing arena perimeter even when the guest emitted no new perimeter.

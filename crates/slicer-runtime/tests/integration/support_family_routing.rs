@@ -527,6 +527,7 @@ fn swept_path_overlap() {
             layer_index: 0,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .unwrap();
@@ -551,6 +552,7 @@ fn swept_path_overlap() {
             layer_index: 0,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .unwrap();

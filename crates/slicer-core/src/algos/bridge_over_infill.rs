@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 //! Deterministic geometry for internal bridges over sparse infill.
 
-use crate::polygon_ops::{closing_ex, difference, intersection, offset, OffsetJoinType};
+use crate::polygon_ops::{
+    closing_ex, difference, intersection, offset, opening, union, OffsetJoinType,
+};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 use std::f32::consts::PI;
 
@@ -18,6 +20,112 @@ const SAMPLE_STEP: f64 = 20_000.0;
 
 const SCALED_EPSILON_MM: f64 = 0.0001;
 const UNITS_PER_MM: f64 = 10_000.0;
+
+/// Canonical `target_flow_height_factor` fallback captured from PrintObject.cpp.
+pub const BRIDGE_FLOW_HEIGHT_FACTOR: f32 = 1.0;
+
+/// Geometry committed for one layer of bridge-depth harvesting.
+#[derive(Clone, Debug, Default)]
+pub struct BridgeDepthLayer {
+    /// Layer print height in millimetres.
+    pub print_z: f32,
+    /// Lower-layer areas resolved as sparse infill.
+    pub sparse_infill: Vec<ExPolygon>,
+    /// Lower-layer areas that must mask sparse infill.
+    pub not_sparse_infill: Vec<ExPolygon>,
+}
+
+/// Candidate geometry committed for one layer of bridge clustering.
+#[derive(Clone, Debug, Default)]
+pub struct BridgeCandidateLayer {
+    /// Layer print height in millimetres.
+    pub print_z: f32,
+    /// Qualified bridge polygons authored on this layer.
+    pub new_polys: Vec<ExPolygon>,
+}
+
+/// Gather sparse lower-layer area within the canonical depth window.
+pub fn gather_areas_w_depth(
+    layers: &[BridgeDepthLayer],
+    layer_index: usize,
+    target_flow_height: f32,
+    target_flow_height_factor: f32,
+) -> Vec<ExPolygon> {
+    let Some(layer) = layers.get(layer_index) else {
+        return Vec::new();
+    };
+    let bottom_z =
+        layer.print_z - target_flow_height * target_flow_height_factor - SCALED_EPSILON_MM as f32;
+    let mut sparse = Vec::new();
+    let mut solid = Vec::new();
+    for i in (0..layer_index).rev() {
+        let lower = &layers[i];
+        if lower.print_z < bottom_z && i < layer_index - 1 {
+            break;
+        }
+        sparse.extend(lower.sparse_infill.iter().cloned());
+        solid.extend(lower.not_sparse_infill.iter().cloned());
+    }
+    if sparse.is_empty() {
+        return Vec::new();
+    }
+    let sparse = closing_ex(
+        &union(&sparse, &[]),
+        SCALED_EPSILON_MM,
+        OffsetJoinType::Miter,
+    );
+    let solid = closing_ex(
+        &union(&solid, &[]),
+        SCALED_EPSILON_MM,
+        OffsetJoinType::Miter,
+    );
+    difference(&sparse, &solid)
+}
+
+/// Group consecutive candidate layers when both their Z gap and area overlap
+/// satisfy the canonical bridge-thread conditions.
+pub fn cluster_candidate_layers(
+    layers: &[BridgeCandidateLayer],
+    bridging_flow_height: f32,
+    target_flow_height_factor: f32,
+) -> Vec<Vec<usize>> {
+    let mut clusters: Vec<Vec<usize>> = Vec::new();
+    for (index, candidate) in layers.iter().enumerate() {
+        let joins = clusters.last().and_then(|cluster| {
+            let previous = cluster.last().copied()?;
+            let gap = candidate.print_z - layers[previous].print_z;
+            (gap < bridging_flow_height * target_flow_height_factor - SCALED_EPSILON_MM as f32
+                && !intersection(&candidate.new_polys, &layers[previous].new_polys).is_empty())
+            .then_some(())
+        });
+        if joins.is_some() {
+            clusters.last_mut().expect("cluster exists").push(index);
+        } else {
+            clusters.push(vec![index]);
+        }
+    }
+    clusters
+}
+
+/// Remove candidate polygons already filled on lower layers within the depth.
+pub fn remove_filled_polygons_on_lower_layers(
+    deep_infill_area: &[ExPolygon],
+    lower_candidates: &[BridgeCandidateLayer],
+    current_print_z: f32,
+    target_flow_height: f32,
+) -> Vec<ExPolygon> {
+    let bottom_z = current_print_z - target_flow_height - SCALED_EPSILON_MM as f32;
+    let filled: Vec<ExPolygon> = lower_candidates
+        .iter()
+        .filter(|candidate| candidate.print_z >= bottom_z)
+        .flat_map(|candidate| candidate.new_polys.iter().cloned())
+        .collect();
+    if filled.is_empty() {
+        deep_infill_area.to_vec()
+    } else {
+        difference(deep_infill_area, &union(&filled, &[]))
+    }
+}
 
 /// Compute the unsupported portion left after accounting for lower-layer fills
 /// and solids. Distances follow the workspace's 100 nm coordinate units.
@@ -31,11 +139,10 @@ pub fn unsupported_span_areas(
         return Vec::new();
     }
     let spacing = spacing_mm as f64;
-    let closed_fills = closing_ex(lower_fills, SCALED_EPSILON_MM, OffsetJoinType::Miter);
-    let Some(envelope) = fill_envelope(lower_fills) else {
-        return Vec::new();
-    };
-    let mut unsupported = difference(&[envelope], &closed_fills);
+    // Canonical: initially consider the whole layer unsupported — the carrier
+    // is the lower fills themselves (closing(SCALED_EPSILON)), NOT the bbox
+    // complement of the fills. RC-A fix.
+    let mut unsupported = closing_ex(lower_fills, SCALED_EPSILON_MM, OffsetJoinType::Miter);
     unsupported = offset(
         &unsupported,
         -(expansion_multiplier * spacing) as f32,
@@ -53,33 +160,6 @@ pub fn unsupported_span_areas(
         0.0,
     );
     difference(&unsupported, &solids_grown)
-}
-
-fn fill_envelope(polygons: &[ExPolygon]) -> Option<ExPolygon> {
-    let points = polygons.iter().flat_map(|p| p.contour.points.iter());
-    let mut min_x = i64::MAX;
-    let mut min_y = i64::MAX;
-    let mut max_x = i64::MIN;
-    let mut max_y = i64::MIN;
-    let mut any = false;
-    for point in points {
-        any = true;
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    any.then(|| ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2 { x: min_x, y: min_y },
-                Point2 { x: max_x, y: min_y },
-                Point2 { x: max_x, y: max_y },
-                Point2 { x: min_x, y: max_y },
-            ],
-        },
-        holes: Vec::new(),
-    })
 }
 
 /// Qualify the genuinely unsupported part of one internal bridge surface.
@@ -140,6 +220,48 @@ fn expolygon_area(polygon: &ExPolygon) -> f64 {
             / 2.0
     }
     ring_area(&polygon.contour) - polygon.holes.iter().map(ring_area).sum::<f64>()
+}
+
+// -----------------------------------------------------------------------------
+// Portions of this helper are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/PrintObject.cpp
+//
+// This is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
+/// Apply the canonical expansion-zone treatment to one bridge candidate.
+///
+/// `deep_infill_area` is the sparse-infill footprint at this construction site;
+/// `provenance` is the qualified internal-bridge set that produced the candidate.
+pub fn expand_candidate_area(
+    candidate: &[ExPolygon],
+    expansion_source: &[ExPolygon],
+    deep_infill_area: &[ExPolygon],
+    provenance: &[ExPolygon],
+    spacing_mm: f32,
+) -> Vec<ExPolygon> {
+    if candidate.is_empty() || spacing_mm <= 0.0 {
+        return Vec::new();
+    }
+    let limiting_area = union(candidate, expansion_source);
+    let grown = offset(&limiting_area, spacing_mm, OffsetJoinType::Miter, 0.0);
+    let clipped = intersection(&grown, deep_infill_area);
+    let qualified: Vec<ExPolygon> = clipped
+        .into_iter()
+        .filter(|area| !intersection(std::slice::from_ref(area), provenance).is_empty())
+        .collect();
+    if qualified.is_empty() {
+        return Vec::new();
+    }
+    let opened = opening(
+        &qualified,
+        f64::from(spacing_mm) * 0.75,
+        OffsetJoinType::Miter,
+    );
+    closing_ex(&opened, f64::from(spacing_mm), OffsetJoinType::Miter)
 }
 
 /// Select a bridge direction from arc-length-weighted nearest anchor samples.
@@ -391,5 +513,89 @@ fn strip(a: Point2, b: Point2, half_width: i64) -> ExPolygon {
             ],
         },
         holes: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn square(min: f32, max: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(min, 0.0),
+                    Point2::from_mm(max, 0.0),
+                    Point2::from_mm(max, 5.0),
+                    Point2::from_mm(min, 5.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn gather_depth_subtracts_solids_and_stops_at_cutoff() {
+        let sparse = square(0.0, 5.0);
+        let layers = vec![
+            BridgeDepthLayer {
+                print_z: 0.0,
+                sparse_infill: vec![sparse.clone()],
+                ..Default::default()
+            },
+            BridgeDepthLayer {
+                print_z: 0.2,
+                sparse_infill: vec![sparse.clone()],
+                not_sparse_infill: vec![square(0.0, 2.0)],
+            },
+            BridgeDepthLayer {
+                print_z: 0.4,
+                ..Default::default()
+            },
+        ];
+        let result = gather_areas_w_depth(&layers, 2, 0.2, 1.0);
+        assert!(result
+            .iter()
+            .flat_map(|p| p.contour.points.iter())
+            .all(|p| p.x >= Point2::from_mm(2.0, 0.0).x));
+    }
+
+    #[test]
+    fn clustering_requires_z_gap_and_intersection() {
+        let layers = vec![
+            BridgeCandidateLayer {
+                print_z: 0.0,
+                new_polys: vec![square(0.0, 2.0)],
+            },
+            BridgeCandidateLayer {
+                print_z: 0.1,
+                new_polys: vec![square(1.0, 3.0)],
+            },
+            BridgeCandidateLayer {
+                print_z: 0.3,
+                new_polys: vec![square(1.0, 3.0)],
+            },
+        ];
+        assert_eq!(
+            cluster_candidate_layers(&layers, 0.2, 1.0),
+            vec![vec![0, 1], vec![2]]
+        );
+    }
+
+    #[test]
+    fn filled_lower_candidates_are_removed() {
+        let result = remove_filled_polygons_on_lower_layers(
+            &[square(0.0, 5.0)],
+            &[BridgeCandidateLayer {
+                print_z: 0.2,
+                new_polys: vec![square(0.0, 2.0)],
+            }],
+            0.4,
+            0.2,
+        );
+        assert!(result
+            .iter()
+            .flat_map(|p| p.contour.points.iter())
+            .all(|p| p.x >= Point2::from_mm(2.0, 0.0).x));
     }
 }

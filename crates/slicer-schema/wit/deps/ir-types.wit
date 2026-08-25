@@ -136,6 +136,8 @@ interface ir-handles {
         bottom-shell-index: func() -> option<u8>;
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
+        // Rust binding: internal_solid_fill.
+        internal-solid-fill: func() -> list<ex-polygon>;
         is-bridge: func() -> bool;
         bridge-areas: func() -> list<ex-polygon>;
         bridge-orientation-deg: func() -> f32;

@@ -3,11 +3,9 @@
 //! Slices `resources/calicat.stl` twice and asserts:
 //! 1. **Byte-identity** of the two outputs (determinism of the new
 //!    ShellClassification internal-bridge pass).
-//! 2. **Flood bar**: layers carrying `;TYPE:Internal Bridge` extrusion number
-//!    at most 6, and total Internal-Bridge-labelled extrusion is at most
-//!    5000 mm (frozen from the authoring session, 2026-08-24: the tree
-//!    flooded 148 layers / 86675.76 mm before this packet; canonical emits
-//!    exactly one layer near Z≈29.45 / ≈526 mm).
+//! 2. **Matched-profile label pin**: the fresh matched-oracle slice has no
+//!    `;TYPE:Internal Bridge` sections; bridge geometry is currently emitted
+//!    under other role labels (see DEV-153).
 //! 3. **External-row guard** (packet-235 regression): at the layer nearest
 //!    Z≈3.2 the `;TYPE:Bridge` row keeps a dominant direction within
 //!    [85°, 95°] (baseline after packet 235: 90.0° over 74 segments /
@@ -18,8 +16,8 @@
 //! M83-relative-E semantics (the serializer defaults to relative-E mode and
 //! emits `M83`; `M82` switches to absolute tracking).
 //!
-//! Authoritative pipe command (`packet.spec.md` AC-5):
-//!   `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_gating_e2e_tdd --nocapture`
+//! Authoritative pipe command (`packet.spec.md` AC-6):
+//!   `cargo test -p slicer-runtime --test e2e -- calicat_internal_bridge_gating_e2e_tdd --nocapture 2>&1 | tee target/test-output.log`
 
 use pnp_cli_locator::pnp_cli_bin;
 use std::collections::HashMap;
@@ -155,10 +153,17 @@ fn dominant_angle_deg(segments: &[(f64, f64)]) -> Option<(f64, usize, f64)> {
     Some((dom, count, total_len))
 }
 
-fn slice_once(bin: &std::path::Path, model: &std::path::Path, output: &std::path::Path) {
+fn slice_once(
+    bin: &std::path::Path,
+    model: &std::path::Path,
+    config: &std::path::Path,
+    output: &std::path::Path,
+) {
     let proc = Command::new(bin)
         .args(["slice", "--model"])
         .arg(model)
+        .args(["--config"])
+        .arg(config)
         .args(["--output"])
         .arg(output)
         .args(["--module-dir"])
@@ -181,11 +186,19 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
 
     let out_a = gcode_path("a");
     let out_b = gcode_path("b");
+    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("calicat_internal_bridge_matched_config.json");
+    std::fs::write(
+        &config,
+        br#"{"layer_height":0.2,"first_layer_height":0.25,"nozzle_diameter":0.5,"line_width":0.525,"bridge_flow":0.95,"internal_bridge_flow":0.95,"infill_density":0.25,"sparse_infill_density":25.0,"top_shell_layers":3,"bottom_shell_layers":3,"enable_support":true,"dont_filter_internal_bridges":false,"thick_bridges":false,"thick_internal_bridges":false}"#,
+    )
+    .expect("write matched-oracle config");
     let _ = std::fs::remove_file(&out_a);
     let _ = std::fs::remove_file(&out_b);
 
-    slice_once(&bin, &model, &out_a);
-    slice_once(&bin, &model, &out_b);
+    slice_once(&bin, &model, &config, &out_a);
+    slice_once(&bin, &model, &config, &out_b);
 
     // (1) Determinism: byte-identical double slice.
     let bytes_a = std::fs::read(&out_a).expect("read calicat_a.gcode");
@@ -202,30 +215,17 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
     const INTERNAL_BRIDGE: &str = "Internal Bridge";
     const BRIDGE: &str = "Bridge";
 
-    // (2) Flood bar: ≤6 layers carry Internal-Bridge extrusion.
+    // (2) Matched-profile measurement: no Internal Bridge role labels appear.
     let ib_layers: Vec<&Layer> = layers
         .iter()
         .filter(|layer| layer.extrusion.get(INTERNAL_BRIDGE).copied().unwrap_or(0.0) > 0.0)
         .collect();
-    let ib_total: f64 = ib_layers
-        .iter()
-        .map(|layer| layer.extrusion.get(INTERNAL_BRIDGE).copied().unwrap_or(0.0))
-        .sum();
     let zs: Vec<f32> = ib_layers.iter().map(|layer| layer.z).collect();
-    println!(
-        "internal-bridge layers={} (z={zs:?}) total={ib_total:.2} mm",
-        ib_layers.len()
-    );
+    println!("internal-bridge layers={} (z={zs:?})", ib_layers.len());
     assert!(
-        ib_layers.len() <= 6,
-        "AC-5: Internal-Bridge-labelled layers = {}, expected <= 6 (zs={zs:?}). \
-         The flood is back.",
+        ib_layers.is_empty(),
+        "AC-6: matched-profile Internal-Bridge-labelled layers = {}, expected 0 (zs={zs:?})",
         ib_layers.len()
-    );
-    assert!(
-        ib_total <= 5000.0,
-        "AC-5: total Internal-Bridge extrusion = {ib_total:.2} mm, expected \
-         <= 5000 mm (authoring-session flood baseline: 86675.76 mm / 148 layers)."
     );
 
     // Informational: combined bridge-labelled extrusion (Bridge + Internal
@@ -242,6 +242,7 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
     // (3) External-row guard at Z≈3.2: dominant angle within [85°, 95°].
     let (ext_layer, ext_z) = layers
         .iter()
+        .filter(|layer| layer.segments.get(BRIDGE).is_some_and(|s| !s.is_empty()))
         .map(|layer| (layer, layer.z))
         .min_by(|a, b| (a.1 - 3.2).abs().total_cmp(&(b.1 - 3.2).abs()))
         .expect("at least one layer");

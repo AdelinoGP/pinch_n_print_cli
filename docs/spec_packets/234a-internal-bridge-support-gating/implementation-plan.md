@@ -250,31 +250,29 @@
   - `cargo test -p slicer-runtime --test e2e -- wedge_linked_infill_report_tdd --nocapture 2>&1 | tee target/test-output.log` - FACT pass/fail
 - Exit condition: both green; any wedge failure = STOP-and-report.
 
-### Step 5c: Extra-bridge-layer emission alignment
+### Step 5c-host: carrier-free duplicate authoring + emission coverage
 
 - Task IDs: `N-A` (backlog: P75 key `enable_extra_bridge_layer`)
-- Objective: align `rectilinear-infill`'s extra-layer behaviour with canonical emission
-  semantics (duplicate bridge support layer above qualified areas when enabled).
+- Objective: prepass appends gated duplicates to the upper layer's existing
+  `internal_bridge_areas`; the EXISTING InfillPostProcess path constructs them; net-new
+  integration test pins byte-stability (key off/default) + duplication (key on).
 - Precondition: Step 5b exit.
-- Postcondition: key changes observable output only when enabled; default output unchanged
-  unless canonical demands it (record which).
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/rectilinear-infill/src/lib.rs` - config + emission sections
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/rectilinear-infill/src/lib.rs`
-  - module test file (net-new or existing)
-- Files explicitly out of bounds: any other module; WIT
-- Blast-radius discipline: guest rebuild mandatory (module source feeds WASM).
-- Expected sub-agent dispatches:
-  - Question: canonical extra-layer condition and placement; scope `PrintObject.cpp`;
-    return SNIPPETS ≤30 lines.
-- Context cost: `S`
-- Authoritative docs: `docs/15_config_keys_reference.md` - key row (delegated check)
-- OrcaSlicer refs: extra-bridge-layer handling - delegate
+- Postcondition: AC-7 green end-to-end; default-off emitted bytes unchanged.
+- Files allowed to read: `slice_postprocess_prepass.rs` shell/gate region; ONE existing
+  integration test as house pattern.
+- Files allowed to edit (max 3):
+  - `crates/slicer-runtime/src/slice_postprocess_prepass.rs`
+  - ONE new/existing test file under `crates/slicer-runtime/tests/integration/` (+ its
+    aggregator registration line)
+  - at most ONE residual site
+- Expected sub-agent dispatches: none beyond blast-radius reuse.
+- Context cost: `M`
+- Authoritative docs: decision brief extra-layer capture.
+- Orca refs: canonical second-pass placement — delegate SNIPPETS if needed.
 - Verification:
-  - `cargo xtask build-guests --check; echo EXIT=$?` - EXIT=0 after rebuild
-  - module test binary per repo convention - FACT pass/fail
-- Exit condition: module tests green; freshness clean.
+  - `cargo test -p slicer-runtime --test integration -- extra_bridge_layer_emission_semantics --nocapture 2>&1 | tee target/test-output.log` FACT pass/fail
+  - `cargo xtask build-guests --check; echo EXIT=$?` EXIT=0.
+- Exit condition: both green.
 
 ### Step 6a: Arbitration harness (net-new e2e)
 
@@ -368,7 +366,7 @@
 | 4c | M | contract rewrite |
 | 5a | M | expansion zones |
 | 5b | M | depth harvest + clustering |
-| 5c | S | extra-layer module alignment |
+| 5c-host | M | carrier-free duplicates + AC-7 |
 | 6a | M | net-new e2e pair |
 | 6b | M | gcode bars + golden |
 | 6c | S | docs + gates |

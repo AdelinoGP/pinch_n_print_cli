@@ -56,6 +56,7 @@ pub fn structured_support_identity() {
             layer_index: 3,
             seam_plan: None,
             config_view: None,
+            committed_slices: None,
         },
     )
     .expect("structured support commit must succeed");

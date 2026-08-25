@@ -43,7 +43,9 @@
 - **Visibility contract:** `internal_solid_fill` is WIT-MIRRORED (future-proofing for infill
   modules); `internal_bridge_areas` is host-only/un-mirrored but auto-serializes into
   visual-debug bundles because `SliceIR` derives Serialize; both new fields carry
-  `#[serde(default)]`; `internal_bridge_lines` disappears tree-wide in S4.
+  `#[serde(default)]`; `internal_bridge_lines` disappears tree-wide in S4; S5c-host makes NO
+  IR/WIT surface changes — there is no `extra_bridge_areas` field; gated duplicates are
+  appended to the upper layer's existing `internal_bridge_areas`.
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 <!-- snippet: coord-system -->
@@ -79,8 +81,11 @@
     canonical WIT region type gains `internal_solid_fill` only.
   - Renderer: `slice_shapes` arm + `geometry_points_mm` viewport push for BOTH new fields
     (bundle JSON needs no arm; PNG rendering does).
-  - Module alignment: `modules/core-modules/rectilinear-infill/src/lib.rs`
-    `enable_extra_bridge_layer` semantics matched to canonical extra-layer behaviour.
+  - `enable_extra_bridge_layer` (carrier-free): prepass appends gated duplicates
+    (`intersect(upper dense-interior footprint, current qualified areas)`) to the upper entry's
+    existing `internal_bridge_areas`; existing InfillPostProcess arm constructs them;
+    default-off byte-stability; duplicate angle = anchor-derived (canonical +π/2 intent
+    recorded as micro-deviation when deviating).
 - Rejected alternatives (with reasons, from the frozen brief): arithmetic-first-gated
   taxonomy (both land unconditionally by decision); prepass-local transient classification
   (invisible downstream, repeats log-scraping pain); host-only-only field (fails stated
@@ -89,7 +94,10 @@
   keep-`region.polygons` fills (outward wall-band bias); shells-only solids
   (under-subtraction bias); all-minus-sparse solids (suppresses legitimate sites);
   all-construction-in-prepass (anchors stay stand-ins forever); gcode-only arbitration
-  (weaker attribution; retained as secondary).
+  (weaker attribution; retained as secondary); guest-module-side extra-layer emission
+  (rejected by user decision 2026-08-25: host-side ownership chosen over deviation-row/
+  successor-packet deferral); dedicated `extra_bridge_areas` IR carrier (rejected by owner
+  ruling 2026-08-25: duplicates belong in the upper layer's existing internal_bridge_areas).
 
 ## Files in Scope (read + edit)
 
@@ -97,15 +105,16 @@ Multi-crate contract change; extras beyond 3 primary are intrinsic and accepted.
 
 - `crates/slicer-core/src/algos/bridge_over_infill.rs` - role: S1 init rewrite + S5 helpers
 - `crates/slicer-core/tests/bridge_support_gating_tdd.rs` - role: AC-1 fixtures re-bless
-- `crates/slicer-ir/src/slice_ir.rs` - role: two fields added, one removed (S2/S3/S4)
+- `crates/slicer-ir/src/slice_ir.rs` - role: two fields added, one removed (S2/S3/S4;
+  no S5c-host edit — carrier-free)
 - `crates/slicer-schema/wit/**` - role: WIT region type gains `internal_solid_fill` (S2)
 - `crates/slicer-sdk/src/views.rs` - role: mirror `internal_solid_fill` only (S2)
 - `crates/slicer-runtime/src/slice_postprocess_prepass.rs` - role: classification authoring +
-  qualification rewrite (S2/S3)
-- `crates/slicer-runtime/src/layer_executor.rs` - role: constructor relocation (S4)
+  qualification rewrite (S2/S3) + S5c-host authoring
+- `crates/slicer-runtime/src/layer_executor.rs` - role: constructor relocation (S4) +
+  S5c-host construction
 - `crates/slicer-runtime/src/visual_debug_render.rs` - role: render arms (S2)
 - `crates/slicer-core/src/algos/prepass_slice.rs` - role: exhaustive production literal (S2/S4)
-- `modules/core-modules/rectilinear-infill/src/lib.rs` - role: extra-layer semantics (S5b)
 - tests listed under Controlling Code Paths + net-new e2e files + bucket aggregator mains
 
 ## Read-Only Context
@@ -121,8 +130,7 @@ Multi-crate contract change; extras beyond 3 primary are intrinsic and accepted.
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/**` - delegate; never load
-- All `modules/**` EXCEPT the scoped `rectilinear-infill` extra-layer alignment; any wider
-  module need = STOP-and-report
+- All `modules/**`; any module need = STOP-and-report
 - Other packet directories under `docs/spec_packets/**`
 - `target/`, `Cargo.lock`, generated code, vendored dependencies
 - Unrelated crates - delegate symbol lookups; do not browse
@@ -155,8 +163,12 @@ Multi-crate contract change; extras beyond 3 primary are intrinsic and accepted.
 
 ## Locked Assumptions and Invariants
 
-- Arbiter bar frozen: EXACTLY ONE Internal-Bridge layer, print_z ∈ [29.15, 29.75], extruded
-  length ∈ [300, 700] mm, zero elsewhere; external Bridge row @ Z≈3.2 keeps [85°, 95°].
+- Canonical-faithful machinery is delivered end-to-end; the matched-oracle-profile arbiter
+  pins the documented baseline set. Residual low-z qualification and coverage breadth diverge
+  from canonical and are owned elsewhere by the shell-classification / infill / support tracks
+  (DEV-149/DEV-150), restated on 2026-08-25. The secondary G-code label measurement pins zero
+  `;TYPE:Internal Bridge` sections for the fresh matched-profile slice; the external Bridge row
+  @ Z≈3.2 keeps [85°, 95°].
 - Multiplier mapping: `dont_filter_internal_bridges == ibfDisabled` ⇒ 3, else 1.
 - Dense definition locked: shell band MINUS depth-0 exposed seed; threshold fraction >= 0.999.
 - Golden policy locked: conditional re-bless with section-count diff table, Z-set identity,
