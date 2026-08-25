@@ -16,7 +16,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use slicer_ir::{
-    ExPolygon, LayerPlanIR, ObjectId, RegionId, SliceIR, SupportGeometryIR, SupportGeometryKey,
+    ExPolygon, LayerPlanIR, ObjectId, RegionId, ResolvedConfig, SliceIR, SupportGeometryIR,
+    SupportGeometryKey,
 };
 
 /// Structured support geometry computation failure.
@@ -44,9 +45,6 @@ impl std::fmt::Display for SupportGeometryBuiltinError {
 }
 
 impl std::error::Error for SupportGeometryBuiltinError {}
-
-/// Default distance in mm from column tops to add intermediate model layers.
-const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
 
 /// Precompute, for each object, the set of global layer indices at which a
 /// support layer boundary should be emitted.
@@ -95,7 +93,26 @@ pub fn execute_support_geometry(
     layer_plan: &LayerPlanIR,
     slice_vec: &[SliceIR],
 ) -> Result<SupportGeometryIR, SupportGeometryBuiltinError> {
-    let support_top_z_distance_mm = DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM;
+    let resolved_config = layer_plan
+        .global_layers
+        .iter()
+        .flat_map(|layer| &layer.active_regions)
+        .next()
+        .map(|region| &region.resolved_config);
+    let (support_layer_height_mm, support_top_z_distance_mm) = resolved_config
+        .map(|config| {
+            (
+                config.support_layer_height_mm,
+                config.support_top_z_distance,
+            )
+        })
+        .unwrap_or_else(|| {
+            let config = ResolvedConfig::default();
+            (
+                config.support_layer_height_mm,
+                config.support_top_z_distance,
+            )
+        });
 
     let emit_schedule = build_emit_schedule(layer_plan);
 
@@ -137,7 +154,7 @@ pub fn execute_support_geometry(
     );
 
     Ok(SupportGeometryIR {
-        support_layer_height_mm: 0.0,
+        support_layer_height_mm,
         support_top_z_distance_mm,
         entries,
         ..Default::default()

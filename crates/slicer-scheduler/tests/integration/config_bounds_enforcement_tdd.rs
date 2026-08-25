@@ -98,6 +98,60 @@ fn manifest_declared_bound_rejects_out_of_range_value() {
 }
 
 #[test]
+fn rejects_max_bridge_length_below_min() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
+    let wasm = manifest.with_extension("wasm");
+    let module = load_module_from_paths(&manifest, &wasm).expect("real support manifest must load");
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+
+    let mut source = HashMap::new();
+    source.insert("max_bridge_length".to_string(), ConfigValue::Float(-1.0));
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("max bridge length below minimum must reject");
+    assert_out_of_range(err, "max_bridge_length", -1.0, None);
+}
+
+#[test]
+fn rejects_support_max_branches_per_layer_zero() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
+    let wasm = manifest.with_extension("wasm");
+    let module = load_module_from_paths(&manifest, &wasm).expect("real support manifest must load");
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+
+    let mut source = HashMap::new();
+    source.insert(
+        "support_max_branches_per_layer".to_string(),
+        ConfigValue::Int(0),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("zero support branches per layer must reject");
+    assert_out_of_range(err, "support_max_branches_per_layer", 0.0, None);
+}
+
+#[test]
+fn rejects_negative_support_branch_merge_distance() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
+    let wasm = manifest.with_extension("wasm");
+    let module = load_module_from_paths(&manifest, &wasm).expect("real support manifest must load");
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+
+    let mut source = HashMap::new();
+    source.insert(
+        "support_branch_merge_distance_mm".to_string(),
+        ConfigValue::Float(-0.5),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("negative support branch merge distance must reject");
+    assert_out_of_range(err, "support_branch_merge_distance_mm", -0.5, None);
+}
+
+#[test]
 fn accepts_boundary_min() {
     // `wall_count` is an Int-typed declared field so the value lands on the
     // matching `ResolvedConfig` slot via `apply_cli_key`.

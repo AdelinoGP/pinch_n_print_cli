@@ -18,6 +18,40 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::slice_ir::{ConfigValue, InfillType, SupportType, WallGenerator};
 
+/// A host-side `float_or_percent` value, retaining whether the literal is a
+/// percentage until the consuming module supplies its base.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedFloatOrPercent {
+    /// Absolute value, or percentage magnitude when `is_percent` is true.
+    pub value: f64,
+    /// Whether `value` is a percentage of the consumer's base.
+    pub is_percent: bool,
+}
+
+impl Default for ResolvedFloatOrPercent {
+    fn default() -> Self {
+        Self {
+            value: 0.0,
+            is_percent: false,
+        }
+    }
+}
+
+impl PartialEq for ResolvedFloatOrPercent {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.to_bits() == other.value.to_bits() && self.is_percent == other.is_percent
+    }
+}
+
+impl Eq for ResolvedFloatOrPercent {}
+
+impl std::hash::Hash for ResolvedFloatOrPercent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.to_bits().hash(state);
+        self.is_percent.hash(state);
+    }
+}
+
 impl ResolvedConfig {
     /// Flattens this config into a `HashMap<key, ConfigValue>` of effective
     /// slicer settings.
@@ -130,6 +164,56 @@ impl ResolvedConfig {
         m.insert(
             "support_threshold_angle".into(),
             ConfigValue::Float(f64::from(self.support_threshold_angle)),
+        );
+        m.insert(
+            "support_expansion".into(),
+            ConfigValue::Float(f64::from(self.support_expansion)),
+        );
+        m.insert(
+            "support_top_z_distance".into(),
+            ConfigValue::Float(f64::from(self.support_top_z_distance)),
+        );
+        m.insert(
+            "support_bottom_z_distance".into(),
+            ConfigValue::Float(f64::from(self.support_bottom_z_distance)),
+        );
+        m.insert(
+            "support_threshold_overlap".into(),
+            ConfigValue::FloatOrPercent {
+                value: self.support_threshold_overlap.value,
+                is_percent: self.support_threshold_overlap.is_percent,
+            },
+        );
+        m.insert(
+            "support_line_width".into(),
+            ConfigValue::FloatOrPercent {
+                value: self.support_line_width.value,
+                is_percent: self.support_line_width.is_percent,
+            },
+        );
+        m.insert(
+            "bridge_no_support".into(),
+            ConfigValue::Bool(self.bridge_no_support),
+        );
+        m.insert(
+            "enforce_support_layers".into(),
+            ConfigValue::Int(i64::from(self.enforce_support_layers)),
+        );
+        m.insert(
+            "support_critical_regions_only".into(),
+            ConfigValue::Bool(self.support_critical_regions_only),
+        );
+        m.insert(
+            "support_remove_small_overhang".into(),
+            ConfigValue::Bool(self.support_remove_small_overhang),
+        );
+        m.insert(
+            "support_object_first_layer_gap".into(),
+            ConfigValue::Float(f64::from(self.support_object_first_layer_gap)),
+        );
+        m.insert(
+            "support_sharp_tails".into(),
+            ConfigValue::Bool(self.support_sharp_tails),
         );
         if let Some(v) = self.nonplanar_max_angle_deg {
             m.insert(
@@ -393,6 +477,33 @@ pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolu
         other => Err(ConfigResolutionError::TypeMismatch {
             key: key.to_string(),
             expected: "Float",
+            actual: variant_name(other),
+        }),
+    }
+}
+
+/// Extract a value that may be absolute or a percentage.
+#[doc(hidden)]
+pub fn extract_float_or_percent(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<ResolvedFloatOrPercent, ConfigResolutionError> {
+    match value {
+        ConfigValue::Float(f) => Ok(ResolvedFloatOrPercent {
+            value: *f,
+            is_percent: false,
+        }),
+        ConfigValue::Int(i) => Ok(ResolvedFloatOrPercent {
+            value: *i as f64,
+            is_percent: false,
+        }),
+        ConfigValue::FloatOrPercent { value, is_percent } => Ok(ResolvedFloatOrPercent {
+            value: *value,
+            is_percent: *is_percent,
+        }),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "FloatOrPercent",
             actual: variant_name(other),
         }),
     }
@@ -971,7 +1082,33 @@ declare_resolved_config! {
     /// object's effective layer height (printers cannot extrude a layer
     /// thinner than the nominal model layer). Validated per-object in
     /// `slicer_runtime::config_schema`.
-    cli "support_layer_height_mm" support_layer_height_mm: f32 = 0.0 => extract_float;
+     cli "support_layer_height_mm" support_layer_height_mm: f32 = 0.0 => extract_float;
+     /// Horizontal expansion of generated support in millimeters.
+     cli "support_expansion" support_expansion: f32 = 0.0 => extract_float;
+     /// Vertical distance from support to the top model surface in millimeters.
+     cli "support_top_z_distance" support_top_z_distance: f32 = 0.2 => extract_float;
+     /// Vertical distance from support to the bottom model surface in millimeters.
+     cli "support_bottom_z_distance" support_bottom_z_distance: f32 = 0.2 => extract_float;
+     /// Overlap threshold as an absolute value or percentage.
+     cli "support_threshold_overlap" support_threshold_overlap: ResolvedFloatOrPercent = ResolvedFloatOrPercent { value: 50.0, is_percent: true } => extract_float_or_percent;
+     /// Support extrusion width as an absolute value or percentage of nozzle diameter.
+     /// Default 0 is auto: PnP has no flow model, so it resolves to nozzle_diameter.
+     /// Canonical `auto_extrusion_width` (`Flow.cpp`) returns nozzle for
+     /// `frSupportMaterial`; explicit percentages resolve against nozzle and
+     /// explicit millimeter values pass through.
+     cli "support_line_width" support_line_width: ResolvedFloatOrPercent = ResolvedFloatOrPercent::default() => extract_float_or_percent;
+     /// Whether bridging regions suppress support generation.
+     cli "bridge_no_support" bridge_no_support: bool = false => extract_bool;
+     /// Number of enforced support layers.
+     cli "enforce_support_layers" enforce_support_layers: u32 = 0 => extract_int_as_u32;
+     /// Whether support is limited to critical regions.
+     cli "support_critical_regions_only" support_critical_regions_only: bool = false => extract_bool;
+     /// Whether small overhangs are removed from support generation.
+     cli "support_remove_small_overhang" support_remove_small_overhang: bool = true => extract_bool;
+     /// Gap between the object and support on its first layer in millimeters.
+     cli "support_object_first_layer_gap" support_object_first_layer_gap: f32 = 0.2 => extract_float;
+     /// Whether sharp support tails are enabled.
+     cli "support_sharp_tails" support_sharp_tails: bool = true => extract_bool;
 
     // Non-planar (module-contributed)
     /// Maximum non-planar angle in degrees (optional).
@@ -1082,6 +1219,18 @@ impl PartialEq for ResolvedConfig {
             && self.support_type == other.support_type
             && self.support_threshold_angle.to_bits() == other.support_threshold_angle.to_bits()
             && self.support_layer_height_mm.to_bits() == other.support_layer_height_mm.to_bits()
+            && self.support_expansion.to_bits() == other.support_expansion.to_bits()
+            && self.support_top_z_distance.to_bits() == other.support_top_z_distance.to_bits()
+            && self.support_bottom_z_distance.to_bits() == other.support_bottom_z_distance.to_bits()
+            && self.support_threshold_overlap == other.support_threshold_overlap
+            && self.support_line_width == other.support_line_width
+            && self.bridge_no_support == other.bridge_no_support
+            && self.enforce_support_layers == other.enforce_support_layers
+            && self.support_critical_regions_only == other.support_critical_regions_only
+            && self.support_remove_small_overhang == other.support_remove_small_overhang
+            && self.support_object_first_layer_gap.to_bits()
+                == other.support_object_first_layer_gap.to_bits()
+            && self.support_sharp_tails == other.support_sharp_tails
             && self.nonplanar_max_angle_deg.map(|f| f.to_bits())
                 == other.nonplanar_max_angle_deg.map(|f| f.to_bits())
             && self.nonplanar_shell_count == other.nonplanar_shell_count
@@ -1179,6 +1328,17 @@ impl std::hash::Hash for ResolvedConfig {
         self.support_type.hash(state);
         self.support_threshold_angle.to_bits().hash(state);
         self.support_layer_height_mm.to_bits().hash(state);
+        self.support_expansion.to_bits().hash(state);
+        self.support_top_z_distance.to_bits().hash(state);
+        self.support_bottom_z_distance.to_bits().hash(state);
+        self.support_threshold_overlap.hash(state);
+        self.support_line_width.hash(state);
+        self.bridge_no_support.hash(state);
+        self.enforce_support_layers.hash(state);
+        self.support_critical_regions_only.hash(state);
+        self.support_remove_small_overhang.hash(state);
+        self.support_object_first_layer_gap.to_bits().hash(state);
+        self.support_sharp_tails.hash(state);
         self.nonplanar_max_angle_deg
             .map(|f| f.to_bits())
             .hash(state);

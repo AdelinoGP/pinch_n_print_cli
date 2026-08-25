@@ -28,6 +28,7 @@ struct KeyRow {
     /// Numeric default for Orca comparison, if the default is a number.
     default_num: Option<f64>,
     range: String,
+    values: Option<String>,
     owner: String,
 }
 
@@ -136,12 +137,20 @@ fn module_rows(ws: &Path) -> Result<Vec<KeyRow>, String> {
                 .unwrap_or_else(|| "—".to_string());
             let default_num = spec.get("default").and_then(num_of);
             let range = fmt_range(spec.get("min"), spec.get("max"));
+            let values = spec.get("values").and_then(|v| v.as_array()).map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str())
+                    .collect::<Vec<_>>()
+                    .join("|")
+            });
             rows.push(KeyRow {
                 key: key.clone(),
                 ty,
                 default,
                 default_num,
                 range,
+                values,
                 owner: stem.clone(),
             });
         }
@@ -197,6 +206,7 @@ fn host_table_rows(val: &toml::Value, table: &str, owner: &str) -> Result<Vec<Ke
             default: fmt_scalar(default_v).unwrap_or_else(|| "—".to_string()),
             default_num: num_of(default_v),
             range,
+            values: None,
             owner: entry_owner,
         });
     }
@@ -263,18 +273,28 @@ fn render_table(rows: &[KeyRow], with_owner: bool, owner_header: &str) -> String
         ));
         s.push_str("|---|---|---|---|---|\n");
         for r in rows {
+            let range = r
+                .values
+                .as_deref()
+                .map(|values| format!("{} (values: {values})", r.range))
+                .unwrap_or_else(|| r.range.clone());
             s.push_str(&format!(
                 "| `{}` | {} | `{}` | {} | `{}` |\n",
-                r.key, r.ty, r.default, r.range, r.owner
+                r.key, r.ty, r.default, range, r.owner
             ));
         }
     } else {
         s.push_str("| Key | Type | Default | Range |\n");
         s.push_str("|---|---|---|---|\n");
         for r in rows {
+            let range = r
+                .values
+                .as_deref()
+                .map(|values| format!("{} (values: {values})", r.range))
+                .unwrap_or_else(|| r.range.clone());
             s.push_str(&format!(
                 "| `{}` | {} | `{}` | {} |\n",
-                r.key, r.ty, r.default, r.range
+                r.key, r.ty, r.default, range
             ));
         }
     }
@@ -455,6 +475,7 @@ mod tests {
             default: "3".into(),
             default_num: Some(3.0),
             range: "—".into(),
+            values: None,
             owner: "host".into(),
         }];
         let refs: Vec<&KeyRow> = rows.iter().collect();

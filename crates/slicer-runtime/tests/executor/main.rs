@@ -104,4 +104,5 @@ mod prepass_slice_and_shell_tdd;
 mod prepass_support_geometry_layer_plan_tdd;
 mod prepass_support_geometry_tdd;
 mod slicing_promotion_e2e_regression_tdd;
+mod support_config_surface_tdd;
 mod support_geometry_slice_consumption_tdd;

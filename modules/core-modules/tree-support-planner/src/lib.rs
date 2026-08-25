@@ -99,7 +99,7 @@ const MIN_BRANCH_RADIUS: f32 = 0.4;
 /// and `traditional-support-planner::DEFAULT_TOP_Z_DISTANCE_MM`, so both
 /// families leave the same gap when the key is absent.
 const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
-/// Canonical fallback because this module does not declare `max_bridge_length`.
+/// Defensive fallback when `max_bridge_length` is absent or non-positive.
 const DEFAULT_MAX_BRIDGE_LENGTH_MM: f32 = 10.0;
 /// Canonical `smooth_nodes`' `const int iterations = 100` — the number of
 /// three-point relaxation passes run over each branch chain before the
@@ -200,6 +200,7 @@ pub struct SupportPlanner {
     /// inflate avoidance by `tree_support_branch_distance / 2`, which is
     /// canonical's contact-point `point_spread`, not a clearance at all.
     support_object_xy_distance: f32,
+    max_bridge_length_mm: f32,
 }
 
 /// Canonical `SupportNode::type`. `ePolygon` nodes draw their stored overhang
@@ -1395,11 +1396,21 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
         };
-        let support_line_width_mm = match config.get("support_line_width") {
-            Some(ConfigValue::Float(a)) if *a > 0.0 => *a as f32,
-            Some(ConfigValue::Int(a)) if *a > 0 => *a as f32,
-            _ => DEFAULT_SUPPORT_LINE_WIDTH_MM,
-        };
+        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.0);
+        let support_line_width_mm = config
+            .get_abs_value("support_line_width", nozzle_diameter)
+            // Preserve hand-written legacy configs that encode an absolute
+            // width as an integer rather than a Float/FloatOrPercent.
+            .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
+            .map(|v| {
+                if v > 0.0 {
+                    v as f32
+                } else {
+                    nozzle_diameter as f32
+                }
+            })
+            .filter(|v| *v > 0.0)
+            .unwrap_or(DEFAULT_SUPPORT_LINE_WIDTH_MM);
         let max_branches_per_layer = match config.get("support_max_branches_per_layer") {
             Some(ConfigValue::Int(n)) => (*n as usize).clamp(1, 10_000),
             Some(ConfigValue::Float(n)) => (*n as usize).clamp(1, 10_000),
@@ -1490,6 +1501,11 @@ impl PrepassModule for SupportPlanner {
             _ => DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
         }
         .max(0.0);
+        let max_bridge_length_mm = match config.get("max_bridge_length") {
+            Some(ConfigValue::Float(length)) if *length > 0.0 => *length as f32,
+            Some(ConfigValue::Int(length)) if *length > 0 => *length as f32,
+            _ => DEFAULT_MAX_BRIDGE_LENGTH_MM,
+        };
         Ok(Self {
             enabled,
             support_family,
@@ -1511,6 +1527,7 @@ impl PrepassModule for SupportPlanner {
             support_on_build_plate_only,
             support_top_z_distance_mm,
             support_object_xy_distance,
+            max_bridge_length_mm,
         })
     }
 
@@ -1717,7 +1734,7 @@ impl SupportPlanner {
         // bounding box, rotated 22 degrees (F-35).
         let sample_step = self
             .tree_support_branch_distance
-            .max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
+            .max(self.max_bridge_length_mm / 2.0);
         let object_grid: Option<Vec<(f32, f32)>> = compute_bounds(&obj.vertices)
             .map(|(min, max)| build_grid_points((min[0], max[0], min[1], max[1]), sample_step));
 
@@ -1804,6 +1821,7 @@ impl SupportPlanner {
                     object_grid.as_deref(),
                     self.tree_support_branch_distance,
                     base_radius,
+                    self.max_bridge_length_mm,
                     false,
                 );
                 for sample in samples {
@@ -1931,6 +1949,7 @@ impl SupportPlanner {
                 object_grid.as_deref(),
                 self.tree_support_branch_distance,
                 base_radius,
+                self.max_bridge_length_mm,
                 false,
             );
             for (sample_idx, sample) in samples.into_iter().enumerate() {
@@ -3589,12 +3608,13 @@ fn sample_contact_points(
     grid_points: Option<&[(f32, f32)]>,
     point_spread: f32,
     base_radius: f32,
+    max_bridge_length_mm: f32,
     is_sharp_tail: bool,
 ) -> Vec<ContactSample> {
     let mut result: Vec<ContactSample> = Vec::new();
     let mut buckets = std::collections::HashSet::new();
     let cell = mm_to_units(base_radius).max(1) + 1;
-    let sample_step = point_spread.max(DEFAULT_MAX_BRIDGE_LENGTH_MM / 2.0);
+    let sample_step = point_spread.max(max_bridge_length_mm / 2.0);
     let owned_grid = match grid_points {
         Some(_) => None,
         None => expolygons_bbox(polygons).map(|(min_x, max_x, min_y, max_y)| {
@@ -5171,6 +5191,7 @@ mod tests {
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
             support_object_xy_distance: DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
+            max_bridge_length_mm: DEFAULT_MAX_BRIDGE_LENGTH_MM,
         }
     }
 

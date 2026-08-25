@@ -94,10 +94,24 @@ max     = 1.0
 display = "Support Layer Height"
 group   = "Support"
 
+# Canonical OrcaSlicer `s_keys_map_SupportMaterialPattern` values are
+# `default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow`.
+# The reference profile uses `rectilinear` at spacing 2.
 [config.schema.support_base_pattern]
 type    = "string"
 default = "rectilinear"
+values  = ["default", "rectilinear", "rectilinear-grid", "honeycomb", "lightning", "hollow"]
 display = "Support Base Pattern"
+group   = "Support"
+
+[config.schema.support_base_pattern_spacing]
+type    = "float"
+default = 2.5
+# Canonical declares min = 0 with no max; this profile intentionally uses
+# min 0.1 and max 10.
+min     = 0.1
+max     = 10.0
+display = "Support Base Pattern Spacing"
 group   = "Support"
 
 [config.schema.line_width]

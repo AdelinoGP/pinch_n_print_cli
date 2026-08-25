@@ -10,6 +10,7 @@ use slicer_core::algos::overhang_annotation::{
 use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
 use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
+use slicer_ir::resolved_config::ResolvedFloatOrPercent;
 use slicer_ir::slice_ir::{
     ExPolygon, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
     SupportCandidateSource, SupportGeometryKey, SupportType,
@@ -609,13 +610,20 @@ fn resolve_contact_params(
         "support_threshold_overlap",
         external_perimeter_width_mm,
     )
+    .or_else(|| {
+        resolved_float_or_percent_abs(
+            config.support_threshold_overlap,
+            external_perimeter_width_mm,
+        )
+    })
     .unwrap_or(DEFAULT_THRESHOLD_OVERLAP_FRACTION * external_perimeter_width_mm);
     SupportContactParams {
         threshold_angle_deg,
         lower_layer_height_mm: 0.0,
         external_perimeter_width_mm,
         threshold_overlap_mm,
-        xy_expansion_mm: extension_float(config, "support_expansion").unwrap_or(0.0),
+        xy_expansion_mm: extension_float(config, "support_expansion")
+            .unwrap_or(config.support_expansion),
         // New bridge / sharp-tail / enforce / layer-index knobs have no
         // production config source yet; neutral values keep the candidate
         // stream unchanged (all stages OFF).
@@ -635,6 +643,14 @@ const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 
 /// Canonical `support_threshold_overlap` default: `ConfigOptionFloatOrPercent(50., true)`.
 const DEFAULT_THRESHOLD_OVERLAP_FRACTION: f32 = 0.5;
+
+fn resolved_float_or_percent_abs(value: ResolvedFloatOrPercent, base: f32) -> Option<f32> {
+    if value.is_percent {
+        (base > 0.0).then(|| value.value as f32 / 100.0 * base)
+    } else {
+        Some(value.value as f32)
+    }
+}
 
 /// Absolute (non-percent) float read from `extensions`.
 fn extension_float(config: &ResolvedConfig, key: &str) -> Option<f32> {
@@ -766,6 +782,33 @@ mod tests {
             support_enabled: true,
             ..ResolvedConfig::default()
         }
+    }
+
+    #[test]
+    fn resolve_contact_params_uses_typed_threshold_overlap_percent_and_literal() {
+        let percent = ResolvedConfig {
+            support_threshold_overlap: ResolvedFloatOrPercent {
+                value: 50.0,
+                is_percent: true,
+            },
+            ..ResolvedConfig::default()
+        };
+        assert_eq!(
+            resolve_contact_params(&percent, 30.0).threshold_overlap_mm,
+            0.2
+        );
+
+        let literal = ResolvedConfig {
+            support_threshold_overlap: ResolvedFloatOrPercent {
+                value: 0.12,
+                is_percent: false,
+            },
+            ..ResolvedConfig::default()
+        };
+        assert_eq!(
+            resolve_contact_params(&literal, 30.0).threshold_overlap_mm,
+            0.12
+        );
     }
 
     /// Commits a two-layer, single-region slice stack for object `"object"`,

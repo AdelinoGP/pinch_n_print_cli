@@ -27,10 +27,10 @@ use crate::binding::{
     PrepassStageInput,
 };
 use crate::marshal::{
-    convert_infill_output, convert_perimeter_output, convert_support_output_with_plan,
-    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_wall_loop,
-    GcodeCommandCollected, InfillOutputCollected, OriginId, PerimeterOutputCollected,
-    SupportOutputCollected,
+    canonical_effective_layer_height, convert_infill_output, convert_perimeter_output,
+    convert_support_output_with_plan, ir_to_wit_expolygons, ir_to_wit_extrusion_path,
+    ir_to_wit_extrusion_role, ir_to_wit_wall_loop, GcodeCommandCollected, InfillOutputCollected,
+    OriginId, PerimeterOutputCollected, SupportOutputCollected,
 };
 
 fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId> {
@@ -280,13 +280,7 @@ pub fn build_native_prepass_request(
             .map(|layer| slicer_sdk::prepass_types::LayerPlanViewEntry {
                 global_layer_index: layer.index,
                 z: layer.z,
-                effective_layer_height: plan
-                    .object_participation
-                    .values()
-                    .flat_map(|refs| refs.iter())
-                    .find(|reference| reference.global_layer_index == layer.index)
-                    .map(|reference| reference.effective_layer_height)
-                    .unwrap_or(0.2),
+                effective_layer_height: canonical_effective_layer_height(plan, layer.index),
             })
             .collect(),
     });

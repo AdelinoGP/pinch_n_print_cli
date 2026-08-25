@@ -72,17 +72,8 @@ pub fn project_layer_plan_view(
         .global_layers
         .iter()
         .map(|gl| {
-            // Derive effective_layer_height: max across all objects at this global layer.
-            let effective_layer_height = layer_plan_ir
-                .object_participation
-                .values()
-                .filter_map(|refs| {
-                    refs.iter()
-                        .find(|r| r.global_layer_index == gl.index)
-                        .map(|r| r.effective_layer_height)
-                })
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .unwrap_or(0.2); // fallback to default if no participation found
+            let effective_layer_height =
+                crate::marshal::canonical_effective_layer_height(layer_plan_ir, gl.index);
             host::prepass::LayerPlanViewEntry {
                 global_layer_index: gl.index,
                 z: gl.z,

@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-363` … `TASK-368`
 - Backlog source: `docs/specs/support-parity-gap-register.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Motivation
@@ -18,7 +18,7 @@ measured and registered:
    profile value `rectilinear` with spacing 2 cannot be expressed because
    `support_base_pattern_spacing` is not declared anywhere in the tree.
 2. **G-04 — `support_expansion` has a consumer but no host declaration.** Its consumption
-   already exists (`detect_support_contacts` step 5,
+   already exists (`detect_support_contacts` step 6,
    `crates/slicer-core/src/algos/overhang_annotation.rs`; producer plumbing in
    `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`
    `resolve_contact_params`), but the host config surface does not declare the canonical
@@ -60,7 +60,8 @@ Fully owned by this packet:
 - **Tree-planner manifest declarations** (`tree-support-planner.toml`):
   `support_branch_merge_distance_mm` (float 0.8, min 0), `support_max_branches_per_layer`
   (int 1024, min 1, max 10000), `max_bridge_length` (float 10.0, min 0),
-  `support_style` (string `"default"` — declare-only; behavior is 238b).
+  `support_style` (enum with values `default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid`
+  and default `"default"` — declare-only; behavior is 238b).
 - **Traditional-planner manifest declarations**
   (`traditional-support-planner.toml`): `support_base_pattern_spacing` (float, default
   2.5, min 0.1, max 10); `support_base_pattern` documented against the canonical enum set
@@ -100,9 +101,10 @@ Fully owned by this packet:
 - **Pattern-generator algorithms** (non-rectilinear base fills, honeycomb/lightning/hollow
   generators, canonical `SupportMaterial.cpp` pattern stage): the renderer half of the
   absorbed stub belongs to `238c-support-renderer-flow-interfaces`; this packet declares the
-  keys and documents the enum, it does not implement fills. The stub file
-  `docs/spec_packets/stubs/stub-support-patterns-expansion-bottom-z.md` is NOT deleted by
-  this packet (238c consumes its renderer half later).
+  keys and documents the enum, it does not implement fills. (The stub file
+  `docs/spec_packets/stubs/stub-support-patterns-expansion-bottom-z.md` was already
+  deleted from the tree before this packet authored — commit `48d09a36`; nothing here to
+  preserve; 238c consumes its renderer half later.)
 - **Raft keys** (`raft_contact_distance`, `raft_expansion`, `raft_first_layer_expansion`)
   → 240 per plan §3 Ruling 5.
 - **Ironing keys (issue 22)** and **filament keys (issue 38)** → feature-gap track.
@@ -122,8 +124,10 @@ Fully owned by this packet:
 
 ## Cross-Packet Dependencies
 
-- Depends on `236-support-stabilization` — FORWARD DEPENDENCY on a `status: draft` packet:
-  composition is limited to coexisting in the scheduler/runtime graph; this packet must NOT
+- Depends on `236-support-stabilization` — FORWARD DEPENDENCY (draft at this packet's
+  authoring; re-derive 236's `packet.spec.md` frontmatter at activation rather than
+  trusting this label): composition is limited to coexisting in the scheduler/runtime
+  graph; this packet must NOT
   touch `crates/slicer-scheduler/src/validation.rs` (236-owned) nor revert 236's
   orderability guards. Steps touching shared scheduler surfaces (Step 7 bounds ACs) gate
   their green-light composition checks on 236 reaching `implemented` if 236's landed shape
@@ -184,16 +188,16 @@ successful-result grep, in-run non-zero matched-count guard) and matches the cor
 | When | Command | Notes |
 | --- | --- | --- |
 | Manifest shape (AC-1) | `rg -q '^\[config\.schema\.support_branch_merge_distance_mm\]' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q '^\[config\.schema\.support_max_branches_per_layer\]' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q '^\[config\.schema\.max_bridge_length\]' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q '^\[config\.schema\.support_style\]' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q 'tree_strong' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q 'tree_hybrid' modules/core-modules/tree-support-planner/tree-support-planner.toml && rg -q 'support_branch_merge_distance_mm' docs/15_config_keys_reference.md && rg -q 'max_bridge_length' docs/15_config_keys_reference.md && echo PASS \|\| echo FAIL` | four tables asserted individually |
-| Tree planner guest (AC-2) | `mkdir -p target && cargo test -p slicer-runtime --test executor max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | guest dispatch through compiled module |
-| Pattern spacing (AC-6) | `rg -q '^\[config\.schema\.support_base_pattern_spacing\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'rectilinear-grid' docs/15_config_keys_reference.md && echo PASS \|\| echo FAIL` + the AC-6 CLI schema-view probe from packet.spec.md | declaration surfaces through `module config-schema` |
+| Tree planner guest (AC-2) | `mkdir -p target && cargo test -p slicer-runtime --test executor support_config_surface_tdd::max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | guest dispatch through compiled module |
+| Pattern spacing (AC-6) | `rg -q '^\[config\.schema\.support_base_pattern_spacing\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'rectilinear-grid' docs/15_config_keys_reference.md && echo PASS \|\| echo FAIL` + the CLI schema-view probe (implementation-plan.md Step 3) | declaration surfaces through `module config-schema` |
 | Host keys (AC-3) | `rg -q 'support_bottom_z_distance' crates/slicer-ir/src/resolved_config.rs && rg -q 'support_threshold_overlap' docs/config/host-keys.toml && rg -q 'support_object_first_layer_gap' docs/15_config_keys_reference.md && rg -q 'support_remove_small_overhang' docs/15_config_keys_reference.md && echo PASS \|\| echo FAIL` | typed fields + doc routing |
 | Geometry distances (AC-4) | `mkdir -p target && cargo test -p slicer-core --features host-algos --test support_geometry_config_surface_tdd support_geometry_ir_carries_resolved_distances -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | E6/T5: `--features host-algos` mandatory; new gated target |
-| Serializer width (AC-7) | `mkdir -p target && cargo test -p slicer-gcode --lib support_line_width_header_sources_resolved_value -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | in-file `#[cfg(test)]` module via `--lib` |
-| Both-legs contract (AC-5) | `mkdir -p target && cargo test -p slicer-wasm-host --test contract native_and_wasm_layer_views_share_canonical_layer_height -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | T9 leg-skew guard; new file registered in `contract/main.rs` |
-| Bounds negative 1 (AC-N1) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_max_bridge_length_below_min -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | `ConfigResolutionError::OutOfRange`, `config_bounds_enforcement_tdd.rs` precedent |
-| Bounds negative 2 (AC-N2) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_support_max_branches_per_layer_zero -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | min-1 floor matches planner clamp |
-| Bounds negative 3 (AC-N3) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_negative_support_branch_merge_distance -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | declared min 0 |
-| Regression net (AC-N4) | `mkdir -p target && cargo test -p slicer-runtime --test executor -- --no-fail-fast 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | historical injectors survive |
+| Serializer width (AC-7) | `mkdir -p target && cargo test -p slicer-gcode --lib serialize::tests::support_line_width_header_sources_resolved_value -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | in-file `#[cfg(test)]` module via `--lib` |
+| Both-legs contract (AC-5) | `mkdir -p target && cargo test -p slicer-wasm-host --test contract layer_height_transport_tdd::native_and_wasm_layer_views_share_canonical_layer_height -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | T9 leg-skew guard; new file registered in `contract/main.rs` |
+| Bounds negative 1 (AC-N1) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_max_bridge_length_below_min -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | `ConfigResolutionError::OutOfRange`, `config_bounds_enforcement_tdd.rs` precedent |
+| Bounds negative 2 (AC-N2) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_support_max_branches_per_layer_zero -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | min-1 floor matches planner clamp |
+| Bounds negative 3 (AC-N3) | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_negative_support_branch_merge_distance -- --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | declared min 0 |
+| Regression net (AC-N4) | `cargo test -p slicer-runtime --test executor --no-fail-fast 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` | historical injectors survive |
 | Doc freshness (AC-N5) | `cargo xtask gen-config-docs --check && echo PASS \|\| echo FAIL` | T8 same-commit rule |
 | Type gate | `cargo check --workspace --all-targets` | struct-literal blast radius |
 | Lint gate | `cargo clippy --workspace --all-targets -- -D warnings` | required before commit |

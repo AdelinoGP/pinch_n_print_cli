@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 238a-support-pattern-config-keys
 task_ids:
   - TASK-363
@@ -30,10 +30,15 @@ range, and transport, and the two divergent `effective_layer_height` marshal rul
 to one. Pattern-generator algorithms (non-rectilinear fills), planner geometric fidelity for
 bottom gaps, raft keys, and renderer density consumption are excluded (see
 `requirements.md` §Out of Scope).
+The tree-support-planner manifest also declares `nozzle_diameter`, mirroring the
+arachne/classic-perimeters manifests, so the line-width reader has a `get_abs_value`
+base during its migration.
 
 ## Prerequisites and Blockers
 
-- Depends on: `236-support-stabilization` — FORWARD DEPENDENCY on a `status: draft` packet.
+- Depends on: `236-support-stabilization` — FORWARD DEPENDENCY (draft at this packet's
+  authoring; re-derive 236's `packet.spec.md` frontmatter status at activation rather than
+  trusting this sentence).
   This packet does not touch any file in 236's change surface; composition is limited to
   coexisting in the same scheduler/runtime graph. If 236's landed shape changes manifest or
   `ResolvedConfig` conventions this packet relies on, Steps 2–5 reconcile before closing
@@ -64,7 +69,7 @@ State ACs only here; `requirements.md` references their IDs.
   from the declared manifest default 10.0 (the in-code
   `DEFAULT_MAX_BRIDGE_LENGTH_MM` fallback is retained only as a defensive equal), and a
   config-supplied `max_bridge_length` overrides it.
-  | `mkdir -p target && cargo test -p slicer-runtime --test executor max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-runtime --test executor support_config_surface_tdd::max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-3. Given** the host config surface in `crates/slicer-ir/src/resolved_config.rs`,
   **when** `ResolvedConfig` is constructed from defaults, **then** typed fields exist for
   `support_expansion` (f32, default 0.0), `support_top_z_distance` (f32, default 0.2),
@@ -96,7 +101,7 @@ State ACs only here; `requirements.md` references their IDs.
   is a NEW file `crates/slicer-wasm-host/tests/contract/layer_height_transport_tdd.rs`,
   registered via `mod layer_height_transport_tdd;` in
   `crates/slicer-wasm-host/tests/contract/main.rs`.
-  | `mkdir -p target && cargo test -p slicer-wasm-host --test contract native_and_wasm_layer_views_share_canonical_layer_height -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-wasm-host --test contract layer_height_transport_tdd::native_and_wasm_layer_views_share_canonical_layer_height -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-6. Given** the traditional planner manifest
   (`modules/core-modules/traditional-support-planner/traditional-support-planner.toml`),
   **when** inspected, **then** `support_base_pattern_spacing` is declared (float, default
@@ -111,7 +116,7 @@ State ACs only here; `requirements.md` references their IDs.
   hardcoded 0.35 in `DefaultGCodeSerializer`, `crates/slicer-gcode/src/serialize.rs`).
   The test extends the existing in-file `#[cfg(test)]` module of
   `crates/slicer-gcode/src/serialize.rs`, reached through the crate's library test target.
-  | `mkdir -p target && cargo test -p slicer-gcode --lib support_line_width_header_sources_resolved_value -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-gcode --lib serialize::tests::support_line_width_header_sources_resolved_value -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 
 ## Negative Test Cases
 
@@ -120,22 +125,22 @@ State ACs only here; `requirements.md` references their IDs.
   fails with `ConfigResolutionError::OutOfRange` naming `max_bridge_length` (same
   rejection path as `out_of_range` precedent in
   `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`).
-  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_max_bridge_length_below_min -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_max_bridge_length_below_min -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-N2. Given** a config supplying `support_max_branches_per_layer = 0`, **when** config
   resolution runs, **then** it is rejected `OutOfRange` (declared min 1 matches the planner's
   `clamp(1, 10_000)` floor — no silent clamp of out-of-band input).
-  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_support_max_branches_per_layer_zero -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_support_max_branches_per_layer_zero -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-N3. Given** a config supplying `support_branch_merge_distance_mm = -0.5`, **when**
   config resolution runs, **then** it is rejected `OutOfRange` (negative merge distances are
   meaningless; declared min 0).
-  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_negative_support_branch_merge_distance -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_negative_support_branch_merge_distance -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-N4. Given** the previously-undeclared keys
   (`support_branch_merge_distance_mm`, `support_max_branches_per_layer`), **when** the
   existing guest-config tests that inject them re-run after declaration
   (`prepass_support_geometry_layer_plan_tdd.rs`,
   `support_geometry_config_normalization_tdd.rs` — values 0.8 / 1024 are in-bounds),
   **then** they still pass (declaration must not break in-bounds historical injectors).
-  | `mkdir -p target && cargo test -p slicer-runtime --test executor -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  | `cargo test -p slicer-runtime --test executor --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-N5. Given** the packet closed, **when** `docs/15_config_keys_reference.md`'s
   generated tables are checked, **then** `cargo xtask gen-config-docs --check` exits 0
   (T8 stale-doc regression guard: a past deletion left the doc stale).
@@ -198,7 +203,7 @@ never a test claim):
 Evidence file: `tmp/238a-human-validation.md` recording commands run, artifact paths,
 layer indices inspected, and block-count deltas.
 
-Sign-off: `YYYY-MM-DD — <verdict>` (pending).
+Sign-off: `2026-08-25 — approved` (human validation gate satisfied; packet closed to `status: implemented`).
 
 ## Doc Impact Statement (Required)
 
@@ -206,7 +211,7 @@ Sign-off: `YYYY-MM-DD — <verdict>` (pending).
   `rg -q 'support_base_pattern_spacing' docs/15_config_keys_reference.md`
 - `docs/02_ir_schemas.md` `SupportGeometryIR` paragraph (`support_layer_height_mm` now
   carries the resolved region value instead of a literal 0.0) -
-  `rg -q 'support_layer_height_mm' docs/02_ir_schemas.md`
+  `rg -q 'support_layer_height_mm' docs/02_ir_schemas.md && rg -qi 'resolved' docs/02_ir_schemas.md`
 - `docs/DEVIATION_LOG.md` new row recording the divergence-5.4 decision (key-based
   `support_line_width` mapping; percent/auto resolve against `nozzle_diameter`) -
   `rg -q 'support_line_width' docs/DEVIATION_LOG.md`

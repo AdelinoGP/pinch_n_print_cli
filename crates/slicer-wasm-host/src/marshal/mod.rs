@@ -36,6 +36,19 @@ pub use out::{
     AUTHORED_COLORING_CLAIM,
 };
 
+/// Return the effective height for a global layer across all participating objects.
+pub fn canonical_effective_layer_height(plan: &slicer_ir::LayerPlanIR, global_index: u32) -> f32 {
+    plan.object_participation
+        .values()
+        .filter_map(|refs| {
+            refs.iter()
+                .find(|reference| reference.global_layer_index == global_index)
+                .map(|reference| reference.effective_layer_height)
+        })
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or(0.2)
+}
+
 /// Convert a native SDK support builder through the same host-side join used
 /// for renderer output, preserving origin-based plan identity.
 #[cfg(not(target_arch = "wasm32"))]

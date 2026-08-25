@@ -41,7 +41,7 @@
   - `crates/slicer-runtime/tests/executor/main.rs` - lines 80–108 only (the `mod`
     registration block)
   - `modules/core-modules/tree-support-planner/src/lib.rs` - lines 95–160 (constants) and
-    3520–3560 (`sample_contact_points`) only
+    ~3570–3610 (`sample_contact_points`, verified ~:3587) only
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/tests/executor/support_config_surface_tdd.rs` (new file)
   - `crates/slicer-runtime/tests/executor/main.rs` (add
@@ -59,7 +59,7 @@
 - OrcaSlicer refs:
   - none this step (no canonical read needed for red plumbing tests)
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test executor max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 | tee target/test-output.log && grep -cE "^test .+ FAILED|^error\[E" target/test-output.log` -
+  - `mkdir -p target && cargo test -p slicer-runtime --test executor support_config_surface_tdd::max_bridge_length_config_reaches_tree_planner -- --exact 2>&1 | tee target/test-output.log && grep -cE "^test .+ FAILED|^error\[E" target/test-output.log` -
     expect ≥1 (red state proven)
 - Exit condition: log shows exactly the authored test failing; no collateral failures;
   `cargo check -p slicer-runtime --all-targets` clean.
@@ -79,9 +79,15 @@
   `support_style` is declare-only (behavior is 238b); its comment cites canonical
   `SupportParameters.hpp`'s style normalization and `TreeSupport.cpp`'s `is_strong`
   (`is_tree && style == smsTreeStrong`) as the behavior surface 238b will key on.
+  Additionally wire the ONE missing consumer: add a `config.get("max_bridge_length")`
+  read beside `DEFAULT_MAX_BRIDGE_LENGTH_MM` in `src/lib.rs`. Manifest declaration alone
+  cannot satisfy AC-2's override semantics — no read site exists today (verified at
+  preflight, 2026-08-24): without the added read, a config-supplied value would still be
+  silently ignored.
 - Precondition: Step 1 landed (red tests exist); blast-radius dispatch completed.
 - Postcondition: AC-1 greps pass (all four tables individually, `tree_strong`/`tree_hybrid`
-  present in the declared value set); AC-2 command PASSes; historical injectors (AC-N4
+  present in the declared value set); AC-2 command PASSes with the reader wired
+  (`config.get("max_bridge_length")` present in `src/lib.rs`); historical injectors (AC-N4
   suite) still green; gen-config-docs `--check` exits 0.
 - Blast-radius discipline (mandatory — manifest shape changes):
   - Dispatch a `LOCATIONS` worker BEFORE editing for every test/fixture asserting this
@@ -99,16 +105,20 @@
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/tree-support-planner/tree-support-planner.toml` - full (188
     lines)
+  - `modules/core-modules/tree-support-planner/src/lib.rs` - lines 95–160 only
+    (constants region; the `DEFAULT_MAX_BRIDGE_LENGTH_MM` edit site ~:103)
   - `docs/15_config_keys_reference.md` - generated; regenerate, never hand-edit
 - Files allowed to edit (at most 3):
   - `modules/core-modules/tree-support-planner/tree-support-planner.toml`
   - `docs/15_config_keys_reference.md` (regenerated output only)
-  - `crates/slicer-core/Cargo.toml` (register the new `support_geometry_config_surface_tdd`
-    test target with `required-features = ["host-algos"]` if Step 1's red-test placement
-    deferred it here; otherwise omit)
+  - `modules/core-modules/tree-support-planner/src/lib.rs` (single-site
+    `max_bridge_length` read; see Objective)
 - Files explicitly out of bounds:
-  - `modules/core-modules/tree-support-planner/src/lib.rs` reader bodies (238b owns
-    behavior; the existing readers already accept these keys)
+  - `modules/core-modules/tree-support-planner/src/lib.rs` reader BODIES beyond the one
+    `max_bridge_length` read site above (planner behavior is 238b). The existing readers
+    for `support_line_width`, `support_max_branches_per_layer`, and `support_style`
+    already accept those keys; `max_bridge_length` uniquely has NO read site today —
+    that one read is in scope here.
 - Expected sub-agent dispatches:
   - Question: manifest-shape assertions inventory (see blast-radius discipline); return:
     `LOCATIONS` ≤20.
@@ -122,6 +132,8 @@
 - Verification:
   - AC-1 grep command (packet.spec.md) prints PASS
   - AC-2 command prints PASS; AC-N4 command prints PASS
+  - `rg -q 'config\.get\("max_bridge_length"\)' modules/core-modules/tree-support-planner/src/lib.rs && echo PASS || echo FAIL` -
+    reader wired (AC-2 override path real)
   - `mkdir -p target && cargo xtask build-guests --check; echo "exit=$?"` — record exit
     code; if 1, rebuild without `--check` before proceeding (T4: manifest edits feed the
     fingerprint closure)
@@ -142,7 +154,7 @@
   `traditional-support-planner` shape assertions before editing.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` -
-    full (<110 lines)
+    full (<120 lines)
   - `modules/core-modules/traditional-support-planner/src/lib.rs` - lines 30–130 only
     (`DEFAULT_BASE_PATTERN`, `from_config` reads)
 - Files allowed to edit (at most 3):
@@ -165,7 +177,7 @@
     `s_keys_map_SupportMaterialPattern`; delegate
 - Verification:
   - AC-6 command prints PASS
-  - `mkdir -p target && cargo run --package pnp_cli -- module config-schema --module-dir modules/core-modules 2>/dev/null | rg -q 'support_base_pattern_spacing' && echo PASS || echo FAIL` -
+  - `mkdir -p target && cargo run --package pnp-cli -- module config-schema --module-dir modules/core-modules 2>/dev/null | rg -q 'support_base_pattern_spacing' && echo PASS || echo FAIL` -
     proves the declared key surfaces through the CLI schema view
 - Exit condition: PASS lines; `cargo xtask gen-config-docs --check` exit 0.
 
@@ -226,8 +238,8 @@
 - Verification:
   - AC-3 command prints PASS
   - `mkdir -p target && cargo check --workspace --all-targets 2>&1 | tail -5` — clean
-  - `mkdir -p target && cargo test -p slicer-core --features host-algos --no-fail-fast --lib resolved_config 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` -
-    slicer-ir has no host-algos gate but slicer-core consumers may; keep E6 form
+  - `mkdir -p target && cargo test -p slicer-ir --lib resolved_config 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS` -
+    resolver tests live in the owning crate slicer-ir; the E6 host-algos form applies only to slicer-core targets
   - `mkdir -p target && cargo xtask build-guests --check; echo "exit=$?"` — slicer-ir edits
     stale ALL guests; rebuild without `--check` before any later test run (T4)
 - Exit condition: AC-3 PASS; workspace check clean; guests rebuilt fresh; divergence-5.4
@@ -421,8 +433,8 @@
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` - lines
     1–120 (precedent helpers)
-  - `crates/slicer-scheduler/src/config_resolution.rs` - lines 140–215 only
-    (`from_declarations`, `check_value`)
+  - `crates/slicer-scheduler/src/config_resolution.rs` - lines 140–270 only
+    (`from_declarations` ~:150, `check_value` ~:265)
 - Files allowed to edit (at most 3):
   - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`
   - `crates/slicer-scheduler/tests/integration/main.rs` (module registration if the bucket
@@ -450,7 +462,9 @@
   dispatch (never a full backlog read); file the divergence-5.4 DEVIATION_LOG row (key-based
   `support_line_width` mapping; auto = nozzle_diameter; no flow model); produce the human
   gate artifacts of packet.spec.md §Human Validation Gate (three slices + visual-debug
-  bundle + evidence file) and request sign-off; final gates: check/clippy `--all-targets`,
+  bundle + evidence file recording removed-hardcode provenance — the deleted
+  `DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM` literal was 5.0 vs canonical default 0.2 — alongside
+  block-count deltas) and request sign-off; final gates: check/clippy `--all-targets`,
   `gen-config-docs --check`, `build-guests --check`.
 - Precondition: Steps 1–7 complete and green (5a/5b/6 included).
 - Postcondition: Doc Impact Statement greps all pass; sign-off line pending human verdict;

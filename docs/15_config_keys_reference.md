@@ -191,7 +191,7 @@ is the authoritative catalog of their defaults and ranges.
 | `slow_down_min_speed` | float | `10.0` | >= 0.0 | `part-cooling` |
 | `path_optimization_emit_layer_markers` | bool | `true` | — | `path-optimization-default` |
 | `retract_length` | float | `0.8` | — | `path-optimization-default` |
-| `retract_mode` | enum | `"gcode"` | — | `path-optimization-default` |
+| `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
@@ -203,8 +203,8 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0` | [0.0, 2.0] | `rectilinear-infill` |
 | `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"aligned"` | — | `seam-placer` |
-| `seam_mode` | enum | `"aligned"` | — | `seam-planner-default` |
+| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
+| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
@@ -218,7 +218,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
 | `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
 | `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
-| `ironing_pattern` | enum | `"rectilinear"` | — | `top-surface-ironing` |
+| `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
 | `enable_support` | bool | `true` | — | `traditional-support` |
@@ -231,7 +231,8 @@ is the authoritative catalog of their defaults and ranges.
 | `support_style` | string | `"default"` | — | `traditional-support` |
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
-| `support_base_pattern` | string | `"rectilinear"` | — | `traditional-support-planner` |
+| `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
+| `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `traditional-support-planner` |
@@ -250,14 +251,19 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `true` | — | `tree-support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
+| `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |
+| `nozzle_diameter` | float | `0.4` | >= 0.0 | `tree-support-planner` |
 | `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `tree-support-planner` |
+| `support_branch_merge_distance_mm` | float | `0.8` | >= 0.0 | `tree-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `tree-support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `tree-support-planner` |
-| `support_line_width` | float | `0.35` | [0.0, 2.0] | `tree-support-planner` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `tree-support-planner` |
+| `support_max_branches_per_layer` | int | `1024` | [1.0, 10000.0] | `tree-support-planner` |
 | `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `tree-support-planner` |
 | `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
+| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | `tree-support-planner` |
 | `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `tree-support-planner` |
 | `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `tree-support-planner` |
 | `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `tree-support-planner` |
@@ -339,6 +345,8 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
+| `bridge_no_support` | bool | `false` | — | `resolved_config.rs::ResolvedConfig` |
+| `enforce_support_layers` | int | `0` | [0, 5000] | `resolved_config.rs::ResolvedConfig` |
 | `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | `resolved_config.rs::ResolvedConfig` |
@@ -346,8 +354,17 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `min_segment_length` | float | `0.05` | >= 0 (short-segment dropper) | `resolved_config.rs::ResolvedConfig` |
 | `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | `resolved_config.rs::ResolvedConfig` |
 | `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
+| `support_bottom_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
+| `support_critical_regions_only` | bool | `false` | — | `resolved_config.rs::ResolvedConfig` |
+| `support_expansion` | float | `0.0` | >= 0 | `resolved_config.rs::ResolvedConfig` |
+| `support_line_width` | float | `0.0` | >= 0 (float_or_percent; 0 = auto nozzle diameter) | `resolved_config.rs::ResolvedConfig` |
+| `support_object_first_layer_gap` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
+| `support_remove_small_overhang` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | `resolved_config.rs::ResolvedConfig` |
+| `support_sharp_tails` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_threshold_angle` | float | `30.0` | [0, 90] (overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves.) | `resolved_config.rs::ResolvedConfig` |
+| `support_threshold_overlap` | float | `50.0` | >= 0 (default is 50%) | `resolved_config.rs::ResolvedConfig` |
+| `support_top_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
 | `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | `resolved_config.rs::ResolvedConfig` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |

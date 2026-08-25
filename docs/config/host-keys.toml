@@ -55,6 +55,17 @@ infill_resolution       = { default = 0.04,   range = ">= 0", note = "D-P tolera
 support_resolution      = { default = 0.0375, range = ">= 0", note = "D-P tolerance for support / interface" }
 min_segment_length      = { default = 0.05,   range = ">= 0", note = "short-segment dropper" }
 support_threshold_angle = { default = 30.0,   range = "[0, 90]", note = "overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves." }
+support_expansion       = { default = 0.0, range = ">= 0" }
+support_top_z_distance  = { default = 0.2, range = ">= 0" }
+support_bottom_z_distance = { default = 0.2, range = ">= 0" }
+support_threshold_overlap = { default = 50.0, range = ">= 0", note = "default is 50%" }
+support_line_width      = { default = 0.0, range = ">= 0", note = "float_or_percent; 0 = auto nozzle diameter" }
+bridge_no_support       = { default = false }
+enforce_support_layers  = { default = 0, range = "[0, 5000]" }
+support_critical_regions_only = { default = false }
+support_remove_small_overhang = { default = true }
+support_object_first_layer_gap = { default = 0.2, range = ">= 0" }
+support_sharp_tails     = { default = true }
 gcode_xy_decimals       = { default = 3,      range = "[1, 6]", note = "X / Y / Z token formatting" }
 slice_closing_radius    = { default = 0.049,  range = ">= 0", note = "per-layer Clipper2 close" }
 flat_bridge_closing_join = { default = "miter", note = "flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)" }

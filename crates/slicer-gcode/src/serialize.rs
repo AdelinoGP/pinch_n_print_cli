@@ -82,7 +82,7 @@ pub struct DefaultGCodeSerializer {
     sparse_infill_line_width: f32,
     /// Extrusion width for top surface in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
     top_surface_line_width: f32,
-    /// Extrusion width for support material in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.35).
+    /// Extrusion width for support material in mm (resolved from config; defaults to 0.4).
     support_line_width: f32,
     /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
     gcode_xy_decimals: u32,
@@ -111,7 +111,7 @@ impl DefaultGCodeSerializer {
             inner_wall_line_width: 0.4,
             sparse_infill_line_width: 0.45,
             top_surface_line_width: 0.42,
-            support_line_width: 0.35,
+            support_line_width: 0.4,
             gcode_xy_decimals: 3,
         }
     }
@@ -119,6 +119,12 @@ impl DefaultGCodeSerializer {
     /// Sets the G-code dialect used for flavor-specific commands.
     pub fn with_flavor(mut self, flavor: GcodeFlavor) -> Self {
         self.flavor = flavor;
+        self
+    }
+
+    /// Sets the resolved support extrusion width in millimeters.
+    pub fn with_support_line_width(mut self, width_mm: f32) -> Self {
+        self.support_line_width = width_mm;
         self
     }
 
@@ -387,6 +393,14 @@ fn serialize_config_block(
         .unwrap_or_else(|| flavor.config_str());
     emit_config_kv(&mut out, &mut emitted, "gcode_flavor", flavor_value);
 
+    // Resolved configurations supply these values through raw_config; retain
+    // canonical defaults for serializers constructed without resolved config.
+    for (key, value) in SUPPORT_CONFIG_DEFAULTS {
+        if !raw_config.contains_key(*key) {
+            emit_config_kv(&mut out, &mut emitted, key, value);
+        }
+    }
+
     // Sort keys for deterministic output.
     let mut keys: Vec<&String> = raw_config.keys().collect();
     keys.sort();
@@ -515,9 +529,6 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("ironing_pattern", "rectilinear"),
     ("support_type", "normal(auto)"),
     ("support_style", "default"),
-    ("support_expansion", "0"),
-    ("support_top_z_distance", "0.2"),
-    ("support_bottom_z_distance", "0.2"),
     ("tree_support_branch_angle", "40"),
     ("tree_support_branch_diameter", "5"),
     ("tree_support_branch_diameter_angle", "5"),
@@ -543,6 +554,12 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("infill_first", "0"),
     ("solid_infill_filament", "0"),
     ("top_fill_pattern", "monotonic"),
+];
+
+const SUPPORT_CONFIG_DEFAULTS: &[(&str, &str)] = &[
+    ("support_expansion", "0"),
+    ("support_top_z_distance", "0.2"),
+    ("support_bottom_z_distance", "0.2"),
 ];
 
 /// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
@@ -867,6 +884,16 @@ mod tests {
     fn default_gcode_serializer_can_be_created() {
         let _serializer = DefaultGCodeSerializer::new();
         let _default_serializer = DefaultGCodeSerializer::default();
+    }
+
+    #[test]
+    fn support_line_width_header_sources_resolved_value() {
+        let output = DefaultGCodeSerializer::new()
+            .with_support_line_width(0.42)
+            .serialize_gcode(&GCodeIR::default())
+            .expect("default GCodeIR must serialize");
+
+        assert!(output.contains("; support_line_width = 0.42"));
     }
 
     #[test]

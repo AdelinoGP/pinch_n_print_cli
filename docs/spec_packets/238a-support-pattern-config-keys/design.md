@@ -6,8 +6,13 @@
   - `modules/core-modules/tree-support-planner/tree-support-planner.toml` — the four new
     `[config.schema]` declarations (G-16/div 3.1); sibling reader
     `SupportPlanner::from_config` (`modules/core-modules/tree-support-planner/src/lib.rs`,
-    `config.get("support_line_width")` / `"support_max_branches_per_layer"` /
-    `"max_bridge_length"` consumption sites) migrates to percent-aware resolution.
+    `config.get("support_line_width")` / `"support_max_branches_per_layer"` consumption
+    sites) migrates to percent-aware resolution. `max_bridge_length` has **no existing
+    read site**: it is consumed only via the undeclared fallback constant
+    `DEFAULT_MAX_BRIDGE_LENGTH_MM` (= 10.0, constants region ~:103), so Step 2 adds a
+    `config.get("max_bridge_length")` read (post-declaration the filtered view supplies
+    manifest default / user value — T8 mechanism) and demotes the constant to a defensive
+    equal fallback.
   - `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` —
     `support_base_pattern_spacing` declaration + `support_base_pattern` enum documentation.
   - `crates/slicer-ir/src/resolved_config.rs` — `declare_resolved_config!` entries for the
@@ -32,9 +37,10 @@
     AC-N4 proves declaration does not break them.
   - `modules/core-modules/tree-support-planner/tests/diagnostics_tdd.rs` — injects
     `support_max_branches_per_layer = 1024` module-side; stays green (value in-bounds).
-  - `crates/slicer-core/tests/support_geometry_ir_shape_tdd.rs` — constructs
-    `SupportGeometryIR`; struct-literal blast-radius candidate for any IR field change
-    (none planned — field exists).
+  - `crates/slicer-core/tests/algo_support_geometry_tdd.rs` and
+    `crates/slicer-runtime/tests/executor/support_geometry_slice_consumption_tdd.rs` —
+    construct `SupportGeometryIR`; struct-literal blast-radius candidates for any IR field
+    change (none planned — field exists).
 - OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not
   repeat delegation rules.
 
@@ -82,7 +88,9 @@
 - Exact functions, traits, manifests, tests, fixtures:
   - `tree-support-planner.toml` `[config.schema]`: add
     `support_branch_merge_distance_mm`, `support_max_branches_per_layer`,
-    `max_bridge_length`, `support_style`.
+    `max_bridge_length`, `support_style`; plus the one-line consumer wiring in `src/lib.rs`
+    adding a `config.get("max_bridge_length")` read beside
+    `DEFAULT_MAX_BRIDGE_LENGTH_MM` (constant retained as defensive equal fallback only).
   - `traditional-support-planner.toml` `[config.schema]`: add
     `support_base_pattern_spacing`; document `support_base_pattern`'s value set.
   - `resolved_config.rs` `declare_resolved_config!`: add the eleven host keys (§In Scope);
@@ -117,6 +125,10 @@ Target at most 3 primary files per step; the full packet spans:
 - `modules/core-modules/tree-support-planner/tree-support-planner.toml` - role: four key
   declarations; expected change: +4 `[config.schema]` tables (support_style as an enum
   carrying the full canonical value set incl. `tree_strong`/`tree_hybrid`).
+- `modules/core-modules/tree-support-planner/src/lib.rs` - role: `max_bridge_length`
+  consumer wiring; expected change: ONE ranged edit adding the
+  `config.get("max_bridge_length")` read beside `DEFAULT_MAX_BRIDGE_LENGTH_MM`
+  (constants region ~:103); no other reader bodies touched (behavior is 238b).
 - `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` -
   role: spacing declaration + pattern enum doc; expected change: +1 table, comment block.
 - `crates/slicer-ir/src/resolved_config.rs` - role: eleven typed host keys; expected change:
@@ -154,9 +166,11 @@ Justified extras: each is a thin mechanical surface owned by exactly one step.
   walk-actual-Z prohibition preserved verbatim.
 - `docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md` -
   divergence 5.4 row only.
-- `modules/core-modules/tree-support-planner/src/lib.rs` - cited symbol ranges only
-  (`from_config` ~1395–1445, constants ~79–160, `sample_contact_points` ~3533–3560);
-  >5000 lines, never full-load.
+- `modules/core-modules/tree-support-planner/src/lib.rs` - cited symbols only
+  (`from_config`, the constants region around `DEFAULT_MAX_BRIDGE_LENGTH_MM`,
+  `sample_contact_points`); >5000 lines, never full-load; locate by symbol before ranging
+  (pins re-verified 2026-08-24: `from_config` ~:1387, bridge-length constant ~:103,
+  `sample_contact_points` ~:3587).
 - `docs/ORCA_CONFIG_REFERENCE.md` - ranged row lookups only.
 
 ## Out-of-Bounds Files
@@ -165,8 +179,9 @@ Justified extras: each is a thin mechanical surface owned by exactly one step.
 - `target/`, `Cargo.lock`, generated code, vendored dependencies, guest build artifacts -
   never load.
 - Other packet directories under `docs/spec_packets/` - never modify (Packet Safety); the
-  absorbed stub `stubs/stub-support-patterns-expansion-bottom-z.md` is NOT deleted (238c
-  owns its renderer half).
+  absorbed stub `stubs/stub-support-patterns-expansion-bottom-z.md` was already deleted
+  from the tree at authoring time (commit `48d09a36`) — nothing to preserve; 238c owns its
+  renderer half going forward.
 - `docs/07_implementation_status.md`, `docs/DEVIATION_LOG.md` content beyond this packet's
   own registration/deviation rows.
 - `crates/slicer-scheduler/src/validation.rs` write-conflict logic - 236-owned; read-only.
@@ -226,6 +241,9 @@ Justified extras: each is a thin mechanical surface owned by exactly one step.
   exercises exactly this).
 - The G-09 native-leg value change alters multi-object-layer inputs to native-dispatched
   guests; single-object prints are unaffected (first match == max there).
+- Sequencing hazard: packet 237's implementation touches `marshal/in_.rs` / `native.rs`
+  (Step 6's surface) while in flight — land 237 before starting Step 6, or rebase the
+  marshal edits onto its landed shape.
 - `gen-config-docs --check` will fail CI if any step forgets the regen — that is the T8
   gate working, not a defect.
 
@@ -248,5 +266,5 @@ Justified extras: each is a thin mechanical surface owned by exactly one step.
   mirror field. Recommendation: no — keep the raw float_or_percent and resolve at the
   consumer, matching 184/185 precedent. Recorded decision suffices.
 - Implementer-resolvable: exact `min` for `support_base_pattern_spacing` (proposed 0.1)
-  vs canonical's absence of a range — pick the value that keeps the reference profile's 2
-  legal and record it in the step notes.
+  vs canonical's declared `min = 0` with no max (`init_fff_params`) — pick the value that
+  keeps the reference profile's spacing 2 legal and record it in the step notes.

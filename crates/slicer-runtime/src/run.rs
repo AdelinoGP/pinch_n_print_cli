@@ -9,7 +9,18 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
+use slicer_ir::resolved_config::ResolvedFloatOrPercent;
 use slicer_ir::{ConfigValue, MeshIR};
+
+fn resolve_support_line_width_mm(value: ResolvedFloatOrPercent, nozzle_diameter_mm: f32) -> f32 {
+    if value.is_percent {
+        value.value as f32 / 100.0 * nozzle_diameter_mm
+    } else if value.value == 0.0 {
+        nozzle_diameter_mm
+    } else {
+        value.value as f32
+    }
+}
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
@@ -890,6 +901,14 @@ pub fn run_slice_with_collector(
         Some(ConfigValue::Bool(b)) => *b,
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
+    let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
+        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Int(value)) => *value as f32,
+        _ => 0.4,
+    };
+    let support_line_width = default_resolved_config.support_line_width;
+    let support_line_width_mm =
+        resolve_support_line_width_mm(support_line_width, nozzle_diameter_mm);
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
     // needs before `default_resolved_config` / `per_tool_configs_map` are
@@ -925,7 +944,9 @@ pub fn run_slice_with_collector(
                 .with_tool_configs(per_tool_configs_map.clone()),
             ),
             serializer: Box::new(
-                DefaultGCodeSerializer::with_extrusion_mode(relative).with_flavor(flavor),
+                DefaultGCodeSerializer::with_extrusion_mode(relative)
+                    .with_flavor(flavor)
+                    .with_support_line_width(support_line_width_mm),
             ),
         },
         support_tools: parse_support_tool_selection(&config_source),
@@ -1239,11 +1260,48 @@ pub fn prepare_prepass_context(
 
 #[cfg(test)]
 mod tests {
-    use super::{emit_host_support_diagnostics, parse_support_tool_selection};
+    use super::{
+        emit_host_support_diagnostics, parse_support_tool_selection, resolve_support_line_width_mm,
+    };
+    use slicer_ir::resolved_config::ResolvedFloatOrPercent;
     use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
     use slicer_scheduler::validation::ModuleAccessAudit;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn support_line_width_resolution_handles_mm_percent_and_auto() {
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.42,
+                    is_percent: false
+                },
+                0.4,
+            ),
+            0.42
+        );
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 50.0,
+                    is_percent: true
+                },
+                0.4,
+            ),
+            0.2
+        );
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.0,
+                    is_percent: false
+                },
+                0.4,
+            ),
+            0.4
+        );
+    }
 
     #[test]
     fn parse_support_tool_selection_rebases_valid_orca_filament_indices() {

@@ -906,6 +906,9 @@ region)` outline polygons independent of organic branch planning.
 `crates/slicer-ir/src/slice_ir.rs`. The IR carries support layer-height
 settings and coarse outline polygons keyed by support-layer index, object ID,
 and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
+The `support_top_z_distance_mm` and `support_layer_height_mm` fields carry
+resolved region/config values, rather than hardcoded constants or a literal
+`0.0`.
 
 ---
 
