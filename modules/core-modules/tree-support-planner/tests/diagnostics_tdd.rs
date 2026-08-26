@@ -33,8 +33,8 @@ use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::SupportAnalysisView;
 use slicer_sdk::prepass_types::{
     Diagnostic, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
-    RegionSegmentationView, RegionSegmentationViewEntry, SupportGeometryView,
-    SupportGeometryViewEntry,
+    RegionSegmentationView, RegionSegmentationViewEntry, SupportAnalysisCandidate,
+    SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 
@@ -414,6 +414,68 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             "AC-N3: support_interface_bottom_layers absent must not emit; got {count}"
         );
     }
+}
+
+#[test]
+fn analysis_contact_makes_legacy_mesh_projection_unreachable() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+    let mut analysis = tree_analysis("analysis-gate");
+    analysis.candidates.push(SupportAnalysisCandidate {
+        id: 238,
+        object_id: "analysis-gate".to_string(),
+        region_id: "0".to_string(),
+        global_layer_index: 8,
+        z_units: slicer_ir::mm_to_units(1.8),
+        geometry: vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(4.0, 0.0),
+                    Point2::from_mm(4.0, 4.0),
+                    Point2::from_mm(0.0, 4.0),
+                ],
+            },
+            holes: Vec::new(),
+        }],
+        blocked: true,
+        ..Default::default()
+    });
+
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[small_overhang_fixture("analysis-gate")],
+            &make_layer_plan(11, 0.0, 0.2),
+            &make_region_segmentation("analysis-gate", 11),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &config,
+        )
+        .expect("run_support_geometry");
+
+    assert!(
+        output.entries().iter().any(|entry| {
+            entry.decline_reason.is_some()
+                && entry.demand_ids.iter().any(|demand_id| demand_id == "demand-238")
+        }) && output.entries().iter().all(|entry| {
+            entry.decline_reason.is_some()
+                && entry
+                    .demand_ids
+                    .iter()
+                    .all(|demand_id| !demand_id.starts_with("mesh-demand-"))
+        }),
+        "a host analysis contact, even when blocked, must suppress the legacy mesh projection: {:?}",
+        output.entries()
+    );
 }
 
 // ── Test fixtures ──────────────────────────────────────────────────────────

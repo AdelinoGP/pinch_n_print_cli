@@ -20,7 +20,7 @@ use slicer_wasm_host::exact_z_query::ExactZQueryService;
 use slicer_wasm_host::support_aggregation::{
     aggregate_declined_support_plans, aggregate_support_plan_irs_with_diagnostics,
 };
-use tree_support_planner::{body_overlaps_occupancy, tapered_radius};
+use tree_support_planner::{body_overlaps_occupancy, build_roles, tapered_radius};
 
 fn pillar_occupancy() -> ExPolygon {
     ExPolygon {
@@ -667,11 +667,14 @@ fn radius_aware_collision() {
                 .collect(),
         },
     );
+    // Packet 238b AC-8/Q10: contacts inside the xy-inflated collision volume
+    // are pruned during seeding, before emit-time 1203 diagnostics. The
+    // remaining non-colliding overhang must still pass the geometry checks
+    // below, proving safety without asserting the retired warning path.
     assert!(
-        output.diagnostics().iter().any(|d| d.code == 1203),
-        "planner diagnostics: {:?}, entries: {}",
-        output.diagnostics(),
-        output.entries().len()
+        !output.diagnostics().iter().any(|d| d.code == 1203),
+        "seeded-pruned contacts must not reach the emit-time 1203 path: {:?}",
+        output.diagnostics()
     );
     let mut emitted_survivor = false;
     for body in output
@@ -703,29 +706,13 @@ fn radius_aware_collision() {
             .map(|point| distance(mm_point(point), center))
             .collect();
         let local_radius = radii.iter().copied().fold(f32::INFINITY, f32::min);
-        // Floor guards against degenerate/zero-radius bodies, and is set just
-        // under the measured minimum for this fixture — the tightest bound the
-        // measurement supports.
+        // Structural regions are now discrete per-node footprints rather than
+        // one MST-capsule union. Keep the non-degenerate radius guard, while
+        // measuring each footprint independently instead of its old slab waist.
         //
-        // This is a **re-measured self-captured baseline, not a canonical
-        // constant**: `local_radius` is the distance from the vertex-average
-        // centroid of a multi-node union body to its nearest vertex, so it
-        // tracks how deep the concave waist between two branch lobes runs, and
-        // is unrelated to `MIN_BRANCH_RADIUS`.
-        //
-        // Commit `3319ad35` (canonical fix to `smooth_nodes` / `draw_circles`)
-        // moved it from 0.34407 mm to 0.23845 mm. Attributed by re-measurement,
-        // reverting one correction at a time: restoring the pre-fix `(1,2,1)/4`
-        // kernel at 3 iterations alone gives 0.26453 mm, dropping canonical's
-        // axis-aligned ellipse guard alone gives 0.28917 mm, and both together
-        // give 0.34368 mm — i.e. the whole move is accounted for by those two
-        // corrections, with no unexplained residue. Straighter chains (100
-        // relaxation passes) and round cross-sections for axis-aligned movers
-        // both narrow the waist; the body itself stays substantial
-        // (~9.87 mm^2 for the tightest layer).
         assert!(
-            local_radius >= 0.23,
-            "body lost its local radius: {local_radius} (measured minimum for this fixture is 0.23845 mm)"
+            local_radius >= 0.1,
+            "node footprint became degenerate: {local_radius} mm"
         );
         assert!(radii.iter().all(|radius| *radius >= local_radius - 0.001));
         assert!(!body_overlaps_occupancy(
@@ -850,6 +837,11 @@ fn anchored_heights_and_termination() {
         }
         let skeleton = entry.skeleton.as_ref().unwrap();
         assert!(!skeleton.points.is_empty());
+        assert_eq!(
+            skeleton.wall_counts.len(),
+            skeleton.points.len(),
+            "wall-count carrier must stay positional"
+        );
     }
     assert!(output
         .entries()
@@ -875,6 +867,43 @@ fn anchored_heights_and_termination() {
             "adjacent body/interface layers must remain connected"
         );
     }
+}
+
+#[test]
+fn mixed_height_contacts_keep_body_and_roof_on_the_same_layer() {
+    let square = |x0: f32, side: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x0, 0.0),
+                Point2::from_mm(x0 + side, 0.0),
+                Point2::from_mm(x0 + side, side),
+                Point2::from_mm(x0, side),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let roles = build_roles(
+        &[],
+        &[],
+        &[],
+        &[square(0.0, 4.0)],
+        &[square(1.0, 2.0)],
+        &[],
+        1.0,
+        &[],
+        0,
+        0.4,
+    );
+
+    assert!(
+        roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty())
+            && roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()),
+        "mixed layer must retain disjoint body and roof roles: {roles:?}"
+    );
 }
 
 #[test]
@@ -1147,4 +1176,3 @@ fn non_tree_family_candidates_are_skipped() {
         "tree planner must not emit entries for a traditional-family candidate"
     );
 }
-

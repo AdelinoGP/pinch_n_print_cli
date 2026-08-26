@@ -143,6 +143,7 @@ pub fn single_region_support_plan(
                         z: layer_z,
                     },
                 ],
+                wall_counts: vec![0, 0],
             }),
             capabilities: vec![],
             provenance: vec![],

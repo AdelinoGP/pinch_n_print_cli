@@ -2101,6 +2101,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 }).collect(),
                 skeleton: __slicer_entry.skeleton.as_ref().map(|s| SupportPlanSkeleton {
                     points: s.points.iter().map(|p| Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                    wall_counts: s.wall_counts.clone(),
                 }),
                 capabilities: __slicer_entry.capabilities.clone(),
                 provenance: __slicer_entry.provenance.clone(),
@@ -2586,6 +2587,7 @@ fn layer_light_helpers() -> TokenStream2 {
                         }).collect(),
                         skeleton: entry.skeleton.map(|s| ::slicer_ir::SupportPlanSkeleton {
                             points: s.points.into_iter().map(|p| ::slicer_ir::Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                            wall_counts: s.wall_counts,
                         }),
                         capabilities: entry.capabilities,
                         provenance: entry.provenance,

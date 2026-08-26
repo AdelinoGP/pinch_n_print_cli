@@ -652,8 +652,6 @@ fn node_rejected_when_model_occupies_every_destination() {
     // Note: #[module_test] already drains and reinstalls log capture via
     // reset_global_state() + mock_host_setup(). No explicit install needed here.
 
-    use slicer_sdk::prepass_types::{Diagnostic, DiagnosticSeverity};
-
     let config = make_planner_config(&[
         ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
@@ -712,58 +710,27 @@ fn node_rejected_when_model_occupies_every_destination() {
         )
         .expect("run_support_geometry");
 
-    let diagnostics = output.diagnostics();
-    let rejected: Vec<&Diagnostic> = diagnostics
-        .iter()
-        .filter(|d| {
-            d.code == 1203
-                && matches!(d.severity, DiagnosticSeverity::Warn)
-                && d.message.contains("intersects model occupancy")
-        })
-        .collect();
+    // Packet 238b AC-8/Q10: contact seeding uses the xy-inflated collision
+    // volume, so contacts wholly inside this occupancy are pruned before the
+    // emit-time 1203 rejection path. The absence of that diagnostic is part
+    // of the canonical safety behavior, not a loss of coverage.
     assert!(
-        !rejected.is_empty(),
-        "AC-N3: expected at least one typed warn diagnostic recording that \
-         the branch intersects model occupancy; got {} diagnostics: {:?}",
-        diagnostics.len(),
-        diagnostics
+        !output.diagnostics().iter().any(|d| d.code == 1203),
+        "AC-N3: seeded-pruned contacts must not reach the emit-time 1203 \
+         diagnostic path; got {:?}",
+        output.diagnostics()
     );
 
-    // The column must be PRUNED, not merely warned about: a node that falls
-    // completely inside collision has `valid` cleared, so no descendant is
-    // created and no lower layer carries geometry. `rejected` records the
-    // topmost blocked layer; nothing may be planned below it.
-    let topmost_rejected = rejected
-        .iter()
-        .filter_map(|d| d.layer)
-        .max()
-        .expect("rejection diagnostics carry a layer");
-    assert!(
-        output
-            .entries()
-            .iter()
-            .filter(|entry| entry.decline_reason.is_none())
-            .all(|entry| entry.global_layer_index >= topmost_rejected),
-        "AC-N3: the branch must not descend below the layer at which it \
-         meets the model (topmost rejected layer {topmost_rejected}); got {:?}",
-        output
-            .entries()
-            .iter()
-            .map(|e| e.global_layer_index)
-            .collect::<Vec<_>>()
-    );
-
-    // The rejection must be total: nothing may be planned inside a region the
-    // model occupies entirely. A diagnostic without an actual drop would be a
-    // warning that support was printed through the object.
+    // The column must be pruned at seeding, not merely warned about: no
+    // contact survives to create a printable descendant.
     assert!(
         output
             .entries()
             .iter()
             .all(|entry| entry.decline_reason.is_some()
                 || entry.roles.iter().all(|role| role.regions.is_empty())),
-        "AC-N3: no support body may be planned where the model occupies every \
-         destination; got {:?}",
+        "AC-N3: seeded-pruned contacts must produce no printable support \
+         inside the occupied destination; got {:?}",
         output.entries()
     );
 }
@@ -999,6 +966,7 @@ fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry
                 slicer_ir::Point3 { x: 0.0, y: 0.0, z },
                 slicer_ir::Point3 { x: 1.0, y: 1.0, z },
             ],
+            wall_counts: vec![0, 0],
         }),
         capabilities: vec![],
         provenance: vec![],
@@ -1026,6 +994,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
                 y: 0.0,
                 z: 0.0,
             }],
+            wall_counts: vec![0],
         }),
         capabilities: vec![],
         provenance: vec![],

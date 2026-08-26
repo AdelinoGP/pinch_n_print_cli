@@ -35,7 +35,7 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` - `generate_contact_points` (Q1); delegate only if evidence insufficient
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test executor -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-runtime --test executor --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: variable-height test green; freshness exit 0. Falsifying exit: test red after
   fix ⇒ stop, re-derive from Q1 evidence, do not weaken the assertion.
@@ -93,7 +93,7 @@
 - OrcaSlicer refs:
   - `TreeSupport.cpp::smooth_nodes`, `drop_nodes` (Q2, Q8)
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (AC-2/AC-N1)
+  - `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (AC-2/AC-N1)
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: decision recorded; both arg sites provably distinct in tests. Falsifying
   exit: golden tripwire flips with unclassifiable drift ⇒ E3 stop.
@@ -122,7 +122,7 @@
 - OrcaSlicer refs:
   - `TreeSupport.cpp::draw_circles` (Q3)
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p tree-support-planner --lib build_roles -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: all three greens. Falsifying exit: payload growth measured catastrophic or
@@ -152,7 +152,7 @@
 - OrcaSlicer refs:
   - `TreeSupport.cpp::draw_circles`, `avoid_object_remove_extra_small_parts` (Q4/Q5)
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - full crate suite narrow run (tee'd) - FACT binary-count reconciliation vs prior runs
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: no production caller of body_overlaps_occupancy remains; largest-part test
@@ -179,7 +179,7 @@
 - Authoritative docs: plan §12 div 4.6/5.5/5.6 bullets
 - OrcaSlicer refs: `move_nodes`, `drop_nodes` (Q8/Q10)
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test to_buildplate_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p tree-support-planner --test to_buildplate_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: inflation split proven (both directions asserted). Falsifying exit: F-14
   behavior change detected ⇒ revert that hunk, it was an out-of-bounds edit.
@@ -262,7 +262,7 @@
 - Authoritative docs: plan §12 div 3.2 bullet
 - OrcaSlicer refs: `generate_contact_points` sampling `layer->loverhangs`
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test diagnostics_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p tree-support-planner --test diagnostics_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: reachability gate asserted. Falsifying exit: host contract genuinely cannot
   supply polygons for non-coplanar meshes ⇒ boundary record IS the deliverable; mark AC-10
@@ -295,8 +295,8 @@
 - Authoritative docs: plan §12 div 5.7 bullet; Ruling 3
 - OrcaSlicer refs: `drop_nodes` is_strong branch; `generate_contact_points` hybrid minting
 - Verification:
-  - `mkdir -p target && cargo test -p tree-support-planner --test tree_style_styles_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
-  - `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_unknown_support_style_value -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p tree-support-planner --test tree_style_styles_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_unknown_support_style_value --no-fail-fast -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: styles selectable and distinct; unknown rejected/defaulted deterministically.
 
@@ -341,7 +341,7 @@
 - OrcaSlicer refs: `smooth_nodes` need_extra_wall producer/consumer
 - Verification:
   - `cargo build --tests` then `cargo xtask build-guests` - FACT pass/fail
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract native_and_wasm_layer_views_are_field_identical -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-wasm-host --test contract -- view_seam_identity_tdd::native_and_wasm_layer_views_are_field_identical --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check` - FACT exit code
 - Exit condition: seam identity green; `wall_counts` visible in emitted skeleton entries with
   length matching points; version asserts updated in-step. Falsifying exit: leg skew detected

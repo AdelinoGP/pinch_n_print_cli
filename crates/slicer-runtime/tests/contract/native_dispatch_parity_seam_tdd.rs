@@ -496,7 +496,10 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             anchor_layer_index: 0,
             anchor_z: 200,
             roles: vec![],
-            skeleton: Some(slicer_ir::SupportPlanSkeleton { points: vec![] }),
+            skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                points: vec![],
+                wall_counts: vec![],
+            }),
             capabilities: vec![],
             provenance: vec![],
             decline_reason: None,

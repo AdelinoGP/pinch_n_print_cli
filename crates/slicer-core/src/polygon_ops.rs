@@ -374,6 +374,24 @@ pub fn offset(
     inflate_once(polygons, delta_mm, join, 2.0, arc_tolerance_mm)
 }
 
+/// Offsets polygons with an explicit Clipper miter limit.
+pub fn offset_with_miter_limit(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+    miter_limit: f32,
+    arc_tolerance_mm: f32,
+) -> Vec<ExPolygon> {
+    let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET);
+    inflate_once(
+        polygons,
+        delta_mm,
+        join,
+        f64::from(miter_limit),
+        arc_tolerance_mm,
+    )
+}
+
 /// Single inflate pass with every Clipper2 knob explicit. All offset-shaped
 /// wrappers in this module route through here. Uses `ClipperOffset::execute_tree`
 /// (rather than the `inflate_paths_64` free function, which only returns a flat

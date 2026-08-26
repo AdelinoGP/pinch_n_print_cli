@@ -48,6 +48,8 @@ pub struct OffsetRequest {
     pub join: OffsetJoinType,
     /// Arc approximation tolerance in millimeters.
     pub arc_tolerance_mm: f32,
+    /// Explicit Clipper miter limit, or the engine default when absent.
+    pub miter_limit: Option<f32>,
 }
 
 /// One `clip-polygons` item in a batch.
@@ -111,6 +113,7 @@ pub struct SurfaceNormalRequest {
 ///     delta_mm: avoid_inflate,
 ///     join: OffsetJoinType::Miter,
 ///     arc_tolerance_mm: 0.0,
+///     miter_limit: None,
 /// }) {
 ///     // `inflated` is this `entry`'s result, always.
 /// }
@@ -143,8 +146,20 @@ pub fn offset_polygons_batch(requests: &[OffsetRequest]) -> Vec<Vec<ExPolygon>> 
     {
         requests
             .iter()
-            .map(|r| {
-                crate::host::offset_polygons(&r.polygons, r.delta_mm, r.join, r.arc_tolerance_mm)
+            .map(|r| match r.miter_limit {
+                Some(miter_limit) => crate::host::offset_polygons_with_miter_limit(
+                    &r.polygons,
+                    r.delta_mm,
+                    r.join,
+                    r.arc_tolerance_mm,
+                    miter_limit,
+                ),
+                None => crate::host::offset_polygons(
+                    &r.polygons,
+                    r.delta_mm,
+                    r.join,
+                    r.arc_tolerance_mm,
+                ),
             })
             .collect()
     }
@@ -158,6 +173,7 @@ pub fn offset_polygons_batch(requests: &[OffsetRequest]) -> Vec<Vec<ExPolygon>> 
                 delta_mm: r.delta_mm,
                 join: wit::to_wit_join(r.join),
                 arc_tolerance_mm: r.arc_tolerance_mm,
+                miter_limit: r.miter_limit,
             })
             .collect();
         svc::offset_polygons_batch(&wit_requests)
@@ -314,7 +330,7 @@ package slicer:common {
         enum clip-operation   { union, intersection, difference, xor }
         enum offset-join-type { miter, round, square }
 
-        record offset-request { polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32 }
+        record offset-request { polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32> }
         offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
 
         record clip-request { subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation }
@@ -426,6 +442,7 @@ mod tests {
             delta_mm: *d,
             join: OffsetJoinType::Miter,
             arc_tolerance_mm: 0.0,
+            miter_limit: None,
         });
 
         assert_eq!(paired.len(), items.len());
@@ -451,6 +468,7 @@ mod tests {
                 delta_mm: i as f32 * 0.5,
                 join: OffsetJoinType::Miter,
                 arc_tolerance_mm: 0.0,
+                miter_limit: None,
             })
             .collect();
 

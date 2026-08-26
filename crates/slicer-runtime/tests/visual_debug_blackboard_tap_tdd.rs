@@ -213,6 +213,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
                         z: 0.4,
                     },
                 ],
+                wall_counts: vec![0, 0],
             }),
             capabilities: vec!["tree-branch-skeleton".to_string()],
             provenance: vec!["test".to_string()],

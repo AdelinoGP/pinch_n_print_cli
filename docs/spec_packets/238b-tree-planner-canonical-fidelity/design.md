@@ -81,6 +81,18 @@ prior behavior), with DEV-143 kept as the recorded arithmetic deviation. Final c
 the implementers per plan div 2.1 wording; the packet stays draft until their recorded decision
 plus AC-N1 evidence exists. Either branch satisfies AC-2's either-branch contract.
 
+**RESOLVED (implementers, 2026-08-25): Option A.** Keep the node-graph `smooth_nodes` call in
+`SupportPlanner::plan_for_object` after the completed drop/prune pass and immediately before the
+draw/emit pass. The emit pass constructs each ellipse from the post-smoothing `Node::position`
+and then applies both the whole-footprint rejection and final collision carve, preserving AC-N1:
+no pre-smoothing position can bypass validation of the final emitted geometry. Smoothing alone is
+expected to preserve the golden tripwire; a flip is E3 drift requiring classification rather than
+fixture acceptance. DEV-141 is resolved against Q2's observed canonical implementation: this is
+the plain 100-iteration three-point `(position, radius)` kernel, and no `clip_narrow_corner`
+kernel exists in canonical `smooth_nodes` in the probed checkout, correcting the older plan
+premise. DEV-143 remains the deliberate arithmetic deviation: relax in `f64` scaled units and
+round once on commit rather than truncate in integer arithmetic on every pass.
+
 ## Divergence Approaches (canonical evidence Q1-Q10)
 
 - **Top-Z gap (AC-1).** Mechanism verified live: `plan_for_object` computes
@@ -177,6 +189,21 @@ plus AC-N1 evidence exists. Either branch satisfies AC-2's either-branch contrac
   derived-at-activation (237 precedent: `SupportAnalysisIR.cantilever_surfaces`), legs
   updated together (T9), capability string demoted to provenance note. Renderer CONSUMPTION
   (printing extra walls) is 238c's; this packet delivers the transport.
+
+## Mesh-path boundary
+
+The host contract reaches the planner through `SupportAnalysisView::candidates`; each candidate's
+`geometry: Vec<ExPolygon>` is the host-computed, angle-thresholded contact at the overhang's own
+layer. `commit_support_analysis_builtin`
+(`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) derives that geometry from
+non-empty sliced `SliceIR` regions and their lower-layer object union. The legacy facet-projection
+shim therefore runs only for an object with no polygon-bearing analysis candidate. Its remaining
+inputs are open or coplanar mesh fixtures whose facets exist but whose closed-solid cross-section
+is empty, so the producer has no `SliceIR` region from which to emit a candidate. Supporting those
+inputs through the host path would require a contract producer that classifies open mesh facets
+without relying on sliced regions; until then, `plan_for_object` keeps the fixture-only projection.
+Any polygon-bearing analysis candidate for the object, including a blocked or non-tree candidate,
+makes that shim unreachable so it cannot override host policy or duplicate host contacts.
 
 ## DEV-128 Sizing (Ruling 4 — f32 mm vs canonical scaled-integer coord_t)
 

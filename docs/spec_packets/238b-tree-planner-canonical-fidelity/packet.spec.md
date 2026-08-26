@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 238b-tree-planner-canonical-fidelity
 task_ids:
   - TASK-369
@@ -67,7 +67,7 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   over the nominal layer height) with a virtual gap node (`distance_to_top = -gap_layers`,
   `gap_layers = z_distance == 0 ? 0 : 1`) — no mm walk over actual layer Z remains in contact
   generation — and the virtual node is propagated but never extruded.
-  | `mkdir -p target && cargo test -p slicer-runtime --test executor -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p slicer-runtime --test executor --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-2. Given** the smoothing path selected by the packet's design decision point
   (either node-graph `smooth_nodes` reinstated before emit gates, or the reasoned no-smooth
   deviation), **when** the planner runs, **then** whichever branch was chosen holds:
@@ -76,18 +76,18 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   branch), OR `run_support_geometry` documents the recorded deviation and emits unsmoothed
   positions (deviation branch). In BOTH cases the emit-time collision gates validate the
   FINAL emitted geometry (the gate reads post-smoothing positions when smoothing runs).
-  | `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-3. Given** a layer where one branch sits inside its roof band while another passes
   through as body, **when** roles are built, **then** body and interface coexist disjointly
   (per-node classification into roof/floor/body areas, body = diff(body, roofs-union)) — the
   `if !roof.is_empty() || !floor.is_empty() { carved.clear() }` whole-layer clearing is gone.
-  | `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-4. Given** a normal-density model (`avg_node_per_layer <= 200`), **when** circles are
   drawn, **then** per-node contours keep fine resolution (100-gon class, never truncated to
   the 16-vertex `BRANCH_CIRCLE_SEGMENTS` cap), coarse 4-gon only under the canonical
   square-support condition, and circles are routed by role without being unioned into one
   body region before classification.
-  | `mkdir -p target && cargo test -p tree-support-planner --test multi_neighbour_mst_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test multi_neighbour_mst_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-5. Given** collision and avoidance queries during drop/move/emit, **when** a volume is
   fetched, **then** it is keyed on the querying node's bucketed tapered radius
   (`get_collision(radius, l)` bakes `radius + xy_distance`; `get_avoidance(next_radius, …)`
@@ -96,7 +96,7 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   is retired from production paths — and the carve replicates
   `avoid_object_remove_extra_small_parts`' largest-part selection (small surviving slivers
   dropped).
-  | `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-6. Given** polygon offsets in `TreeVolumes::ensure_collision`/`ensure_avoidance` and
   the inner-grid erosion of `sample_contact_points`, **when** offsets run with Miter joins,
   **then** they use the canonical miter limit 3.0 (via a new miter-limit parameter on the
@@ -114,7 +114,7 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   (`!is_inside_ex(get_collision(0, layer), position)`), while the F-14 per-descendant recompute
   in the move pass KEEPS testing raw outlines (canonical's move pass uses `m_layer_outlines`
   there — do not "fix" the exception).
-  | `mkdir -p target && cargo test -p tree-support-planner --test to_buildplate_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test to_buildplate_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-9. Given** `move_out_expolys`, **when** a push-out runs at any call site (branch-A
   group-0 push-out, STUDIO-4252 retry, F-13 escape), **then** it projects onto the DILATED
   ring (`polys_dilated = union(offset(polygons, distance))`), clamps to
@@ -130,20 +130,20 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   polygons wherever the host contract allows, or records the precise boundary (which inputs
   cannot reach the host path) in `design.md` §Mesh-path boundary; the shim is unreachable
   whenever analysis contacts exist for the object.
-  | `mkdir -p target && cargo test -p tree-support-planner --test diagnostics_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test diagnostics_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-11. Given** the F-11 branch-A two-leaf collapse, **when** the merged node's roof
   counter is seeded, **then** it inherits the PARENT's counter minus the decrement
   (`node_parent->support_roof_layers_below - (parent.distance_to_top >= 0 ? 1 : 0)`),
   replacing the `max(id, nid)` merge; `insert_dropped_node`'s max-merge remains only on the
   same-position dedup path.
-  | `mkdir -p target && cargo test -p tree-support-planner --test multi_neighbour_mst_tdd branch_a -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test multi_neighbour_mst_tdd branch_a_two_leaf_collapse_inherits_parent_roof_counter -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-12. Given** `support_style = tree_strong`, **when** neighbor sums and movement are
   computed, **then** unweighted neighbor sums and
   `movement = direction_to_outer + move_to_neighbor_center` with a dot-product gate apply
   (`is_strong`); given `support_style = tree_hybrid`, `TreeNodeType::Polygon` nodes are
   minted under the large-flat-overhang condition with their own merge/move handling; slim
   behavior is unchanged.
-  | `mkdir -p target && cargo test -p tree-support-planner --test tree_style_styles_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test tree_style_styles_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-13. Given** the emit pass, **when** role regions are simplified, **then** simplification
   is gated to the canonical condition (only body/base areas, only under the square-support
   threshold `avg_node_per_layer > 200`, at `line_width / 2` tolerance); normal-case output
@@ -172,14 +172,14 @@ State ACs only here; `requirements.md` references their IDs. Every command tees 
   smoothed (or deliberately unsmoothed) position that falls inside the inflated collision
   volume is carved/pruned exactly as the un-smoothed baseline was — no regression case exists
   where enabling smoothing (or its absence) lets emitted geometry overlap the model.
-  | `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd -- --no-fail-fast 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p tree-support-planner --test wall_clearance_tdd --no-fail-fast -- 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-N2. Given** a config supplying an unsupported `support_style` value (anything outside
   the 238a-declared enum `default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid`),
   **when** the planner resolves style, **then** the value is rejected at bounds enforcement
   or deterministically defaulted to `"default"` with the resolution recorded — never silently
   mapped onto a tree behavior (E9/T8 discipline; the declaration itself is 238a's, this
   packet owns the consumer-side contract).
-  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration rejects_unknown_support_style_value -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
+  | `mkdir -p target && cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_unknown_support_style_value -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS || echo FAIL`
 - **AC-N3. Given** any guest-affecting step of this packet, **when** a guest, dispatch, or
   parity test fails, **then** attribution is refused until `cargo xtask build-guests --check`
   exits 0 (E4/T4; the planner IS a guest WASM module — staleness presents as count
@@ -245,7 +245,13 @@ never a test claim):
 Evidence file: `tmp/p238b-human-validation.md` recording commands, artifact paths, layer
 indices inspected, and block-count deltas.
 
-Sign-off: `YYYY-MM-DD — <verdict>` (pending).
+Sign-off: **2026-08-25 — APPROVED** (human verdict delivered in the implementation
+session after the branch-discretization fix: visual result approved against
+`tmp/SupportTest_Tree_Orca.gcode`; comparison bundles `tmp/vdcmp/{ours,ref}`;
+remaining look-and-feel deltas — trunk infill pattern (45° crosshatch), tip
+solidity/density, top-layer tip counts, skeleton-based branch rendering — are
+renderer-surface work explicitly assigned to `238c-support-renderer-flow-interfaces`,
+which also carries any further planner fixes surfaced during its implementation).
 
 ## Doc Impact Statement (Required)
 

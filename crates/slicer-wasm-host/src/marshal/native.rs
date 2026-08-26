@@ -637,6 +637,15 @@ pub fn commit_native_prepass_response_with_inputs(
                         .entries()
                         .iter()
                         .map(|entry| -> Result<_, String> {
+                            if let Some(skeleton) = entry.skeleton.as_ref() {
+                                if skeleton.wall_counts.len() != skeleton.points.len() {
+                                    return Err(format!(
+                                        "native support-generation-output: skeleton wall_counts length {} does not match points length {}",
+                                        skeleton.wall_counts.len(),
+                                        skeleton.points.len()
+                                    ));
+                                }
+                            }
                             Ok(slicer_ir::SupportPlanEntry {
                                 global_layer_index: entry.global_layer_index,
                                 object_id: entry.object_id.clone(),

@@ -213,6 +213,7 @@ fn support_skeleton(point_count: usize, jitter: f32) -> SupportPlanSkeleton {
                 z: 1.0 + jitter,
             })
             .collect(),
+        wall_counts: vec![0; point_count],
     }
 }
 

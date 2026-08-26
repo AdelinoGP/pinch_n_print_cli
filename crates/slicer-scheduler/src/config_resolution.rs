@@ -70,6 +70,7 @@ impl NumericBounds {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigBoundsIndex {
     bounds: HashMap<String, NumericBounds>,
+    enum_values: HashMap<String, Vec<String>>,
     /// Parsed schema defaults for `percent` / `float_or_percent` fields
     /// (packet 185 / AC-6, TASK-303). Threaded into
     /// `ResolvedConfig.extensions` by [`resolve_global_config`] when the
@@ -85,6 +86,7 @@ impl ConfigBoundsIndex {
     pub fn empty() -> Self {
         Self {
             bounds: HashMap::new(),
+            enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
         }
     }
@@ -106,12 +108,20 @@ impl ConfigBoundsIndex {
     {
         let modules: Vec<&LoadedModule> = modules.into_iter().collect();
         let mut schema_defaults: HashMap<String, ConfigValue> = HashMap::new();
+        let mut enum_values: HashMap<String, Vec<String>> = HashMap::new();
         for module in &modules {
             for (key, entry) in &module.config_schema().entries {
                 if let Some(default) = &entry.parsed_default {
                     schema_defaults
                         .entry(key.clone())
                         .or_insert_with(|| default.clone());
+                }
+                if entry.field_type == "enum" {
+                    if let Some(values) = &entry.values {
+                        enum_values
+                            .entry(key.clone())
+                            .or_insert_with(|| values.clone());
+                    }
                 }
             }
         }
@@ -138,6 +148,7 @@ impl ConfigBoundsIndex {
         });
         let mut index = Self::from_declarations(declarations);
         index.schema_defaults = schema_defaults;
+        index.enum_values = enum_values;
         index
     }
 
@@ -185,6 +196,7 @@ impl ConfigBoundsIndex {
 
         Self {
             bounds: index,
+            enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
         }
     }
@@ -200,6 +212,15 @@ impl ConfigBoundsIndex {
     ///   against a finite bound. For list values, the first offending element
     ///   is reported with `index: Some(i)`.
     pub fn check(&self, key: &str, value: &ConfigValue) -> Result<(), ConfigResolutionError> {
+        if let (Some(values), ConfigValue::String(value)) = (self.enum_values.get(key), value) {
+            if !values.contains(value) {
+                return Err(ConfigResolutionError::TypeMismatch {
+                    key: key.to_string(),
+                    expected: "one of the manifest-declared enum values",
+                    actual: format!("unsupported enum value '{value}'"),
+                });
+            }
+        }
         let Some(bounds) = self.bounds.get(key) else {
             return Ok(());
         };

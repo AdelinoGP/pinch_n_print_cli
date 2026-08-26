@@ -106,3 +106,4 @@ mod prepass_support_geometry_tdd;
 mod slicing_promotion_e2e_regression_tdd;
 mod support_config_surface_tdd;
 mod support_geometry_slice_consumption_tdd;
+mod tree_support_top_gap_variable_height_tdd;

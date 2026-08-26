@@ -19,7 +19,7 @@
 //!   descending-sorted chain reproduces the coordinate list in listed order.
 //!   `smooth_branches` mutates `x`/`y` (and `width`) in place; z is preserved.
 
-use slicer_ir::{Point3, Point3WithWidth};
+use slicer_ir::{ExPolygon, Point2, Point3, Point3WithWidth, Polygon};
 use slicer_sdk::prepass_types::SupportPlanEntry;
 
 /// The canonical 5-point branch column used by the curvature/endpoint tests.
@@ -65,6 +65,7 @@ fn entry(global_layer_index: i32, p: Point3WithWidth) -> SupportPlanEntry {
                 y: p.y,
                 z: p.z,
             }],
+            wall_counts: vec![0],
         }),
         capabilities: vec![],
         provenance: vec![],
@@ -198,4 +199,82 @@ fn empty_entries_no_panic() {
     let mut entries: Vec<SupportPlanEntry> = vec![];
     tree_support_planner::smooth_branches(&mut entries, 100);
     assert!(entries.is_empty());
+}
+
+#[test]
+fn move_out_call_sites_keep_distinct_dilation_regimes() {
+    let max_move = 0.7;
+    let branch_a = tree_support_planner::branch_a_move_out_args(max_move);
+    let retry = tree_support_planner::studio_4252_move_out_args(max_move);
+
+    assert!(
+        branch_a.0 < retry.0,
+        "fallback dilation must include max_move"
+    );
+    assert_eq!(
+        retry.0, retry.1,
+        "fallback must use one value for both args"
+    );
+    assert_eq!(branch_a.1, retry.1, "same inputs share the movement budget");
+    assert_ne!(branch_a.0, branch_a.1, "branch-A keeps base dilation");
+}
+
+fn square(center_x_mm: f32, center_y_mm: f32, half_width_mm: f32) -> ExPolygon {
+    let units = |mm: f32| (mm * 10_000.0).round() as i64;
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 {
+                    x: units(center_x_mm - half_width_mm),
+                    y: units(center_y_mm - half_width_mm),
+                },
+                Point2 {
+                    x: units(center_x_mm + half_width_mm),
+                    y: units(center_y_mm - half_width_mm),
+                },
+                Point2 {
+                    x: units(center_x_mm + half_width_mm),
+                    y: units(center_y_mm + half_width_mm),
+                },
+                Point2 {
+                    x: units(center_x_mm - half_width_mm),
+                    y: units(center_y_mm + half_width_mm),
+                },
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+#[test]
+fn post_smoothing_geometry_inside_collision_is_pruned_like_baseline() {
+    let mut smoothed = build_column(&COLUMN);
+    let original = read_column(&smoothed)[2];
+    tree_support_planner::smooth_branches(&mut smoothed, 100);
+    let final_position = read_column(&smoothed)[2];
+    assert_ne!(
+        original, final_position,
+        "fixture must move during smoothing"
+    );
+
+    // This is the inflated model collision volume adjacent to the branch. The
+    // baseline starts directly at the final position; the smoothed branch
+    // arrives there only after its position has changed.
+    let collision = square(final_position.x, final_position.y, 0.5);
+    let smoothed_region = square(final_position.x, final_position.y, 0.1);
+    let baseline_region = square(final_position.x, final_position.y, 0.1);
+
+    let smoothed_emission = tree_support_planner::carve_emitted_regions(
+        &[smoothed_region],
+        std::slice::from_ref(&collision),
+    );
+    let baseline_emission = tree_support_planner::carve_emitted_regions(
+        &[baseline_region],
+        std::slice::from_ref(&collision),
+    );
+    assert_eq!(smoothed_emission, baseline_emission);
+    assert!(
+        smoothed_emission.is_empty(),
+        "collision must prune final geometry"
+    );
 }

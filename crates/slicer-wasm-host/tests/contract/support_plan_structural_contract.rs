@@ -32,7 +32,10 @@ fn structural_entry() -> SupportPlanEntry {
                 regions: vec![],
             },
         ],
-        skeleton: Some(SupportPlanSkeleton { points: vec![] }),
+        skeleton: Some(SupportPlanSkeleton {
+            points: vec![],
+            wall_counts: vec![],
+        }),
         capabilities: vec!["anchored-entity".into()],
         provenance: vec!["support-analysis".into()],
         decline_reason: None,

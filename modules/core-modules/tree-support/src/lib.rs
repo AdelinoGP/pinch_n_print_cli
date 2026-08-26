@@ -444,7 +444,7 @@ impl TreeSupport {
             .chain(expoly.holes.iter())
             .collect();
         let mut y = min_y + spacing * 0.5;
-        while y < max_y {
+        let crossings_at = |y: f64| {
             let mut crossings = Vec::new();
             for ring in &rings {
                 let points = &ring.points;
@@ -461,6 +461,10 @@ impl TreeSupport {
                 }
             }
             crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            crossings
+        };
+        let emit_scanline = |y: f64, paths: &mut Vec<ExtrusionPath3D>| {
+            let crossings = crossings_at(y);
             for pair in crossings.chunks_exact(2) {
                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
                     paths.push(ExtrusionPath3D {
@@ -482,7 +486,13 @@ impl TreeSupport {
                     });
                 }
             }
+        };
+        while y < max_y {
+            emit_scanline(y, &mut paths);
             y += spacing;
+        }
+        if paths.is_empty() {
+            emit_scanline((min_y + max_y) * 0.5, &mut paths);
         }
         paths
     }
@@ -632,5 +642,24 @@ mod tests {
             solid > sparse * 3,
             "support_density is ignored: {sparse} lines at 20% vs {solid} at 100%"
         );
+    }
+
+    #[test]
+    fn narrow_region_gets_one_fill_line_when_pitch_has_no_scan_rows() {
+        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let module = TreeSupport::from_config(&config).unwrap();
+        let region = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(0.5, 0.0),
+                    Point2::from_mm(0.5, 0.5),
+                    Point2::from_mm(0.0, 0.5),
+                ],
+            },
+            holes: vec![],
+        };
+        let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0);
+        assert!(!fills.is_empty(), "a small tip region must not be hollow");
     }
 }

@@ -253,11 +253,11 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Bumped to 2.0.0 by packet 220
-/// (breaking structural support-family migration; branch extrusion paths removed).
+/// Schema version for `SupportPlanIR`. Bumped to 2.1.0 by packet 238b for the
+/// additive per-skeleton-point `wall_counts` carrier.
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1315,11 +1315,15 @@ pub struct SupportPlanRoleRegion {
     pub regions: Vec<ExPolygon>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 /// Optional structural skeleton for a support plan.
 pub struct SupportPlanSkeleton {
     /// Structural skeleton points in model coordinates.
     pub points: Vec<Point3>,
+    /// Extra wall count required at each corresponding skeleton point.
+    /// This list must have the same length as `points`.
+    #[serde(default)]
+    pub wall_counts: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -46,6 +46,13 @@ checkout behavior cited in `design.md`.
 | move_out_expolys | div 5.1 | Dilated-ring projection, pt_max clamp, bool return; correct the false `from0` comment (PLAN CORRECTION #2). AC-9. |
 | STUDIO-4252 retry args | div 7.2 | Fallback site passes `max_move_between_samples` as BOTH args; other sites keep dilation=`radius_sample_resolution+EPSILON` with own budget (both encoded distinctly). AC-9. |
 | Mesh-path shim | div 3.2 | Consume host-computed overhang polygons where the contract allows; otherwise record the precise boundary. AC-10. |
+
+> Step 9 outcome (2026-08-25): AC-10 is **satisfied-by-recorded-boundary** — host overhang
+> polygons are reachable by the planner only where analysis candidates carry geometry
+> (`SupportAnalysisView.candidates[*].geometry`); open/coplanar facet fixtures produce no
+> SliceIR region and therefore no candidate geometry, remaining the shim's documented domain.
+> See `design.md` §Mesh-path boundary; unreachability-with-analysis-contacts is pinned by
+> `analysis_contact_makes_legacy_mesh_projection_unreachable` (diagnostics_tdd).
 | Branch-A roof counter | div 5.5 | Parent-inherited counter minus decrement replaces `max(id,nid)` merge. AC-11. |
 | Tree styles | div 5.7, Ruling 3 | Implement `is_strong` movement rule + hybrid `TreeNodeType::Polygon` minting/merge/move, keyed on 238a's `support_style`. AC-12, negative AC-N2. |
 | Emit simplify gating | div 8.1, DEV-142 | Gate simplify to base-areas + square-support + `line_width/2`; correct the in-tree comment. AC-13. |
@@ -117,14 +124,14 @@ Authoritative full matrix; `packet.spec.md` lists only the gate commands.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd -- --no-fail-fast 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2/N1 smoothing branch | FACT pass/fail; ≤20 failure lines |
-| `cargo test -p tree-support-planner --test tree_family_tdd -- --no-fail-fast` (tee'd) | AC-3 coexistence + roles | FACT pass/fail |
-| `cargo test -p tree-support-planner --test multi_neighbour_mst_tdd -- --no-fail-fast` (tee'd) | AC-4/AC-11 circles + branch-A | FACT pass/fail |
-| `cargo test -p tree-support-planner --test wall_clearance_tdd -- --no-fail-fast` (tee'd) | AC-5/N1 keying + final-geometry rejection | FACT pass/fail |
-| `cargo test -p tree-support-planner --test to_buildplate_tdd -- --no-fail-fast` (tee'd) | AC-8 inflation split | FACT pass/fail |
-| `cargo test -p tree-support-planner --lib -- --no-fail-fast` (tee'd) | AC-7/AC-9/AC-13 unit-level (move_out_expolys, build_roles, expolygons_simplify) | FACT pass/fail |
+| `mkdir -p target && cargo test -p tree-support-planner --test smooth_nodes_tdd --no-fail-fast -- 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2/N1 smoothing branch | FACT pass/fail; ≤20 failure lines |
+| `cargo test -p tree-support-planner --test tree_family_tdd --no-fail-fast --` (tee'd) | AC-3 coexistence + roles | FACT pass/fail |
+| `cargo test -p tree-support-planner --test multi_neighbour_mst_tdd --no-fail-fast --` (tee'd) | AC-4/AC-11 circles + branch-A | FACT pass/fail |
+| `cargo test -p tree-support-planner --test wall_clearance_tdd --no-fail-fast --` (tee'd) | AC-5/N1 keying + final-geometry rejection | FACT pass/fail |
+| `cargo test -p tree-support-planner --test to_buildplate_tdd --no-fail-fast --` (tee'd) | AC-8 inflation split | FACT pass/fail |
+| `cargo test -p tree-support-planner --lib --no-fail-fast --` (tee'd) | AC-7/AC-9/AC-13 unit-level (move_out_expolys, build_roles, expolygons_simplify) | FACT pass/fail |
 | `rg -q 'wall-counts' crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit && rg -q 'wall_counts' crates/slicer-ir/src/slice_ir.rs && rg -q 'wall_counts' crates/slicer-wasm-host/src/marshal/in_.rs && rg -q 'wall_counts' crates/slicer-wasm-host/src/marshal/native.rs` | AC-14 DEV-144 carrier present in WIT + IR + BOTH marshal legs (`wall-counts: list<u32>` in `record support-plan-skeleton`, `wall_counts` in IR and both legs) | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test scheduler_integration rejects_unknown_support_style_value --exact` (tee'd) | AC-N2 style knob negative | FACT pass/fail |
+| `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd::rejects_unknown_support_style_value --no-fail-fast -- --exact` (tee'd) | AC-N2 style knob negative | FACT pass/fail |
 | `cargo check --workspace --all-targets` then `cargo clippy --workspace --all-targets -- -D warnings` | compile + lint gate | FACT pass/fail |
 | `cargo xtask build-guests --check` | AC-N3 guest freshness (exit codes 0/1/3) | FACT exit code |
 | WIT-touching steps: `cargo build --tests` then `cargo xtask build-guests` | rebuild guests after schema/WIT edits | FACT pass/fail |

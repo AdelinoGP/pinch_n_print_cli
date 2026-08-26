@@ -20,7 +20,10 @@ interface ir-handles {
         role: support-plan-view-role,
         regions: list<ex-polygon>,
     }
-    record support-plan-view-skeleton { points: list<point3> }
+    record support-plan-view-skeleton {
+        points: list<point3>,
+        wall-counts: list<u32>,
+    }
     enum support-plan-view-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
     record support-plan-entry-view {
         global-layer-index: s32,

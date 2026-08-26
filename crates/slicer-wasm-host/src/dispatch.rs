@@ -1975,7 +1975,13 @@ fn build_paint_layer_data_with_plan(
                         },
                         regions: host::ir_to_wit_expolygons(&role.regions),
                     }).collect(),
-                    skeleton: entry.skeleton.as_ref().map(|s| host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewSkeleton { points: s.points.iter().map(|p| host::layer_perimeters::slicer::types::geometry::Point3 { x: p.x, y: p.y, z: p.z }).collect() }),
+                    skeleton: entry.skeleton.as_ref().map(|s| {
+                        assert_eq!(s.wall_counts.len(), s.points.len());
+                        host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewSkeleton {
+                            points: s.points.iter().map(|p| host::layer_perimeters::slicer::types::geometry::Point3 { x: p.x, y: p.y, z: p.z }).collect(),
+                            wall_counts: s.wall_counts.clone(),
+                        }
+                    }),
                     capabilities: entry.capabilities.clone(),
                     provenance: entry.provenance.clone(),
                     decline_reason: entry.decline_reason.map(|reason| match reason {

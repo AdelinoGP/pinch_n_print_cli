@@ -384,6 +384,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
                 y: 0.0,
                 z: 0.0,
             }],
+            wall_counts: vec![0],
         }),
         capabilities: Vec::new(),
         provenance: vec!["synthetic-valid".into()],

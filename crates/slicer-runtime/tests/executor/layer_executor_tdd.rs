@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use slicer_ir::LayerStageCommit;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, StageId, Transform3d,
@@ -26,6 +25,7 @@ use slicer_runtime::{
     LayerStageInput, LayerStageRunner, LoadDiagnostic, LoadedModuleBuilder, SortedStageModules,
     WasmArtifactMetadata,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ============================================================================
 // Test 1: Layers processed in parallel with deterministic stage ordering

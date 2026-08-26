@@ -78,6 +78,30 @@ fn out_of_range_support_threshold_angle_is_rejected() {
 }
 
 #[test]
+fn rejects_unknown_support_style_value() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
+    let wasm = manifest.with_extension("wasm");
+    let module = load_module_from_paths(&manifest, &wasm).expect("real support manifest must load");
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+    let mut source = HashMap::new();
+    source.insert(
+        "support_style".to_string(),
+        ConfigValue::String("tree_unknown".to_string()),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("an undeclared support style must be rejected");
+    match err {
+        ConfigResolutionError::TypeMismatch { key, expected, .. } => {
+            assert_eq!(key, "support_style");
+            assert_eq!(expected, "one of the manifest-declared enum values");
+        }
+        other => panic!("expected enum TypeMismatch, got {other:?}"),
+    }
+}
+
+#[test]
 fn manifest_declared_bound_rejects_out_of_range_value() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
         "../../modules/core-modules/traditional-support-planner/traditional-support-planner.toml",

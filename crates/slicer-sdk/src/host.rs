@@ -55,7 +55,7 @@ package slicer:common {
         surface-normal-at: func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
         object-bounds: func(object-id: object-id) -> bounding-box3;
         clip-polygons: func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-        offset-polygons: func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
+        offset-polygons: func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32>) -> list<ex-polygon>;
         simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
         now-us: func() -> u64;
         tool-count: func() -> u32;
@@ -490,9 +490,51 @@ pub fn offset_polygons(
     join: OffsetJoinType,
     arc_tolerance_mm: f32,
 ) -> Vec<ExPolygon> {
+    offset_polygons_with_optional_miter_limit(polygons, delta_mm, join, arc_tolerance_mm, None)
+}
+
+/// Applies host-side polygon offsetting with an explicit Clipper miter limit.
+#[must_use]
+pub fn offset_polygons_with_miter_limit(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+    arc_tolerance_mm: f32,
+    miter_limit: f32,
+) -> Vec<ExPolygon> {
+    offset_polygons_with_optional_miter_limit(
+        polygons,
+        delta_mm,
+        join,
+        arc_tolerance_mm,
+        Some(miter_limit),
+    )
+}
+
+fn offset_polygons_with_optional_miter_limit(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+    arc_tolerance_mm: f32,
+    miter_limit: Option<f32>,
+) -> Vec<ExPolygon> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        slicer_core::polygon_ops::offset(polygons, delta_mm, to_core_join(join), arc_tolerance_mm)
+        match miter_limit {
+            Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+                polygons,
+                delta_mm,
+                to_core_join(join),
+                miter_limit,
+                arc_tolerance_mm,
+            ),
+            None => slicer_core::polygon_ops::offset(
+                polygons,
+                delta_mm,
+                to_core_join(join),
+                arc_tolerance_mm,
+            ),
+        }
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -506,7 +548,7 @@ pub fn offset_polygons(
             .iter()
             .map(__sdk_host_services_import::to_wit_expolygon)
             .collect::<Vec<_>>();
-        svc::offset_polygons(&polygons, delta_mm, join, arc_tolerance_mm)
+        svc::offset_polygons(&polygons, delta_mm, join, arc_tolerance_mm, miter_limit)
             .iter()
             .map(__sdk_host_services_import::from_wit_expolygon)
             .collect()

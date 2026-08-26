@@ -11,7 +11,10 @@ interface support-geometry-types {
         role: support-plan-role,
         regions: list<ex-polygon>,
     }
-    record support-plan-skeleton { points: list<point3> }
+    record support-plan-skeleton {
+        points: list<point3>,
+        wall-counts: list<u32>,
+    }
     enum support-plan-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
 
     record support-plan-entry {

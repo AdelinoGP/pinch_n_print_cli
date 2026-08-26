@@ -11,8 +11,8 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity, RegionKey,
     SemVer,
 };
-use slicer_sdk::traits::FinalizationOutputBuilder;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::traits::FinalizationOutputBuilder;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

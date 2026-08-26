@@ -20,7 +20,25 @@
 //! Weighting = `1.0 / D_j^2`, with coincident neighbours (`D_j^2` at or below
 //! the f64 epsilon) skipped rather than saturating to infinity.
 
-use tree_support_planner::neighbour_direction_sum;
+use tree_support_planner::{
+    branch_a_roof_counter, insert_dropped_node_roof_counter, neighbour_direction_sum,
+};
+
+#[test]
+fn branch_a_two_leaf_collapse_inherits_parent_roof_counter() {
+    let parent_counter = 7;
+    let other_counter = 19;
+
+    assert_eq!(branch_a_roof_counter(parent_counter, 3), 6);
+    assert_ne!(branch_a_roof_counter(parent_counter, 3), other_counter - 1);
+    assert_eq!(branch_a_roof_counter(parent_counter, -1), parent_counter);
+}
+
+#[test]
+fn same_position_insert_dropped_node_still_max_merges_roof_counter() {
+    assert_eq!(insert_dropped_node_roof_counter(7, 19), 19);
+    assert_eq!(insert_dropped_node_roof_counter(19, 7), 19);
+}
 
 /// Unit direction of a vector, for comparing directions independently of the
 /// step length canonical later rescales them to.

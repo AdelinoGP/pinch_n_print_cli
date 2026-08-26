@@ -28,7 +28,10 @@ fn support_plan() -> SupportPlanIR {
             anchor_layer_index: 0,
             anchor_z: 200,
             roles: vec![],
-            skeleton: Some(slicer_ir::SupportPlanSkeleton { points: vec![] }),
+            skeleton: Some(slicer_ir::SupportPlanSkeleton {
+                points: vec![],
+                wall_counts: vec![],
+            }),
             capabilities: vec!["structural".into()],
             provenance: vec!["test".into()],
             decline_reason: None,

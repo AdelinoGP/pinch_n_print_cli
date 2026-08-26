@@ -54,7 +54,7 @@ interface host-services {
     enum offset-join-type { miter, round, square }
     enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32>) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
 
     // ── Batched forms ────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ interface host-services {
         delta-mm: f32,
         join:     offset-join-type,
         arc-tolerance-mm: f32,
+        miter-limit: option<f32>,
     }
     offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
 

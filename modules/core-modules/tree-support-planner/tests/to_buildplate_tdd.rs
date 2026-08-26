@@ -9,9 +9,9 @@
 //!    under `support_on_build_plate_only`, with a code-1002 `node-clamped-out`
 //!    diagnostic as the propagation-time drop.
 //!
-//! Neither is canonical. Canonical `generate_contact_points` seeds
-//! `to_buildplate = true` UNCONDITIONALLY and `drop_nodes` recomputes it per
-//! descendant as
+//! Neither is canonical. Canonical contact seeding and branch-A merges classify
+//! against xy-distance-inflated `get_collision(0, layer)`, while `drop_nodes`
+//! recomputes each move-pass descendant as
 //! `!is_inside_ex(m_layer_outlines[obj_layer_nr_next], next_layer_vertex)` —
 //! against the RAW outlines of the layer below, not an inflated collision
 //! volume, and against the node's *moved* position. Pruning is then done by
@@ -38,7 +38,47 @@ use slicer_sdk::prepass_types::{
 };
 use slicer_sdk::traits::PrepassModule;
 
-use tree_support_planner::SupportPlanner;
+use tree_support_planner::{
+    branch_a_to_buildplate, contact_seed_to_buildplate, move_pass_to_buildplate, SupportPlanner,
+};
+
+fn box_outline(min: f32, max: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(min, min),
+                Point2::from_mm(max, min),
+                Point2::from_mm(max, max),
+                Point2::from_mm(min, max),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+#[test]
+fn contact_and_branch_a_reject_xy_inflated_collision_fringe() {
+    let raw = vec![box_outline(0.0, 1.0)];
+    let inflated_collision = vec![box_outline(-1.0, 2.0)];
+    let fringe = (1.5, 0.5);
+
+    assert!(move_pass_to_buildplate(&raw, fringe));
+    assert!(!contact_seed_to_buildplate(&inflated_collision, fringe));
+    assert!(!branch_a_to_buildplate(&inflated_collision, fringe));
+}
+
+#[test]
+fn move_pass_f14_accepts_xy_inflated_collision_fringe_from_raw_outlines() {
+    let raw = vec![box_outline(0.0, 1.0)];
+    let inflated_collision = vec![box_outline(-1.0, 2.0)];
+    let fringe = (1.5, 0.5);
+
+    assert!(!contact_seed_to_buildplate(&inflated_collision, fringe));
+    assert!(
+        move_pass_to_buildplate(&raw, fringe),
+        "LOCKED: move-pass recompute tests RAW outlines forever"
+    );
+}
 
 // ── AC-2: contact XY outside the per-layer footprint → to_buildplate=true ────
 
@@ -52,9 +92,8 @@ use tree_support_planner::SupportPlanner;
 ///
 /// Under the packet-123 model this test proved the *contact-creation*
 /// classification; under canonical there is no such classification to prove
-/// (contacts are seeded `true` unconditionally), so what it now pins is the
-/// negative case of the pruning pass: a genuinely plate-bound column is not
-/// pruned.
+/// (contacts use collision(0)), so what it now pins is the negative case of the
+/// pruning pass: a genuinely plate-bound column is not pruned.
 #[test]
 fn contact_xy_outside_footprint_sets_to_buildplate_true() {
     let config = make_planner_config(&[
@@ -152,8 +191,8 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
 /// The fixture also had to change. The packet-123 rule computed
 /// `to_buildplate` at contact creation from the CONTACT layer's footprint, so
 /// putting a big box on every layer *except* the contact layer was enough.
-/// Canonical seeds contacts `true` and recomputes per descendant from the
-/// layer BELOW, so the big box now has to cover the layers the column
+/// Canonical classifies contacts with collision(0) and recomputes per descendant
+/// from the layer BELOW, so the big box now has to cover the layers the column
 /// descends through — which it already does here (every layer but 8).
 #[test]
 fn unreachable_buildplate_node_pruned() {
@@ -258,9 +297,9 @@ fn unreachable_buildplate_node_pruned() {
 /// **Fixture corrected by packet 224 step 5 (F-14).** The assertion (empty
 /// plan) is unchanged; the fixture is not. The packet-123 rule read the
 /// footprint at the CONTACT layer and rejected the contact at creation, so a
-/// covering box on layer 7 alone was a binding constraint. Canonical seeds
-/// every contact `to_buildplate = true` and recomputes the flag per descendant
-/// against the layer BELOW, so a box on one layer proves nothing: the column
+/// covering box on layer 7 alone was a binding constraint. Canonical classifies
+/// the contact against collision(0) and recomputes the flag per descendant
+/// against raw outlines on the layer BELOW, so a box on one layer proves nothing: the column
 /// simply steps past it. The box now covers layers 0..=7 — the whole descent
 /// path — which is what "rests on the model rather than the plate" actually
 /// means.

@@ -979,8 +979,10 @@ byte-identical `SupportAnalysisIR`.
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
-`crates/slicer-ir/src/slice_ir.rs`). Major bump by packet 220 — breaking
+**Current schema_version: 2.1.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Packet 238b adds the per-point
+`SupportPlanSkeleton.wall_counts` carrier as an additive minor bump. The prior
+2.0.0 major bump by packet 220 made the breaking
 structural support-family migration: branch extrusion paths were removed; no
 planner emits nozzle-width `ExtrusionPath3D` paths into this IR. Prior
 versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124).
@@ -1016,7 +1018,9 @@ once per `(global_layer_index, object_id, region_id)` triple and carries:
   semantic `ExPolygon` region: `SupportBody`, `TopInterface`,
   `BottomInterface`, and `RaftRelated`.
 - `skeleton: Option<SupportPlanSkeleton>` — optional structural skeleton
-  metadata (a point chain) for organic families.
+  metadata for organic families. Its parallel `points` and `wall_counts` lists
+  have identical lengths; each count is `0` for a plain node or at least `1`
+  when that point requires extra walls.
 - `capabilities: Vec<String>` and `provenance: Vec<String>` — capability
   declarations and provenance attribution.
 - `decline_reason: Option<SupportPlanDeclineReason>` — a structured

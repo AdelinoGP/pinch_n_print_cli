@@ -147,7 +147,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             .map(|_| {
                 // exhaustive: WallFeatureFlags deep-copy fixture specifies every flag.
                 WallFeatureFlags {
-                tool_index: None,
+                    tool_index: None,
                     fuzzy_skin: false,
                     is_bridge: false,
                     is_thin_wall: false,

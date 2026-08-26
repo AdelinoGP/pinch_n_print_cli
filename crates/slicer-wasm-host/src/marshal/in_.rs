@@ -881,6 +881,16 @@ pub(crate) fn harvest_support_plan_ir_from(
             )
         })?;
 
+        if let Some(skeleton) = entry.skeleton.as_ref() {
+            if skeleton.wall_counts.len() != skeleton.points.len() {
+                return Err(format!(
+                    "support-generation-output: skeleton wall-counts length {} does not match points length {}",
+                    skeleton.wall_counts.len(),
+                    skeleton.points.len()
+                ));
+            }
+        }
+
         entries.push(SupportPlanEntry {
             global_layer_index: entry.global_layer_index,
             object_id: entry.object_id,
@@ -917,6 +927,7 @@ pub(crate) fn harvest_support_plan_ir_from(
                         z: p.z,
                     })
                     .collect(),
+                wall_counts: s.wall_counts,
             }),
             capabilities: entry.capabilities,
             provenance: entry.provenance,
