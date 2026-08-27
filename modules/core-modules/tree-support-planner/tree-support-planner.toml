@@ -134,7 +134,14 @@ max     = 10
 display = "Support Interface Top Layers"
 group   = "Support"
 
-# Not yet implemented — see docs/specs/support-modules-orca-port.md
+[config.schema.num_top_base_interface_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 10
+display = "Support Base Interface Layers"
+group   = "Support"
+
 [config.schema.support_interface_bottom_layers]
 type    = "int"
 default = -1

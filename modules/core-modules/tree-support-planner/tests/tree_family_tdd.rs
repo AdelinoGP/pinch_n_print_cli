@@ -20,7 +20,9 @@ use slicer_wasm_host::exact_z_query::ExactZQueryService;
 use slicer_wasm_host::support_aggregation::{
     aggregate_declined_support_plans, aggregate_support_plan_irs_with_diagnostics,
 };
-use tree_support_planner::{body_overlaps_occupancy, build_roles, tapered_radius};
+use tree_support_planner::{
+    body_overlaps_occupancy, build_roles, interface_adjusted_radius, tapered_radius,
+};
 
 fn pillar_occupancy() -> ExPolygon {
     ExPolygon {
@@ -734,6 +736,58 @@ fn radius_aware_collision() {
 }
 
 #[test]
+fn base_interface_band_attributed_in_plan_roles() {
+    let object = two_overhangs("base-band");
+    let config = planner_config_full_with(
+        true,
+        5.0,
+        30.0,
+        &[("num_top_base_interface_layers", ConfigValue::Int(2))],
+    );
+    let planner = tree_support_planner::SupportPlanner::from_config(&config).unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+    assert!(output.entries().iter().any(|entry| {
+        entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::BaseInterface && !role.regions.is_empty())
+    }));
+    for entry in output.entries() {
+        let roles: Vec<_> = entry
+            .roles
+            .iter()
+            .filter(|role| !role.regions.is_empty())
+            .map(|role| role.role)
+            .collect();
+        assert!(
+            roles
+                .iter()
+                .filter(|role| **role == SupportPlanRole::BaseInterface)
+                .count()
+                <= 1
+        );
+        assert!(
+            !(roles.contains(&SupportPlanRole::BaseInterface)
+                && roles.contains(&SupportPlanRole::TopInterface))
+        );
+        assert!(
+            !(roles.contains(&SupportPlanRole::BaseInterface)
+                && roles.contains(&SupportPlanRole::SupportBody))
+        );
+    }
+}
+
+#[test]
 fn anchored_heights_and_termination() {
     let demand_region = ExPolygon {
         contour: Polygon {
@@ -886,8 +940,10 @@ fn mixed_height_contacts_keep_body_and_roof_on_the_same_layer() {
         &[],
         &[],
         &[],
+        &[],
         &[square(0.0, 4.0)],
         &[square(1.0, 2.0)],
+        &[],
         &[],
         1.0,
         &[],
@@ -1174,5 +1230,23 @@ fn non_tree_family_candidates_are_skipped() {
     assert!(
         output.entries().is_empty(),
         "tree planner must not emit entries for a traditional-family candidate"
+    );
+}
+
+#[test]
+fn branch_radius_clamps_at_canonical_maximum() {
+    let radius = tapered_radius(5.0, 1.0, 20, 1.0);
+    assert_eq!(radius, 10.0, "branch radius must clamp at 10.0 mm");
+}
+
+#[test]
+fn radius_raises_to_base_under_interfaces() {
+    let base_radius = 2.5;
+    let ordinary = tapered_radius(5.0, 1.0, 1, 0.2);
+    let with_interfaces = interface_adjusted_radius(ordinary, base_radius, 2, true);
+    assert!(with_interfaces >= base_radius);
+    assert_eq!(
+        interface_adjusted_radius(ordinary, base_radius, 0, true),
+        ordinary
     );
 }

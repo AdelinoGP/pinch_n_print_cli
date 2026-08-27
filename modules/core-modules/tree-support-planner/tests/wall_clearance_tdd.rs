@@ -310,14 +310,21 @@ fn emit_gate_uses_radius_baked_collision_point_in_semantics() {
 }
 
 #[test]
-fn avoidance_clearance_is_keyed_by_each_nodes_tapered_radius() {
-    let geometry = ladder_wall(2.5);
-    let small = run_with_config(&analysis(), &geometry, &planner_config_with_diameter(2.0));
-    let large = run_with_config(&analysis(), &geometry, &planner_config_with_diameter(4.0));
+fn avoidance_clearance_is_keyed_by_each_nodes_stored_radius() {
+    let geometry = ladder_wall(4.5);
+    let mut analysis = analysis();
+    for occupancy in &mut analysis.model_occupancy {
+        occupancy.polygons = vec![rect(6.0, -3.0, 9.0, 7.0)];
+    }
+    let small = run_with_config(&analysis, &geometry, &planner_config_with_diameter(2.0));
+    let large = run_with_config(&analysis, &geometry, &planner_config_with_diameter(4.0));
     let nearest_node = |output: &SupportGeometryOutput| {
         output
             .entries()
             .iter()
+            // Contact layers have different surviving seed counts for the two
+            // diameters. The plate layer compares fully propagated descendants.
+            .filter(|entry| entry.global_layer_index == 0)
             .filter_map(|entry| entry.skeleton.as_ref())
             .flat_map(|skeleton| skeleton.points.iter())
             .map(|point| point.x)
@@ -328,6 +335,6 @@ fn avoidance_clearance_is_keyed_by_each_nodes_tapered_radius() {
     assert!(small_nearest.is_finite() && large_nearest.is_finite());
     assert!(
         large_nearest < small_nearest,
-        "larger tapered radii must query a larger avoidance bucket: small={small_nearest}, large={large_nearest}"
+        "larger stored radii must query a larger avoidance bucket: small={small_nearest}, large={large_nearest}"
     );
 }

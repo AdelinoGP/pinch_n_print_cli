@@ -255,6 +255,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
 | `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |
 | `nozzle_diameter` | float | `0.4` | >= 0.0 | `tree-support-planner` |
+| `num_top_base_interface_layers` | int | `0` | [0.0, 10.0] | `tree-support-planner` |
 | `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `tree-support-planner` |
 | `support_branch_merge_distance_mm` | float | `0.8` | >= 0.0 | `tree-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |

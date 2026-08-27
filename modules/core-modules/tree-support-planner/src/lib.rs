@@ -48,7 +48,7 @@
 //!   `mm_to_top = dist_to_top * effective_layer_height`,
 //!   `raw = if mm_to_top <= branch_radius { mm_to_top }
 //!          else { branch_radius + (mm_to_top - branch_radius) * tan(diameter_angle) }`,
-//!   then `radius = clamp(raw, MIN_BRANCH_RADIUS = 0.4, MAX_BRANCH_RADIUS_MM = 6.0)`.
+//!   then `radius = clamp(raw, MIN_BRANCH_RADIUS = 0.4, MAX_BRANCH_RADIUS_MM = 10.0)`.
 //!   The top of the column tapers to the minimum branch radius (`mm_to_top = 0 → 0.4`).
 //! - **Wall-count scaling**: `max_move_distance = tan(angle) * height *
 //!   wall_count.max(1)`.
@@ -83,8 +83,8 @@ const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 /// OrcaSlicer's default `support_threshold_angle = 45°`.
 const OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 /// Hard upper clamp on branch radius in mm. Matches OrcaSlicer's
-/// `TreeSupportData::max_radius` hard upper bound (6.0 mm).
-const MAX_BRANCH_RADIUS_MM: f32 = 6.0;
+/// `TreeSupportData::max_radius` hard upper bound (10.0 mm).
+const MAX_BRANCH_RADIUS_MM: f32 = 10.0;
 /// Canonical `DO_NOT_MOVER_UNDER_MM` for the non-slim tree styles. Below this
 /// `print_z` the F-13 move pass forbids neighbour convergence entirely; the
 /// slim style uses `0`.
@@ -157,6 +157,8 @@ pub struct SupportPlanner {
     interface_raft_layers: u32,
     /// Number of interface layers at top of each branch column.
     support_interface_top_layers: i32,
+    /// Explicit band below a roof contact rendered as base interface.
+    num_top_base_interface_layers: i32,
     /// Number of dense interface layers where branches land on the model.
     /// `-1` mirrors the top interface count (OrcaSlicer convention).
     support_interface_bottom_layers: i32,
@@ -793,43 +795,65 @@ pub fn carve_emitted_regions(
 pub fn build_roles(
     branch_segments: &[Vec<Point3WithWidth>],
     interface_segments: &[Vec<Point3WithWidth>],
+    base_segments: &[Vec<Point3WithWidth>],
     floor_segments: &[Vec<Point3WithWidth>],
     branch_areas: &[ExPolygon],
     interface_areas: &[ExPolygon],
+    base_areas: &[ExPolygon],
     floor_areas: &[ExPolygon],
     branch_radius: f32,
     collision_polys: &[ExPolygon],
     avg_node_per_layer: usize,
     line_width_mm: f32,
 ) -> Vec<slicer_ir::SupportPlanRoleRegion> {
-    // Canonical `draw_circles` fills `base_areas` / `roof_areas` with one
-    // per-node ellipse per layer; the swept capsules are this port's addition
-    // and keep consecutive cross-sections joined on the same layer. Union the
-    // two before the carve so a role is one body, not a pile of overlaps.
+    // Both canonical tree engines emit one per-node cross-section per layer;
+    // neither adds same-layer connectors between skeleton edges. The segment
+    // geometry retained here is therefore limited to degenerate per-node disc
+    // fallbacks. Distinct-point segments remain available to the skeleton only.
     //
     // Canonical simplifies only `base_areas`, only for square support, at half
     // the support line width. Roof and floor areas, and every normal-density
-    // circle, retain their drawn resolution. The swept capsules are a port
-    // addition and stay joined to the same role before the final carve.
+    // circle, retain their drawn resolution.
     let with_areas =
         |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon], is_base_area: bool| {
             let mut regions = structural_body_regions(segments, branch_radius);
             regions.extend_from_slice(areas);
-            let regions = union_connected_components(regions);
+            // Canonical carves each drawn node circle before appending it to
+            // the role area. Carving after this union can join separate node
+            // circles through collision and then retain only one fragment.
+            let regions = carve_emitted_regions(&regions, collision_polys);
             let regions =
                 match role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm) {
                     Some(tolerance) => expolygons_simplify(&regions, tolerance),
                     None => regions,
                 };
-            carve_emitted_regions(&regions, collision_polys)
+            if collision_polys.is_empty() {
+                regions
+            } else {
+                // Simplification may move a boundary back into collision. The
+                // per-circle largest-part selection already happened above;
+                // preserve every surviving per-node component at this final
+                // gate without unioning adjacent cross-sections.
+                regions
+                    .iter()
+                    .flat_map(|region| {
+                        host::clip_polygons(
+                            std::slice::from_ref(region),
+                            collision_polys,
+                            ClipOperation::Difference,
+                        )
+                    })
+                    .collect()
+            }
         };
     let body = with_areas(branch_segments, branch_areas, true);
     let roof = with_areas(interface_segments, interface_areas, false);
+    let base = with_areas(base_segments, base_areas, false);
     let floor = with_areas(floor_segments, floor_areas, false);
 
     // Subtract interface geometry out of the body, per canonical.
     let mut carved = body;
-    for cut in [&roof, &floor] {
+    for cut in [&roof, &base, &floor] {
         if !carved.is_empty() && !cut.is_empty() {
             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
         }
@@ -845,6 +869,12 @@ pub fn build_roles(
         roles.push(slicer_ir::SupportPlanRoleRegion {
             role: slicer_ir::SupportPlanRole::TopInterface,
             regions: roof,
+        });
+    }
+    if !base.is_empty() {
+        roles.push(slicer_ir::SupportPlanRoleRegion {
+            role: slicer_ir::SupportPlanRole::BaseInterface,
+            regions: base,
         });
     }
     if !floor.is_empty() {
@@ -867,9 +897,8 @@ fn role_simplify_tolerance(
 
 /// Convert planned centerline nodes into semantic support-body regions.
 ///
-/// Each node contributes its own footprint. The segment vectors currently carry
-/// MST edges between distinct same-layer nodes, so sweeping their endpoints
-/// would bridge unrelated branches into slabs.
+/// Only degenerate segments represent per-node disc fallbacks. Distinct-point
+/// segments are MST skeleton edges and must not contribute role geometry.
 ///
 /// Zero-width points are the contact tips at the top of a column. They used to
 /// be filtered out entirely, which meant the layer that is supposed to meet the
@@ -882,10 +911,17 @@ pub fn structural_body_regions(
 ) -> Vec<ExPolygon> {
     let mut regions: Vec<ExPolygon> = Vec::new();
     for segment in segments {
-        for point in segment {
-            if let Some(disc) = swept_region(point, point) {
-                regions.push(disc);
-            }
+        let Some((first, rest)) = segment.split_first() else {
+            continue;
+        };
+        if rest
+            .iter()
+            .any(|point| point.x != first.x || point.y != first.y)
+        {
+            continue;
+        }
+        if let Some(disc) = swept_region(first, first) {
+            regions.push(disc);
         }
     }
     regions
@@ -902,6 +938,8 @@ enum InterfaceRole {
     Body,
     /// Roof: within the top interface band of its column.
     Roof,
+    /// Explicit dense band immediately below a roof contact.
+    Base,
     /// Floor: the branch lands on the model rather than the build plate.
     Floor,
 }
@@ -912,11 +950,13 @@ impl InterfaceRole {
         role: InterfaceRole,
         body: &'a mut Vec<Vec<Point3WithWidth>>,
         roof: &'a mut Vec<Vec<Point3WithWidth>>,
+        base: &'a mut Vec<Vec<Point3WithWidth>>,
         floor: &'a mut Vec<Vec<Point3WithWidth>>,
     ) -> &'a mut Vec<Vec<Point3WithWidth>> {
         match role {
             InterfaceRole::Floor => floor,
             InterfaceRole::Roof => roof,
+            InterfaceRole::Base => base,
             InterfaceRole::Body => body,
         }
     }
@@ -932,12 +972,15 @@ impl InterfaceRole {
         b: InterfaceRole,
         body: &'a mut Vec<Vec<Point3WithWidth>>,
         roof: &'a mut Vec<Vec<Point3WithWidth>>,
+        base: &'a mut Vec<Vec<Point3WithWidth>>,
         floor: &'a mut Vec<Vec<Point3WithWidth>>,
     ) -> &'a mut Vec<Vec<Point3WithWidth>> {
         if a == InterfaceRole::Floor || b == InterfaceRole::Floor {
             floor
         } else if a == InterfaceRole::Roof && b == InterfaceRole::Roof {
             roof
+        } else if a == InterfaceRole::Base && b == InterfaceRole::Base {
+            base
         } else {
             body
         }
@@ -972,21 +1015,6 @@ fn swept_region(a: &Point3WithWidth, b: &Point3WithWidth) -> Option<ExPolygon> {
         contour: Polygon { points: hull },
         holes: Vec::new(),
     })
-}
-
-/// Union only footprints that belong to the same connected component.
-fn union_connected_components(polys: Vec<ExPolygon>) -> Vec<ExPolygon> {
-    if polys.len() <= 1 {
-        return polys;
-    }
-    let (head, tail) = polys.split_at(1);
-    let mut regions = host::clip_polygons(head, tail, ClipOperation::Union);
-    regions.sort_by(|a, b| {
-        expolygon_area(b)
-            .total_cmp(&expolygon_area(a))
-            .then_with(|| a.contour.points.cmp(&b.contour.points))
-    });
-    regions
 }
 
 /// Andrew's monotone-chain convex hull, counter-clockwise, no collinear points.
@@ -1516,6 +1544,12 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 2,
         };
+        let num_top_base_interface_layers = match config.get("num_top_base_interface_layers") {
+            Some(ConfigValue::Int(n)) => *n as i32,
+            Some(ConfigValue::Float(n)) => *n as i32,
+            _ => 0,
+        }
+        .max(0);
         // Packet 123: `support_on_build_plate_only` config — when true,
         // contacts whose `to_buildplate` would be `false` are rejected
         // at creation time (no to-model branches). Default `false` to
@@ -1562,6 +1596,7 @@ impl PrepassModule for SupportPlanner {
             base_raft_layers,
             interface_raft_layers,
             support_interface_top_layers,
+            num_top_base_interface_layers,
             support_interface_bottom_layers,
             support_on_build_plate_only,
             support_top_z_distance_mm,
@@ -1634,14 +1669,15 @@ impl PrepassModule for SupportPlanner {
             self.branch_angle_deg,
             self.support_object_xy_distance,
         );
-        // Both ladders are now keyed on the *querying node's* radius and
+        // Both ladders are now keyed on the canonical *avoidance query radius*
+        // `calc_radius(dist_mm_to_top + height)` (global base-radius taper) and
         // materialise on demand (see `PolySet`). Until packet 224 step 5 the
         // module pre-filled exactly two buckets here — `collision(0.0)` and
         // `avoidance(branch_radius)` — because the getters returned borrows
         // and could not be filled inside the layer loop. The canonical move
         // pass (F-13) queries `get_avoidance(calc_radius(...), l)` and
-        // `get_collision(node_radius, l)`, so the bucket set is not knowable
-        // before the loop runs.
+        // `get_collision(calc_radius(...), l)`, so the bucket set is not
+        // knowable before the loop runs.
 
         // `support_interface_bottom_layers` is implemented as of packet 224: it
         // is read in `from_config` into `self.support_interface_bottom_layers`
@@ -2296,19 +2332,24 @@ impl SupportPlanner {
                     };
                     let other_id = if parent_id == id { nid } else { id };
                     let next_distance_to_top = arena[parent_id].distance_to_top.saturating_add(1);
-                    let next_radius = tapered_radius(
-                        branch_radius,
-                        tan_diameter_angle,
-                        next_distance_to_top.max(0) as u32,
-                        effective_height,
-                    );
+                    let next_dist_mm_to_top =
+                        arena[parent_id].dist_mm_to_top + arena[parent_id].height;
+                    let next_radius = arena[parent_id].radius
+                        + (next_dist_mm_to_top - arena[parent_id].dist_mm_to_top)
+                            * tan_diameter_angle;
                     if group_of[i] == 0 {
-                        // Canonical keys this push-out on the merged node's own
-                        // `next_radius` bucket. Steps 3-4 had to settle for the
-                        // constant branch-radius bucket because `TreeVolumes`
-                        // materialised only two; the caches are demand-filled
-                        // as of step 5, so the real bucket is used.
-                        let avoidance = volumes.get_avoidance(next_radius, next_cache_idx);
+                        // Canonical `drop_nodes` branch-A push-out queries the
+                        // avoidance ladder at
+                        // `calc_radius(node.dist_mm_to_top + height_next)`;
+                        // the created node's stored radius stays the ctor
+                        // inheritance (`next_radius` below).
+                        let avoid_radius = calc_radius(
+                            branch_radius,
+                            tan_diameter_angle,
+                            next_dist_mm_to_top,
+                            self.support_interface_top_layers,
+                        );
+                        let avoidance = volumes.get_avoidance(avoid_radius, next_cache_idx);
                         let (dilation, max_move) = branch_a_move_out_args(max_move_xy);
                         let _ =
                             move_out_expolys(&avoidance, &mut next_position, dilation, max_move);
@@ -2336,7 +2377,7 @@ impl SupportPlanner {
                         Some(parent_id),
                         next_print_z,
                         next_layer_height,
-                        next_distance_to_top.max(0) as f32 * effective_height,
+                        next_dist_mm_to_top,
                         next_radius,
                     );
                     arena[new_id].movement =
@@ -2480,9 +2521,9 @@ impl SupportPlanner {
                             }
                             continue;
                         }
-                        // "if the link between parent and current is cut by
-                        // contours, mark current as bottom contact node".
                         if let Some(parent) = arena[id].parent {
+                            // "if the link between parent and current is cut by
+                            // contours, mark current as bottom contact node".
                             let parent_xy = arena[parent].xy();
                             if line_cut.is_line_cut_by_contour(
                                 &layer_outlines,
@@ -2524,8 +2565,12 @@ impl SupportPlanner {
                 if print_z > do_not_move_under
                     && (neighbours.len() > 1 || (neighbours.len() == 1 && first_d2 >= max_move2))
                 {
-                    let branch_bottom_radius =
-                        calc_radius(branch_radius, tan_diameter_angle, dist_mm_to_top + print_z);
+                    let branch_bottom_radius = calc_radius(
+                        branch_radius,
+                        tan_diameter_angle,
+                        dist_mm_to_top + print_z,
+                        self.support_interface_top_layers,
+                    );
                     let mut converging: Vec<(f32, f32)> = Vec::with_capacity(neighbours.len());
                     for &j in neighbours {
                         let nid = active_nodes[j];
@@ -2541,6 +2586,7 @@ impl SupportPlanner {
                             branch_radius,
                             tan_diameter_angle,
                             arena[nid].dist_mm_to_top + arena[nid].print_z,
+                            self.support_interface_top_layers,
                         );
                         let max_converge_distance = tan_angle * (print_z - do_not_move_under)
                             + branch_bottom_radius.max(neighbour_bottom_radius);
@@ -2566,10 +2612,20 @@ impl SupportPlanner {
                 }
 
                 // -- `direction_to_outer` --------------------------------
+                let next_dist_mm_to_top = dist_mm_to_top + arena[id].height;
+                let inherited_radius =
+                    radius + (next_dist_mm_to_top - dist_mm_to_top) * tan_diameter_angle;
+                // Canonical `drop_nodes` move pass queries the avoidance and
+                // collision ladders at `calc_radius(node.dist_mm_to_top +
+                // height_next)` — the global base-radius taper — while the
+                // child's *stored* radius stays the ctor inheritance below.
+                // Two distinct quantities; with support_interface_top_layers>0
+                // the ladder is additionally raised to base_radius.
                 let next_avoid_radius = calc_radius(
                     branch_radius,
                     tan_diameter_angle,
-                    dist_mm_to_top + next_layer_height,
+                    next_dist_mm_to_top,
+                    self.support_interface_top_layers,
                 );
                 let avoidance_next = volumes.get_avoidance(next_avoid_radius, next_cache_idx);
                 let to_outside = projection_onto(&avoidance_next, (node_x, node_y));
@@ -2631,18 +2687,16 @@ impl SupportPlanner {
                 // points back up, so later steps can walk the column in either
                 // direction. Canonical `create_node(..., parent = p_node)` plus
                 // `p_node->child = next_node`.
-                let next_dist_mm_to_top = next_distance_to_top.max(0) as f32 * effective_height;
-                let mut next_radius =
-                    calc_radius(branch_radius, tan_diameter_angle, next_dist_mm_to_top);
+                let mut next_radius = inherited_radius;
                 // STUDIO-7883: a branch may not grow wider than its clearance
                 // to the model, and may never shrink below its parent.
                 let collision_here = volumes.get_collision(0.0, next_cache_idx);
                 if !collision_here.is_empty() {
                     let projected = projection_onto(&collision_here, (next_x, next_y));
-                    let dist_to_outer = ((projected.0 - node_x) * (projected.0 - node_x)
-                        + (projected.1 - node_y) * (projected.1 - node_y))
+                    let dist_to_outer = ((projected.0 - next_x) * (projected.0 - next_x)
+                        + (projected.1 - next_y) * (projected.1 - next_y))
                         .sqrt();
-                    next_radius = radius.max(next_radius.min(dist_to_outer));
+                    next_radius = radius.max(inherited_radius.min(dist_to_outer));
                 }
 
                 let next_id = arena.create_node(
@@ -2671,15 +2725,11 @@ impl SupportPlanner {
             // pass could not un-emit an upper layer it had already written.
             layer_records.push(LayerRecord {
                 layer_rev,
-                // `drop` covers the merge pass absorbed nodes and the grouping
-                // pass unsupported leaves. It deliberately does NOT include
-                // nodes the move pass cleared `valid` on: canonical
-                // `draw_circles` has no `valid` filter, so a branch that
-                // terminates on the model still prints its last cross-section.
-                active: (0..active_nodes.len())
-                    .filter(|i| !drop[*i])
-                    .map(|i| active_nodes[i])
-                    .collect(),
+                // Canonical `draw_circles` iterates every node left in
+                // `contact_nodes`, including merge-invalid nodes. Only the
+                // later unsupported-branch prune marks nodes `is_processed`
+                // and removes them before drawing.
+                active: active_nodes.clone(),
                 edges: live_edges
                     .iter()
                     .map(|(a, b)| (active_nodes[*a], active_nodes[*b]))
@@ -2884,6 +2934,7 @@ impl SupportPlanner {
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
             let mut interface_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+            let mut base_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
             let mut floor_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
 
             // Canonical keeps roof and floor as distinct *areas* carved out of
@@ -2897,6 +2948,7 @@ impl SupportPlanner {
             // into a branch-sized disc and the roof bore no relation to the
             // branch footprint.
             let top_n = self.support_interface_top_layers.max(0) as u32;
+            let base_n = self.num_top_base_interface_layers as usize;
             // `-1` mirrors the top interface count, matching canonical's
             // `number_of_support_interface_bottom_layers` fallback.
             let bottom_n = if self.support_interface_bottom_layers < 0 {
@@ -2925,10 +2977,23 @@ impl SupportPlanner {
                     // `roof_band_layers_emitted` object-wide counter is gone:
                     // it starved every overhang after the first of interface.
                     let is_roof = top_n > 0 && node.is_roof();
+                    let mut below_roof = 0usize;
+                    let mut reached_roof = false;
+                    let mut ancestor = node.parent;
+                    while let Some(parent_id) = ancestor {
+                        below_roof += 1;
+                        if arena[parent_id].is_roof() {
+                            reached_roof = true;
+                            break;
+                        }
+                        ancestor = arena[parent_id].parent;
+                    }
                     if is_floor {
                         InterfaceRole::Floor
                     } else if is_roof {
                         InterfaceRole::Roof
+                    } else if reached_roof && below_roof <= base_n {
+                        InterfaceRole::Base
                     } else {
                         InterfaceRole::Body
                     }
@@ -2946,6 +3011,7 @@ impl SupportPlanner {
             // contributed no area and a leaning branch had no elongation.
             let mut branch_areas: Vec<ExPolygon> = Vec::new();
             let mut interface_areas: Vec<ExPolygon> = Vec::new();
+            let mut base_areas: Vec<ExPolygon> = Vec::new();
             let mut floor_areas: Vec<ExPolygon> = Vec::new();
             let mut layer_needs_extra_wall = false;
             for (i, id) in active_nodes.iter().enumerate() {
@@ -2955,12 +3021,7 @@ impl SupportPlanner {
                 if node.is_virtual_gap() {
                     continue;
                 }
-                let radius = tapered_radius(
-                    branch_radius,
-                    tan_diameter_angle,
-                    node.distance_to_top.max(0) as u32,
-                    effective_height,
-                );
+                let radius = node.radius;
                 // Same gate the contact-tip path applies: a node's own drawn
                 // cross-section may never sit inside model occupancy,
                 // whatever role it carries. (The MST-edge gate exempts
@@ -2991,6 +3052,7 @@ impl SupportPlanner {
                 match node_roles[i] {
                     InterfaceRole::Body => branch_areas.push(ellipse),
                     InterfaceRole::Roof => interface_areas.push(ellipse),
+                    InterfaceRole::Base => base_areas.push(ellipse),
                     InterfaceRole::Floor => floor_areas.push(ellipse),
                 }
             }
@@ -3010,19 +3072,8 @@ impl SupportPlanner {
                     continue;
                 }
 
-                // Tapered radii at the two endpoints
-                let radius_a = tapered_radius(
-                    branch_radius,
-                    tan_diameter_angle,
-                    na.distance_to_top.max(0) as u32,
-                    effective_height,
-                );
-                let radius_b = tapered_radius(
-                    branch_radius,
-                    tan_diameter_angle,
-                    nb.distance_to_top.max(0) as u32,
-                    effective_height,
-                );
+                let radius_a = na.radius;
+                let radius_b = nb.radius;
 
                 // The swept capsule follows the same canonical carve rule as
                 // a node's own cross-section: `build_roles` differences it
@@ -3034,6 +3085,16 @@ impl SupportPlanner {
                 let segment_swallowed = swallowed_by_collision(na.x(), na.y(), radius_a)
                     && swallowed_by_collision(nb.x(), nb.y(), radius_b);
                 if segment_swallowed {
+                    if self.support_interface_top_layers > 0 {
+                        let _ = output.push_diagnostic(Diagnostic {
+                            severity: DiagnosticSeverity::Warn,
+                            code: 1002,
+                            layer: Some(current_global_layer_index as i32),
+                            object_id: Some(obj.object_id.clone()),
+                            message: "node-clamped-out".into(),
+                        });
+                        continue;
+                    }
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -3059,6 +3120,7 @@ impl SupportPlanner {
                     node_roles[*b_idx],
                     &mut branch_segments,
                     &mut interface_segments,
+                    &mut base_segments,
                     &mut floor_segments,
                 )
                 .push(vec![
@@ -3106,12 +3168,7 @@ impl SupportPlanner {
                 // then dropped by `structural_body_regions`, so the layer that
                 // meets the overhang produced no printable geometry. It now
                 // carries the tapered radius like any other node.
-                let radius = tapered_radius(
-                    branch_radius,
-                    tan_diameter_angle,
-                    node.distance_to_top.max(0) as u32,
-                    effective_height,
-                );
+                let radius = node.radius;
                 if node_swallowed(node.x(), node.y(), radius) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
@@ -3142,6 +3199,7 @@ impl SupportPlanner {
                     node_roles[i],
                     &mut branch_segments,
                     &mut interface_segments,
+                    &mut base_segments,
                     &mut floor_segments,
                 )
                 .push(vec![point, point]);
@@ -3156,12 +3214,7 @@ impl SupportPlanner {
                     continue;
                 }
                 {
-                    let radius = tapered_radius(
-                        branch_radius,
-                        tan_diameter_angle,
-                        node.distance_to_top.max(0) as u32,
-                        effective_height,
-                    );
+                    let radius = node.radius;
                     if node_swallowed(node.x(), node.y(), radius) {
                         continue;
                     }
@@ -3181,6 +3234,7 @@ impl SupportPlanner {
                         node_roles[i],
                         &mut branch_segments,
                         &mut interface_segments,
+                        &mut base_segments,
                         &mut floor_segments,
                     )
                     .push(vec![point, point]);
@@ -3193,6 +3247,7 @@ impl SupportPlanner {
             // geometry produced no entry at all.
             if !branch_segments.is_empty()
                 || !interface_segments.is_empty()
+                || !base_segments.is_empty()
                 || !floor_segments.is_empty()
                 || !branch_areas.is_empty()
                 || !interface_areas.is_empty()
@@ -3266,9 +3321,11 @@ impl SupportPlanner {
                     let mut roles = build_roles(
                         &branch_segments,
                         &interface_segments,
+                        &base_segments,
                         &floor_segments,
                         &branch_areas,
                         &interface_areas,
+                        &base_areas,
                         &floor_areas,
                         branch_radius,
                         role_collision,
@@ -4584,7 +4641,24 @@ pub fn tapered_radius(
         branch_radius,
         tan_diameter_angle,
         (dist_to_top as f32) * effective_layer_height,
+        0,
     )
+}
+
+/// Raise a tapered radius back to the branch base while it is in a roof band.
+/// Canonical applies this after the ordinary taper and only when interface
+/// layers are configured; body nodes and zero-layer configurations are unchanged.
+pub fn interface_adjusted_radius(
+    radius: f32,
+    base_radius: f32,
+    support_interface_top_layers: i32,
+    is_roof: bool,
+) -> f32 {
+    if support_interface_top_layers > 0 && is_roof {
+        radius.max(base_radius)
+    } else {
+        radius
+    }
 }
 
 /// Canonical `calc_branch_radius(branch_radius, mm_to_top, diameter_angle)` —
@@ -4595,13 +4669,23 @@ pub fn tapered_radius(
 /// `node->dist_mm_to_top + node->print_z` (branch *bottom* radius) and at
 /// `node->dist_mm_to_top + height_next`, neither of which is a whole number of
 /// layers.
-pub fn calc_radius(branch_radius: f32, tan_diameter_angle: f32, mm_to_top: f32) -> f32 {
+pub fn calc_radius(
+    branch_radius: f32,
+    tan_diameter_angle: f32,
+    mm_to_top: f32,
+    support_interface_top_layers: i32,
+) -> f32 {
     let raw = if mm_to_top <= branch_radius {
         mm_to_top
     } else {
         branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
     };
-    raw.clamp(MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM)
+    let radius = raw.clamp(MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM);
+    if support_interface_top_layers > 0 {
+        radius.max(branch_radius)
+    } else {
+        radius
+    }
 }
 
 /// Clamp a point into the union of avoidance polygons.
@@ -5352,7 +5436,20 @@ mod tests {
             std::slice::from_ref(&roof),
             ClipOperation::Difference,
         );
-        let roles = build_roles(&[], &[], &[], &[base], &[roof], &[], 1.0, &[], 0, 0.4);
+        let roles = build_roles(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[base],
+            &[roof],
+            &[],
+            &[],
+            1.0,
+            &[],
+            0,
+            0.4,
+        );
         let body = &roles
             .iter()
             .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
@@ -5382,7 +5479,20 @@ mod tests {
             false,
         )
         .expect("fine circle");
-        let roles = build_roles(&[], &[], &[], &[ellipse], &[], &[], 1.0, &[], 0, 0.4);
+        let roles = build_roles(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[ellipse],
+            &[],
+            &[],
+            &[],
+            1.0,
+            &[],
+            0,
+            0.4,
+        );
         let vertex_count = roles[0].regions[0].contour.points.len();
         assert!(
             vertex_count > BRANCH_CIRCLE_SEGMENTS,
@@ -5402,13 +5512,13 @@ mod tests {
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
         };
-        let regions =
-            structural_body_regions(&[vec![point(0.0, 0.0, 2.0), point(3.0, 0.0, 4.0)]], 1.0);
+        let fallback = point(0.0, 0.0, 2.0);
+        let regions = structural_body_regions(&[vec![fallback, fallback]], 1.0);
         assert!(regions[0].contour.points.len() <= BRANCH_CIRCLE_SEGMENTS);
     }
 
     #[test]
-    fn structural_regions_keep_cross_branch_nodes_discrete() {
+    fn structural_regions_exclude_mst_edges_but_keep_node_fallbacks() {
         let point = |x: f32, y: f32| Point3WithWidth {
             x,
             y,
@@ -5419,22 +5529,16 @@ mod tests {
             dist_to_top_mm: 0.0,
             overhang_distance_mm: None,
         };
-        // These are two separate branches. The old MST-edge sweep connected
-        // opposite endpoints into crossing capsules and produced one slab.
+        let fallback = point(2.0, 3.0);
         let regions = structural_body_regions(
             &[
                 vec![point(-5.0, 0.0), point(5.0, 10.0)],
                 vec![point(5.0, 0.0), point(-5.0, 10.0)],
+                vec![fallback, fallback],
             ],
             1.0,
         );
-        assert_eq!(regions.len(), 4, "each node footprint must remain discrete");
-        assert!(
-            regions
-                .iter()
-                .all(|region| region.contour.points.iter().all(|p| p.x.abs() > 0)),
-            "no footprint should be replaced by the old cross-branch bridge"
-        );
+        assert_eq!(regions.len(), 1, "only the per-node fallback may be drawn");
     }
 
     #[test]
@@ -5490,6 +5594,7 @@ mod tests {
             base_raft_layers: 1,
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
+            num_top_base_interface_layers: 0,
             support_interface_bottom_layers: -1,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,

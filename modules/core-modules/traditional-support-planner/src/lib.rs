@@ -327,6 +327,10 @@ impl SupportPlanner {
         } else {
             self.support_interface_bottom_layers.max(0) as u32
         };
+        // G-18: widen the traditional top band only for a raw positive bottom count;
+        // see design.md §Plan Corrections item 4.
+        let top_interface_layers =
+            top_layers + u32::from(self.support_interface_bottom_layers >= 1);
 
         let support_step = if self.support_layer_height_mm > 0.0 && model_layer_height > 0.0 {
             (self.support_layer_height_mm / model_layer_height)
@@ -452,14 +456,18 @@ impl SupportPlanner {
                         OffsetJoinType::Miter,
                         0.0,
                     );
-                    if grown.is_empty() { contact } else { grown }
+                    if grown.is_empty() {
+                        contact
+                    } else {
+                        grown
+                    }
                 }
             }
         };
 
         for layer in (termination_layer..=emit_top_layer).rev() {
-            let is_interface_layer = (top_layers > 0
-                && layer >= interface_top_layer.saturating_sub(top_layers - 1))
+            let is_interface_layer = (top_interface_layers > 0
+                && layer >= interface_top_layer.saturating_sub(top_interface_layers - 1))
                 || (bottom_layers > 0
                     && model_termination_layer.is_some()
                     && layer < termination_layer + bottom_layers);
@@ -490,8 +498,8 @@ impl SupportPlanner {
             // which excluded the plate layer — so a column shorter than
             // `support_interface_top_layers` printed its bottom-most layer as
             // body even though it lies inside the roof band.
-            let is_top_interface = top_layers > 0
-                && layer >= interface_top_layer.saturating_sub(top_layers - 1);
+            let is_top_interface = top_interface_layers > 0
+                && layer >= interface_top_layer.saturating_sub(top_interface_layers - 1);
             // A floor exists only where the column lands on the model.
             let is_bottom_interface = bottom_layers > 0
                 && model_termination_layer.is_some()
