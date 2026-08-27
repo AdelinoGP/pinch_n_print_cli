@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 245-lock-aware-infill-consumers
 task_ids:
   - TASK-355

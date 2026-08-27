@@ -139,6 +139,22 @@
 - The carve runs after bucket fill, so it must not reorder buckets or disturb the locked passthrough
   already appended. Mitigation: carve operates on the untagged buckets only, keyed by region.
 
+## Amendment — 2026-08-27 (review closure)
+
+- **Carve placement (C1 / AC-2).** The C1 wording above places the swept-footprint carve "after all
+  buckets are filled", differencing untagged role *buckets*. As implemented and review-approved, the
+  carve differences the footprint out of each role's partitioned *boundary* inside
+  `process_bucket_role` (`modules/core-modules/infill-linker/src/orchestrate.rs`), before the link
+  flow: untagged fill is linked within boundary-minus-footprint instead of being linked first and
+  differenced afterwards. The AC-2 end state is unchanged — no untagged path crosses the swept
+  footprint, and locked paths are never carved — and the footprint is role-agnostic (collected from
+  the record's sparse and solid paths), so the cross-role case in AC-2's Given is covered. Verified
+  by `locked_swept_footprint_carved_from_untagged_fill` and
+  `locked_footprint_carved_from_solid_fill_of_same_region`
+  (`modules/core-modules/infill-linker/tests/orchestrate_tdd.rs`). The "must not reorder buckets or
+  disturb the locked passthrough" risk above is moot under this placement: the carve runs before
+  bucket fill entirely.
+
 ## Context Cost Estimate
 
 - Aggregate: `M`

@@ -13,7 +13,7 @@
 - Task IDs: `TASK-355`
 - Objective: make `process_bucket_role` append locked paths verbatim and carve their swept footprint
   out of untagged fill of the same region.
-- Precondition: packet 244 (draft) introduces `ExtrusionPath3D.order_lock: Option<u64>`;
+- Precondition: packet 244 (implemented) introduces `ExtrusionPath3D.order_lock: Option<u64>`;
   `orchestrate_tdd.rs` compiles against the current linker.
 - Postcondition: `AC-1`, `AC-2`, `AC-N1` pass; locked paths are never clipped/linked; untagged fill
   is differenced by the swept footprint (trapezoids + round vertex disks).

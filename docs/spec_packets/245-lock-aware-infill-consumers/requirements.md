@@ -4,12 +4,12 @@
 
 - Grouped task IDs: `TASK-355`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
 
-Packet 244 (draft) introduces the `order_lock: Option<u64>` carrier and the host enforcement
+Packet 244 (implemented) introduces the `order_lock: Option<u64>` carrier and the host enforcement
 contract, but no consumer honors the field yet. Three downstream stages still destroy locked sequences: the infill
 linker re-clips, chains, and reverses bridge-role paths; path optimization nearest-neighbor permutes
 role groups and may reverse entities; G-code emission runs Douglas-Peucker and `min_segment_length`

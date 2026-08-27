@@ -268,6 +268,51 @@ fn locked_swept_footprint_carved_from_untagged_fill() {
 }
 
 #[test]
+fn locked_footprint_carved_from_solid_fill_of_same_region() {
+    // Cross-role carve (AC-2): the locked sparse path's swept footprint must
+    // also be carved out of the solid role's boundary in the same region.
+    let mut locked = vertical_path(5.0, 0.4);
+    locked.order_lock = Some(3);
+    let mut solid_line = path(0.0, 10.0, 5.0, 0.4);
+    solid_line.role = ExtrusionRole::TopSolidInfill;
+    let mut prior_region = sparse_region(1, vec![locked.clone()]);
+    prior_region.solid_infill = vec![solid_line];
+    let area = square(0.0, 10.0);
+    let mut region_view = PerimeterRegionViewBuilder::new()
+        .object_id("object")
+        .region_id(1)
+        .add_infill_area(area.clone())
+        .sparse_infill_area(vec![area.clone()])
+        .top_solid_fill(vec![area])
+        .wall_source_region_id(None)
+        .tool_index(0)
+        .build();
+    region_view.set_config(config(0.4, 0.2));
+
+    let output = run(&[prior_region], &[region_view]);
+
+    assert_eq!(output.sparse_paths(), &[locked]);
+    assert!(
+        !output.solid_paths().is_empty(),
+        "solid fill outside the carved band must survive"
+    );
+    assert!(output
+        .solid_paths()
+        .iter()
+        .flat_map(|candidate| candidate.points.windows(2))
+        .all(|segment| {
+            let min_x = segment[0].x.min(segment[1].x);
+            let max_x = segment[0].x.max(segment[1].x);
+            !(min_x < 4.79
+                && max_x > 5.21
+                && segment[0].y >= 4.79
+                && segment[0].y <= 5.21
+                && segment[1].y >= 4.79
+                && segment[1].y <= 5.21)
+        }));
+}
+
+#[test]
 fn locked_path_crossing_fill_domain_not_clipped() {
     let mut locked = path(-2.0, 12.0, 5.0, 0.6);
     locked.order_lock = Some(11);
