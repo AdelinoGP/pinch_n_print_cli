@@ -17,9 +17,9 @@ use slicer_ir::{
 };
 use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{build_wasm_instance_pool, CompiledModuleBuilder, WasmArtifactMetadata};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use std::collections::HashMap;
 use std::sync::Arc;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const HEADER_MARKER: f32 = 777.0;
 const FIELD_MARKER: f32 = 888.0;

@@ -8,8 +8,8 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, StageId, ToolChange,
 };
 use slicer_runtime::{Blackboard, FinalizationStageRunner};
-use wipe_tower::WipeTower;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use wipe_tower::WipeTower;
 
 use crate::common::{
     finalization_input,

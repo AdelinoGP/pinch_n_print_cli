@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use seam_placer::SeamPlacer;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LoopType, MeshIR,
     PerimeterIR, PerimeterRegion, Point3WithWidth, RegionKey, SeamPlanEntry, SeamPlanIR,
@@ -13,6 +12,7 @@ use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
     WasmInstancePool, WasmRuntimeDispatcher,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use crate::common::{
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},

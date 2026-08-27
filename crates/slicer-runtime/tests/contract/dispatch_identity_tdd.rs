@@ -479,7 +479,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                 tool_index: None,
             },
             feature_flags: vec![WallFeatureFlag {
-            tool_index: None,
+                tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,

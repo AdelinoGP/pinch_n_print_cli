@@ -4,8 +4,8 @@
 
 use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
-use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 #[test]
 fn per_role_speed_resolves_to_f_token() {

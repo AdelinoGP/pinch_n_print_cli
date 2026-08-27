@@ -5,10 +5,10 @@ use crate::common::seed::seed_slice_ir;
 use crate::common::*;
 use slicer_ir::{GlobalLayer, LayerCollectionIR, LayerStageError, MeshIR, RetractMode};
 use slicer_runtime::{Blackboard, CompiledStage, ExecutionPlan, GCodeEmitter, LayerStageRunner};
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, WasmRuntimeDispatcher};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ── L. PathOptimization: ordered_entities threading + GCode override commit ──
 

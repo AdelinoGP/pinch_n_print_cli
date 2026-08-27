@@ -18,8 +18,8 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, ObjectId, Point3WithWidth,
     PrintEntity, RegionKey, ResolvedConfig,
 };
-use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::test_support::fixtures::print_entity_base;
 
 // ============================================================================
 // Fixtures

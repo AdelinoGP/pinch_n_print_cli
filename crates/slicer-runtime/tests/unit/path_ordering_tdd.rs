@@ -13,12 +13,12 @@ use std::sync::Arc;
 use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
     LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 const PATH_OPT_WASM: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),

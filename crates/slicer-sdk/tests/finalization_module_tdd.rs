@@ -4,8 +4,8 @@
 //! Tests lock down trait signatures, view types, and output builders.
 
 use slicer_sdk::prelude::*;
-use std::collections::HashMap;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::collections::HashMap;
 
 // =============================================================================
 // Test 1: FinalizationModule trait exists with lifecycle methods

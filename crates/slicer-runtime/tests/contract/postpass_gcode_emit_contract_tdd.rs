@@ -110,10 +110,10 @@ fn layer_with_entity(
 // ============================================================================
 
 use slicer_ir::{GCodeCommand, StageId};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     Blackboard, CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 struct NoOpRunner;
 impl PostpassStageRunner for NoOpRunner {

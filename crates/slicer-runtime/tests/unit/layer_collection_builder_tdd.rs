@@ -22,13 +22,13 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
     CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LayerArena,
     LayerStageInput, LoadedModule, LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
     HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

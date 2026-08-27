@@ -295,7 +295,10 @@ fn authored_out_of_range_tool_index_falls_back_to_host_resolution() {
          and must be ignored silently, leaving the painted region's tool \
          {REGION_DEFAULT_TOOL}; got {got}"
     );
-    assert_ne!(got, 99, "the out-of-range authored value must never be stamped");
+    assert_ne!(
+        got, 99,
+        "the out-of-range authored value must never be stamped"
+    );
 }
 
 /// Case 3: `None` leaves host resolution untouched — the pre-change behaviour.

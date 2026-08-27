@@ -15,8 +15,8 @@ use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
     WasmInstancePool, WasmRuntimeDispatcher,
 };
-use std::sync::Arc;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::sync::Arc;
 
 fn perimeter() -> PerimeterIR {
     let points = vec![

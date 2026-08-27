@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use std::collections::HashMap;
 use std::sync::Arc;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR,

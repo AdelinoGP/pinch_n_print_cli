@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
 use slicer_ir::{
-    ConfigDelta, ConfigValue, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope,
-    ModifierVolume, ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
-    ResolvedConfig, SliceIR, SlicedRegion, Transform3d, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    ConfigDelta, ConfigValue, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume,
+    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SliceIR, SlicedRegion, Transform3d, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
 };
 
 const IDENTITY: [f64; 16] = [

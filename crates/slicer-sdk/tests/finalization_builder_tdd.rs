@@ -11,9 +11,9 @@
 
 use slicer_ir::{LayerCollectionIR, PrintEntity, TravelMove};
 use slicer_sdk::prelude::*;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Fixture helpers

@@ -375,10 +375,7 @@ fn macro_prepass_stages_each_delegate_to_their_sdk_trait_method() {
         ("run_seam_planning", &["run_seam_planning"][..]),
         (
             "run_support_geometry",
-            &[
-                "run_support_geometry",
-                "run_support_geometry_with_analysis",
-            ][..],
+            &["run_support_geometry", "run_support_geometry_with_analysis"][..],
         ),
     ] {
         assert!(

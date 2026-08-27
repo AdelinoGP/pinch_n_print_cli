@@ -8,11 +8,11 @@ use slicer_sdk::prelude::{
 };
 use slicer_sdk::test_support::assert_paths::assert_paths_planar;
 use slicer_sdk::test_support::capture::InfillOutputCapture;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::{
     square_polygon, ConfigViewBuilder, SliceRegionViewBuilder,
 };
 use slicer_sdk::test_support::mock_host::MockHost;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[test]
 fn prelude_reexports_are_available() {
