@@ -406,6 +406,18 @@ impl NodeArena {
         });
         if let Some(parent) = parent {
             self.nodes[parent.0].child = Some(id);
+            // Canonical `SupportNode` ctor (`TreeSupport.hpp`): every merged
+            // neighbour of the parent also adopts the new node as its child
+            // and joins `parents`. This is what makes a merge-absorbed node a
+            // chain *interior* node in `smooth_nodes` (its fixed head is the
+            // surviving column's descendant); without it the absorbed node is
+            // pinned at its raw drop-pass position and the branch silhouette
+            // pops outward on every merge layer.
+            let merged = self.nodes[parent.0].merged_neighbours.clone();
+            for neighbour in merged {
+                self.nodes[neighbour.0].child = Some(id);
+                self.nodes[id.0].parents.push(neighbour);
+            }
         }
         id
     }
@@ -822,6 +834,17 @@ pub fn build_roles(
             // the role area. Carving after this union can join separate node
             // circles through collision and then retain only one fragment.
             let regions = carve_emitted_regions(&regions, collision_polys);
+            // Canonical accumulates the carved circles into `base_areas` /
+            // `roof_areas` and then runs them through Clipper boolean ops
+            // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
+            // m_machine_border)`, `closing_ex`/`diff_clipped` for the
+            // interfaces). Every one of those returns non-overlapping
+            // `ExPolygons`, so adjacent node cross-sections come out fused
+            // into a single outline. Emitting them unmerged puts a duplicate
+            // perimeter through the inside of each fused branch pair and makes
+            // the branch silhouette pop between layers as neighbouring circles
+            // drift in and out of contact.
+            let regions = union_expolys(regions);
             let regions =
                 match role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm) {
                     Some(tolerance) => expolygons_simplify(&regions, tolerance),
@@ -831,19 +854,9 @@ pub fn build_roles(
                 regions
             } else {
                 // Simplification may move a boundary back into collision. The
-                // per-circle largest-part selection already happened above;
-                // preserve every surviving per-node component at this final
-                // gate without unioning adjacent cross-sections.
-                regions
-                    .iter()
-                    .flat_map(|region| {
-                        host::clip_polygons(
-                            std::slice::from_ref(region),
-                            collision_polys,
-                            ClipOperation::Difference,
-                        )
-                    })
-                    .collect()
+                // per-circle largest-part selection already happened above, so
+                // this is canonical's plain set-wide difference.
+                host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
             }
         };
     let body = with_areas(branch_segments, branch_areas, true);
@@ -2368,6 +2381,11 @@ impl SupportPlanner {
                         }
                     }
                     let (parent_x, parent_y) = arena[parent_id].xy();
+                    // Canonical: `node_parent->merged_neighbours.push_front(
+                    // node_parent == p_node ? neighbour : p_node)` BEFORE
+                    // `create_node`, so the ctor loop wires the faded twin's
+                    // `child` and `parents` entry.
+                    arena[parent_id].merged_neighbours.push(other_id);
                     let new_id = arena.create_node(
                         Point2::from_mm(next_position.0, next_position.1),
                         next_distance_to_top,
@@ -2385,9 +2403,9 @@ impl SupportPlanner {
                     arena[new_id].max_move_dist = max_move_xy;
                     arena[new_id].is_sharp_tail = is_sharp_tail;
                     arena[new_id].demand_ids = demand_ids;
-                    // Both originals feed the merged node.
-                    arena[new_id].parents.push(other_id);
-                    arena[other_id].child = Some(new_id);
+                    // Both originals feed the merged node: `create_node`'s
+                    // ctor loop wired `other_id.child` / `parents` from the
+                    // `merged_neighbours` push above.
                     arena[id].valid = false;
                     arena[nid].valid = false;
                     drop[i] = true;
@@ -2426,11 +2444,16 @@ impl SupportPlanner {
                             let removed = &arena[nid];
                             (removed.distance_to_top, removed.support_roof_layers_below)
                         };
+                        // Canonical also splices the absorbed node's own
+                        // merged list, so `child` reassignment reaches every
+                        // transitively-absorbed node of the column.
+                        let grand_merged = arena[nid].merged_neighbours.clone();
                         let keep = &mut arena[id];
                         keep.distance_to_top = keep.distance_to_top.max(dist);
                         keep.support_roof_layers_below =
                             insert_dropped_node_roof_counter(keep.support_roof_layers_below, roof);
                         keep.merged_neighbours.push(nid);
+                        keep.merged_neighbours.extend(grand_merged);
                         arena[nid].valid = false;
                         drop[j] = true;
                     }
@@ -4835,6 +4858,129 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
 
 #[cfg(test)]
 mod tests {
+
+    /// Canonical `SupportNode` ctor: `for (auto& neighbor : parent->merged_neighbours)
+    /// { neighbor->child = this; parents.push_back(neighbor); }` (`TreeSupport.hpp`).
+    /// Without it a merge-absorbed node never gains a child, so `smooth_nodes`
+    /// pins it at its raw drop-pass position and the branch silhouette pops
+    /// outward on every merge layer (the Z 9.2-13 terracing on SupportTest).
+    #[test]
+    fn create_node_wires_merged_neighbours_child_and_parents() {
+        let mut arena = NodeArena::default();
+        let survivor = arena.create_node(
+            Point2::from_mm(0.0, 0.0),
+            3,
+            10,
+            0,
+            true,
+            None,
+            2.0,
+            0.2,
+            0.6,
+            1.0,
+        );
+        let absorbed = arena.create_node(
+            Point2::from_mm(1.0, 0.0),
+            3,
+            10,
+            0,
+            true,
+            None,
+            2.0,
+            0.2,
+            0.6,
+            1.0,
+        );
+        arena[survivor].merged_neighbours.push(absorbed);
+        arena[absorbed].valid = false;
+        let child = arena.create_node(
+            Point2::from_mm(0.1, 0.0),
+            4,
+            9,
+            0,
+            true,
+            Some(survivor),
+            1.8,
+            0.2,
+            0.8,
+            1.0,
+        );
+        assert_eq!(
+            arena[absorbed].child,
+            Some(child),
+            "every merged neighbour of the parent must adopt the new node as its child"
+        );
+        assert!(
+            arena[child].parents.contains(&absorbed),
+            "merged neighbours must join the new node's parents"
+        );
+    }
+
+    /// The user-visible half of the same bug: after `smooth_nodes`, a
+    /// merge-absorbed node must be an *interior* chain node (its child is the
+    /// surviving column's descendant) and get pulled onto the smoothed line,
+    /// not stay pinned at its raw drop-pass position.
+    #[test]
+    fn smooth_nodes_pulls_merge_absorbed_node_toward_the_column() {
+        let mut arena = NodeArena::default();
+        let mk = |arena: &mut NodeArena, x: f32, layer: usize, parent, z: f32| {
+            arena.create_node(
+                Point2::from_mm(x, 0.0),
+                3,
+                layer,
+                0,
+                true,
+                parent,
+                z,
+                0.2,
+                0.6,
+                1.0,
+            )
+        };
+        // Absorbed branch: tip Mpp (z2.4) -> Mp (z2.2) -> M (z2.0), all at x=2.
+        let mpp = mk(&mut arena, 2.0, 7, None, 2.4);
+        let mp = mk(&mut arena, 2.0, 6, Some(mpp), 2.2);
+        let m = mk(&mut arena, 2.0, 5, Some(mp), 2.0);
+        // Surviving trunk node S at x=0 absorbs M on its layer (STUDIO-6326).
+        let s = mk(&mut arena, 0.0, 5, None, 2.0);
+        arena[s].merged_neighbours.push(m);
+        arena[m].valid = false;
+        // The move pass then creates S's descendant one layer down.
+        let c = mk(&mut arena, 0.0, 4, Some(s), 1.8);
+        let records = vec![
+            LayerRecord {
+                layer_rev: 7,
+                active: vec![mpp],
+                edges: vec![],
+            },
+            LayerRecord {
+                layer_rev: 6,
+                active: vec![mp],
+                edges: vec![],
+            },
+            LayerRecord {
+                layer_rev: 5,
+                active: vec![s, m],
+                edges: vec![],
+            },
+            LayerRecord {
+                layer_rev: 4,
+                active: vec![c],
+                edges: vec![],
+            },
+        ];
+        smooth_nodes(&mut arena, &records, 0.4);
+        assert!(
+            arena[m].is_processed,
+            "the absorbed node must be smoothed as a chain interior node"
+        );
+        assert!(
+            arena[m].position.x < mm_to_units(1.5),
+            "the absorbed node must be pulled toward the surviving column, got x={}",
+            units_to_mm(arena[m].position.x)
+        );
+    }
+
     use super::*;
 
     // ── Volumes layer (defect F-16) ───────────────────────────────────────
@@ -5464,6 +5610,49 @@ mod tests {
         assert!(
             host::clip_polygons(body, roof, ClipOperation::Intersection).is_empty(),
             "body and roof must be disjoint"
+        );
+    }
+
+    /// Two overlapping node cross-sections on one layer must print as a
+    /// single merged outline, not as two full loops crossing each other.
+    ///
+    /// Canonical `draw_circles` appends every carved node circle into
+    /// `base_areas` and then runs `diff_ex(base_areas, roofs)` /
+    /// `intersection_ex(base_areas, m_machine_border)`; both are Clipper
+    /// boolean ops over the whole subject set, so the returned `ExPolygons`
+    /// are non-overlapping — adjacent circles come out fused. Emitting them
+    /// unmerged put a duplicate perimeter through the inside of every fused
+    /// branch pair and made the branch silhouette pop between layers as
+    /// neighbouring circles drifted in and out of contact.
+    #[test]
+    fn build_roles_merges_overlapping_node_cross_sections_into_one_outline() {
+        let radius_units = mm_to_units(1.0) as f64;
+        let circle = |cx: f32| {
+            node_ellipse(
+                &branch_circle(CIRCLE_RESOLUTION_FINE, radius_units, 0.0),
+                Point2::from_mm(cx, 0.0),
+                1.0,
+                Point2 { x: 0, y: 0 },
+                radius_units,
+                false,
+            )
+            .expect("circle must be non-degenerate")
+        };
+        // Centres 1.0mm apart with radius 1.0mm: the discs overlap.
+        let areas = vec![circle(0.0), circle(1.0)];
+        let roles = build_roles(
+            &[], &[], &[], &[], &areas, &[], &[], &[], 1.0, &[], 0, 0.4,
+        );
+        let body = &roles
+            .iter()
+            .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+            .expect("overlapping circles must produce a body role")
+            .regions;
+        assert_eq!(
+            body.len(),
+            1,
+            "overlapping node cross-sections must fuse into one outline, got {}              separate regions (each would be walled independently)",
+            body.len()
         );
     }
 

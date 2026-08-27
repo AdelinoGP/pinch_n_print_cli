@@ -160,6 +160,318 @@ Planner + tdd suites green ✓. build-guests --check exit 0 ✓. Refreshed bundl
 l80 shows 8 discrete tips (was 2 fused multi-lobe clusters), l121 a dense tip field,
 l65 6 discrete tips; compare against `tmp/vd-238c/user-ref/`.
 
+## Session 3 (2026-08-27): per-layer cross-section union
+
+**Symptom (human-reported, side-view preview):** branch "stepping" between layers and
+overlapping perimeters printed through the inside of support branches, most visible at
+z 11–13, 17–18, 19–20.
+
+**Root cause:** `build_roles` (`modules/core-modules/tree-support-planner/src/lib.rs`)
+emitted each node's carved cross-section as its own role region and ran the final
+collision gate one region at a time, explicitly *not* unioning adjacent cross-sections
+(a session-2 over-correction that went past the capsule removal). Canonical
+`draw_circles` appends each carved circle into `base_areas` / `roof_areas` and then
+runs the collection through Clipper boolean ops — `diff_ex(base_areas, roofs)`,
+`intersection_ex(base_areas, m_machine_border)`, and `diff_clipped(closing_ex(...))`
+for the interfaces — every one of which returns non-overlapping `ExPolygons`. Adjacent
+node circles therefore come out **fused** in canonical. Ours printed one full wall loop
+per circle, so a fused branch pair carried a duplicate perimeter through its interior,
+and the branch silhouette popped between layers as neighbouring circles drifted in and
+out of contact.
+
+**Fix:** `union_expolys` on the carved regions before role simplification, and the final
+collision gate is now canonical's set-wide `Difference` instead of a per-region loop.
+Per-circle carve + largest-fragment selection (canonical
+`avoid_object_remove_extra_small_parts`, verified: it keeps only the max-area fragment)
+is unchanged and still runs *before* the union.
+
+**Regression test:** `build_roles_merges_overlapping_node_cross_sections_into_one_outline`
+(same file) — two 1.0mm-radius node circles 1.0mm apart must produce exactly one body
+region. Red before the fix (2 regions), green after.
+
+**Measured (v11 → v12, `tmp/measure_paths.py`, vs `tmp/SupportTest_Tree_Orca.gcode`):**
+
+```text
+#           ours v11        ours v12        Orca
+#   Z13.2   6 paths ≤3.74   4 paths ≤5.44   10 paths ≤7.58
+#   Z16.2   8 paths ≤3.21   6 paths ≤4.78   17 paths ≤6.09
+#   Z16.4   8 paths ≤3.17   6 paths ≤4.91   16 paths ≤6.19
+#   Z24.4  73 paths ≤1.81  12 paths ≤19.28  73 paths ≤2.67
+```
+
+Layer 94 (z19.0) render `tmp/vd-step/v12/` now shows fused peanut outlines matching
+`tmp/vd-step/ref/`; `tmp/vd-step/ours/` (v11) shows the same nodes as separate crossing
+loops. Current slice: `tmp/support_test_tree_238c_v12.gcode`. Gates: planner suite
+108 passed / 0 failed, `tree-support --test tree_support_tdd` 18 passed, clippy clean,
+`check-literals` clean, `build-guests --check` exit 0, `cargo check --workspace
+--all-targets` clean. Goldens did not drift.
+
+**Delta the union exposed (pre-existing, NOT caused by the fix):** at z24.4 the contact
+seeding is border-heavy. Measured nearest-neighbour distance between tip centroids:
+ours median 0.52mm (min 0.00) against a ~1.74mm tip diameter — i.e. the contour-walk
+tips already overlapped in v11 and were merely being drawn as separate loops; Orca's
+median is 1.83mm with the same 73-tip count and a *uniform* interior distribution
+(compare `tmp/vd-step/v12top/` against `tmp/vd-step/reftop/`). The union now renders the
+border chain as one 19.28mm outline. This is the contact-distribution half of remaining
+deltas 4–6 below, not a new defect.
+
+## Session 3b: config/engine mismatch (REAL, but NOT the stepping fix)
+
+> **Corrected in session 3c by human verification.** The config change below fixes the
+> branch *structure* (region counts and extrusion mass converge on Orca Strong) but the
+> stepping is still present in `tmp/support_test_tree_strong.gcode`. Do not read this
+> section as the stepping fix. It stands only as a fixture/config correction.
+
+**Human evidence that cracked it:** Orca's Tree Slim and Tree Strong do not show the
+stepping. Verified structurally: `TreeSupport::generate()` forks to
+`generate_tree_support_3D` **only** for `smsTreeOrganic`; Slim/Strong/Hybrid all run the
+`TreeSupport.cpp` engine this port implements. So the old engine demonstrably produces
+smooth branches and the stepping could not be blamed on an engine-model gap.
+
+**Correction to the session-2 config change.** Session 2 correctly determined the
+reference is organic (`support_style = default` + `tree(auto)` →
+`smsTreeOrganic`, `SupportParameters.hpp`) and therefore rewrote
+`tmp/support-family-config-tree-matched.json` to organic-equivalent values under the
+non-organic key names. But **this port implements the OLD engine**, which reads those
+non-organic keys literally. The result was the old engine driven by organic parameters:
+
+| key | Orca Slim/Strong | our "matched" config | effect |
+|---|---|---|---|
+| `tree_support_branch_diameter` | 5 | 2.0 | branch radius 2.5x too small |
+| `tree_support_branch_distance` | 5 | 1.0 | contact seeding 5x too dense |
+| `tree_support_branch_angle`    | 45 | 40 | — |
+
+Many thin, densely-seeded branches that never fuse into a trunk. A branch only ~1 bead
+wide, leaning up to `max_move_dist` per layer, terraces; a fused trunk does not.
+
+**Evidence (no code change, config only — `tmp/support-family-config-tree-strong.json`,
+slice `tmp/support_test_tree_strong.gcode`):**
+
+```text
+#            ours(organic params)   ours(Strong params)   Orca Strong
+#   Z12.0    3 regions,  42.8mm     1 region,  31.6mm     1 region,  76.5mm
+#   Z15.0    5 regions,  56.9mm     2 regions, 91.0mm     3 regions, 143.2mm
+#   Z19.0    8 regions,  80.5mm     2 regions,157.3mm     2 regions, 151.1mm
+```
+
+Envelope-jump layers >0.25mm over Z[2,24]: ours-Strong-params 11/110, Orca Strong 13/110.
+Z19 render `tmp/vd-step/ours-strong19/` shows two fused double-walled masses, matching
+`tmp/vd-step/strong19/`.
+
+**Metrics that did NOT discriminate** (recorded so the next session does not re-derive
+them): per-layer lateral move (ours p90 0.166 sits between Slim 0.187 and Strong 0.287 —
+there is no movement bug; the earlier "ours 0.122 vs 0.048" was a cross-engine comparison
+against organic and is misleading), global envelope jumps, local outline overhang, and
+cross-section circularity. All four rank the port at or better than Slim/Strong.
+
+**Open product question:** `TreeSupportStyle::from_config` maps `support_style = default`
+to `Default` (old engine); canonical maps `default` + `tree(auto)` to **organic**. For the
+default tree config this port and canonical run different engines by construction. Either
+ship non-organic defaults for the old engine, or implement the organic engine. Not decided.
+
+**Same-engine references now in tree** (from the human): `tmp/SupportTest_Tree_Orca_Strong.gcode`,
+`tmp/SupportTest_Tree_Orca_Slim.gcode`; the original organic export is renamed
+`tmp/SupportTest_Tree_Orca_Organic.gcode`. Harnesses: `tmp/envelope.py`,
+`tmp/move_detect.py`, `tmp/overhang_step.py`, `tmp/fill_density.py` (its floodfill leaks
+through open loops — printed area is trustworthy, enclosed is not).
+
+## Session 3c: branch "stepping" localized to a per-layer MOVEMENT FREEZE (superseded)
+
+**Status: superseded by session 3d — the freeze framing was wrong; the probe measured 0 frozen move-pass transitions in the stepping window. Root cause and fix in session 3d.** The human confirmed the union fix (session 3) is correct
+and that stepping persists in `tmp/support_test_tree_strong.gcode`. Human-reported
+location: **Z 9.20mm to 13mm**, trunk surface.
+
+### The measurement that finally localized it
+
+Outer-outline bbox span, layer by layer, in the reported window
+(`tmp/support_test_tree_strong.gcode` vs `tmp/SupportTest_Tree_Orca_Strong.gcode`):
+
+```text
+# Orca Strong deltas: +0.30 +0.29 +0.30 +0.29 +0.29 +0.28 ... then steady +0.13..+0.19
+# OURS deltas:        +0.31 +0.26 +0.04 +0.36 +0.31 +0.06 +0.07 +0.32 +0.10 +0.57
+#                     +0.46 +0.04 +0.10 +0.07 +0.39 +0.78
+```
+
+Growth stalls for 2-3 layers, then jumps 0.3-0.8mm. That is the staircase.
+
+### Mechanism (measured)
+
+Per-layer node movement, matched by nearest centroid, Z[6,22]:
+
+```text
+#                        ~0 (<0.02mm)   0.02-0.11mm   >0.11mm
+#   ours               38/121  (31%)     69  (57%)    14 (12%)
+#   Orca Strong         5/169  ( 3%)    123  (73%)    41 (24%)
+#   Orca Slim          18/402  ( 4%)    211  (52%)   173 (43%)
+```
+
+**31% of our node transitions do not move at all vs 3-4% in Orca.** Branches freeze, then
+jump a full `get_max_move_dist` step.
+
+In the F-13 move pass (`modules/core-modules/tree-support-planner/src/lib.rs`,
+`run_support_geometry`) a node only freezes when BOTH terms vanish:
+`direction_to_outer == (0,0)` AND `move_to_neighbor_center == (0,0)`. For a trunk ~12mm
+clear of the model wall `direction_to_outer` is legitimately zero, so **every frozen layer
+is a layer where the neighbour term collapsed.** Canonical zeroes it far less often.
+
+### Three candidates, ranked (untested)
+
+1. **MST adjacency too sparse** - if active nodes have no surviving MST edge,
+   `neighbours_of[i]` is empty and the term is zero by construction. Canonical's MST
+   connects all nodes within a part (`nodes_this_part`).
+2. **`is_line_cut_by_contour` over-triggering** in the neighbour filter - it discards each
+   candidate neighbour; a spurious true (e.g. wrong outline set) zeroes the term.
+3. **The `neighbours.len() == 1 && first_d2 >= max_move_dist^2` gate** - canonical
+   excludes a lone about-to-collapse neighbour; a unit/sign error in `first_d2` would
+   exclude far more than canonical does.
+
+**Proposed next probe:** emit per-layer counts of each zero-condition via the existing
+`push_diagnostic` channel (no new plumbing), slice, and read the counts off stderr. That
+separates the three without guessing.
+
+### Ruled out (do NOT re-derive - all measured against SAME-ENGINE Slim/Strong)
+
+Ours scores equal or better than Orca Slim/Strong on every one of these, so none is the
+stepping signal:
+
+| dimension | ours | Strong | Slim |
+|---|---|---|---|
+| global envelope jump (layers >0.25mm) | 11/110 | 13/110 | 8/110 |
+| local outward step, filled masks (>0.35mm) | 24/80 | 26/80 | - |
+| per-layer lateral move p90 | 0.166 | 0.287 | 0.187 |
+| surface ribbing RMS residual | 0.104mm | 0.664mm | 0.220mm |
+| cross-section circularity (closed loops only) | 0.962 | 0.453 | 0.982 |
+| per-layer flow E/mm, `;HEIGHT`, dZ | 0 variance, 0.2 exact | - | - |
+
+Also ruled out: `SQUARE_SUPPORT` (`avg_node_per_layer > 200` gate and `contact_stats` both
+match canonical); gcode-writer/path-optimization decimation (none exists in our pipeline);
+`smooth_nodes` (100 Jacobi iterations, fixed head, `need_extra_wall` predicate all match);
+`move_out_expolys` (returns false and leaves the point untouched when outside, equivalent
+to canonical's explicit `else { direction_to_outer = 0 }`).
+
+**Methodology warning that cost this session a lot of time:** Orca emits tree support walls
+as *anchored polylines*, not closed loops. Any metric that treats a support path as a
+polygon (point-in-polygon, shoelace, circularity, corner-seeded floodfill) is INVALID on
+Orca files. Use rasterized masks + `scipy.ndimage.binary_fill_holes` instead. The earlier
+"ours moves 0.122 vs Orca 0.048 mm/layer" claim was a cross-engine comparison against the
+organic export and is wrong; against same-engine Slim/Strong there is no movement-rate bug.
+
+### Separate real gap found (not the stepping cause)
+
+Our emitted support outlines carry **32-44 vertices** where Orca Strong carries **112-173**
+on a comparable perimeter (~0.85mm vs ~0.35mm per segment). No decimation exists in our
+config (`resolution` unset; Orca uses 0.001) or in `path-optimization-default` /
+`machine-gcode-emit`, so the coarseness originates in the planner's emitted polygons.
+Suspect `BRANCH_CIRCLE_SEGMENTS = 16` in `swept_region` (the degenerate per-node disc
+fallback) versus `CIRCLE_RESOLUTION_FINE = 100` used by `node_ellipse`. Unverified.
+
+Also: Orca uses `support_line_width = 80%` (0.32mm beads); ours emits 0.42mm - our support
+E/mm is 26% higher. Appearance only, not stepping.
+
+### Artifacts (session 3c)
+
+- Same-engine references (from the human): `tmp/SupportTest_Tree_Orca_Strong.gcode`,
+  `tmp/SupportTest_Tree_Orca_Slim.gcode`; original organic export renamed
+  `tmp/SupportTest_Tree_Orca_Organic.gcode`.
+- Our slices: `tmp/support_test_tree_238c_v12.gcode` (union fix, organic-valued config),
+  `tmp/support_test_tree_strong.gcode` (union fix + old-engine params, config
+  `tmp/support-family-config-tree-strong.json`) - **the current reproduction**.
+- Harnesses (all take `<gcode> <zmin> <zmax>`): `tmp/envelope.py`, `tmp/move_detect.py`,
+  `tmp/ledge_detect.py`, `tmp/overhang_step.py`, `tmp/layer_step.py` (mask-based, the only
+  one valid on Orca files), `tmp/ribbing.py`, `tmp/circularity.py`, `tmp/fill_density.py`
+  (floodfill leaks through open loops - printed area trustworthy, enclosed is NOT),
+  `tmp/branch_profile.py` (shared parser), `tmp/side_view.py`, `tmp/beadstack.py`.
+
+## Session 3d (2026-08-27): stepping ROOT-CAUSED and FIXED — merge-absorbed nodes were never smoothed
+
+**Status: fixed, pending human visual confirmation of `tmp/support_test_tree_strong_v13.gcode`.**
+
+### The probe that killed the freeze hypothesis
+
+Per-layer counters on every zero-condition in the F-13 move pass (session 3c's three
+ranked candidates), emitted via `slicer_sdk::host::log_warn` (note: `push_diagnostic`
+output is drained into host audits and never reaches stderr — use `log_warn` for probe
+lines): in Z 9.2–22 **frozen = 0 on every layer**; every node passed the neighbour gate
+and moved a full step (`gate_open == nodes`, `no_neigh/lone_close/conv_empty/far/cut` all
+0). The only frozen node in Z[6,22] is a single trunk below Z 9.0 with no MST neighbour —
+legitimately plumb. The "31% ~zero G-code centroid transitions" was an emit-side artifact,
+not planner kinematics. None of session 3c's three candidates was the cause.
+
+### Actual root cause (measured, then verified against canonical)
+
+Span probes at three pipeline stages localized the terrace: raw drop-pass node span grows
+steadily; the **smoothed** node span stalls 2–4 layers then jumps; emitted regions track
+the smoothed nodes (≤0.1mm). Per-layer extreme-node identity then showed every jump layer's
+extreme node was `is_processed=false, valid=false` — a **merge-absorbed node pinned at its
+raw drop-pass position**, sticking 0.6–0.7mm past the smoothed column, while stall layers'
+extreme node was a smoothed trunk node crawling.
+
+Canonical `SupportNode` ctor (`TreeSupport.hpp`) runs
+`for (auto& neighbor : parent->merged_neighbours) { neighbor->child = this;
+parents.push_back(neighbor); }` — so in canonical every merge-absorbed node gains a
+`child` (the surviving column's descendant), becomes a fixed-head chain **interior** node
+in `smooth_nodes`, and is pulled onto the smoothed column. Our `create_node`
+(`modules/core-modules/tree-support-planner/src/lib.rs`) wired only `parent.child` /
+`parents = [parent]`, so absorbed nodes started their own chain with **no fixed head**,
+stayed pinned (`branch[0]`), and popped the silhouette outward on every merge layer.
+
+### Fix (canonical-faithful, three parts, same file)
+
+1. `create_node`: the canonical ctor loop — every `parent.merged_neighbours` entry gets
+   `child = new node` and joins the new node's `parents`.
+2. F-11 Branch A: the faded twin is pushed into `parent_id.merged_neighbours` **before**
+   `create_node` (canonical `node_parent->merged_neighbours.push_front(...)`), replacing
+   the previous manual `parents.push` / `child` wiring at the call site.
+3. F-11 Branch B absorb: the absorbed node's own `merged_neighbours` are spliced into the
+   keeper's list (canonical `node.merged_neighbours.insert(end, ...)`), so `child`
+   reassignment reaches transitively-absorbed nodes.
+
+Side effect (canonical-correct): `parents.len() > 1` in `smooth_nodes` can now be true, so
+merge nodes can earn `need_extra_wall` via that clause, as canonical intends.
+
+**Regression tests (red before, green after, same file):**
+`create_node_wires_merged_neighbours_child_and_parents` (ctor seam) and
+`smooth_nodes_pulls_merge_absorbed_node_toward_the_column` (user-visible seam: absorbed
+node must be smoothed interior and pulled toward the surviving column).
+
+### Measured (Z 9.2–13.6 outer-span deltas, `tmp/support_test_tree_strong_v13.gcode`)
+
+```text
+# pre-fix dx:  +0.09 +0.10 +0.02 +0.45 +0.27 +0.35 +0.13 +0.31 +0.05 +0.63 +0.46
+#              +0.04 +0.10 +0.08 +0.39 +0.77 ...
+# post-fix dx: +0.09 +0.10 +0.10 +0.15 +0.14 +0.19 +0.16 +0.17 +0.15 +0.21 +0.27
+#              +0.21 +0.22 +0.13 +0.22 +0.25 +0.24 +0.26 +0.26 +0.25 +0.24 +0.23
+# Orca Strong: +0.06 +0.06 +0.09 +0.09 +0.09 +0.09 -0.00 +0.07 +0.16 +0.14 +0.14
+#              +0.13 +0.18 +0.16 +0.16 +0.20 +0.19 +0.18 +0.18 +0.18 +0.17 +0.17
+```
+
+Also: `tmp/layer_step.py 6 22` max ledge 0.566 (pre-fix 0.825), layers>0.35mm 13 (pre-fix
+24, Orca Strong 26); `tmp/move_detect.py 6 22` max centroid jump 0.091 (pre-fix 0.360).
+
+**Gates (all green, post-instrumentation-removal):** planner suite 110 passed
+(108 + 2 new), `tree-support --test tree_support_tdd` 18, clippy `-D warnings` clean,
+`check-literals` clean, `build-guests --check` exit 0, `slicer-runtime --test integration
+-- support` 39 passed. All `[DBG-238C-*]` instrumentation removed (grep clean).
+
+### Artifacts (session 3d)
+
+- Fixed slice: `tmp/support_test_tree_strong_v13.gcode` (config
+  `tmp/support-family-config-tree-strong.json`) — **awaiting human visual check**.
+- Pre-fix reproduction retained: `tmp/support_test_tree_strong.gcode`.
+
+### Still open
+
+- The session-3b product question is unchanged: `TreeSupportStyle::from_config` maps
+  `support_style = default` to the old engine; canonical maps default + `tree(auto)` to
+  organic. Human decision needed (ship non-organic defaults vs implement organic engine).
+- Session 3c's "separate real gap" items (outline vertex coarseness suspect
+  `BRANCH_CIRCLE_SEGMENTS = 16`; `support_line_width` 80% vs ours 0.42) remain unverified
+  and untouched.
+- Noted, not changed (ours-vs-canonical delta, deliberate-looking): our Branch B absorb
+  maxes `distance_to_top` and merges roof counters; canonical Branch B does neither (only
+  the ePolygon merge branch does). Also ours does not max `dist_mm_to_top` on absorb where
+  canonical's ePolygon branch does. Left as-is; flag if mid-height radius deltas matter.
+
 ## Remaining deltas, prioritized (session 2 close)
 
 1. ~~Intermediate-layer segmentation~~ **RESOLVED (session 2)**: organic config values +
