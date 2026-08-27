@@ -388,14 +388,15 @@ caller must call this symbol rather than re-implementing the parse.
 
 **Stage:** Output of `PrePass::MeshAnalysis`  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 1.3.0** (Bumped from 1.2.0 to 1.3.0 by packet 193 — additive `prev_layer_boundaries` map, keyed by GLOBAL layer index exactly as `overhang_quartile_polygons`. Previously bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
+**Current schema_version: 2.0.0** (Bumped from 1.3.0 to 2.0.0 by packet 243 — major: the host-only `overhang_quartile_polygons` and `prev_layer_boundaries` maps changed from `HashMap<u32, Vec<…>>` to `HashMap<ObjectId, HashMap<u32, Vec<…>>>`, now keyed by object id first, then global layer index. Previously bumped to 1.3.0 by packet 193 — additive `prev_layer_boundaries` map, keyed by GLOBAL layer index exactly as `overhang_quartile_polygons`. Previously bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
 
 `SurfaceClassificationIR` is defined in `crates/slicer-ir/src/slice_ir.rs`.
 It contains per-object surface data plus the host-only
 `overhang_quartile_polygons` and `prev_layer_boundaries` maps, both keyed by
-global layer index and defaulting to empty maps.
+object id first, then global layer index (nested maps
+`HashMap<ObjectId, HashMap<u32, Vec<…>>>`) and defaulting to empty maps.
 
-Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by GLOBAL layer index.
+Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by object id first, then global layer index.
 
 **Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03.
 

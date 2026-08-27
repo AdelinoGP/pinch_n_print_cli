@@ -83,8 +83,8 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo test -p slicer-ir --test ir_tests -- bridge_detector_schema_versions_are_constant_sourced --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | schema constant is 2.0.0 and default-sourced | FACT pass/fail |
-| `cargo test -p slicer-runtime --test executor -- overhang_annotation_scopes_bands_by_object --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | producer emits object-keyed maps | FACT pass/fail |
-| `cargo test -p slicer-runtime --test contract -- overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | marshal reads object-scoped, no leak | FACT pass/fail |
+| `cargo test -p slicer-runtime --test executor -- prepass_overhang_annotation_stage_order_tdd::overhang_annotation_scopes_bands_by_object --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | producer emits object-keyed maps | FACT pass/fail |
+| `cargo test -p slicer-runtime --test contract -- slice_region_view_overhang_areas_non_empty_tdd::overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | marshal reads object-scoped, no leak | FACT pass/fail |
 | `cargo check --workspace --all-targets` | every affected crate + test target compiles | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 

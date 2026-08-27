@@ -15,7 +15,7 @@
 //! - it populates `overhang_quartile_polygons` from the slices, including for a
 //!   non-identity object transform (which `PrePass::Slice` bakes into its
 //!   world-space cross-sections) and for a multi-object mesh (bands merged by
-//!   quartile).
+//!   object).
 
 #![allow(missing_docs)]
 
@@ -295,11 +295,15 @@ fn overhang_annotation_populates_bands_from_committed_slices() {
         .expect("SurfaceClassificationIR committed");
     // Layer 0 has no predecessor and is never overhanging; global layer 1 is.
     assert!(
-        !sc.overhang_quartile_polygons.contains_key(&0u32),
+        !sc.overhang_quartile_polygons
+            .get("ramp")
+            .is_some_and(|by_layer| by_layer.contains_key(&0u32)),
         "layer 0 has no previous layer and must carry no overhang bands"
     );
     assert!(
-        sc.overhang_quartile_polygons.contains_key(&1u32),
+        sc.overhang_quartile_polygons
+            .get("ramp")
+            .is_some_and(|by_layer| by_layer.contains_key(&1u32)),
         "expected overhang bands at global layer index 1, got keys {:?}",
         sc.overhang_quartile_polygons.keys().collect::<Vec<_>>()
     );
@@ -329,7 +333,9 @@ fn overhang_annotation_reflects_slice_object_transform() {
         .surface_classification()
         .expect("SurfaceClassificationIR committed");
     assert!(
-        sc.overhang_quartile_polygons.contains_key(&1u32),
+        sc.overhang_quartile_polygons
+            .get("ramp")
+            .is_some_and(|by_layer| by_layer.contains_key(&1u32)),
         "expected overhang bands at global layer index 1 once PrePass::Slice applies the \
          +{z_offset_mm}mm object transform (empty iff Slice wrongly sliced the untransformed \
          local mesh against global-space Zs); got keys {:?}",
@@ -337,12 +343,9 @@ fn overhang_annotation_reflects_slice_object_transform() {
     );
 }
 
-/// The multi-object merge must aggregate per-object results **by quartile** — at
-/// most one `QuartileBand` per quartile per layer, all objects' polygons
-/// concatenated into that band — preserving design.md's locked assumption
-/// ("inner Vec carries one `QuartileBand` per quartile").
+/// Each object's bands must remain isolated from every other object's bands.
 #[test]
-fn overhang_annotation_merges_multi_object_bands_by_quartile() {
+fn overhang_annotation_scopes_bands_by_object() {
     let mut bb = seed_and_slice(
         two_object_overhang_mesh(),
         vec![
@@ -356,30 +359,33 @@ fn overhang_annotation_merges_multi_object_bands_by_quartile() {
     let sc = bb
         .surface_classification()
         .expect("SurfaceClassificationIR committed");
-    let bands = sc
+    assert_eq!(sc.overhang_quartile_polygons.len(), 2);
+    let bands_a = sc
         .overhang_quartile_polygons
-        .get(&1u32)
-        .expect("both ramp objects overhang at global layer index 1");
-
-    assert!(
-        bands.len() <= 4,
-        "at most one QuartileBand per quartile per layer regardless of object count; \
-         got quartiles {:?}",
-        bands.iter().map(|b| b.quartile).collect::<Vec<_>>()
-    );
-    let quartiles: Vec<u8> = bands.iter().map(|b| b.quartile).collect();
-    assert!(
-        quartiles.windows(2).all(|w| w[0] < w[1]),
-        "bands must be unique and sorted by quartile, got {quartiles:?}"
-    );
-    // Both objects contribute identical (Y-translated) overhang geometry, so
-    // every present band must carry a polygon from BOTH objects.
-    for band in bands {
+        .get("ramp-a")
+        .and_then(|by_layer| by_layer.get(&1))
+        .expect("ramp-a overhangs at global layer index 1");
+    let bands_b = sc
+        .overhang_quartile_polygons
+        .get("ramp-b")
+        .and_then(|by_layer| by_layer.get(&1))
+        .expect("ramp-b overhangs at global layer index 1");
+    assert!(!bands_a.is_empty());
+    assert!(!bands_b.is_empty());
+    for band in bands_a {
         assert!(
-            band.polygons.len() >= 2,
-            "band {} must merge polygons from both objects, got {} polygon(s)",
-            band.quartile,
-            band.polygons.len()
+            band.polygons
+                .iter()
+                .all(|p| p.contour.points.iter().all(|p| p.y <= 100_000)),
+            "ramp-a band contains a polygon from ramp-b"
+        );
+    }
+    for band in bands_b {
+        assert!(
+            band.polygons
+                .iter()
+                .all(|p| p.contour.points.iter().all(|p| p.y >= 200_000)),
+            "ramp-b band contains a polygon from ramp-a"
         );
     }
 }

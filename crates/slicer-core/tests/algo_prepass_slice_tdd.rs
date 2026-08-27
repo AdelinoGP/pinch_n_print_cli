@@ -235,13 +235,16 @@ fn surface_classification_with_quartile_bands(
         holes: vec![],
     };
     for layer_index in 0..layer_count {
-        sc.overhang_quartile_polygons.insert(
-            layer_index,
-            vec![QuartileBand {
-                quartile: 1,
-                polygons: vec![band_polygon.clone()],
-            }],
-        );
+        sc.overhang_quartile_polygons
+            .entry("obj".to_string())
+            .or_default()
+            .insert(
+                layer_index,
+                vec![QuartileBand {
+                    quartile: 1,
+                    polygons: vec![band_polygon.clone()],
+                }],
+            );
     }
     sc
 }

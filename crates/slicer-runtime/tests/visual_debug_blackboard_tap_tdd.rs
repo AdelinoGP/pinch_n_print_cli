@@ -116,11 +116,16 @@ fn seeded_surface_classification() -> SurfaceClassificationIR {
     );
     let mut overhang_quartile_polygons = HashMap::new();
     overhang_quartile_polygons.insert(
-        0u32,
-        vec![QuartileBand {
-            quartile: 3,
-            polygons: vec![triangle_expolygon()],
-        }],
+        "obj-0".to_string(),
+        [(
+            0u32,
+            vec![QuartileBand {
+                quartile: 3,
+                polygons: vec![triangle_expolygon()],
+            }],
+        )]
+        .into_iter()
+        .collect(),
     );
     SurfaceClassificationIR {
         schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,

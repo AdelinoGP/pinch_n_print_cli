@@ -450,7 +450,11 @@ pub fn sliced_region_to_data(
     let overhang_quartile_polygons: Vec<
         crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand,
     > = surface_classification
-        .and_then(|sc| sc.overhang_quartile_polygons.get(&global_layer_index))
+        .and_then(|sc| {
+            sc.overhang_quartile_polygons
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
         .map(|bands| {
             bands
                 .iter()
@@ -490,7 +494,11 @@ pub fn sliced_region_to_data(
             .collect();
     let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
         surface_classification
-            .and_then(|sc| sc.prev_layer_boundaries.get(&global_layer_index))
+            .and_then(|sc| {
+                sc.prev_layer_boundaries
+                    .get(&region.object_id)
+                    .and_then(|by_layer| by_layer.get(&global_layer_index))
+            })
             .map(|polygons| ir_to_wit_expolygons(polygons))
             .unwrap_or_default();
 

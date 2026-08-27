@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 243-object-scoped-overhang-annotation
 task_ids:
   - TASK-353
@@ -47,26 +47,26 @@ State ACs only here; `requirements.md` references their IDs.
   `commit_overhang_annotation_builtin` runs, **then** `SurfaceClassificationIR.overhang_quartile_polygons`
   is keyed by `ObjectId` first (exactly two keys, one per object) and each object's layer-1 entry
   carries only that object's own polygons — no cross-object quartile merge. |
-  `cargo test -p slicer-runtime --test executor -- overhang_annotation_scopes_bands_by_object --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_PRODUCER_OBJECT_SCOPED`
+  `cargo test -p slicer-runtime --test executor -- prepass_overhang_annotation_stage_order_tdd::overhang_annotation_scopes_bands_by_object --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_PRODUCER_OBJECT_SCOPED`
 - **AC-3. Given** a two-object scene whose objects overlap in XY at the same global layer, **when**
   `sliced_region_to_data` (`crates/slicer-wasm-host/src/marshal/in_.rs`) assembles one object's
   `SliceRegionData`, **then** that region's `overhang_quartile_polygons` and `prev_layer_boundary`
   are read from `overhang_quartile_polygons.get(&region.object_id)` /
   `prev_layer_boundaries.get(&region.object_id)` and contain only that object's polygons. |
-  `cargo test -p slicer-runtime --test contract -- overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_MARSHAL_OBJECT_SCOPED`
+  `cargo test -p slicer-runtime --test contract -- slice_region_view_overhang_areas_non_empty_tdd::overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_MARSHAL_OBJECT_SCOPED`
 
 ## Negative Test Cases
 
 - **AC-N1. Given** a two-object overlapping-footprint scene, **when** the marshal assembles object
   B's region view, **then** object A's boundary polygons are absent from B's `prev_layer_boundary`
   (the cross-object contamination that motivated this packet is rejected — a leak fails the test). |
-  `cargo test -p slicer-runtime --test contract -- overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_NO_CROSS_OBJECT_LEAK`
+  `cargo test -p slicer-runtime --test contract -- slice_region_view_overhang_areas_non_empty_tdd::overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_NO_CROSS_OBJECT_LEAK`
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p slicer-ir --test ir_tests -- bridge_detector_schema_versions_are_constant_sourced --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-runtime --test executor -- overhang_annotation_scopes_bands_by_object --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-runtime --test contract -- overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_ALL_ACS_PASS`
+- `cargo test -p slicer-ir --test ir_tests -- bridge_detector_schema_versions_are_constant_sourced --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-runtime --test executor -- prepass_overhang_annotation_stage_order_tdd::overhang_annotation_scopes_bands_by_object --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-runtime --test contract -- slice_region_view_overhang_areas_non_empty_tdd::overhang_areas_object_scoped_no_cross_object_leak --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P243_ALL_ACS_PASS`
 
 ## Authoritative Docs
 

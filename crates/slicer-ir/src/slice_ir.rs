@@ -189,9 +189,11 @@ impl std::fmt::Display for SemVer {
 /// `SurfaceClassificationIR.prev_layer_boundaries` map of previous-layer slice
 /// boundary contours, keyed by global layer index.
 /// `#[serde(default)]` preserves backward compatibility with 1.2.0 fixtures.
+/// Major bump to 2.0.0 (packet 243) scopes both host-only aggregation maps by
+/// object ID before their global layer-index maps.
 pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 3,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
@@ -690,16 +692,16 @@ pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     /// Per-object surface data
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
-    /// Overhang polygons bucketed by severity quartile, keyed by global layer
-    /// index. Host-only aggregation populated by the PrePass overhang
+    /// Overhang polygons bucketed by severity quartile, keyed by object ID and
+    /// global layer index. Host-only aggregation populated by the PrePass
+    /// overhang annotation pipeline; not mirrored in the WIT boundary.
+    #[serde(default)]
+    pub overhang_quartile_polygons: HashMap<ObjectId, HashMap<u32, Vec<QuartileBand>>>,
+    /// Previous-layer slice boundary contours keyed by object ID and global
+    /// layer index. Host-only aggregation populated by the PrePass overhang
     /// annotation pipeline; not mirrored in the WIT boundary.
     #[serde(default)]
-    pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
-    /// Previous-layer slice boundary contours keyed by global layer index.
-    /// Host-only aggregation populated by the PrePass overhang annotation
-    /// pipeline; not mirrored in the WIT boundary.
-    #[serde(default)]
-    pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>,
+    pub prev_layer_boundaries: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
 }
 
 impl Default for SurfaceClassificationIR {

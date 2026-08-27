@@ -16,16 +16,11 @@
 //!
 //! # Multi-object merge
 //!
-//! `SurfaceClassificationIR.overhang_quartile_polygons` is keyed by *global*
-//! layer index, not per-object, so when a mesh has more than one object each
-//! object's per-layer `QuartileBand` list is computed independently from that
-//! object's `SliceIR` footprints, then merged **by quartile**: all objects'
-//! band-`k` polygons are concatenated (in `mesh.objects` iteration order) into
-//! a single `QuartileBand` with `quartile == k`. Each layer therefore carries
-//! at most 4 bands, one per quartile, sorted by quartile — preserving the
-//! design.md locked assumption ("inner Vec carries one `QuartileBand` per
-//! quartile") regardless of object count, so consumers may safely index/`find`
-//! by `quartile`.
+//! `SurfaceClassificationIR.overhang_quartile_polygons` and
+//! `prev_layer_boundaries` are keyed by object id first, then global layer
+//! index. Each object's per-layer `QuartileBand` list is computed independently
+//! from that object's `SliceIR` footprints, preserving object isolation for
+//! consumers.
 //!
 //! # Line width resolution
 //!
@@ -129,10 +124,9 @@ pub fn commit_overhang_annotation_builtin(
     let line_width_mm = resolve_line_width_mm(raw_config_source);
 
     let mesh = blackboard.mesh();
-    // layer index -> quartile -> polygons from every object, in `mesh.objects`
-    // iteration order (deterministic).
-    let mut per_quartile: HashMap<u32, HashMap<u8, Vec<ExPolygon>>> = HashMap::new();
-    let mut prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
+    // object id -> layer index -> quartile bands, preserving object iteration.
+    let mut per_quartile: HashMap<String, HashMap<u32, Vec<QuartileBand>>> = HashMap::new();
+    let mut prev_layer_boundaries: HashMap<String, HashMap<u32, Vec<ExPolygon>>> = HashMap::new();
     for object in &mesh.objects {
         // This object's per-layer footprint, in plan order: the concatenated
         // region polygons it owns in each committed `SliceIR` (empty where the
@@ -158,8 +152,9 @@ pub fn commit_overhang_annotation_builtin(
                 &layer_footprints,
                 line_width_mm,
             );
+        let mut object_quartile: HashMap<u32, HashMap<u8, Vec<ExPolygon>>> = HashMap::new();
         for (layer_index, bands) in per_object {
-            let layer_entry = per_quartile.entry(layer_index).or_default();
+            let layer_entry = object_quartile.entry(layer_index).or_default();
             for band in bands {
                 layer_entry
                     .entry(band.quartile)
@@ -167,27 +162,31 @@ pub fn commit_overhang_annotation_builtin(
                     .extend(band.polygons);
             }
         }
+        let object_quartile: HashMap<u32, Vec<QuartileBand>> = object_quartile
+            .into_iter()
+            .map(|(layer_index, by_quartile)| {
+                let mut bands: Vec<QuartileBand> = by_quartile
+                    .into_iter()
+                    .map(|(quartile, polygons)| QuartileBand { quartile, polygons })
+                    .collect();
+                bands.sort_by_key(|b| b.quartile);
+                (layer_index, bands)
+            })
+            .collect();
+        per_quartile.insert(object.id.clone(), object_quartile);
+
+        let mut object_boundaries: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
         for (layer_index, boundaries) in per_object_boundaries {
-            prev_layer_boundaries
+            object_boundaries
                 .entry(layer_index)
                 .or_default()
                 .extend(boundaries);
         }
+        prev_layer_boundaries.insert(object.id.clone(), object_boundaries);
     }
-    let merged: HashMap<u32, Vec<QuartileBand>> = per_quartile
-        .into_iter()
-        .map(|(layer_index, by_quartile)| {
-            let mut bands: Vec<QuartileBand> = by_quartile
-                .into_iter()
-                .map(|(quartile, polygons)| QuartileBand { quartile, polygons })
-                .collect();
-            bands.sort_by_key(|b| b.quartile);
-            (layer_index, bands)
-        })
-        .collect();
 
     let updated = SurfaceClassificationIR {
-        overhang_quartile_polygons: merged,
+        overhang_quartile_polygons: per_quartile,
         prev_layer_boundaries,
         ..surface_classification.as_ref().clone()
     };

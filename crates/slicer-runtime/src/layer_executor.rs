@@ -1219,9 +1219,10 @@ pub enum CapturedIr {
     /// [`BLACKBOARD_TAP_STAGE_IDS`]).
     Slice(SliceIR),
     /// Blackboard-read composite tap (packet 161, Step 4): the whole-print
-    /// committed `SurfaceClassificationIR`, unfiltered by layer (its only
-    /// per-layer-keyed field, `overhang_quartile_polygons`, stays keyed in
-    /// the captured payload for the renderer to filter at render time).
+    /// committed `SurfaceClassificationIR`, unfiltered by layer (its
+    /// `overhang_quartile_polygons` field stays keyed by object id first, then
+    /// global layer index in the captured payload for the renderer to filter at
+    /// render time).
     /// Covers `PrePass::MeshAnalysis` and `PrePass::OverhangAnnotation`.
     SurfaceClassification(SurfaceClassificationIR),
     /// Blackboard-read tap (packet 161, Step 4): the whole-print committed
