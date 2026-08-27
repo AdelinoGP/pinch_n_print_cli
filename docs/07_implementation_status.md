@@ -428,6 +428,7 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-144** (Open — 2026-08-21: filed by packet 224; canonical's producer and consumer both verified, the PnP producer is present and correct and only the transport is missing. Renumbered from the originally-filed DEV-138 during the parity/support-planners-clean rebase: that ID was independently allocated on mainline by packet 226 (authored-coloring carrier).) — need_extra_wall is computed per node but has no per-node transport, so it degrades to a per-layer capability string.
 - **DEV-147** (Open — 2026-08-23: classified as a fixture-correction rebaseline, not an algorithm change.) — Packet 236 Step 4 / G-23: the tree-support regression tripwire now feeds occupancy outlines only at the actual floating plate cross-section from overhang_plate…
 - **DEV-148** (Open — 2026-08-24: filed by packet 238a, intentional representation divergence.) — Support line width is key-based rather than flow-model based.
+- **DEV-150** (Open — 2026-08-27: alias + Warn implemented; organic engine port queued.) — Organic tree engine not implemented; canonically-organic styles alias to the classic engine's Strong style.
 <!-- END GENERATED: open-deviations -->
 
 
