@@ -624,7 +624,10 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 ///
 /// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
-/// emits over exactly one of these polygons with zero polygon math.
+/// emits over exactly one of these polygons with zero polygon math. Exception:
+/// order-locked paths (ADR-0063) are self-clipping and may extend into
+/// neighboring fill domains; the linker differences untagged fill of the same
+/// region by their swept footprint instead of clipping them.
 
 ### Modifier sub-regions
 

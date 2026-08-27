@@ -56,7 +56,7 @@ State ACs only here; `requirements.md` references their IDs.
   entities sharing a non-`None` `order_lock`), **when** `group_then_nearest_neighbor` runs, **then**
   the block is emitted as one nearest-neighbor candidate (authored first start, last end), is never
   reversed and never split, and its internal order is preserved. |
-  `cargo test -p path-optimization-default --lib -- locked_block_is_single_non_reversible_candidate --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_OPTIMIZER_BLOCK`
+  `cargo test -p path-optimization-default --lib -- tests::locked_block_is_single_non_reversible_candidate --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_OPTIMIZER_BLOCK`
 - **AC-4. Given** a locked `ExtrusionPath3D` with many collinear/interior points, **when**
   `DefaultGCodeEmitter::emit_gcode` runs, **then** every authored point is emitted — the path
   bypasses both `simplify_polyline_mm` (Douglas-Peucker at `tolerance_for_role`) and
@@ -66,7 +66,7 @@ State ACs only here; `requirements.md` references their IDs.
 - **AC-5. Given** representative linker, optimizer, and emitter fixtures whose every path carries
   `order_lock: None`, **when** the new branches run, **then** the produced path/entity/G-code
   structures are identical to the pre-packet output (all-`None` neutrality; no new golden files). |
-  `cargo test -p infill-linker --test orchestrate_tdd -- all_none_locks_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p path-optimization-default --lib -- all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-gcode --test gcode_emit_tdd -- all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_ALL_NONE_NEUTRAL`
+  `cargo test -p infill-linker --test orchestrate_tdd -- all_none_locks_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p path-optimization-default --lib -- tests::all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed" && cargo test -p slicer-gcode --test gcode_emit_tdd -- all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_ALL_NONE_NEUTRAL`
 
 ## Negative Test Cases
 
@@ -78,7 +78,7 @@ State ACs only here; `requirements.md` references their IDs.
 - **AC-N2. Given** a locked block whose nearest-neighbor permutation would reverse or split it,
   **when** `group_then_nearest_neighbor` runs, **then** the block is emitted intact (authored order
   and direction) and the reversal/split is rejected rather than applied. |
-  `cargo test -p path-optimization-default --lib -- locked_block_never_split_or_reversed --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_OPTIMIZER_NO_SPLIT`
+  `cargo test -p path-optimization-default --lib -- tests::locked_block_never_split_or_reversed --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P245_OPTIMIZER_NO_SPLIT`
 
 ## Verification
 

@@ -509,42 +509,44 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 // Each surviving point keeps its ORIGINAL index so a per-point
                 // speed profile (indexed against the unsimplified path) stays
                 // aligned even when simplification drops interior vertices.
-                let simplified_points: Vec<(usize, &slicer_ir::Point3WithWidth)> = if points.len()
-                    >= 2
-                {
-                    let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
-                    let simplified_xy = if tol > 0.0 {
-                        simplify_polyline_mm(&xy, tol)
-                    } else {
-                        xy.clone()
-                    };
-                    let pruned_xy = if self.resolved_config.min_segment_length > 0.0 && !is_travel {
-                        drop_short_segments_mm(
-                            &simplified_xy,
-                            self.resolved_config.min_segment_length,
-                        )
-                    } else {
-                        simplified_xy
-                    };
-                    // Map kept (x,y) pairs back to original point indices.
-                    // Both slices are in emission order; match on coordinate identity.
-                    let mut kept = Vec::with_capacity(pruned_xy.len());
-                    let mut search_from = 0usize;
-                    for (kx, ky) in &pruned_xy {
-                        for i in search_from..points.len() {
-                            if (points[i].x - kx).abs() < f32::EPSILON
-                                && (points[i].y - ky).abs() < f32::EPSILON
-                            {
-                                kept.push((i, &points[i]));
-                                search_from = i + 1;
-                                break;
+                let simplified_points: Vec<(usize, &slicer_ir::Point3WithWidth)> =
+                    if entity.path.order_lock.is_some() {
+                        points.iter().enumerate().collect()
+                    } else if points.len() >= 2 {
+                        let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
+                        let simplified_xy = if tol > 0.0 {
+                            simplify_polyline_mm(&xy, tol)
+                        } else {
+                            xy.clone()
+                        };
+                        let pruned_xy =
+                            if self.resolved_config.min_segment_length > 0.0 && !is_travel {
+                                drop_short_segments_mm(
+                                    &simplified_xy,
+                                    self.resolved_config.min_segment_length,
+                                )
+                            } else {
+                                simplified_xy
+                            };
+                        // Map kept (x,y) pairs back to original point indices.
+                        // Both slices are in emission order; match on coordinate identity.
+                        let mut kept = Vec::with_capacity(pruned_xy.len());
+                        let mut search_from = 0usize;
+                        for (kx, ky) in &pruned_xy {
+                            for i in search_from..points.len() {
+                                if (points[i].x - kx).abs() < f32::EPSILON
+                                    && (points[i].y - ky).abs() < f32::EPSILON
+                                {
+                                    kept.push((i, &points[i]));
+                                    search_from = i + 1;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    kept
-                } else {
-                    points.iter().enumerate().collect()
-                };
+                        kept
+                    } else {
+                        points.iter().enumerate().collect()
+                    };
 
                 // Per-point speed factors for this entity, if any.
                 let profile = speed_profiles_by_entity.get(&entity.entity_id).copied();

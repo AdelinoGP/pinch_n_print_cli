@@ -41,21 +41,30 @@ const DEFAULT_RETRACT_LENGTH: f32 = 0.8;
 const DEFAULT_RETRACT_SPEED: f32 = 25.0;
 const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
 
+struct NearestNeighborCandidate {
+    indices: Vec<u32>,
+    start_x: f32,
+    start_y: f32,
+    end_x: f32,
+    end_y: f32,
+}
+
 /// Deterministically permutes `entities` using a greedy nearest-neighbor
 /// heuristic starting from position (0.0, 0.0).
 ///
-/// At each step the unvisited entity whose `start_point` (x, y) is nearest
+/// At each step the unvisited candidate whose start point (x, y) is nearest
 /// (Euclidean distance) to the current cursor position is selected. When two
-/// candidates are equidistant within 0.001 mm, ties go to the lower `original_index`. After selection the cursor
+/// candidates are equidistant within 0.001 mm, ties go to the lower candidate
+/// index. After selection the cursor
 /// advances to the picked entity's `end_point`. The reversal flag is always
-/// `false`. Output is keyed on `view.original_index`.
-fn nearest_neighbor_permutation(entities: &[&OrderedEntityView]) -> Vec<(u32, bool)> {
+/// `false`.
+fn nearest_neighbor_permutation(entities: &[NearestNeighborCandidate]) -> Vec<(usize, bool)> {
     let n = entities.len();
     if n == 0 {
         return Vec::new();
     }
     if n == 1 {
-        return vec![(entities[0].original_index, false)];
+        return vec![(0, false)];
     }
 
     let mut result = Vec::with_capacity(n);
@@ -71,7 +80,7 @@ fn nearest_neighbor_permutation(entities: &[&OrderedEntityView]) -> Vec<(u32, bo
             if used[i] {
                 continue;
             }
-            let (sx, sy) = (view.start_point.x, view.start_point.y);
+            let (sx, sy) = (view.start_x, view.start_y);
             let dx = sx - cur_x;
             let dy = sy - cur_y;
             let dist = (dx * dx + dy * dy).sqrt();
@@ -91,16 +100,44 @@ fn nearest_neighbor_permutation(entities: &[&OrderedEntityView]) -> Vec<(u32, bo
         }
 
         used[best_idx] = true;
-        let (nx, ny) = (
-            entities[best_idx].end_point.x,
-            entities[best_idx].end_point.y,
-        );
+        let (nx, ny) = (entities[best_idx].end_x, entities[best_idx].end_y);
         cur_x = nx;
         cur_y = ny;
-        result.push((entities[best_idx].original_index, false));
+        result.push((best_idx, false));
     }
 
     result
+}
+
+fn coalesce_locked_candidates(entities: &[&OrderedEntityView]) -> Vec<NearestNeighborCandidate> {
+    let mut candidates = Vec::new();
+    let mut index = 0;
+    while index < entities.len() {
+        let entity = entities[index];
+        let lock = entity.order_lock;
+        let end = if let Some(lock) = lock {
+            let mut end = index + 1;
+            while end < entities.len() && entities[end].order_lock == Some(lock) {
+                end += 1;
+            }
+            end
+        } else {
+            index + 1
+        };
+        let last = entities[end - 1];
+        candidates.push(NearestNeighborCandidate {
+            indices: entities[index..end]
+                .iter()
+                .map(|entity| entity.original_index)
+                .collect(),
+            start_x: entity.start_point.x,
+            start_y: entity.start_point.y,
+            end_x: last.end_point.x,
+            end_y: last.end_point.y,
+        });
+        index = end;
+    }
+    candidates
 }
 
 /// Extracts the tool index from an OrderedEntityView.
@@ -217,8 +254,11 @@ impl PathOptimizationDefault {
                 if self.role_group(&group_entities[0].role) >= 1 {
                     break;
                 }
-                for (orig_idx, reversal) in nearest_neighbor_permutation(group_entities) {
-                    final_permutation.push((orig_idx, reversal));
+                let candidates = coalesce_locked_candidates(group_entities);
+                for (candidate_idx, reversal) in nearest_neighbor_permutation(&candidates) {
+                    for &orig_idx in &candidates[candidate_idx].indices {
+                        final_permutation.push((orig_idx, reversal));
+                    }
                 }
             }
             for entity in walls {
@@ -228,8 +268,11 @@ impl PathOptimizationDefault {
                 if self.role_group(&group_entities[0].role) < 1 {
                     continue;
                 }
-                for (orig_idx, reversal) in nearest_neighbor_permutation(group_entities) {
-                    final_permutation.push((orig_idx, reversal));
+                let candidates = coalesce_locked_candidates(group_entities);
+                for (candidate_idx, reversal) in nearest_neighbor_permutation(&candidates) {
+                    for &orig_idx in &candidates[candidate_idx].indices {
+                        final_permutation.push((orig_idx, reversal));
+                    }
                 }
             }
         }
@@ -519,6 +562,77 @@ mod tests {
             },
             point_count: 0,
         }
+    }
+
+    fn make_locked_entity(
+        original_index: u32,
+        role: ExtrusionRole,
+        start: (f32, f32),
+        end: (f32, f32),
+        order_lock: u64,
+    ) -> OrderedEntityView {
+        let mut entity = make_entity(original_index, role, start.0, start.1);
+        entity.end_point.x = end.0;
+        entity.end_point.y = end.1;
+        entity.order_lock = Some(order_lock);
+        entity
+    }
+
+    #[test]
+    fn locked_block_is_single_non_reversible_candidate() {
+        let entities = vec![
+            make_locked_entity(
+                0,
+                ExtrusionRole::SparseInfill,
+                (100.0, 0.0),
+                (110.0, 0.0),
+                7,
+            ),
+            make_locked_entity(1, ExtrusionRole::SparseInfill, (0.0, 0.0), (10.0, 0.0), 7),
+            make_entity(2, ExtrusionRole::SparseInfill, 200.0, 0.0),
+        ];
+        let module = PathOptimizationDefault::default();
+        let (perm, _changes) = module.group_then_nearest_neighbor(&entities);
+
+        assert_eq!(perm, vec![(0, false), (1, false), (2, false)]);
+    }
+
+    #[test]
+    fn locked_block_never_split_or_reversed() {
+        let entities = vec![
+            make_locked_entity(
+                0,
+                ExtrusionRole::SparseInfill,
+                (100.0, 0.0),
+                (110.0, 0.0),
+                9,
+            ),
+            make_locked_entity(1, ExtrusionRole::SparseInfill, (0.0, 0.0), (10.0, 0.0), 9),
+            make_entity(2, ExtrusionRole::SparseInfill, 200.0, 0.0),
+        ];
+        let module = PathOptimizationDefault::default();
+        let (perm, _changes) = module.group_then_nearest_neighbor(&entities);
+
+        assert_eq!(perm[0..2], [(0, false), (1, false)]);
+        assert_eq!(
+            perm.iter().map(|&(index, _)| index).collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert!(perm.iter().all(|&(_, reversed)| !reversed));
+    }
+
+    #[test]
+    fn all_none_locks_neutrality() {
+        let entities = vec![
+            make_entity(0, ExtrusionRole::SparseInfill, 10.0, 0.0),
+            make_entity(1, ExtrusionRole::SparseInfill, 0.0, 0.0),
+            make_entity(2, ExtrusionRole::SparseInfill, 100.0, 0.0),
+        ];
+        let module = PathOptimizationDefault::default();
+
+        let (perm, _changes) = module.group_then_nearest_neighbor(&entities);
+
+        assert_eq!(perm, vec![(1, false), (0, false), (2, false)]);
     }
 
     // ------------------------------------------------------------------

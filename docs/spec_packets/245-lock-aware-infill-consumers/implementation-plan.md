@@ -69,8 +69,8 @@
   - `docs/adr/0011-perimeter-module-owns-wall-sequencing.md` - wall-subsequence precedent
 - OrcaSlicer refs: none.
 - Verification:
-  - `cargo test -p path-optimization-default --lib -- locked_block_is_single_non_reversible_candidate --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
-  - `cargo test -p path-optimization-default --lib -- locked_block_never_split_or_reversed --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
+  - `cargo test -p path-optimization-default --lib -- tests::locked_block_is_single_non_reversible_candidate --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
+  - `cargo test -p path-optimization-default --lib -- tests::locked_block_never_split_or_reversed --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
 - Exit condition: the two named tests pass and the full `--lib` target is green.
 
 ### Step 3: G-code emission locked bypass
@@ -128,7 +128,7 @@
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo test -p infill-linker --test orchestrate_tdd -- all_none_locks_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
-  - `cargo test -p path-optimization-default --lib -- all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
+  - `cargo test -p path-optimization-default --lib -- tests::all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
   - `cargo test -p slicer-gcode --test gcode_emit_tdd -- all_none_locks_neutrality --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
   - `rg -q '^# ADR-0063' docs/adr/0063-sequence-locked-paths-may-occupy-neighboring-fill-domains.md`
   - `rg -q 'order-lock' docs/02_ir_schemas.md && rg -q 'self-clipping' docs/02_ir_schemas.md`

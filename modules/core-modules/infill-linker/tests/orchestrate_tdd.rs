@@ -223,6 +223,85 @@ fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
 }
 
 #[test]
+fn locked_paths_bypass_linking_and_clipping() {
+    let mut first = path(-1.0, 4.0, 4.0, 0.4);
+    first.order_lock = Some(7);
+    let mut second = path(6.0, 11.0, 4.0, 0.8);
+    second.order_lock = Some(7);
+    let expected = vec![first.clone(), second.clone()];
+    let prior = vec![sparse_region(1, vec![first, second])];
+    let views = vec![view(1, square(0.0, 10.0), None, 0, 0.4, 0.2)];
+
+    let output = run(&prior, &views);
+
+    assert_eq!(output.sparse_paths(), expected.as_slice());
+}
+
+#[test]
+fn locked_swept_footprint_carved_from_untagged_fill() {
+    let mut locked = vertical_path(5.0, 0.4);
+    locked.order_lock = Some(3);
+    let prior = vec![sparse_region(
+        1,
+        vec![locked.clone(), path(0.0, 10.0, 5.0, 0.4)],
+    )];
+    let views = vec![view(1, square(0.0, 10.0), None, 0, 0.4, 0.2)];
+
+    let output = run(&prior, &views);
+
+    assert!(output.sparse_paths().contains(&locked));
+    assert!(output
+        .sparse_paths()
+        .iter()
+        .filter(|candidate| candidate.order_lock.is_none())
+        .flat_map(|candidate| candidate.points.windows(2))
+        .all(|segment| {
+            let min_x = segment[0].x.min(segment[1].x);
+            let max_x = segment[0].x.max(segment[1].x);
+            !(min_x < 4.79
+                && max_x > 5.21
+                && segment[0].y >= 4.79
+                && segment[0].y <= 5.21
+                && segment[1].y >= 4.79
+                && segment[1].y <= 5.21)
+        }));
+}
+
+#[test]
+fn locked_path_crossing_fill_domain_not_clipped() {
+    let mut locked = path(-2.0, 12.0, 5.0, 0.6);
+    locked.order_lock = Some(11);
+    let prior = vec![sparse_region(1, vec![locked.clone()])];
+    let views = vec![view(1, square(0.0, 10.0), None, 0, 0.4, 0.2)];
+
+    let output = run(&prior, &views);
+
+    assert_eq!(output.sparse_paths(), &[locked]);
+}
+
+#[test]
+fn all_none_locks_neutrality() {
+    let input = path(0.0, 10.0, 5.0, 0.4);
+    assert_eq!(input.order_lock, None);
+    let prior = vec![sparse_region(1, vec![input.clone()])];
+    let views = vec![view(1, square(0.0, 10.0), None, 0, 0.4, 0.2)];
+
+    let output = run(&prior, &views);
+    let mut expected = input;
+    expected.points[0].x = 0.0999;
+    expected.points[1].x = 9.9001;
+
+    assert_eq!(output.sparse_paths(), &[expected]);
+    assert_eq!(
+        output.sparse_path_origins(),
+        &[Some(slicer_sdk::builders::RegionOrigin {
+            object_id: "object".to_string(),
+            region_id: 1,
+        })]
+    );
+}
+
+#[test]
 fn wall_sharing_same_config_union_link() {
     let paths_a = (1..=5)
         .map(|index| path(0.0, 10.0, index as f32, 0.4))

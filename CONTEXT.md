@@ -268,6 +268,9 @@ into four roles — sparse, top-solid, bottom-solid, bridge — each carried by 
 pre-partitioned polygon (`sparse_infill_area`, `top_solid_fill`,
 `bottom_solid_fill`, `bridge_areas`) produced by the host at
 `Layer::Perimeters` commit with precedence `bridge > bottom > top > sparse`.
+Under the order-lock exception (ADR-0063), order-locked paths are self-clipping
+and may occupy neighboring fill domains; the linker differences untagged fill
+of the same region by their swept footprint.
 
 ### Fill holder
 The module currently configured to produce extrusions for one of the four
