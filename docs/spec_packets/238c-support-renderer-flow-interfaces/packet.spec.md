@@ -40,18 +40,26 @@ Renderer-side semantics only: the two family renderers (`tree-support`,
 `traditional-support`), their manifests, the shared regularize consolidation, the
 tree-planner radius/band/classification surfaces this packet owns, and the WIT/IR/gcode
 carrier for the new base-interface role. Planner algorithms (smoothing, collision,
-styles, circles) belong to 238b and are done there; AGG rasterization is 241; raft is 240.
+styles, circles) belonged to 238b and are done there; per the human approver, any FURTHER
+planner fixes that surface while making this packet's renderer work canonical land in
+THIS packet (bounded to deltas discovered by this packet's implementation), not a new
+one. AGG rasterization is 241; raft is 240.
 
 ## Prerequisites and Blockers
 
-- Depends on: `238b-tree-planner-canonical-fidelity` — FORWARD DEPENDENCY: 238b is
-  authored (status `draft`) ahead of this packet in the queue rooted at
-  `236-support-stabilization`; this packet must not activate until 238b reaches
-  `implemented`. Chain: 236 → 237 → 238a → 238b → 238c.
+- Depends on: `238b-tree-planner-canonical-fidelity` — SATISFIED: 238b is
+  `status: implemented`, human-signed off 2026-08-25, closed as the single squashed commit
+  "238b-tree-planner-canonical-fidelity: implement packet (TASK-369..380)" (cite by
+  description, not SHA). Chain: 236 → 237 → 238a → 238b → 238c. Landed 238b surfaces this
+  packet consumes: `build_roles` now emits DISCRETE per-connected-component role regions
+  per layer (per-node circle footprints + same-node consecutive-layer capsules; NO
+  cross-branch sweeps; NO global per-role union), and the DEV-144
+  `SupportPlanSkeleton.wall_counts` transport (WIT `wall-counts: list<u32>`,
+  `SupportPlanIR` schema 2.1.0, both marshal legs length-asserted).
 - Unblocks: `239-support-independent-layer-z`, `241-support-agg-rasterizer`,
   `242-support-family-orca-closure`.
-- Activation blockers: none beyond the dependency above; `[BLOCK]`-tagged questions live
-  in `design.md` §Open Questions.
+- Activation blockers: none. The 238b dependency is satisfied; `[BLOCK]`-tagged questions
+  live in `design.md` §Open Questions (currently none remaining).
 
 ## Acceptance Criteria
 
@@ -60,8 +68,9 @@ styles, circles) belong to 238b and are done there; AGG rasterization is 241; ra
   rendered through the module's public run path, **then** the emitted body paths consist
   of exactly `tree_support_wall_count` concentric wall loops per contour inset ~half
   `line_width` from the boundary plus an interior fill pitched at the AC-2 density (line
-  count far below a solid `line_width`-pitch raster), and no path duplicates the filled
-  body the old `render_polygon` produced. | `cargo test -p tree-support --test tree_support_tdd -- tree_bodies_render_hollow_concentric_walls --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  count far below a solid `line_width`-pitch raster; a region narrower than one pitch
+  still emits its center fill line, so sub-pitch tips are NOT hollow), and no path
+  duplicates the filled body the old `render_polygon` produced. | `cargo test -p tree-support --test tree_support_tdd -- tree_bodies_render_hollow_concentric_walls --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-2 (G-11 density math).** Given `support_line_width = 0.4`,
   `support_base_pattern_spacing = 2.0`, and an effective layer height (e.g. 0.2), when
   either family renderer computes body fill
@@ -77,7 +86,8 @@ styles, circles) belong to 238b and are done there; AGG rasterization is 241; ra
 - **AC-3 (G-12 radius cap).** Given the tree planner's radius pipeline, **when** a raw
   radius exceeds the cap, **then** it clamps at `MAX_BRANCH_RADIUS_MM = 10.0` (canonical
   `MIN_BRANCH_RADIUS = 0.4` / `MAX_BRANCH_RADIUS = 10.0` from `TreeSupport.hpp`), and the
-  source constant reads `10.0`. | `rg -q 'MAX_BRANCH_RADIUS_MM: f32 = 10\.0' modules/core-modules/tree-support-planner/src/lib.rs && cargo test -p tree-support-planner --test tree_family_tdd -- branch_radius_clamps_at_canonical_maximum --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  source constant reads `10.0`. (Constant is still `6.0` today — this AC is open work,
+  unlike AC-1's renderer baseline which 238b partially landed.) | `rg -q 'MAX_BRANCH_RADIUS_MM: f32 = 10\.0' modules/core-modules/tree-support-planner/src/lib.rs && cargo test -p tree-support-planner --test tree_family_tdd -- branch_radius_clamps_at_canonical_maximum --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4 (G-13 raise-to-base).** Given `support_interface_top_layers = 2`, **when** the
   tree planner computes a branch radius at a layer adjacent to the interface band,
   **then** the radius is raised to `max(radius, base_radius)` (canonical `calc_branch_radius`
@@ -89,7 +99,10 @@ styles, circles) belong to 238b and are done there; AGG rasterization is 241; ra
   exactly 3 `;TYPE:Support interface` blocks (the Orca-reference count measured in gap
   register G-18; today 2), while the `bottom = -1` mirror-top fallback and the
   top-follows-config counts pinned by `interface_layer_count_follows_config` (commit
-  `ee27ac94`) still hold. | `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `ee27ac94`) still hold. The new test is a NEW integration test added beside
+  `final_gcode_roles` (which currently ends by chaining
+  `interface_layer_count_follows_config`); it does not weaken any existing pin.
+  | `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-6 (F-37 planner side).** Given a tree branch landing within
   `num_top_base_interface_layers` layers beneath a roof contact, **when** the planner
   classifies node circles, **then** those circles are attributed the new base-interface
@@ -100,7 +113,11 @@ styles, circles) belong to 238b and are done there; AGG rasterization is 241; ra
   `support-output-builder` push method are added, **then** `prepass-support-geometry.wit`
   exposes `support-plan-role.base-interface`, `ir-types.wit` exposes a base-interface push
   method on `support-output-builder`, `cargo build --tests` passes, guest artifacts are
-  rebuilt fresh, and `docs/02_ir_schemas.md` documents the new role. | `rg -q 'base-interface' crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit && rg -q 'BaseInterface' docs/02_ir_schemas.md && cargo xtask build-guests --check && echo FRESH`
+  rebuilt fresh, and `docs/02_ir_schemas.md` documents the new role. The DEV-144
+  wall-counts transport this packet's extra-wall printing consumes is ALREADY LANDED by
+  238b (`wall-counts: list<u32>` in `record support-plan-skeleton`,
+  `SupportPlanIR` schema 2.1.0, both marshal legs length-asserted) and is consumed as-is,
+  not rebuilt. | `rg -q 'base-interface' crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit && rg -q 'BaseInterface' docs/02_ir_schemas.md && cargo xtask build-guests --check && echo FRESH`
 - **AC-8 (F-37 marker).** Given `ExtrusionRole::SupportBaseInterface`, **when** the G-code
   emitter labels it, **then** `orca_type_label` returns `;TYPE:Support interface` (decision
   recorded in `design.md`), and the role's `default_priority` sits between
@@ -126,10 +143,52 @@ styles, circles) belong to 238b and are done there; AGG rasterization is 241; ra
   the stale manifest comment is removed and the diagnostics suite stays green — with the
   DEVIATION_LOG row updated; finishing missing work instead of closing is the documented
   falsifying-exit alternative (see `implementation-plan.md` Step 3). | `! rg -q 'Not yet implemented' modules/core-modules/tree-support-planner/tree-support-planner.toml && cargo test -p tree-support-planner --test diagnostics_tdd -- interface_bottom_layers_is_supported_and_warns_nothing --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-13 (trunk infill pattern, measured delta 1).** Given a tree body region wide
+  enough for multiple fill lines at the AC-2 body pitch, **when** the tree renderer fills
+  it, **then** the fill is pitched per AC-2 AND alternates between two orthogonal
+  directions on consecutive layers of the same region (Orca 45° crosshatch equivalent;
+  today the fill is horizontal-only every layer — see `scan_fill_region`), so adjacent
+  layers do not produce parallel un-bonded rungs. | `cargo test -p tree-support --test tree_support_tdd -- body_fill_alternates_direction_across_layers --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-14 (tip solidity, measured delta 2).** Given a branch tip whose role region is
+  smaller than one wall inset (a tip puck), **when** rendered, **then** the region emits
+  SOLID coverage (walls plus center fill per `scan_fill_region`'s min-fill line) rather
+  than concentric rings alone, matching Orca's solid tip pucks. Negative form: a region
+  that fits inside the innermost wall inset must NOT emit only an unfilled ring set.
+  | `cargo test -p tree-support --test tree_support_tdd -- sub_pitch_tip_region_emits_solid_center_line --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-15 (top-layer interface band semantics, measured delta 3, G-18-adjacent).** Given
+  the tracked fixture sliced with the matched config, **when** top-of-tree contact tips
+  reach their overhangs, **then** the count and size distribution of top-layer tip
+  geometry is compared against the Orca reference and the roof/interface-band attribution
+  (`InterfaceRole::Roof` vs body) is reconciled wherever the delta traces to band-width
+  semantics rather than to Orca's own denser tip seeding (~30 PnP vs ~50 Orca tips at the
+  reference's l120; the residual after band-semantics fixes is recorded in the human-gate
+  checklist as accepted-or-escalated, never silently dropped). | `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-tree-matched.json --module-dir modules/core-modules --output tmp/p238c-tips.gcode --no-progress-events && rg -c '^;TYPE:Support interface' tmp/p238c-tips.gcode`
+- **AC-16 (branch centerline rendering decision, measured delta 4).** Given Orca renders
+  branch cross-sections as circle+chord outlines around centerlines while the current
+  renderer draws only the planner's discrete role regions through
+  `render_polygon`, **when** this packet closes, **then** either (a) circle+chord outline
+  rendering is implemented over the skeleton points, or (b) the discrete-region rendering
+  is recorded in design.md §Measured renderer baseline as the deliberate disposition with
+  its visual consequence named — no third silent state. | `rg -q 'circle\+chord|circle-chord|centerline' docs/spec_packets/238c-support-renderer-flow-interfaces/design.md && echo DISPOSITIONED || echo FAIL`
 
 Every AC names exact fields, paths, counts, or output fragments and ends with its own
 runnable command. Commands that dump more than 200 successful lines are tee'd to
 `target/test-output.log` with a non-zero matched-count guard (invariant 16).
+
+## Operational Traps (binding on every verification command)
+
+- **Module registration trap (F):** `pnp_cli slice` REQUIRES
+  `--module-dir modules/core-modules`; without it, support modules silently fail to
+  register — zero `;TYPE:Support` blocks, no error. EVERY slice invocation in this packet
+  (human-gate artifacts, AC-15, any ad-hoc evidence run) MUST include it.
+- **Cargo flag position (G):** `--no-fail-fast` is a CARGO flag; it goes BEFORE the `--`
+  test-filter separator (`cargo test -p <crate> --no-fail-fast --test <file>`), never
+  after `--`.
+- **Integration-harness filters (G):** tests inside the aggregated integration binaries
+  are module-qualified: `config_bounds_enforcement_tdd::<test_name>`
+  (`crates/slicer-scheduler/tests/integration/`), and the marshal seam test lives in
+  slicer-wasm-host:
+  `cargo test -p slicer-wasm-host --test contract -- view_seam_identity_tdd::native_and_wasm_layer_views_are_field_identical --exact`.
 
 ## Negative Test Cases
 
@@ -140,7 +199,7 @@ runnable command. Commands that dump more than 200 successful lines are tee'd to
 - **AC-N2 (invalid flow ratio guard).** Given `support_interface_flow ≤ 0` supplied at the
   renderer boundary, **when** the interface pitch is computed, **then** the renderer falls
   back to the canonical default ratio (100) instead of producing a zero/negative pitch, so
-  no degenerate interface geometry is emitted. | `cargo test -p tree-support --test tree_support_tdd -- nonpositive_interface_flow_falls_back_to_default --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+   no degenerate interface geometry is emitted. | `cargo test -p tree-support --test tree_support_tdd -- nonpositive_interface_flow_falls_back_to_default_module_boundary --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification
 
@@ -148,6 +207,8 @@ runnable command. Commands that dump more than 200 successful lines are tee'd to
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo xtask check-literals`
 - Primary targeted proof: `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- Any ad-hoc slice evidence MUST use the trap-compliant form (see Operational Traps):
+  `cargo run --bin pnp_cli --release -- slice --model <model> --config <config.json> --module-dir modules/core-modules --output <out>.gcode --no-progress-events`
 
 ## Authoritative Docs
 
@@ -173,7 +234,8 @@ runnable command. Commands that dump more than 200 successful lines are tee'd to
   free DEV id at implementation time; run `cargo xtask check-deviations`) -
   `rg -q 'DEV-145' docs/DEVIATION_LOG.md && rg -q 'DEV-146' docs/DEVIATION_LOG.md`
 - `docs/07_implementation_status.md` - TASK-381..TASK-398 registered at packet-owned
-  closure (Step 18) - `rg -q 'TASK-381' docs/07_implementation_status.md`
+  closure (Step 18; range re-verified 2026-08-25 against docs/07, which currently ends at
+  TASK-380 from 238b — TASK-381+ are free) - `rg -q 'TASK-381' docs/07_implementation_status.md`
 - No canonical doc enumerates the support `;TYPE:` marker set as an owned reference:
   a recursive probe at authoring time (`rg -l ';TYPE:Support' docs/ --include='*.md'`)
   finds only authority/record documents — this plan's §10 absorption notes, the gap
@@ -192,12 +254,16 @@ runnable command. Commands that dump more than 200 successful lines are tee'd to
 Blocking per plan §8. Artifacts (produce into `tmp/`, regenerate before inspection):
 
 - `tmp/support_test_tree_238c.gcode` — `cargo run --bin pnp_cli --release -- slice
-  --input crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output
-  tmp/support_test_tree_238c.gcode` with `tmp/support-family-config-tree-matched.json`.
+  --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config
+  tmp/support-family-config-tree-matched.json --module-dir modules/core-modules --output
+  tmp/support_test_tree_238c.gcode --no-progress-events` (NOTE: the CLI's flag is
+  `--model`, not `--input`; `--module-dir` is REQUIRED or no support module registers).
 - `tmp/support_test_normal_238c.gcode` — same fixture with
-  `tmp/support-family-config-normal-matched.json`.
+  `tmp/support-family-config-normal-matched.json`, same flags.
 - Visual-debug bundle for this packet's boundary: interface bands + base-interface layer
-  taps (`pnp_cli visual-debug`), stored under `tmp/vd-238c/`.
+  taps, stored under `tmp/vd-238c/`; reusable request shapes exist at
+  `tmp/vdcmp/{ours,ref}-request.json` (gcode-source requests against
+  `tmp/p238b-tree-fixture.gcode` and `tmp/SupportTest_Tree_Orca.gcode`).
 
 Checklist (each answered with layer, tap, verdict in writing; E2 — inspection only):
 
@@ -208,9 +274,15 @@ Checklist (each answered with layer, tap, verdict in writing; E2 — inspection 
       interface appears as interface-material passes on the tree branches under roofs.
 - [ ] Block counts vs Orca references (REQUIRED for this packet): traditional
       `;TYPE:Support interface` blocks = 3 at top=2/bottom=2 (G-18); tree blocks match the
-      reference count recorded in G-18 (tree 2 vs 2 baseline).
+      reference count recorded in G-18 (tree 2 vs 2 baseline; 238b re-measured 124 total
+      `;TYPE:Support` blocks, delta 0 vs reference).
 - [ ] Over-extrusion: visual wall/fill separation on tree bodies; no solid-filled
       branches.
+- [ ] Remaining-delta sweep (measured 2026-08-25 baseline, see design.md §Measured
+      renderer baseline): trunk infill pattern (horizontal rungs → crosshatch per AC-13),
+      tip solidity (rings → solid pucks per AC-14), top-layer tip count/size (per AC-15),
+      branch centerline rendering disposition (per AC-16) — each answered with its
+      before/after state.
 
 Sign-off: `_date_ _verdict_` (packet may not flip to `status: implemented` without it).
 

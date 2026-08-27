@@ -14,6 +14,17 @@
 - Every verification command tees to `target/test-output.log` and guards non-zero matched
   tests (invariant 16). Read results from the log; never re-run for more output.
 - All `cargo check`/`clippy`/`test` gate commands use `--all-targets` where applicable.
+- **Command-string rules (binding):** `--no-fail-fast` is a CARGO flag and goes BEFORE the
+  `--` separator, never after. Integration-harness test filters are module-qualified
+  (e.g. `config_bounds_enforcement_tdd::<test_name>` in slicer-scheduler's integration
+  binary). The marshal seam test lives in slicer-wasm-host:
+  `cargo test -p slicer-wasm-host --test contract -- view_seam_identity_tdd::native_and_wasm_layer_views_are_field_identical --exact`.
+- **Slice-evidence rule (binding):** every `pnp_cli slice` invocation MUST include
+  `--module-dir modules/core-modules` or support modules silently fail to register (zero
+  support blocks, no error), and MUST use `--model <path>` for the input.
+- Scope directive: any further PLANNER fix surfaced by this packet's implementation lands
+  in this packet as an amendment to the affected step (per packet.spec.md §Scope
+  Boundaries) — record it in the step's notes; do not open a new packet.
 
 ## Steps
 
@@ -185,14 +196,21 @@
   gate in the tree path where conditions diverge.
 - Precondition: Step 5 green; baseline count recorded (2) from a fresh slice.
 - Postcondition: new `interface_band_counts_match_canonical_structure` integration test
-  green; `interface_layer_count_follows_config` rows still green.
+  registered in `crates/slicer-runtime/tests/integration/main.rs` and green; `final_gcode_roles` still green (it ends by chaining
+  `interface_layer_count_follows_config`, which carries the ee27ac94 pins — note that
+  function is not itself registered as a `#[test]`; it must be reached through
+  `final_gcode_roles`, never filtered directly).
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - lines 830–990
   - `modules/core-modules/traditional-support/src/lib.rs` - band-planning range
-- Files allowed to edit (at most 3):
+- Files allowed to edit (at most 4 — the 4th is a one-line mechanical registration:
+  integration tests in this harness are `#[test]` wrappers in `main.rs`, e.g.
+  `final_gcode_roles` at `main.rs:55-58`; without registering, AC-5's filter matches
+  zero tests):
   - `modules/core-modules/traditional-support/src/lib.rs`
   - `modules/core-modules/tree-support/src/lib.rs` (gate alignment only)
   - `crates/slicer-runtime/tests/integration/support_family_closure.rs` (new test)
+  - `crates/slicer-runtime/tests/integration/main.rs` (registration line for the new test only)
 - Files explicitly out of bounds:
   - `traditional-support-planner` band anchoring (contact-inclusive logic from ee27ac94 stays)
 - Expected sub-agent dispatches:
@@ -203,22 +221,30 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` - delegate: `draw_circles` floor block
 - Verification:
-  - `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure interface_layer_count_follows_config --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  - `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure final_gcode_roles --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo xtask build-guests --check`
 - Exit condition: both integration tests green; guests fresh.
 
 ### Step 7: G-10 + G-11 tree renderer hollow walls + density model
 
 - Task IDs: `TASK-387`
-- Objective: replace `render_polygon` filled-body model with wall/fill split consuming
-  Step-2 helpers; remove `support_density` percent handling; wire
+- Objective: replace the residual percent-as-fraction density consumption in
+  `render_polygon`/`scan_fill_region` with the canonical model consuming Step-2 helpers;
+  add cross-layer fill-direction alternation (AC-13) and verify sub-pitch tip solidity
+  (AC-14); remove `support_density` percent handling; wire
   `support_base_pattern_spacing` + typed line width.
+- Baseline note: the wall/fill SPLIT already exists (`render_polygon` = inset walls +
+  `scan_fill_region`, which already emits a center line for sub-pitch regions); this
+  step changes WHAT pitches/patterns feed it, not its existence. Planner role regions
+  arrive as DISCRETE connected components — fill each independently, no global union.
 - Precondition: Steps 2/6 green.
-- Postcondition: `tree_bodies_render_hollow_concentric_walls` green (wall-loop count +
-  interior pitch assertions, E1); `fill_pitch_honours_support_density` replaced by
+- Postcondition: `tree_bodies_render_hollow_concentric_walls`,
+  `body_fill_alternates_direction_across_layers`, and
+  `sub_pitch_tip_region_emits_solid_center_line` green (wall-loop count + interior pitch
+  assertions, E1); `fill_pitch_honours_support_density` replaced by
   density-derivation assertions; manifest `support_density` removed.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/tree-support/src/lib.rs` - full (636 lines, one pass)
+  - `modules/core-modules/tree-support/src/lib.rs` - full (~665 lines, one pass)
   - `modules/core-modules/tree-support/tests/tree_support_tdd.rs` - full
 - Files allowed to edit (at most 3):
   - `modules/core-modules/tree-support/src/lib.rs`
@@ -238,10 +264,10 @@
   - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` - delegate: `generate_toolpaths` sheath rendering
   - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` - delegate: `tree_supports_generate_paths`
 - Verification:
-  - `cargo test -p tree-support --test tree_support_tdd -- tree_bodies_render_hollow_concentric_walls --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  - `cargo test -p tree-support --test tree_support_tdd -- tree_bodies_render_hollow_concentric_walls body_fill_alternates_direction_across_layers sub_pitch_tip_region_emits_solid_center_line --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `! rg -q 'support_density' modules/core-modules/tree-support/tree-support.toml`
   - `cargo xtask build-guests --check`
-- Exit condition: structure test green; key absent; guests fresh.
+- Exit condition: structure tests green; key absent; guests fresh.
 
 ### Step 8: interface_regularize consolidation
 
@@ -286,7 +312,7 @@
 - Postcondition: `interface_pitch_derives_from_interface_flow_over_line_width` green;
   both manifests declare `support_interface_flow`; config docs regenerated.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/traditional-support/src/lib.rs` - full (622 lines, one pass)
+  - `modules/core-modules/traditional-support/src/lib.rs` - full (~622 lines, one pass)
   - `modules/core-modules/traditional-support/tests/traditional_support_tdd.rs` - pitch-assertion ranges
 - Files allowed to edit (at most 3):
   - `modules/core-modules/traditional-support/src/lib.rs`
@@ -313,8 +339,10 @@
 - Objective: add `SupportPlanRole::BaseInterface` +
   `ExtrusionRole::SupportBaseInterface` (priority 5250, closed-loop false) to
   `crates/slicer-ir/src/slice_ir.rs`; add WIT `base-interface` role +
-  `push-base-interface-path` builder method; bump the derived-at-activation schema
-  version; fix every newly-non-exhaustive match in the same step.
+  a base-interface push method on `support-output-builder` (name mirroring
+  `push-interface-path`); bump the derived-at-activation schema
+  version (from 2.1.0, 238b's landed minor); fix every newly-non-exhaustive match in the
+  same step. The skeleton's `wall-counts` field is landed and untouched.
 - Precondition: Step 9 green; LOCATIONS dispatch of all `match` sites completed.
 - Postcondition: `cargo build --tests` green workspace-wide; WIT world validates.
 - Files allowed to read, with ranges when over 300 lines:
@@ -342,23 +370,23 @@
   - none (structural carrier step)
 - Verification:
   - `cargo build --tests 2>&1 | tail -5`
-  - `rg -q 'base-interface' crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit && rg -q 'push-base-interface-path' crates/slicer-schema/wit/deps/ir-types.wit`
+  - `rg -q 'base-interface' crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit && rg -q 'base-interface' crates/slicer-schema/wit/deps/ir-types.wit`
   - `cargo xtask build-guests --check` (expect stale → rebuild without `--check`, re-verify exit 0)
 - Exit condition: build green; WIT greps pass; guests rebuilt fresh.
 
 ### Step 11a: host dispatch match arm + builder impl
 
 - Task IDs: `TASK-391`
-- Objective: add the `BaseInterface` arm to the live `SupportPlanRole` → WIT-role
-  dispatch match in `crates/slicer-wasm-host/src/dispatch.rs` (verified four-arm match at
-  its role-mapping site) and implement `push-base-interface-path` in the host builder
-  (`host.rs`).
+- Objective: add the `BaseInterface` arm to the live four-arm `SupportPlanRole` →
+  WIT-role dispatch match in `crates/slicer-wasm-host/src/dispatch.rs` (grep-locate the
+  match; line pins have rotted) and implement the new base-interface push method in the
+  host builder (`host.rs`, next to `push_support_path`/`push_interface_path`).
 - Precondition: Step 10 green.
 - Postcondition: dispatch compiles with five exhaustive role arms; new push method
   reachable through the host builder; no marshal change yet.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-wasm-host/src/dispatch.rs` - role-mapping match range (grep-located,
-    ~line 1971)
+  - `crates/slicer-wasm-host/src/dispatch.rs` - role-mapping match range (grep-locate
+    `SupportPlanRole::SupportBody`; do not trust stale line pins)
   - `crates/slicer-wasm-host/src/host.rs` - builder-impl range (grep-located)
 - Files allowed to edit (at most 3):
   - `crates/slicer-wasm-host/src/dispatch.rs`
@@ -419,8 +447,13 @@
 - Postcondition: AC-6/AC-7/AC-8 tests green end-to-end through a real dispatch.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/tree-support-planner/src/lib.rs` - `InterfaceRole` + classification loop ranges
-  - `crates/slicer-gcode/src/emit.rs` - label/feedrate ranges (~150–250)
-- Files allowed to edit (at most 3 edit classes):
+  - `crates/slicer-gcode/src/emit.rs` - label/feedrate ranges (grep-locate
+    `orca_type_label` and the feedrate match; do not trust stale line pins)
+- Files allowed to edit (at most 4 edit classes — the 4th is a FIRST-TIME manifest
+    declaration: `num_top_base_interface_layers` exists in NO manifest today, so without
+    it the planner silently defaults the key and AC-6 cannot read it):
+  - `modules/core-modules/tree-support-planner/tree-support-planner.toml` (declare
+    `num_top_base_interface_layers`, snake_case, canonical-derived default)
   - `modules/core-modules/tree-support-planner/src/lib.rs` (+ `tree_family_tdd.rs` test)
   - `modules/core-modules/tree-support/src/lib.rs` + `traditional-support/src/lib.rs` (carrier consumption)
   - `crates/slicer-gcode/src/emit.rs` (+ lib test) and `docs/02_ir_schemas.md`
@@ -526,13 +559,18 @@
 - Files explicitly out of bounds: reference G-code regeneration (human-owned §9).
 - Expected sub-agent dispatches:
   - Question: run the two slice commands + count `;TYPE:Support interface` blocks; scope: CLI; return: `FACT` counts
+    (commands MUST carry `--model <stl> --config <matched.json> --module-dir
+    modules/core-modules --output <out>.gcode --no-progress-events`; omitting
+    `--module-dir` silently produces zero support blocks)
 - Context cost: `S`
 - Authoritative docs: `docs/19_visual_debug.md` - bundle layout (ranged)
 - OrcaSlicer refs: none (references already on disk under `tmp/`; regenerate is
-  human-owned).
+  human-owned). Reusable gcode-source visual-debug request shapes:
+  `tmp/vdcmp/{ours,ref}-request.json`.
 - Verification:
   - `test -f tmp/support_test_tree_238c.gcode && test -f tmp/support_test_normal_238c.gcode && echo ARTIFACTS-OK`
-  - block-count greps recorded in the checklist (traditional must read 3)
+  - block-count greps recorded in the checklist (traditional must read 3; total support
+    blocks compared against `tmp/SupportTest_Tree_Orca.gcode`'s 124-block baseline)
 - Exit condition: artifacts + written checklist verdicts + sign-off line present.
 
 ### Step 17: deviation + doc closure
@@ -566,6 +604,8 @@
   signed Step 16).
 - Precondition: Step 17 green.
 - Postcondition: `docs/07` rows present; packet-level gates green.
+- Files allowed to read: `docs/07_implementation_status.md` row-format convention
+  (ranged tail read only); this packet's `packet.spec.md` front matter.
 - Files allowed to edit (at most 3):
   - `docs/07_implementation_status.md`
   - `docs/spec_packets/238c-support-renderer-flow-interfaces/packet.spec.md` (status line only)
@@ -590,7 +630,7 @@
 | Step 4 | S | constant flip |
 | Step 5 | M | raise-to-base rule |
 | Step 6 | M | floor bands |
-| Step 7 | M | hollow walls + density |
+| Step 7 | M | density model + fill pattern + tip solidity |
 | Step 8 | S | consolidation |
 | Step 9 | M | traditional pitch + key |
 | Step 10 | M | WIT/IR carrier + blast radius |
@@ -624,5 +664,8 @@ Split before activation if aggregate cost exceeds M or any step is L.
   swarm ESCALATION; otherwise record a packet-authoring lesson.
 - The `cargo test --workspace` full-suite run is permitted here only per repo Test
   Discipline (packet-close ceremony, every narrower command already green) and MUST go
-  through `cargo xtask test --summary --workspace --no-fail-fast` with a FACT pass/fail
-  return.
+  through `cargo xtask test --workspace -- --no-fail-fast --summary` with a FACT pass/fail
+  return. (`cargo xtask test` splits its arguments at the first `--`: args before it are
+  cargo-level, args after it are libtest-level — so `--no-fail-fast` goes AFTER the `--`
+  for xtask routing. When invoking `cargo test` directly instead, `--no-fail-fast` is a
+  CARGO flag and must stay BEFORE `--`, never after.)

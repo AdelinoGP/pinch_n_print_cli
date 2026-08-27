@@ -4,9 +4,42 @@
 
 - Grouped task IDs: `TASK-381` … `TASK-398`
 - Backlog source: `docs/07_implementation_status.md` (re-derive next free ID at
-  registration; this packet assumes TASK-381+ after 238b's TASK-369..380)
+  registration; re-verified 2026-08-25: docs/07 ends at TASK-380 from 238b, so
+  TASK-381+ are free)
 - Packet status: `draft`
 - Aggregate context cost: `M`
+
+## Scope Note (human approver directive, 2026-08-25)
+
+238b is implemented and closed (single squashed commit "238b-tree-planner-canonical-fidelity:
+implement packet (TASK-369..380)"; human-signed 2026-08-25). Per the human approver, this
+packet ALSO carries any further PLANNER fixes that surface during its implementation —
+planner deltas discovered while making the renderer canonical land here, not in a new
+packet. Bounded to deltas this packet's own implementation surfaces.
+
+## Measured Baseline at Refinement Time (2026-08-25)
+
+Facts this packet builds on, all verified against the current tree:
+
+1. **Planner output shape:** `build_roles`
+   (`modules/core-modules/tree-support-planner/src/lib.rs`) emits DISCRETE
+   per-connected-component role regions per layer — per-node circle footprints plus
+   same-node consecutive-layer capsules (`structural_body_regions` +
+   `union_connected_components`, which unions only OVERLAPPING polygons into connected
+   bodies; there is NO cross-branch capsule sweep and NO global per-role union). The
+   renderer receives many small regions per role, not one merged body.
+2. **Renderer min-fill already landed:** `scan_fill_region`
+   (`modules/core-modules/tree-support/src/lib.rs`) emits one center fill line when the
+   pitch loop would place none, so sub-pitch tip regions are no longer hollow outlines.
+3. **DEV-144 transport landed by 238b:** `SupportPlanSkeleton.wall_counts: Vec<u32>`
+   (WIT `wall-counts: list<u32>`, schema 2.1.0, both marshal legs length-asserted).
+   This packet's extra-wall printing CONSUMES it; it is not future work.
+4. **Renderer measured facts** (detail in design.md §Measured renderer baseline): fill
+   is horizontal-only with no angle/pattern parameter; interface pitch =
+   `support_interface_spacing + flow_spacing`; the renderer reads only
+   entry.roles/family_id/global_layer_index/decline_reason — the skeleton (points +
+   wall_counts) is UNUSED for path generation today; branch centerline rendering is
+   unimplemented; there is no min-area filter.
 
 ## Problem Statement
 
@@ -14,7 +47,10 @@ The support-family renderers are structurally present (packets 221/222) but thei
 density, and interface semantics diverge from canonical OrcaSlicer in five measured ways:
 
 1. **G-10** — tree branch bodies render **filled**; canonical renders hollow concentric
-   sheath walls (`generate_toolpaths` → `tree_supports_generate_paths`).
+   sheath walls (`generate_toolpaths` → `tree_supports_generate_paths`). (238b's renderer
+   work already landed inset-wall + scan-fill structure in `render_polygon` and the
+   min-fill center line; what remains here is the canonical DENSITY model, direction
+   alternation, and tip-solidity semantics — see Measured Baseline items 2/4.)
 2. **G-11** — PnP over-extrudes support 1.107× vs Orca (flow per mm of path; gap-register
    measurement). Compounding it, `support_density` arrives percent-scaled (`20.0`) but is
    consumed as a fraction, so the `min(1.0)` clamp forces solid fill above 1.
@@ -27,7 +63,8 @@ density, and interface semantics diverge from canonical OrcaSlicer in five measu
 Plus three structural debts owned here: **F-37 piece 2** (the base-interface
 `num_top_base_interface_layers` role end-to-end — piece 1, regularization wiring, landed
 in commit `050d5c3a`), the byte-identical duplication of `interface_regularize.rs` across
-both renderers (explicitly flagged as the consolidation target by that commit), and
+both renderers (explicitly flagged as the consolidation target by that commit; still
+byte-identical on disk 2026-08-25), and
 deviations DEV-129 (bottom-interface diagnostic claim vs implemented truth), DEV-145
 (premise corrected in plan §10 — the key IS canonical with default 0.5; PnP defaults
 −1.0), DEV-146 (interface pitch derives from generic `line_width`; canonical derives from
@@ -40,7 +77,9 @@ renderer modules, one config/manifest surface, and one WIT/IR role carrier.
   (`modules/core-modules/tree-support/src/lib.rs`) so body regions emit
   `tree_support_wall_count` concentric walls + density-pitched interior fill (fill only
   when the region needs infill, mirroring canonical `need_infill` gating); delete the
-  filled-body model. Interface roles keep their dedicated pitch.
+  filled-body model. Interface roles keep their dedicated pitch. NOTE (2026-08-25
+  baseline): the wall/fill SPLIT already exists in `render_polygon`; this item is now the
+  density-model + fill-pattern + per-region semantics work, not a from-scratch rewrite.
 - **Density derivations (G-11):** replace the percent-as-fraction `support_density`
   consumption with canonical formulas from the `SupportParameters.hpp` constructor:
   body `min(1, flow_spacing / (support_base_pattern_spacing + flow_spacing))`, top
@@ -48,7 +87,9 @@ renderer modules, one config/manifest surface, and one WIT/IR role carrier.
   interface_flow_spacing))`, bottom analogous over `support_bottom_interface_spacing`.
   Retire the `support_density` manifest key from both family manifests (canonical has no
   such key for support); record the removal as a deviation row. Spacing inputs come from
-  238a's typed keys.
+  238a's typed keys. `support_base_pattern_spacing` is declared today ONLY on
+  `traditional-support-planner` (float, default 2.5); the tree family's body pitch
+  derivation must declare/consume it for the tree renderer too.
 - **Radius cap (G-12):** `MAX_BRANCH_RADIUS_MM = 6.0 → 10.0` in
   `modules/core-modules/tree-support-planner/src/lib.rs` (constant + clamp site + tests).
 - **Raise-to-base (G-13):** implement canonical `calc_branch_radius` mm-to-top raise:
@@ -82,6 +123,17 @@ renderer modules, one config/manifest surface, and one WIT/IR role carrier.
   `InterfaceRole::Floor`; `diagnostics_tdd.rs` already asserts no code-1003), remove the
   stale "Not yet implemented" manifest comment on `support_interface_bottom_layers`, close
   the deviation as implemented — or finish genuinely missing work first. No third state.
+- **Extra-wall printing (consumes 238b's DEV-144 transport):** the tree renderer reads
+  `SupportPlanSkeleton.wall_counts` (landed: WIT `wall-counts`, schema 2.1.0, both marshal
+  legs length-asserted with points) and prints `1 + wall_counts[i]` walls for the region
+  containing point i, instead of leaving the extra-wall requirement unprinted. The
+  renderer currently ignores the skeleton entirely (it reads only entry.roles,
+  family_id, global_layer_index, decline_reason) — wiring this consumption is in scope.
+- **Measured renderer deltas (2026-08-25, from tmp/vdcmp comparison bundles):**
+  trunk infill pattern (horizontal-only scan fill → alternating crosshatch), tip
+  solidity (sub-pitch regions already get a center line; verify solid-puck semantics),
+  top-layer interface band count/size reconciliation (~30 vs ~50 tips), and an explicit
+  branch-centerline rendering disposition — AC-13..AC-16 in packet.spec.md.
 - Doc hygiene: gap-register destination columns G-10/G-11/G-12/G-13/G-18 → this packet;
   stub absorption record; `docs/15_config_keys_reference.md` regeneration;
   `docs/02_ir_schemas.md` role documentation; DEVIATION_LOG rows; `docs/07` registration.
@@ -93,13 +145,14 @@ Verified against the live tree at authoring time:
 | Surface | File | Change |
 | --- | --- | --- |
 | WIT role enum | `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit` | `support-plan-role.base-interface` |
-| WIT builder method | `crates/slicer-schema/wit/deps/ir-types.wit` | `push-base-interface-path` on `support-output-builder` |
+| WIT builder method | `crates/slicer-schema/wit/deps/ir-types.wit` | base-interface push method on `support-output-builder` (name mirroring `push-interface-path`) |
 | IR enum | `crates/slicer-ir/src/slice_ir.rs` | `SupportPlanRole::BaseInterface` (+ match-arm fallout) |
 | IR enum | `crates/slicer-ir/src/slice_ir.rs` | `ExtrusionRole::SupportBaseInterface` + priority + closed-loop set review |
 | Host dispatch | `crates/slicer-wasm-host/src/{host.rs,dispatch.rs}` — `host.rs` builder impl; `dispatch.rs` owns the live four-arm `SupportPlanRole` → WIT-role match and gains the `BaseInterface` arm | new push method plumbing + BaseInterface dispatch arm |
 | Marshal legs | `crates/slicer-wasm-host/src/marshal/{in_.rs,native.rs}` + generated bindings | role round-trip both legs (T9 hazard) |
 | Planner | `modules/core-modules/tree-support-planner/src/lib.rs` | attribute base-interface circles |
-| Renderer ×2 | `modules/core-modules/tree-support/src/lib.rs`, `modules/core-modules/traditional-support/src/lib.rs` | consume role, emit via carrier |
+| Planner manifest | `modules/core-modules/tree-support-planner/tree-support-planner.toml` | FIRST-TIME declaration of `num_top_base_interface_layers` (snake_case, canonical-derived default) — undeclared in any manifest today; without it the key silently defaults and the planner cannot read it |
+| Renderer ×2 | `modules/core-modules/tree-support/src/lib.rs`, `modules/core-modules/traditional-support/src/lib.rs` | consume role, emit via carrier; tree renderer additionally reads skeleton `wall_counts` (landed transport) |
 | G-code | `crates/slicer-gcode/src/emit.rs` | `orca_type_label` arm + feedrate/priority mapping |
 | Schema docs | `docs/02_ir_schemas.md` | role documented |
 
@@ -151,12 +204,15 @@ Files to inspect for this packet:
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (hollow walls, E1 structural assertion) … `AC-12` (DEV-129
-  close-or-finish evidence), as Given/When/Then with pipe commands there.
+  close-or-finish evidence) plus `AC-13`..`AC-16` (the four measured renderer deltas:
+  fill pattern, tip solidity, interface-band tip reconciliation, centerline-rendering
+  disposition), as Given/When/Then with pipe commands there.
 - Negative: `AC-N1` (density clamp to solid), `AC-N2` (non-positive interface-flow guard).
 - Cross-packet impact: consumes 238a's typed keys (`float_or_percent`
-  `support_line_width`, `support_threshold_overlap`, spacing keys) and 238b's wall-count
-  skeleton transport (`list<u32>` `wall_counts`); hands 241 a stable pitch surface; hands
-  242 the corrected interface counts and marker semantics.
+  `support_line_width`, `support_threshold_overlap`, spacing keys) and 238b's LANDED
+  wall-count skeleton transport (`list<u32>` `wall_counts`, schema 2.1.0 — consumed
+  here, not rebuilt); hands 241 a stable pitch surface; hands 242 the corrected
+  interface counts and marker semantics.
 
 ## Verification Commands
 
@@ -165,16 +221,20 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo test -p tree-support --test tree_support_tdd -- tree_bodies_render_hollow_concentric_walls --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-1 hollow-wall structure | FACT pass/fail |
+| `cargo test -p tree-support --test tree_support_tdd -- body_fill_alternates_direction_across_layers sub_pitch_tip_region_emits_solid_center_line --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-13 + AC-14 measured deltas | FACT pass/fail |
+| `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-tree-matched.json --module-dir modules/core-modules --output tmp/p238c-tips.gcode --no-progress-events && rg -c '^;TYPE:Support interface' tmp/p238c-tips.gcode` | AC-15 tip/interface-band evidence (NOTE: `--module-dir` REQUIRED — without it support silently does not register) | FACT count |
+| `rg -q 'circle\+chord\|circle-chord\|centerline' docs/spec_packets/238c-support-renderer-flow-interfaces/design.md && echo DISPOSITIONED \|\| echo FAIL` | AC-16 centerline disposition recorded | FACT pass/fail |
 | `cargo test -p slicer-core --features host-algos --test support_flow_semantics_tdd -- canonical_density_derivations_match_formulas densities_clamp_to_one_solid_pitch --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2 + AC-N1 density math (E6 feature flag) | FACT pass/fail |
 | `rg -q 'MAX_BRANCH_RADIUS_MM: f32 = 10\.0' modules/core-modules/tree-support-planner/src/lib.rs && cargo test -p tree-support-planner --test tree_family_tdd -- branch_radius_clamps_at_canonical_maximum --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-3 cap constant + behavior | FACT pass/fail |
 | `cargo test -p tree-support-planner --test tree_family_tdd -- radius_raises_to_base_under_interfaces base_interface_band_attributed_in_plan_roles --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-4 + AC-6 planner behavior | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure interface_layer_count_follows_config --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-5 band counts incl. ee27ac94 pins | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration -- interface_band_counts_match_canonical_structure final_gcode_roles --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-5 band counts incl. ee27ac94 pins (pins ride inside `final_gcode_roles`, which chains `interface_layer_count_follows_config`) | FACT pass/fail |
 | `cargo build --tests -p slicer-wasm-host && cargo xtask build-guests --check` | AC-7 WIT + guest freshness (exit 0) | FACT pass/fail + exit code |
 | `cargo test -p slicer-gcode --lib -- base_interface_role_maps_to_support_interface_marker --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-8 marker decision | FACT pass/fail |
 | `test ! -f modules/core-modules/tree-support/src/interface_regularize.rs && test ! -f modules/core-modules/traditional-support/src/interface_regularize.rs && rg -q 'pub fn regularize_entry_roles' crates/slicer-core/src/support_regularize.rs` | AC-9 single-source proof | FACT pass/fail |
 | `rg -q 'default = 0\.5' modules/core-modules/traditional-support/traditional-support.toml && rg -q 'default = 0\.5' modules/core-modules/tree-support/tree-support.toml` | AC-10 DEV-145 defaults | FACT pass/fail |
 | `cargo test -p traditional-support --test traditional_support_tdd -- interface_pitch_derives_from_interface_flow_over_line_width --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-11 DEV-146 mechanism | FACT pass/fail |
 | `! rg -q 'Not yet implemented' modules/core-modules/tree-support-planner/tree-support-planner.toml` | AC-12 stale-claim removal | FACT pass/fail |
+| `cargo test -p slicer-wasm-host --test contract -- view_seam_identity_tdd::native_and_wasm_layer_views_are_field_identical --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | marshal seam guard after role/transport work (module-qualified filter; lives in slicer-wasm-host) | FACT pass/fail |
 | `cargo check --workspace --all-targets` | whole-tree compile incl. test targets | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask check-literals` | struct-literal churn gate | FACT pass/fail |
@@ -192,10 +252,14 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 
 ## Context Discipline Notes
 
-- `modules/core-modules/tree-support-planner/src/lib.rs` is ~5.9k lines: ranged reads
+- `modules/core-modules/tree-support-planner/src/lib.rs` is ~6.5k lines: ranged reads
   around cited symbols only (`MAX_BRANCH_RADIUS_MM`, `calc_branch_radius` clamp,
-  `InterfaceRole`, node-classification loop); never full-read.
-- Both renderers are ~600 lines: full-read allowed once each, then symbol-targeted.
+  `InterfaceRole`, `build_roles`, `structural_body_regions`, node-classification loop);
+  never full-read. (Line pins in older docs have rotted — grep symbols first.)
+- Both renderers are ~650 lines: full-read allowed once each, then symbol-targeted.
 - Never load `OrcaSlicerDocumented/` or golden fixture bodies; delegate per snippet.
 - Guest-freshness checks (`build-guests --check`) are cheap exit-code probes — always run
   rather than reason about staleness.
+- Slice evidence runs MUST pass `--module-dir modules/core-modules` (silent no-support
+  failure otherwise) and use `--model` for the input path; see packet.spec.md §Operational
+  Traps.

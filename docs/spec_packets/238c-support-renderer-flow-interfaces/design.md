@@ -1,12 +1,68 @@
 # Design: 238c-support-renderer-flow-interfaces
 
+## Measured Renderer Baseline (2026-08-25)
+
+Authoritative snapshot of what the renderers/planner actually DO on disk today, verified
+this session. Where any older statement in this packet or the plan conflicts, THIS
+section wins.
+
+**Planner output shape (`build_roles`, `modules/core-modules/tree-support-planner/src/lib.rs`):**
+role regions are DISCRETE per-connected-component bodies per layer. Each planned node
+contributes its own footprint — a circle, plus a capsule ONLY between consecutive layers
+of the SAME node (`structural_body_regions` calls `swept_region(point, point)`);
+`union_connected_components` then merges only geometrically OVERLAPPING polygons into
+connected bodies. There is NO cross-branch capsule sweep along MST edges and NO global
+per-role union of separate branches. The renderer therefore receives MANY SMALL REGIONS
+per role per layer (trunk segments, tip discs), not one merged body outline. Any AC,
+test, or design text assuming a single merged region per role is stale.
+
+**Renderer mechanics (`render_polygon` + `scan_fill_region`,
+`modules/core-modules/tree-support/src/lib.rs`; mirrored in traditional-support):**
+
+- `render_polygon` = `wall_count` inset wall passes + `scan_fill_region` of the inner
+  remainder. This wall/fill SPLIT already exists (landed with 238b's renderer work).
+- Scan fill is HORIZONTAL-ONLY: scan lines advance in +y; there is no infill-angle or
+  pattern parameter anywhere in the fill path. Orca's 45° crosshatch has no counterpart.
+- Body pitch = `line_width / density.min(1.0)` from the percent-as-fraction
+  `support_density` key (the G-11 defect this packet replaces); interface pitch =
+  `support_interface_spacing + flow_spacing` (~0.757 mm at defaults: gap 0.4 +
+  flow spacing ~0.357 at width 0.4 / layer height 0.2).
+- Min-fill ALREADY LANDED: when the pitch loop would place no line inside a sub-pitch
+  region, `scan_fill_region` emits one center fill line — hollow tip outlines are fixed;
+  remaining tip delta is solid-puck vs ring semantics (see deltas below).
+- The renderer reads ONLY `entry.roles` / `family_id` / `global_layer_index` /
+  `decline_reason`. The `SupportPlanSkeleton` (points + `wall_counts`) carried by each
+  entry is UNUSED for path generation today — extra-wall printing and centerline
+  rendering would both need to start consuming it.
+- Branch centerline rendering (Orca's circle+chord look around skeleton points) is
+  UNIMPLEMENTED. There is also NO min-area filter on rendered regions.
+- Renderer files measured: tree-support `lib.rs` 665 lines; traditional-support `lib.rs`
+  622 lines.
+
+**Remaining visual deltas vs Orca** (evidence: comparison bundles `tmp/vdcmp/{ours,ref}/`
+with manifests; reusable gcode-source requests `tmp/vdcmp/{ours,ref}-request.json`;
+numeric per-role extrusion profile method documented in `tmp/p238b-human-validation.md`):
+
+1. Trunk infill pattern: horizontal rungs vs Orca's 45° crosshatch → AC-13.
+2. Tip solidity: rings vs solid pucks → AC-14 (min-fill center line landed; pattern and
+   ring-vs-puck coverage remain).
+3. Top-layer tip count/size: ~30 (PnP) vs ~50 (Orca) at the reference l120 — roof/
+   interface band semantics, G-18-adjacent → AC-15.
+4. Branch centerline rendering unimplemented → AC-16 disposition required.
+
+Reference artifacts: `tmp/SupportTest_Tree_Orca.gcode` (124 `;TYPE:Support` blocks),
+`tmp/p238b-tree-fixture.gcode` (124 blocks, delta 0).
+
+**AC-16 disposition (recorded 2026-08-26): branch centerline rendering stays UNIMPLEMENTED by deliberate choice — option (b).** The renderer draws the planner's DISCRETE role regions (circle footprints + same-node capsules, §baseline above) rather than overlaying circle+chord outlines around skeleton centerlines. Visual consequence, named: branch cross-sections follow planned region outlines (slightly polygonal where capsule/circle regions abut), not Orca's circular chord look; wall/fill structure and densities are unaffected because they key off the same regions. Revisit trigger: if the 242 closure human gate judges the outline character a visible defect, a follow-up implements circle+chord over `SupportPlanSkeleton.points`.
+
 ## Controlling Code Paths
 
 - Primary code path: `modules/core-modules/tree-support/src/lib.rs` (`render_polygon`,
   config parse, interface pitch plumbing) and
   `modules/core-modules/traditional-support/src/lib.rs` (mirror surface) — the two family
   renderers; `modules/core-modules/tree-support-planner/src/lib.rs` for G-12/G-13/F-37
-  planner-side attribution.
+  planner-side attribution (and any planner deltas surfaced by this packet per the scope
+  directive in packet.spec.md §Scope Boundaries).
 - Neighboring tests/fixtures:
   `modules/core-modules/tree-support/tests/tree_support_tdd.rs`,
   `modules/core-modules/traditional-support/tests/{traditional_support_tdd,support_fill_geometry_tdd}.rs`,
@@ -35,20 +91,24 @@ Recorded per the pre-verified canonical probe (trust over plan where differing):
    `support_density` key is REMOVED from both manifests rather than re-ranged. New DEV row
    documents the removal (user-facing key retirement).
 3. **DEV-129 verification-first.** Plan §10 already suspects implemented-truth; live tree
-   confirms `InterfaceRole::Floor` classification exists in the planner node loop and
-   `diagnostics_ttd`-suite assertions expect NO code-1003. Default disposition: CLOSE as
-   implemented after removing the stale manifest comment; finishing work only if Step 3's
-   verification finds a real gap.
+    confirms `InterfaceRole::Floor` classification exists in the planner node loop and
+    `diagnostics_ttd`-suite assertions expect NO code-1003. Default disposition: CLOSE as
+    implemented after removing the stale manifest comment; finishing work only if Step 3's
+    verification finds a real gap.
+4. **G-18 mechanism corrected by measurement (2026-08-26).** Layer-mapped block extraction of both sides (`tmp/p238c-baseline-normal.gcode`, `tmp/SupportTest_Normal_Orca.gcode`; embedded config headers verified identical at top=2/bottom=2) shows Orca's three `;TYPE:Support interface` runs are CONSECUTIVE ROOF layers (l122–124, Z24.4–24.8) with no plate-level or mid-air floor band anywhere — the older floor-collapse story is stale. Canonical `generate_interface_layers` (`SupportCommon.cpp`) sizes the top band as contact + N−1 intermediates and never lets the bottom count touch the top branch, leaving the reference third layer's exact provenance unresolved after targeted probing. Adopted rule (satisfies every locked constraint): the traditional top band widens by ONE layer iff raw configured `support_interface_bottom_layers >= 1`; bottom ≤ 0 (incl. the −1 mirror-top legacy sentinel) keeps exactly N. Locked pins hold; AC-5's 3@top=2/bottom=2 is met. If 242 closure identifies the true canonical source of the third layer, replace the condition — the test asserts counts, not the condition.
 
 ## Approach Per Surface
 
 ### G-10 + G-11 — renderer flow/density model
 
-Replace `render_polygon`'s filled-body scan-fill with the canonical wall/fill split:
+The wall/fill SPLIT in `render_polygon` already exists (see §Measured Renderer
+Baseline); this step replaces its DENSITY and PATTERN semantics:
 
-- Emit `tree_support_wall_count` concentric inset loops (inset `line_width * (i + 0.5)`)
-  from each contour — the tree-planner's `wall_counts` transport (238b export) supplies
-  per-region counts when present; the manifest key remains the fallback.
+- Keep the `wall_count` concentric inset loops (inset `line_width * (i + 0.5)`) — the
+  tree-planner's LANDED `wall_counts` transport (238b export, schema 2.1.0) supplies
+  per-node extra-wall counts once the renderer starts reading the skeleton; the manifest
+  key remains the fallback. Consuming `wall_counts` for regions that contain a
+  skeleton point with count ≥ 1 is IN SCOPE (extra-wall printing).
 - Interior fill only when the region needs infill (canonical `area_group.need_infill`),
   pitched at body density spacing `line_width / body_density` where
   `body_density = min(1, support_flow_spacing / (support_base_pattern_spacing +
@@ -61,6 +121,13 @@ Replace `render_polygon`'s filled-body scan-fill with the canonical wall/fill sp
   `crates/slicer-core/src/algos/support_geometry.rs` was retired by 238a and must not
   reappear). Every call site unwraps via the existing renderer error path, mapping
   `NegativeSpacingError` to a structured decline, never to a silent default.
+  NOTE: `support_base_pattern_spacing` is declared today ONLY on
+  `traditional-support-planner` (float, default 2.5); the tree family needs it declared
+  on `tree-support-planner`/`tree-support` for this derivation to read a real value.
+- Fill DIRECTION alternates across layers (canonical crosshatch equivalent): extend the
+  fill path with an angle/axis parameter (45°/135° alternating, or horizontal/vertical)
+  keyed off the entry's global layer index — replacing the current horizontal-only scan
+  (AC-13).
 - Interface roles keep dedicated pitches: top
   `min(1, interface_flow_spacing / (support_interface_spacing + interface_flow_spacing))`;
   bottom analogous over `support_bottom_interface_spacing`. `0`-spacing ⇒ solid interface
@@ -70,12 +137,18 @@ Replace `render_polygon`'s filled-body scan-fill with the canonical wall/fill sp
 - Config parsing: drop `support_density` handling; resolve `support_line_width` through
   the 238a typed-key semantics (float_or_percent, 0 = auto → nozzle-derived default
   recorded as deviation).
+- Per-component rendering is PRESERVED: because planner role regions are discrete
+  connected components (§Measured Renderer Baseline), fill each region independently;
+  do NOT reintroduce a global per-role union before filling — Orca fills each branch's
+  own footprint too.
 
 ### G-12 — radius cap
 
 `MAX_BRANCH_RADIUS_MM: f32 = 6.0` → `10.0` in
-`modules/core-modules/tree-support-planner/src/lib.rs` (constant site ~line 87, clamp in
-the radius function, doc-comment mentions, and the clamp test at ~5641). Canonical pair:
+`modules/core-modules/tree-support-planner/src/lib.rs` (constant site, clamp in the
+radius function `raw.clamp(MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS_MM)`, doc-comment
+mentions, and the clamp test). Locate all sites by symbol grep — line pins from
+authoring time have rotted (the file is ~6.5k lines). Canonical pair:
 `MIN_BRANCH_RADIUS = 0.4` / `MAX_BRANCH_RADIUS = 10.0` (`TreeSupport.hpp`). Pure constant
 flip plus test update; golden reblessing NOT expected (cap raise only widens radii that
 were previously clamped; classify any golden drift per E3 before regenerating).
@@ -106,44 +179,51 @@ Two coordinated changes pinned by AC-5:
 ### F-37 piece 2 — base-interface role carrier
 
 New role end to end, derived-at-activation (schema bump rides the packet that introduces
-the variant):
+the variant). The SupportPlanIR schema is 2.1.0 today (238b's wall-counts minor bump);
+the base-interface role rides the next derived-at-activation bump:
 
 - WIT: `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`
-  gains `base-interface` in `support-plan-role`;
-  `crates/slicer-schema/wit/deps/ir-types.wit` gains `push-base-interface-path` on
+  gains `base-interface` in `support-plan-role` (currently the four variants
+  `support-body`, `top-interface`, `bottom-interface`, `raft-related`);
+  `crates/slicer-schema/wit/deps/ir-types.wit` gains a base-interface push method on
   `support-output-builder` (mirroring `push-interface-path`'s shape). Both host `bindgen!`
-  and guest `include_str!` read these canonical files — no inline copies exist.
+  and guest `include_str!` read these canonical files — no inline copies exist. The
+  skeleton's landed `wall-counts: list<u32>` field (238b) is not touched.
 - IR: `SupportPlanRole::BaseInterface` in `crates/slicer-ir/src/slice_ir.rs`;
   `ExtrusionRole::SupportBaseInterface` with `default_priority()` between
   `SupportMaterial` (5000) and `SupportInterface` (5500) — e.g. 5250 — so base-interface
   passes sort after body, before roof, matching canonical material ordering intent.
-- Host: builder impl in `crates/slicer-wasm-host/src/host.rs`; the live
-  `SupportPlanRole` dispatch match (all four role arms) lives in
+- Host: builder impl in `crates/slicer-wasm-host/src/host.rs`; the live four-arm
+  `SupportPlanRole` dispatch match lives in
   `crates/slicer-wasm-host/src/dispatch.rs` and gains the `BaseInterface` arm; BOTH
   marshal
   legs (`marshal/in_.rs` wasm view, `marshal/native.rs` native view) round-trip the new
-  role — T9 leg-skew hazard called out per-step.
+  role — T9 leg-skew hazard called out per-step. Both legs already carry the landed
+  length-assertion for skeleton `wall_counts`; extend, don't fork.
 - Planner: node circles landing within `num_top_base_interface_layers` of a roof get
   attributed `BaseInterface` (disjoint from Roof/Body by construction of the existing
-  `InterfaceRole::target_for_node` precedence — extend it, don't fork it).
+  `InterfaceRole::target_for_node` precedence — extend it, don't fork it). The key must
+  be DECLARED first-time in `tree-support-planner.toml` (Step 12 owns the declaration;
+  it exists in no manifest today — an undeclared key silently defaults and the planner
+  could not read it).
 - Renderers: consume the plan role and push through the new carrier method.
 - G-code: `orca_type_label(SupportBaseInterface) = ";TYPE:Support interface"` — DECISION:
   reuse the interface marker because canonical prints base-interface as interface-material
   geometry; a distinct marker would break Orca reference diffing (block counts). Feedrate
   mapping uses the interface feedrate branch. Review the closed-loop-role set for the new
   variant (default false — fill passes are open paths).
-- Marker-doc home DECISION: no doc enumerates the support `;TYPE:` marker set today
-  (`rg ';TYPE:Support' docs/*.md` returns zero hits at authoring time); no new
-  enumeration doc is created. The authoritative label contract stays `orca_type_label`
-  (`crates/slicer-gcode/src/emit.rs`) + its AC-8 unit test; observed block counts are
-  recorded in the human-gate checklist. The two `docs/02_ir_schemas.md` sections that
-  reference the role surface (plan-entry role enumeration ~line 985; extrusion-role
-  priority table ~line 1273) are the only doc edits.
+- Marker-doc home DECISION: no canonical doc enumerates the support `;TYPE:` marker set
+  as an owned reference; no new enumeration doc is created. The authoritative label
+  contract stays `orca_type_label` (`crates/slicer-gcode/src/emit.rs`) + its AC-8 unit
+  test; observed block counts are recorded in the human-gate checklist. The two
+  `docs/02_ir_schemas.md` sections that reference the role surface ("Support plan entry"
+  role enumeration under IR 9b; "Extrusion-role default priority" table) are the only
+  doc edits.
 - Schema docs: `docs/02_ir_schemas.md` documents the variant.
 
 ### interface_regularize consolidation
 
-The two files are byte-identical today (verified by diff at authoring). Shape:
+The two files are byte-identical (re-verified on disk 2026-08-25 with `cmp`). Shape:
 
 - Move `regularize_entry_roles` + private helpers into ONE shared module
   `crates/slicer-core/src/support_regularize.rs` (pub API), tests move to
@@ -157,7 +237,7 @@ The two files are byte-identical today (verified by diff at authoring). Shape:
 
 ### DEV-129 verify-close-or-finish procedure
 
-1. Verify: run `diagnostics_ttd`-suite narrow test
+1. Verify: run the `diagnostics_tdd`-suite narrow test
    (`interface_bottom_layers_is_supported_and_warns_nothing`) and confirm a real slice
    emits `InterfaceRole::Floor` bands (planner test exists). Guest freshness first (T4).
 2. If truth == implemented: remove the stale "Not yet implemented" comment above
@@ -174,6 +254,17 @@ mirror-top sentinel remains expressible); renderer parsers treat negative as mir
 legacy input, documented as non-canonical. DEVIATION_LOG row corrected to state the real
 divergence (PnP default −1.0 vs canonical 0.5) and its resolution. Regenerate
 `docs/15_config_keys_reference.md`.
+
+### Extra-wall printing over the landed transport
+
+238b delivered `SupportPlanSkeleton.wall_counts: Vec<u32>` end to end (WIT
+`wall-counts`, IR field, both marshal legs with length assertions, plus a planner pin
+test proving nonzero counts for extra-wall nodes). The renderer-side consumption is THIS
+packet's: read the entry's skeleton, and for each role region containing a skeleton
+point with `wall_count >= 1`, emit `1 + count` wall loops there (falling back to the
+manifest `tree_support_wall_count` where no skeleton point applies). This closes the
+DEV-144 consequence ("branches at merge points print thinner than canonical") on the
+consumer side.
 
 ## Architecture Constraints
 
@@ -198,11 +289,12 @@ the old version literal; locked wire formats stay pinned at their constructor li
 
 ## Code Change Surface
 
-- Selected approach: renderer-mechanism replacement (density derivations + wall/fill
-  split), constant+rule parity flips in the planner, one shared regularize module in
-  `slicer-core`, and a single WIT/IR/gcode carrier for the base-interface role.
+- Selected approach: renderer-mechanism replacement (density derivations + fill-pattern/
+  per-component semantics on the EXISTING wall/fill split), constant+rule parity flips in
+  the planner, one shared regularize module in `slicer-core`, and a single WIT/IR/gcode
+  carrier for the base-interface role.
 - Exact functions, traits, manifests, tests, and fixtures:
-  - `render_polygon` (+ callers, config parse) — `modules/core-modules/tree-support/src/lib.rs`
+  - `render_polygon`, `scan_fill_region` (+ callers, config parse) — `modules/core-modules/tree-support/src/lib.rs`
   - equivalent body/interface pitch paths — `modules/core-modules/traditional-support/src/lib.rs`
   - `MAX_BRANCH_RADIUS_MM`, radius clamp fn, `InterfaceRole::target_for_node`,
     node-classification loop — `modules/core-modules/tree-support-planner/src/lib.rs`
@@ -245,11 +337,13 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
 
 ## Read-Only Context
 
-- `modules/core-modules/tree-support-planner/src/lib.rs` - lines around
-  `MAX_BRANCH_RADIUS_MM` (~87), radius clamp (~4409–4437), `InterfaceRole` (~913–955),
-  node classification (~2897–2944) only; file is ~5.9k lines.
+- `modules/core-modules/tree-support-planner/src/lib.rs` - symbol-grepped ranges only
+  (grep `MAX_BRANCH_RADIUS_MM`, the radius clamp in the clamp fn,
+  `InterfaceRole`, `build_roles`, `structural_body_regions`, node classification); file is
+  ~6.5k lines and prior line pins have rotted — re-locate by symbol, never by stale line.
 - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - range around
-  `interface_layer_count_follows_config` (~839–990) only.
+  `final_gcode_roles` / `interface_layer_count_follows_config` only (the latter is a pub
+  helper chained by the former, not its own registered test).
 - `docs/specs/support-families-anchored-entities-plan.md` - §12 brief + §13 traps ranges.
 
 ## Out-of-Bounds Files
@@ -259,7 +353,7 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
 - `modules/core-modules/*/tests/golden/**` fixture bodies - never load; classify drift
   from summaries
 - Packets 236–238b directories, `rectilinear-infill`, AGG surfaces, raft modules - other
-  packets' scope
+  packets' scope (238b's own packet dir is read-only reference)
 - `docs/specs/support-families-anchored-entities-plan.md` queue table - orchestrator-owned
 
 ## Expected Sub-Agent Dispatches
@@ -267,7 +361,8 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
 - Question: exact current text + neighbors of the `support_bottom_interface_spacing`
   blocks in both manifests; scope: `modules/core-modules/*/*.toml`; return: `SNIPPETS`;
   purpose: Step 1 red-baseline.
-- Question: confirm `render_polygon` wall/fill behavior and `fill_pitch_honours_support_density`
+- Question: confirm `render_polygon`/`scan_fill_region` wall/fill behavior and
+  `fill_pitch_honours_support_density`
   assertions; scope: `modules/core-modules/tree-support/src/lib.rs` + tests; return:
   `SNIPPETS`; purpose: Step 2 red tests.
 - Question: LOCATIONS of every `match` on `SupportPlanRole` / `ExtrusionRole` across
@@ -282,13 +377,19 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
 
 - IR/manifest contracts: `SupportPlanEntry.roles` carries
   `SupportPlanRoleRegion { role, regions }`; new role rides this record — no new entry
-  type. Manifest keys snake_case; undeclared keys silently default (E9/T8) so every read
+  type. `SupportPlanEntry.skeleton` carries the LANDED
+  `points` + `wall_counts` parallel lists (equal lengths; count 0 = plain node, ≥1 =
+  extra walls) — the renderer currently ignores it and this packet wires consumption.
+  Manifest keys snake_case; undeclared keys silently default (E9/T8) so every read
   key must be declared.
 - WIT boundary: canonical sources only (`crates/slicer-schema/wit/`); both `bindgen!` and
   guest macro read them; after edits `cargo build --tests` then rebuild guests.
 - Determinism/scheduler constraints: no new claims; role attribution happens inside the
   existing planner claim window; serial/parallel determinism preserved (pure functions of
   plan entries + config).
+- CLI evidence contract: any slice run for evidence MUST include
+  `--module-dir modules/core-modules` (support modules otherwise silently fail to
+  register — zero support blocks, no error) and use `--model <path>` for the input.
 
 ## Locked Assumptions and Invariants
 
@@ -311,6 +412,12 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
   bottom=-1); AC-5 pins top=2/bottom=2 plus regression-pins the `ee27ac94` rows.
 - Shared `slicer-core` helper grows guest dependency surface for both modules (already
   dependents; no new linkage risk).
+- Per-component fill means many small regions per layer: a naive per-region fill pass is
+  fine, but any cross-region optimization (e.g. chaining scan lines across components)
+  must preserve deterministic ordering — keep fills per region in plan-entry order.
+- The ~30-vs-~50 tip-count delta (AC-15) may partly reflect Orca's denser tip seeding
+  rather than band semantics alone; AC-15 requires reconciling only what band semantics
+  own and recording the residual explicitly.
 
 ## Context Cost Estimate
 
@@ -327,4 +434,8 @@ Target at most 3 primary files per step; the packet total spans the enumerated s
   appears, classify per E3 before proceeding.
 - [FWD] Exact priority integer for `SupportBaseInterface` (proposed 5250) — implementer
   may adjust if scheduler ordering tests reveal a conflict, keeping the 5000–5500 band.
-- [BLOCK] None at authoring time; activation blocked only by 238b reaching `implemented`.
+- [FWD] AC-16 centerline rendering: implement (circle+chord over skeleton points) or
+  record discrete-region rendering as the disposition? Decide at Step 7 with the human
+  gate's visual verdict in hand; either branch satisfies AC-16, silence does not.
+- [BLOCK] None remaining. (At authoring time activation was blocked on 238b reaching
+  `implemented`; that dependency is SATISFIED as of 2026-08-25.)
