@@ -58,6 +58,11 @@ fn final_gcode_roles() {
 }
 
 #[test]
+fn interface_band_counts_match_canonical_structure() {
+    support_family_closure::interface_band_counts_match_canonical_structure().unwrap();
+}
+
+#[test]
 fn supersedes_packet_213_and_task_329() {
     support_family_closure::supersedes_packet_213_and_task_329().unwrap();
 }

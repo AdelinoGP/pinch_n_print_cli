@@ -642,6 +642,30 @@ fn pnp_support_evidence(
     Ok(plan)
 }
 
+#[test]
+fn tree_branch_a_merge_keeps_drawable_nodes_on_merge_layer() {
+    let context =
+        prepare_model_support(&support_test_path(), matched_config_for(true, "tree(auto)"))
+            .expect("prepare support test");
+    let plan = context
+        .blackboard
+        .support_plan()
+        .expect("support plan")
+        .as_ref();
+    let merge_layer = plan
+        .entries
+        .iter()
+        .find(|entry| entry.global_layer_index == 44)
+        .expect("Branch A merge must retain drawable geometry on layer 44");
+    assert!(
+        merge_layer
+            .roles
+            .iter()
+            .any(|role| { role.role == SupportPlanRole::SupportBody && !role.regions.is_empty() }),
+        "layer 44 entry must carry printable SupportBody geometry"
+    );
+}
+
 pub fn matched_height_evidence() -> Result<(), String> {
     let tree_plan = pnp_support_evidence("tree", "tree(auto)")?;
     let trad_plan = pnp_support_evidence("traditional", "normal(auto)")?;
@@ -876,6 +900,20 @@ pub fn interface_layer_count_follows_config() -> Result<(), String> {
                 "{family}: negative bottom_layers did not fall back to top_layers: top=2,bottom=0->{two}, top=2,bottom=-1->{fallback}"
             ));
         }
+    }
+    Ok(())
+}
+
+/// The matched normal-support configuration has two roof and two floor
+/// interface layers. Canonical rendering keeps the roof and floor bands in
+/// distinct interface collections, producing three interface blocks here.
+pub fn interface_band_counts_match_canonical_structure() -> Result<(), String> {
+    let gcode = run_slice_for_family_with_interface_layers("normal(auto)", 2, 2)?;
+    let count = interface_block_count(&gcode);
+    if count != 3 {
+        return Err(format!(
+            "traditional: canonical roof/floor interface bands must emit 3 blocks, got {count}"
+        ));
     }
     Ok(())
 }
