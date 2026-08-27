@@ -75,6 +75,7 @@ impl LayerModule for SdkLayerInfillModule {
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         output
             .push_sparse_path(path)
@@ -126,6 +127,7 @@ impl LayerModule for SdkLayerInfillModule {
                     role: ExtrusionRole::SparseInfill,
                     speed_factor: 1.0,
                     tool_index: None,
+                    order_lock: None,
                 };
                 output
                     .push_sparse_path(fpath)

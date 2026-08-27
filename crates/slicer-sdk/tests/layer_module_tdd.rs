@@ -4,9 +4,9 @@
 //! Tests lock down trait signatures, ModuleError type, view types, and output builders.
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::wall_loop_base;
 use std::collections::HashMap;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // =============================================================================
 // Test 1: LayerModule trait exists with from_config
@@ -940,6 +940,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
         OrderedEntityView {
             original_index: 0,
             tool_index: 1,
+            order_lock: None,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
@@ -969,6 +970,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
         OrderedEntityView {
             original_index: 1,
             tool_index: 1,
+            order_lock: None,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
@@ -998,6 +1000,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
         OrderedEntityView {
             original_index: 2,
             tool_index: 2,
+            order_lock: None,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-B".to_string(),

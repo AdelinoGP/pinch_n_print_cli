@@ -3909,6 +3909,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
             .ordered_entities
             .iter()
             .map(|v| ir::OrderedEntityView {
+                order_lock: v.order_lock,
                 original_index: v.original_index,
                 tool_index: v.tool_index,
                 region_key: ir::RegionKey {
@@ -4402,6 +4403,7 @@ mod finalization_impls {
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),
             speed_factor: p.speed_factor,
+            order_lock: None,
             tool_index: p.tool_index,
         }
     }
@@ -4875,6 +4877,7 @@ mod finalization_impls {
                         role: fgeo::ExtrusionRole::OuterWall,
                         speed_factor: 1.0,
                         tool_index: None,
+                        order_lock: None,
                     },
                     0,
                     fm::RegionKey {

@@ -81,6 +81,7 @@ fn make_wall_loop() -> WallLoopView {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         feature_flags: vec![make_feature_flag(), make_feature_flag()],
         boundary_type: WitWallBoundaryType::ExteriorSurface,

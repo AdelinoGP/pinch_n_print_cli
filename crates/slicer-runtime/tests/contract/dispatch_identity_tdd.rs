@@ -323,6 +323,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     };
     // exhaustive: boundary fixture preserves explicit test data
     let output = SupportOutputCollected {
@@ -477,9 +478,10 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             feature_flags: vec![WallFeatureFlag {
-            tool_index: None,
+                tool_index: None,
                 fuzzy_skin: false,
                 is_bridge: false,
                 is_thin_wall: false,

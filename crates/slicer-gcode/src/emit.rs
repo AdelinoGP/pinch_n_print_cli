@@ -956,10 +956,51 @@ fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
 
         if let Some(prev_tool) = prev_ending_tool {
             if prev_tool != first_tool {
-                if let Some(start) = entities.iter().position(|e| e.tool_index == prev_tool) {
+                if let Some(mut start) = entities.iter().position(|e| e.tool_index == prev_tool) {
                     let mut end = start;
                     while end < entities.len() && entities[end].tool_index == prev_tool {
                         end += 1;
+                    }
+
+                    // A lock is an atomic authored sequence. If the tool
+                    // cluster touches any member, rotate the complete block.
+                    // Iterate to a fixpoint: a locked block may itself touch
+                    // another locked block, so the cluster range must extend
+                    // transitively. The range bounds are recomputed in a
+                    // separate pass and applied only between iterations, so
+                    // they are never mutated inside the loop that ranges over
+                    // them.
+                    loop {
+                        let mut new_start = start;
+                        let mut new_end = end;
+                        for i in start..end {
+                            let Some(lock) = entities[i].path.order_lock else {
+                                continue;
+                            };
+                            let mut block_start = i;
+                            while block_start > 0
+                                && entities[block_start - 1].path.order_lock == Some(lock)
+                            {
+                                block_start -= 1;
+                            }
+                            let mut block_end = i + 1;
+                            while block_end < entities.len()
+                                && entities[block_end].path.order_lock == Some(lock)
+                            {
+                                block_end += 1;
+                            }
+                            if block_start < new_start {
+                                new_start = block_start;
+                            }
+                            if block_end > new_end {
+                                new_end = block_end;
+                            }
+                        }
+                        if new_start == start && new_end == end {
+                            break;
+                        }
+                        start = new_start;
+                        end = new_end;
                     }
 
                     let n = entities.len();
@@ -1042,6 +1083,7 @@ mod tests {
     fn tool_entity(entity_id: u64, layer: u32, tool: u32) -> slicer_ir::PrintEntity {
         slicer_ir::PrintEntity {
             entity_id,
+            // exhaustive: this test intentionally pins the path defaults.
             path: slicer_ir::ExtrusionPath3D {
                 points: vec![slicer_ir::Point3WithWidth {
                     x: 0.0,
@@ -1054,6 +1096,7 @@ mod tests {
                 role: slicer_ir::ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             tool_index: tool,
             region_key: slicer_ir::RegionKey {
@@ -1091,6 +1134,38 @@ mod tests {
             tool_changes: tcs,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn order_lock_tool_rotation_preserves_block() {
+        let layer0 = layer_with_tools(0, &[0, 1]);
+        let mut layer1 = layer_with_tools(1, &[0, 1, 1, 2]);
+        layer1.ordered_entities[1].path.order_lock = Some(9);
+        layer1.ordered_entities[2].path.order_lock = Some(9);
+        let locked_ids = [
+            layer1.ordered_entities[1].entity_id,
+            layer1.ordered_entities[2].entity_id,
+        ];
+        let mut layers = vec![layer0, layer1];
+
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let positions: Vec<_> = layers[1]
+            .ordered_entities
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entity)| locked_ids.contains(&entity.entity_id).then_some(index))
+            .collect();
+        assert_eq!(positions.len(), 2);
+        assert_eq!(positions[1], positions[0] + 1);
+        assert_eq!(
+            layers[1].ordered_entities[positions[0]].entity_id,
+            locked_ids[0]
+        );
+        assert_eq!(
+            layers[1].ordered_entities[positions[1]].entity_id,
+            locked_ids[1]
+        );
     }
 
     /// Part C: a `tool_config:<idx>:retract_length` override is applied at emit

@@ -1332,6 +1332,7 @@ fn make_wall_loop_view() -> WallLoopView {
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         feature_flags: vec![WallFeatureFlag {
             tool_index: None,
@@ -1393,6 +1394,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
             role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         feature_flags: vec![
             WallFeatureFlag {

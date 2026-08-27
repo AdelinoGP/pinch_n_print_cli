@@ -575,6 +575,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -928,11 +929,13 @@ pub fn print_entity(
 ) -> PrintEntity {
     PrintEntity {
         entity_id,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         role,
         tool_index: 0,
@@ -972,6 +975,7 @@ pub fn extrusion_path3d_base(role: ExtrusionRole) -> ExtrusionPath3D {
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -996,11 +1000,13 @@ pub fn extrusion_path3d_base(role: ExtrusionRole) -> ExtrusionPath3D {
 pub fn print_entity_base(role: ExtrusionRole) -> PrintEntity {
     PrintEntity {
         entity_id: 0,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth::default()],
             role: role.clone(),
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         role,
         region_key: RegionKey::default(),
@@ -1038,11 +1044,13 @@ pub fn wall_loop_base(loop_type: LoopType, boundary_type: WallBoundaryType) -> W
     WallLoop {
         perimeter_index: 0,
         loop_type,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth::default()],
             role,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         width_profile: WidthProfile { widths: vec![0.0] },
         feature_flags: Vec::new(),
@@ -1078,6 +1086,7 @@ pub fn ordered_entity_view_base(role: ExtrusionRole) -> crate::views::OrderedEnt
         start_point: Point3WithWidth::default(),
         end_point: Point3WithWidth::default(),
         point_count: 2,
+        order_lock: None,
     }
 }
 

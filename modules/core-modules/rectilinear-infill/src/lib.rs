@@ -734,6 +734,7 @@ fn scan_expolygon(
                 role: role.clone(),
                 speed_factor,
                 tool_index: None,
+                order_lock: None,
             });
 
             i += 2;

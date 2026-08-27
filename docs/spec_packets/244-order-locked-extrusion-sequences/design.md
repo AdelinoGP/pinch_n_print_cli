@@ -62,7 +62,7 @@
   - `crates/slicer-wasm-host/src/marshal/leaf.rs` and `crates/slicer-wasm-host/src/host.rs` — the
     `ExtrusionPath3D` WIT→IR converters gain `order_lock`.
   - `crates/slicer-sdk/src/order_lock.rs` (new) — `OrderLockAllocator` (see Data and Contract Notes).
-  - `crates/slicer-runtime/src/layer_executor.rs` (or a new `order_lock.rs`) — `remap_order_locks_to_global`.
+  - `crates/slicer-runtime/src/layer_executor.rs` (or a new `order_lock.rs`) — `remap_order_locks_to_global` (landed in `crates/slicer-sdk/src/order_lock.rs` — the finalization merge in `slicer-sdk/src/traits.rs` cannot call slicer-runtime; `crates/slicer-runtime/src/order_lock.rs` re-exports it).
   - `crates/slicer-ir/src/stage_io.rs` — `LayerStageError::OrderLockViolation { message: String }`.
 - Rejected alternatives and reasons:
   - New `ExtrusionRole` variant — rejected: role proliferation, scattered match arms (plan D2).
@@ -115,6 +115,81 @@
   change: `order_lock: None`.
 - `modules/core-modules/tree-support/src/lib.rs` - role: literal blast radius (2 literals); expected
   change: `order_lock: None`.
+- `modules/core-modules/support-surface-ironing/src/lib.rs` - role: literal blast radius (1 literal);
+  expected change: `order_lock: None`.
+- `modules/core-modules/skirt-brim/src/lib.rs` - role: literal blast radius (1 literal); expected
+  change: `order_lock: None`.
+- `modules/core-modules/gyroid-infill/src/lib.rs` - role: literal blast radius (1 literal); expected
+  change: `order_lock: None`.
+- `modules/core-modules/classic-perimeters/src/lib.rs` - role: literal blast radius (2 literals);
+  expected change: `order_lock: None`.
+- `modules/core-modules/rectilinear-infill/src/lib.rs` - role: literal blast radius (1 literal);
+  expected change: `order_lock: None`.
+- `modules/core-modules/lightning-infill/src/lib.rs` - role: literal blast radius (1 literal);
+  expected change: `order_lock: None`.
+- `modules/core-modules/fuzzy-skin/src/lib.rs` - role: literal blast radius (1 literal); expected
+  change: `order_lock: None`.
+- `modules/core-modules/traditional-support/src/lib.rs` - role: literal blast radius (3 literals);
+  expected change: `order_lock: None`.
+- `modules/core-modules/top-surface-ironing/src/lib.rs` - role: literal blast radius (1 literal);
+  expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest/src/lib.rs` - role: literal blast
+  radius (2 literals); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/sdk-finalization-guest/src/lib.rs` - role: literal blast
+  radius (2 literals); expected change: `order_lock: None`.
+- `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` - role: test literal (1); expected
+  change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-ir/tests/entity_id_invariants_tdd.rs` - role: test literal (1); expected change:
+  `order_lock: None` + FRU/waiver.
+- `crates/slicer-ir/tests/ir_validation_tdd.rs` - role: test literal (1); expected change:
+  `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/contract/authored_tool_index_tdd.rs` - role: test literal (1);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/integration/structured_support_identity.rs` - role: test literal
+  (1); expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/integration/support_family_routing.rs` - role: test literal (1);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/executor/live_seam_path_tdd.rs` - role: test literals (3);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/executor/live_top_bottom_fill_tdd.rs` - role: test literal (1);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/contract/dispatch_identity_tdd.rs` - role: test literals (2);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/contract/dispatch_infill_output_tdd.rs` - role: test literal (1);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/contract/dispatch_perimeter_output_tdd.rs` - role: test literals
+  (4); expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/integration/pipeline_tdd.rs` - role: test literals (2); expected
+  change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-runtime/tests/integration/region_partition_tdd.rs` - role: test literals (2);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-sdk/tests/layer_module_tdd.rs` - role: test literals (3, `OrderedEntityView`);
+  expected change: `order_lock: None` + FRU/waiver.
+- `crates/slicer-wasm-host/src/host.rs` - role: WIT `fgeo::ExtrusionPath3d` literal (1); expected
+  change: `order_lock: None`.
+- `modules/core-modules/path-optimization-default/src/lib.rs` - role: one compiler-enforced
+  `OrderedEntityView` literal in a `#[cfg(test)]` mod; expected change: `order_lock: None` +
+  FRU/waiver. Mechanical only — the lock-honoring consumer logic stays out of bounds (Packet 3).
+- `crates/slicer-wasm-host/tests/contract/authored_coloring_grant_and_strip_tdd.rs` - role: WIT
+  `ExtrusionPath3d` literal (1); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/tests/contract/effective_perimeter_origin_integration_tdd.rs` - role:
+  WIT literal (1); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/tests/contract/finalization_role_round_trip_tdd.rs` - role: WIT literal
+  (1); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/tests/contract/set_current_origin_routes_to_correct_bucket_tdd.rs` -
+  role: WIT literal (1); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/tests/contract/z_envelope_contract_tdd.rs` - role: WIT literals (2);
+  expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/dispatch-layer-infill-postprocess-guest/src/lib.rs` - role:
+  literal blast radius (1 WIT `ExtrusionPath3d` literal); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/dispatch-layer-support-postprocess-guest/src/lib.rs` - role:
+  literal blast radius (1 WIT literal); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/dispatch-layer-perimeters-postprocess-guest/src/lib.rs` -
+  role: literal blast radius (1 WIT literal); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/layer-infill-guest/src/lib.rs` - role: literal blast radius
+  (2 WIT literals); expected change: `order_lock: None`.
+- `crates/slicer-wasm-host/test-guests/infill-postprocess-echo-guest/src/lib.rs` - role: literal
+  blast radius (2 WIT literals); expected change: `order_lock: None`.
 - `docs/adr/0062-order-lock-for-print-order-sensitive-extrusion-sequences.md` (new) - role: ADR.
 - `CONTEXT.md` - role: glossary; expected change: two terms.
 - `docs/02_ir_schemas.md` - role: docs; expected change: IR 10 section.
@@ -141,7 +216,10 @@
 - Question: list every exhaustive `ExtrusionPath3D { … }` literal (no `..` rest) in `crates/*/src`
   and `modules/*/src` that must gain `order_lock: None`; scope: `crates/**/src/**/*.rs`,
   `modules/**/src/**/*.rs`; return: `LOCATIONS` (≤ 20 entries); purpose: pre-bake the production
-  literal blast radius for Step 1.
+  literal blast radius for Step 1. **Swept at preflight (2026-08-27): 38 exhaustive literals across
+  20 files** — the 11 files beyond the original list (9 core-modules + 2 test-guests) were added to
+  §Code Change Surface; the test-guests are root workspace members, so
+  `cargo check --workspace --all-targets` enforces them too.
 - Question: confirm no test hard-asserts the literal `SemVer { major: 1, minor: 3, patch: 0 }` for
   `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`; scope: `crates/**/tests/**/*.rs`; return: `LOCATIONS`;
   purpose: confirm the constant-bump fallout is empty (constant-sourced only).

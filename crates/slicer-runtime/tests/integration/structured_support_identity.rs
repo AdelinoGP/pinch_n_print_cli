@@ -12,6 +12,7 @@ use slicer_runtime::LayerArena;
 /// The support commit boundary must retain family/body/demand attribution while
 /// carrying the actual path into the layer arena used by downstream stages.
 pub fn structured_support_identity() {
+    // exhaustive: support identity fixture pins the complete IR path
     let path = ExtrusionPath3D {
         points: vec![
             Point3WithWidth {
@@ -30,6 +31,7 @@ pub fn structured_support_identity() {
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     };
     let support = SupportIR {
         // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple

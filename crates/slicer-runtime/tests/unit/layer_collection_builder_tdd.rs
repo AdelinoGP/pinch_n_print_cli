@@ -22,13 +22,14 @@ use slicer_ir::{
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_runtime::order_lock::remap_order_locks_to_global;
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
     CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LayerArena,
     LayerStageInput, LoadedModule, LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
     HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -111,6 +112,40 @@ fn ordered_start_xs(arena: &LayerArena) -> Vec<f32> {
         .iter()
         .map(|e| e.path.points[0].x)
         .collect()
+}
+
+#[test]
+fn order_lock_proposal_split_rejected() {
+    let mut arena = three_entity_arena();
+    let mut collection = arena.take_layer_collection().expect("seeded layer");
+    collection.ordered_entities[0].path.order_lock = Some(7);
+    collection.ordered_entities[1].path.order_lock = Some(7);
+    arena.set_layer_collection(collection);
+
+    for proposal in [
+        vec![(0, false), (2, false), (1, false)],
+        vec![(0, false), (1, true), (2, false)],
+        vec![(1, false), (0, false), (2, false)],
+        vec![(1, false), (0, false), (2, false)],
+    ] {
+        let before = arena
+            .layer_collection()
+            .expect("layer present")
+            .ordered_entities
+            .clone();
+        let error = apply_entity_order_proposal(&mut arena, &proposal).expect_err("lock violation");
+        assert!(error.contains("locked block"));
+        assert_eq!(
+            arena
+                .layer_collection()
+                .expect("layer present")
+                .ordered_entities,
+            before
+        );
+    }
+
+    apply_entity_order_proposal(&mut arena, &[(2, false), (0, false), (1, false)])
+        .expect("whole locked block may move");
 }
 
 fn ordered_topo_orders(arena: &LayerArena) -> Vec<u32> {
@@ -680,4 +715,44 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
          dispatch even though the guest body called the SDK accessor 5 times; got {}",
         total_calls
     );
+}
+
+#[test]
+fn order_lock_remap_local_to_global() {
+    let mut paths = vec![
+        ExtrusionPath3D {
+            order_lock: Some(7),
+            ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
+        },
+        ExtrusionPath3D {
+            order_lock: Some((1 << 63) | 10),
+            ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
+        },
+        ExtrusionPath3D {
+            order_lock: None,
+            ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
+        },
+    ];
+    let mut next_global = 10;
+    remap_order_locks_to_global(&mut paths, &mut next_global).expect("valid locks remap");
+    assert_eq!(paths[0].order_lock, Some((1 << 63) | 10));
+    assert_eq!(paths[1].order_lock, Some((1 << 63) | 10));
+    assert_eq!(paths[2].order_lock, None);
+    assert_eq!(next_global, 11);
+
+    let mut zero = vec![ExtrusionPath3D {
+        order_lock: Some(0),
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
+    }];
+    let error =
+        remap_order_locks_to_global(&mut zero, &mut next_global).expect_err("zero rejected");
+    assert!(error.contains("0"));
+
+    let mut unknown = vec![ExtrusionPath3D {
+        order_lock: Some((1 << 63) | next_global),
+        ..extrusion_path3d_base(ExtrusionRole::SparseInfill)
+    }];
+    let error = remap_order_locks_to_global(&mut unknown, &mut next_global)
+        .expect_err("unknown global rejected");
+    assert!(error.contains("unknown global"));
 }

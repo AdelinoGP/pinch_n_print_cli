@@ -38,6 +38,7 @@ fn make_finalization_path(role_tag: &str) -> ExtrusionPath3d {
         role: ExtrusionRole::Custom(role_tag.to_string()),
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 

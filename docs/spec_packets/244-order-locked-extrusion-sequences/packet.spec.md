@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 244-order-locked-extrusion-sequences
 task_ids:
   - TASK-354
@@ -55,17 +55,17 @@ State ACs only here; `requirements.md` references their IDs.
 - **AC-3. Given** a slice with every path carrying `order_lock: None`, **when** the full pipeline
   runs, **then** the produced `LayerCollectionIR` / G-code is structurally identical to the
   pre-packet output (all-`None` neutrality — no new branch changes any existing path). |
-  `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_ALL_NONE_NEUTRAL`
+  `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_ALL_NONE_NEUTRAL`
 - **AC-4. Given** a `LayerCollectionIR` whose `ordered_entities` contain a locked block (two or more
   adjacent paths sharing a non-`None` `order_lock`), **when** `apply_entity_order_proposal` is given a
   proposal that splits, interleaves, reverses, or internally reorders that block, **then** the call
   returns `Err` naming the violation and the prior `LayerCollectionIR` is preserved unchanged. |
-  `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_PROPOSAL_ENFORCED`
+  `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_PROPOSAL_ENFORCED`
 - **AC-5. Given** module output carrying local tags (`Some(t)` with bit 63 clear) and a host remap
   counter, **when** `remap_order_locks_to_global` runs, **then** each local tag is rewritten to a
   layer-unique global tag (bit 63 set, monotonically increasing from the counter), `Some(0)` is
   rejected, and an unknown global tag (bit 63 set but not previously minted) is a contract error. |
-  `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_REMAP_ENFORCED`
+  `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_REMAP_ENFORCED`
 - **AC-6. Given** a fresh `OrderLockAllocator`, **when** `allocate()` is called repeatedly, **then**
   it returns `Some(1)`, `Some(2)`, `Some(3)` in deterministic order and `None` once the local-tag
   space (`1..2^63-1`) is exhausted. |
@@ -74,7 +74,7 @@ State ACs only here; `requirements.md` references their IDs.
   the `LayerStageCommit::Infill` / `LayerStageCommit::InfillPostProcess` commit, **when** the commit runs, **then** the
   committed `LayerCollectionIR` carries layer-unique global tags (bit 63 set) — the remap is wired at
   the output boundary, not just unit-tested. |
-  `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_REMAP_WIRED`
+  `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_REMAP_WIRED`
 
 ## Negative Test Cases
 
@@ -82,7 +82,7 @@ State ACs only here; `requirements.md` references their IDs.
   alters the widths of a locked block present in the prior `InfillIR`, **when** the commit runs,
   **then** the commit returns a fatal `LayerStageError::OrderLockViolation` and the prior `InfillIR`
   is preserved (atomic). |
-  `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_INFILL_POSTPROCESS_ENFORCED`
+  `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_INFILL_POSTPROCESS_ENFORCED`
 - **AC-N2. Given** a finalization `modify_entity` that changes the points or widths of a locked
   entity, or a `sort_layer_by` that splits or internally reorders a locked block, **when** `apply_to`
   runs, **then** it returns `Err` naming the violation and the prior layers are preserved. |
@@ -91,7 +91,7 @@ State ACs only here; `requirements.md` references their IDs.
   `apply_cross_layer_tool_rotation` runs and the cluster rotation would split the block, **then** the
   block moves as a unit — the rotation range extends to the block boundary and no locked block is
   ever split. |
-  `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_TOOL_ROTATION_ENFORCED`
+  `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_TOOL_ROTATION_ENFORCED`
 
 ## Verification
 

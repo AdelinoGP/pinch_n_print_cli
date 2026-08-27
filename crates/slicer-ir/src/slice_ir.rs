@@ -337,9 +337,11 @@ pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `LayerCollectionIR.speed_profiles` per-point speed carrier.
 /// 1.3.0 — packet `226-authored-coloring-carrier` added the additive
 /// `ExtrusionPath3D.tool_index` per-path authored-coloring carrier (ADR-0058).
+/// 1.4.0 — packet `244-order-locked-extrusion-sequences` added the additive
+/// `ExtrusionPath3D.order_lock` per-path ordering carrier.
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 3,
+    minor: 4,
     patch: 0,
 };
 
@@ -2358,6 +2360,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -2380,6 +2383,9 @@ pub struct ExtrusionPath3D {
     /// before — silently, never an error.
     #[serde(default)]
     pub tool_index: Option<u32>,
+    /// Optional stable ordering lock consumed by a later ordering stage.
+    #[serde(default)]
+    pub order_lock: Option<u64>,
 }
 
 impl ExtrusionPath3D {
@@ -2467,6 +2473,7 @@ pub fn extrusion_line_to_extrusion_path3d(
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 

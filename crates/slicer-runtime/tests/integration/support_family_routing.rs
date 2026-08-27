@@ -151,6 +151,7 @@ fn support_entry(
         object_id: "object".into(),
         region_id: 0,
         role: SupportRole::SupportBody,
+        // exhaustive: support routing fixture pins the complete IR path
         paths: vec![ExtrusionPath3D {
             points: vec![
                 Point3WithWidth {
@@ -171,6 +172,7 @@ fn support_entry(
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         }],
     }
 }

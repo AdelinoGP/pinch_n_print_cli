@@ -821,4 +821,6 @@ pub struct OrderedEntityView {
     pub end_point: Point3WithWidth,
     /// Total number of points on the entity's path (including endpoints).
     pub point_count: u32,
+    /// Optional stable ordering lock carried by the extrusion path.
+    pub order_lock: Option<u64>,
 }

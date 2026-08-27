@@ -83,14 +83,14 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo test -p slicer-ir --test ir_tests -- chunk2_ir_schema_versions_are_default_sourced --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | schema constant 1.4.0 + default-sourced | FACT pass/fail |
-| `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | all-`None` neutrality | FACT pass/fail |
-| `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | proposal enforcement | FACT pass/fail |
-| `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | remap + `Some(0)`/unknown-global rejection | FACT pass/fail |
-| `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | InfillPostProcess enforcement | FACT pass/fail |
+| `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | all-`None` neutrality | FACT pass/fail |
+| `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | proposal enforcement | FACT pass/fail |
+| `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | remap + `Some(0)`/unknown-global rejection | FACT pass/fail |
+| `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | InfillPostProcess enforcement | FACT pass/fail |
 | `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_finalization_rejects_geometry_change --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | finalization enforcement | FACT pass/fail |
 | `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_allocator_sequence --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | allocator sequence | FACT pass/fail |
-| `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | tool-rotation enforcement (AC-N3) | FACT pass/fail |
-| `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | remap wired at Infill/InfillPostProcess commit (AC-7) | FACT pass/fail |
+| `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | tool-rotation enforcement (AC-N3) | FACT pass/fail |
+| `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | remap wired at Infill/InfillPostProcess commit (AC-7) | FACT pass/fail |
 | `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_remap_wired_at_finalization_merge --exact 2>&1 \| tee target/test-output.log \| grep -qE "^test result: ok\. 1 passed"` | remap wired at finalization merge | FACT pass/fail |
 | `cargo xtask build-guests --check` | guest freshness after WIT change (exit 0 = fresh) | exit code |
 | `cargo xtask check-literals` | watched-type literal gate | exit code |

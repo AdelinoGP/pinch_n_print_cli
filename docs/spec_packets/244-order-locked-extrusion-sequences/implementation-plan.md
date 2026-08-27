@@ -44,6 +44,42 @@
   - `crates/slicer-sdk/src/test_support/fixtures.rs`
   - `modules/core-modules/wipe-tower/src/lib.rs`
   - `modules/core-modules/tree-support/src/lib.rs`
+  - `modules/core-modules/support-surface-ironing/src/lib.rs`
+  - `modules/core-modules/skirt-brim/src/lib.rs`
+  - `modules/core-modules/gyroid-infill/src/lib.rs`
+  - `modules/core-modules/classic-perimeters/src/lib.rs`
+  - `modules/core-modules/rectilinear-infill/src/lib.rs`
+  - `modules/core-modules/lightning-infill/src/lib.rs`
+  - `modules/core-modules/fuzzy-skin/src/lib.rs`
+  - `modules/core-modules/traditional-support/src/lib.rs`
+  - `modules/core-modules/top-surface-ironing/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/sdk-finalization-guest/src/lib.rs`
+  - `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs`
+  - `crates/slicer-ir/tests/entity_id_invariants_tdd.rs`
+  - `crates/slicer-ir/tests/ir_validation_tdd.rs`
+  - `crates/slicer-runtime/tests/contract/authored_tool_index_tdd.rs`
+  - `crates/slicer-runtime/tests/integration/structured_support_identity.rs`
+  - `crates/slicer-runtime/tests/integration/support_family_routing.rs`
+  - `crates/slicer-runtime/tests/executor/live_seam_path_tdd.rs`
+  - `crates/slicer-runtime/tests/executor/live_top_bottom_fill_tdd.rs`
+  - `crates/slicer-runtime/tests/contract/dispatch_identity_tdd.rs`
+  - `crates/slicer-runtime/tests/contract/dispatch_infill_output_tdd.rs`
+  - `crates/slicer-runtime/tests/contract/dispatch_perimeter_output_tdd.rs`
+  - `crates/slicer-runtime/tests/integration/pipeline_tdd.rs`
+  - `crates/slicer-runtime/tests/integration/region_partition_tdd.rs`
+  - `crates/slicer-sdk/tests/layer_module_tdd.rs`
+  - `modules/core-modules/path-optimization-default/src/lib.rs` (compiler-enforced literal only — the lock-honoring consumer logic remains Packet 3 out of bounds)
+  - `crates/slicer-wasm-host/tests/contract/authored_coloring_grant_and_strip_tdd.rs`
+  - `crates/slicer-wasm-host/tests/contract/effective_perimeter_origin_integration_tdd.rs`
+  - `crates/slicer-wasm-host/tests/contract/finalization_role_round_trip_tdd.rs`
+  - `crates/slicer-wasm-host/tests/contract/set_current_origin_routes_to_correct_bucket_tdd.rs`
+  - `crates/slicer-wasm-host/tests/contract/z_envelope_contract_tdd.rs`
+  - `crates/slicer-wasm-host/test-guests/dispatch-layer-infill-postprocess-guest/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/dispatch-layer-support-postprocess-guest/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/dispatch-layer-perimeters-postprocess-guest/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/layer-infill-guest/src/lib.rs`
+  - `crates/slicer-wasm-host/test-guests/infill-postprocess-echo-guest/src/lib.rs`
 - Files explicitly out of bounds:
   - `modules/core-modules/infill-linker/**`, `modules/core-modules/path-optimization-default/**`
     (Packet 3)
@@ -114,7 +150,7 @@
   - none
 - Verification:
   - `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_allocator_sequence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
-  - `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test unit -- order_lock_remap_local_to_global 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
 - Exit condition: both tests pass.
 
 ### Step 3: Host enforcement at the four mutation points
@@ -164,12 +200,12 @@
 - OrcaSlicer refs:
   - none
 - Verification:
-  - `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
-  - `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test unit -- order_lock_proposal_split_rejected 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_finalization_rejects_geometry_change --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
-  - `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
-  - `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
-  - `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_remap_wired_at_finalization_merge --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo check --workspace --all-targets` - FACT pass/fail
 - Exit condition: all seven tests pass and `cargo check --workspace --all-targets` is green.

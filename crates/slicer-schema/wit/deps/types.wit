@@ -16,7 +16,7 @@ interface geometry {
     /// `fill_authored_coloring` config key. Ungranted, or out of range against
     /// tool-count(), the value is stripped to none and the host resolves the
     /// region tool as before — silently, never an error.
-    record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32, tool-index: option<u32> }
+    record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32, tool-index: option<u32>, order-lock: option<u64> }
     variant extrusion-role {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,

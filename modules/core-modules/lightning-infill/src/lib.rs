@@ -131,6 +131,7 @@ impl LayerModule for LightningInfill {
                     role: ExtrusionRole::SparseInfill,
                     speed_factor,
                     tool_index: None,
+                    order_lock: None,
                 });
             }
         }

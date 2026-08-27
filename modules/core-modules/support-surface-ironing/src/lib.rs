@@ -157,6 +157,7 @@ impl SupportSurfaceIroning {
                     role: ExtrusionRole::Ironing,
                     speed_factor,
                     tool_index: None,
+                    order_lock: None,
                 });
 
                 i += 2;

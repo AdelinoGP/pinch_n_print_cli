@@ -43,6 +43,7 @@ fn make_path(
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 

@@ -489,6 +489,7 @@ mod tests {
         OrderedEntityView {
             original_index,
             tool_index: 0,
+            order_lock: None,
             region_key: RegionKey {
                 global_layer_index: 0,
                 object_id: "test".to_string(),

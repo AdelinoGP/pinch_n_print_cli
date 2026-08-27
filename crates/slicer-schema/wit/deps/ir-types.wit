@@ -267,6 +267,7 @@ interface ir-handles {
         start-point: point3-with-width,
         end-point: point3-with-width,
         point-count: u32,
+        order-lock: option<u64>,
     }
 
     resource layer-collection-builder {

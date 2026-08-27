@@ -300,6 +300,14 @@ without it, infill is raw disjoint segments with maximum travel. Distinct from
 not connect endpoints. Diverges from OrcaSlicer, which links inside each fill
 class. See ADR-0025 (+ 2026-07-01 amendment).
 
+### Anchor band
+The strip of supported material beside a bridge area that wave bridge fill deliberately extrudes into so its first fronts bond to solid ground. Owned by the emitting fill holder under the order-lock exception; never a partition polygon of its own.
+_Avoid_: Anchor area, seed zone, bridge margin.
+
+### Order lock
+A per-path marker grouping extrusion paths whose print order and direction are physically loadable. Locked paths form an atomic contiguous sequence: stages that reorder, reverse, merge, clip, or trim infill must leave locked blocks untouched, ordinary fill must not overlap a locked path's swept area, and G-code emission preserves every authored point. Host-enforced at mutation points. Not a role and not tied to any one module — any fill holder may lock its output.
+_Avoid_: sequence tag, no-sort, pinned path, chain id.
+
 ### Wall-sharing group
 A base region together with the wall-less sibling regions that share its
 perimeter walls: paint virtual-variants without their own perimeter entry, and

@@ -12,6 +12,7 @@ pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
 pub mod negative_part_subtract;
+pub mod order_lock;
 pub mod pipeline;
 pub mod postpass;
 pub mod prepass;

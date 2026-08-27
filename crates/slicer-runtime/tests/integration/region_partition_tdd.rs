@@ -660,6 +660,7 @@ fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
         role: ExtrusionRole::SparseInfill,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     });
     ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
         points: vec![
@@ -669,6 +670,7 @@ fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
         role: ExtrusionRole::SparseInfill,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     });
     ctx.infill_output_mut().sparse_path_origins.extend([
         Some(OriginId {

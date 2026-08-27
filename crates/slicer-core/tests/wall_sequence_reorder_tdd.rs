@@ -15,11 +15,13 @@ fn make_wall(perimeter_index: u32, loop_type: LoopType, role: ExtrusionRole) -> 
     WallLoop {
         perimeter_index,
         loop_type,
+        // exhaustive: wall reorder fixture pins the complete IR path
         path: ExtrusionPath3D {
             points: vec![],
             role,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         width_profile: Default::default(),
         feature_flags: Default::default(),

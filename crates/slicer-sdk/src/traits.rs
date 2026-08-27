@@ -970,6 +970,39 @@ pub struct FinalizationOutputBuilder {
     permuted_layers: std::collections::HashSet<u32>,
 }
 
+fn validate_locked_entity_order(
+    before: &[PrintEntity],
+    after: &[PrintEntity],
+) -> Result<(), String> {
+    for start in 0..before.len() {
+        let Some(tag) = before[start].path.order_lock else {
+            continue;
+        };
+        if start > 0 && before[start - 1].path.order_lock == Some(tag) {
+            continue;
+        }
+        let end = (start + 1..=before.len())
+            .find(|&i| i == before.len() || before[i].path.order_lock != Some(tag))
+            .unwrap_or(before.len());
+        let ids: Vec<u64> = before[start..end].iter().map(|e| e.entity_id).collect();
+        let positions: Vec<usize> = after
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| ids.contains(&e.entity_id).then_some(i))
+            .collect();
+        if positions.len() != ids.len()
+            || !positions.windows(2).all(|w| w[1] == w[0] + 1)
+            || !positions
+                .iter()
+                .enumerate()
+                .all(|(i, &p)| after[p].entity_id == ids[i])
+        {
+            return Err(format!("locked entity block {tag} was split or reordered"));
+        }
+    }
+    Ok(())
+}
+
 impl FinalizationOutputBuilder {
     /// Create a new FinalizationOutputBuilder.
     pub fn new() -> Self {
@@ -1546,6 +1579,12 @@ impl FinalizationOutputBuilder {
                                             ));
                                         }
                                     }
+                                    if e.path.order_lock.is_some() && e.path.points != v {
+                                        return Err(format!(
+                                            "modify_entity: locked entity_id {} geometry cannot change",
+                                            entity_id
+                                        ));
+                                    }
                                     e.path.points = v;
                                 }
                                 // Handled by the outer arm above.
@@ -1569,6 +1608,7 @@ impl FinalizationOutputBuilder {
                         .iter_mut()
                         .find(|l| l.global_layer_index == layer_idx)
                     {
+                        let before = layer.ordered_entities.clone();
                         match key {
                             SortKey::ByPriorityAndEntityId => {
                                 layer
@@ -1588,6 +1628,12 @@ impl FinalizationOutputBuilder {
                                 });
                             }
                         }
+                        if let Err(error) =
+                            validate_locked_entity_order(&before, &layer.ordered_entities)
+                        {
+                            layer.ordered_entities = before;
+                            return Err(error);
+                        }
                         // Packet-39 travel-anchor invariant: travel_moves reference
                         // entity_ids by value; sort only reorders entities in the vec,
                         // it does NOT re-aim travel_moves. The entity_ids themselves are
@@ -1595,7 +1641,6 @@ impl FinalizationOutputBuilder {
                     }
                     // Layer not found → no-op (matches ModifyEntity layer-not-found skip).
                 }
-
                 MergeOp::InsertSynthLayer { idx, data } => {
                     // Validate bounds: idx must be a valid existing position.
                     if idx as usize >= layers.len() {
@@ -1791,6 +1836,24 @@ impl FinalizationOutputBuilder {
                 .find(|l| l.global_layer_index == *layer_index)
             {
                 layer.annotations.push(annotation.clone());
+            }
+        }
+
+        // Finalization is an output boundary for invocation-local lock tags.
+        let mut next_global = layers
+            .iter()
+            .flat_map(|layer| layer.ordered_entities.iter())
+            .filter_map(|entity| entity.path.order_lock)
+            .filter(|tag| tag & (1 << 63) != 0)
+            .map(|tag| tag & !(1 << 63))
+            .max()
+            .map_or(0, |max| max + 1);
+        for layer in layers.iter_mut() {
+            for entity in &mut layer.ordered_entities {
+                crate::order_lock::remap_order_locks_to_global(
+                    std::slice::from_mut(&mut entity.path),
+                    &mut next_global,
+                )?;
             }
         }
 

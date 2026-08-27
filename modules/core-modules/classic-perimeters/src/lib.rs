@@ -952,6 +952,7 @@ impl ClassicPerimeters {
                         role: role.clone(),
                         speed_factor,
                         tool_index: None,
+                        order_lock: None,
                     },
                     width_profile: WidthProfile {
                         widths: vec![bead_flow_width_mm; num_points],
@@ -1286,6 +1287,7 @@ impl ClassicPerimeters {
                         role: role.clone(),
                         speed_factor: 1.0,
                         tool_index: None,
+                        order_lock: None,
                     },
                     width_profile: WidthProfile {
                         widths: vec![width; num_points],

@@ -1311,6 +1311,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     role: __slicer_role_ir_to_wit(&p.role),
                     speed_factor: p.speed_factor,
                     tool_index: p.tool_index,
+                    order_lock: p.order_lock,
                 }
             }
 
@@ -1333,6 +1334,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     role: __slicer_role_wit_to_ir(p.role.clone()),
                     speed_factor: p.speed_factor,
                     tool_index: p.tool_index,
+                    order_lock: None,
                 }
             }
 
@@ -2658,6 +2660,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 points: p.points.iter().map(__slicer_wit_point3w_to_ir).collect(),
                 role: __slicer_wit_role_to_ir(&p.role), speed_factor: p.speed_factor,
                 tool_index: p.tool_index,
+                order_lock: None,
             }
         }
         fn __slicer_wit_looptype_to_ir(lt: WitWallLoopType) -> ::slicer_ir::LoopType {
@@ -2806,6 +2809,7 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 role: __slicer_ir_role_to_wit(&p.role),
                 speed_factor: p.speed_factor,
                 tool_index: p.tool_index,
+                order_lock: p.order_lock,
             }
         }
     };
@@ -3190,6 +3194,7 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 let wit_entities: ::std::vec::Vec<WitOrderedEntityView> = wit.get_ordered_entities();
                 let sdk_entities = wit_entities.into_iter().map(|e| ::slicer_sdk::OrderedEntityView {
                     original_index: e.original_index, tool_index: e.tool_index,
+                    order_lock: e.order_lock,
                     region_key: ::slicer_ir::RegionKey {
                         global_layer_index: e.region_key.layer_index as u32,
                         object_id: e.region_key.object_id,

@@ -94,6 +94,11 @@ pub enum LayerStageError {
         /// Underlying arena failure.
         source: LayerArenaError,
     },
+    /// A host-side order-lock invariant was violated.
+    OrderLockViolation {
+        /// Stable human-readable detail.
+        message: String,
+    },
 }
 
 impl fmt::Display for LayerStageError {
@@ -108,6 +113,7 @@ impl fmt::Display for LayerStageError {
                 "fatal layer stage module failure in {stage_id} for {module_id}: {message}"
             ),
             Self::ArenaCommit { source } => write!(f, "arena commit failed: {source}"),
+            Self::OrderLockViolation { message } => write!(f, "order-lock violation: {message}"),
         }
     }
 }

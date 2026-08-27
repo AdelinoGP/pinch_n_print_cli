@@ -232,6 +232,7 @@ fn generate_zigzag_strokes_for_polygon(
         role: ExtrusionRole::Ironing,
         speed_factor,
         tool_index: None,
+        order_lock: None,
     }]
 }
 

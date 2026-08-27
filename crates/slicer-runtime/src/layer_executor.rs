@@ -463,6 +463,7 @@ fn append_same_z_entities(
                 role: slicer_ir::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             role: slicer_ir::ExtrusionRole::SupportMaterial,
             region_key: RegionKey::default(),
@@ -2349,6 +2350,8 @@ pub struct OrderedEntityView {
     pub end_point: slicer_ir::Point3WithWidth,
     /// Number of points in `path.points`.
     pub point_count: u32,
+    /// Optional stable ordering lock carried by the extrusion path.
+    pub order_lock: Option<u64>,
 }
 
 /// Per-physical-event accounting recorded while anchored work is committed.
@@ -2395,6 +2398,7 @@ pub fn project_ordered_entities(arena: &LayerArena) -> Vec<OrderedEntityView> {
                 start_point,
                 end_point,
                 point_count: entity.path.points.len() as u32,
+                order_lock: entity.path.order_lock,
             }
         })
         .collect()
@@ -2694,6 +2698,10 @@ pub fn apply_entity_order_proposal(
         .ok_or_else(|| "set-entity-order: no LayerCollectionIR staged on arena".to_string())?
         .ordered_entities
         .len();
+    let lc = arena
+        .layer_collection()
+        .expect("layer_collection presence verified above");
+    validate_entity_order_locks(&lc.ordered_entities, proposal)?;
     let mut lc = arena
         .take_layer_collection()
         .expect("layer_collection presence verified above");
@@ -2705,6 +2713,135 @@ pub fn apply_entity_order_proposal(
     );
     arena.set_layer_collection(lc);
     result
+}
+
+fn validate_entity_order_locks(
+    entities: &[slicer_ir::PrintEntity],
+    proposal: &[(u32, bool)],
+) -> Result<(), String> {
+    for start in 0..entities.len() {
+        let Some(tag) = entities[start].path.order_lock else {
+            continue;
+        };
+        if start > 0 && entities[start - 1].path.order_lock == Some(tag) {
+            continue;
+        }
+        let end = (start + 1..=entities.len())
+            .find(|&i| i == entities.len() || entities[i].path.order_lock != Some(tag))
+            .unwrap_or(entities.len());
+        let positions: Vec<usize> = proposal
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, &(idx, reverse))| {
+                if (start..end).contains(&(idx as usize)) {
+                    if reverse {
+                        return Some(usize::MAX);
+                    }
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if positions.contains(&usize::MAX) {
+            return Err(format!("set-entity-order: locked block {tag} was reversed"));
+        }
+        if positions.len() != end - start {
+            return Err(format!("set-entity-order: locked block {tag} was split"));
+        }
+        let contiguous = positions.windows(2).all(|w| w[1] == w[0] + 1);
+        let ordered = positions
+            .iter()
+            .enumerate()
+            .all(|(i, &slot)| proposal[slot].0 as usize == start + i);
+        if !contiguous || !ordered {
+            return Err(format!(
+                "set-entity-order: locked block {tag} was interleaved or reordered"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn remap_infill_order_locks_from(
+    ir: &mut InfillIR,
+    mut next: u64,
+) -> Result<(), slicer_ir::LayerStageError> {
+    for region in &mut ir.regions {
+        slicer_runtime_order_lock_remap(&mut region.sparse_infill, &mut next)?;
+    }
+    Ok(())
+}
+
+fn next_global_infill_tag(ir: &InfillIR) -> u64 {
+    ir.regions
+        .iter()
+        .flat_map(|region| region.sparse_infill.iter())
+        .filter_map(|path| path.order_lock)
+        .filter(|tag| tag & (1 << 63) != 0)
+        .map(|tag| tag & !(1 << 63))
+        .max()
+        .map_or(0, |max| max + 1)
+}
+
+fn slicer_runtime_order_lock_remap(
+    paths: &mut [slicer_ir::ExtrusionPath3D],
+    next: &mut u64,
+) -> Result<(), slicer_ir::LayerStageError> {
+    crate::order_lock::remap_order_locks_to_global(paths, next)
+        .map_err(|message| slicer_ir::LayerStageError::OrderLockViolation { message })
+}
+
+fn validate_infill_order_locks(previous: &InfillIR, replacement: &InfillIR) -> Result<(), String> {
+    for old_region in &previous.regions {
+        let Some(new_region) = replacement
+            .regions
+            .iter()
+            .find(|r| r.object_id == old_region.object_id && r.region_id == old_region.region_id)
+        else {
+            if old_region
+                .sparse_infill
+                .iter()
+                .any(|p| p.order_lock.is_some())
+            {
+                return Err("locked infill region was dropped".into());
+            }
+            continue;
+        };
+        for start in 0..old_region.sparse_infill.len() {
+            let old = &old_region.sparse_infill[start];
+            let Some(tag) = old.order_lock else { continue };
+            if start > 0 && old_region.sparse_infill[start - 1].order_lock.is_some() {
+                continue;
+            }
+            let end = (start + 1..=old_region.sparse_infill.len())
+                .find(|&i| {
+                    i == old_region.sparse_infill.len()
+                        || old_region.sparse_infill[i].order_lock.is_none()
+                })
+                .unwrap_or(old_region.sparse_infill.len());
+            let mut found = None;
+            let block_len = end - start;
+            for i in 0..=new_region.sparse_infill.len().saturating_sub(block_len) {
+                let points_match = (0..block_len).all(|j| {
+                    new_region.sparse_infill[i + j].points
+                        == old_region.sparse_infill[start + j].points
+                });
+                let all_tagged =
+                    (0..block_len).all(|j| new_region.sparse_infill[i + j].order_lock.is_some());
+                if points_match && all_tagged {
+                    found = Some(i);
+                    break;
+                }
+            }
+            if found.is_none() {
+                return Err(format!(
+                    "locked infill block {tag} was dropped, reordered, or changed"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn apply_order_proposal<T>(
@@ -2993,7 +3130,11 @@ pub(crate) fn apply(
             }
         }
         LayerStageCommit::Infill(ir) => {
-            if let Some(mut existing) = arena.take_infill() {
+            let mut ir = ir;
+            let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
+            remap_infill_order_locks_from(&mut ir, next)?;
+            let existing = arena.take_infill();
+            if let Some(mut existing) = existing {
                 merge_infill_ir(&mut existing, ir);
                 arena
                     .set_infill(existing)
@@ -3006,6 +3147,13 @@ pub(crate) fn apply(
         }
         LayerStageCommit::InfillPostProcess(ir) => {
             let mut ir = ir;
+            if let Some(previous) = arena.infill() {
+                validate_infill_order_locks(previous, &ir).map_err(|message| {
+                    slicer_ir::LayerStageError::OrderLockViolation { message }
+                })?;
+            }
+            let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
+            remap_infill_order_locks_from(&mut ir, next)?;
             if let Some(mut slice) = arena.take_slice() {
                 for region in &mut ir.regions {
                     let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
@@ -3170,6 +3318,7 @@ pub(crate) fn apply(
                                         role: ExtrusionRole::InternalBridgeInfill,
                                         speed_factor: 1.0,
                                         tool_index: None,
+                                        order_lock: None,
                                     }
                                 }));
                         }
@@ -3473,11 +3622,13 @@ mod tests {
                 overhang_distance_mm: None,
                 ..Default::default()
             };
+            // exhaustive: this test intentionally pins the path defaults.
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             }
         }
 
@@ -3540,11 +3691,13 @@ mod tests {
                 overhang_distance_mm: None,
                 ..Default::default()
             };
+            // exhaustive: this test intentionally pins the path defaults.
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             }
         }
 
@@ -3637,11 +3790,13 @@ mod tests {
             overhang_distance_mm: None,
             ..Default::default()
         };
+        // exhaustive: this test intentionally pins the path defaults.
         let wall_path = ExtrusionPath3D {
             points: vec![pt, pt],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         // feature_flags: tool_index = None  → paint_tool resolver returns None
         let flags = WallFeatureFlags {
