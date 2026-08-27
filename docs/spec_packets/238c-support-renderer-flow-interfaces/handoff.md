@@ -461,9 +461,18 @@ Also: `tmp/layer_step.py 6 22` max ledge 0.566 (pre-fix 0.825), layers>0.35mm 13
 
 ### Still open
 
-- The session-3b product question is unchanged: `TreeSupportStyle::from_config` maps
-  `support_style = default` to the old engine; canonical maps default + `tree(auto)` to
-  organic. Human decision needed (ship non-organic defaults vs implement organic engine).
+- ~~The session-3b product question~~ **RESOLVED (session 3e, human-decided via
+  grilling, 2026-08-27):** canonically-organic styles (`default`, `organic`, `grid`,
+  `snug` on a tree family) alias to **Strong** in `TreeSupportStyle::from_config`;
+  explicit `organic` gets a once-per-slice code-1005 Warn, plain `default` is silent;
+  non-tree families resolve `Default`. `style_movement_for`'s live Strong composition
+  was removed (canonical's `is_strong` block in `drop_nodes` is dead code — its result
+  is unconditionally overwritten by the `normal(direction_to_outer)` chain), so Strong
+  now differs from Default only in the neighbour-sum weighting. DEV-150 filed; the
+  organic engine port (`TreeSupport3D.cpp`) is queued as row 7 (TASK-441) in
+  `docs/specs/support-generation-remediation-plan.md`. Contract suite
+  `tests/tree_style_styles_tdd.rs` rewritten canonical (E3: intentional product
+  decision + canonical dead-code correction).
 - Session 3c's "separate real gap" items (outline vertex coarseness suspect
   `BRANCH_CIRCLE_SEGMENTS = 16`; `support_line_width` 80% vs ours 0.42) remain unverified
   and untouched.

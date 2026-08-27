@@ -147,6 +147,9 @@ pub struct SupportPlanner {
     /// `5` mm otherwise.
     tree_support_is_slim: bool,
     tree_support_style: TreeSupportStyle,
+    /// Config explicitly asked for the unimplemented organic engine; emit a
+    /// once-per-slice code-1005 Warn about the Strong substitution.
+    organic_substitution_requested: bool,
     /// Number of raft layers to describe.
     support_raft_layers: i32,
     /// Density of the first raft layer.
@@ -202,16 +205,53 @@ enum TreeSupportStyle {
 }
 
 impl TreeSupportStyle {
+    /// Canonical `SupportParameters.hpp` substitution chain, with this
+    /// port's organic-engine alias:
+    ///
+    /// - non-tree support type: every style degrades to `smsDefault`
+    ///   (canonical then routes it to the grid engine, which is not this
+    ///   planner) — mapped `Default` here.
+    /// - tree support type: explicit `tree_slim`/`tree_strong`/`tree_hybrid`
+    ///   keep themselves; `grid`/`snug` degrade to `smsDefault`; and
+    ///   `smsDefault` selects `smsTreeOrganic` in canonical. The organic
+    ///   engine (`TreeSupport3D.cpp`) is not implemented in this port, so
+    ///   every canonically-organic input runs the **Strong** style of the
+    ///   old engine instead (deviation row in docs/DEVIATION_LOG.md; the
+    ///   organic port is queued in
+    ///   docs/specs/support-generation-remediation-plan.md).
     fn from_config(config: &ConfigView) -> Self {
+        if !config_family_is_tree(config) {
+            return Self::Default;
+        }
         match config.get("support_style") {
             Some(ConfigValue::String(style)) if style == "tree_slim" => Self::Slim,
             Some(ConfigValue::String(style)) if style == "tree_strong" => Self::Strong,
             Some(ConfigValue::String(style)) if style == "tree_hybrid" => Self::Hybrid,
-            // Non-tree styles are accepted by the shared enum, but do not
-            // silently select a tree-specific planner behavior.
-            _ => Self::Default,
+            // default / organic / grid / snug on a tree family all land on
+            // smsTreeOrganic in canonical — aliased to Strong here.
+            _ => Self::Strong,
         }
     }
+}
+
+/// Whether the config's support family resolves to tree. Absent
+/// `support_type` falls back to this planner's own family default (tree),
+/// matching `canonical_support_family`.
+fn config_family_is_tree(config: &ConfigView) -> bool {
+    canonical_support_family(config).starts_with("tree")
+}
+
+/// True when the config *explicitly* requests the organic engine on a tree
+/// family. The engine is not implemented; `TreeSupportStyle::from_config`
+/// substitutes Strong, and `run_support_geometry` emits a once-per-slice
+/// code-1005 Warn for this case (the plain `default` alias is silent — a
+/// product decision, documented in docs/DEVIATION_LOG.md).
+pub fn organic_substitution_requested(config: &ConfigView) -> bool {
+    config_family_is_tree(config)
+        && matches!(
+            config.get("support_style"),
+            Some(ConfigValue::String(style)) if style == "organic"
+        )
 }
 
 /// Handle into [`NodeArena`]. Canonical holds raw `SupportNode*`; the arena
@@ -1520,6 +1560,7 @@ impl PrepassModule for SupportPlanner {
             _ => 1.0,
         };
         let tree_support_style = TreeSupportStyle::from_config(config);
+        let organic_substitution = organic_substitution_requested(config);
         // Canonical `is_slim = support_style == smsTreeSlim`.
         let tree_support_is_slim = tree_support_style == TreeSupportStyle::Slim;
         let tree_support_wall_count = match config.get("tree_support_wall_count") {
@@ -1604,6 +1645,7 @@ impl PrepassModule for SupportPlanner {
             tree_support_wall_count,
             tree_support_is_slim,
             tree_support_style,
+            organic_substitution_requested: organic_substitution,
             support_raft_layers,
             raft_first_layer_density,
             base_raft_layers,
@@ -1654,6 +1696,28 @@ impl PrepassModule for SupportPlanner {
 
         if layer_plan.layers.is_empty() {
             return Err(ModuleError::fatal(1, "empty layer-plan-view"));
+        }
+
+        if self.organic_substitution_requested {
+            // The typed diagnostic lands in host audits; the log line is what
+            // reaches the console (see machine-gcode-emit's code-12 pattern).
+            slicer_sdk::host::log_warn(concat!(
+                "support_style=organic requested but the organic tree engine ",
+                "(canonical TreeSupport3D) is not implemented; running the ",
+                "classic tree engine, strong style (code 1005)"
+            ));
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1005,
+                layer: None,
+                object_id: None,
+                message: concat!(
+                    "support_style=organic requested but the organic tree engine ",
+                    "(canonical TreeSupport3D) is not implemented; running the ",
+                    "classic tree engine, strong style"
+                )
+                .into(),
+            });
         }
 
         if self.support_raft_layers > 0 {
@@ -4448,25 +4512,22 @@ fn style_neighbour_direction_for(
     }
 }
 
+/// Canonical `drop_nodes`' final movement chain: `normal(direction_to_outer,
+/// max_move)` when `dist2_to_outer > 0`, else `normal(move_to_neighbor_center,
+/// max_move)` — for EVERY style. Canonical's preceding `is_strong`
+/// composition block is dead code: its result is unconditionally overwritten
+/// by this chain (and its dot gate reads an uninitialized `movement`). This
+/// port used to implement that composition as live, which routed Strong
+/// branches along `outer + center` where canonical takes `outer` alone.
 fn style_movement_for(
-    style: TreeSupportStyle,
+    _style: TreeSupportStyle,
     direction_to_outer: (f32, f32),
     move_to_neighbor_center: (f32, f32),
     max_move: f32,
 ) -> (f32, f32) {
     let outer_len2 =
         direction_to_outer.0 * direction_to_outer.0 + direction_to_outer.1 * direction_to_outer.1;
-    let dot = direction_to_outer.0 * move_to_neighbor_center.0
-        + direction_to_outer.1 * move_to_neighbor_center.1;
-    if style == TreeSupportStyle::Strong && outer_len2 > 0.0 && dot >= 0.0 {
-        normal_to_length(
-            (
-                direction_to_outer.0 + move_to_neighbor_center.0,
-                direction_to_outer.1 + move_to_neighbor_center.1,
-            ),
-            max_move,
-        )
-    } else if outer_len2 > 0.0 {
+    if outer_len2 > 0.0 {
         normal_to_length(direction_to_outer, max_move)
     } else {
         normal_to_length(move_to_neighbor_center, max_move)
@@ -5778,6 +5839,7 @@ mod tests {
             tree_support_wall_count: 1,
             tree_support_is_slim: false,
             tree_support_style: TreeSupportStyle::Default,
+            organic_substitution_requested: false,
             support_raft_layers: 0,
             raft_first_layer_density: 0.4,
             base_raft_layers: 1,
