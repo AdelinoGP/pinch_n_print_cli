@@ -32,7 +32,7 @@ fn fixture(
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
     let config = ConfigViewBuilder::new()
         .bool("enable_support", true)
-        .float("support_density", 20.0)
+        .float("support_base_pattern_spacing", 2.5)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .build();
@@ -149,7 +149,7 @@ fn interface_spacing_config_controls_scan_fill() {
 
     let wide_config = ConfigViewBuilder::new()
         .bool("enable_support", true)
-        .float("support_density", 20.0)
+        .float("support_base_pattern_spacing", 2.5)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .float("support_interface_spacing", 0.8)

@@ -27,9 +27,7 @@
 //! 2. For each planned role region (`SupportBody` / `TopInterface` /
 //!    `BottomInterface`), render the polygon with `render_polygon`: `wall_count`
 //!    inset perimeter passes plus a scan fill inset clear of them.
-//! 3. Pitch the fill from `support_density` for bodies, and from the canonical
-//!    `support_interface_spacing` / `support_bottom_interface_spacing` pair for
-//!    interfaces (see `interface_pitch_mm`).
+//! 3. Derive body and interface pitches from canonical flow spacing helpers.
 //! 4. Stamp `ExtrusionRole::SupportInterface` on interface paths so
 //!    `crates/slicer-gcode/src/emit.rs` selects `;TYPE:Support interface` and
 //!    `support_interface_speed`.
@@ -54,8 +52,6 @@ use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
 
-mod interface_regularize;
-
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
@@ -71,12 +67,12 @@ const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
 pub struct TreeSupport {
     /// Whether support generation is enabled.
     enabled: bool,
-    /// Support density (0.0 to 1.0).
-    density: f32,
     /// Support print speed in mm/s.
     support_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Resolved interface flow ratio as a percentage.
+    interface_flow_percent: f32,
     /// Number of perimeter passes used to represent a support body.
     wall_count: usize,
     /// Configured top-interface line gap in millimeters (canonical
@@ -85,6 +81,8 @@ pub struct TreeSupport {
     /// Configured bottom-interface line gap in millimeters (canonical
     /// `support_bottom_interface_spacing`). Negative mirrors the top value.
     bottom_interface_spacing_mm: f32,
+    /// Configured gap between adjacent body lines in millimeters.
+    base_pattern_spacing_mm: f32,
 }
 
 impl TreeSupport {
@@ -95,15 +93,24 @@ impl TreeSupport {
     /// `interface_spacing = support_interface_spacing + interface_flow.spacing()`,
     /// where `spacing()` is `Flow::rounded_rectangle_extrusion_spacing`
     /// (in-tree: `slicer_core::flow::line_width_to_spacing`).
-    /// Returns `(interface_flow_spacing_mm, top_pitch_mm, bottom_pitch_mm)`.
+    /// Returns `(interface_width_mm, interface_flow_spacing_mm, body_pitch_mm,
+    /// top_pitch_mm, bottom_pitch_mm)`.
     /// The bare flow spacing is exposed because canonical
     /// `generate_interface_layers` derives its smoothing/closing distance
     /// (`scaled_spacing() * 1.5`) and its minimum island radii
     /// (`scaled_spacing() / interface_density`) from it.
-    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32, f32) {
+    fn pitches_mm(&self, layer_height_mm: f32) -> Result<(f32, f32, f32, f32, f32), ModuleError> {
         let layer_height = layer_height_mm.max(0.0);
-        let flow_spacing =
-            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height).unwrap_or(0.0);
+        let interface_width = self.line_width
+            * (slicer_core::support_regularize::resolved_interface_flow_ratio(
+                self.interface_flow_percent,
+            ) / 100.0);
+        let body_flow_spacing =
+            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height)
+                .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let interface_flow_spacing =
+            slicer_core::flow::line_width_to_spacing(interface_width, layer_height)
+                .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
         let top_gap = self.top_interface_spacing_mm.max(0.0);
         // Negative mirrors the top gap, per OrcaSlicer's `-1 == same as top`
         // convention for the paired bottom-interface keys.
@@ -112,11 +119,35 @@ impl TreeSupport {
         } else {
             self.bottom_interface_spacing_mm
         };
-        (
-            flow_spacing,
-            top_gap + flow_spacing,
-            bottom_gap + flow_spacing,
+        let body_density = slicer_core::support_regularize::body_density(
+            self.line_width,
+            layer_height,
+            self.base_pattern_spacing_mm,
         )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let top_density = slicer_core::support_regularize::interface_density(
+            interface_width,
+            layer_height,
+            top_gap,
+        )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let bottom_density = slicer_core::support_regularize::bottom_interface_density(
+            interface_width,
+            layer_height,
+            bottom_gap,
+        )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let pitch = |density: f32| {
+            (interface_flow_spacing / density.max(f32::EPSILON)).max(interface_width)
+        };
+        let body_pitch = (body_flow_spacing / body_density.max(f32::EPSILON)).max(self.line_width);
+        Ok((
+            interface_width,
+            interface_flow_spacing,
+            body_pitch,
+            pitch(top_density),
+            pitch(bottom_density),
+        ))
     }
 
     /// Returns whether support is enabled.
@@ -124,15 +155,85 @@ impl TreeSupport {
         self.enabled
     }
 
-    /// Returns the configured support density.
-    pub fn density(&self) -> f32 {
-        self.density
-    }
-
     /// Returns the configured line width.
     pub fn line_width(&self) -> f32 {
         self.line_width
     }
+}
+
+/// Return the largest skeleton-requested wall count whose point lies in a role
+/// region. Counts are positional and default to zero for malformed carriers.
+fn skeleton_wall_count(skeleton: &slicer_ir::SupportPlanSkeleton, expoly: &ExPolygon) -> usize {
+    let contained = skeleton
+        .points
+        .iter()
+        .zip(skeleton.wall_counts.iter().copied())
+        .filter(|(point, _)| point_in_expolygon(expoly, point.x, point.y))
+        .map(|(_, count)| count as usize)
+        .max()
+        .unwrap_or(0);
+    contained
+}
+
+/// Ray-cast a millimetre-coordinate point against an IR polygon.
+fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
+    if expoly.contour.points.is_empty() {
+        return false;
+    }
+    let min_x = expoly
+        .contour
+        .points
+        .iter()
+        .map(|point| point.x)
+        .min()
+        .unwrap();
+    let max_x = expoly
+        .contour
+        .points
+        .iter()
+        .map(|point| point.x)
+        .max()
+        .unwrap();
+    let min_y = expoly
+        .contour
+        .points
+        .iter()
+        .map(|point| point.y)
+        .min()
+        .unwrap();
+    let max_y = expoly
+        .contour
+        .points
+        .iter()
+        .map(|point| point.y)
+        .max()
+        .unwrap();
+    let point = slicer_ir::Point2::from_mm(x, y);
+    if point.x < min_x || point.x > max_x || point.y < min_y || point.y > max_y {
+        return false;
+    }
+    fn inside(ring: &[slicer_ir::Point2], x: i64, y: i64) -> bool {
+        let mut result = false;
+        let mut previous = ring.len().saturating_sub(1);
+        for current in 0..ring.len() {
+            let a = ring[current];
+            let b = ring[previous];
+            if (a.y > y) != (b.y > y) {
+                let crossing =
+                    (b.x - a.x) as f64 * (y - a.y) as f64 / (b.y - a.y) as f64 + a.x as f64;
+                if (x as f64) < crossing {
+                    result = !result;
+                }
+            }
+            previous = current;
+        }
+        result
+    }
+    inside(&expoly.contour.points, point.x, point.y)
+        && !expoly
+            .holes
+            .iter()
+            .any(|hole| inside(&hole.points, point.x, point.y))
 }
 
 #[slicer_module]
@@ -143,21 +244,29 @@ impl LayerModule for TreeSupport {
             _ => false,
         };
 
-        let density = match config.get("support_density") {
-            // The manifest and user-facing config express density as a percent.
-            Some(ConfigValue::Float(d)) => (*d as f32) / 100.0,
-            _ => 0.2,
-        };
-
         let support_speed = match config.get("support_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => BASE_SPEED,
         };
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
+        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        let line_width = config
+            .get_abs_value("support_line_width", nozzle_diameter)
+            .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
+            .map(|w| {
+                if w > 0.0 {
+                    w as f32
+                } else {
+                    (1.125 * nozzle_diameter) as f32
+                }
+            })
+            .filter(|w| *w > 0.0)
+            .unwrap_or(1.125 * nozzle_diameter as f32);
+        let interface_flow_percent = match config.get("support_interface_flow") {
+            Some(ConfigValue::Float(value)) => *value as f32,
+            Some(ConfigValue::Int(value)) => *value as f32,
+            _ => 100.0,
         };
         let wall_count = match config.get("tree_support_wall_count") {
             Some(ConfigValue::Int(value)) => (*value).max(1) as usize,
@@ -175,15 +284,19 @@ impl LayerModule for TreeSupport {
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => -1.0,
         };
+        let base_pattern_spacing_mm = config
+            .get_float("support_base_pattern_spacing")
+            .unwrap_or(2.5) as f32;
 
         Ok(Self {
             enabled,
-            density,
             support_speed,
             line_width,
+            interface_flow_percent,
             wall_count,
             top_interface_spacing_mm,
             bottom_interface_spacing_mm,
+            base_pattern_spacing_mm,
         })
     }
 
@@ -195,7 +308,7 @@ impl LayerModule for TreeSupport {
         output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if !self.enabled || self.density <= 0.0 {
+        if !self.enabled {
             return Ok(());
         }
 
@@ -205,11 +318,21 @@ impl LayerModule for TreeSupport {
             // F-7: interface roles are pitched by canonical
             // `SupportParameters::interface_spacing`
             // (`support_interface_spacing + interface_flow.spacing()`), not by
-            // `support_density`. The tree renderer previously had no interface
+            // the body pitch. The tree renderer previously had no interface
             // spacing at all and scan-filled roofs and floors at the body
             // pitch.
-            let (interface_flow_spacing_mm, top_interface_spacing, bottom_interface_spacing) =
-                self.interface_pitch_mm(region.effective_layer_height());
+            let layer_height = if region.effective_layer_height() > 0.0 {
+                region.effective_layer_height()
+            } else {
+                _config.get_float("layer_height").unwrap_or(0.2) as f32
+            };
+            let (
+                interface_width_mm,
+                interface_flow_spacing_mm,
+                body_spacing,
+                top_interface_spacing,
+                bottom_interface_spacing,
+            ) = self.pitches_mm(layer_height)?;
 
             // Structural support plans carry semantic regions, not printable
             // paths. A missing entry means this demand was declined; do not
@@ -243,7 +366,7 @@ impl LayerModule for TreeSupport {
                 // `smooth_supports` is `support_style != smsGrid`.
                 // `None` means the entry carries no interface role, so the
                 // planner's partition is rendered verbatim.
-                let regularized = interface_regularize::regularize_entry_roles(
+                let regularized = slicer_core::support_regularize::regularize_entry_roles(
                     &entry.roles,
                     interface_flow_spacing_mm,
                     top_interface_spacing,
@@ -287,13 +410,38 @@ impl LayerModule for TreeSupport {
                         // here for `SupportBody` on top of that, so every body
                         // polygon was extruded twice over the same area.
                         let fill_spacing = match role {
-                            slicer_ir::SupportPlanRole::TopInterface => Some(top_interface_spacing),
-                            slicer_ir::SupportPlanRole::BottomInterface => {
-                                Some(bottom_interface_spacing)
-                            }
-                            _ => None,
+                            slicer_ir::SupportPlanRole::SupportBody => body_spacing,
+                            slicer_ir::SupportPlanRole::TopInterface => top_interface_spacing,
+                            slicer_ir::SupportPlanRole::BaseInterface => top_interface_spacing,
+                            slicer_ir::SupportPlanRole::BottomInterface => bottom_interface_spacing,
+                            slicer_ir::SupportPlanRole::RaftRelated => continue,
                         };
-                        let paths = self.render_polygon(expoly, z, speed_factor, fill_spacing);
+                        let vertical = entry.global_layer_index.rem_euclid(2) != 0;
+                        let extra_walls = entry
+                            .skeleton
+                            .as_ref()
+                            .map(|skeleton| skeleton_wall_count(skeleton, expoly))
+                            .unwrap_or(0);
+                        let mut paths = self.render_polygon_with_wall_count(
+                            expoly,
+                            z,
+                            speed_factor,
+                            fill_spacing,
+                            vertical,
+                            self.wall_count + extra_walls,
+                        );
+                        if matches!(
+                            role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BaseInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        ) {
+                            for path in &mut paths {
+                                for point in &mut path.points {
+                                    point.width = interface_width_mm;
+                                }
+                            }
+                        }
                         for mut path in paths {
                             match role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
@@ -309,6 +457,10 @@ impl LayerModule for TreeSupport {
                                 slicer_ir::SupportPlanRole::TopInterface => {
                                     path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
+                                }
+                                slicer_ir::SupportPlanRole::BaseInterface => {
+                                    path.role = ExtrusionRole::SupportBaseInterface;
+                                    let _ = output.push_base_interface_path(path, true);
                                 }
                                 slicer_ir::SupportPlanRole::BottomInterface => {
                                     path.role = ExtrusionRole::SupportInterface;
@@ -337,17 +489,40 @@ impl TreeSupport {
     /// region is inset clear of all of them, so the passes do not overlap.
     /// Before packet 224 this emitted `wall_count` copies of the *same* contour
     /// (coincident, no inset) and then scan-filled the full polygon at a
-    /// `line_width` pitch — 100% density regardless of `support_density` — so a
+    /// `line_width` pitch — solid regardless of configured spacing — so a
     /// support body was extruded several times over.
     ///
     /// `fill_spacing_override_mm` supplies the canonical interface pitch for
     /// interface roles; `None` keeps the density-derived body pitch.
+    #[allow(dead_code)]
     fn render_polygon(
         &self,
         expoly: &ExPolygon,
         z: f32,
         speed_factor: f32,
-        fill_spacing_override_mm: Option<f32>,
+        fill_spacing_mm: f32,
+        vertical: bool,
+    ) -> Vec<ExtrusionPath3D> {
+        self.render_polygon_with_wall_count(
+            expoly,
+            z,
+            speed_factor,
+            fill_spacing_mm,
+            vertical,
+            self.wall_count,
+        )
+    }
+
+    /// Render a polygon with an explicit perimeter count from a structural
+    /// skeleton override.
+    fn render_polygon_with_wall_count(
+        &self,
+        expoly: &ExPolygon,
+        z: f32,
+        speed_factor: f32,
+        fill_spacing_mm: f32,
+        vertical: bool,
+        wall_count: usize,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
         if expoly.contour.points.len() < 3 {
@@ -356,7 +531,7 @@ impl TreeSupport {
         let line_width = self.line_width.max(f32::EPSILON);
         let source = [expoly.clone()];
 
-        for wall_index in 0..self.wall_count {
+        for wall_index in 0..wall_count {
             let inset = -line_width * (wall_index as f32 + 0.5);
             let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
             for ring_poly in &ring_set {
@@ -381,31 +556,20 @@ impl TreeSupport {
         }
 
         // Fill only the area the walls do not already cover.
-        let fill_regions = if self.wall_count == 0 {
+        let fill_regions = if wall_count == 0 {
             source.to_vec()
         } else {
             host::offset_polygons(
                 &source,
-                -line_width * self.wall_count as f32,
+                -line_width * wall_count as f32,
                 OffsetJoinType::Miter,
                 0.0,
             )
         };
 
-        // `support_density` is a fraction in (0, 1]; 1.0 gives a solid
-        // `line_width` pitch. A non-positive density means walls only.
-        let spacing = match fill_spacing_override_mm {
-            Some(override_mm) if override_mm > 0.0 => override_mm as f64,
-            Some(_) => return paths,
-            None => {
-                if self.density <= 0.0 {
-                    return paths;
-                }
-                (line_width / self.density.min(1.0)) as f64
-            }
-        };
+        let spacing = fill_spacing_mm.max(line_width) as f64;
         for region in &fill_regions {
-            paths.extend(self.scan_fill_region(region, spacing, z, speed_factor));
+            paths.extend(self.scan_fill_region(region, spacing, z, speed_factor, vertical));
         }
         paths
     }
@@ -434,6 +598,7 @@ impl TreeSupport {
         spacing: f64,
         z: f32,
         speed_factor: f32,
+        vertical: bool,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
         if expoly.contour.points.len() < 3 || spacing <= 0.0 {
@@ -443,40 +608,77 @@ impl TreeSupport {
         let rings: Vec<&slicer_ir::Polygon> = std::iter::once(&expoly.contour)
             .chain(expoly.holes.iter())
             .collect();
-        let mut y = min_y + spacing * 0.5;
-        let crossings_at = |y: f64| {
+        let (scan_min, scan_max) = if vertical {
+            (min_x, max_x)
+        } else {
+            (min_y, max_y)
+        };
+        let mut scan = scan_min + spacing * 0.5;
+        let crossings_at = |scan: f64| {
             let mut crossings = Vec::new();
             for ring in &rings {
                 let points = &ring.points;
                 for i in 0..points.len() {
                     let a = &points[i];
                     let b = &points[(i + 1) % points.len()];
-                    let ay = slicer_ir::units_to_mm(a.y) as f64;
-                    let by = slicer_ir::units_to_mm(b.y) as f64;
-                    if (ay > y) != (by > y) {
-                        let ax = slicer_ir::units_to_mm(a.x) as f64;
-                        let bx = slicer_ir::units_to_mm(b.x) as f64;
-                        crossings.push(ax + (y - ay) * (bx - ax) / (by - ay));
+                    let ay = if vertical {
+                        slicer_ir::units_to_mm(a.x)
+                    } else {
+                        slicer_ir::units_to_mm(a.y)
+                    } as f64;
+                    let by = if vertical {
+                        slicer_ir::units_to_mm(b.x)
+                    } else {
+                        slicer_ir::units_to_mm(b.y)
+                    } as f64;
+                    if (ay > scan) != (by > scan) {
+                        let ax = if vertical {
+                            slicer_ir::units_to_mm(a.y)
+                        } else {
+                            slicer_ir::units_to_mm(a.x)
+                        } as f64;
+                        let bx = if vertical {
+                            slicer_ir::units_to_mm(b.y)
+                        } else {
+                            slicer_ir::units_to_mm(b.x)
+                        } as f64;
+                        crossings.push(ax + (scan - ay) * (bx - ax) / (by - ay));
                     }
                 }
             }
             crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             crossings
         };
-        let emit_scanline = |y: f64, paths: &mut Vec<ExtrusionPath3D>| {
-            let crossings = crossings_at(y);
+        let emit_scanline = |scan: f64, paths: &mut Vec<ExtrusionPath3D>| {
+            let crossings = crossings_at(scan);
             for pair in crossings.chunks_exact(2) {
                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
                     paths.push(ExtrusionPath3D {
                         points: vec![
                             self.support_point(
-                                slicer_ir::mm_to_units(pair[0] as f32),
-                                slicer_ir::mm_to_units(y as f32),
+                                slicer_ir::mm_to_units(if vertical {
+                                    scan as f32
+                                } else {
+                                    pair[0] as f32
+                                }),
+                                slicer_ir::mm_to_units(if vertical {
+                                    pair[0] as f32
+                                } else {
+                                    scan as f32
+                                }),
                                 z,
                             ),
                             self.support_point(
-                                slicer_ir::mm_to_units(pair[1] as f32),
-                                slicer_ir::mm_to_units(y as f32),
+                                slicer_ir::mm_to_units(if vertical {
+                                    scan as f32
+                                } else {
+                                    pair[1] as f32
+                                }),
+                                slicer_ir::mm_to_units(if vertical {
+                                    pair[1] as f32
+                                } else {
+                                    scan as f32
+                                }),
                                 z,
                             ),
                         ],
@@ -487,12 +689,12 @@ impl TreeSupport {
                 }
             }
         };
-        while y < max_y {
-            emit_scanline(y, &mut paths);
-            y += spacing;
+        while scan < scan_max {
+            emit_scanline(scan, &mut paths);
+            scan += spacing;
         }
         if paths.is_empty() {
-            emit_scanline((min_y + max_y) * 0.5, &mut paths);
+            emit_scanline((scan_min + scan_max) * 0.5, &mut paths);
         }
         paths
     }
@@ -530,8 +732,7 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
-        assert!((module.density - 0.2).abs() < 0.001);
-        assert!((module.line_width - 0.4).abs() < 0.001);
+        assert!((module.line_width - 0.45).abs() < 0.001);
     }
 
     /// F-7: the tree renderer had no interface pitch at all — roofs and floors
@@ -542,17 +743,17 @@ mod tests {
     fn interface_pitch_adds_flow_spacing() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::from_config(&config).unwrap();
-        let (_, top, bottom) = module.interface_pitch_mm(0.2);
+        let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
             (top - 0.757).abs() < 0.002,
             "measured Orca interface pitch is 0.757 mm, got {top}"
         );
         assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
         // The interface pitch must not be the body pitch (line_width/density).
-        let body_pitch = module.line_width / module.density.min(1.0);
+        let body_pitch = module.pitches_mm(0.2).unwrap().2;
         assert!(
             (top - body_pitch).abs() > 0.01,
-            "interface pitch must be independent of support_density"
+            "interface pitch must be independent of body spacing"
         );
     }
 
@@ -578,7 +779,7 @@ mod tests {
             },
             holes: vec![],
         };
-        let paths = module.render_polygon(&square, 1.0, 1.0, None);
+        let paths = module.render_polygon(&square, 1.0, 1.0, 2.5, false);
         let closed: Vec<&ExtrusionPath3D> =
             paths.iter().filter(|path| path.points.len() > 2).collect();
         assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
@@ -610,12 +811,15 @@ mod tests {
     }
 
     #[test]
-    fn fill_pitch_honours_support_density() {
+    fn fill_pitch_derives_from_base_spacing() {
         let build = |density: f64| {
             let mut map = std::collections::HashMap::new();
             map.insert("enable_support".to_string(), ConfigValue::Bool(true));
             map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
-            map.insert("support_density".to_string(), ConfigValue::Float(density));
+            map.insert(
+                "support_base_pattern_spacing".to_string(),
+                ConfigValue::Float(density),
+            );
             TreeSupport::from_config(&ConfigView::from_map(map)).unwrap()
         };
         let square = ExPolygon {
@@ -631,16 +835,16 @@ mod tests {
         };
         let count = |module: &TreeSupport| {
             module
-                .render_polygon(&square, 1.0, 1.0, None)
+                .render_polygon(&square, 1.0, 1.0, 2.5, false)
                 .iter()
                 .filter(|path| path.points.len() == 2)
                 .count()
         };
-        let sparse = count(&build(20.0));
-        let solid = count(&build(100.0));
+        let sparse = count(&build(2.5));
+        let solid = count(&build(0.1));
         assert!(
             solid > sparse * 3,
-            "support_density is ignored: {sparse} lines at 20% vs {solid} at 100%"
+            "base pattern spacing is ignored: {sparse} lines at wide pitch vs {solid} at narrow pitch"
         );
     }
 
@@ -659,7 +863,7 @@ mod tests {
             },
             holes: vec![],
         };
-        let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0);
+        let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0, false);
         assert!(!fills.is_empty(), "a small tip region must not be hollow");
     }
 }

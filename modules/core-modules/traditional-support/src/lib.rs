@@ -43,8 +43,6 @@ use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-mod interface_regularize;
-
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
@@ -65,14 +63,16 @@ const FALLBACK_LAYER_HEIGHT_MM: f32 = 0.0;
 pub struct TraditionalSupport {
     /// Whether support generation is enabled.
     enabled: bool,
-    /// Support density (0.0 to 1.0).
-    density: f32,
+    /// Canonical support base-pattern spacing in millimeters.
+    base_pattern_spacing_mm: f32,
     /// Base support angle in degrees.
     base_angle: f32,
     /// Support print speed in mm/s.
     support_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Resolved interface flow ratio as a percentage.
+    interface_flow_percent: f32,
     /// Configured top-interface line gap in millimeters (canonical
     /// `support_interface_spacing`). This is the *gap*, not the pitch: the
     /// printed pitch adds the interface flow spacing (see
@@ -103,11 +103,6 @@ impl LayerModule for TraditionalSupport {
             _ => false,
         };
 
-        let density = match config.get("support_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
-
         let base_angle = match config.get("support_angle") {
             Some(ConfigValue::Float(a)) => *a as f32,
             _ => 0.0,
@@ -122,6 +117,28 @@ impl LayerModule for TraditionalSupport {
         let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
+        };
+
+        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        let line_width = config
+            .get_abs_value("support_line_width", nozzle_diameter)
+            .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
+            .map(|width| {
+                if width > 0.0 {
+                    width as f32
+                } else {
+                    1.125 * nozzle_diameter as f32
+                }
+            })
+            .filter(|width| *width > 0.0)
+            .unwrap_or(line_width);
+        let base_pattern_spacing_mm = config
+            .get_float("support_base_pattern_spacing")
+            .unwrap_or(2.5) as f32;
+        let interface_flow_percent = match config.get("support_interface_flow") {
+            Some(ConfigValue::Float(value)) => *value as f32,
+            Some(ConfigValue::Int(value)) => *value as f32,
+            _ => 100.0,
         };
 
         let top_interface_spacing_mm = match config.get("support_interface_spacing") {
@@ -148,10 +165,11 @@ impl LayerModule for TraditionalSupport {
 
         Ok(Self {
             enabled,
-            density,
+            base_pattern_spacing_mm,
             base_angle,
             support_speed,
             line_width,
+            interface_flow_percent,
             top_interface_spacing_mm,
             bottom_interface_spacing_mm,
             smooth_supports,
@@ -166,16 +184,9 @@ impl LayerModule for TraditionalSupport {
         output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if !self.enabled || self.density <= 0.0 {
+        if !self.enabled {
             return Ok(());
         }
-
-        // `support_density` is declared in traditional-support.toml as a
-        // 0-100 percentage (matching OrcaSlicer's UI convention). Convert
-        // to a 0-1 ratio before using it as the spacing divisor.
-        let density_ratio = (self.density / 100.0).max(f32::EPSILON);
-        let line_spacing_mm = self.line_width / density_ratio;
-        let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
 
         // Compute angle: base + 90 degree alternation per layer
         let layer_rotation = if layer_index.is_multiple_of(2) {
@@ -198,8 +209,19 @@ impl LayerModule for TraditionalSupport {
             // centre-to-centre distance. Using the key directly as the pitch
             // over-extruded every interface layer by roughly the ratio of the
             // two (0.4 vs 0.757 mm at a 0.4 mm width / 0.2 mm layer).
-            let (interface_flow_spacing_mm, top_interface_pitch_mm, bottom_interface_pitch_mm) =
-                self.interface_pitch_mm(region.effective_layer_height());
+            let layer_height = if region.effective_layer_height() > 0.0 {
+                region.effective_layer_height()
+            } else {
+                _config.get_float("layer_height").unwrap_or(0.2) as f32
+            };
+            let (
+                interface_width_mm,
+                interface_flow_spacing_mm,
+                body_pitch_mm,
+                top_interface_pitch_mm,
+                bottom_interface_pitch_mm,
+            ) = self.pitches_mm(layer_height)?;
+            let line_spacing = slicer_ir::mm_to_units(body_pitch_mm);
             let top_interface_line_spacing = slicer_ir::mm_to_units(top_interface_pitch_mm);
             let bottom_interface_line_spacing = slicer_ir::mm_to_units(bottom_interface_pitch_mm);
 
@@ -237,7 +259,7 @@ impl LayerModule for TraditionalSupport {
                 // the result from the base area before anything is filled.
                 // `None` means the entry carries no interface role, so the
                 // planner's partition is rendered verbatim.
-                let regularized = interface_regularize::regularize_entry_roles(
+                let regularized = slicer_core::support_regularize::regularize_entry_roles(
                     &entry.roles,
                     interface_flow_spacing_mm,
                     top_interface_pitch_mm,
@@ -257,6 +279,7 @@ impl LayerModule for TraditionalSupport {
                     let spacing = match role {
                         slicer_ir::SupportPlanRole::SupportBody => line_spacing,
                         slicer_ir::SupportPlanRole::TopInterface => top_interface_line_spacing,
+                        slicer_ir::SupportPlanRole::BaseInterface => top_interface_line_spacing,
                         slicer_ir::SupportPlanRole::BottomInterface => {
                             bottom_interface_line_spacing
                         }
@@ -266,6 +289,7 @@ impl LayerModule for TraditionalSupport {
                         let interface = matches!(
                             role,
                             slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BaseInterface
                                 | slicer_ir::SupportPlanRole::BottomInterface
                         );
                         let paths = self.fill_expolygon(
@@ -276,6 +300,11 @@ impl LayerModule for TraditionalSupport {
                             z,
                             speed_factor,
                             interface,
+                            if interface {
+                                interface_width_mm
+                            } else {
+                                self.line_width
+                            },
                         );
                         for mut path in paths {
                             match role {
@@ -292,6 +321,10 @@ impl LayerModule for TraditionalSupport {
                                 slicer_ir::SupportPlanRole::TopInterface => {
                                     path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
+                                }
+                                slicer_ir::SupportPlanRole::BaseInterface => {
+                                    path.role = ExtrusionRole::SupportBaseInterface;
+                                    let _ = output.push_base_interface_path(path, true);
                                 }
                                 slicer_ir::SupportPlanRole::BottomInterface => {
                                     path.role = ExtrusionRole::SupportInterface;
@@ -325,14 +358,28 @@ impl TraditionalSupport {
     /// `generate_interface_layers` derives both its smoothing/closing distance
     /// (`scaled_spacing() * 1.5`) and its minimum island radii
     /// (`scaled_spacing() / interface_density`) from it.
-    fn interface_pitch_mm(&self, layer_height_mm: f32) -> (f32, f32, f32) {
+    fn pitches_mm(&self, layer_height_mm: f32) -> Result<(f32, f32, f32, f32, f32), ModuleError> {
         let layer_height = if layer_height_mm > 0.0 {
             layer_height_mm
         } else {
             FALLBACK_LAYER_HEIGHT_MM
         };
-        let flow_spacing =
-            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height).unwrap_or(0.0);
+        let body_density = slicer_core::support_regularize::body_density(
+            self.line_width,
+            layer_height,
+            self.base_pattern_spacing_mm,
+        )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let interface_width = self.line_width
+            * (slicer_core::support_regularize::resolved_interface_flow_ratio(
+                self.interface_flow_percent,
+            ) / 100.0);
+        let body_flow_spacing =
+            slicer_core::flow::line_width_to_spacing(self.line_width, layer_height)
+                .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let interface_flow_spacing =
+            slicer_core::flow::line_width_to_spacing(interface_width, layer_height)
+                .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
         let top_gap = self.top_interface_spacing_mm.max(0.0);
         // Negative mirrors the top gap, per the `-1 == same as top` convention
         // OrcaSlicer uses for the paired bottom-interface keys.
@@ -341,11 +388,29 @@ impl TraditionalSupport {
         } else {
             self.bottom_interface_spacing_mm
         };
-        (
-            flow_spacing,
-            top_gap + flow_spacing,
-            bottom_gap + flow_spacing,
+        let top_density = slicer_core::support_regularize::interface_density(
+            interface_width,
+            layer_height,
+            top_gap,
         )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let bottom_density = slicer_core::support_regularize::bottom_interface_density(
+            interface_width,
+            layer_height,
+            bottom_gap,
+        )
+        .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
+        let pitch = |density: f32| {
+            (interface_flow_spacing / density.max(f32::EPSILON)).max(interface_width)
+        };
+        let body_pitch = (body_flow_spacing / body_density.max(f32::EPSILON)).max(self.line_width);
+        Ok((
+            interface_width,
+            interface_flow_spacing,
+            body_pitch,
+            pitch(top_density),
+            pitch(bottom_density),
+        ))
     }
 
     /// Generate fill lines for a single ExPolygon.
@@ -358,6 +423,7 @@ impl TraditionalSupport {
         z: f32,
         speed_factor: f32,
         interface: bool,
+        path_width: f32,
     ) -> Vec<ExtrusionPath3D> {
         // Collect all edges (contour + holes)
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
@@ -443,7 +509,7 @@ impl TraditionalSupport {
                     x: slicer_ir::units_to_mm(start_x + refpt_x),
                     y: slicer_ir::units_to_mm(start_y + refpt_y),
                     z,
-                    width: self.line_width,
+                    width: path_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
@@ -453,7 +519,7 @@ impl TraditionalSupport {
                     x: slicer_ir::units_to_mm(end_x + refpt_x),
                     y: slicer_ir::units_to_mm(end_y + refpt_y),
                     z,
-                    width: self.line_width,
+                    width: path_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
@@ -499,7 +565,7 @@ impl TraditionalSupport {
                             x: slicer_ir::units_to_mm(start_x),
                             y: slicer_ir::units_to_mm(start_y),
                             z,
-                            width: self.line_width,
+                            width: path_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
@@ -509,7 +575,7 @@ impl TraditionalSupport {
                             x: slicer_ir::units_to_mm(end_x),
                             y: slicer_ir::units_to_mm(end_y),
                             z,
-                            width: self.line_width,
+                            width: path_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
                             dist_to_top_mm: 0.0,
@@ -536,7 +602,7 @@ impl TraditionalSupport {
                     x: slicer_ir::units_to_mm(point.x),
                     y: slicer_ir::units_to_mm(point.y),
                     z,
-                    width: self.line_width,
+                    width: path_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
@@ -590,7 +656,7 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TraditionalSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
-        assert!((module.density - 0.2).abs() < 0.001);
+        assert!((module.base_pattern_spacing_mm - 2.5).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.top_interface_spacing_mm - 0.4).abs() < 0.001);
         assert!(module.bottom_interface_spacing_mm < 0.0);
@@ -604,7 +670,7 @@ mod tests {
     fn interface_pitch_adds_flow_spacing() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TraditionalSupport::from_config(&config).unwrap();
-        let (_, top_mm, bottom_mm) = module.interface_pitch_mm(0.2);
+        let (_, _, _, top_mm, bottom_mm) = module.pitches_mm(0.2).unwrap();
         let (top, bottom) = (
             slicer_ir::mm_to_units(top_mm),
             slicer_ir::mm_to_units(bottom_mm),

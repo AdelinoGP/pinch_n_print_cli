@@ -31,12 +31,12 @@ default = true
 display = "Support Enabled"
 group   = "Support"
 
-[config.schema.support_density]
+[config.schema.support_base_pattern_spacing]
 type    = "float"
-default = 20.0
+default = 2.5
 min     = 0.0
 max     = 100.0
-display = "Support Density"
+display = "Support Base Pattern Spacing"
 group   = "Support"
 
 [config.schema.tree_support_wall_count]
@@ -71,9 +71,16 @@ max     = 2.0
 display = "Support Interface Spacing"
 group   = "Support"
 
+[config.schema.support_interface_flow]
+type    = "percent"
+default = "100%"
+min     = 0.0
+display = "Support Interface Flow"
+group   = "Support"
+
 [config.schema.support_bottom_interface_spacing]
 type    = "float"
-default = -1.0
+default = 0.5
 min     = -1.0
 max     = 2.0
 display = "Support Bottom Interface Spacing"

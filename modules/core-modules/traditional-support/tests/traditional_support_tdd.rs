@@ -10,10 +10,16 @@ use slicer_sdk::views::SliceRegionView;
 
 use traditional_support::TraditionalSupport;
 
-fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
+fn make_config(
+    enabled: bool,
+    base_spacing: f64,
+    angle: f64,
+    speed: f64,
+    line_width: f64,
+) -> ConfigView {
     ConfigViewBuilder::new()
         .bool("enable_support", enabled)
-        .float("support_density", density)
+        .float("support_base_pattern_spacing", base_spacing)
         .float("support_angle", angle)
         .float("support_speed", speed)
         .float("line_width", line_width)
@@ -59,10 +65,54 @@ fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView
     }))
 }
 
+fn paint_with_interface_plan() -> PaintRegionLayerView {
+    // exhaustive: interface-rendering fixture; SupportPlanEntry has no Default impl
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: 0,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: "traditional".into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::TopInterface,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: 0,
+        anchor_z: 0,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
+fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
+    let config = ConfigViewBuilder::new()
+        .bool("enable_support", true)
+        .float("support_base_pattern_spacing", 2.5)
+        .float("support_speed", 50.0)
+        .float("line_width", 0.4)
+        .float("support_interface_flow", flow)
+        .build();
+    let module = TraditionalSupport::from_config(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let paint = paint_with_interface_plan();
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+    output.interface_paths().to_vec()
+}
+
 /// Test 1: enable_support=false produces no output.
 #[test]
 fn support_disabled_no_output() {
-    let config = make_config(false, 0.2, 0.0, 50.0, 0.4);
+    let config = make_config(false, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -83,7 +133,7 @@ fn support_disabled_no_output() {
 /// Test 2: Enabled support with a 10mm square region produces paths.
 #[test]
 fn single_region_generates_support() {
-    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -106,7 +156,7 @@ fn single_region_generates_support() {
 /// Test 3: All output paths have role SupportMaterial.
 #[test]
 fn extrusion_role_is_support_material() {
-    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -130,7 +180,7 @@ fn extrusion_role_is_support_material() {
 /// Test 4: Speed factor derived from config support_speed / BASE_SPEED.
 #[test]
 fn speed_factor_from_config() {
-    let config = make_config(true, 20.0, 0.0, 80.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 80.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -151,11 +201,11 @@ fn speed_factor_from_config() {
     }
 }
 
-/// Test 5: Higher density produces more lines.
+/// Test 5: Smaller base spacing produces more lines.
 #[test]
-fn density_affects_line_count() {
-    let config_low = make_config(true, 20.0, 0.0, 50.0, 0.4);
-    let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
+fn base_spacing_affects_line_count() {
+    let config_low = make_config(true, 5.0, 0.0, 50.0, 0.4);
+    let config_high = make_config(true, 2.5, 0.0, 50.0, 0.4);
 
     let module_low = TraditionalSupport::from_config(&config_low).unwrap();
     let module_high = TraditionalSupport::from_config(&config_high).unwrap();
@@ -179,7 +229,7 @@ fn density_affects_line_count() {
 
     assert!(
         count_high > count_low,
-        "higher density should produce more lines: low={}, high={}",
+        "smaller base spacing should produce more lines: low={}, high={}",
         count_low,
         count_high
     );
@@ -188,7 +238,7 @@ fn density_affects_line_count() {
 /// Test 6: Alternating angle — layer 0 vs layer 1 rotated by 90 degrees.
 #[test]
 fn alternating_angle() {
-    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region0 = make_square_region(10.0, 0.3);
@@ -241,7 +291,7 @@ fn alternating_angle() {
 /// Test 7: Empty regions produce no output.
 #[test]
 fn empty_regions_no_output() {
-    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     // Region with empty polygons
@@ -270,10 +320,10 @@ fn empty_regions_no_output() {
     );
 }
 
-/// Test 8: Zero density produces no output.
+/// Test 8: Disabled support produces no output.
 #[test]
-fn zero_density_no_output() {
-    let config = make_config(true, 0.0, 0.0, 50.0, 0.4);
+fn disabled_support_no_output() {
+    let config = make_config(false, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -287,13 +337,13 @@ fn zero_density_no_output() {
     assert_eq!(
         output.support_paths().len(),
         0,
-        "zero density should produce no paths"
+        "disabled support should produce no paths"
     );
 }
 
 #[test]
 fn opposite_family_plan_is_rejected() {
-    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config = make_config(true, 2.5, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_plan("tree");
@@ -304,4 +354,69 @@ fn opposite_family_plan_is_rejected() {
     assert!(result.is_err(), "non-traditional family must be rejected");
     assert!(output.support_paths().is_empty());
     assert!(output.interface_paths().is_empty());
+}
+
+#[test]
+fn interface_pitch_derives_from_interface_flow_over_line_width() {
+    let baseline = interface_paths(100.0);
+    let doubled = interface_paths(200.0);
+    let fallback_zero = interface_paths(0.0);
+    let fallback_negative = interface_paths(-25.0);
+
+    assert!(!baseline.is_empty());
+    assert_eq!(baseline[0].0.points[0].width, 0.4);
+    assert_eq!(doubled[0].0.points[0].width, 0.8);
+    assert!(doubled.len() < baseline.len());
+    assert_eq!(fallback_zero.len(), baseline.len());
+    assert_eq!(fallback_negative.len(), baseline.len());
+}
+
+#[test]
+fn nonpositive_interface_flow_falls_back_to_default_module_boundary() {
+    let baseline = interface_paths(100.0);
+    for flow in [0.0, -5.0] {
+        let fallback = interface_paths(flow);
+        assert_eq!(fallback.len(), baseline.len());
+        for ((actual, _), (expected, _)) in fallback.iter().zip(&baseline) {
+            assert_eq!(actual.points.len(), expected.points.len());
+            for (point, default_point) in actual.points.iter().zip(&expected.points) {
+                assert!(point.width > 0.0, "fallback must not emit zero-width paths");
+                assert!(point.x.is_finite() && point.y.is_finite());
+                assert_eq!(point.x, default_point.x);
+                assert_eq!(point.y, default_point.y);
+                assert_eq!(point.width, default_point.width);
+            }
+        }
+    }
+}
+
+#[test]
+fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
+    let config = ConfigViewBuilder::new()
+        .bool("enable_support", true)
+        .float("support_base_pattern_spacing", 0.0)
+        .float("support_interface_spacing", 0.0)
+        .float("support_speed", 50.0)
+        .float("line_width", 0.4)
+        .build();
+    let module = TraditionalSupport::from_config(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let paint = paint_with_plan("traditional");
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+    let fill_paths: Vec<_> = output
+        .support_paths()
+        .iter()
+        .filter(|path| path.points.len() == 2)
+        .collect();
+    assert!(
+        fill_paths.len() >= 10,
+        "zero base spacing must clamp to solid fill, got {} lines",
+        fill_paths.len()
+    );
+    assert!(fill_paths
+        .iter()
+        .all(|path| path.points.iter().all(|point| point.width == 0.4)));
 }

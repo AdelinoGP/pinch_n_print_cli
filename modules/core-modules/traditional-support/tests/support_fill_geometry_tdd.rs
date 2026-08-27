@@ -14,7 +14,7 @@ use traditional_support::TraditionalSupport;
 fn config(angle: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .bool("enable_support", true)
-        .float("support_density", 20.0)
+        .float("support_base_pattern_spacing", 1.6429)
         .float("support_angle", angle)
         .float("support_speed", 50.0)
         .float("line_width", line_width)
@@ -73,15 +73,13 @@ fn run_support(
     points: &[(f32, f32)],
     angle: f64,
     line_width: f64,
-) -> Vec<slicer_ir::ExtrusionPath3D> {
+) -> Result<Vec<slicer_ir::ExtrusionPath3D>, slicer_sdk::error::ModuleError> {
     let config = config(angle, line_width);
     let module = TraditionalSupport::from_config(&config).unwrap();
     let paint = paint_with_plan(points);
     let mut output = SupportOutputBuilder::new();
-    module
-        .run_support(0, &[region(points)], &paint, &mut output, &config)
-        .unwrap();
-    output.support_paths().to_vec()
+    module.run_support(0, &[region(points)], &paint, &mut output, &config)?;
+    Ok(output.support_paths().to_vec())
 }
 
 #[test]
@@ -90,7 +88,8 @@ fn scan_starts_at_rotated_bbox_min() {
         &[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
         0.0,
         0.4,
-    );
+    )
+    .unwrap();
     assert!(!paths.is_empty());
     assert!(paths[0].points[0].y.abs() < 0.001);
 }
@@ -101,7 +100,8 @@ fn crossing_vertex_contributes_one_intersection() {
         &[(0.0, -4.0), (5.0, 0.0), (10.0, 6.0), (0.0, 6.0)],
         0.0,
         0.4,
-    );
+    )
+    .unwrap();
     let crossing = paths
         .iter()
         .find(|path| path.points[0].y.abs() < 0.001)
@@ -115,12 +115,14 @@ fn fill_phase_is_translation_invariant() {
         &[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
         27.0,
         0.4,
-    );
+    )
+    .unwrap();
     let shifted = run_support(
         &[(3.0, 2.0), (13.0, 2.0), (13.0, 12.0), (3.0, 12.0)],
         27.0,
         0.4,
-    );
+    )
+    .unwrap();
     assert_eq!(base.len(), shifted.len());
     for (a, b) in base.iter().zip(shifted.iter()) {
         for (pa, pb) in a.points.iter().zip(b.points.iter()) {
@@ -132,7 +134,7 @@ fn fill_phase_is_translation_invariant() {
 
 #[test]
 fn zero_length_span_is_dropped() {
-    let paths = run_support(&[(5.0, 0.0), (0.0, 10.0), (10.0, 10.0)], 0.0, 0.4);
+    let paths = run_support(&[(5.0, 0.0), (0.0, 10.0), (10.0, 10.0)], 0.0, 0.4).unwrap();
     assert!(paths.iter().all(|path| {
         (path.points[0].x - path.points[1].x).abs() + (path.points[0].y - path.points[1].y).abs()
             > 0.0
@@ -147,5 +149,5 @@ fn non_positive_spacing_yields_no_paths() {
         0.0,
         0.0
     )
-    .is_empty());
+    .is_err());
 }

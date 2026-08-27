@@ -33,7 +33,6 @@ fn fixture(
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
     let config = ConfigViewBuilder::new()
         .bool("enable_support", true)
-        .float("support_density", 20.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .int("tree_support_wall_count", 2)

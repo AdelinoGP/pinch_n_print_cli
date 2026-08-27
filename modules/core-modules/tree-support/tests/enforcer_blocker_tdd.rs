@@ -28,7 +28,6 @@ use tree_support::TreeSupport;
 fn enabled_config() -> ConfigView {
     ConfigViewBuilder::new()
         .bool("enable_support", true)
-        .float("support_density", 0.2)
         .float("support_angle", 0.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
