@@ -33,6 +33,30 @@ use crate::marshal::{
     OriginId, PerimeterOutputCollected, SupportOutputCollected,
 };
 
+pub(crate) fn native_support_plan_roles(
+    roles: &[slicer_ir::SupportPlanRoleRegion],
+) -> Vec<slicer_ir::SupportPlanRoleRegion> {
+    roles
+        .iter()
+        .map(|role| slicer_ir::SupportPlanRoleRegion {
+            role: match role.role {
+                slicer_ir::SupportPlanRole::SupportBody => slicer_ir::SupportPlanRole::SupportBody,
+                slicer_ir::SupportPlanRole::TopInterface => {
+                    slicer_ir::SupportPlanRole::TopInterface
+                }
+                slicer_ir::SupportPlanRole::BaseInterface => {
+                    slicer_ir::SupportPlanRole::BaseInterface
+                }
+                slicer_ir::SupportPlanRole::BottomInterface => {
+                    slicer_ir::SupportPlanRole::BottomInterface
+                }
+                slicer_ir::SupportPlanRole::RaftRelated => slicer_ir::SupportPlanRole::RaftRelated,
+            },
+            regions: role.regions.clone(),
+        })
+        .collect()
+}
+
 fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId> {
     value.as_ref().map(|origin| OriginId {
         object_id: origin.object_id.clone(),
@@ -657,7 +681,7 @@ pub fn commit_native_prepass_response_with_inputs(
                                 body_ids: entry.body_ids.clone(),
                                 anchor_layer_index: entry.anchor_layer_index,
                                 anchor_z: entry.anchor_z,
-                                roles: entry.roles.clone(),
+                                roles: native_support_plan_roles(&entry.roles),
                                 skeleton: entry.skeleton.clone(),
                                 capabilities: entry.capabilities.clone(),
                                 provenance: entry.provenance.clone(),

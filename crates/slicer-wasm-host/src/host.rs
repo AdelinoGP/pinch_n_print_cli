@@ -4006,6 +4006,28 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         self.record_write("SupportIR");
         Ok(Ok(()))
     }
+    fn push_base_interface_path(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        path: ExtrusionPath3d,
+        is_top_interface: bool,
+    ) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
+        let origin = self
+            .explicit_perimeter_origin
+            .clone()
+            .or_else(|| self.current_slice_region.clone());
+        self.support_output
+            .interface_paths
+            .push((path, is_top_interface));
+        self.support_output.interface_path_origins.push(origin);
+        self.record_write("SupportIR");
+        Ok(Ok(()))
+    }
     fn push_raft_path(
         &mut self,
         _self_: Resource<SupportOutputBuilderData>,

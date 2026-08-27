@@ -6,7 +6,7 @@ interface support-geometry-types {
     type object-id = string;
     type region-id = string;
 
-    enum support-plan-role { support-body, top-interface, bottom-interface, raft-related }
+    enum support-plan-role { support-body, top-interface, base-interface, bottom-interface, raft-related }
     record support-plan-role-region {
         role: support-plan-role,
         regions: list<ex-polygon>,

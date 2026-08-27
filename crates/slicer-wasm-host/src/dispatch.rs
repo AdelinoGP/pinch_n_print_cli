@@ -1970,6 +1970,7 @@ fn build_paint_layer_data_with_plan(
                         role: match role.role {
                             slicer_ir::SupportPlanRole::SupportBody => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::SupportBody,
                             slicer_ir::SupportPlanRole::TopInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::TopInterface,
+                            slicer_ir::SupportPlanRole::BaseInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::BaseInterface,
                             slicer_ir::SupportPlanRole::BottomInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::BottomInterface,
                             slicer_ir::SupportPlanRole::RaftRelated => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::RaftRelated,
                         },

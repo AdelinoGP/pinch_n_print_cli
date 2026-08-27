@@ -617,6 +617,7 @@ fn role_color(role: &ExtrusionRole) -> [u8; 3] {
         ExtrusionRole::Ironing => palette::IRONING,
         ExtrusionRole::SupportMaterial => palette::SUPPORT,
         ExtrusionRole::SupportInterface => palette::SUPPORT_INTERFACE,
+        ExtrusionRole::SupportBaseInterface => palette::SUPPORT_INTERFACE,
         _ => palette::ENTITY,
     }
 }

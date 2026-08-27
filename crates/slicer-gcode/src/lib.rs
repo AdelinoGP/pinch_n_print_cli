@@ -33,3 +33,19 @@ pub use thumbnail_colpic::{encode_colpic, encode_colpic_with_capped_dims};
 /// G-code flavor dialect layer ported from OrcaSlicer's `GCodeWriter.cpp`.
 pub mod flavor;
 pub use flavor::GcodeFlavor;
+
+// Crate-root test so the full path equals the bare name, satisfying the
+// packet AC-8 verbatim `cargo test ... --exact` invocation (a test inside
+// `mod emit` would carry the `emit::` prefix and never match `--exact`).
+#[cfg(test)]
+#[test]
+fn base_interface_role_maps_to_support_interface_marker() {
+    assert_eq!(
+        emit::orca_type_label(&slicer_ir::ExtrusionRole::SupportBaseInterface),
+        ";TYPE:Support interface"
+    );
+    assert_eq!(
+        slicer_ir::ExtrusionRole::SupportBaseInterface.default_priority(),
+        5250
+    );
+}

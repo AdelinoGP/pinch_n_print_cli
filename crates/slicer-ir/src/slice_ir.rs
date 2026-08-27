@@ -253,11 +253,12 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Bumped to 2.1.0 by packet 238b for the
-/// additive per-skeleton-point `wall_counts` carrier.
+/// Schema version for `SupportPlanIR`. Bumped to 2.2.0 by packet 238c for the
+/// additive `SupportPlanRole::BaseInterface` / `ExtrusionRole::SupportBaseInterface`
+/// variants.
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -1300,6 +1301,8 @@ pub enum SupportPlanRole {
     SupportBody,
     /// Geometry supporting the top interface.
     TopInterface,
+    /// Geometry supporting the base interface.
+    BaseInterface,
     /// Geometry supporting the bottom interface.
     BottomInterface,
     /// Geometry associated with raft generation.
@@ -2222,6 +2225,8 @@ pub enum ExtrusionRole {
     SupportMaterial,
     /// Support interface
     SupportInterface,
+    /// Support base interface
+    SupportBaseInterface,
     /// Wipe tower
     WipeTower,
     /// Prime tower
@@ -2269,6 +2274,7 @@ impl ExtrusionRole {
             Self::BottomSolidInfill => 4000,
             Self::TopSolidInfill => 4500,
             Self::SupportMaterial => 5000,
+            Self::SupportBaseInterface => 5250,
             Self::SupportInterface => 5500,
             Self::Ironing => 6000,
             Self::WipeTower => 8000,

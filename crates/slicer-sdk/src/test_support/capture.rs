@@ -301,6 +301,11 @@ impl SupportOutputCapture {
         self.interface_paths.push((path, is_top_interface));
     }
 
+    /// Push a base-interface path with its `is_top_interface` flag.
+    pub fn push_base_interface_path(&mut self, path: ExtrusionPath3D, is_top_interface: bool) {
+        self.interface_paths.push((path, is_top_interface));
+    }
+
     /// Push a raft path.
     ///
     /// # Examples

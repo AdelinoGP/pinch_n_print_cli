@@ -871,7 +871,7 @@ per-region path lists were replaced by attributed per-body/role entries
 a `role: SupportRole`, and the printable `paths: Vec<ExtrusionPath3D>` for
 that body/role.
 
-`SupportRole` is `{ SupportBody, TopInterface, BottomInterface, Raft,
+`SupportRole` is `{ SupportBody, TopInterface, BaseInterface, BottomInterface, Raft,
 Ironing }`. One entry is emitted per body/role — a single body may produce
 several entries (one per role), and each entry's paths are the renderer's
 printable extrusion output for that attributed body/role. The old flat
@@ -979,13 +979,13 @@ byte-identical `SupportAnalysisIR`.
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Current schema_version: 2.1.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+**Current schema_version: 2.2.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
 `crates/slicer-ir/src/slice_ir.rs`). Packet 238b adds the per-point
 `SupportPlanSkeleton.wall_counts` carrier as an additive minor bump. The prior
 2.0.0 major bump by packet 220 made the breaking
 structural support-family migration: branch extrusion paths were removed; no
 planner emits nozzle-width `ExtrusionPath3D` paths into this IR. Prior
-versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124).
+versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124). Packet 238c adds the base-interface minor bump.
 
 **Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
 guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
@@ -1305,6 +1305,7 @@ Values below are ordered as they print (lowest first) and mirror
 | `BottomSolidInfill`   | 4000 |
 | `TopSolidInfill`      | 4500 |
 | `SupportMaterial`     | 5000 |
+| `SupportBaseInterface` | 5250 |
 | `SupportInterface`    | 5500 |
 | `Ironing`             | 6000 |
 | `WipeTower`           | 8000 |

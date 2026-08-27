@@ -909,6 +909,9 @@ pub(crate) fn harvest_support_plan_ir_from(
                         host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::TopInterface => {
                             SupportPlanRole::TopInterface
                         }
+                        host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::BaseInterface => {
+                            SupportPlanRole::BaseInterface
+                        }
                         host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportPlanRole::BottomInterface => {
                             SupportPlanRole::BottomInterface
                         }
@@ -958,6 +961,48 @@ pub(crate) fn harvest_support_plan_ir_from(
         }),
         ..Default::default()
     })
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::harvest_support_plan_ir_from;
+    use crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::{
+        SupportPlanEntry, SupportPlanRole, SupportPlanRoleRegion,
+    };
+
+    #[test]
+    fn base_interface_role_round_trips_both_legs() {
+        let wit_entry = SupportPlanEntry {
+            global_layer_index: 3,
+            object_id: "object-a".into(),
+            region_id: "7".into(),
+            family_id: "tree".into(),
+            demand_ids: vec![],
+            body_ids: vec![],
+            anchor_layer_index: 3,
+            anchor_z: 42_000,
+            roles: vec![SupportPlanRoleRegion {
+                role: SupportPlanRole::BaseInterface,
+                regions: vec![],
+            }],
+            skeleton: None,
+            capabilities: vec![],
+            provenance: vec![],
+            decline_reason: None,
+        };
+
+        let ir = harvest_support_plan_ir_from(vec![wit_entry], None).expect("WIT to IR");
+        assert_eq!(
+            ir.entries[0].roles[0].role,
+            slicer_ir::SupportPlanRole::BaseInterface
+        );
+
+        let native_roles = crate::marshal::native::native_support_plan_roles(&ir.entries[0].roles);
+        assert_eq!(
+            native_roles[0].role,
+            slicer_ir::SupportPlanRole::BaseInterface
+        );
+    }
 }
 
 /// Pure core of `harvest_mesh_analysis_auxiliary`.

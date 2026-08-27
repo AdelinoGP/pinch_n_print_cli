@@ -156,6 +156,7 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::BridgeInfill => self.feedrate_config.bridge_speed,
             ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
             ExtrusionRole::SupportInterface => self.feedrate_config.support_interface_speed,
+            ExtrusionRole::SupportBaseInterface => self.feedrate_config.support_interface_speed,
             ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
             ExtrusionRole::Brim => self.feedrate_config.skirt_speed,
             ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
@@ -224,7 +225,7 @@ fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
 /// `BridgeInfill` -> `Bridge` (not `Bridge infill`), `GapFill` -> `Gap infill`
 /// (not `GapFill`), and `Skirt`/`Brim` -> `Skirt`/`Brim` (not the
 /// unrecognised `Skirt/Brim`).
-fn orca_type_label(role: &ExtrusionRole) -> &'static str {
+pub fn orca_type_label(role: &ExtrusionRole) -> &'static str {
     match role {
         ExtrusionRole::OuterWall => ";TYPE:Outer wall",
         ExtrusionRole::InnerWall => ";TYPE:Inner wall",
@@ -236,6 +237,7 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::BridgeInfill => ";TYPE:Bridge",
         ExtrusionRole::SupportMaterial => ";TYPE:Support",
         ExtrusionRole::SupportInterface => ";TYPE:Support interface",
+        ExtrusionRole::SupportBaseInterface => ";TYPE:Support interface",
         ExtrusionRole::Skirt => ";TYPE:Skirt",
         ExtrusionRole::Brim => ";TYPE:Brim",
         ExtrusionRole::WipeTower => ";TYPE:Prime tower",
@@ -1028,6 +1030,15 @@ mod tests {
     fn default_gcode_emitter_stores_slicer_version() {
         let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
         assert_eq!(emitter.slicer_version(), "1.0.0-test");
+    }
+
+    #[test]
+    fn base_interface_role_maps_to_support_interface_marker() {
+        assert_eq!(
+            orca_type_label(&ExtrusionRole::SupportBaseInterface),
+            ";TYPE:Support interface"
+        );
+        assert_eq!(ExtrusionRole::SupportBaseInterface.default_priority(), 5250);
     }
 
     // ── apply_cross_layer_tool_rotation regression tests (packet 58 tool-rotation scheduling contract (iii)) ──

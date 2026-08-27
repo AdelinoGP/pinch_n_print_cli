@@ -20,7 +20,7 @@ interface geometry {
     variant extrusion-role {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,
-        support-material, support-interface,
+        support-material, support-interface, support-base-interface,
         ironing, bridge-infill, wipe-tower, gap-fill, raft-infill, custom(string),
     }
     record semver { major: u32, minor: u32, patch: u32 }

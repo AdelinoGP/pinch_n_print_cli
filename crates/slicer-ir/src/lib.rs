@@ -33,6 +33,7 @@ pub use stage_io::{
 pub use validation::validate_travel_anchors;
 
 pub use slice_ir::{
+    canonical_support_family,
     ActiveRegion,
     AnchoredEntity,
     AnchoredEntityProvenance,
@@ -153,10 +154,6 @@ pub use slice_ir::{
     SupportPlanSkeleton,
     SupportRole,
     SupportType,
-    canonical_support_family,
-    SUPPORT_FAMILY_TRADITIONAL,
-    SUPPORT_FAMILY_TREE,
-
     // Surface classification types
     SurfaceClassificationIR,
     SurfaceGroup,
@@ -179,6 +176,8 @@ pub use slice_ir::{
     // Region map types
     DEFAULT_REGION_MAP_CAP,
     MODIFIER_FOOTPRINT_REGION_ID,
+    SUPPORT_FAMILY_TRADITIONAL,
+    SUPPORT_FAMILY_TREE,
 };
 
 pub use slice_ir::{

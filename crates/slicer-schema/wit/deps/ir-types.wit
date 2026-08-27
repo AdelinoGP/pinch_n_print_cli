@@ -15,7 +15,7 @@ interface ir-handles {
     // One-way host projection of structural support plans into the paint
     // boundary. These VIEW records are owned here to avoid importing the
     // prepass package (which already imports ir-handles).
-    enum support-plan-view-role { support-body, top-interface, bottom-interface, raft-related }
+    enum support-plan-view-role { support-body, top-interface, base-interface, bottom-interface, raft-related }
     record support-plan-view-role-region {
         role: support-plan-view-role,
         regions: list<ex-polygon>,
@@ -278,6 +278,7 @@ interface ir-handles {
     resource support-output-builder {
         push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
+        push-base-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
         push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
         set-current-origin:  func(object-id: string, region-id: string) -> result<_, string>;
     }

@@ -530,6 +530,18 @@ impl SupportOutputBuilder {
         Ok(())
     }
 
+    /// Push a base-interface path.
+    pub fn push_base_interface_path(
+        &mut self,
+        path: ExtrusionPath3D,
+        is_top_interface: bool,
+    ) -> Result<(), String> {
+        self.interface_paths.push((path, is_top_interface));
+        self.interface_path_origins
+            .push(self.current_origin.clone());
+        Ok(())
+    }
+
     /// Push a raft path.
     pub fn push_raft_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.raft_paths.push(path);
