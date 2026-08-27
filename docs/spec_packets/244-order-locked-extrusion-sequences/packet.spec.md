@@ -43,7 +43,7 @@ State ACs only here; `requirements.md` references their IDs.
 - **AC-1. Given** the tree, **when** the schema constant is inspected, **then**
   `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` equals `SemVer { major: 1, minor: 4, patch: 0 }` and
   `LayerCollectionIR::default().schema_version` equals the constant. |
-  `rg -q 'minor: 4,' crates/slicer-ir/src/slice_ir.rs && cargo test -p slicer-ir --test ir_tests -- bridge_detector_schema_versions_are_constant_sourced --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_SCHEMA_1_4_0`
+  `rg -U -q 'CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer \{\n    major: 1,\n    minor: 4,' crates/slicer-ir/src/slice_ir.rs && cargo test -p slicer-ir --test ir_tests -- chunk2_ir_schema_versions_are_default_sourced --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_SCHEMA_1_4_0`
 - **AC-2. Given** the tree, **when** the carrier is inspected end-to-end, **then**
   `ExtrusionPath3D.order_lock: Option<u64>` (`#[serde(default)]`) exists in
   `crates/slicer-ir/src/slice_ir.rs`, WIT `extrusion-path3d` carries `order-lock: option<u64>` in
@@ -70,6 +70,11 @@ State ACs only here; `requirements.md` references their IDs.
   it returns `Some(1)`, `Some(2)`, `Some(3)` in deterministic order and `None` once the local-tag
   space (`1..2^63-1`) is exhausted. |
   `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_allocator_sequence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_ALLOCATOR_SEQUENCE`
+- **AC-7. Given** module output carrying local tags (`Some(t)` with bit 63 clear) committed through
+  the `LayerStageCommit::Infill` / `LayerStageCommit::InfillPostProcess` commit, **when** the commit runs, **then** the
+  committed `LayerCollectionIR` carries layer-unique global tags (bit 63 set) — the remap is wired at
+  the output boundary, not just unit-tested. |
+  `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_REMAP_WIRED`
 
 ## Negative Test Cases
 
@@ -82,6 +87,11 @@ State ACs only here; `requirements.md` references their IDs.
   entity, or a `sort_layer_by` that splits or internally reorders a locked block, **when** `apply_to`
   runs, **then** it returns `Err` naming the violation and the prior layers are preserved. |
   `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_finalization_rejects_geometry_change --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_FINALIZATION_ENFORCED`
+- **AC-N3. Given** a `LayerCollectionIR` whose `ordered_entities` contain a locked block, **when**
+  `apply_cross_layer_tool_rotation` runs and the cluster rotation would split the block, **then** the
+  block moves as a unit — the rotation range extends to the block boundary and no locked block is
+  ever split. |
+  `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P244_TOOL_ROTATION_ENFORCED`
 
 ## Verification
 
@@ -92,7 +102,7 @@ State ACs only here; `requirements.md` references their IDs.
 
 ## Authoritative Docs
 
-- `docs/02_ir_schemas.md` - direct range read of §"IR 12 — LayerCollectionIR" (lines ~1185-1195) and
+- `docs/02_ir_schemas.md` - direct range read of §"IR 10 — LayerCollectionIR" (lines ~1185-1195) and
   §"IR Versioning Contract" (lines ~1633-1641); the doc is over 300 lines so only these ranges are
   read directly.
 - `docs/specs/wave-overhangs-bridge-fill-plan.md` - normative plan; §"Packet 2 — Order-lock carrier
@@ -106,7 +116,7 @@ State ACs only here; `requirements.md` references their IDs.
 - `CONTEXT.md` - add the "Order lock" and "Anchor band" glossary terms to the infill/fill cluster
   (plan Appendix B, verbatim). |
   `rg -q '^### Order lock' CONTEXT.md && rg -q '^### Anchor band' CONTEXT.md && echo P244_GLOSSARY_LANDED`
-- `docs/02_ir_schemas.md` §"IR 12 — LayerCollectionIR" - update `Current schema_version: 1.3.0` to
+- `docs/02_ir_schemas.md` §"IR 10 — LayerCollectionIR" - update `Current schema_version: 1.3.0` to
   `1.4.0` and document the additive `ExtrusionPath3D.order_lock` field (packet-226 `tool_index`
   precedent). |
   `rg -q 'Current schema_version: 1\.4\.0' docs/02_ir_schemas.md && rg -q 'order_lock' docs/02_ir_schemas.md && echo P244_IR_DOCS_UPDATED`

@@ -27,11 +27,13 @@
   - `crates/slicer-wasm-host/src/dispatch.rs` - lines 2410-2450
   - `crates/slicer-sdk/src/views.rs` - lines 805-825
   - `crates/slicer-macros/src/lib.rs` - lines 1310-1340, 2650-2690, 3185-3205
-- Files allowed to edit (at most 3 primary; the WIT→IR converters and macro adapter are mechanical):
+- Files allowed to edit (at most 3 primary — `slice_ir.rs`, `types.wit`, `ir-types.wit`; the
+  remaining files are mechanical: projections, converters, literal sites):
   - `crates/slicer-ir/src/slice_ir.rs`
   - `crates/slicer-schema/wit/deps/types.wit`
   - `crates/slicer-schema/wit/deps/ir-types.wit`
   - `crates/slicer-runtime/src/layer_executor.rs`
+  - `crates/slicer-runtime/src/visual_debug_render.rs`
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-sdk/src/views.rs`
   - `crates/slicer-macros/src/lib.rs`
@@ -91,7 +93,10 @@
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-sdk/src/lib.rs` - lines 1-60 (module declarations)
   - `crates/slicer-runtime/src/layer_executor.rs` - lines 1-60 (module declarations)
-- Files allowed to edit (at most 3):
+- Files allowed to edit (at most 3 primary — `crates/slicer-sdk/src/order_lock.rs` (new),
+  `crates/slicer-sdk/src/lib.rs` (register the module), `crates/slicer-runtime/src/layer_executor.rs`
+  (or a new `crates/slicer-runtime/src/order_lock.rs`); the remaining files are mechanical: test
+  files):
   - `crates/slicer-sdk/src/order_lock.rs` (new)
   - `crates/slicer-sdk/src/lib.rs` (register the module)
   - `crates/slicer-runtime/src/layer_executor.rs` (or a new `crates/slicer-runtime/src/order_lock.rs`)
@@ -117,27 +122,36 @@
 - Task IDs: `TASK-354`
 - Objective: Add lock validation at InfillPostProcess commit, `apply_entity_order_proposal`,
   finalization `apply_to` (`modify_entity` / `sort_layer_by`), and
-  `apply_cross_layer_tool_rotation`; add the `LayerStageError::OrderLockViolation` variant; add the
-  all-`None` neutrality test and the enforcement tests.
+  `apply_cross_layer_tool_rotation` (locked blocks move as units — the rotation range extends to the
+  block boundary, reading `entity.path.order_lock` on `PrintEntity`); wire
+  `remap_order_locks_to_global` at the output boundaries (the `LayerStageCommit::Infill` /
+  `LayerStageCommit::InfillPostProcess` commit arms of `apply` in `layer_executor.rs`, and the finalization
+  merge in `apply_to` in `traits.rs`); add the `LayerStageError::OrderLockViolation` variant; add the
+  all-`None` neutrality test, the enforcement tests, and the remap-wiring tests.
 - Precondition: Steps 1-2 landed.
 - Postcondition: a proposal that splits/interleaves/reverses/reorders a locked block returns `Err`;
   an InfillPostProcess replacement that drops/alters a locked block returns
   `LayerStageError::OrderLockViolation`; a finalization `modify_entity`/`sort_layer_by` that changes
-  locked geometry/order returns `Err`; tool rotation never splits a locked block; all-`None` slices
-  are byte-identical to today.
+  locked geometry/order returns `Err`; tool rotation never splits a locked block; the remap is wired
+  at the output boundaries (local tags become layer-unique global tags in committed output); all-`None`
+  slices are byte-identical to today.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/layer_executor.rs` - lines 2687-2756 and 3000-3060
   - `crates/slicer-sdk/src/traits.rs` - lines 1338-1560
-  - `crates/slicer-gcode/src/emit.rs` - lines 942-1000
+  - `crates/slicer-gcode/src/emit.rs` - lines 942-1000 and 1024-1240 (inline `#[cfg(test)]` module)
   - `crates/slicer-ir/src/stage_io.rs` - lines 82-115
-- Files allowed to edit (at most 3):
+- Files allowed to edit (at most 3 primary — `crates/slicer-runtime/src/layer_executor.rs`,
+  `crates/slicer-sdk/src/traits.rs`, `crates/slicer-gcode/src/emit.rs`; the remaining files are
+  mechanical: error variant, test files, aggregator):
   - `crates/slicer-runtime/src/layer_executor.rs`
   - `crates/slicer-sdk/src/traits.rs`
   - `crates/slicer-gcode/src/emit.rs`
   - `crates/slicer-ir/src/stage_io.rs`
   - `crates/slicer-runtime/tests/unit/layer_collection_builder_tdd.rs`
   - `crates/slicer-sdk/tests/finalization_builder_tdd.rs`
-  - `crates/slicer-runtime/tests/executor/*` (all-`None` neutrality test)
+  - `crates/slicer-runtime/tests/executor/order_lock_tdd.rs` (new — InfillPostProcess enforcement,
+    all-`None` neutrality, remap-wiring tests)
+  - `crates/slicer-runtime/tests/executor/main.rs` (aggregator: `mod order_lock_tdd;`)
 - Files explicitly out of bounds:
   - `modules/**`, `docs/**`
 - Blast-radius discipline: not applicable (no new field/constant; this step adds validation and
@@ -154,14 +168,17 @@
   - `cargo test -p slicer-runtime --test executor -- order_lock_infill_postprocess_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_finalization_rejects_geometry_change --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo test -p slicer-runtime --test executor -- order_lock_all_none_neutrality --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-gcode --lib -- order_lock_tool_rotation_preserves_block --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-runtime --test executor -- order_lock_remap_wired_at_output_boundary --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
+  - `cargo test -p slicer-sdk --test finalization_builder_tdd -- order_lock_remap_wired_at_finalization_merge --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"` - FACT pass/fail
   - `cargo check --workspace --all-targets` - FACT pass/fail
-- Exit condition: all four tests pass and `cargo check --workspace --all-targets` is green.
+- Exit condition: all seven tests pass and `cargo check --workspace --all-targets` is green.
 
 ### Step 4: Docs (ADR + glossary + IR schema)
 
 - Task IDs: `TASK-354`
 - Objective: Land ADR-0062, the two `CONTEXT.md` glossary terms, and the
-  `docs/02_ir_schemas.md` §"IR 12 — LayerCollectionIR" update.
+  `docs/02_ir_schemas.md` §"IR 10 — LayerCollectionIR" update.
 - Precondition: Steps 1-3 landed; all tests green.
 - Postcondition: `docs/adr/0062-order-lock-for-print-order-sensitive-extrusion-sequences.md` exists
   (content from the plan's Appendix A draft, number re-derived to 0062); `CONTEXT.md` carries the

@@ -11,7 +11,8 @@
 - Neighboring tests/fixtures: `crates/slicer-runtime/tests/unit/layer_collection_builder_tdd.rs`
   (drives `apply_entity_order_proposal`), `crates/slicer-sdk/tests/finalization_builder_tdd.rs`
   (drives `modify_entity` / `sort_layer_by` / `apply_to`), `crates/slicer-gcode/src/emit.rs`
-  (`apply_cross_layer_tool_rotation`).
+  (`apply_cross_layer_tool_rotation`), `crates/slicer-runtime/tests/executor/order_lock_tdd.rs`
+  (new — InfillPostProcess commit, all-`None` neutrality, remap-wiring tests).
 - OrcaSlicer comparison: none — this is host/IR plumbing, not a parity surface.
 
 ## Architecture Constraints
@@ -22,7 +23,7 @@
 - Schema/version constant: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` is the single source of
   truth; production constructors read the constant, not a literal. The additive bump (1.3.0 → 1.4.0)
   has **no** literal hard-assert anywhere in the tree — the constant-sourced tests
-  (`ir_tests.rs::bridge_detector_schema_versions_are_constant_sourced`,
+  (`ir_tests.rs::chunk2_ir_schema_versions_are_default_sourced`,
   `visual_debug_postpass_tap_tdd.rs`) compare to the constant and pass automatically. (The plan's
   "sweep the test that hard-asserts the old constant value" is a no-op for this constant; the
   packet-226 `tool_index` precedent's sweep applied to a different constant.)
@@ -38,7 +39,7 @@
   projected onto `OrderedEntityView` end-to-end, with a host-side remap (local → global tags) and
   enforcement at the four mutation points. `None`/absent preserves today's behavior exactly.
 - Exact functions, traits, manifests, tests, and fixtures:
-  - `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionPath3D` (line 2364) gains the field; the two
+  - `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionPath3D` (line 2364) gains the field; the
     production constructors `variable_width` (line 2341) and `extrusion_line_to_extrusion_path3d`
     (line 2463) gain `order_lock: None`; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` (line 338)
     bumps to `1.4.0`.
@@ -48,7 +49,10 @@
     `order-lock: option<u64>`.
   - `crates/slicer-runtime/src/layer_executor.rs` — `OrderedEntityView` (line 2336) gains
     `order_lock: Option<u64>`; `project_ordered_entities` (line 2372) populates it from
-    `entity.path.order_lock`.
+    `entity.path.order_lock`; the `LayerStageCommit::Infill` / `LayerStageCommit::InfillPostProcess`
+    commit arms of `apply` (line 3007) wire `remap_order_locks_to_global` at the output boundary;
+    the `ExtrusionPath3D` literals in `append_same_z_entities` (line 452) and `apply` (line 3156)
+    gain `order_lock: None`.
   - `crates/slicer-wasm-host/src/dispatch.rs` — `project_ordered_entities_from` (line 2416) populates
     the WIT `OrderedEntityView.order_lock`.
   - `crates/slicer-sdk/src/views.rs` — `OrderedEntityView` (line 807) gains `order_lock: Option<u64>`.
@@ -76,26 +80,44 @@
 - `crates/slicer-schema/wit/deps/ir-types.wit` - role: WIT projection; expected change: `order-lock`.
 - `crates/slicer-runtime/src/layer_executor.rs` - role: host projection + remap + InfillPostProcess
   enforcement + proposal enforcement; expected change: field, remap fn, validation.
+- `crates/slicer-runtime/src/visual_debug_render.rs` - role: literal blast radius (1 literal);
+  expected change: `order_lock: None` in `support_geometry_shapes`.
 - `crates/slicer-wasm-host/src/dispatch.rs` - role: wasm-host projection; expected change: field.
 - `crates/slicer-sdk/src/views.rs` - role: SDK projection; expected change: field.
+- `crates/slicer-sdk/src/test_support/fixtures.rs` - role: fixture base literal; expected change:
+  `order_lock: None` in `extrusion_path3d_base` (production `src/` literal, compiler-enforced).
 - `crates/slicer-macros/src/lib.rs` - role: macro adapter; expected change: field mapping.
 - `crates/slicer-wasm-host/src/marshal/leaf.rs`, `crates/slicer-wasm-host/src/host.rs` - role: WIT→IR
   converters; expected change: `order_lock: None`.
 - `crates/slicer-sdk/src/order_lock.rs` (new) - role: allocator; expected change: new type.
-- `crates/slicer-sdk/src/traits.rs` - role: finalization `apply_to` enforcement; expected change:
-  `modify_entity`/`sort_layer_by` validation.
-- `crates/slicer-gcode/src/emit.rs` - role: tool-rotation lock-awareness; expected change:
-  `apply_cross_layer_tool_rotation` treats locked blocks as units.
+- `crates/slicer-sdk/src/traits.rs` - role: finalization `apply_to` enforcement + remap wiring at the
+  finalization merge; expected change: `modify_entity`/`sort_layer_by` validation + remap call in
+  `apply_to`.
+- `crates/slicer-gcode/src/emit.rs` - role: literal blast radius (1 literal, `tool_entity` in the
+  inline `#[cfg(test)]` mod) + tool-rotation lock-awareness; expected change: `..` rest or
+  `// exhaustive:` waiver for the literal (test code — `check-literals` enforces FRU/waiver, not
+  exhaustive literals); `apply_cross_layer_tool_rotation` treats locked blocks as units (extends
+  the rotation range to the block boundary; reads `entity.path.order_lock` on `PrintEntity`);
+  inline `#[cfg(test)]` test `order_lock_tool_rotation_preserves_block`.
 - `crates/slicer-ir/src/stage_io.rs` - role: error variant; expected change: `OrderLockViolation`.
-- `crates/slicer-runtime/tests/unit/layer_collection_builder_tdd.rs` - role: proposal/remap/
-  InfillPostProcess tests; expected change: new tests.
+- `crates/slicer-runtime/tests/unit/layer_collection_builder_tdd.rs` - role: proposal/remap tests;
+  expected change: new tests.
 - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` - role: finalization/allocator tests;
   expected change: new tests.
-- `crates/slicer-runtime/tests/executor/*` - role: all-`None` neutrality test; expected change: new
-  test.
+- `crates/slicer-runtime/tests/executor/order_lock_tdd.rs` (new) - role: InfillPostProcess
+  enforcement (AC-N1), all-`None` neutrality (AC-3), remap-wiring (AC-7) tests; expected change: new
+  file.
+- `crates/slicer-runtime/tests/executor/main.rs` - role: aggregator; expected change: `mod order_lock_tdd;`.
+- `crates/slicer-core/src/perimeter_utils.rs` - role: literal blast radius (2 literals, both in a
+  `#[cfg(test)]` mod); expected change: `..` rest or `// exhaustive:` waiver (test code —
+  `check-literals` enforces FRU/waiver, not exhaustive literals).
+- `modules/core-modules/wipe-tower/src/lib.rs` - role: literal blast radius (4 literals); expected
+  change: `order_lock: None`.
+- `modules/core-modules/tree-support/src/lib.rs` - role: literal blast radius (2 literals); expected
+  change: `order_lock: None`.
 - `docs/adr/0062-order-lock-for-print-order-sensitive-extrusion-sequences.md` (new) - role: ADR.
 - `CONTEXT.md` - role: glossary; expected change: two terms.
-- `docs/02_ir_schemas.md` - role: docs; expected change: IR 12 section.
+- `docs/02_ir_schemas.md` - role: docs; expected change: IR 10 section.
 
 ## Read-Only Context
 
@@ -129,12 +151,12 @@
 - IR contract: `order_lock: Option<u64>` is additive and `#[serde(default)]`; pre-1.4.0 serialized
   fixtures deserialize to `None` (unchanged behavior). The bump is additive-minor per the IR
   Versioning Contract table ("New optional field added → Minor").
-- WIT boundary: `order-lock: option<u64>` on both records; the `slicer:types/geometry` package is
-  unversioned (ADR-0044), so no WIT version tax.
+- WIT boundary: `order-lock: option<u64>` on both records; the WIT files carry no versioned package
+  path (host bindgen and guest macro read them directly), so no WIT version tax.
 - Tag semantics (plan D11): **local tags** are `1..2^63-1`, allocated by `OrderLockAllocator`
   (invocation-local, deterministic discovery order, `None` on exhaustion); `Some(0)` is rejected at
   the output boundary. **Global tags** have bit 63 set; the host remaps local → layer-unique global
-  at every output boundary (`Layer::Infill` commit, `Layer::InfillPostProcess` commit, finalization
+  at every output boundary (`LayerStageCommit::Infill` commit, `LayerStageCommit::InfillPostProcess` commit, finalization
   merge); unknown global tags in module output are a contract error.
 - `OrderLockAllocator` shape: `pub struct OrderLockAllocator { next: u64 }` with
   `pub fn new() -> Self` (starts at 1) and `pub fn allocate(&mut self) -> Option<u64>` (returns
@@ -143,6 +165,12 @@
   — `Some(t)` with bit 63 clear → `Some((1 << 63) | *next_global)` and `*next_global += 1`;
   `Some(0)` → `Err`; `Some(t)` with bit 63 set → `Err` unless `t < (1 << 63) | *next_global`
   (already minted); `None` → unchanged.
+- Remap wiring: `remap_order_locks_to_global` is called at the output boundaries — the
+  `LayerStageCommit::Infill` / `LayerStageCommit::InfillPostProcess` commit arms of `apply`
+  (`crates/slicer-runtime/src/layer_executor.rs`) and the finalization merge in `apply_to`
+  (`crates/slicer-sdk/src/traits.rs`) — so module output carrying local tags is rewritten to
+  layer-unique global tags before it reaches the `LayerCollectionIR`. All-`None` slices are
+  unaffected (no producer mints locks yet).
 - Enforcement invariant (plan D3, verbatim into ADR-0062): paths sharing a tag within one
   `(layer, object, region)` form an atomic contiguous sequence — adjacent, in authored order and
   point direction; the block may move as a unit. Locks protect sequence and geometry (points,
