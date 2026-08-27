@@ -91,6 +91,14 @@ required-features = ["host-algos", "voronoi-panic-regression"]
 name = "flow_tdd"
 
 [[test]]
+name = "support_flow_semantics_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "support_interface_regularize_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "wall_sequence_reorder_tdd"
 
 [[test]]

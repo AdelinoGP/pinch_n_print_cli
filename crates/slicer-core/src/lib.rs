@@ -43,6 +43,7 @@ pub mod skeletal_trapezoidation;
 /// call it from the interface-regularization pass.
 pub mod smooth_outward;
 pub mod stage_io;
+pub mod support_regularize;
 pub mod top_surface_split;
 pub mod triangle_mesh_slicer;
 #[cfg(feature = "host-algos")]
