@@ -1,0 +1,11 @@
+# Task Map: 248-visual-debug-silhouette-gcode-source
+
+This packet spans three new task IDs, so this crosswalk is emitted; it owns the `docs/07_implementation_status.md` mapping. TASK-446..TASK-448 are **new rows** (re-derived 2026-08-27 as max+1..max+3 over the union of: `docs/07_implementation_status.md` — highest TASK-380; `docs/specs/*.md` — highest TASK-441; all local `docs/spec_packets/*/task-map.md` — highest TASK-445, packet 247; `origin/master`-only packets 243–246 — highest TASK-356). Packet 249, authored in the same batch, claims TASK-449..451 immediately after this block. The completion-gate worker adds these rows to docs/07 with this packet as their source; re-derive before writing docs/07 — this paragraph's numbers are ledger facts frozen at authoring time.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-446` | `Steps 1–2` | `docs/specs/visual-debug-silhouette-side-views-plan.md` §4.4 D12–D14/D16, fact 13 | `crates/pnp-cli/src/visual_debug_gcode.rs` (`Segment.e_delta_mm`, `G92 E`/`M200`/`filament_diameter` parsing, `gcode_silhouette_slabs`, `silhouette_segment_width_mm`) | none (PnP-native) | M | Parser can attest per-move flow and per-layer slabs from the file's own data; G92 correctness fix pinned |
+| `TASK-447` | `Steps 3–4` | plan §4.4 D15, §7 | `crates/slicer-runtime/src/visual_debug_render.rs` + `lib.rs` (`union_silhouette_intervals`), `crates/pnp-cli/src/visual_debug_gcode.rs` (`render_gcode_silhouette`, `GcodeSilhouetteOutput`, `GcodeRenderError::SilhouetteWidthUnderivable`) | none | M | One shared union; deterministic composite with unclassified-first paint order, fallback/R8 policy, palette-only tool classes |
+| `TASK-448` | `Steps 5–7` | plan §5, §6 R8/R10; `docs/19_visual_debug.md` | `crates/pnp-cli/src/visual_debug.rs` (interim-variant removal, `SilhouetteUnsupportedForTap` on gcode taps, tool-rejection narrowing, `VisualDebugError::SilhouetteWidthUnderivable`, gcode-arm silhouette branch, filenames/manifest), `docs/19_visual_debug.md` | none | M | Gcode source accepted end-to-end under 1.2.0 with byte-frozen 1.0/1.1 behavior; docs caveats shipped |
+
+Costs copied from `implementation-plan.md`. No row is L; aggregate M.

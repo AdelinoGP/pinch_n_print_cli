@@ -1,0 +1,11 @@
+# Task Map: 249-visual-debug-silhouette-postpass-multicolor
+
+This packet spans three new task IDs, so this crosswalk is emitted; it owns the `docs/07_implementation_status.md` mapping. TASK-449..TASK-451 are **new rows** (re-derived 2026-08-27 as the next block after packet 248's TASK-446..448, itself derived as max+1.. over the union of: `docs/07_implementation_status.md` — highest TASK-380; `docs/specs/*.md` — highest TASK-441; all local `docs/spec_packets/*/task-map.md` — highest TASK-445 before this batch, packet 247; `origin/master`-only packets 243–246 — highest TASK-356). The completion-gate worker adds these rows to docs/07 with this packet as their source; re-derive before writing docs/07 — this paragraph's numbers are ledger facts frozen at authoring time.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-449` | `Step 1` | `docs/specs/visual-debug-silhouette-side-views-plan.md` fact 8, D10 | `crates/pnp-cli/src/visual_debug.rs` (`PostpassCaptureShape`, `postpass_stage_captures`, `run_postpass_taps` shape param) | none (PnP-native) | M | The D10 single whole-print capture exists and the per-layer top-down shape is pinned byte-stable — the memory hazard the plan names is structurally closed |
+| `TASK-450` | `Steps 2–3` | plan D8 (LayerFinalization row + slab-source note), D2, D17, §7 | `crates/slicer-runtime/src/visual_debug_render.rs` + `lib.rs` (`render_silhouette_composite_styled`, LayerFinalization extraction arm, role/tool class orders, per-capture `ToolColorUnavailable`) | none | M | Typed `Point3WithWidth` widths on schedule-z-diff slabs render deterministically; tool coloring fails closed exactly like the pinned top-down contract |
+| `TASK-451` | `Steps 4–6` | plan D17, R6/R7, §5; `docs/19_visual_debug.md` | `crates/pnp-cli/src/visual_debug.rs` (tap whitelist, blanket-rejection lift, (tap, view, color mode) grouping, schedule build, `_tool` filenames, `tool_palette`), `docs/19_visual_debug.md` | none | M | End-to-end postpass silhouette + multicolor under 1.2.0; 247's `[FWD]` pins retargeted; docs carry the whole-print and per-tool occlusion notes |
+
+Costs copied from `implementation-plan.md`. No row is L; aggregate M.
