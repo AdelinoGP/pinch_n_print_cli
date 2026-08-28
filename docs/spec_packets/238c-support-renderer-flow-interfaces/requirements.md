@@ -6,7 +6,7 @@
 - Backlog source: `docs/07_implementation_status.md` (re-derive next free ID at
   registration; re-verified 2026-08-25: docs/07 ends at TASK-380 from 238b, so
   TASK-381+ are free)
-- Packet status: `draft`
+- Packet status: `implemented` (human-gate signed 2026-08-27; ceremony green 2026-08-27)
 - Aggregate context cost: `M`
 
 ## Scope Note (human approver directive, 2026-08-25)

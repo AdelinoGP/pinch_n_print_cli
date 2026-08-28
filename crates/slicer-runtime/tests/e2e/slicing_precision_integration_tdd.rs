@@ -234,6 +234,15 @@ fn default_emits_fewer_lines_than_legacy() {
 /// Discipline), never to mask a defect. The diff at re-bless time was
 /// geometry-only (wall coordinates and sparse-infill path counts).
 ///
+/// Re-blessed 2026-08-27 (238c ceremony) after full attribution of every
+/// delta class to two documented commits: `9048cd37` (solid shells scan at
+/// SOLID_DENSITY=1.0 instead of sparse spacing — bottom-surface re-pitch,
+/// M73 estimate churn, and the index-anchored `; path-optimization layer 0`
+/// comment shifting past the brim as the entity count grew) and `787ce004`
+/// (packet-238a support-key header block, `support_line_width` auto →
+/// nozzle 0.4). Move streams outside those classes were verified
+/// byte-identical before blessing.
+///
 /// Re-blessed a second time 2026-08-03 (packet 185 production-readiness
 /// pass): the absent-`line_width` fallback moved to the canonical auto-0
 /// sentinel (1.125 × nozzle) in `rectilinear-infill` / `gyroid-infill` /

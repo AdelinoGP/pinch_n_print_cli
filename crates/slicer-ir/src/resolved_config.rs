@@ -463,6 +463,32 @@ pub fn classify_declared_key(key: &str) -> DeclaredKeyKind {
     }
 }
 
+/// True when `key` is declared as a float-or-percent field on
+/// [`ResolvedConfig`] (extracted via [`extract_float_or_percent`]).
+///
+/// Same probe pattern as [`classify_declared_key`], so it cannot drift from
+/// the declaration: only `extract_float_or_percent` accepts a
+/// `FloatOrPercent` probe value; every other extractor rejects it (`Err`) and
+/// an undeclared key returns `Ok(false)`. Loaders use this to decide whether
+/// a percent-suffixed string like `"50%"` may coerce to
+/// [`ConfigValue::FloatOrPercent`] — for a plain-float key the string form
+/// must survive untouched so the typed extractor rejects it (or the module
+/// falls back) instead of a percent magnitude tripping millimeter bounds.
+#[must_use]
+pub fn is_declared_float_or_percent_key(key: &str) -> bool {
+    let mut probe = ResolvedConfig::default();
+    matches!(
+        probe.apply_cli_key(
+            key,
+            &ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: true,
+            },
+        ),
+        Ok(true)
+    )
+}
+
 /// Extract an `f32` from a `Float`/`Int` `ConfigValue`. Used by the
 /// [`declare_resolved_config!`] macro expansion.
 ///

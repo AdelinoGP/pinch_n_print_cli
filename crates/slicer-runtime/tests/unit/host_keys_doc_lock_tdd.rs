@@ -38,6 +38,25 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "support_threshold_angle" => c.support_threshold_angle as f64,
         "min_segment_length" => c.min_segment_length as f64,
         "slice_closing_radius" => c.slice_closing_radius as f64,
+        "support_expansion" => c.support_expansion as f64,
+        "support_top_z_distance" => c.support_top_z_distance as f64,
+        "support_bottom_z_distance" => c.support_bottom_z_distance as f64,
+        "support_object_first_layer_gap" => c.support_object_first_layer_gap as f64,
+        "enforce_support_layers" => c.enforce_support_layers as f64,
+        // Float-or-percent keys lock on the numeric magnitude; the doc rows'
+        // notes carry the percent semantics.
+        "support_threshold_overlap" => c.support_threshold_overlap.value,
+        "support_line_width" => c.support_line_width.value,
+        _ => return None,
+    })
+}
+
+fn resolved_bool(c: &ResolvedConfig, key: &str) -> Option<bool> {
+    Some(match key {
+        "bridge_no_support" => c.bridge_no_support,
+        "support_critical_regions_only" => c.support_critical_regions_only,
+        "support_remove_small_overhang" => c.support_remove_small_overhang,
+        "support_sharp_tails" => c.support_sharp_tails,
         _ => return None,
     })
 }
@@ -168,7 +187,15 @@ fn resolved_config_keys_match_default() {
     let rc = ResolvedConfig::default();
     let table = v["resolved_config"].as_table().expect("[resolved_config]");
     for (key, spec) in table {
-        if let Some(expected) = spec["default"].as_str() {
+        if let Some(expected) = spec["default"].as_bool() {
+            let code = resolved_bool(&rc, key).unwrap_or_else(|| {
+                panic!("[resolved_config.{key}] has no matching ResolvedConfig bool field")
+            });
+            assert_eq!(
+                expected, code,
+                "[resolved_config.{key}]: host-keys.toml={expected} != default={code}"
+            );
+        } else if let Some(expected) = spec["default"].as_str() {
             let code = resolved_str(&rc, key).unwrap_or_else(|| {
                 panic!("[resolved_config.{key}] has no matching ResolvedConfig string field")
             });

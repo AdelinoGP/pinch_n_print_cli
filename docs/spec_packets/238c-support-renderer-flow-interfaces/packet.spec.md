@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 238c-support-renderer-flow-interfaces
 task_ids:
   - TASK-381
@@ -267,24 +267,44 @@ Blocking per plan §8. Artifacts (produce into `tmp/`, regenerate before inspect
 
 Checklist (each answered with layer, tap, verdict in writing; E2 — inspection only):
 
-- [ ] Termination: branches reach the plate/model beneath their overhangs.
-- [ ] Coverage: demanded overhang regions carry support on the fixture.
-- [ ] Collision freedom: no support intersects model walls (hollow-wall insets intact).
-- [ ] Interfaces: roofs/floors sit carved out of the body at interface pitch; base
-      interface appears as interface-material passes on the tree branches under roofs.
-- [ ] Block counts vs Orca references (REQUIRED for this packet): traditional
-      `;TYPE:Support interface` blocks = 3 at top=2/bottom=2 (G-18); tree blocks match the
-      reference count recorded in G-18 (tree 2 vs 2 baseline; 238b re-measured 124 total
-      `;TYPE:Support` blocks, delta 0 vs reference).
-- [ ] Over-extrusion: visual wall/fill separation on tree bodies; no solid-filled
-      branches.
-- [ ] Remaining-delta sweep (measured 2026-08-25 baseline, see design.md §Measured
-      renderer baseline): trunk infill pattern (horizontal rungs → crosshatch per AC-13),
-      tip solidity (rings → solid pucks per AC-14), top-layer tip count/size (per AC-15),
-      branch centerline rendering disposition (per AC-16) — each answered with its
-      before/after state.
+- [x] Termination: PASS — branches reach plate/model beneath their overhangs; verified
+      visually by the human approver on the tree G-code (2026-08-27) and in
+      `tmp/vd-238c/user-ours-v11/` (`filled_areas` + `filament_lines` taps, layers
+      l44/l65–l67/l80–l81/l121).
+- [x] Coverage: PASS — demanded overhang regions carry support on `SupportTest.stl`;
+      human-verified 2026-08-27 (same bundle/taps as above).
+- [x] Collision freedom: PASS — no support intersects model walls; hollow-wall insets
+      intact (AC-1 structural test green; human visual verdict 2026-08-27).
+- [x] Interfaces: PASS — roofs/floors carved out of the body at interface pitch;
+      base-interface passes present on branches under roofs
+      (`base_interface_band_attributed_in_plan_roles` + AC-8 marker test green; human
+      visual verdict 2026-08-27).
+- [x] Block counts vs Orca references: PASS — traditional `;TYPE:Support interface`
+      blocks = 3 at top=2/bottom=2 (measured 2026-08-27, `tmp/p238c-review-normal.gcode`,
+      G-18 met); tree blocks = 2 (measured 2026-08-27, `tmp/p238c-review-tips.gcode`),
+      matching the G-18 tree 2-vs-2 baseline (238b re-measured 124 total `;TYPE:Support`
+      blocks, delta 0 vs reference).
+- [x] Over-extrusion: PASS — wall/fill separation visible on tree bodies, no
+      solid-filled branches (AC-1/AC-2 density derivations green; human visual verdict
+      2026-08-27).
+- [x] Remaining-delta sweep (against the 2026-08-25 baseline, design.md §Measured
+      renderer baseline), each with before/after state:
+      trunk infill pattern — was horizontal-only rungs, now direction-alternating fill
+      per AC-13 (`body_fill_alternates_direction_across_layers` green);
+      tip solidity — was rings, now solid center-line pucks per AC-14
+      (`sub_pitch_tip_region_emits_solid_center_line` green);
+      top-layer tip count/size (AC-15) — band-semantics share reconciled (roof
+      attribution + G-18 top-band widening); the residual ~30 (PnP) vs ~50 (Orca) tips at
+      the reference l120 traces to Orca 2.4.1's organic engine tip seeding and
+      `getRadius` tip ramp, not band semantics (handoff.md deltas 4/6) — residual
+      ACCEPTED, queued as `docs/specs/support-generation-remediation-plan.md` row 7
+      (TASK-441 organic-tree-engine port);
+      branch centerline rendering — dispositioned per AC-16 option (b), recorded in
+      design.md §Measured Renderer Baseline (2026-08-26).
 
-Sign-off: `_date_ _verdict_` (packet may not flip to `status: implemented` without it).
+Sign-off: `2026-08-27 APPROVED` — G-code artifacts verified by the human approver
+(in-session confirmation, 2026-08-27: "Gcode was verified by me"); checklist recorded by
+the reviewing agent from measured evidence in the same session.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

@@ -28,11 +28,18 @@ fn line_width_defaults_are_auto_sentinels() {
         .iter()
         .any(|(key, _)| key == "initial_layer_line_width"));
     for (key, value) in widths {
-        assert_eq!(
-            value,
-            ConfigValue::Float(0.0),
-            "{key} should default to auto"
-        );
+        // `support_line_width` is canonical `coFloatOrPercent` (238a retype),
+        // so its auto sentinel is the non-percent 0.0 float-or-percent shape;
+        // plain-float width keys keep the bare 0.0 sentinel.
+        let is_auto = matches!(value, ConfigValue::Float(v) if v == 0.0)
+            || matches!(
+                value,
+                ConfigValue::FloatOrPercent {
+                    value: v,
+                    is_percent: false,
+                } if v == 0.0
+            );
+        assert!(is_auto, "{key} should default to auto, got {value:?}");
     }
 }
 

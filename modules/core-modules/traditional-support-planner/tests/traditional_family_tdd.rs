@@ -713,10 +713,13 @@ fn support_layer_height_controls_body_spacing() {
     // always prints — it used to be dropped whenever it failed the
     // support-layer-height modulo, leaving the column stopping short of the
     // plate.
+    // G-18 (238c, design.md §Plan Corrections item 4): with a positive
+    // configured bottom count the traditional top band widens by one layer,
+    // so top=2/bottom=1 here yields interface layers 7/6/5 instead of 7/6.
     assert_eq!(
         layers,
-        vec![7, 6, 4, 1, 0],
-        "support body layers use every third model layer, interfaces retain their bands,          and the termination layer always prints"
+        vec![7, 6, 5, 4, 1, 0],
+        "support body layers use every third model layer, interfaces retain their G-18-widened bands, and the termination layer always prints"
     );
 }
 

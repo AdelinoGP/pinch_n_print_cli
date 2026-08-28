@@ -1151,7 +1151,8 @@ fn json_type_name(v: &serde_json::Value) -> &'static str {
 /// `ResolvedConfig::extensions` with its variant intact.
 ///
 /// `"true"`/`"false"` are unambiguous and stay `Bool` for any key. Everything
-/// else falls through try-int → try-float → `String`.
+/// else falls through try-int → try-float → percent-suffixed
+/// float-or-percent (declared float-or-percent keys only) → `String`.
 pub(crate) fn coerce_string_to_config_value(key: &str, s: &str) -> ConfigValue {
     // Spelled-out booleans are unambiguous regardless of the declared type.
     if s.eq_ignore_ascii_case("false") {
@@ -1178,6 +1179,23 @@ pub(crate) fn coerce_string_to_config_value(key: &str, s: &str) -> ConfigValue {
     if let Ok(f) = s.parse::<f64>() {
         let f = if f.is_subnormal() { 0.0 } else { f };
         return ConfigValue::Float(f);
+    }
+    // Percent-suffixed numbers ("50%") are valid `coFloatOrPercent` input —
+    // Orca serialises them as strings, and the typed extractors reject a raw
+    // `String` for float-or-percent keys. Schema-directed: only keys DECLARED
+    // float-or-percent coerce; for every other key (e.g. `bridge_line_width`,
+    // declared plain-float mm here though Orca types it percent-capable) the
+    // string stays a `String` as before, so a percent magnitude can never trip
+    // a millimeter-range bounds check.
+    if let Some(stripped) = s.strip_suffix('%') {
+        if slicer_ir::is_declared_float_or_percent_key(key) {
+            if let Ok(f) = stripped.trim().parse::<f64>() {
+                return ConfigValue::FloatOrPercent {
+                    value: f,
+                    is_percent: true,
+                };
+            }
+        }
     }
     ConfigValue::String(s.to_string())
 }
@@ -2942,6 +2960,20 @@ mod tests {
         assert_eq!(
             coerce_string_to_config_value("layer_height", "0.5"),
             ConfigValue::Float(0.5)
+        );
+        assert_eq!(
+            coerce_string_to_config_value("support_threshold_overlap", "50%"),
+            ConfigValue::FloatOrPercent {
+                value: 50.0,
+                is_percent: true
+            }
+        );
+        // Percent strings for keys NOT declared float-or-percent stay strings
+        // (bridge_line_width is a plain-float mm key here; a coerced 100
+        // would trip its [0, 2] bounds).
+        assert_eq!(
+            coerce_string_to_config_value("bridge_line_width", "100%"),
+            ConfigValue::String("100%".to_string())
         );
         assert_eq!(
             coerce_string_to_config_value("support_style", "normal(auto)"),

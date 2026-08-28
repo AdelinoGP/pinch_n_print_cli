@@ -737,18 +737,27 @@ mod tests {
 
     /// F-7: the tree renderer had no interface pitch at all — roofs and floors
     /// were scan-filled at the density-derived body pitch. Canonical is
-    /// `support_interface_spacing + interface_flow.spacing()`, measured at
-    /// 0.757 mm for a 0.4 mm gap / 0.4 mm width / 0.2 mm layer height.
+    /// `support_interface_spacing + interface_flow.spacing()`. At defaults the
+    /// resolved support line width is 1.125 × 0.4 nozzle = 0.45 mm (238a auto
+    /// resolution), so `line_width_to_spacing(0.45, 0.2) = 0.4070796` and the
+    /// top pitch is 0.4 + 0.4070796 = 0.807 mm. With the key absent from the
+    /// raw config map (as here) the in-code fallback stays the legacy −1.0
+    /// mirror-top sentinel, so bottom == top; in production the manifest
+    /// default 0.5 (DEV-145) is host-injected and yields a 0.907 mm bottom
+    /// pitch instead.
     #[test]
     fn interface_pitch_adds_flow_spacing() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::from_config(&config).unwrap();
         let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
-            (top - 0.757).abs() < 0.002,
-            "measured Orca interface pitch is 0.757 mm, got {top}"
+            (top - 0.807).abs() < 0.002,
+            "canonical interface pitch is 0.807 mm at defaults, got {top}"
         );
-        assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
+        assert_eq!(
+            bottom, top,
+            "absent bottom-spacing key falls back to the mirror-top sentinel"
+        );
         // The interface pitch must not be the body pitch (line_width/density).
         let body_pitch = module.pitches_mm(0.2).unwrap().2;
         assert!(
@@ -833,9 +842,13 @@ mod tests {
             },
             holes: vec![],
         };
+        // Pitch derivation moved out of render_polygon into execute (via
+        // pitches_mm), so the test derives each config's body pitch the same
+        // way production does and feeds it through.
         let count = |module: &TreeSupport| {
+            let body_pitch = module.pitches_mm(0.2).unwrap().2;
             module
-                .render_polygon(&square, 1.0, 1.0, 2.5, false)
+                .render_polygon(&square, 1.0, 1.0, body_pitch, false)
                 .iter()
                 .filter(|path| path.points.len() == 2)
                 .count()

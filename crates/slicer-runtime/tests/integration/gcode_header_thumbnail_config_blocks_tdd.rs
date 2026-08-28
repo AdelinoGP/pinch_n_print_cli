@@ -470,9 +470,18 @@ fn header_filament_order_matches_used() {
 }
 
 /// AC-7: Five extrusion-width comment lines are emitted with numeric values > 0.
+///
+/// The exactly-once count is scoped to the header region (before
+/// `; CONFIG_BLOCK_START`): since 238a added `support_line_width` to
+/// `to_config_map`, the CONFIG_BLOCK legitimately repeats the same
+/// `; key = value` shape (canonical — Orca's config block carries it too).
 #[test]
 fn width_comments_emitted() {
     let gcode = slice_no_thumb();
+    let header = gcode
+        .split("; CONFIG_BLOCK_START")
+        .next()
+        .expect("split always yields a first segment");
 
     let width_keys = [
         "; outer_wall_line_width = ",
@@ -484,11 +493,11 @@ fn width_comments_emitted() {
 
     for key in &width_keys {
         assert_eq!(
-            count_occurrences(&gcode, key),
+            count_occurrences(header, key),
             1,
-            "width comment {key:?} must appear exactly once"
+            "width comment {key:?} must appear exactly once in the header"
         );
-        let line = gcode
+        let line = header
             .lines()
             .find(|l| l.starts_with(key))
             .unwrap_or_else(|| panic!("width comment line not found: {key}"));
