@@ -557,10 +557,11 @@ fn ac5_no_perimeter_entry_leaves_region_polygons_untouched() {
 fn ac7_empty_wall_inset_preserves_top_solid_fill() {
     let top = square(0.0, 0.0, 10.0, 10.0);
     let bottom = square(0.0, 0.0, 10.0, 10.0);
-    // Disjoint from top/bottom: the bridge claim is unconditional (packet
-    // 234 — a ceiling layer can have gated bridge areas while the perimeter
-    // module produced no infill), so a bridge overlapping the top square
-    // would legitimately take it under precedence bridge > bottom > top.
+    // Disjoint from top/bottom: with an empty `wall_inset` the bridge claim
+    // passes through unclipped (packet 234 — a ceiling layer can have gated
+    // bridge areas while the perimeter module produced no infill), so a
+    // bridge overlapping the top square would legitimately take it under
+    // precedence bridge > bottom > top.
     let bridge = square(20.0, 0.0, 30.0, 10.0);
     let region_polys = square(0.0, 0.0, 10.0, 10.0);
 
@@ -603,6 +604,94 @@ fn ac7_empty_wall_inset_preserves_top_solid_fill() {
     );
     // sparse is empty by construction (no infill center).
     assert!(r.sparse_infill_area.is_empty());
+}
+
+// ── bridge clip vs. the perimeter inset ──────────────────────────────────────
+
+/// Regression: the bridge claim MUST be clipped to `perimeter.infill_areas`
+/// when that inset is non-empty, exactly like `top_solid_fill` (AC-3).
+///
+/// Commit `83180d9e` replaced `intersection(&bridge_areas, wall_inset)` with an
+/// unconditional `bridge_areas.clone()` to protect the packet-234 ceiling-layer
+/// case (empty `wall_inset`). That made bridge the only one of the four
+/// partitioned fills not clipped to the wall inset, so bridge extrusion ran
+/// out over the outer and middle wall beads — measured on
+/// `resources/A_upsidedown.obj`, the bridge polygon reached past the
+/// outer-wall centerline.
+#[test]
+fn bridge_areas_are_clipped_to_wall_inset_when_inset_is_non_empty() {
+    let wall_inset = square(2.0, 2.0, 8.0, 8.0); // 6×6 = 36 mm²
+    let oversized_bridge = square(0.0, 0.0, 10.0, 10.0); // 10×10 = 100 mm²
+
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![wall_inset.clone()]);
+    sr.bridge_areas = vec![oversized_bridge];
+    slice.regions.push(sr);
+
+    let mut perim = empty_perimeter_ir();
+    perim
+        .regions
+        .push(perimeter_region("obj-1", 0, vec![wall_inset.clone()]));
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
+
+    let r = &arena.slice().expect("slice").regions[0];
+
+    assert!(
+        approx_eq(ex_area_mm2(&r.bridge_areas), 36.0, 0.01),
+        "bridge_areas must be clipped to the wall_inset area (36 mm²); got {} mm²          — an unclipped bridge claim extrudes over the wall beads",
+        ex_area_mm2(&r.bridge_areas)
+    );
+
+    // Stronger than area: no part of the bridge claim may survive outside the
+    // wall inset. Area equality alone could be met by a shifted polygon.
+    let outside = slicer_core::polygon_ops::difference(&r.bridge_areas, &[wall_inset]);
+    assert!(
+        ex_area_mm2(&outside) < 1.0e-6,
+        "no bridge area may lie outside the perimeter inset; {} mm² escaped",
+        ex_area_mm2(&outside)
+    );
+
+    assert!(
+        r.sparse_infill_area.is_empty(),
+        "wall_inset fully covered by the clipped bridge → sparse must be empty"
+    );
+}
+
+/// Packet 234 regression guard (companion to AC-7): when `wall_inset` is
+/// EMPTY, the gated bridge site must survive the partition untouched. This is
+/// the case commit `83180d9e` was fixing and it must keep passing alongside the
+/// restored clip above — a ceiling layer whose whole cross-section is top
+/// surface produces no perimeter infill area, and an unconditional
+/// intersection would silently drop the canonical bridge site.
+#[test]
+fn bridge_areas_survive_empty_wall_inset_ceiling_layer() {
+    let region_polys = square(0.0, 0.0, 10.0, 10.0);
+    let bridge = square(1.0, 1.0, 9.0, 9.0); // 8×8 = 64 mm²
+
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![region_polys]);
+    sr.bridge_areas = vec![bridge.clone()];
+    slice.regions.push(sr);
+
+    // Ceiling layer: the perimeter module produced no infill area at all.
+    let mut perim = empty_perimeter_ir();
+    perim.regions.push(perimeter_region("obj-1", 0, Vec::new()));
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition must not be fatal");
+
+    let r = &arena.slice().expect("slice").regions[0];
+    assert!(
+        !r.bridge_areas.is_empty(),
+        "packet 234: an empty wall_inset must not drop the gated bridge site"
+    );
+    assert!(
+        approx_eq(ex_area_mm2(&r.bridge_areas), 64.0, 0.01),
+        "bridge_areas must pass through unclipped when wall_inset is empty; got {} mm²",
+        ex_area_mm2(&r.bridge_areas)
+    );
 }
 
 // ── AC-6: preserves untouched fields ─────────────────────────────────────────
