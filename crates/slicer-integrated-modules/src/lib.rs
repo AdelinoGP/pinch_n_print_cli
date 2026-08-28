@@ -44,8 +44,10 @@ use wipe_tower::WipeTower;
 use arachne_perimeters::ArachnePerimeters;
 #[cfg(feature = "classic-perimeters")]
 use classic_perimeters::ClassicPerimeters;
+#[cfg(feature = "traditional-support-planner")]
+use traditional_support_planner::SupportPlanner as TraditionalSupportPlanner;
 #[cfg(feature = "tree-support-planner")]
-use tree_support_planner::SupportPlanner;
+use tree_support_planner::SupportPlanner as TreeSupportPlanner;
 
 #[cfg(feature = "classic-perimeters")]
 const CLASSIC_PERIMETERS_MANIFEST: &str =
@@ -54,8 +56,12 @@ const CLASSIC_PERIMETERS_MANIFEST: &str =
 const ARACHNE_PERIMETERS_MANIFEST: &str =
     include_str!("../../../modules/core-modules/arachne-perimeters/arachne-perimeters.toml");
 #[cfg(feature = "tree-support-planner")]
-const SUPPORT_PLANNER_MANIFEST: &str =
+const TREE_SUPPORT_PLANNER_MANIFEST: &str =
     include_str!("../../../modules/core-modules/tree-support-planner/tree-support-planner.toml");
+#[cfg(feature = "traditional-support-planner")]
+const TRADITIONAL_SUPPORT_PLANNER_MANIFEST: &str = include_str!(
+    "../../../modules/core-modules/traditional-support-planner/traditional-support-planner.toml"
+);
 macro_rules! manifest_const {
     ($name:ident, $feature:literal, $path:literal) => {
         #[cfg(feature = $feature)]
@@ -260,10 +266,18 @@ integrated_registry!(
     ),
     (
         "tree-support-planner",
-        SUPPORT_PLANNER_MANIFEST,
-        SupportPlanner,
+        TREE_SUPPORT_PLANNER_MANIFEST,
+        TreeSupportPlanner,
         "com.core.tree-support-planner",
-        "integrated://support-planner",
+        "integrated://tree-support-planner",
+        Prepass
+    ),
+    (
+        "traditional-support-planner",
+        TRADITIONAL_SUPPORT_PLANNER_MANIFEST,
+        TraditionalSupportPlanner,
+        "com.core.traditional-support-planner",
+        "integrated://traditional-support-planner",
         Prepass
     ),
     (
