@@ -51,12 +51,15 @@ optimizer, and emitter (packet 245) preserve their anchor-first print order.
      ratio falls outside the emitter clamp `[0.05, 5.0]`.
 - **Generator port** (own copy of canonical `WaveOverhangs.cpp`): seed extraction along the supported
   boundary · narrow-neck split slits (`generate_narrow_split_slits`) · accumulated-region offset loop
-  at line spacing · front extraction against the half-width-inset trim boundary ·
+  at line spacing · front extraction against the trim boundary inset by half the DEPOSITED bead width
+  (nominal `width` x `flow_factor`, the width the emitter actually lays down) ·
   simplify/reconnect (`reconnect_polylines`) · pattern assembly (`append_wave_fronts` smart
   support-scored start-end choice, monotonic append, `append_zig_zag_front_levels` meander) ·
-  empty/short-front filtering. Not ported: Kaiser/generator shells, inert `min_angle`, inert
+  empty/short-front filtering. Not ported: Kaiser/generator shells, inert
   `seam_mode`, progressive `spacing_mode`, corner taper (deferred), wall replacement, floor layers,
-  G-code event injection.
+  G-code event injection. (An earlier revision listed an inert `min_angle`; canonical
+  `CommonParams` has no such field. The nearest names, `corner_angle_threshold` and
+  `min_length_mm`, are both genuinely read and acted on by canonical.)
 - **Config keys** (snake_case, fork defaults; anchor depth is PnP-only): see the table below.
 - **Porting header** per `docs/ORCASLICER_ATTRIBUTION.md`; credit Andersons, Sanchez, Vaneker,
   McCulloch, Klappe.

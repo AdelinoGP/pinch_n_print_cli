@@ -536,6 +536,10 @@ impl LayerModule for WaveOverhangs {
                     },
                 )),
                 flow_width: wave_width,
+                // The same `flow_factor` stamped on every emitted point below,
+                // so the generator's trim inset and the emitter's deposited
+                // bead width cannot drift apart.
+                flow_ratio: wave_flow_factor,
                 // FLOW-derived spacing, deliberately distinct from
                 // `line_spacing` (canonical `overhang_flow.scaled_spacing()`).
                 base_spacing: bridge_spacing_mm,

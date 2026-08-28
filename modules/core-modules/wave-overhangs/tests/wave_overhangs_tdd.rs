@@ -871,6 +871,24 @@ fn disc_units(cx: f64, cy: f64, r: f64) -> ExPolygon {
 /// Union of the round-capped swept footprints of `paths`, honouring each
 /// point's own `width` (never a nominal constant, never the centreline).
 fn swept_footprint(paths: &[&ExtrusionPath3D]) -> Vec<ExPolygon> {
+    swept_footprint_with(paths, |p| p.width)
+}
+
+/// Union of the round-capped swept footprints of `paths`, using the
+/// **effective deposited** bead width (`width * flow_factor`) -- the width the
+/// G-code emitter's volumetric-E path actually lays down, which for wave beads
+/// is `nozzle_diameter * wave_flow / (nozzle_diameter * layer_height)`, i.e.
+/// far wider than the nominal `width` stamped on each point.
+fn swept_footprint_effective(paths: &[&ExtrusionPath3D]) -> Vec<ExPolygon> {
+    swept_footprint_with(paths, |p| p.width * p.flow_factor)
+}
+
+/// Union of the round-capped swept footprints of `paths`, taking each point's
+/// bead width from `width_of`.
+fn swept_footprint_with(
+    paths: &[&ExtrusionPath3D],
+    width_of: impl Fn(&slicer_ir::Point3WithWidth) -> f32,
+) -> Vec<ExPolygon> {
     let upm: f64 = slicer_ir::UNITS_PER_MM;
     let mut parts: Vec<ExPolygon> = Vec::new();
     for path in paths {
@@ -878,7 +896,7 @@ fn swept_footprint(paths: &[&ExtrusionPath3D]) -> Vec<ExPolygon> {
             parts.push(disc_units(
                 f64::from(p.x) * upm,
                 f64::from(p.y) * upm,
-                f64::from(p.width) * upm / 2.0,
+                f64::from(width_of(p)) * upm / 2.0,
             ));
         }
         for w in path.points.windows(2) {
@@ -889,8 +907,8 @@ fn swept_footprint(paths: &[&ExtrusionPath3D]) -> Vec<ExPolygon> {
             if len <= f64::EPSILON {
                 continue;
             }
-            let ra = f64::from(w[0].width) * upm / 2.0;
-            let rb = f64::from(w[1].width) * upm / 2.0;
+            let ra = f64::from(width_of(&w[0])) * upm / 2.0;
+            let rb = f64::from(width_of(&w[1])) * upm / 2.0;
             let (ux, uy) = (-dy / len, dx / len);
             parts.push(ExPolygon {
                 contour: Polygon {
@@ -1003,3 +1021,97 @@ fn waves_cover_domain_without_seam_gap() {
     );
 }
 
+
+// ---------------------------------------------------------------------------
+// Deposited-bead containment (packet 246 follow-up)
+//
+// `run_infill` stamps the NOMINAL nozzle diameter as each point's `width` and
+// pairs it with `flow_factor = wave_flow / (width * layer_height)`. The
+// emitter's volumetric-E path multiplies the two, so the bead actually laid
+// down is `width * flow_factor` wide -- 0.75 mm for the 0.15 mm^3/mm default,
+// not 0.4 mm. `generate` must therefore inset its trim boundary by half the
+// EFFECTIVE width, or the bead physically overruns the fillable region and
+// encroaches on the adjacent wall.
+// ---------------------------------------------------------------------------
+
+/// Manifest default `wave_overhang_perimeter_overlap`, in mm. The generator
+/// grows each wave domain by this before filling, so it is the outer bound of
+/// the fillable area.
+const PERIMETER_OVERLAP_MM: f32 = 0.1;
+
+/// Overflow area tolerated outside the fillable region, in mm^2.
+///
+/// Not slack for a real overrun: the test's swept footprint and the
+/// generator's Clipper offsets approximate arcs with different polygon
+/// resolutions, so a hair of disagreement along the boundary is expected. The
+/// pre-fix overrun on this fixture is two orders of magnitude larger.
+const MAX_BEAD_OVERFLOW_MM2: f64 = 0.01;
+
+#[test]
+fn wave_bead_footprint_stays_inside_trim_boundary() {
+    use slicer_core::polygon_ops::{difference, intersection, offset, union, union_ex,
+        OffsetJoinType};
+
+    let module = WaveOverhangs::from_config(&wave_config(3.0)).expect("config");
+    let region = seam_fixture();
+    let output = run(&module, std::slice::from_ref(&region));
+    let wave_paths = locked(output.solid_paths());
+    assert!(
+        !wave_paths.is_empty(),
+        "waves did not engage; the containment assertion would be vacuous"
+    );
+
+    // Non-vacuity on the width itself: the emitted bead must really be wider
+    // than the nominal width, otherwise this test proves nothing.
+    let (nominal, effective) = wave_paths
+        .iter()
+        .flat_map(|p| p.points.iter())
+        .map(|p| (p.width, p.width * p.flow_factor))
+        .next()
+        .expect("wave paths carry points");
+    assert!(
+        effective > nominal * 1.5,
+        "expected the deposited bead ({effective} mm) to be much wider than the \
+         nominal width ({nominal} mm)"
+    );
+
+    // The fillable area, rebuilt exactly as `run_infill` + `generate` do:
+    // wave domain = external bridge U anchor band, grown by the perimeter
+    // overlap into the neighbouring wall.
+    let external = vec![rect_mm(0.0, 0.0, SEAM_W_MM, SEAM_H_MM)];
+    let supported = vec![
+        rect_mm(-6.0, -6.0, 0.0, SEAM_H_MM + 6.0),
+        rect_mm(SEAM_W_MM, -6.0, SEAM_W_MM + 6.0, SEAM_H_MM + 6.0),
+    ];
+    let band = intersection(
+        &supported,
+        &offset(&external, 3.0, OffsetJoinType::Round, 0.0),
+    );
+    let fillable = offset(
+        &union(&external, &band),
+        PERIMETER_OVERLAP_MM,
+        OffsetJoinType::Round,
+        0.0,
+    );
+
+    let swept = swept_footprint_effective(&wave_paths);
+    assert!(!swept.is_empty(), "swept footprint must be non-empty");
+    let overflow = union_ex(&difference(&swept, &fillable));
+    let total: f64 = overflow.iter().map(area_mm2).sum();
+    let worst: Vec<(f64, (f32, f32, f32, f32))> = {
+        let mut v: Vec<_> = overflow
+            .iter()
+            .map(|c| (area_mm2(c), bbox_mm(c)))
+            .filter(|(a, _)| *a > 0.0)
+            .collect();
+        v.sort_by(|l, r| r.0.total_cmp(&l.0));
+        v.truncate(3);
+        v
+    };
+    assert!(
+        total <= MAX_BEAD_OVERFLOW_MM2,
+        "deposited wave bead (width {effective} mm) overruns the fillable region by \
+         {total} mm^2 (limit {MAX_BEAD_OVERFLOW_MM2} mm^2); worst components \
+         (area mm^2, bbox mm): {worst:?}"
+    );
+}

@@ -34,9 +34,10 @@
 //!
 //! # Inert canonical settings
 //!
-//! The canonical fork reads `spacing_mode`, `seam_mode`, and `min_angle` into
-//! its parameter block but never acts on them. They are deliberately not
-//! ported.
+//! The canonical fork reads `spacing_mode` and `seam_mode` into its parameter
+//! block but never acts on them. They are deliberately not ported. (There is
+//! no `min_angle` field in canonical `CommonParams`; the similarly named
+//! `corner_angle_threshold` and `min_length_mm` are both genuinely used.)
 
 use slicer_core::polygon_ops::{
     clip_polylines, difference, difference_ex, intersection, offset, union, union_ex,
@@ -107,7 +108,18 @@ pub(crate) struct WaveParams {
     /// Contour ordering strategy.
     pub(crate) pattern: WavePattern,
     /// Wave extrusion width, in mm (`overhang_flow.with_width(line_width)`).
+    ///
+    /// This is the **nominal** width stamped on every emitted point, not the
+    /// width of the bead that lands on the plate; see [`WaveParams::flow_ratio`].
     pub(crate) flow_width: f32,
+    /// Ratio of deposited material to the nominal `flow_width` bead.
+    ///
+    /// The caller stamps `flow_width` on each point and pairs it with a
+    /// `flow_factor` (`wave_flow_mm3_per_mm / (width * layer_height)`); the
+    /// emitter's volumetric-E path multiplies the two, so the bead physically
+    /// laid down is `flow_width * flow_ratio` wide. This field carries exactly
+    /// that `flow_factor`, so the two cannot drift.
+    pub(crate) flow_ratio: f32,
     /// **Flow-derived** spacing, in mm.
     ///
     /// Canonical `base_spacing = overhang_flow.scaled_spacing()`. This is NOT
@@ -1093,6 +1105,17 @@ pub(crate) fn generate(
     } else {
         params.base_spacing
     };
+    // Canonical shrinks the piece by half its own extrusion WIDTH before
+    // clipping fronts to it. Canonical's `wave_flow` width *is* the deposited
+    // width; here the caller stamps a nominal width plus a flow factor, so the
+    // canonical quantity is their product. Using the nominal width alone leaves
+    // `(deposited - nominal) / 2` of bead hanging outside the fillable region,
+    // which lands on the adjacent wall.
+    let deposited_width_mm = if params.flow_ratio > 0.0 {
+        flow_width_mm * params.flow_ratio
+    } else {
+        flow_width_mm
+    };
     let base_spacing_mm = params.base_spacing.max(EPSILON_MM);
     let seed_expansion_mm = (base_spacing_mm / 10.0).max(EPSILON_MM);
     let anchors_size_mm =
@@ -1200,10 +1223,12 @@ pub(crate) fn generate(
                 continue;
             }
 
-            // 8. Trim boundary, with the two canonical fallbacks.
+            // 8. Trim boundary, with the two canonical fallbacks. The inset is
+            //    half the DEPOSITED bead width (see `deposited_width_mm`), not
+            //    the nominal flow width.
             let mut trim_boundary = offset(
                 piece_slice,
-                -(EPSILON_MM.max(flow_width_mm / 2.0)),
+                -(EPSILON_MM.max(deposited_width_mm / 2.0)),
                 OffsetJoinType::Round,
                 ARC_TOLERANCE_MM,
             );
@@ -1266,6 +1291,15 @@ pub(crate) fn generate(
             }
 
             // 10b. Close the seam left where opposing fronts merged.
+            //      NOTE: deliberately the NOMINAL `flow_width_mm`, not
+            //      `deposited_width_mm`. Step 8 asks "how far in must the
+            //      centreline stay so the bead lands inside the region?" --- a
+            //      deposited-width question. This asks "is the residual strip
+            //      between two merged fronts wide enough to deserve another
+            //      line?", and its threshold is `CLOSING_MIN_WIDTH_FACTOR` of
+            //      the width. At the deposited 0.75 mm the threshold becomes
+            //      0.375 mm and skips the real ~0.29 mm seam entirely. Two
+            //      different questions; do not harmonise them.
             let closing = closing_pass(&levels, &trim_boundary, flow_width_mm);
             if !closing.is_empty() {
                 levels.push(closing);
