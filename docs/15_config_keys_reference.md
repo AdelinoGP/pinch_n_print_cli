@@ -58,6 +58,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
+| `extra_perimeters` | int | `0` | [0.0, 10.0] | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |

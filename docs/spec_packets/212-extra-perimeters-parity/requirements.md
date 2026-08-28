@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-328`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `S`
 
 ## Problem Statement
@@ -31,9 +31,9 @@ The unit relation for (a) is fixed by canonical: `process_arachne` constructs `A
 - Deliberately leave the explicit-override arm (`Some(v) if v > 0 => v as u32`) untouched, so a positive `max_bead_count` stays honoured verbatim per its own manifest `description`. Pinned by AC-N1 and AC-N3.
 - Extend `crates/slicer-runtime/tests/integration/extra_perimeters_config_tdd.rs` with the arachne positive case, the arachne zero no-op, the cross-generator equality case, the explicit-override negative, and the `alternate_extra_wall` composition case. This file already exists, is already registered in `crates/slicer-runtime/tests/integration/main.rs`, and `slicer-runtime` already dev-depends on BOTH `classic-perimeters` and `arachne-perimeters` (`crates/slicer-runtime/Cargo.toml`), so no new dev-dependency or `mod` line is needed.
 - Add `("extra_perimeters", Int(0))` to `ARACHNE_FALLBACKS` in `crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs`. This guard is EXHAUSTIVE-BY-ENUMERATION with set-equality in both directions — adding a manifest key without a table row fails the suite.
-- Regenerate the generated tables in `docs/15_config_keys_reference.md` and the Open Deviation Map view in `docs/07_implementation_status.md` via `cargo xtask check-deviations` (both are marked generated; hand-editing them is prohibited and `--check` fails on drift).
+- Regenerate the generated tables in `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs` and the Open Deviation Map view in `docs/07_implementation_status.md` via `cargo xtask check-deviations` (both are marked generated; hand-editing them is prohibited and `--check` fails on drift).
 - Update `DEV-132`'s `Status` in `docs/DEVIATION_LOG.md` to record half (a) closed and cite the newly-allocated `DEV-###` row carrying half (b); author that new row with the canonical dead-writer evidence and the `SliceRegionView`-has-no-`config_id` evidence.
-- Add the `TASK-328` line to `docs/07_implementation_status.md`. Verified this session: `TASK-328` does not exist there yet (highest present is `TASK-315`; `TASK-320`/`TASK-321` are claimed by `docs/specs/struct-literal-churn-gate-plan.md`), so the packet creates it rather than checking off an existing row.
+- Add the `TASK-328` line to `docs/07_implementation_status.md`. Verified this session: `TASK-328` does not exist there yet (re-derived at preflight 2026-08-28: highest live ID in the backlog is `TASK-507`, and `TASK-328` appears nowhere in it; the ID is reserved for this packet by row #7 of `docs/specs/deviation-remediation-206-212-plan.md`), so the packet creates it rather than checking off an existing row.
 
 ## Out of Scope
 

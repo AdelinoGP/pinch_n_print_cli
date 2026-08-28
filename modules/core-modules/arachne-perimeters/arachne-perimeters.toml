@@ -332,6 +332,15 @@ display     = "Overhang reverse threshold"
 description = "OrcaSlicer coFloatOrPercent key overhang_reverse_threshold; when 0, the overhang detection treats every overhang as steep and reverses wall direction (Orca PerimeterGenerator.cpp:68-77). Advisory for the G7 test; full steep-detection logic is out of scope for packet 151."
 group       = "Walls"
 
+[config.schema.extra_perimeters]
+type    = "int"
+default = 0
+min     = 0
+max     = 10
+display = "Extra perimeters (per-region bonus wall count)"
+description = "Per-region bonus wall count, folded into the auto-derived bead cap as max_bead_count = 2 * (wall_count + extra_perimeters); ignored when max_bead_count is set to a positive explicit override."
+group   = "Walls"
+
 [config.schema.extra_perimeters_on_overhangs]
 type    = "bool"
 default = false

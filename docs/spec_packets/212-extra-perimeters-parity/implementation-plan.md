@@ -75,19 +75,19 @@
   - `mkdir -p target && cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd 2>&1 | tee target/test-output.log | rg '^test result'` - FACT: `7 passed`
   - `mkdir -p target && cargo test -p slicer-runtime --test integration manifest_default_reconcile_tdd 2>&1 | tee target/test-output.log | rg '^test result'` - FACT pass/fail
   - `mkdir -p target && cargo test -p arachne-perimeters --test alternate_extra_wall_tdd 2>&1 | tee target/test-output.log | rg '^test result'` - FACT: `2 passed` (AC-N3 no-regression)
-  - `test "$(rg -A6 -N '^\[config\.schema\.extra_perimeters\]$' modules/core-modules/arachne-perimeters/arachne-perimeters.toml | rg -c '^\s*(type\s*=\s*"int"|default\s*=\s*0|min\s*=\s*0|max\s*=\s*10)\s*$')" = "4" && echo PASS` - FACT `PASS`
+  - `test "$(rg -A6 -N '^\[config\.schema\.extra_perimeters\]\r?$' modules/core-modules/arachne-perimeters/arachne-perimeters.toml | rg -c '^\s*(type\s*=\s*"int"|default\s*=\s*0|min\s*=\s*0|max\s*=\s*10)\s*$')" = "4" && echo PASS` - FACT `PASS`
 - Exit condition: all seven tests in `extra_perimeters_config_tdd` pass with `extra_perimeters_config_tdd.rs` unmodified since Step 1, `manifest_default_reconcile_tdd` passes, `alternate_extra_wall_tdd` reports `2 passed`, and `build-guests --check` is clean. If any arachne test still fails, the falsifying check is whether the auto-derive arm actually computes an EVEN `max_bead_count` — an odd cap changes `LimitedBeadingStrategy`'s branch and invalidates the `emitted == max_bead_count / 2` mapping.
 
 ### Step 3: Regenerate the generated doc tables
 
 - Task IDs: `TASK-328`
-- Objective: bring `docs/15_config_keys_reference.md`'s generated config-key table (and any other generated section touched by the new manifest key) back in sync via `cargo xtask check-deviations`, with zero hand edits.
+- Objective: bring `docs/15_config_keys_reference.md`'s generated config-key table (and any other generated section touched by the new manifest key) back in sync via `cargo xtask gen-config-docs` (the generator that owns doc 15's `BEGIN GENERATED: module-config-keys` block; `cargo xtask check-deviations --check` only VERIFIES doc 15 and regenerates doc 07's Open Deviation Map), with zero hand edits.
 - Precondition: Step 2's exit condition met; the arachne manifest declares `extra_perimeters`.
 - Postcondition: `cargo xtask check-deviations --check` exits `0` and `docs/15_config_keys_reference.md` contains an `extra_perimeters` row whose owner column is `arachne-perimeters`, alongside the pre-existing `classic-perimeters` row.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/15_config_keys_reference.md` - `rg`-targeted lines around `extra_perimeters` only; the file is large and mostly generated, never read it in full
 - Files allowed to edit (at most 3):
-  - `docs/15_config_keys_reference.md` - VIA `cargo xtask check-deviations` ONLY; no manual edit to any generated table
+  - `docs/15_config_keys_reference.md` - VIA `cargo xtask gen-config-docs` ONLY; no manual edit to any generated table
 - Files explicitly out of bounds:
   - `xtask/**` (the generator itself is not in scope)
   - `docs/config/host-keys.toml` (host keys unaffected)

@@ -234,18 +234,28 @@ fn arachne_params_from_config(
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
     let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
-    // OrcaSlicer has no user-facing max_bead_count; it is always `2 * inset_count`
-    // (`WallToolPaths.cpp:525`) and therefore ALWAYS EVEN. `LimitedBeadingStrategy`
-    // warns on an odd cap and its odd-center `compute` branch (`:71-74`) dumps the
-    // entire surplus region thickness into a single wide centre bead — up to ~12 mm
-    // on a benchy hull's thick medial spine (the D4 taper over-extrusion, surfaced
-    // once D5 made those non-central peaks emit). A zero/absent value means
-    // "auto-derive `2 * wall_count`" (even, and — unlike a fixed manifest default —
-    // actually tracks wall_count). A positive value is an explicit advanced override
-    // (e.g. the `max_bead_count_cap` parity fixture) and is honoured verbatim.
+    // extra_perimeters (TASK-328): per-region bonus wall count, read with the
+    // byte-identical expression classic-perimeters uses so the two generators
+    // cannot drift on clamping/defaulting.
+    let extra_perimeters = config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+    // OrcaSlicer has no user-facing max_bead_count; canonical
+    // `WallToolPaths::generate` (`WallToolPaths.cpp`) always computes it as
+    // `max_bead_count = 2 * inset_count` and it is therefore ALWAYS EVEN.
+    // `LimitedBeadingStrategy` warns on an odd cap and its odd-center `compute`
+    // branch dumps the entire surplus region thickness into a single wide centre
+    // bead — up to ~12 mm on a benchy hull's thick medial spine (the D4 taper
+    // over-extrusion, surfaced once D5 made those non-central peaks emit).
+    // Canonical `process_arachne` (`PerimeterGenerator.cpp`) passes
+    // `WallToolPaths(..., coord_t(loop_number + 1), ...)` with
+    // `loop_number = wall_loops + extra_perimeters - 1`, so `inset_count`
+    // is `wall_count + extra_perimeters`. A zero/absent max_bead_count therefore
+    // means "auto-derive `2 * (wall_count + extra_perimeters)`" (even, and —
+    // unlike a fixed manifest default — actually tracks both keys). A positive
+    // value is an explicit advanced override (e.g. the `max_bead_count_cap`
+    // parity fixture) and is honoured verbatim.
     let max_bead_count = match max_bead_count_explicit {
         Some(v) if v > 0 => v as u32,
-        _ => (2 * wall_count).max(1),
+        _ => (2 * (wall_count + extra_perimeters)).max(1),
     };
     let distribution_count = config
         .get_int("wall_distribution_count")

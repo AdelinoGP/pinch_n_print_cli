@@ -264,6 +264,7 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     // branch, so 0 IS the code fallback.
     ("max_bead_count", Int(0)),
     ("wall_count", Int(3)),
+    ("extra_perimeters", Int(0)), // get_int(..).unwrap_or(0).max(0)
     ("wall_direction", Str("counter_clockwise")),
     // Packet 185: `inner_wall_line_width` resolved via `get_abs_value` against
     // `nozzle_diameter`; absent/zero is the auto sentinel (`0`).
