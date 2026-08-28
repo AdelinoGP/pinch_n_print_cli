@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 248-visual-debug-silhouette-gcode-source
 task_ids:
   - TASK-446
@@ -65,6 +65,60 @@ Everything lands on the standalone-gcode path (`crates/pnp-cli/src/visual_debug_
 ## Doc Impact Statement (Required)
 
 - `docs/19_visual_debug.md` — extend the packet-247 silhouette section with a "Standalone G-code silhouettes" subsection: `;Z:` slab rule, flow-derived width rule and why it differs from `filled_areas` (which keeps its no-E-derivation rule), rectangular-model caveat on foreign (stadium-model) files, deposited-width caveat, `gcode_line_width_mm` fallback semantics, W3 warning, palette-only tool coloring — `rg -q 'flow-derived' docs/19_visual_debug.md && rg -q 'deposited' docs/19_visual_debug.md && rg -q 'W3' docs/19_visual_debug.md`
+
+## Deviations from Design (recorded at closure)
+
+- **D-A (packet-authoring defect).** `design.md` assigns `GcodeRenderError::SilhouetteWidthUnderivable` to Step 4 but its `map_gcode_error` arm to Step 5, while Step 5'''s precondition is "Step 4 complete". This is circular: `map_gcode_error` in `crates/pnp-cli/src/visual_debug.rs` matches `GcodeRenderError` exhaustively, so the variant cannot compile without its arm. Resolved by a narrow grant letting the Step 4 worker land `VisualDebugError::SilhouetteWidthUnderivable`, its Display arm, and the one `map_gcode_error` arm. Lesson for future packets: when a new error variant crosses an exhaustive match in another file, the variant and its mapping arm are one atomic step.
+- **D-B.** `Segment` gained `pub source_line: usize` beyond `design.md`'''s declared surface. Required by the packet'''s own rule that `M200` poisons flow derivation *from its line onward*, evaluated per rendered segment — unanswerable without a per-segment source line. `cargo xtask check-literals` stays at 0 violations.
+- **D-C.** `gcode_silhouette_slabs` is `pub` (design wrote a bare `fn`), so `slab_derivation_w3_cases` — an integration test — can assert on the slab map directly, as its exit condition demands.
+- **D-D (Step 3 no-op).** Packet 247 had already landed `union_silhouette_intervals` as `pub fn` in `crates/slicer-runtime/src/visual_debug_render.rs` and re-exported it from `crates/slicer-runtime/src/lib.rs`. Per `design.md`'''s "keep the landed name, do not create two unions" clause, Step 3 became verify-only; no `slicer-runtime` edit was made. Verified at closure: exactly one `fn union_silhouette_intervals` definition exists in `crates/`.
+- **D-E (closure-review fix).** `gcode_silhouette_slabs` originally carried `prev_z: Option<f64>` and ran the `z <= prev` check only inside `if let Some(prev)`, exempting the first `;Z:` marker from monotonicity. A `;Z:0` or negative first marker therefore produced a degenerate/inverted slab that rendered every move at width 0 with no W3 warning while still appearing in `layers_rendered` — fail-open against the packet'''s own doctrine, uncovered by any AC. Fixed red-first: `prev_z` initializes to `0.0` and one comparison governs all layers. A `!z.is_finite()` guard was added alongside it, because `;Z:` is parsed with `parse::<f64>()` which accepts `NaN`/`inf`, and `NaN` slips through `z <= prev_z`. Pinned by `first_z_marker_must_be_positive`.
+
+## Dogfood Findings (post-closure, real CLI on real files)
+
+The packet closed on tests using inline synthetic fixtures. A follow-up dogfood
+session ran the real `pnp_cli visual-debug` binary against real G-code — our own
+emitter's `calicat_a.gcode` (13,662 lines, 173 layers) and a foreign OrcaSlicer
+file (`multi_color_cube.orca.gcode`) — and surfaced four gaps no acceptance
+criterion covered. All four are fixed; each carries a regression test in
+`crates/pnp-cli/tests/visual_debug_gcode_silhouette_tdd.rs`.
+
+- **DF-1 — fallback widths were silent.** Rendering the foreign file (no
+  `; filament_diameter` comment) with `gcode_line_width_mm` succeeded with an
+  EMPTY warning list, so every width came from the fallback while the image
+  looked exactly as authoritative as a flow-derived one. `render_gcode_silhouette`
+  now tallies fallback vs. flow-derived segments and emits one warning per
+  `FallbackCause` (missing diameter comment / `M200` poisoning) naming the count,
+  the cause, and the consequence. Pin: `fallback_width_use_is_warned`.
+- **DF-2 — the warning channel was 100% noise.** Measured on `calicat_a.gcode`:
+  234 warnings, ALL 234 `M73` progress commands, zero W3. A genuine W3
+  skip-with-warning — this feature's own fail-closed signal — would have been
+  invisible. `parse_gcode` now keeps the first occurrence verbatim (line number
+  intact) and collapses later duplicates of the same construct into one summary
+  carrying the true total, ordered by first occurrence. Pin:
+  `repeated_unsupported_constructs_collapse`.
+- **DF-3 — extreme aspect ratios render unreadably.** The 4-layer foreign file
+  (239 mm wide x 0.8 mm tall, 300:1) rendered as a ~1-pixel line; the fixed 2 mm
+  viewport margin was 2.5x the object's entire height. Deliberately NOT fixed by
+  non-uniform axis scaling: distorting the axes would misrepresent deposited
+  width, which is the one thing this view exists to show honestly. Framing,
+  margin, and `Projector` are untouched (packet 247's pinned bounds stay valid);
+  instead a warning fires when the vertical data extent covers <1% of canvas
+  height, suggesting a layer subset or the `side` view. Pin:
+  `extreme_aspect_ratio_is_warned`.
+- **DF-4 — request-schema papercut.** `source` is internally tagged `kind` while
+  `visualizations[]` entries use `type`; the bare serde failure
+  (`missing field kind`) explained neither. The wire format is unchanged;
+  `run_cli` now augments the parse error to name the valid `source.kind` values
+  and note the deliberate key difference.
+
+DF-3's threshold and DF-2's collapse are both deterministic and allocation-ordered
+(no `HashMap` on either path), preserving the packet's determinism invariant.
+
+## Residual Risk (recorded at closure)
+
+- Multi-tool `filament_diameter` lists clamp to the last entry for out-of-range tool indices: a foreign file with more tools than diameters renders with the last diameter rather than failing. Documented in `docs/19_visual_debug.md`.
+- R8 is evaluated lazily per rendered move, so a layer selection that avoids poisoned moves succeeds where a wider selection fails. Deliberate — it keeps partial inspection of a damaged file possible.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

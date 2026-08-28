@@ -123,6 +123,13 @@ pub enum GcodeRenderError {
     /// `filled_areas` was requested without an explicit
     /// `gcode_line_width_mm`. Bead width must never be derived from `E`.
     MissingLineWidth,
+    /// A `silhouette` render needed a bead width for an extruding move it
+    /// could not derive from flow, and no explicit `gcode_line_width_mm`
+    /// fallback was supplied. `detail` names the missing datum (an absent
+    /// `; filament_diameter = ...` config comment, or an `M200` volumetric-
+    /// extrusion command that makes `E` a volume rather than a length) and
+    /// the remedy. Never guesses a width.
+    SilhouetteWidthUnderivable { detail: String },
 }
 
 impl fmt::Debug for GcodeRenderError {
@@ -144,6 +151,9 @@ impl fmt::Debug for GcodeRenderError {
                 "GcodeRenderError::MissingLineWidth: filled_areas requires an explicit \
                  gcode_line_width_mm (line width); it must never be derived from E values"
             ),
+            GcodeRenderError::SilhouetteWidthUnderivable { detail } => {
+                write!(f, "GcodeRenderError::SilhouetteWidthUnderivable({detail})")
+            }
         }
     }
 }
@@ -367,6 +377,21 @@ pub struct Segment {
     /// The active tool when this segment was emitted (`T<n>` tracking;
     /// tool 0 until the first tool change).
     pub tool: u32,
+    /// The signed E-axis delta this move commanded, mm of filament. `0.0`
+    /// for a move that carries no `E` token; negative for a retraction.
+    ///
+    /// Retained (rather than being collapsed into `is_extrusion`) so the
+    /// `silhouette` visualization can derive a per-segment bead width from
+    /// flow — see [`silhouette_segment_width_mm`].
+    pub e_delta_mm: f64,
+    /// 1-indexed source line the move was parsed from.
+    ///
+    /// Needed because `M200` (volumetric extrusion) poisons flow-derived
+    /// widths **from its line onward**, not for the whole file: a layer
+    /// selection that touches only pre-`M200` moves must still render. That
+    /// question can only be answered per segment, so each one carries its
+    /// own line.
+    pub source_line: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -404,12 +429,84 @@ pub struct ParsedGcode {
     /// standalone path resolves no printer profile — so it is what
     /// `frame: "plate"` frames to on this source.
     pub printable_area_mm: Option<(f64, f64, f64, f64)>,
+    /// Filament diameters in mm from the config block's
+    /// `; filament_diameter = …` comment, in declaration (extruder) order.
+    /// Empty when the file carries no such comment — the silhouette path
+    /// then has no way to convert an E delta into a volume and must say so
+    /// rather than assume 1.75.
+    pub filament_diameters_mm: Vec<f64>,
+    /// 1-indexed source line of the first `M200` (volumetric extrusion), or
+    /// `None`. `M200` makes E a *volume*, not a length, which invalidates
+    /// every flow-derived width — it is recorded as a poison marker, not a
+    /// warning about an unsupported construct.
+    pub volumetric_extrusion_line: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExtrusionMode {
     Absolute,
     Relative,
+}
+
+/// The text shared by every unsupported-construct warning — the per-line
+/// first occurrence AND the collapsed summary — so one grep finds them all.
+const UNSUPPORTED_CONSTRUCT_TEXT: &str =
+    "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset";
+
+/// One distinct unsupported construct (`M73`, `G2`, …) and its tally.
+struct UnsupportedTally {
+    construct: String,
+    first_line: usize,
+    count: usize,
+}
+
+/// Record one unsupported-construct occurrence.
+///
+/// The FIRST occurrence of a construct emits the full, line-numbered warning
+/// verbatim (text unchanged); every later occurrence of the SAME construct
+/// is suppressed and only counted, with [`finish_unsupported_tallies`]
+/// appending one summary that preserves the true total.
+///
+/// Without this collapse the warning channel is pure noise on real files: a
+/// measured 13,662-line source produced 234 warnings, all 234 of them `M73`
+/// progress commands, which would bury any genuine W3 skip-with-warning —
+/// this feature's own fail-closed signal — in the same list.
+fn record_unsupported_construct(
+    warnings: &mut Vec<String>,
+    tallies: &mut Vec<UnsupportedTally>,
+    construct: &str,
+    line_no: usize,
+    code_part: &str,
+) {
+    if let Some(tally) = tallies.iter_mut().find(|t| t.construct == construct) {
+        tally.count += 1;
+        return;
+    }
+    tallies.push(UnsupportedTally {
+        construct: construct.to_string(),
+        first_line: line_no,
+        count: 1,
+    });
+    warnings.push(format!(
+        "line {line_no}: {UNSUPPORTED_CONSTRUCT_TEXT}: {code_part}"
+    ));
+}
+
+/// Append one summary per construct seen more than once, in parse order of
+/// first occurrence (the `Vec` push order — no `HashMap` on this path).
+fn finish_unsupported_tallies(warnings: &mut Vec<String>, tallies: &[UnsupportedTally]) {
+    for tally in tallies {
+        if tally.count > 1 {
+            warnings.push(format!(
+                "{UNSUPPORTED_CONSTRUCT_TEXT}: {} (first at line {}; {} occurrences total, \
+                 {} suppressed)",
+                tally.construct,
+                tally.first_line,
+                tally.count,
+                tally.count - 1
+            ));
+        }
+    }
 }
 
 /// Parse the documented Pinch 'n Print final-G-code subset. Public so
@@ -420,6 +517,7 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
     let mut layer_map: BTreeMap<i64, usize> = BTreeMap::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut unclassified_lines: Vec<usize> = Vec::new();
+    let mut unsupported_tallies: Vec<UnsupportedTally> = Vec::new();
 
     let mut current_layer_index: i64 = -1;
     let mut current_role: Option<String> = None;
@@ -451,6 +549,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
     let mut printable_area_mm: Option<(f64, f64, f64, f64)> = None;
+    let mut filament_diameters_mm: Vec<f64> = Vec::new();
+    let mut volumetric_extrusion_line: Option<usize> = None;
 
     for (idx, raw_line) in text.lines().enumerate() {
         let line_no = idx + 1;
@@ -486,6 +586,12 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
             if let Some(area) = parse_printable_area_comment(rest) {
                 printable_area_mm = Some(area);
             }
+            // `filament_diameter` is what turns an E *length* delta into an
+            // extruded *volume*, and so is the only source-carried datum
+            // that makes a flow-derived silhouette width possible.
+            if let Some(diameters) = parse_filament_diameter_comment(rest) {
+                filament_diameters_mm = diameters;
+            }
             continue;
         }
 
@@ -506,6 +612,49 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
         match cmd {
             "M82" => mode = ExtrusionMode::Absolute,
             "M83" => mode = ExtrusionMode::Relative,
+            // Volumetric extrusion: E states a volume rather than a length,
+            // so every flow-derived width downstream is meaningless. Record
+            // the first occurrence as a poison marker — this construct IS
+            // understood (that is precisely why we can rule the derivation
+            // out), so it must not raise an unsupported-construct warning.
+            "M200" => {
+                if volumetric_extrusion_line.is_none() {
+                    volumetric_extrusion_line = Some(line_no);
+                }
+            }
+            // `G92 E<val>` re-defines the current E-axis position without
+            // moving the extruder. The parser's carried `last_e` MUST follow
+            // it: a mid-print `G92 E0` after E has climbed to, say, 5.0
+            // would otherwise make the next absolute-mode extruding move
+            // compute a large negative delta and be misclassified as travel.
+            // X/Y/Z offsets are a different (unmodelled) thing and stay
+            // unsupported.
+            "G92" => {
+                let mut saw_e = false;
+                let mut unsupported = false;
+                for tok in tokens {
+                    if tok.is_empty() {
+                        continue;
+                    }
+                    let (letter, rest) = tok.split_at(1);
+                    match (letter, rest.parse::<f64>()) {
+                        ("E", Ok(value)) => {
+                            last_e = value;
+                            saw_e = true;
+                        }
+                        _ => unsupported = true,
+                    }
+                }
+                if unsupported || !saw_e {
+                    record_unsupported_construct(
+                        &mut warnings,
+                        &mut unsupported_tallies,
+                        cmd,
+                        line_no,
+                        code_part,
+                    );
+                }
+            }
             "G0" | "G1" => {
                 let mut new_x = pos_x;
                 let mut new_y = pos_y;
@@ -553,10 +702,13 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                 }
 
                 if unsupported {
-                    warnings.push(format!(
-                        "line {line_no}: unsupported G-code construct outside the \
-                         documented G0/G1 X/Y/Z/E/F subset: {code_part}"
-                    ));
+                    record_unsupported_construct(
+                        &mut warnings,
+                        &mut unsupported_tallies,
+                        cmd,
+                        line_no,
+                        code_part,
+                    );
                     // Any recognized X/Y on this line are still real,
                     // physically-known state changes (a real printer would
                     // still apply them) even though the move as a whole is
@@ -676,6 +828,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                         is_extrusion,
                         role,
                         tool: current_tool,
+                        e_delta_mm: if has_e { e_delta } else { 0.0 },
+                        source_line: line_no,
                     });
                 }
             }
@@ -723,13 +877,18 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                         continue;
                     }
                 }
-                warnings.push(format!(
-                    "line {line_no}: unsupported G-code construct outside the documented \
-                     G0/G1 X/Y/Z/E/F subset: {code_part}"
-                ));
+                record_unsupported_construct(
+                    &mut warnings,
+                    &mut unsupported_tallies,
+                    cmd,
+                    line_no,
+                    code_part,
+                );
             }
         }
     }
+
+    finish_unsupported_tallies(&mut warnings, &unsupported_tallies);
 
     if let Some(&first_line) = unclassified_lines.first() {
         warnings.push(format!(
@@ -751,6 +910,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
         bounds_mm,
         has_renderable_moves,
         printable_area_mm,
+        filament_diameters_mm,
+        volumetric_extrusion_line,
     }
 }
 
@@ -821,6 +982,487 @@ fn parse_printable_area_comment(rest: &str) -> Option<(f64, f64, f64, f64)> {
         return None;
     }
     Some((min_x, min_y, max_x, max_y))
+}
+
+/// Parse a `filament_diameter` config comment's value into the per-extruder
+/// diameters in mm, or `None` if this comment isn't `filament_diameter` or
+/// its value isn't a usable list.
+///
+/// The emitted form is `; filament_diameter = 1.75,1.75` — one positive
+/// finite value per extruder, comma separated.
+///
+/// `rest` is the comment body with its leading `;` already stripped. As with
+/// [`parse_printable_area_comment`], the key is matched EXACTLY: this file
+/// also carries neighbouring keys that contain this one as a substring
+/// (`filament_diameter` appears inside `different_settings_to_system`-style
+/// value lists), and a substring match would pick those up.
+///
+/// A single unusable entry rejects the whole comment rather than yielding a
+/// partial list: an extruder-indexed list with a hole would silently
+/// misattribute diameters to the wrong extruder.
+fn parse_filament_diameter_comment(rest: &str) -> Option<Vec<f64>> {
+    let (key, value) = rest.split_once('=')?;
+    if key.trim() != "filament_diameter" {
+        return None;
+    }
+
+    let mut diameters = Vec::new();
+    for entry in value.trim().split(',') {
+        let d: f64 = entry.trim().parse().ok()?;
+        if !d.is_finite() || d <= 0.0 {
+            return None;
+        }
+        diameters.push(d);
+    }
+    if diameters.is_empty() {
+        return None;
+    }
+    Some(diameters)
+}
+
+/// Derive each layer's `(bottom_z, top_z)` slab in mm from the file's `;Z:`
+/// markers, plus one W3 warning per layer whose marker is unusable.
+///
+/// The `;Z:` marker is the ONLY layer-height information a standalone
+/// `.gcode` carries, and it states a layer's *top* Z. A slab is therefore the
+/// span from the previously ACCEPTED marker to this layer's marker:
+///
+/// - The carried marker starts at the bed, `0.0`. The first accepted marker
+///   therefore yields `(0.0, z)` — the bottom is always the bed, never a
+///   guess extrapolated from a later marker delta, since with one marker in
+///   hand there is no delta to extrapolate from.
+/// - `z <= prev` (a duplicate or non-monotonic marker), a non-finite marker,
+///   or a layer with no marker at all yields NO slab and exactly one W3
+///   warning. There is NO first-marker exemption: `prev` is `0.0` for layer
+///   one, so a first marker of `0` or a negative Z is rejected like any other
+///   non-monotonic marker rather than forming a degenerate or inverted slab.
+/// - A skipped layer does NOT advance the carried marker, so the next good
+///   layer's slab still starts at the last Z the file actually established.
+///
+/// Warnings come back in layer order, and the map is a [`BTreeMap`], so both
+/// outputs are deterministic across runs.
+pub fn gcode_silhouette_slabs(parsed: &ParsedGcode) -> (BTreeMap<i64, (f64, f64)>, Vec<String>) {
+    let mut slabs: BTreeMap<i64, (f64, f64)> = BTreeMap::new();
+    let mut warnings: Vec<String> = Vec::new();
+    // The bed. The first layer's marker is measured against it exactly like
+    // every later marker is measured against its predecessor — there is no
+    // first-marker special case, so one comparison governs all layers.
+    let mut prev_z: f64 = 0.0;
+
+    for layer in &parsed.layers {
+        let li = layer.layer_index;
+        let Some(z) = layer.layer_z else {
+            warnings.push(format!(
+                "W3: layer {li} has no ;Z: marker; no silhouette slab was derived for it"
+            ));
+            continue;
+        };
+        // `str::parse::<f64>` accepts "NaN"/"inf"/"-inf", so a `;Z:` marker
+        // CAN carry a non-finite value; reject it before the ordering test,
+        // where NaN would compare false against everything.
+        if !z.is_finite() {
+            warnings.push(format!(
+                "W3: layer {li} has a non-finite ;Z: marker (Z {z}); no silhouette slab \
+                 was derived for it"
+            ));
+            continue;
+        }
+        if z <= prev_z {
+            warnings.push(format!(
+                "W3: layer {li} has a non-increasing ;Z: marker (Z {z} <= previous \
+                 accepted Z {prev_z}); no silhouette slab was derived for it"
+            ));
+            continue;
+        }
+        slabs.insert(li, (prev_z, z));
+        prev_z = z;
+    }
+
+    (slabs, warnings)
+}
+
+/// The extrusion width in mm implied by one move's flow, in closed form.
+///
+/// Inverts the standard authoring relation `Δe = L × w × h / A_filament`
+/// (extruded filament volume equals the deposited bead's volume) for `w`:
+///
+/// ```text
+/// w = Δe × π·(d/2)² / (L × h)
+/// ```
+///
+/// `pub` so the closed form can be pinned directly by a test rather than
+/// only observed through a rendered raster.
+///
+/// Returns `0.0` for a degenerate input (`L` or `h` non-positive, or a
+/// non-finite result) rather than an infinity or NaN that would poison a
+/// downstream polygon offset.
+pub fn silhouette_segment_width_mm(
+    e_delta_mm: f64,
+    length_mm: f64,
+    slab_height_mm: f64,
+    filament_diameter_mm: f64,
+) -> f64 {
+    if length_mm <= 0.0 || slab_height_mm <= 0.0 || filament_diameter_mm <= 0.0 {
+        return 0.0;
+    }
+    let filament_area_mm2 = std::f64::consts::PI * (filament_diameter_mm / 2.0).powi(2);
+    let width = e_delta_mm * filament_area_mm2 / (length_mm * slab_height_mm);
+    if width.is_finite() {
+        width
+    } else {
+        0.0
+    }
+}
+
+// ───────────────────────── silhouette composite render ────────────────────
+
+/// The result of a composite silhouette render over a standalone
+/// final-G-code source (schema 1.2.0).
+#[derive(Debug)]
+pub struct GcodeSilhouetteOutput {
+    pub parser_version: String,
+    /// Parse warnings in source order, followed by the W3 slab-derivation
+    /// warnings in layer order.
+    pub warnings: Vec<String>,
+    pub png_bytes: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    /// The whole-file (selection-independent) mm viewport the raster was
+    /// projected through, margin included.
+    pub world_bounds_mm: ViewportBoundsMm,
+    /// The selected layers that actually had a derived slab, ascending —
+    /// the selection minus everything W3 skipped.
+    pub layers_rendered: Vec<i64>,
+}
+
+/// The paint class a silhouette rectangle belongs to.
+///
+/// The derived `Ord` IS the paint order (D15): `Unclassified` sorts before
+/// every `Role`, so role-less extrusion is painted first and every role
+/// class occludes it; `Role` compares lexicographically and `Tool` by
+/// ascending index. A single render only ever produces one of the
+/// `Role`/`Tool` families, since the family follows the requested
+/// [`ColorBy`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum SilhouetteClassKey {
+    Unclassified,
+    Role(String),
+    Tool(u32),
+}
+
+impl SilhouetteClassKey {
+    fn of(seg: &Segment, color_by: ColorBy) -> Self {
+        match color_by {
+            ColorBy::Role if seg.role == UNCLASSIFIED_ROLE => Self::Unclassified,
+            ColorBy::Role => Self::Role(seg.role.clone()),
+            ColorBy::Tool => Self::Tool(seg.tool),
+        }
+    }
+
+    fn color(&self) -> [u8; 3] {
+        match self {
+            Self::Unclassified => style::GCODE_UNCLASSIFIED_COLOR,
+            Self::Role(role) => style::gcode_role_color(role, UNCLASSIFIED_ROLE),
+            // A standalone `.gcode` resolves no config, so tool colors are
+            // always the fixed shared palette.
+            Self::Tool(tool) => ToolColors::default().color(*tool),
+        }
+    }
+}
+
+/// The bead width, in mm, this silhouette render must use for `seg`.
+///
+/// Derived from flow whenever the source carries the data to do so, and
+/// otherwise taken from the caller's explicit `fallback_width_mm`. The
+/// fallback is never preferred over a derivable width — only used when the
+/// derivation is impossible:
+///
+/// * the file carries no `; filament_diameter = …` comment, so an `E` length
+///   cannot become a volume; or
+/// * the move sits at or after the file's first `M200`, which redefines `E`
+///   as a volume and invalidates the relation this derivation inverts.
+///
+/// With no fallback either, this fails closed naming the missing datum — it
+/// never guesses a width.
+/// Why a rendered segment's width had to come from the caller's fallback
+/// rather than from the file's own flow data. Ordered so the bundle-level
+/// summary warnings (see [`render_gcode_silhouette`]) have a deterministic
+/// emission order independent of parse order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum FallbackCause {
+    /// The file carries no `; filament_diameter = ...` config comment.
+    NoFilamentDiameter,
+    /// An `M200` (volumetric extrusion) at the carried source line makes `E`
+    /// a volume, so no flow-derived width is meaningful from there onward.
+    VolumetricExtrusion(usize),
+}
+
+fn silhouette_width_for_segment(
+    seg: &Segment,
+    parsed: &ParsedGcode,
+    slab_height_mm: f64,
+    fallback_width_mm: Option<f64>,
+) -> Result<(f64, Option<FallbackCause>), GcodeRenderError> {
+    let poisoned =
+        matches!(parsed.volumetric_extrusion_line, Some(line) if seg.source_line >= line);
+    let derivable = !parsed.filament_diameters_mm.is_empty() && !poisoned;
+
+    if derivable {
+        // A tool index past the declared list clamps to the last entry
+        // rather than falling back: the file DID state a diameter, and the
+        // last one is the nearest thing it says about this extruder.
+        let idx = (seg.tool as usize).min(parsed.filament_diameters_mm.len() - 1);
+        let diameter = parsed.filament_diameters_mm[idx];
+        let dx = seg.to.x - seg.from.x;
+        let dy = seg.to.y - seg.from.y;
+        let length_mm = (dx * dx + dy * dy).sqrt();
+        return Ok((
+            silhouette_segment_width_mm(seg.e_delta_mm, length_mm, slab_height_mm, diameter),
+            None,
+        ));
+    }
+
+    if let Some(w) = fallback_width_mm {
+        // Which of the two modelled causes applies is reported to the caller
+        // so ONE bundle-level warning can name it — a silent fallback makes a
+        // silhouette whose widths came entirely from the request look exactly
+        // as authoritative as a flow-derived one.
+        let cause = match parsed.volumetric_extrusion_line {
+            Some(line) if poisoned => FallbackCause::VolumetricExtrusion(line),
+            _ => FallbackCause::NoFilamentDiameter,
+        };
+        return Ok((w, Some(cause)));
+    }
+
+    let detail = if poisoned {
+        let line = parsed
+            .volumetric_extrusion_line
+            .expect("poisoned implies a recorded M200 line");
+        format!(
+            "silhouette bead width is underivable for the extruding move on source line {}: \
+             `M200` (volumetric extrusion) on source line {line} redefines E as a volume \
+             rather than a length, so no flow-derived width is meaningful from that line \
+             onward; supply an explicit `gcode_line_width_mm` to render a silhouette from \
+             this source",
+            seg.source_line
+        )
+    } else {
+        format!(
+            "silhouette bead width is underivable for the extruding move on source line {}: \
+             this G-code carries no `; filament_diameter = ...` config comment, so an E \
+             length cannot be converted to an extruded volume; supply an explicit \
+             `gcode_line_width_mm` to render a silhouette from this source",
+            seg.source_line
+        )
+    };
+    Err(GcodeRenderError::SilhouetteWidthUnderivable { detail })
+}
+
+/// Render one composite silhouette PNG (D12) for a standalone final-G-code
+/// source: every selected layer's extrusion, projected onto the view plane
+/// and stacked in its own derived Z slab.
+///
+/// Framing reads whole-file data only — the horizontal extent comes from the
+/// parsed model-wide bounds and the vertical extent from every accepted
+/// `;Z:` marker — so a layer-subset request and an all-layers request are
+/// framed identically (AC-9).
+///
+/// Determinism: the only iteration sources are parse order and `BTreeMap`
+/// key order; no `HashMap` appears anywhere on this path.
+pub fn render_gcode_silhouette(
+    gcode_text: &str,
+    layer_indices: &[i64],
+    view: slicer_runtime::SilhouetteView,
+    canvas_width: u32,
+    canvas_height: u32,
+    fallback_width_mm: Option<f64>,
+    color_by: ColorBy,
+) -> Result<GcodeSilhouetteOutput, GcodeRenderError> {
+    let parsed = parse_gcode(gcode_text);
+    if !parsed.has_renderable_moves {
+        return Err(GcodeRenderError::NoRenderableMoves);
+    }
+
+    let (slabs, slab_warnings) = gcode_silhouette_slabs(&parsed);
+
+    // ── framing: whole-file only, never the selection ──────────────────────
+    let (min_x, min_y, max_x, max_y) = parsed.bounds_mm.unwrap_or((0.0, 0.0, 1.0, 1.0));
+    let (h_min, h_max) = match view {
+        slicer_runtime::SilhouetteView::Front => (min_x, max_x),
+        slicer_runtime::SilhouetteView::Side => (min_y, max_y),
+    };
+    let v_min = slabs
+        .values()
+        .next()
+        .map_or(0.0, |(bottom, _)| *bottom)
+        .min(0.0);
+    let v_max = slabs
+        .values()
+        .map(|(_, top)| *top)
+        .fold(v_min, |acc, top| if top > acc { top } else { acc });
+    let world_bounds = viewport_bounds((h_min, v_min, h_max, v_max));
+    let projector = Projector::new(world_bounds, canvas_width, canvas_height);
+
+    // ── per (layer, class) horizontal intervals, in parse order ────────────
+    let selected: BTreeSet<i64> = layer_indices.iter().copied().collect();
+    let mut layers_rendered: Vec<i64> = Vec::new();
+    // Keyed by (layer, class): `BTreeMap` order IS the emission order —
+    // ascending layer, then the class paint order encoded by
+    // `SilhouetteClassKey`'s `Ord`.
+    let mut buckets: BTreeMap<(i64, SilhouetteClassKey), Vec<(f32, f32)>> = BTreeMap::new();
+    // Fallback-width provenance (finding 1): how many rendered extruding
+    // moves took the caller's `gcode_line_width_mm` instead of a flow-derived
+    // width, tallied per cause. `BTreeMap` keeps the emission order stable.
+    let mut extruding_rendered: usize = 0;
+    let mut fallback_counts: BTreeMap<FallbackCause, usize> = BTreeMap::new();
+
+    for layer in &parsed.layers {
+        if !selected.contains(&layer.layer_index) {
+            continue;
+        }
+        let Some(&(z_bottom, z_top)) = slabs.get(&layer.layer_index) else {
+            // W3 already reported this layer; it contributes nothing.
+            continue;
+        };
+        layers_rendered.push(layer.layer_index);
+        let slab_height = z_top - z_bottom;
+
+        for seg in &layer.segments {
+            if !seg.is_extrusion {
+                continue;
+            }
+            // Evaluated lazily, per rendered extruding segment, in parse
+            // order: a selection that never touches a poisoned move must
+            // still succeed.
+            let (w, fallback_cause) =
+                silhouette_width_for_segment(seg, &parsed, slab_height, fallback_width_mm)?;
+            extruding_rendered += 1;
+            if let Some(cause) = fallback_cause {
+                *fallback_counts.entry(cause).or_insert(0) += 1;
+            }
+            let (h0, h1) = match view {
+                slicer_runtime::SilhouetteView::Front => (seg.from.x, seg.to.x),
+                slicer_runtime::SilhouetteView::Side => (seg.from.y, seg.to.y),
+            };
+            // The move's own extent, inflated by half its width at EACH end
+            // — the bead is centered on the path.
+            let start = (h0.min(h1) - w / 2.0) as f32;
+            let end = (h0.max(h1) + w / 2.0) as f32;
+            buckets
+                .entry((layer.layer_index, SilhouetteClassKey::of(seg, color_by)))
+                .or_default()
+                .push((start, end));
+        }
+    }
+
+    // ── rasterize ──────────────────────────────────────────────────────────
+    let mut buf = vec![255u8; canvas_width as usize * canvas_height as usize * 3];
+    for ((layer_index, class), intervals) in &buckets {
+        let (z_bottom, z_top) = slabs[layer_index];
+        let color = class.color();
+        // The one shared union implementation — this module owns no copy.
+        for (start, end) in slicer_runtime::union_silhouette_intervals(intervals) {
+            let p0 = projector.project(f64::from(start), z_bottom);
+            let p1 = projector.project(f64::from(end), z_top);
+            fill_rect(&mut buf, canvas_width, canvas_height, p0, p1, color);
+        }
+    }
+
+    let mut warnings = parsed.warnings;
+    warnings.extend(slab_warnings);
+
+    // ── finding 1: fallback widths must never be silent ────────────────────
+    // One warning per distinct cause (there are only two, and both can occur
+    // in the same file: moves before an `M200` in a source that also lacks a
+    // `filament_diameter` comment). `BTreeMap` iteration gives the fixed
+    // `FallbackCause` order, never parse order or hash order.
+    if let Some(w) = fallback_width_mm {
+        for (cause, count) in &fallback_counts {
+            let reason = match cause {
+                FallbackCause::NoFilamentDiameter => {
+                    "this file carries no `; filament_diameter = ...` config comment, so an E \
+                     length cannot be converted to an extruded volume"
+                        .to_string()
+                }
+                FallbackCause::VolumetricExtrusion(line) => format!(
+                    "`M200` (volumetric extrusion) on source line {line} redefines E as a \
+                     volume rather than a length"
+                ),
+            };
+            warnings.push(format!(
+                "{count} of {extruding_rendered} rendered extruding moves used the \
+                 gcode_line_width_mm fallback ({w} mm) because {reason}: their rendered widths \
+                 are NOT derived from the file"
+            ));
+        }
+    }
+
+    // ── finding 3: warn on an unreadably flat silhouette, never distort ────
+    // Framing stays uniformly scaled and the margin is untouched: squashing
+    // one axis would misrepresent deposited bead widths, which is the one
+    // thing this image exists to show. So the image stays correct and the
+    // reader is told it is unreadable.
+    //
+    // Threshold: the geometry's vertical extent covering under 1% of the
+    // canvas height. At the default 2048-px canvas that is ~20 rows, so any
+    // print taller than ~20 layers is guaranteed sub-pixel per-layer slabs
+    // and the whole stack reads as a single line. (Measured case: a 239 mm
+    // wide x 0.8 mm tall source rendered ~7 rows of 2048, or 0.33%.)
+    const MIN_READABLE_VERTICAL_FRACTION: f64 = 0.01;
+    let px_top = projector.project(h_min, v_max).1;
+    let px_bottom = projector.project(h_min, v_min).1;
+    let vertical_px = (px_bottom - px_top).abs();
+    let vertical_fraction = vertical_px / f64::from(canvas_height.max(1));
+    if vertical_fraction < MIN_READABLE_VERTICAL_FRACTION {
+        warnings.push(format!(
+            "silhouette geometry is extremely flat: its {:.3} mm vertical extent covers only \
+             {:.2}% of the {canvas_height} px canvas height against a {:.3} mm horizontal \
+             extent (aspect ratio {:.0}:1). The image is correctly framed and uniformly \
+             scaled — no axis is distorted — but is unreadable at this ratio; render the \
+             `side` view if the object is much shallower than it is wide, or render a G-code \
+             source trimmed to fewer layers.",
+            v_max - v_min,
+            vertical_fraction * 100.0,
+            h_max - h_min,
+            if (v_max - v_min) > 0.0 {
+                (h_max - h_min) / (v_max - v_min)
+            } else {
+                f64::INFINITY
+            },
+        ));
+    }
+
+    Ok(GcodeSilhouetteOutput {
+        parser_version: GCODE_PARSER_VERSION.to_string(),
+        warnings,
+        png_bytes: encode_png(canvas_width, canvas_height, &buf),
+        width: canvas_width,
+        height: canvas_height,
+        world_bounds_mm: world_bounds,
+        layers_rendered,
+    })
+}
+
+/// Fill the axis-aligned pixel rectangle spanned by two projected corners.
+/// Inclusive on both ends, so a slab thinner than a pixel still paints one
+/// row rather than vanishing.
+fn fill_rect(
+    buf: &mut [u8],
+    width: u32,
+    height: u32,
+    p0: (f64, f64),
+    p1: (f64, f64),
+    color: [u8; 3],
+) {
+    let x0 = p0.0.min(p1.0).round() as i64;
+    let x1 = p0.0.max(p1.0).round() as i64;
+    let y0 = p0.1.min(p1.1).round() as i64;
+    let y1 = p0.1.max(p1.1).round() as i64;
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            set_pixel(buf, width, height, x, y, color);
+        }
+    }
 }
 
 /// Convert this module's parsed `(min_x, min_y, max_x, max_y)` mm bounds into

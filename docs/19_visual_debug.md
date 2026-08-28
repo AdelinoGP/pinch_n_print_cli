@@ -162,9 +162,11 @@ per-layer arena taps, `PrePass::MeshAnalysis`, `PrePass::SeamPlanning`,
 `PrePass::RegionMapping`, `PrePass::OverhangAnnotation`,
 `PostPass::LayerFinalization`, and `PostPass::GCodeEmit`.
 
-Three further rejections are **interim**, expected to lift in later releases:
-silhouette on a **G-code source**; `options.color_by: "tool"` on a silhouette
-(`color_by: "role"` is accepted); and `options.composited_overlays`.
+Two further rejections are **interim**, expected to lift in later releases:
+`options.color_by: "tool"` on a silhouette **of the model source**
+(`color_by: "role"` is accepted); and `options.composited_overlays`. Silhouette
+on a standalone **G-code source** is supported — see "Standalone G-code
+Silhouettes" below, where `color_by: "tool"` *is* accepted.
 
 ### Manifest Shape
 
@@ -261,7 +263,97 @@ rejection.
   model layers (the `u32::MAX` sentinel denotes intermediate layers) and cannot
   be honestly drawn on single-layer slabs — inspect them via the top-down view
   instead.
+- **W3 — unusable layer Z (G-code source only).** A layer whose `;Z:` marker
+  duplicates or decreases relative to the previous accepted marker, or which
+  carries no `;Z:` marker at all, is skipped entirely; the warning names the
+  offending layer index and the Z values involved (or the marker's absence).
+  See "Standalone G-code Silhouettes" below.
 - **Occlusion.** Per-entry, as described above, only when overlap occurred.
+
+### Standalone G-code Silhouettes
+
+A silhouette also renders from a standalone `.gcode` source, with no model and
+no pipeline stages behind it. The projection, view options, paint order, and
+occlusion caveat are exactly as above; what differs is where the slabs and the
+segment widths come from, and both are derived from the file's own contents.
+
+**Slabs come from `;Z:` markers only.** A layer's slab is
+`[previous accepted ;Z: marker, this layer's z]`, and the **first** accepted
+marker yields `[0, z]` — the first slab's bottom is always 0, never a
+marker-delta guess. No layer-height config comment, no interpolation, and no
+neighbour guess ever produces a slab.
+
+**Unusable Z fails closed (W3).** A layer whose marker duplicates or decreases
+against the previous accepted marker, or which has no `;Z:` marker at all, is
+**skipped**: it contributes no pixels, it is excluded from `layers_rendered`,
+and it does **not** advance the carried marker. A W3 warning names the layer
+index and the Z values (or the marker's absence). A guessed slab is the
+misleading-image failure mode, so the layer is dropped instead.
+
+**Widths are flow-derived, per move.** Each extruding move's width comes from
+inverting our emitter's rectangular extrusion model:
+
+```
+w = Δe × A_filament / (L × h)
+```
+
+`A_filament = π × (d/2)²`, with `d` read from the file's own
+`; filament_diameter = …` config comment; `h` is the layer's slab height; `Δe`
+is the per-move E delta, honouring `M82` absolute / `M83` relative modes and
+`G92 E` resets. This is deliberately unlike `filled_areas`, which never derives
+width from E and keeps `gcode_line_width_mm` **mandatory**: a side view's whole
+value is showing real per-move deposition, and a single uniform width would
+flatten exactly the signal you opened the view to see.
+
+**`gcode_line_width_mm` is a fallback, not an override (D14).** When supplied in
+the request it is used **only** for moves whose width is underivable; it is
+never preferred over a derivable width. A move is underivable when the file
+carries no usable `filament_diameter` comment, or when the move sits at or after
+an `M200` line.
+
+**Underivable and rendered, with no fallback, is an error (R8).** Such a move
+fails the command with an error naming the missing datum and the
+`gcode_line_width_mm` remedy, and no bundle content is written. Evaluation is
+**lazy and per rendered move, in parse order**, so a layer selection that avoids
+the poisoned moves still succeeds and partial inspection of a damaged file stays
+possible. A later selection over the same file can therefore fail where an
+earlier one passed; that is deliberate, not a flake.
+
+**`M200` is a poison marker, not a supported mode.** From its source line
+onward, flow derivation is refused rather than approximated — inverting the
+linear-E model over volumetric E values silently produces wrong widths.
+
+**The width shown is deposited width**, reconstructed from the file's own E
+values: a move printed with a low `flow_factor` renders genuinely thin. **Do not
+cite the silhouette as a width-measurement tool** — it shows what the G-code
+asks the printer to deposit, not a measured extrusion.
+
+**Foreign files carry a systematic bias.** The inversion assumes our emitter's
+rectangular cross-section. Foreign slicers commonly model a stadium
+(rounded-end) cross-section, so widths reconstructed from a foreign `.gcode` are
+still derived from that file's own data, but are not a cross-slicer-comparable
+measurement.
+
+**Multi-tool diameters.** `; filament_diameter = …` may carry a comma-separated
+per-extruder list; a segment uses the entry at its tool index, **clamped to the
+last entry** when the tool index exceeds the list. A malformed comment — any
+unusable entry — is rejected wholesale rather than parsed partially, because the
+list is extruder-indexed and a hole would misattribute diameters.
+
+**Tool colouring is palette-only.** `options.color_by: "tool"` is supported here
+and always resolves to the fixed default palette; a standalone `.gcode` resolves
+no printer or filament config, so the entry records
+`"tool_color_source": "palette"`.
+
+**Bundle shape.** Images are `images/gcode_silhouette_{view}.png` and
+`images/gcode_silhouette_{view}_tool.png`. The manifest entry carries
+`"source": "gcode"`, `"tap": ""` (a standalone G-code source has no pipeline
+taps, and naming any tap on a G-code silhouette is rejected),
+`"visualization": "silhouette"`, `"view"`, `"layers_rendered"` as inclusive
+`{start, end}` ranges, `"gcode_parser_version"`, and `"world_bounds_mm"`; it has
+no `"layer_index"` / `"layer_z"` keys. Framing is whole-file and
+**selection-independent**: a layer-subset request and an all-layers request over
+the same file record identical `world_bounds_mm`.
 
 ## Framing
 

@@ -796,29 +796,222 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
     }
 }
 
-// ─────────────────────────────── AC-N6 ──────────────────────────────────────
+// ───────────────── packet 248: gcode-source silhouette validation ───────────
+
+/// A 1.2.0 `Gcode`-source silhouette request with NO taps: the standalone
+/// final-G-code source has no pipeline, so it has no taps to select from.
+/// The path is deliberately nonexistent so every rejection below must fire
+/// in `validate_request`, before any filesystem access.
+fn gcode_silhouette_request(
+    gcode_path: PathBuf,
+    visualizations: Vec<VisualizationSpec>,
+) -> VisualDebugRequest {
+    let mut req = gcode_request(gcode_path, vec![LayerSelector::Index(0)], visualizations);
+    req.schema_version = "1.2.0".to_string();
+    req.taps = Vec::new();
+    req
+}
+
+// ─────────────────────────── packet 248 AC-N4 ───────────────────────────────
 
 #[test]
-fn silhouette_on_gcode_source_rejected_interim() {
+fn silhouette_on_gcode_source_accepted() {
+    // Packet 248 lifts packet 247's interim rejection: a standalone
+    // final-G-code source IS a silhouette source. The request must get past
+    // validation entirely and fail later, on the deliberately nonexistent
+    // gcode path.
     let tmp = TempDir::new().expect("tempdir");
-    let gcode_path = tmp.path().join("nonexistent.gcode"); // never read
-    let output = tmp.path().join("bundle");
-
-    let mut req = gcode_request(
-        gcode_path,
-        vec![LayerSelector::Index(0)],
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
         vec![VisualizationSpec::Name("silhouette".to_string())],
     );
+
+    // Asserted end to end through `run_visual_debug`, not against
+    // `validate_request` alone: the command must get PAST validation and into
+    // the gcode arm's silhouette render, which then fails on the deliberately
+    // nonexistent path. A validation rejection here would mean the acceptance
+    // never actually reached the render path.
+    let output = tmp.path().join("bundle");
+    let err = run_visual_debug(req, &output, false)
+        .expect_err("the fixture's gcode path deliberately does not exist");
+    assert!(
+        !matches!(err, VisualDebugError::Validation(_)),
+        "a 1.2.0 gcode-source silhouette must be accepted by validation, got {err:?}"
+    );
+    assert!(
+        matches!(err, VisualDebugError::CaptureFailed(_)),
+        "the request must fail only on the missing gcode file, got {err:?}"
+    );
+    assert_bundle_empty(&output);
+}
+
+// ─────────────────────────── packet 248 AC-N3 ───────────────────────────────
+
+#[test]
+fn gcode_silhouette_overlay_rejections_unchanged() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    // (a) R10 is unchanged: the standalone parser cannot source seams for a
+    // gcode `diagnostic_overlay`, and still says so by name.
+    let output = tmp.path().join("bundle-overlay");
+    let mut req = gcode_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![LayerSelector::Index(0)],
+        vec![detail_viz(
+            "diagnostic_overlay",
+            serde_json::json!({ "overlays": ["seams"] }),
+        )],
+    );
     req.schema_version = "1.2.0".to_string();
+    let err = expect_validation_error(
+        req,
+        &output,
+        "the standalone gcode parser cannot source seam markers",
+    );
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(name, "seams", "the rejection must name the offending overlay");
+        }
+        other => panic!("expected OverlayUnsupportedOnGcode for 'seams', got {other:?}"),
+    }
+
+    // (b) `overlays` still applies to `diagnostic_overlay` only. A
+    // silhouette carrying it is rejected — silhouette seam overlays are
+    // packet 251's, and must never be silently ignored here.
+    let output = tmp.path().join("bundle-silhouette");
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "overlays": ["seams"] }),
+        )],
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "overlays on a silhouette must fail closed, not be ignored",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidOverlays { .. }),
+        "expected InvalidOverlays for overlays on a silhouette, got {err:?}"
+    );
+}
+
+// ─────────────────────────── packet 248 AC-N5 ───────────────────────────────
+
+#[test]
+fn gcode_silhouette_rejects_named_taps() {
+    // A tap that IS Z-attributable on the model source is still meaningless
+    // here: the standalone gcode source has no pipeline to tap.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let mut req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+    );
+    req.taps = vec![TapSelector::Name("PrePass::SupportGeometry".to_string())];
 
     let err = expect_validation_error(
         req,
         &output,
-        "a standalone gcode silhouette is not supported by this packet (lifted by 248)",
+        "a gcode-source silhouette cannot honour a named pipeline tap",
+    );
+    match &err {
+        ValidationError::SilhouetteUnsupportedForTap { tap, reason } => {
+            assert_eq!(
+                tap, "PrePass::SupportGeometry",
+                "the rejection must carry the offending tap verbatim"
+            );
+            assert!(
+                reason.contains("no pipeline taps"),
+                "the rejection must state that the standalone gcode source has no pipeline \
+                 taps, got {reason:?}"
+            );
+        }
+        other => panic!("expected SilhouetteUnsupportedForTap, got {other:?}"),
+    }
+}
+
+// ─────────────────────────── packet 248 AC-N6 ───────────────────────────────
+
+#[test]
+fn model_silhouette_tool_coloring_still_rejected() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    // The packet-247 interim rejection is narrowed, not removed: a
+    // MODEL-source silhouette still lacks the per-capture tool-availability
+    // contract, so `color_by: "tool"` stays rejected there.
+    let output = tmp.path().join("bundle-model-tool");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "color_by": "tool" }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "tool coloring on a model-source silhouette is still unsupported",
     );
     assert!(
-        matches!(err, ValidationError::SilhouetteUnsupportedOnGcodeSource),
-        "expected SilhouetteUnsupportedOnGcodeSource, got {err:?}"
+        matches!(err, ValidationError::InvalidColorBy { .. }),
+        "expected InvalidColorBy for color_by: \"tool\" on a model silhouette, got {err:?}"
+    );
+
+    // A gcode-source silhouette reads tool numbers straight from the `T`
+    // commands, so both `role` and `tool` are accepted by validation.
+    for color_by in ["role", "tool"] {
+        let req = gcode_silhouette_request(
+            tmp.path().join("nonexistent.gcode"),
+            vec![detail_viz(
+                "silhouette",
+                serde_json::json!({ "color_by": color_by }),
+            )],
+        );
+        // End to end, for the same reason as
+        // `silhouette_on_gcode_source_accepted`: acceptance is only
+        // meaningful if the command reaches the render.
+        let output = tmp.path().join(format!("bundle-gcode-{color_by}"));
+        let err = run_visual_debug(req, &output, false)
+            .expect_err("the fixture's gcode path deliberately does not exist");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "color_by: {color_by:?} on a gcode silhouette must be accepted by \
+             validation, got {err:?}"
+        );
+        assert!(
+            matches!(err, VisualDebugError::CaptureFailed(_)),
+            "the request must fail only on the missing gcode file, got {err:?}"
+        );
+        assert_bundle_empty(&output);
+    }
+}
+
+// ─────────────────────────── packet 248 AC-N7 ───────────────────────────────
+
+#[test]
+fn gcode_silhouette_plate_frame_rejected() {
+    // R4 is source-INDEPENDENT: the bed is an XY polygon with no
+    // machine-height extent, so it cannot frame a Z-bearing projection on
+    // either source.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let mut req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+    );
+    req.frame = FrameMode::Plate;
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "frame: \"plate\" cannot frame a silhouette on any source",
+    );
+    assert!(
+        matches!(err, ValidationError::SilhouettePlateFrameUnsupported),
+        "expected SilhouettePlateFrameUnsupported, got {err:?}"
     );
 }
 
