@@ -1,2 +1,0 @@
-# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-21 after the packet-224 canonical tree-support re-port (arena contacts, per-part MSTs, canonical branch merge, canonical move pass).
-7

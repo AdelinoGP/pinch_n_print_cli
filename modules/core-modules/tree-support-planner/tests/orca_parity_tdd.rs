@@ -20,7 +20,6 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
 
 use slicer_ir::{
     ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon, SemVer, SupportPlanEntry,
@@ -380,45 +379,70 @@ fn wall_count_scales_max_move_distance() {
     );
 }
 
-/// PnP self-capture regression tripwire for tree-support stability.
-///
-/// ## Golden files (self-captured)
-/// The golden files at `resources/golden/benchy_tree_support_regression_*` are
-/// **self-captured snapshots** of this planner's own output against a fixed
-/// synthetic overhang fixture, frozen to detect regressions. They prove
-/// determinism and stability across runs but do **not** prove parity with
-/// OrcaSlicer's reference output. This test was renamed off `orca_parity` in
-/// packet 224 Step 8 (2026-08-20) and reblessed on 2026-08-21 after the
-/// canonical 7-step tree-support re-port.
-///
-/// To regenerate the goldens after an intentional algorithm change, set
-/// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
-/// passes; subsequent runs compare against the frozen output.
-///
-/// Acceptance: branch count within ±10% of golden AND Hausdorff ≤ 0.5mm.
-#[test]
-fn benchy_tree_support_regression_tripwire() {
-    // ── 1. Run the planner against a fixed synthetic fixture ──────────────
-    let config = make_planner_config(&[
-        ("enable_support", ConfigValue::Bool(true)),
-        ("support_raft_layers", ConfigValue::Int(2)),
-        ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
-        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
-        (
-            "tree_support_branch_diameter_angle",
-            ConfigValue::Float(5.0),
-        ),
-        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
-        ("tree_support_wall_count", ConfigValue::Int(1)),
-        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
-    ]);
-    let planner = SupportPlanner::from_config(&config).expect("from_config");
+// ── Algorithmic invariants for the synthetic overhang fixture ───────────────
+//
+// These replace the former `benchy_tree_support_regression_tripwire`, a
+// self-captured golden comparison (branch count ±10% + Hausdorff ≤ 0.5mm
+// against `resources/golden/benchy_tree_support_regression_*`, regenerated via
+// `SUPPORT_PLANNER_REGEN_GOLDEN=1`). A frozen snapshot of the planner's own
+// output cannot distinguish a correct algorithm change from a regression: any
+// intentional edit was answered by re-blessing the file, so the goldens
+// recorded whatever the planner last did rather than what it must do.
+//
+// The fixture and harness are unchanged — the same floating 4x4mm plate at
+// z = 1.8mm over an 11-layer 0.2mm stack, the same planner config, the same
+// `SupportGeometryView` occupancy. What changed is that the assertions are now
+// properties of the *structure* the planner emits.
+//
+// ## Reading the planner output
+//
+// The planner emits one `SupportPlanEntry` per (object, layer, region). Both
+// regions of this fixture ("0" and "1") receive the same physical skeleton by
+// family-assignment stamping, so node sets are de-duplicated by position.
+//
+// Every skeleton segment lies *within one layer*: an entry's skeleton is the
+// flattened endpoint list of that layer's MST edges plus degenerate per-node
+// points, all at the layer's z. There are no cross-layer segments in the IR, so
+// "a branch" is reconstructed here by linking each layer's nodes to the nodes
+// on the layer below (`parent_map`).
 
-    let obj = overhang_plate_fixture("benchy-stand-in");
-    let lp = make_layer_plan(11, 0.0, 0.2);
-    let rs = make_region_segmentation("benchy-stand-in", 11);
-    let plate_occupancy = ExPolygon {
+/// Layer count of `make_layer_plan(11, 0.0, 0.2)`.
+const FIXTURE_LAYER_COUNT: u32 = 11;
+/// Layer height of `make_layer_plan(11, 0.0, 0.2)`.
+const FIXTURE_LAYER_HEIGHT: f32 = 0.2;
+/// `tree_support_branch_diameter` used by every invariant test below.
+const FIXTURE_BRANCH_DIAMETER: f32 = 2.0;
+/// `tree_support_branch_diameter_angle` used by every invariant test below.
+const FIXTURE_DIAMETER_ANGLE_DEG: f32 = 5.0;
+/// `tree_support_branch_angle` used by every invariant test below.
+const FIXTURE_BRANCH_ANGLE_DEG: f32 = 45.0;
+/// `tree_support_branch_distance` — the contact sampling pitch.
+const FIXTURE_BRANCH_DISTANCE: f32 = 1.0;
+/// `support_interface_top_layers` used by every invariant test below.
+const FIXTURE_INTERFACE_TOP_LAYERS: i32 = 2;
+/// Underside z of the floating plate `overhang_plate_fixture` builds.
+const FIXTURE_PLATE_Z_MM: f32 = 1.8;
+/// `MIN_BRANCH_RADIUS` in the planner: the floor `calc_radius` clamps to.
+const MIN_BRANCH_RADIUS_MM: f32 = 0.4;
+/// Maximum consecutive-segment turn angle a reconstructed branch may carry,
+/// matching the bound `smooth_nodes_tdd::max_turn_angle` is written against.
+const MAX_TURN_ANGLE_DEG: f32 = 30.0;
+
+/// Layer index of the plate cross-section, matching the fixture's own
+/// `(1.8 / 0.2).round() - 1`.
+fn fixture_plate_layer() -> u32 {
+    (FIXTURE_PLATE_Z_MM / FIXTURE_LAYER_HEIGHT).round() as u32 - 1
+}
+
+/// Canonical per-layer XY reach of one node: `tan(branch_angle) * layer_height`.
+fn max_move_per_layer_mm() -> f32 {
+    FIXTURE_BRANCH_ANGLE_DEG.to_radians().tan() * FIXTURE_LAYER_HEIGHT
+}
+
+/// The plate cross-section the fixture uses both as model occupancy and as the
+/// contact region branches must attach to.
+fn plate_occupancy(obj: &MeshObjectView) -> ExPolygon {
+    ExPolygon {
         contour: Polygon {
             points: obj.vertices[1..]
                 .iter()
@@ -426,19 +450,56 @@ fn benchy_tree_support_regression_tripwire() {
                 .collect(),
         },
         holes: vec![],
-    };
+    }
+}
+
+/// Run the planner over the synthetic overhang fixture with the config the
+/// former tripwire used. Returns the plan output alongside the occupancy view
+/// the fixture fed in, so collision and attachment invariants can reuse it.
+fn plan_overhang_fixture(object_id: &str) -> (SupportGeometryOutput, SupportGeometryView) {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(2)),
+        (
+            "support_interface_top_layers",
+            ConfigValue::Int(FIXTURE_INTERFACE_TOP_LAYERS as i64),
+        ),
+        ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
+        (
+            "tree_support_branch_diameter",
+            ConfigValue::Float(FIXTURE_BRANCH_DIAMETER as f64),
+        ),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(FIXTURE_DIAMETER_ANGLE_DEG as f64),
+        ),
+        (
+            "tree_support_branch_distance",
+            ConfigValue::Float(FIXTURE_BRANCH_DISTANCE as f64),
+        ),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        (
+            "tree_support_branch_angle",
+            ConfigValue::Float(FIXTURE_BRANCH_ANGLE_DEG as f64),
+        ),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture(object_id);
+    let lp = make_layer_plan(FIXTURE_LAYER_COUNT, 0.0, FIXTURE_LAYER_HEIGHT);
+    let rs = make_region_segmentation(object_id, FIXTURE_LAYER_COUNT);
+    let occupancy = plate_occupancy(&obj);
+    let plate_layer = fixture_plate_layer();
     let sg = SupportGeometryView {
-        entries: (0..11)
-            .filter_map(|global_support_layer_index| {
-                // The fixture has material only at the floating plate's z=1.8
-                // cross-section; lower layers are empty space beneath it.
-                let plate_layer = (1.8_f32 / 0.2).round() as u32 - 1;
-                (global_support_layer_index == plate_layer).then(|| SupportGeometryViewEntry {
-                    global_support_layer_index,
-                    object_id: "benchy-stand-in".to_string(),
-                    region_id: "0".to_string(),
-                    outlines: vec![plate_occupancy.clone()],
-                })
+        entries: (0..FIXTURE_LAYER_COUNT)
+            // The fixture has material only at the floating plate's z=1.8
+            // cross-section; lower layers are empty space beneath it.
+            .filter(|&global_support_layer_index| global_support_layer_index == plate_layer)
+            .map(|global_support_layer_index| SupportGeometryViewEntry {
+                global_support_layer_index,
+                object_id: object_id.to_string(),
+                region_id: "0".to_string(),
+                outlines: vec![occupancy.clone()],
             })
             .collect(),
     };
@@ -447,144 +508,230 @@ fn benchy_tree_support_regression_tripwire() {
         !sg.entries.is_empty(),
         "G-23 occupancy fixture must be non-empty"
     );
+
     let mut output = SupportGeometryOutput::new();
     planner
         .run_support_geometry_with_analysis(
             &[obj],
             &lp,
             &rs,
-            &tree_analysis("benchy-stand-in"),
+            &tree_analysis(object_id),
             &sg,
             &mut output,
             &ConfigView::new(),
         )
         .expect("run_support_geometry");
+    (output, sg)
+}
 
-    let entries = output.entries();
-    // Family-assigned regions may intentionally receive identical skeletons.
-    // Count physical branch sets once, while preserving every per-region entry
-    // in the planner output contract.
-    let mut physical_skeletons: Vec<(String, i32, Vec<slicer_ir::Point3>)> = Vec::new();
-    for entry in entries {
-        if let Some(skeleton) = &entry.skeleton {
-            let key = (
-                entry.object_id.clone(),
-                entry.global_layer_index,
-                skeleton.points.clone(),
-            );
-            if !physical_skeletons.contains(&key) {
-                physical_skeletons.push(key);
+/// Distinct node positions (mm) per model layer, sorted lexicographically so
+/// every derived structure is order-independent.
+fn layer_nodes(output: &SupportGeometryOutput) -> BTreeMap<i32, Vec<(f32, f32)>> {
+    let mut per_layer: BTreeMap<i32, Vec<(f32, f32)>> = BTreeMap::new();
+    for entry in output.entries() {
+        if entry.global_layer_index < 0 {
+            continue;
+        }
+        let Some(skeleton) = &entry.skeleton else {
+            continue;
+        };
+        let nodes = per_layer.entry(entry.global_layer_index).or_default();
+        for point in &skeleton.points {
+            if !nodes
+                .iter()
+                .any(|(x, y)| (*x - point.x).abs() < 1e-6 && (*y - point.y).abs() < 1e-6)
+            {
+                nodes.push((point.x, point.y));
             }
         }
     }
-    let output_branch_count = physical_skeletons.len();
+    per_layer.retain(|_, nodes| !nodes.is_empty());
+    for nodes in per_layer.values_mut() {
+        nodes.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    }
+    per_layer
+}
 
-    // Endpoints: every point of every branch_segment polyline, sorted lex
-    // for stability. SDK SupportPlanEntry.branch_segments is
-    // Vec<Vec<Point3WithWidth>>: outer=branch, inner=polyline points.
-    let mut output_endpoints: Vec<[f32; 3]> = physical_skeletons
+/// Distinct printed role regions per model layer (both fixture regions receive
+/// the same stamped geometry, so identical polygons are collapsed).
+fn layer_regions(output: &SupportGeometryOutput) -> BTreeMap<i32, Vec<ExPolygon>> {
+    let mut per_layer: BTreeMap<i32, Vec<ExPolygon>> = BTreeMap::new();
+    for entry in output.entries() {
+        if entry.global_layer_index < 0 {
+            continue;
+        }
+        let regions = per_layer.entry(entry.global_layer_index).or_default();
+        for role in &entry.roles {
+            for region in &role.regions {
+                if !regions.contains(region) {
+                    regions.push(region.clone());
+                }
+            }
+        }
+    }
+    per_layer.retain(|_, regions| !regions.is_empty());
+    per_layer
+}
+
+/// Every contour and hole vertex of an `ExPolygon`, in mm.
+fn expolygon_vertices_mm(region: &ExPolygon) -> Vec<(f32, f32)> {
+    std::iter::once(&region.contour)
+        .chain(region.holes.iter())
+        .flat_map(|poly| poly.points.iter())
+        .map(|p| (slicer_ir::units_to_mm(p.x), slicer_ir::units_to_mm(p.y)))
+        .collect()
+}
+
+fn hypot2(ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt()
+}
+
+/// Distance from `(x, y)` to the nearest of `nodes`. `nodes` must be non-empty.
+fn distance_to_nearest_node(nodes: &[(f32, f32)], x: f32, y: f32) -> f32 {
+    nodes
         .iter()
-        .flat_map(|(_, _, points)| points.iter())
+        .map(|(nx, ny)| hypot2(x, y, *nx, *ny))
+        .fold(f32::INFINITY, f32::min)
+}
+
+/// Distance from a point to a segment, in mm.
+fn point_segment_distance(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let (dx, dy) = (bx - ax, by - ay);
+    let len_sq = dx * dx + dy * dy;
+    if len_sq == 0.0 {
+        return hypot2(px, py, ax, ay);
+    }
+    let t = (((px - ax) * dx + (py - ay) * dy) / len_sq).clamp(0.0, 1.0);
+    hypot2(px, py, ax + t * dx, ay + t * dy)
+}
+
+/// Distance from `(x, y)` to an `ExPolygon`: zero when the point is inside it,
+/// otherwise the distance to the nearest edge (so a point exactly on the
+/// boundary reads as zero either way).
+fn distance_to_expolygon(region: &ExPolygon, x: f32, y: f32) -> f32 {
+    let ring = |poly: &Polygon| -> Vec<[f32; 2]> {
+        poly.points
+            .iter()
+            .map(|p| [slicer_ir::units_to_mm(p.x), slicer_ir::units_to_mm(p.y)])
+            .collect()
+    };
+    let contour = ring(&region.contour);
+    let holes: Vec<Vec<[f32; 2]>> = region.holes.iter().map(ring).collect();
+    let inside =
+        point_in_polygon(&contour, x, y) && !holes.iter().any(|hole| point_in_polygon(hole, x, y));
+    if inside {
+        return 0.0;
+    }
+    std::iter::once(&contour)
+        .chain(holes.iter())
+        .flat_map(|ring| (0..ring.len()).map(move |i| (ring[i], ring[(i + 1) % ring.len()])))
+        .map(|(a, b)| point_segment_distance(x, y, a[0], a[1], b[0], b[1]))
+        .fold(f32::INFINITY, f32::min)
+}
+
+/// Model occupancy per layer, read back out of the `SupportGeometryView` the
+/// fixture fed the planner.
+fn occupancy_by_layer(sg: &SupportGeometryView) -> BTreeMap<i32, Vec<ExPolygon>> {
+    let mut per_layer: BTreeMap<i32, Vec<ExPolygon>> = BTreeMap::new();
+    for entry in &sg.entries {
+        per_layer
+            .entry(entry.global_support_layer_index as i32)
+            .or_default()
+            .extend(entry.outlines.iter().cloned());
+    }
+    per_layer
+}
+
+/// A node identity: `(layer, index into that layer's sorted node list)`.
+type NodeId = (i32, usize);
+
+/// Nearest node on the layer below: its index, its distance, and the distance
+/// to the runner-up (`INFINITY` when there is only one candidate).
+fn nearest_below(
+    per_layer: &BTreeMap<i32, Vec<(f32, f32)>>,
+    layer: i32,
+    node: (f32, f32),
+) -> Option<(usize, f32, f32)> {
+    let below = per_layer.get(&(layer - 1))?;
+    let mut ranked: Vec<(usize, f32)> = below
+        .iter()
+        .enumerate()
+        .map(|(i, (bx, by))| (i, hypot2(node.0, node.1, *bx, *by)))
+        .collect();
+    ranked.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let (best_index, best) = *ranked.first()?;
+    let runner_up = ranked.get(1).map(|(_, d)| *d).unwrap_or(f32::INFINITY);
+    Some((best_index, best, runner_up))
+}
+
+/// The per-layer reach a parent link may span: the canonical per-layer move
+/// plus one branch radius of slack, since a merge lands a child on its
+/// sibling's centre up to a radius away.
+fn parent_reach_mm() -> f32 {
+    max_move_per_layer_mm() + FIXTURE_BRANCH_DIAMETER * 0.5
+}
+
+/// Parent link for every node that has one, keyed by child.
+///
+/// Parentage is proximity across adjacent layers: a node descends into the
+/// closest node one layer down, provided that node is within [`parent_reach_mm`].
+fn parent_map(per_layer: &BTreeMap<i32, Vec<(f32, f32)>>) -> HashMap<NodeId, NodeId> {
+    let reach = parent_reach_mm();
+    let mut parents = HashMap::new();
+    for (&layer, nodes) in per_layer {
+        for (index, node) in nodes.iter().enumerate() {
+            if let Some((parent_index, distance, _)) = nearest_below(per_layer, layer, *node) {
+                if distance <= reach {
+                    parents.insert((layer, index), (layer - 1, parent_index));
+                }
+            }
+        }
+    }
+    parents
+}
+
+/// Maximum consecutive-segment turn angle (degrees) along a 3D polyline.
+/// Mirrors `smooth_nodes_tdd::max_turn_angle`.
+fn max_turn_angle(points: &[(f32, f32, f32)]) -> f32 {
+    if points.len() < 3 {
+        return 0.0;
+    }
+    let mut max_deg = 0.0f32;
+    for window in points.windows(3) {
+        let v1 = (
+            window[1].0 - window[0].0,
+            window[1].1 - window[0].1,
+            window[1].2 - window[0].2,
+        );
+        let v2 = (
+            window[2].0 - window[1].0,
+            window[2].1 - window[1].1,
+            window[2].2 - window[1].2,
+        );
+        let dot = v1.0 * v2.0 + v1.1 * v2.1 + v1.2 * v2.2;
+        let n1 = (v1.0 * v1.0 + v1.1 * v1.1 + v1.2 * v1.2).sqrt();
+        let n2 = (v2.0 * v2.0 + v2.1 * v2.1 + v2.2 * v2.2).sqrt();
+        if n1 == 0.0 || n2 == 0.0 {
+            continue;
+        }
+        let deg = (dot / (n1 * n2)).clamp(-1.0, 1.0).acos().to_degrees();
+        max_deg = max_deg.max(deg);
+    }
+    max_deg
+}
+
+/// Sorted, rounded skeleton endpoints across every entry — the determinism
+/// fingerprint.
+fn skeleton_endpoints(output: &SupportGeometryOutput) -> Vec<[f32; 3]> {
+    let mut endpoints: Vec<[f32; 3]> = output
+        .entries()
+        .iter()
+        .filter_map(|entry| entry.skeleton.as_ref())
+        .flat_map(|skeleton| skeleton.points.iter())
         .map(|p| [round4(p.x), round4(p.y), round4(p.z)])
         .collect();
-    sort_endpoints(&mut output_endpoints);
-
-    // ── 2. Resolve golden paths ──────────────────────────────────────────────
-    let manifest_dir = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    let golden_dir = repo_root.join("resources/golden");
-    let branch_count_path = golden_dir.join("benchy_tree_support_regression_branch_count.txt");
-    let endpoints_path = golden_dir.join("benchy_tree_support_regression_endpoints.txt");
-
-    let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
-
-    // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# PnP self-capture (synthetic overhang fixture). NOT parity evidence — do not compare against OrcaSlicer output. Regenerated 2026-08-21 after the packet-224 canonical tree-support re-port (arena contacts, per-part MSTs, canonical branch merge, canonical move pass).\n";
-
-    if regen {
-        std::fs::create_dir_all(&golden_dir).expect("create golden dir");
-        std::fs::write(
-            &branch_count_path,
-            format!("{header}{output_branch_count}\n"),
-        )
-        .expect("write branch count golden");
-        let mut endpoints_text = header.to_string();
-        for [x, y, z] in &output_endpoints {
-            endpoints_text.push_str(&format!("{x},{y},{z}\n"));
-        }
-        std::fs::write(&endpoints_path, endpoints_text).expect("write endpoints golden");
-        eprintln!(
-            "Regenerated goldens: count={} endpoints={}",
-            output_branch_count,
-            output_endpoints.len()
-        );
-        return;
-    }
-
-    // ── 3. Parse goldens (skip comment / empty lines) ────────────────────────
-    if !branch_count_path.exists() || !endpoints_path.exists() {
-        panic!(
-            "Regression goldens missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
-             cargo test -p tree-support-planner -- benchy_tree_support_regression_tripwire"
-        );
-    }
-    let count_raw = std::fs::read_to_string(&branch_count_path)
-        .expect("benchy_tree_support_regression_branch_count.txt must be readable");
-    let golden_branch_count: usize = count_raw
-        .lines()
-        .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
-        .expect("branch count golden has no data line")
-        .trim()
-        .parse()
-        .expect("golden branch count must be a valid integer");
-
-    let endpoints_raw = std::fs::read_to_string(&endpoints_path)
-        .expect("benchy_tree_support_regression_endpoints.txt must be readable");
-    let golden_endpoints: Vec<[f32; 3]> = endpoints_raw
-        .lines()
-        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
-        .map(|line| {
-            let parts: Vec<f32> = line
-                .split(',')
-                .map(|s| s.trim().parse().expect("endpoint must be x,y,z"))
-                .collect();
-            assert_eq!(
-                parts.len(),
-                3,
-                "each endpoint must have exactly 3 coordinates (x,y,z)"
-            );
-            [parts[0], parts[1], parts[2]]
-        })
-        .collect();
-
-    // ── 4. Branch count check (±10%) ─────────────────────────────────────────
-    let tolerance_fraction = 0.10_f32;
-    let branch_count_min = (golden_branch_count as f32 * (1.0 - tolerance_fraction)) as usize;
-    let branch_count_max =
-        ((golden_branch_count as f32 * (1.0 + tolerance_fraction)).ceil()) as usize;
-    assert!(
-        output_branch_count >= branch_count_min && output_branch_count <= branch_count_max,
-        "Regression tripwire FAILED: branch count {output_branch_count} outside ±10% of golden {golden_branch_count} \
-         (range: {branch_count_min}–{branch_count_max}). Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate \
-         after intentional algorithm changes."
-    );
-
-    // ── 5. Hausdorff distance check (≤ 0.5mm) ────────────────────────────────
-    let hausdorff_ab = directed_hausdorff(&output_endpoints, &golden_endpoints);
-    let hausdorff_ba = directed_hausdorff(&golden_endpoints, &output_endpoints);
-    let hausdorff = hausdorff_ab.max(hausdorff_ba);
-    let tolerance_mm = 0.5_f32;
-    assert!(
-        hausdorff <= tolerance_mm,
-        "Regression tripwire FAILED: Hausdorff distance {hausdorff:.4}mm exceeds tolerance {tolerance_mm}mm. \
-         Set SUPPORT_PLANNER_REGEN_GOLDEN=1 to regenerate after intentional algorithm changes."
-    );
+    sort_endpoints(&mut endpoints);
+    endpoints
 }
 
 fn round4(v: f32) -> f32 {
@@ -600,26 +747,486 @@ fn sort_endpoints(eps: &mut [[f32; 3]]) {
     });
 }
 
-/// Compute directed Hausdorff distance: max_{a in A} min_{b in B} ||a - b||
-fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
-    if a.is_empty() {
-        return 0.0;
+/// Invariant 1 — collision-freedom.
+///
+/// No branch may occupy space the model occupies. Two complementary checks:
+///
+/// * **Z clearance.** The fixture's only material is the plate cross-section at
+///   z = 1.8mm (layer 8). No planned support may reach it, so every skeleton
+///   point must sit strictly below the plate underside and no entry may land on
+///   or above the plate layer. This is the load-bearing assertion here.
+/// * **In-plane occupancy.** Where a layer carries both support and occupancy,
+///   neither the nodes nor the printed role regions may enter it. On this
+///   fixture the two sets are disjoint by layer, so this loop is a guard that
+///   arms itself the moment the planner descends into the plate.
+#[test]
+fn branches_never_intersect_model_occupancy() {
+    let (output, sg) = plan_overhang_fixture("collision-freedom");
+    let occupancy = occupancy_by_layer(&sg);
+    assert!(
+        !occupancy.is_empty(),
+        "fixture precondition: the SupportGeometryView must carry occupancy"
+    );
+    let plate_layer = fixture_plate_layer() as i32;
+
+    let nodes = layer_nodes(&output);
+    assert!(!nodes.is_empty(), "planner emitted no skeleton at all");
+
+    for (&layer, layer_node_list) in &nodes {
+        assert!(
+            layer < plate_layer,
+            "invariant 1: support planned at layer {layer}, on or above the \
+             model plate layer {plate_layer}; nodes={layer_node_list:?}"
+        );
     }
-    if b.is_empty() {
-        return f32::INFINITY;
+    for entry in output.entries() {
+        let Some(skeleton) = &entry.skeleton else {
+            continue;
+        };
+        for point in &skeleton.points {
+            assert!(
+                point.z < FIXTURE_PLATE_Z_MM,
+                "invariant 1: skeleton point {point:?} reaches the model plate \
+                 underside at z={FIXTURE_PLATE_Z_MM}"
+            );
+        }
     }
-    a.iter()
-        .map(|[ax, ay, az]| {
-            b.iter()
-                .map(|[bx, by, bz]| {
-                    let dx = ax - bx;
-                    let dy = ay - by;
-                    let dz = az - bz;
-                    (dx * dx + dy * dy + dz * dz).sqrt()
-                })
-                .fold(f32::INFINITY, f32::min)
-        })
-        .fold(0.0_f32, f32::max)
+
+    let regions = layer_regions(&output);
+    for (&layer, obstacles) in &occupancy {
+        if let Some(layer_node_list) = nodes.get(&layer) {
+            for (x, y) in layer_node_list {
+                for obstacle in obstacles {
+                    assert!(
+                        distance_to_expolygon(obstacle, *x, *y) > 0.0,
+                        "invariant 1: node ({x},{y}) on layer {layer} lies \
+                         inside model occupancy"
+                    );
+                }
+            }
+        }
+        if let Some(layer_region_list) = regions.get(&layer) {
+            let overlap = slicer_sdk::host::clip_polygons(
+                layer_region_list,
+                obstacles,
+                slicer_sdk::host::ClipOperation::Intersection,
+            );
+            assert!(
+                overlap.is_empty(),
+                "invariant 1: printed support on layer {layer} overlaps model \
+                 occupancy"
+            );
+        }
+    }
+}
+
+/// Invariant 2 — grounding.
+///
+/// Every branch must terminate on the build plate (the lowest model layer,
+/// `global_layer_index == 0`) or on the model. Concretely: the layers carrying
+/// support form one contiguous run down to layer 0, and every node either
+/// descends into a node on the layer below or rests on model occupancy there —
+/// no branch stops in mid-air.
+#[test]
+fn every_branch_terminates_on_the_build_plate_or_the_model() {
+    let (output, sg) = plan_overhang_fixture("grounding");
+    let nodes = layer_nodes(&output);
+    let occupancy = occupancy_by_layer(&sg);
+    let parents = parent_map(&nodes);
+
+    let layers: Vec<i32> = nodes.keys().copied().collect();
+    assert_eq!(
+        layers.first().copied(),
+        Some(0),
+        "invariant 2: the lowest supported layer must be the build-plate layer \
+         0; got {layers:?}"
+    );
+    for window in layers.windows(2) {
+        assert_eq!(
+            window[1],
+            window[0] + 1,
+            "invariant 2: support layers must be contiguous — a gap between {} \
+             and {} means a branch floats in mid-air; layers={layers:?}",
+            window[0],
+            window[1]
+        );
+    }
+
+    for (&layer, layer_node_list) in &nodes {
+        if layer == 0 {
+            continue;
+        }
+        for (index, node) in layer_node_list.iter().enumerate() {
+            // A node may end because it sits on the model instead of
+            // descending: canonical stops a branch that has reached a model
+            // surface below it.
+            let rests_on_model = occupancy.get(&(layer - 1)).is_some_and(|obstacles| {
+                obstacles
+                    .iter()
+                    .any(|o| distance_to_expolygon(o, node.0, node.1) == 0.0)
+            });
+            assert!(
+                parents.contains_key(&(layer, index)) || rests_on_model,
+                "invariant 2: node {node:?} on layer {layer} neither descends \
+                 into a node on layer {} nor rests on the model",
+                layer - 1
+            );
+        }
+    }
+}
+
+/// Invariant 3 — attachment.
+///
+/// Every branch tip must meet the overhang it exists to support: the topmost
+/// planned nodes must lie on (or within tolerance of) the contact region taken
+/// from the `SupportGeometryView` outlines the fixture supplies.
+///
+/// Tolerance is half `tree_support_branch_distance` — the contact sampling
+/// pitch — so a tip may sit at most half a sample step outside the region.
+#[test]
+fn branch_tips_attach_to_the_contact_region() {
+    let (output, sg) = plan_overhang_fixture("attachment");
+    let nodes = layer_nodes(&output);
+    let contact_regions: Vec<ExPolygon> = sg
+        .entries
+        .iter()
+        .flat_map(|entry| entry.outlines.iter().cloned())
+        .collect();
+    assert!(
+        !contact_regions.is_empty(),
+        "fixture precondition: contact regions must be derivable from the \
+         SupportGeometryView outlines"
+    );
+
+    let &top_layer = nodes
+        .keys()
+        .max()
+        .expect("planner emitted no skeleton at all");
+    let tips = &nodes[&top_layer];
+    assert!(
+        !tips.is_empty(),
+        "invariant 3: the topmost support layer {top_layer} carries no nodes"
+    );
+
+    let tolerance = FIXTURE_BRANCH_DISTANCE * 0.5;
+    for (x, y) in tips {
+        let distance = contact_regions
+            .iter()
+            .map(|region| distance_to_expolygon(region, *x, *y))
+            .fold(f32::INFINITY, f32::min);
+        assert!(
+            distance <= tolerance,
+            "invariant 3: branch tip ({x},{y}) on layer {top_layer} sits \
+             {distance:.4}mm from the contact region, beyond the {tolerance}mm \
+             half-sample tolerance"
+        );
+    }
+}
+
+/// Invariant 4 — radius discipline.
+///
+/// Measured per layer as the distance from each printed role-region vertex to
+/// the nearest node on that layer. Every union-boundary vertex lies on some
+/// node's drawn cross-section, so this recovers that node's radius directly and
+/// is unaffected by neighbouring circles fusing into one outline.
+///
+/// The radius must stay inside the planner's own bounds — floored at
+/// `MIN_BRANCH_RADIUS` and capped by the canonical taper evaluated over the
+/// whole build height — and must shrink monotonically toward the tips.
+#[test]
+fn branch_radius_respects_bounds_and_tapers_toward_tips() {
+    let (output, _sg) = plan_overhang_fixture("radius");
+    let nodes = layer_nodes(&output);
+    let regions = layer_regions(&output);
+    assert!(
+        !regions.is_empty(),
+        "invariant 4: planner emitted no printed role regions"
+    );
+
+    let branch_radius = FIXTURE_BRANCH_DIAMETER * 0.5;
+    // Canonical `calc_branch_radius`: outside the tip cone the radius grows by
+    // tan(diameter_angle) per mm of distance to the tip. Evaluated over the
+    // full 11-layer stack this is the widest a branch may ever be here.
+    let stack_height_mm = FIXTURE_LAYER_COUNT as f32 * FIXTURE_LAYER_HEIGHT;
+    let taper_cap = branch_radius
+        + (stack_height_mm - branch_radius) * FIXTURE_DIAMETER_ANGLE_DEG.to_radians().tan();
+    // The drawn cross-section is `node_ellipse`, which stretches along the
+    // node's movement direction by up to `1 + move / (2 * radius)`. 10% covers
+    // that stretch at this fixture's `tan(45 deg) * 0.2mm` per-layer move, plus
+    // the circle's polygonal discretisation.
+    let radius_cap = taper_cap * 1.10;
+
+    let mut radius_by_layer: BTreeMap<i32, f32> = BTreeMap::new();
+    for (&layer, layer_region_list) in &regions {
+        let layer_node_list = nodes
+            .get(&layer)
+            .unwrap_or_else(|| panic!("layer {layer} has role regions but no skeleton"));
+        let mut min_radius = f32::INFINITY;
+        let mut max_radius = 0.0f32;
+        for region in layer_region_list {
+            for (x, y) in expolygon_vertices_mm(region) {
+                let radius = distance_to_nearest_node(layer_node_list, x, y);
+                min_radius = min_radius.min(radius);
+                max_radius = max_radius.max(radius);
+            }
+        }
+        assert!(
+            min_radius >= MIN_BRANCH_RADIUS_MM,
+            "invariant 4: layer {layer} draws a cross-section {min_radius:.4}mm \
+             from its node, below the {MIN_BRANCH_RADIUS_MM}mm minimum branch \
+             radius"
+        );
+        assert!(
+            max_radius <= radius_cap,
+            "invariant 4: layer {layer} draws a cross-section {max_radius:.4}mm \
+             from its node, above the {radius_cap:.4}mm taper cap for a \
+             {branch_radius}mm branch over a {stack_height_mm}mm stack"
+        );
+        radius_by_layer.insert(layer, max_radius);
+    }
+
+    // Monotone taper: the radius never grows on the way up. `1e-3` absorbs the
+    // spread between vertices of a single drawn ellipse.
+    let mut previous: Option<(i32, f32)> = None;
+    for (&layer, &radius) in &radius_by_layer {
+        if let Some((below, below_radius)) = previous {
+            assert!(
+                radius <= below_radius + 1e-3,
+                "invariant 4: radius grows toward the tip — layer {below} is \
+                 {below_radius:.4}mm but layer {layer} above it is {radius:.4}mm"
+            );
+        }
+        previous = Some((layer, radius));
+    }
+
+    // And the taper must actually happen: a constant-radius cylinder would
+    // satisfy the monotonicity check above vacuously.
+    let (&bottom, &bottom_radius) = radius_by_layer.first_key_value().expect("non-empty");
+    let (&top, &top_radius) = radius_by_layer.last_key_value().expect("non-empty");
+    assert!(
+        bottom_radius > top_radius,
+        "invariant 4: no taper at all — layer {bottom} is {bottom_radius:.4}mm \
+         and layer {top} is {top_radius:.4}mm"
+    );
+}
+
+/// Invariant 5 — merge-graph shape.
+///
+/// Branches merge downward and never split: each node descends into exactly one
+/// node on the layer below (single parent, unambiguously nearest), the
+/// resulting graph is acyclic, and the node population never grows going down.
+#[test]
+fn merge_graph_is_an_acyclic_single_parent_forest() {
+    let (output, _sg) = plan_overhang_fixture("merge-graph");
+    let nodes = layer_nodes(&output);
+    let parents = parent_map(&nodes);
+    let reach = parent_reach_mm();
+
+    // Single parent: the nearest node below must be unambiguous. A second
+    // candidate at (near) the same distance would make parentage arbitrary and
+    // the merge graph ill-defined.
+    let mut linked = 0usize;
+    for (&layer, layer_node_list) in &nodes {
+        for node in layer_node_list {
+            let Some((_, nearest, runner_up)) = nearest_below(&nodes, layer, *node) else {
+                continue;
+            };
+            if nearest > reach {
+                continue;
+            }
+            linked += 1;
+            assert!(
+                runner_up > nearest + 1e-3,
+                "invariant 5: node {node:?} on layer {layer} has two equally \
+                 near parents ({nearest:.4}mm and {runner_up:.4}mm) — parentage \
+                 is ambiguous"
+            );
+        }
+    }
+    assert!(
+        linked > 0,
+        "invariant 5: no node linked to a parent, so the single-parent check \
+         was vacuous"
+    );
+
+    // Acyclicity: every parent link strictly descends, and a chain cannot take
+    // more steps than the number of layers it started above the plate.
+    for (&layer, layer_node_list) in &nodes {
+        for (index, node) in layer_node_list.iter().enumerate() {
+            let mut current = (layer, index);
+            let mut steps = 0usize;
+            while let Some(&parent) = parents.get(&current) {
+                assert!(
+                    parent.0 < current.0,
+                    "invariant 5: parent link from layer {} to layer {} does \
+                     not descend — the merge graph has a cycle",
+                    current.0,
+                    parent.0
+                );
+                current = parent;
+                steps += 1;
+                assert!(
+                    steps <= layer as usize,
+                    "invariant 5: parent chain from node {node:?} on layer \
+                     {layer} exceeded {layer} steps — the merge graph has a cycle"
+                );
+            }
+        }
+    }
+
+    // Merging only: the branch population never grows on the way down.
+    let mut previous: Option<(i32, usize)> = None;
+    for (&layer, layer_node_list) in &nodes {
+        if let Some((below, below_count)) = previous {
+            assert!(
+                below_count >= layer_node_list.len(),
+                "invariant 5: layer {below} carries {below_count} nodes but \
+                 layer {layer} above it carries {} — branches split going down",
+                layer_node_list.len()
+            );
+        }
+        previous = Some((layer, layer_node_list.len()));
+    }
+}
+
+/// Invariant 6 — curvature bound.
+///
+/// Reconstructed branches must not kink: the maximum turn angle between
+/// consecutive segments of any tip-to-root chain stays within
+/// `MAX_TURN_ANGLE_DEG`, the same bound `smooth_nodes_tdd` measures the
+/// smoother against.
+#[test]
+fn branch_curvature_stays_within_the_turn_angle_bound() {
+    let (output, _sg) = plan_overhang_fixture("curvature");
+    let nodes = layer_nodes(&output);
+    let parents = parent_map(&nodes);
+
+    // A tip is a node that nothing on the layer above descends into.
+    let has_child: std::collections::HashSet<NodeId> = parents.values().copied().collect();
+
+    let z_of = |layer: i32| (layer as f32 + 1.0) * FIXTURE_LAYER_HEIGHT;
+    let mut chains_checked = 0usize;
+    for (&layer, layer_node_list) in &nodes {
+        for (index, node) in layer_node_list.iter().enumerate() {
+            if has_child.contains(&(layer, index)) {
+                continue;
+            }
+            let mut chain = vec![(node.0, node.1, z_of(layer))];
+            let mut current = (layer, index);
+            while let Some(&parent) = parents.get(&current) {
+                let (px, py) = nodes[&parent.0][parent.1];
+                chain.push((px, py, z_of(parent.0)));
+                current = parent;
+            }
+            if chain.len() < 3 {
+                continue;
+            }
+            chains_checked += 1;
+            let turn = max_turn_angle(&chain);
+            assert!(
+                turn <= MAX_TURN_ANGLE_DEG,
+                "invariant 6: branch from tip {node:?} on layer {layer} turns \
+                 {turn:.2} degrees between consecutive segments, above the \
+                 {MAX_TURN_ANGLE_DEG} degree bound"
+            );
+        }
+    }
+    assert!(
+        chains_checked > 0,
+        "invariant 6: no branch was long enough to measure curvature on, so \
+         the bound was never exercised"
+    );
+}
+
+/// Invariant 7 — determinism.
+///
+/// Two planner runs over the same fixture must produce identical sorted
+/// endpoint lists. This is the one property the deleted goldens genuinely
+/// proved, so it is kept — asserted between two live runs instead of against a
+/// frozen file.
+#[test]
+fn planner_output_is_deterministic_across_runs() {
+    let (first, _) = plan_overhang_fixture("determinism");
+    let (second, _) = plan_overhang_fixture("determinism");
+
+    let first_endpoints = skeleton_endpoints(&first);
+    let second_endpoints = skeleton_endpoints(&second);
+    assert!(
+        !first_endpoints.is_empty(),
+        "invariant 7: planner emitted no endpoints, so determinism is vacuous"
+    );
+    assert_eq!(
+        first_endpoints, second_endpoints,
+        "invariant 7: two runs over the same fixture produced different \
+         endpoint lists"
+    );
+    assert_eq!(
+        layer_regions(&first),
+        layer_regions(&second),
+        "invariant 7: two runs over the same fixture produced different printed \
+         geometry"
+    );
+}
+
+/// Invariant 8 — non-vacuous floor.
+///
+/// An empty planner satisfies every invariant above, so the suite needs a floor
+/// derived from the fixture rather than from the planner's own output.
+///
+/// The fixture presents one contact region: a 4x4mm downward-facing plate.
+/// Sampled at `tree_support_branch_distance = 1.0mm` it must yield at least one
+/// contact per corner, so at least **4** branch columns.
+///
+/// The plate underside sits at z = 1.8mm on a 0.2mm stack — layer 8. Canonical
+/// `generate_contact_points` places a contact one layer below the overhang
+/// (layer 7), and the tree default `support_top_z_distance_mm` of 0.2mm drops
+/// it one further (layer 6) — the values `top_z_distance_lowers_the_tree_contact_layer`
+/// pins. Each column then descends to the build plate at layer 0, so support
+/// must occupy at least **7** layers and produce at least **4 x 7 = 28**
+/// grounded node-layer segments.
+#[test]
+fn branch_count_meets_the_analytic_floor() {
+    let (output, _sg) = plan_overhang_fixture("floor");
+    let nodes = layer_nodes(&output);
+
+    // plate layer 8, minus one for "support is always one layer below the
+    // overhang", minus one more for the 0.2mm default top-z gap.
+    let contact_layer = fixture_plate_layer() as i32 - 2;
+    let min_layers = (contact_layer + 1) as usize;
+    let min_columns = 4usize;
+
+    assert!(
+        nodes.len() >= min_layers,
+        "invariant 8: support occupies {} layers, below the {min_layers} layers \
+         the fixture geometry requires (contact at layer {contact_layer}, \
+         descending to the build plate at layer 0)",
+        nodes.len()
+    );
+
+    let &top_layer = nodes.keys().max().expect("non-empty");
+    assert!(
+        top_layer >= contact_layer,
+        "invariant 8: topmost support layer {top_layer} is below the contact \
+         layer {contact_layer} the fixture's overhang seeds"
+    );
+
+    for (&layer, layer_node_list) in &nodes {
+        assert!(
+            layer_node_list.len() >= min_columns,
+            "invariant 8: layer {layer} carries {} branch columns, below the \
+             {min_columns} the 4x4mm contact region sampled at \
+             {FIXTURE_BRANCH_DISTANCE}mm must seed",
+            layer_node_list.len()
+        );
+    }
+
+    let grounded_segments: usize = nodes.values().map(|n| n.len()).sum();
+    assert!(
+        grounded_segments >= min_columns * min_layers,
+        "invariant 8: {grounded_segments} grounded node-layer segments, below \
+         the {} the fixture requires",
+        min_columns * min_layers
+    );
 }
 
 /// AC-N3: when the model occupies every destination a branch could move to, the
