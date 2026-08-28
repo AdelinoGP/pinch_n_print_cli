@@ -99,7 +99,7 @@ pub fn build_speed_sections(
 
     let sixth_speed = if config
         .get_bool("slowdown_for_curled_perimeters")
-        .unwrap_or(false)
+        .unwrap_or(true)
     {
         overhang_speed_or_ref("overhang_4_4_speed")
     } else {

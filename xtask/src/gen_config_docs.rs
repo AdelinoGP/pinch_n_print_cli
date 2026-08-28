@@ -7,8 +7,10 @@
 //!     `modules/core-modules/*/<name>.toml` `[config.schema.*]` table.
 //!   * **Host-registered per-role speeds** — read from `docs/config/host-keys.toml`
 //!     (which a slicer-runtime test locks to `FeedrateConfig::default()`).
-//!   * **Deviations from OrcaSlicer** — generated keys whose numeric default
-//!     differs from the matching key in `docs/ORCA_CONFIG_REFERENCE.md`.
+//!   * **Deviations from OrcaSlicer** — generated keys whose numeric *or
+//!     boolean* default differs from the matching key in
+//!     `docs/ORCA_CONFIG_REFERENCE.md`. Booleans compare as 1/0 against the
+//!     reference's `coBool` defaults, which are themselves written as 1/0.
 //!
 //! Each section lives between a `BEGIN GENERATED` / `END GENERATED` marker pair;
 //! prose outside the markers is preserved.
@@ -81,6 +83,18 @@ fn num_of(v: &toml::Value) -> Option<f64> {
     }
 }
 
+/// The comparable form of a *default* value.
+///
+/// Widens [`num_of`] with booleans (`true` = 1, `false` = 0) because
+/// `ORCA_CONFIG_REFERENCE.md` writes `coBool` defaults as `1`/`0`. Ranges keep
+/// using [`num_of`]: `min`/`max` are never boolean.
+fn default_num_of(v: &toml::Value) -> Option<f64> {
+    match v {
+        toml::Value::Boolean(b) => Some(if *b { 1.0 } else { 0.0 }),
+        _ => num_of(v),
+    }
+}
+
 fn fmt_range(min: Option<&toml::Value>, max: Option<&toml::Value>) -> String {
     match (min.and_then(num_of), max.and_then(num_of)) {
         (Some(lo), Some(hi)) => format!("[{}, {}]", fmt_float(lo), fmt_float(hi)),
@@ -135,7 +149,7 @@ fn module_rows(ws: &Path) -> Result<Vec<KeyRow>, String> {
                 .get("default")
                 .and_then(fmt_scalar)
                 .unwrap_or_else(|| "—".to_string());
-            let default_num = spec.get("default").and_then(num_of);
+            let default_num = spec.get("default").and_then(default_num_of);
             let range = fmt_range(spec.get("min"), spec.get("max"));
             let values = spec.get("values").and_then(|v| v.as_array()).map(|values| {
                 values
@@ -204,7 +218,7 @@ fn host_table_rows(val: &toml::Value, table: &str, owner: &str) -> Result<Vec<Ke
             key: key.clone(),
             ty: infer_type(default_v).to_string(),
             default: fmt_scalar(default_v).unwrap_or_else(|| "—".to_string()),
-            default_num: num_of(default_v),
+            default_num: default_num_of(default_v),
             range,
             values: None,
             owner: entry_owner,
@@ -485,5 +499,36 @@ mod tests {
         assert!(table.contains("top_shell_layers"));
         assert!(table.contains("`3`"));
         assert!(table.contains("`4.0`"));
+    }
+
+    /// Regression (ticket 100): boolean defaults were invisible to the
+    /// deviation gate because `num_of` returned `None` for them, so an
+    /// on-by-default Pinch key never reported against an off-by-default Orca
+    /// key. `default_num_of` maps `true`/`false` to 1/0 so they compare.
+    #[test]
+    fn deviations_flag_boolean_mismatch() {
+        assert_eq!(default_num_of(&toml::Value::Boolean(true)), Some(1.0));
+        assert_eq!(default_num_of(&toml::Value::Boolean(false)), Some(0.0));
+        assert_eq!(num_of(&toml::Value::Boolean(true)), None);
+
+        let rows = [KeyRow {
+            key: "enable_prime_tower".into(),
+            ty: "bool".into(),
+            default: "true".into(),
+            default_num: default_num_of(&toml::Value::Boolean(true)),
+            range: "—".into(),
+            values: None,
+            owner: "wipe-tower".into(),
+        }];
+        let refs: Vec<&KeyRow> = rows.iter().collect();
+        let mut orca = BTreeMap::new();
+        orca.insert("enable_prime_tower".to_string(), 0.0);
+        let table = render_deviations(&refs, &orca);
+        assert!(table.contains("enable_prime_tower"));
+
+        // ...and an agreeing boolean must not be reported.
+        let mut orca_agrees = BTreeMap::new();
+        orca_agrees.insert("enable_prime_tower".to_string(), 1.0);
+        assert!(!render_deviations(&refs, &orca_agrees).contains("enable_prime_tower"));
     }
 }

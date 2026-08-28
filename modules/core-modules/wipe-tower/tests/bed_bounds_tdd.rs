@@ -78,9 +78,9 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
 
 /// AC6 — tower geometry within config-supplied bed polygon (bed-containment half).
 ///
-/// Setup: `wipe_tower_enabled=true`, `bed_shape=[0,0, 250,0, 250,250, 0,250]`
+/// Setup: `enable_prime_tower=true`, `printable_area=[0,0, 250,0, 250,250, 0,250]`
 /// (250×250 mm bed), `wipe_tower_x=10.0`, `wipe_tower_y=10.0`,
-/// `wipe_tower_width=60.0`. When the wipe-tower module emits purge paths for
+/// `prime_tower_width=60.0`. When the wipe-tower module emits purge paths for
 /// the first layer, `run_finalization` must return `Ok`, at least one
 /// `WipeTower` entity must be produced, and all path points of every
 /// `WipeTower` entity must lie within `[0, 250] × [0, 250]`.
@@ -91,15 +91,15 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
 #[test]
 fn tower_geometry_within_config_bed_only() {
     let config = config_from_pairs(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
         ("wipe_tower_x", ConfigValue::Float(10.0)),
         ("wipe_tower_y", ConfigValue::Float(10.0)),
-        ("wipe_tower_width", ConfigValue::Float(60.0)),
-        ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
+        ("prime_volume", ConfigValue::Float(70.0)),
         ("line_width", ConfigValue::Float(0.4)),
         ("retract_length", ConfigValue::Float(2.0)),
         (
-            "bed_shape",
+            "printable_area",
             ConfigValue::List(vec![
                 ConfigValue::Float(0.0),
                 ConfigValue::Float(0.0),
@@ -163,4 +163,88 @@ fn tower_geometry_within_config_bed_only() {
     // Object-footprint non-intersection is deferred to a follow-up packet
     // (DEV-054, closed). When that lands, replace this comment with the
     // assertion and rename the test back to include "outside_objects".
+}
+
+/// Regression (ticket 100): an Orca 3MF plate serialises `printable_area` as
+/// point strings (`["0x0", "50x0", "50x50", "0x50"]`), not interleaved
+/// numbers. The old reader filtered every non-numeric entry out, so the
+/// polygon silently collapsed to nothing and the module fell back to its
+/// 250×250 mm default bed — a 60 mm tower at x=10 would then be *accepted* on
+/// a 50 mm bed.
+///
+/// Setup: 50×50 mm bed in Orca point-string form, `wipe_tower_x=10.0`,
+/// `prime_tower_width=60.0` — the tower spans x ∈ [10, 70], past the bed's
+/// 50 mm edge. `run_finalization` must return `Err`; an `Ok` means the point
+/// strings were dropped and the default bed was used instead.
+#[test]
+fn orca_point_string_bed_is_parsed_not_silently_defaulted() {
+    let config = config_from_pairs(&[
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("wipe_tower_x", ConfigValue::Float(10.0)),
+        ("wipe_tower_y", ConfigValue::Float(10.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
+        ("prime_volume", ConfigValue::Float(45.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        ("retract_length", ConfigValue::Float(2.0)),
+        (
+            "printable_area",
+            ConfigValue::List(vec![
+                ConfigValue::String("0x0".into()),
+                ConfigValue::String("50x0".into()),
+                ConfigValue::String("50x50".into()),
+                ConfigValue::String("0x50".into()),
+            ]),
+        ),
+    ]);
+
+    let tower = WipeTower::from_config(&config).expect("from_config must succeed");
+
+    let ir_layer = layer_with_tool_change();
+    let sdk_layers: Vec<LayerCollectionView> = vec![LayerCollectionView::new(ir_layer)];
+    let mut output = FinalizationOutputBuilder::new();
+
+    assert!(
+        tower
+            .run_finalization(&sdk_layers, &mut output, &config)
+            .is_err(),
+        "a 60 mm tower at x=10 must be rejected by the 50 mm Orca point-string bed; \
+         Ok means the point strings were dropped and the 250×250 default bed was used"
+    );
+}
+
+/// The same Orca point-string bed, sized so the tower *does* fit, must be
+/// accepted — the adapter widens what is understood, it does not reject.
+#[test]
+fn orca_point_string_bed_accepts_a_tower_that_fits() {
+    let config = config_from_pairs(&[
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("wipe_tower_x", ConfigValue::Float(10.0)),
+        ("wipe_tower_y", ConfigValue::Float(10.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
+        ("prime_volume", ConfigValue::Float(45.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        ("retract_length", ConfigValue::Float(2.0)),
+        (
+            "printable_area",
+            ConfigValue::List(vec![
+                ConfigValue::String("0x0".into()),
+                ConfigValue::String("250x0".into()),
+                ConfigValue::String("250x210".into()),
+                ConfigValue::String("0x210".into()),
+            ]),
+        ),
+    ]);
+
+    let tower = WipeTower::from_config(&config).expect("from_config must succeed");
+
+    let ir_layer = layer_with_tool_change();
+    let sdk_layers: Vec<LayerCollectionView> = vec![LayerCollectionView::new(ir_layer)];
+    let mut output = FinalizationOutputBuilder::new();
+
+    assert!(
+        tower
+            .run_finalization(&sdk_layers, &mut output, &config)
+            .is_ok(),
+        "a 60 mm tower at x=10 fits the 250×210 Orca plate and must be accepted"
+    );
 }

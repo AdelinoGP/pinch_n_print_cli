@@ -37,7 +37,7 @@ group   = "Speed"
 
 [config.schema.slowdown_for_curled_perimeters]
 type    = "bool"
-default = false
+default = true
 display = "Slowdown for Curled Perimeters"
 group   = "Speed"
 

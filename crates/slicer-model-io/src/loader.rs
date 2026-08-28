@@ -2987,7 +2987,7 @@ mod tests {
     /// key holding "1" does not arrive as an `Int`.
     #[test]
     fn zero_and_one_coerce_by_declared_key_type() {
-        for key in ["enable_support", "wipe_tower_enabled", "disable_m73"] {
+        for key in ["enable_support", "enable_prime_tower", "disable_m73"] {
             assert_eq!(
                 slicer_ir::classify_declared_key(key),
                 slicer_ir::DeclaredKeyKind::Boolean,
@@ -3035,17 +3035,18 @@ mod tests {
 
         // Keys this port does not declare keep the original heuristic — they
         // route to `extensions` untyped and never reach a typed extractor.
-        for key in ["enable_arc_fitting", "enable_prime_tower"] {
-            assert_eq!(
-                slicer_ir::classify_declared_key(key),
-                slicer_ir::DeclaredKeyKind::Undeclared
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "1"),
-                ConfigValue::Bool(true),
-                "{key} = \"1\""
-            );
-        }
+        // (`enable_prime_tower` used to sit here; ticket 100's rename made it a
+        // declared bool, so it moved to the declared-bool list above.)
+        let key = "enable_arc_fitting";
+        assert_eq!(
+            slicer_ir::classify_declared_key(key),
+            slicer_ir::DeclaredKeyKind::Undeclared
+        );
+        assert_eq!(
+            coerce_string_to_config_value(key, "1"),
+            ConfigValue::Bool(true),
+            "{key} = \"1\""
+        );
     }
 
     #[test]

@@ -22,8 +22,8 @@ pub use entity_id::LayerEntityIdGen;
 pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use resolved_config::{
-    classify_declared_key, is_declared_float_or_percent_key, ConfigResolutionError,
-    DeclaredKeyKind, ResolvedConfig,
+    classify_declared_key, is_declared_float_or_percent_key, parse_orca_point_string,
+    ConfigResolutionError, DeclaredKeyKind, ResolvedConfig,
 };
 pub use stage_io::{
     BlackboardError, BlackboardPrepassSlot, Diagnostic, DiagnosticSeverity, FinalizationError,

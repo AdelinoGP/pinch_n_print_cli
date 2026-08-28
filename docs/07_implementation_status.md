@@ -461,6 +461,7 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-154** (Open — 2026-08-24: filed by packet 238a, intentional representation divergence. Renumbered from the originally-filed DEV-148 during the 2026-08-28 merge of `origin/master` into `parity/support-features`: that ID was independently allocated on mainline by packet 234a.) — Support line width is key-based rather than flow-model based.
 - **DEV-156** (Open — 2026-08-27: alias + Warn implemented; organic engine port queued. Renumbered from the originally-filed DEV-150 during the 2026-08-28 merge of `origin/master` into `parity/support-features`: that ID was independently allocated on mainline by packet 234a.) — Organic tree engine not implemented; canonically-organic styles alias to the classic engine's Strong style.
 - **DEV-157** (Open — 2026-08-28: filed by packet `212-extra-perimeters-parity` as the surviving half of DEV-132; canonical dead-field status and the PnP per-region seam gap both verified.) — PnP models extra_perimeters as a global config key while canonical carries it per-Surface; carried forward from DEV-132 half (b) when packet 212-extra-perimete…
+- **DEV-158** (Open — 2026-08-28: default held at `false` in both modules; ordering defect measured and isolated by ticket 100, not yet fixed.) — precise_outer_wall stays off by default where canonical defaults it on, because turning it on reorders classic-perimeters' wall emission.
 <!-- END GENERATED: open-deviations -->
 
 

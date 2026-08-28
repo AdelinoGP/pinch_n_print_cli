@@ -193,7 +193,7 @@ impl LayerModule for ClassicPerimeters {
             },
             _ => WallSequence::InnerOuter,
         };
-        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(true);
+        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(false);
         // Packet 108: absolute turn-angle threshold (degrees) gating seam-candidate
         // emission to sharp corners only, instead of every outer-wall vertex.
         let seam_candidate_angle_threshold_deg = _config

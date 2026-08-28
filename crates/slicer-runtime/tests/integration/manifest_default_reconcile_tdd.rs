@@ -207,7 +207,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("top_bottom_infill_wall_overlap", Str("25%")),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
-    ("detect_thin_wall", Bool(true)),
+    ("detect_thin_wall", Bool(false)), // ticket 100: Orca coBool = 0
     ("seam_candidate_angle_threshold_deg", Float(30.0)),
     ("gap_infill_speed", Float(30.0)),
     ("filter_out_gap_fill", Float(0.5)),

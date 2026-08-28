@@ -1510,7 +1510,7 @@ impl PrepassModule for SupportPlanner {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("enable_support") {
             Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
+            _ => false,
         };
         let support_family = canonical_support_family(config);
         let branch_angle_deg = match config.get("tree_support_branch_angle") {
@@ -5701,9 +5701,7 @@ mod tests {
         };
         // Centres 1.0mm apart with radius 1.0mm: the discs overlap.
         let areas = vec![circle(0.0), circle(1.0)];
-        let roles = build_roles(
-            &[], &[], &[], &[], &areas, &[], &[], &[], 1.0, &[], 0, 0.4,
-        );
+        let roles = build_roles(&[], &[], &[], &[], &areas, &[], &[], &[], 1.0, &[], 0, 0.4);
         let body = &roles
             .iter()
             .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)

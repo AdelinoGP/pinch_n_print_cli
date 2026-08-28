@@ -77,7 +77,7 @@ impl PrepassModule for SupportPlanner {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("enable_support") {
             Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
+            _ => false,
         };
         let support_family = canonical_support_family(config);
         let support_interface_top_layers = match config.get("support_interface_top_layers") {

@@ -27,7 +27,7 @@ max-ir-schema     = "5.0.0"
 [config.schema]
 [config.schema.enable_support]
 type    = "bool"
-default = true
+default = false
 display = "Support Enabled"
 group   = "Support"
 

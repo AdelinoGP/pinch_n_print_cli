@@ -42,25 +42,55 @@ pub struct WipeTower {
     line_width: f32,
     enabled: bool,
     retract_length: f32,
-    bed_shape: Vec<(f32, f32)>,
+    printable_area: Vec<(f32, f32)>,
 }
 
 /// Parse a flat `[x0, y0, x1, y1, …]` float list into `(x, y)` vertex pairs.
 ///
 /// Returns `Err` if the list is empty, has odd length, or has fewer than 6
 /// values (i.e. fewer than 3 vertices — not a polygon).
-fn parse_bed_shape(raw: &[f64]) -> Result<Vec<(f32, f32)>, ModuleError> {
+/// Read a config key as a flat `f64` list, accepting both spellings of a bed
+/// polygon.
+///
+/// This port models `printable_area` as interleaved `[x0, y0, x1, y1, ...]`
+/// numbers, but an Orca 3MF plate serialises the same key as point strings
+/// (`["0x0", "250x0", "250x210", "0x210"]`), which expand to two entries each
+/// via `slicer_ir::parse_orca_point_string`. Entries in neither form are
+/// skipped, exactly as before — `parse_printable_area` is what judges whether
+/// what survived is a usable polygon.
+fn float_list_from_config(config: &ConfigView, key: &str) -> Option<Vec<f64>> {
+    let Some(ConfigValue::List(items)) = config.get(key) else {
+        return None;
+    };
+    let mut raw: Vec<f64> = Vec::with_capacity(items.len() * 2);
+    for v in items {
+        match v {
+            ConfigValue::Float(f) => raw.push(*f),
+            ConfigValue::Int(i) => raw.push(*i as f64),
+            ConfigValue::String(s) => {
+                if let Some((x, y)) = slicer_ir::parse_orca_point_string(s) {
+                    raw.push(x);
+                    raw.push(y);
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(raw)
+}
+
+fn parse_printable_area(raw: &[f64]) -> Result<Vec<(f32, f32)>, ModuleError> {
     if raw.is_empty() {
         return Err(ModuleError::fatal(
             2,
-            "bed_shape config is empty; expected at least 6 values [x0,y0,x1,y1,x2,y2]",
+            "printable_area config is empty; expected at least 6 values [x0,y0,x1,y1,x2,y2]",
         ));
     }
     if !raw.len().is_multiple_of(2) {
         return Err(ModuleError::fatal(
             2,
             format!(
-                "bed_shape has odd length {}; must be even (interleaved x,y pairs)",
+                "printable_area has odd length {}; must be even (interleaved x,y pairs)",
                 raw.len()
             ),
         ));
@@ -69,7 +99,7 @@ fn parse_bed_shape(raw: &[f64]) -> Result<Vec<(f32, f32)>, ModuleError> {
         return Err(ModuleError::fatal(
             2,
             format!(
-                "bed_shape has only {} values; need at least 6 for a 3-vertex polygon",
+                "printable_area has only {} values; need at least 6 for a 3-vertex polygon",
                 raw.len()
             ),
         ));
@@ -111,7 +141,7 @@ fn point_in_polygon(px: f32, py: f32, polygon: &[(f32, f32)]) -> bool {
 impl WipeTower {
     /// Construct from a config view, reading wipe tower settings with defaults.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("wipe_tower_enabled") {
+        let enabled = match config.get("enable_prime_tower") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
@@ -126,18 +156,19 @@ impl WipeTower {
             _ => 0.0,
         };
 
-        let tower_width = match config.get("wipe_tower_width") {
+        let tower_width = match config.get("prime_tower_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 60.0,
         };
 
-        let purge_volume = match config.get("wipe_tower_purge_volume") {
+        let purge_volume = match config.get("prime_volume") {
             Some(ConfigValue::Float(v)) => *v as f32,
-            // Match the manifest default (wipe-tower.toml: default 10.0, max 50.0).
+            // Match the manifest default (wipe-tower.toml: default 45.0, max 50.0),
+            // which ticket 100 aligned to OrcaSlicer's `prime_volume` default.
             // The previous 70.0 fallback exceeded the schema max and is reachable
             // now that multi-tool prints auto-enable the wipe tower without
             // necessarily supplying an explicit purge volume.
-            _ => 10.0,
+            _ => 45.0,
         };
 
         let line_width = match config.get("line_width") {
@@ -150,27 +181,15 @@ impl WipeTower {
             _ => 2.0,
         };
 
-        // Parse bed_shape from config (interleaved [x0,y0,x1,y1,...]).
+        // Parse printable_area from config (interleaved [x0,y0,x1,y1,...] or
+        // Orca point strings — see `float_list_from_config`).
         // Default to a 250×250 mm rectangle if not provided.
-        let bed_shape = match config.get("bed_shape") {
-            Some(ConfigValue::List(items)) => {
-                let raw: Vec<f64> = items
-                    .iter()
-                    .filter_map(|v| match v {
-                        ConfigValue::Float(f) => Some(*f),
-                        ConfigValue::Int(i) => Some(*i as f64),
-                        _ => None,
-                    })
-                    .collect();
-                if raw.len() >= 6 && raw.len().is_multiple_of(2) {
-                    parse_bed_shape(&raw).unwrap_or_else(|_| {
-                        vec![(0.0, 0.0), (250.0, 0.0), (250.0, 250.0), (0.0, 250.0)]
-                    })
-                } else {
-                    vec![(0.0, 0.0), (250.0, 0.0), (250.0, 250.0), (0.0, 250.0)]
-                }
+        let default_bed = || vec![(0.0, 0.0), (250.0, 0.0), (250.0, 250.0), (0.0, 250.0)];
+        let printable_area = match float_list_from_config(config, "printable_area") {
+            Some(raw) if raw.len() >= 6 && raw.len().is_multiple_of(2) => {
+                parse_printable_area(&raw).unwrap_or_else(|_| default_bed())
             }
-            _ => vec![(0.0, 0.0), (250.0, 0.0), (250.0, 250.0), (0.0, 250.0)],
+            _ => default_bed(),
         };
 
         Ok(Self {
@@ -181,7 +200,7 @@ impl WipeTower {
             line_width,
             enabled,
             retract_length,
-            bed_shape,
+            printable_area,
         })
     }
 
@@ -469,20 +488,10 @@ impl FinalizationModule for WipeTower {
             return Ok(());
         }
 
-        // Parse bed_shape from config for bounds checking.
-        let bed_polygon: Vec<(f32, f32)> = match config.get("bed_shape") {
-            Some(ConfigValue::List(items)) => {
-                let raw: Vec<f64> = items
-                    .iter()
-                    .filter_map(|v| match v {
-                        ConfigValue::Float(f) => Some(*f),
-                        ConfigValue::Int(i) => Some(*i as f64),
-                        _ => None,
-                    })
-                    .collect();
-                parse_bed_shape(&raw)?
-            }
-            _ => self.bed_shape.clone(),
+        // Parse printable_area from config for bounds checking.
+        let bed_polygon: Vec<(f32, f32)> = match float_list_from_config(config, "printable_area") {
+            Some(raw) => parse_printable_area(&raw)?,
+            None => self.printable_area.clone(),
         };
 
         // Validate all 4 corners of the tower bounding rectangle against the bed polygon.
@@ -580,15 +589,15 @@ mod tests {
     /// Build a ConfigView with basic wipe-tower defaults.
     fn default_config() -> ConfigView {
         config_from_pairs(&[
-            ("wipe_tower_enabled", ConfigValue::Bool(true)),
+            ("enable_prime_tower", ConfigValue::Bool(true)),
             ("wipe_tower_x", ConfigValue::Float(10.0)),
             ("wipe_tower_y", ConfigValue::Float(10.0)),
-            ("wipe_tower_width", ConfigValue::Float(60.0)),
-            ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
+            ("prime_tower_width", ConfigValue::Float(60.0)),
+            ("prime_volume", ConfigValue::Float(70.0)),
             ("line_width", ConfigValue::Float(0.4)),
             ("retract_length", ConfigValue::Float(2.0)),
             (
-                "bed_shape",
+                "printable_area",
                 ConfigValue::List(vec![
                     ConfigValue::Float(0.0),
                     ConfigValue::Float(0.0),
@@ -707,20 +716,20 @@ mod tests {
     }
 
     /// NC4 — tower placed outside config-supplied bed returns a fatal ModuleError
-    /// naming the violating coordinate. Setup: bed_shape=[0,0, 100,0, 100,100, 0,100]
+    /// naming the violating coordinate. Setup: printable_area=[0,0, 100,0, 100,100, 0,100]
     /// (100×100 mm), wipe_tower_x=150.0, wipe_tower_y=150.0 (outside bed).
     #[test]
     fn tower_outside_bed_returns_fatal() {
         let config = config_from_pairs(&[
-            ("wipe_tower_enabled", ConfigValue::Bool(true)),
+            ("enable_prime_tower", ConfigValue::Bool(true)),
             ("wipe_tower_x", ConfigValue::Float(150.0)),
             ("wipe_tower_y", ConfigValue::Float(150.0)),
-            ("wipe_tower_width", ConfigValue::Float(60.0)),
-            ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
+            ("prime_tower_width", ConfigValue::Float(60.0)),
+            ("prime_volume", ConfigValue::Float(70.0)),
             ("line_width", ConfigValue::Float(0.4)),
             ("retract_length", ConfigValue::Float(2.0)),
             (
-                "bed_shape",
+                "printable_area",
                 ConfigValue::List(vec![
                     ConfigValue::Float(0.0),
                     ConfigValue::Float(0.0),

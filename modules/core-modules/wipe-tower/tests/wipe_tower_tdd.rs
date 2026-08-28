@@ -52,21 +52,21 @@ fn empty_config() -> ConfigView {
 
 fn enabled_config() -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    fields.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     ConfigView::from_map(fields)
 }
 
 fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    fields.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(x as f64));
     fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(y as f64));
     fields.insert(
-        "wipe_tower_width".to_string(),
+        "prime_tower_width".to_string(),
         ConfigValue::Float(width as f64),
     );
     fields.insert(
-        "wipe_tower_purge_volume".to_string(),
+        "prime_volume".to_string(),
         ConfigValue::Float(purge_vol as f64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_w as f64));
@@ -82,12 +82,12 @@ fn from_config_defaults() {
     assert!((wt.tower_x() - 0.0).abs() < 0.001);
     assert!((wt.tower_y() - 0.0).abs() < 0.001);
     assert!((wt.tower_width() - 60.0).abs() < 0.001);
-    // Default purge volume is the manifest default (10.0); the previous 70.0
-    // fallback exceeded the schema max and was lowered in commit 6973f5c1
-    // (`fix(parity): close 4 OrcaSlicer parity gaps`). This assertion was left
-    // stale by that change and is corrected here to match the documented source
-    // default (`wipe-tower/src/lib.rs` `from_config` → `_ => 10.0`).
-    assert!((wt.purge_volume() - 10.0).abs() < 0.001);
+    // Default purge volume is the manifest default (45.0), which ticket 100
+    // aligned to OrcaSlicer's `prime_volume` default after the rename exposed
+    // the divergence. It was 10.0 before that (itself a correction of a 70.0
+    // fallback that exceeded the schema max, commit 6973f5c1). Source of truth:
+    // `wipe-tower/src/lib.rs` `from_config` → `_ => 45.0`.
+    assert!((wt.purge_volume() - 45.0).abs() < 0.001);
 }
 
 #[test]

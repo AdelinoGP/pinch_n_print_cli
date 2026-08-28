@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 06
+Blocked by: 06, 106
 Map: ../map.md
 
 ## Question

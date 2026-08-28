@@ -382,7 +382,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     // in `layer.tool_changes`; the layer-boundary one here is
                     // emitted via a separate path). See packet 58 tool-rotation
                     // scheduling contract follow-up (i).
-                    if self.resolved_config.wipe_tower_enabled {
+                    if self.resolved_config.enable_prime_tower {
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).
                             length: self.retract_length_for_tool(current_tool),
@@ -662,9 +662,9 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     // module has not emitted purge geometry, and the bare ToolChange would
                     // produce bad output (NC1).
                     //
-                    // Guard is ONLY active when wipe_tower_enabled=true. Single-material
-                    // prints (wipe_tower_enabled=false, the default) skip the check entirely.
-                    if self.resolved_config.wipe_tower_enabled {
+                    // Guard is ONLY active when enable_prime_tower=true. Single-material
+                    // prints (enable_prime_tower=false, the default) skip the check entirely.
+                    if self.resolved_config.enable_prime_tower {
                         // Heuristic: verify the wipe-tower module inserted at least one
                         // ExtrusionRole::WipeTower entity in this layer. After cross-layer
                         // tool rotation (apply_cross_layer_tool_rotation), tool_change
@@ -690,7 +690,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         // doesn't smear on travel. Until the SDK exposes a way to
                         // push a TravelRetract from a finalization-stage module, the
                         // host emitter owns this retract synthesis. Gated on
-                        // wipe_tower_enabled so single-material prints are untouched.
+                        // enable_prime_tower so single-material prints are untouched.
                         // (See packet 58 tool-rotation scheduling contract follow-up (i).)
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).

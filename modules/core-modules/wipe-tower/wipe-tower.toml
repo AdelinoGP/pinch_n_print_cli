@@ -25,9 +25,9 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.wipe_tower_enabled]
+[config.schema.enable_prime_tower]
 type    = "bool"
-default = true
+default = false
 display = "Wipe Tower Enabled"
 group   = "Wipe Tower"
 
@@ -47,7 +47,7 @@ max     = 300.0
 display = "Wipe Tower Y"
 group   = "Wipe Tower"
 
-[config.schema.wipe_tower_width]
+[config.schema.prime_tower_width]
 type    = "float"
 default = 60.0
 min     = 1.0
@@ -55,9 +55,9 @@ max     = 100.0
 display = "Wipe Tower Width"
 group   = "Wipe Tower"
 
-[config.schema.wipe_tower_purge_volume]
+[config.schema.prime_volume]
 type    = "float"
-default = 10.0
+default = 45.0
 min     = 1.0
 max     = 50.0
 display = "Wipe Tower Purge Volume"
@@ -71,7 +71,7 @@ max     = 2.0
 display = "Line Width"
 group   = "Wipe Tower"
 
-[config.schema.bed_shape]
+[config.schema.printable_area]
 type     = "float-list"
 required = true
 display  = "Bed Shape"

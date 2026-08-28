@@ -359,12 +359,12 @@ fn footprint_extent_mm(
 }
 
 /// The printer bed's axis-aligned extent `(width_mm, depth_mm)`, derived from
-/// the resolved `bed_shape` polygon (interleaved `[x0, y0, x1, y1, ...]` mm).
+/// the resolved `printable_area` polygon (interleaved `[x0, y0, x1, y1, ...]` mm).
 fn bed_extent_mm(config: &slicer_ir::ResolvedConfig) -> (f64, f64) {
-    let pts = &config.bed_shape;
+    let pts = &config.printable_area;
     assert!(
         pts.len() >= 6 && pts.len().is_multiple_of(2),
-        "bed_shape must be at least 3 interleaved points; got {pts:?}"
+        "printable_area must be at least 3 interleaved points; got {pts:?}"
     );
     let xs: Vec<f64> = pts.iter().step_by(2).copied().collect();
     let ys: Vec<f64> = pts.iter().skip(1).step_by(2).copied().collect();
@@ -376,7 +376,7 @@ fn bed_extent_mm(config: &slicer_ir::ResolvedConfig) -> (f64, f64) {
     let (w, d) = (span(&xs), span(&ys));
     assert!(
         w.is_finite() && d.is_finite() && w > 0.0 && d > 0.0,
-        "bed_shape encloses no area; got {pts:?}"
+        "printable_area encloses no area; got {pts:?}"
     );
     (w, d)
 }

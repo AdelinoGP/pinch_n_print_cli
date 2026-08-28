@@ -23,15 +23,27 @@ off-map, after.
   Ticket 01 measured it: wrong on 66 of 574 FFF keys. **Never size anything off
   that column** — use ticket 01's asset, or re-derive.
 - **Pinch 'n Print renamed Orca's keys — now being standardised away.**
-  Ticket 07's ruling: **standardise to Orca's names**, not document. The
-  mechanical rename workstream is tickets **99–107** (26 keys: 22 exact rows +
-  3 duplicate collapses + `ironing_spacing_mm`); it **gates the queue** — P01
-  (ticket 08) is blocked by all nine, and sessions take frontier tickets in
-  order. `03-asset-scoped-gap.md` remains the historical adjudication; each
-  workstream ticket updates its own rows there. The 34 Pinch-specific keys
-  and the `raft_layers` 1→3 split (a strict superset — not a gap) stay
-  untouched. The two narrowed ironing enums were reclassified as **gaps**:
-  P14 +`ironing_type`, P15 +`support_ironing` (see Decisions so far).
+  Ticket 07's ruling: **standardise to Orca's names**, not document. The rename
+  workstream is tickets **99–107** (26 keys: 22 exact rows + 3 duplicate
+  collapses + `ironing_spacing_mm`); it **gates the queue by owner** — each
+  packet ticket is blocked by the rename tickets that touch *its* owner (wired
+  in ticket 100 after the original wiring was found to gate nothing: 09–98 were
+  blocked only by the already-resolved 06). 20 packets touch no renamed owner
+  and carry no gate. `03-asset-scoped-gap.md` remains the historical
+  adjudication; each workstream ticket updates its own rows there. The 34
+  Pinch-specific keys and the `raft_layers` 1→3 split (a strict superset — not
+  a gap) stay untouched. The two narrowed ironing enums were reclassified as
+  **gaps**: P14 +`ironing_type`, P15 +`support_ironing` (see Decisions so far).
+- **A rename is not automatically mechanical — check the *value* format too.**
+  Ticket 100 found `bed_shape` → `printable_area` changes how the value is
+  spelled, not just the key: Orca writes the bed as point strings
+  (`["0x0","250x0",…]`), this port as an interleaved float list. Adopting the
+  name alone broke 3MF ingestion. Before closing a rename, resolve a real Orca
+  3MF through it, not just the unit tests.
+- **The deviation gate compares booleans as of ticket 100.** It did not before
+  (`num_of` returned `None` for `toml::Value::Boolean`), so any pre-100 claim
+  that a boolean default "matches Orca" was never actually checked. Re-verify
+  rather than trust those.
 - **The scoped target is 407 queue keys** (03's 414 minus 04's 11 rulings plus
   07's 2 reclassified ironing keys plus 99's 2 fan-scale keys) — per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
@@ -133,8 +145,31 @@ off-map, after.
   (0–100) while Pinch's were raw 0–255, and `fan_min_speed` was declared but
   never read → reclassified as gap work, **P01 +`fan_max_speed`/`fan_min_speed`
   (Tier B)** — queue is now 407 keys, 358 in packets (18 A / 67 B / 6 C).
-  Known pre-existing condition reported: `cargo xtask build-guests --check`
-  reports all 30+ guests stale even on a clean tree (unrelated to renames).
+  Known pre-existing condition reported: guests appearing stale on a clean
+  tree (unrelated to renames). **Explained by ticket 100:** the parity
+  harness calls an artifact stale when the newest source mtime exceeds the
+  artifact mtime, so any operation that rewrites sources without changing
+  them (`git stash push`/`pop`, a branch switch) trips it while
+  `build-guests --check`, which uses a different criterion, still passes.
+  Rebuilding the guests clears it.
+- [100 — Rename wipe-tower keys to Orca names](issues/100-rename-wipe-tower-keys.md)
+  — four renames merged, but **the rename was not mechanical**.
+  `bed_shape` → `printable_area` is a *value-format* divergence: Orca
+  serialises the bed as point strings (`["0x0","250x0",…]`), this port as an
+  interleaved float list, so adopting the name alone broke 3MF ingestion
+  (`expected Float value, got String`). Resolved in-ticket with an input
+  adapter (`slicer_ir::parse_orca_point_string`), not a representation change.
+  Defaults aligned to Orca: `prime_volume` 10.0 → **45.0**,
+  `enable_prime_tower` true → **false**. The rename also exposed that
+  `gen-config-docs`' deviation gate **never compared any boolean default in the
+  tree** (`num_of` returned `None` for bools); fixing it surfaced 8 bool
+  deviations — 6 aligned (`enable_support` ×4 owners → false,
+  `detect_thin_wall` → false, `slowdown_for_curled_perimeters` → true), and
+  `precise_outer_wall` held at `false` as **DEV-158** because default-on
+  reorders classic-perimeters' walls (a defect, not a spacing difference).
+  Map wiring corrected: the queue gate the Notes claimed did not exist, so 67
+  packet tickets were re-wired to gate on the rename tickets touching their
+  owner; **P01 (ticket 08) is now the unblocked queue head**.
 
 ## Not yet specified
 

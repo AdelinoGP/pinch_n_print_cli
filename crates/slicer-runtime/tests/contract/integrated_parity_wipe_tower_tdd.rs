@@ -83,14 +83,14 @@ fn layers() -> Vec<LayerCollectionIR> {
 fn integrated_parity_wipe_tower() {
     let config = Arc::new(ConfigView::from_map(
         [
-            ("wipe_tower_enabled".into(), ConfigValue::Bool(true)),
+            ("enable_prime_tower".into(), ConfigValue::Bool(true)),
             ("wipe_tower_x".into(), ConfigValue::Float(10.0)),
             ("wipe_tower_y".into(), ConfigValue::Float(10.0)),
-            ("wipe_tower_width".into(), ConfigValue::Float(60.0)),
-            ("wipe_tower_purge_volume".into(), ConfigValue::Float(10.0)),
+            ("prime_tower_width".into(), ConfigValue::Float(60.0)),
+            ("prime_volume".into(), ConfigValue::Float(10.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
             (
-                "bed_shape".into(),
+                "printable_area".into(),
                 ConfigValue::List(vec![
                     ConfigValue::Float(0.0),
                     ConfigValue::Float(0.0),

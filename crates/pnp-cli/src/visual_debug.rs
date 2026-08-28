@@ -154,7 +154,7 @@ pub enum FrameMode {
     /// supports.
     #[default]
     Model,
-    /// The printer's `bed_shape` polygon extent, plus the same fixed margin.
+    /// The printer's `printable_area` polygon extent, plus the same fixed margin.
     /// Frames every render to the whole plate, so a small part renders small
     /// — useful for judging placement, not for inspecting a feature.
     ///
@@ -465,7 +465,7 @@ pub enum VisualDebugError {
     /// or an inapplicable layer (model/module load failure, unavailable tap
     /// source, or a fatal executor error) (packet 158).
     CaptureFailed(String),
-    /// `frame: "plate"` was requested but the resolved `bed_shape` does not
+    /// `frame: "plate"` was requested but the resolved `printable_area` does not
     /// describe a usable bed polygon. Only reachable after config resolution,
     /// so it cannot be a `ValidationError` (which runs before any config is
     /// loaded). Carries the specific defect.
@@ -1036,7 +1036,7 @@ fn mesh_xy_bounds(mesh: &slicer_ir::MeshIR) -> Option<slicer_runtime::ViewportBo
 /// The printer bed's XY extent in millimeters, margin included, for
 /// `frame: "plate"`.
 ///
-/// `bed_shape` is an interleaved `[x0, y0, x1, y1, ...]` polygon in mm
+/// `printable_area` is an interleaved `[x0, y0, x1, y1, ...]` polygon in mm
 /// (`slicer-ir/src/resolved_config.rs`), so this takes its bounding box —
 /// correct for the rectangular beds the default describes, and a sane
 /// enclosing frame for a delta's circular bed.
@@ -1047,10 +1047,10 @@ fn mesh_xy_bounds(mesh: &slicer_ir::MeshIR) -> Option<slicer_runtime::ViewportBo
 fn plate_xy_bounds(
     config: &slicer_ir::ResolvedConfig,
 ) -> Result<slicer_runtime::ViewportBoundsMm, VisualDebugError> {
-    let pts = &config.bed_shape;
+    let pts = &config.printable_area;
     if pts.len() < 6 || !pts.len().is_multiple_of(2) {
         return Err(VisualDebugError::InvalidBedShape(format!(
-            "bed_shape must be at least 3 points as interleaved [x0, y0, x1, y1, ...] mm; \
+            "printable_area must be at least 3 points as interleaved [x0, y0, x1, y1, ...] mm; \
              got {} value(s)",
             pts.len()
         )));
@@ -1060,7 +1060,7 @@ fn plate_xy_bounds(
     for xy in pts.chunks_exact(2) {
         if !xy[0].is_finite() || !xy[1].is_finite() {
             return Err(VisualDebugError::InvalidBedShape(
-                "bed_shape has a non-finite coordinate".into(),
+                "printable_area has a non-finite coordinate".into(),
             ));
         }
         min_x = min_x.min(xy[0]);
@@ -1070,7 +1070,7 @@ fn plate_xy_bounds(
     }
     if max_x <= min_x || max_y <= min_y {
         return Err(VisualDebugError::InvalidBedShape(format!(
-            "bed_shape encloses no area; got x [{min_x}..{max_x}], y [{min_y}..{max_y}]"
+            "printable_area encloses no area; got x [{min_x}..{max_x}], y [{min_y}..{max_y}]"
         )));
     }
     Ok(slicer_runtime::ViewportBoundsMm {
@@ -2268,9 +2268,9 @@ pub fn run_cli(
 mod framing_tests {
     use super::*;
 
-    fn config_with_bed(bed_shape: Vec<f64>) -> slicer_ir::ResolvedConfig {
+    fn config_with_bed(printable_area: Vec<f64>) -> slicer_ir::ResolvedConfig {
         slicer_ir::ResolvedConfig {
-            bed_shape,
+            printable_area,
             ..Default::default()
         }
     }
@@ -2299,11 +2299,11 @@ mod framing_tests {
         assert_eq!((b.min_y, b.max_y), (-m, 200.0 + m));
     }
 
-    /// A bed_shape that cannot describe a plate fails closed. Falling back to
+    /// A printable_area that cannot describe a plate fails closed. Falling back to
     /// model framing would silently hand back an image that is not the one the
     /// request asked for.
     #[test]
-    fn unusable_bed_shapes_are_rejected_rather_than_silently_ignored() {
+    fn unusable_printable_areas_are_rejected_rather_than_silently_ignored() {
         for (name, pts) in [
             ("empty", vec![]),
             (
@@ -2318,7 +2318,7 @@ mod framing_tests {
             ("non-finite", vec![0.0, 0.0, f64::NAN, 0.0, 10.0, 10.0]),
         ] {
             let err = plate_xy_bounds(&config_with_bed(pts))
-                .expect_err(&format!("{name} bed_shape must be rejected"));
+                .expect_err(&format!("{name} printable_area must be rejected"));
             assert!(
                 matches!(err, VisualDebugError::InvalidBedShape(_)),
                 "{name}: expected InvalidBedShape, got {err:?}"

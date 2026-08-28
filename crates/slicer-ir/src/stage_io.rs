@@ -217,7 +217,7 @@ pub enum PostpassError {
         message: String,
     },
     /// A ToolChange was emitted without surrounding retract/prime entities while
-    /// `wipe_tower_enabled` is true.
+    /// `enable_prime_tower` is true.
     MissingToolchangePurge {
         /// Layer index (global) where the bare ToolChange was detected.
         layer_index: u32,

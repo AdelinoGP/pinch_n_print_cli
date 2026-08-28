@@ -641,11 +641,31 @@ pub fn extract_string_list(
     }
 }
 
+/// Parse an OrcaSlicer polygon point string (`"250x210"`) into `(x, y)`.
+///
+/// OrcaSlicer serialises `printable_area` (and its sibling polygon keys) as a
+/// list of `"<x>x<y>"` strings rather than interleaved numbers — a 3MF plate
+/// carries `["0x0", "250x0", "250x210", "0x210"]`. This port models the bed as
+/// an interleaved `[x0, y0, x1, y1, ...]` float list, so the two coordinates a
+/// point string carries expand into two list entries.
+///
+/// Returns `None` for anything that is not exactly two `x`-separated finite
+/// floats, so a plain numeric string (`"1.24"`) still falls through to the
+/// ordinary scalar path.
+pub fn parse_orca_point_string(s: &str) -> Option<(f64, f64)> {
+    let (x, y) = s.trim().split_once('x')?;
+    let x = x.trim().parse::<f64>().ok()?;
+    let y = y.trim().parse::<f64>().ok()?;
+    (x.is_finite() && y.is_finite()).then_some((x, y))
+}
+
 /// Extract a `Vec<f64>` from a `List(Vec<ConfigValue::Float>)` `ConfigValue`.
 ///
-/// Each element must be a `Float` (or `Int`, coerced to `f64`). Returns
-/// `TypeMismatch` if the outer value is not a `List`, or if any element
-/// is neither `Float` nor `Int`.
+/// Each element must be a `Float` (or `Int`, coerced to `f64`), a numeric
+/// `String` (Orca's `coFloats` serialisation), or an Orca polygon point string
+/// (`"250x210"`, which contributes *two* entries — see
+/// [`parse_orca_point_string`]). Returns `TypeMismatch` if any element is none
+/// of those.
 #[doc(hidden)]
 pub fn extract_float_list(
     key: &str,
@@ -679,15 +699,40 @@ pub fn extract_float_list(
         }
     }
 
+    // An Orca polygon point string (`"250x210"`) carries *two* coordinates, so
+    // it expands into two entries rather than one. See
+    // [`parse_orca_point_string`].
+    fn push_element(
+        key: &str,
+        v: &ConfigValue,
+        out: &mut Vec<f64>,
+    ) -> Result<(), ConfigResolutionError> {
+        if let ConfigValue::String(s) = v {
+            if let Some((x, y)) = parse_orca_point_string(s) {
+                out.push(x);
+                out.push(y);
+                return Ok(());
+            }
+        }
+        out.push(element(key, v)?);
+        Ok(())
+    }
+
     match value {
-        ConfigValue::List(items) => items
-            .iter()
-            .enumerate()
-            .map(|(i, v)| element(&format!("{key}[{i}]"), v))
-            .collect(),
+        ConfigValue::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for (i, v) in items.iter().enumerate() {
+                push_element(&format!("{key}[{i}]"), v, &mut out)?;
+            }
+            Ok(out)
+        }
         // A bare scalar is accepted as a one-element list so hand-written
         // CLI/JSON configs (and single-filament setups) keep working.
-        other => element(key, other).map(|v| vec![v]),
+        other => {
+            let mut out = Vec::with_capacity(1);
+            push_element(key, other, &mut out)?;
+            Ok(out)
+        }
     }
 }
 
@@ -1413,12 +1458,12 @@ declare_resolved_config! {
     // Printer bed / tool-change (module-contributed)
     /// Printer bed polygon as [x0, y0, x1, y1, ...] in mm.
     /// Default: 250 × 250 mm square.
-    cli "bed_shape" bed_shape: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
+    cli "printable_area" printable_area: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
     /// Retract length in mm before tool change.
     cli "retract_length" retract_length: f32 = 2.0 => extract_float;
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
-    cli "wipe_tower_enabled" wipe_tower_enabled: bool = false => extract_bool;
+    cli "enable_prime_tower" enable_prime_tower: bool = false => extract_bool;
 
     // MMU segmented region (Phase 5 — width limiting / interlocking)
     /// Maximum width of MMU segmented regions in mm. `0.0` means no limit.
@@ -1525,14 +1570,14 @@ impl PartialEq for ResolvedConfig {
             && self.smoothificator_target_height.map(|f| f.to_bits())
                 == other.smoothificator_target_height.map(|f| f.to_bits())
             && self.smoothificator_adaptive == other.smoothificator_adaptive
-            && self.bed_shape.len() == other.bed_shape.len()
+            && self.printable_area.len() == other.printable_area.len()
             && self
-                .bed_shape
+                .printable_area
                 .iter()
-                .zip(other.bed_shape.iter())
+                .zip(other.printable_area.iter())
                 .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.retract_length.to_bits() == other.retract_length.to_bits()
-            && self.wipe_tower_enabled == other.wipe_tower_enabled
+            && self.enable_prime_tower == other.enable_prime_tower
             && self.mmu_segmented_region_max_width.to_bits()
                 == other.mmu_segmented_region_max_width.to_bits()
             && self.mmu_segmented_region_interlocking_depth.to_bits()
@@ -1634,12 +1679,12 @@ impl std::hash::Hash for ResolvedConfig {
             .map(|f| f.to_bits())
             .hash(state);
         self.smoothificator_adaptive.hash(state);
-        self.bed_shape.len().hash(state);
-        for f in &self.bed_shape {
+        self.printable_area.len().hash(state);
+        for f in &self.printable_area {
             f.to_bits().hash(state);
         }
         self.retract_length.to_bits().hash(state);
-        self.wipe_tower_enabled.hash(state);
+        self.enable_prime_tower.hash(state);
         self.mmu_segmented_region_max_width.to_bits().hash(state);
         self.mmu_segmented_region_interlocking_depth
             .to_bits()
@@ -1796,6 +1841,79 @@ mod machine_limit_config_tests {
             cfg.apply_cli_key("machine_max_jerk_e", &ConfigValue::Bool(true))
                 .is_err(),
             "a bool is not a machine limit"
+        );
+    }
+}
+
+#[cfg(test)]
+mod orca_point_string_tests {
+    use super::*;
+
+    /// Regression (ticket 100): renaming `bed_shape` to Orca's
+    /// `printable_area` adopted a key whose upstream serialisation is a list of
+    /// `"<x>x<y>"` point strings, not interleaved numbers. Before the adapter,
+    /// resolving an Orca 3MF plate failed with
+    /// `config key 'printable_area[0]': expected Float value, got String`.
+    #[test]
+    fn orca_plate_polygon_expands_to_interleaved_floats() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::String("0x0".into()),
+            ConfigValue::String("250x0".into()),
+            ConfigValue::String("250x210".into()),
+            ConfigValue::String("0x210".into()),
+        ]);
+        assert_eq!(
+            extract_float_list("printable_area", &value).expect("Orca plate polygon must resolve"),
+            vec![0.0, 0.0, 250.0, 0.0, 250.0, 210.0, 0.0, 210.0]
+        );
+    }
+
+    /// The interleaved float form this port writes itself must keep resolving
+    /// unchanged — the adapter widens the input, it does not replace it.
+    #[test]
+    fn interleaved_float_polygon_is_unchanged() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(0.0),
+            ConfigValue::Int(250),
+            ConfigValue::Float(0.0),
+        ]);
+        assert_eq!(
+            extract_float_list("printable_area", &value).expect("interleaved floats must resolve"),
+            vec![0.0, 0.0, 250.0, 0.0]
+        );
+    }
+
+    /// A plain numeric string is *not* a point string and must still resolve to
+    /// exactly one entry — Orca serialises `coFloats` lists that way
+    /// (`filament_density = ["1.24", "1.24"]`).
+    #[test]
+    fn plain_numeric_strings_still_resolve_one_per_entry() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::String("1.24".into()),
+            ConfigValue::String("1.24".into()),
+        ]);
+        assert_eq!(
+            extract_float_list("filament_density", &value).expect("coFloats list must resolve"),
+            vec![1.24, 1.24]
+        );
+    }
+
+    /// Anything that is not two `x`-separated finite floats is not a point
+    /// string, so it falls through to the scalar path and its error.
+    #[test]
+    fn non_point_strings_are_rejected_not_silently_dropped() {
+        assert_eq!(parse_orca_point_string("250x210"), Some((250.0, 210.0)));
+        assert_eq!(parse_orca_point_string(" 250 x 210 "), Some((250.0, 210.0)));
+        assert_eq!(parse_orca_point_string("250"), None);
+        assert_eq!(parse_orca_point_string("250x210x5"), None);
+        assert_eq!(parse_orca_point_string("axb"), None);
+        assert_eq!(parse_orca_point_string("NaNx0"), None);
+
+        let value = ConfigValue::List(vec![ConfigValue::String("not-a-point".into())]);
+        assert!(
+            extract_float_list("printable_area", &value).is_err(),
+            "an unparseable entry must surface as a type mismatch"
         );
     }
 }

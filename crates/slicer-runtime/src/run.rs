@@ -613,11 +613,11 @@ pub fn run_slice_with_collector(
     // on a prime/wipe tower automatically for multi-tool prints so colour
     // transitions are purged off-part. Mirror that: if the model paints >= 2
     // distinct tool indices and the user did NOT explicitly set
-    // `wipe_tower_enabled`, enable it. Single-colour / unpainted prints keep the
+    // `enable_prime_tower`, enable it. Single-colour / unpainted prints keep the
     // default (false) and are unaffected. (The wipe-tower module is fully
     // implemented and wired; it was simply gated off by the resolved-config
     // default of `false` with no auto-enable signal.)
-    if !config_source.contains_key("wipe_tower_enabled") {
+    if !config_source.contains_key("enable_prime_tower") {
         use std::collections::BTreeSet;
         let mut tools: BTreeSet<u32> = BTreeSet::new();
         for object in &mesh_ir.objects {
@@ -632,7 +632,7 @@ pub fn run_slice_with_collector(
             }
         }
         if tools.len() >= 2 {
-            config_source.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+            config_source.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
         }
     }
 
@@ -1095,7 +1095,7 @@ pub struct PrepassContext {
     /// (the same value `run_slice` passes to prepass).
     ///
     /// Exposed for printer-level keys a caller needs but no stage output
-    /// carries — `bed_shape` for visual-debug's `frame: "plate"` viewport
+    /// carries — `printable_area` for visual-debug's `frame: "plate"` viewport
     /// being the first. Per-object overlays are irrelevant to those keys: the
     /// bed is a property of the printer, not of any object on it.
     pub default_resolved_config: Arc<slicer_ir::ResolvedConfig>,

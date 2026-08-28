@@ -147,7 +147,7 @@ geometry, or it would stop meaning "the plate" as soon as a part sat near an
 edge. Both sources support it, reading the bed from whichever definition that
 source has:
 
-- **model**: the resolved `bed_shape` config key.
+- **model**: the resolved `printable_area` config key.
 - **gcode**: the `printable_area` comment in the G-code's own config block
   (e.g. OrcaSlicer emits `; printable_area = 0x0,220x0,220x200,0x200`).
 

@@ -3,6 +3,7 @@
 //! AC-5 (ADR-0056): support-planner must produce structurally equivalent
 //! SupportPlanIR through native and real wasm dispatch paths.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -44,7 +45,14 @@ fn support_plan(output: &PrepassStageOutput) -> &slicer_ir::SupportPlanIR {
 
 #[test]
 fn integrated_parity_support_planner_native_matches_wasm() {
-    let config = Arc::new(ConfigView::new());
+    // `enable_support` must be set explicitly: ticket 100 aligned its default
+    // to OrcaSlicer's (supports off unless asked for), so an empty ConfigView
+    // now yields an empty plan on both sides and the parity comparison would
+    // be vacuous — the same trap the `support_type` comment below describes.
+    let config = Arc::new(ConfigView::from_map(HashMap::from([(
+        "enable_support".to_string(),
+        slicer_ir::ConfigValue::Bool(true),
+    )])));
     let stage = StageId::from("PrePass::SupportGeometry");
     // `com.core.tree-support-planner` skips every candidate whose resolved
     // family is not "tree". The default wedge sets no `support_type`, so its

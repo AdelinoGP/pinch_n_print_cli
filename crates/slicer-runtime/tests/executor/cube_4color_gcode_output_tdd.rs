@@ -1448,7 +1448,7 @@ fn cube_4color_gapfill_does_not_flood_bisector_seams() {
 /// Gap #3 regression: a multi-tool (MMU) model must auto-enable the wipe tower.
 ///
 /// OrcaSlicer enables a prime/wipe tower automatically for multi-tool prints.
-/// Ours defaulted `wipe_tower_enabled = false` with no auto-enable, so painted
+/// Ours defaulted `enable_prime_tower = false` with no auto-enable, so painted
 /// models emitted zero `Prime tower` blocks. `run_slice` now auto-enables it when
 /// the model paints ≥2 distinct tool indices (this fixture has 4). Sliced here
 /// with no config, so only the auto-enable path can produce the tower.
@@ -1459,7 +1459,7 @@ fn cube_4color_auto_enables_wipe_tower_for_mmu() {
     assert!(
         prime > 0,
         "multi-tool model must auto-enable the wipe tower (got {prime} Prime tower blocks). \
-         run_slice should inject wipe_tower_enabled=true when >= 2 tool indices are painted."
+         run_slice should inject enable_prime_tower=true when >= 2 tool indices are painted."
     );
 }
 

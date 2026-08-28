@@ -99,7 +99,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
-| `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
+| `detect_thin_wall` | bool | `false` | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
@@ -180,7 +180,7 @@ is the authoritative catalog of their defaults and ranges.
 | `overhang_2_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `overhang_3_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
 | `overhang_4_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
-| `slowdown_for_curled_perimeters` | bool | `false` | — | `overhang-classifier-default` |
+| `slowdown_for_curled_perimeters` | bool | `true` | — | `overhang-classifier-default` |
 | `thin_wall_speed` | float | `30.0` | — | `overhang-classifier-default` |
 | `close_fan_the_first_x_layers` | int | `1` | >= 0.0 | `part-cooling` |
 | `enable_overhang_bridge_fan` | bool | `true` | — | `part-cooling` |
@@ -236,7 +236,7 @@ is the authoritative catalog of their defaults and ranges.
 | `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
-| `enable_support` | bool | `true` | — | `traditional-support` |
+| `enable_support` | bool | `false` | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | `traditional-support` |
@@ -245,7 +245,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
 | `support_style` | string | `"default"` | — | `traditional-support` |
-| `enable_support` | bool | `true` | — | `traditional-support-planner` |
+| `enable_support` | bool | `false` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
@@ -256,7 +256,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
 | `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
 | `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
-| `enable_support` | bool | `true` | — | `tree-support` |
+| `enable_support` | bool | `false` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | `tree-support` |
 | `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | `tree-support` |
@@ -265,7 +265,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
-| `enable_support` | bool | `true` | — | `tree-support-planner` |
+| `enable_support` | bool | `false` | — | `tree-support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
 | `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |
@@ -305,12 +305,12 @@ is the authoritative catalog of their defaults and ranges.
 | `wave_overhang_pattern` | string | `"smart"` | — | `wave-overhangs` |
 | `wave_overhang_perimeter_overlap` | float | `0.1` | [0.0, 5.0] | `wave-overhangs` |
 | `wave_overhang_print_speed` | float | `2.0` | [0.1, 300.0] | `wave-overhangs` |
-| `bed_shape` | float-list | `—` | — | `wipe-tower` |
+| `enable_prime_tower` | bool | `false` | — | `wipe-tower` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `wipe-tower` |
+| `prime_tower_width` | float | `60.0` | [1.0, 100.0] | `wipe-tower` |
+| `prime_volume` | float | `45.0` | [1.0, 50.0] | `wipe-tower` |
+| `printable_area` | float-list | `—` | — | `wipe-tower` |
 | `retract_length` | float | `2.0` | [0.0, 20.0] | `wipe-tower` |
-| `wipe_tower_enabled` | bool | `true` | — | `wipe-tower` |
-| `wipe_tower_purge_volume` | float | `10.0` | [1.0, 50.0] | `wipe-tower` |
-| `wipe_tower_width` | float | `60.0` | [1.0, 100.0] | `wipe-tower` |
 | `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 | `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
@@ -449,7 +449,7 @@ authoritative pointer to the consumer.
 
 ## Deviations from OrcaSlicer (generated)
 
-Generated keys whose numeric default differs from the matching key in
+Generated keys whose numeric or boolean default differs from the matching key in
 `docs/ORCA_CONFIG_REFERENCE.md` (the upstream snapshot). Everything else matches
 upstream or has no upstream equivalent.
 
@@ -465,6 +465,8 @@ upstream or has no upstream equivalent.
 | `ironing_speed` | `support-surface-ironing` | `30.0` | `20.0` |
 | `nozzle_temperature_initial_layer` | `machine-gcode-emit` | `215` | `200.0` |
 | `outer_wall_speed` | `classic-perimeters` | `30.0` | `60.0` |
+| `precise_outer_wall` | `arachne-perimeters` | `false` | `1.0` |
+| `precise_outer_wall` | `classic-perimeters` | `false` | `1.0` |
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
 | `sparse_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |

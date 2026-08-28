@@ -67,10 +67,10 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `z_hop` | `travel_z_hop` | `path-optimization-default` | exact |
 | `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact |
 | `wall_loops` | `wall_count` | `classic-perimeters` | exact |
-| `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) |
-| `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact |
-| `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact |
-| `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact |
+| `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) — **renamed in ticket 100** |
+| `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact — **renamed in ticket 100**; default deviation surfaced: Pinch `10.0` vs Orca `45.0` (see 100) |
+| `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact — **renamed in ticket 100**; the rename also makes Orca 3MF `enable_prime_tower` a *declared* key, so it now reaches the typed extractor instead of `extensions` |
+| `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact — **renamed in ticket 100**; defaults match Orca (60.0), no deviation |
 | `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) |
 | `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) |
 | `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact |

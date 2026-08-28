@@ -547,7 +547,7 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("wipe_tower_no_sparse_layers", "0"),
     ("wipe_tower_x", "15"),
     ("wipe_tower_y", "220"),
-    ("wipe_tower_width", "60"),
+    ("prime_tower_width", "60"),
     ("ooze_prevention", "0"),
     ("gap_fill_target", "nowhere"),
     ("extra_perimeters", "0"),

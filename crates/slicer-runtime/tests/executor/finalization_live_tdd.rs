@@ -324,7 +324,7 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
 /// AC-4 (wipe-tower): The live host finalization dispatch merges WipeTower entity
 /// pushes from `WipeTower::run_finalization()` into the target layer.
 ///
-/// Uses the real `wipe-tower.wasm` artifact with `wipe_tower_enabled=true` and
+/// Uses the real `wipe-tower.wasm` artifact with `enable_prime_tower=true` and
 /// a layer containing a `ToolChange`. After dispatch the layer must contain at
 /// least one `ExtrusionRole::WipeTower` entity, proving that `run_finalization()`
 /// â€" not the legacy `process()` path â€" is the source of those entities.
@@ -335,12 +335,9 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     let component = load_wipe_tower(&engine);
 
     let mut config_map = std::collections::HashMap::new();
-    config_map.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
-    config_map.insert(
-        "wipe_tower_purge_volume".to_string(),
-        ConfigValue::Float(70.0),
-    );
-    config_map.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
+    config_map.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
+    config_map.insert("prime_volume".to_string(), ConfigValue::Float(70.0));
+    config_map.insert("prime_tower_width".to_string(), ConfigValue::Float(60.0));
     config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     let config = ConfigView::from_map(config_map);
 

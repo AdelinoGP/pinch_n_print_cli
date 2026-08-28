@@ -144,7 +144,7 @@ pub fn run_pipeline_capturing_perimeters(
     {
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
     }
-    if !config_source.contains_key("wipe_tower_enabled") {
+    if !config_source.contains_key("enable_prime_tower") {
         use std::collections::BTreeSet;
         let mut tools = BTreeSet::new();
         for object in &mesh.objects {
@@ -159,7 +159,7 @@ pub fn run_pipeline_capturing_perimeters(
             }
         }
         if tools.len() >= 2 {
-            config_source.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+            config_source.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
         }
     }
 

@@ -119,7 +119,7 @@ group   = "Walls"
 
 [config.schema.detect_thin_wall]
 type    = "bool"
-default = true
+default = false
 display = "Detect thin walls via medial-axis cascade"
 group   = "Walls"
 
