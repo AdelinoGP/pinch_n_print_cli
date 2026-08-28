@@ -2402,6 +2402,8 @@ pub struct OrderedEntityView {
     /// Resolved tool/extruder index of the entity (first-class selector since
     /// the region_id↔tool split; the guest reads this, not `region_key.region_id`).
     pub tool_index: u32,
+    /// Optional stable ordering lock carried by the extrusion path.
+    pub order_lock: Option<u64>,
     /// Region key of the entity at `original_index`.
     pub region_key: slicer_ir::RegionKey,
     /// Extrusion role of the entity's path.
@@ -2448,6 +2450,7 @@ pub fn project_ordered_entities_from(
                 start_point,
                 end_point,
                 point_count: entity.path.points.len() as u32,
+                order_lock: entity.path.order_lock,
             }
         })
         .collect()

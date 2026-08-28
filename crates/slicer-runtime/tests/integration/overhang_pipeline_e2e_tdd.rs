@@ -448,7 +448,8 @@ fn overhang_pipeline_full_propagation() {
     // exactly as `classic-perimeters::emit_walls` does in production.
     let bands = surface_classification
         .overhang_quartile_polygons
-        .get(&1)
+        .get("ramp")
+        .and_then(|by_layer| by_layer.get(&1))
         .cloned()
         .unwrap_or_default();
     let upper_wall = real_wall_entity(1, (5.0, 0.0, 15.0, 10.0), 1.5, &bands);
@@ -486,6 +487,7 @@ fn no_overhang_case() {
     let has_any_bands = surface_classification
         .overhang_quartile_polygons
         .values()
+        .flat_map(|by_layer| by_layer.values())
         .any(|bands| !bands.is_empty());
     assert!(
         !has_any_bands,
@@ -497,7 +499,8 @@ fn no_overhang_case() {
     // output fed the real (empty) bands for this layer, not mocked.
     let bands = surface_classification
         .overhang_quartile_polygons
-        .get(&1)
+        .get("cube")
+        .and_then(|by_layer| by_layer.get(&1))
         .cloned()
         .unwrap_or_default();
     let wall = real_wall_entity(1, (0.0, 0.0, 10.0, 10.0), 1.5, &bands);

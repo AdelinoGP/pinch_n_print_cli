@@ -41,6 +41,7 @@ integrated-top-surface-ironing = ["slicer-integrated-modules/top-surface-ironing
 integrated-traditional-support = ["slicer-integrated-modules/traditional-support"]
 integrated-tree-support = ["slicer-integrated-modules/tree-support"]
 integrated-wipe-tower = ["slicer-integrated-modules/wipe-tower"]
+integrated-wave-overhangs = ["slicer-integrated-modules/wave-overhangs"]
 
 [dependencies]
 ctrlc = "3"

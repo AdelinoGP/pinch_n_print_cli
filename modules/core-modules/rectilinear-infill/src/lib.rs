@@ -18,17 +18,15 @@
 //! Rectilinear sparse infill generator module.
 //!
 //! Implements `LayerModule::run_infill` for the `Layer::Infill` stage.
-//! Generates parallel scan-line fill patterns with per-layer angle alternation.
-//!
-//! # Speed normalization
-//!
-//! Speed is normalized via `speed_factor = configured_speed / BASE_SPEED` where
-//! `BASE_SPEED = 50.0`.
+//! Generates parallel scan-line fill patterns at the configured angle.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_core::flow::{resolve_role_width, RoleWidthContext};
+use slicer_core::flow::{
+    bridging_flow, canonical_bridging_flow, line_width_to_spacing, resolve_role_width,
+    RoleWidthContext,
+};
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
@@ -37,9 +35,6 @@ use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
-
-/// Default base speed used for normalizing speed factors (mm/s).
-const BASE_SPEED: f32 = 50.0;
 
 /// Solid shell polygons are emitted at full density, independently of sparse
 /// infill density.
@@ -54,12 +49,35 @@ pub struct RectilinearInfill {
     density: f32,
     /// Base infill angle in degrees.
     base_angle: f32,
-    /// Infill print speed in mm/s.
-    infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
     /// Global role-specific width inputs used for solid paths.
     width_context: RoleWidthContext,
+    /// Bridge line density, expressed as a fraction of full density.
+    bridge_density: f32,
+    /// Bridge extrusion speed in millimeters per second.
+    bridge_speed: f32,
+    /// Bridge flow ratio.
+    bridge_flow_ratio: f32,
+    /// Whether bridge paths use the round-thread flow model.
+    thick_bridges: bool,
+    /// Internal bridge density, expressed as a fraction of full density.
+    internal_bridge_density: f32,
+    /// Internal bridge extrusion speed in millimeters per second.
+    internal_bridge_speed: f32,
+    /// Internal bridge flow ratio.
+    internal_bridge_flow_ratio: f32,
+    /// Whether internal bridge paths use the round-thread flow model.
+    thick_internal_bridges: bool,
+    /// Role-specific speeds retained for module configuration compatibility.
+    top_surface_speed: f32,
+    internal_solid_infill_speed: f32,
+    sparse_infill_speed: f32,
+    /// Owned internal-bridge controls. The angle and extra-layer controls are
+    /// parsed here; the post-process seam currently consumes neither channel.
+    dont_filter_internal_bridges: bool,
+    enable_extra_bridge_layer: bool,
+    internal_bridge_angle: f32,
     /// Per-layer scan-line shift step (mm). Alternates sign each layer
     /// to interleave, not stack. Default 0.0 (no shift).
     infill_shift_step: f32,
@@ -81,7 +99,13 @@ impl LayerModule for RectilinearInfill {
         let infill_speed = match config.get("infill_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
+            _ => 60.0,
+        };
+
+        let speed_value = |key: &str, default: f32| match config.get(key) {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => default,
         };
 
         let width_value = |key: &str| match config.get(key) {
@@ -109,6 +133,46 @@ impl LayerModule for RectilinearInfill {
         let line_width =
             resolve_role_width(ExtrusionRole::SparseInfill, false, false, &width_context);
 
+        let bridge_density = config
+            .get_abs_value("bridge_density", 1.0)
+            .map(|d| d as f32)
+            .unwrap_or(1.0);
+        let bridge_speed = match config.get("bridge_speed") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => 25.0,
+        };
+        let bridge_flow_ratio = config
+            .get_float("bridge_flow")
+            .map(|flow| flow as f32)
+            .unwrap_or(1.0);
+        let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
+
+        let internal_bridge_density = config
+            .get_abs_value("internal_bridge_density", 1.0)
+            .map(|density| density as f32)
+            .unwrap_or(1.0);
+        let internal_bridge_speed = config
+            .get_abs_value("internal_bridge_speed", f64::from(bridge_speed))
+            .map(|speed| speed as f32)
+            .unwrap_or(bridge_speed * 1.5);
+        let internal_bridge_flow_ratio = config
+            .get_float("internal_bridge_flow")
+            .map(|flow| flow as f32)
+            .unwrap_or(1.0);
+        let thick_internal_bridges = config.get_bool("thick_internal_bridges").unwrap_or(true);
+
+        let top_surface_speed = speed_value("top_surface_speed", 60.0);
+        let internal_solid_infill_speed = speed_value("internal_solid_infill_speed", 60.0);
+        let sparse_infill_speed = speed_value("sparse_infill_speed", infill_speed);
+        let dont_filter_internal_bridges = config
+            .get_bool("dont_filter_internal_bridges")
+            .unwrap_or(false);
+        let enable_extra_bridge_layer = config
+            .get_bool("enable_extra_bridge_layer")
+            .unwrap_or(false);
+        let internal_bridge_angle = speed_value("internal_bridge_angle", 0.0);
+
         let infill_shift_step = match config.get("infill_shift_step") {
             Some(ConfigValue::Float(s)) => *s as f32,
             _ => 0.0,
@@ -117,9 +181,22 @@ impl LayerModule for RectilinearInfill {
         Ok(Self {
             density,
             base_angle,
-            infill_speed,
             line_width,
             width_context,
+            bridge_density,
+            bridge_speed,
+            bridge_flow_ratio,
+            thick_bridges,
+            internal_bridge_density,
+            internal_bridge_speed,
+            internal_bridge_flow_ratio,
+            thick_internal_bridges,
+            top_surface_speed,
+            internal_solid_infill_speed,
+            sparse_infill_speed,
+            dont_filter_internal_bridges,
+            enable_extra_bridge_layer,
+            internal_bridge_angle,
             infill_shift_step,
         })
     }
@@ -132,19 +209,29 @@ impl LayerModule for RectilinearInfill {
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        // Compute angle: base + 90 degree alternation per layer
-        let layer_rotation = if layer_index.is_multiple_of(2) {
-            0.0_f64
-        } else {
-            90.0_f64
-        };
-        let angle_deg = self.base_angle as f64 + layer_rotation;
+        // Rectilinear direction is constant across layers; only the optional
+        // scan-line shift alternates.
+        let angle_deg = self.base_angle as f64;
         let angle_rad = angle_deg.to_radians();
 
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
 
-        let speed_factor = self.infill_speed / BASE_SPEED;
+        // Feedrate is resolved by the host from each emitted role. Do not
+        // couple sparse, solid, and bridge paths through one scalar.
+        let speed_factor = 1.0;
+        // These settings are intentionally owned by the runtime seam: the WIT
+        // infill output has no bridge-postprocess control interface. The host
+        // receives the same resolved ConfigView and applies angle/filter/flow;
+        // extra-layer remains parse-only until a neighboring-layer API exists.
+        let _host_bridge_settings = (
+            self.top_surface_speed,
+            self.internal_solid_infill_speed,
+            self.sparse_infill_speed,
+            self.dont_filter_internal_bridges,
+            self.enable_extra_bridge_layer,
+            self.internal_bridge_angle,
+        );
 
         // Per-layer pattern shift: alternates sign each layer so scan lines
         // interleave rather than stack. OrcaSlicer's raw `pattern_shift` is
@@ -188,12 +275,13 @@ impl LayerModule for RectilinearInfill {
                 "line_width",
                 self.width_context.line_width,
             );
+            region_width_context.bridge_line_width = slicer_sdk::config_resolution::resolve_float(
+                region,
+                "bridge_line_width",
+                self.width_context.bridge_line_width,
+            );
 
-            // Zero sparse density only disables the sparse grid; solid shells
-            // still emit below at full density. `scan_expolygon` treats a
-            // non-positive spacing as "emit nothing", which keeps the bridge
-            // block's HEAD behaviour of skipping when no sparse grid exists.
-            let line_spacing = if region_density > 0.0 {
+            let sparse_spacing = if region_density > 0.0 {
                 slicer_ir::mm_to_units(region_line_width / region_density)
             } else {
                 0
@@ -201,18 +289,19 @@ impl LayerModule for RectilinearInfill {
 
             // SparseInfill over the host-partitioned sparse-only polygon.
             let sparse = region.sparse_infill_area();
-            if !sparse.is_empty()
-                && line_spacing > 0
+            if sparse_spacing > 0
+                && !sparse.is_empty()
                 && region.should_emit(ExtrusionRole::SparseInfill)
             {
                 for expoly in sparse {
                     let paths = scan_expolygon(
                         expoly,
-                        line_spacing,
+                        sparse_spacing,
                         std_cos_a,
                         std_sin_a,
                         z,
                         speed_factor,
+                        1.0,
                         &ExtrusionRole::SparseInfill,
                         region_line_width,
                         false,
@@ -245,6 +334,7 @@ impl LayerModule for RectilinearInfill {
                         std_sin_a,
                         z,
                         speed_factor,
+                        1.0,
                         &role,
                         solid_line_width,
                         true,
@@ -279,6 +369,7 @@ impl LayerModule for RectilinearInfill {
                         std_sin_a,
                         z,
                         speed_factor,
+                        1.0,
                         &role,
                         solid_line_width,
                         true,
@@ -293,19 +384,141 @@ impl LayerModule for RectilinearInfill {
             // BridgeInfill over bridge_areas at the region's bridge orientation.
             let bridge = region.bridge_areas();
             if !bridge.is_empty() && region.should_emit(ExtrusionRole::BridgeInfill) {
+                let is_internal_bridge = region.is_internal_bridge();
+                let bridge_role = if is_internal_bridge {
+                    ExtrusionRole::InternalBridgeInfill
+                } else {
+                    ExtrusionRole::BridgeInfill
+                };
                 let deg = region.bridge_orientation_deg() as f64;
                 let rad = deg.to_radians();
                 let (bridge_cos_a, bridge_sin_a) = (rad.cos(), rad.sin());
+                let bridge_width = resolve_role_width(
+                    ExtrusionRole::BridgeInfill,
+                    layer_index == 0,
+                    true,
+                    &region_width_context,
+                );
+                let layer_height = region.effective_layer_height();
+                let bridge_flow_ratio = slicer_sdk::config_resolution::resolve_float(
+                    region,
+                    if is_internal_bridge {
+                        "internal_bridge_flow"
+                    } else {
+                        "bridge_flow"
+                    },
+                    if is_internal_bridge {
+                        self.internal_bridge_flow_ratio
+                    } else {
+                        self.bridge_flow_ratio
+                    },
+                );
+                let thick_bridges = region
+                    .config()
+                    .and_then(|config| {
+                        config.get_bool(if is_internal_bridge {
+                            "thick_internal_bridges"
+                        } else {
+                            "thick_bridges"
+                        })
+                    })
+                    .unwrap_or(if is_internal_bridge {
+                        self.thick_internal_bridges
+                    } else {
+                        self.thick_bridges
+                    });
+                let bridge_spacing_mm = if thick_bridges {
+                    canonical_bridging_flow(
+                        region_width_context.bridge_line_width,
+                        bridge_flow_ratio,
+                        region_width_context.nozzle_diameter,
+                    )
+                    .spacing_mm
+                } else {
+                    line_width_to_spacing(bridge_width, layer_height).unwrap_or(bridge_width)
+                };
+                let bridge_density = slicer_sdk::config_resolution::resolve_float(
+                    region,
+                    if is_internal_bridge {
+                        "internal_bridge_density"
+                    } else {
+                        "bridge_density"
+                    },
+                    if is_internal_bridge {
+                        self.internal_bridge_density
+                    } else {
+                        self.bridge_density
+                    },
+                );
+                let bridge_density = region
+                    .config()
+                    .and_then(|config| {
+                        config.get_abs_value(
+                            if is_internal_bridge {
+                                "internal_bridge_density"
+                            } else {
+                                "bridge_density"
+                            },
+                            1.0,
+                        )
+                    })
+                    .map(|density| density as f32)
+                    .unwrap_or(bridge_density);
+                let bridge_spacing = if bridge_density > 0.0 {
+                    slicer_ir::mm_to_units(bridge_spacing_mm / bridge_density)
+                } else {
+                    0
+                };
+                let bridge_speed = if is_internal_bridge {
+                    region
+                        .config()
+                        .and_then(|config| {
+                            config.get_abs_value("internal_bridge_speed", self.bridge_speed as f64)
+                        })
+                        .map(|speed| speed as f32)
+                        .unwrap_or(self.internal_bridge_speed)
+                } else {
+                    slicer_sdk::config_resolution::resolve_float(
+                        region,
+                        "bridge_speed",
+                        self.bridge_speed,
+                    )
+                };
+                // The G-code emitter resolves the role's base speed; this
+                // scalar carries per-region speed overrides into that role.
+                let configured_base_speed = if is_internal_bridge {
+                    self.internal_bridge_speed
+                } else {
+                    self.bridge_speed
+                };
+                let bridge_speed_factor = if configured_base_speed > 0.0 {
+                    bridge_speed / configured_base_speed
+                } else {
+                    1.0
+                };
+                let thread_base_width = if region_width_context.bridge_line_width > 0.0 {
+                    bridge_width
+                } else {
+                    region_width_context.nozzle_diameter
+                };
+                let bridge_flow_factor = bridging_flow(
+                    bridge_flow_ratio,
+                    thick_bridges,
+                    thread_base_width,
+                    bridge_width,
+                    layer_height,
+                );
                 for expoly in bridge {
                     let paths = scan_expolygon(
                         expoly,
-                        line_spacing,
+                        bridge_spacing,
                         bridge_cos_a,
                         bridge_sin_a,
                         z,
-                        speed_factor,
-                        &ExtrusionRole::BridgeInfill,
-                        region_line_width,
+                        bridge_speed_factor,
+                        bridge_flow_factor,
+                        &bridge_role,
+                        bridge_width,
                         false,
                         x_shift_units,
                     );
@@ -316,7 +529,6 @@ impl LayerModule for RectilinearInfill {
             }
         }
 
-        let _ = angle_rad; // angle_rad retained for fixture readability; no longer used
         Ok(())
     }
 }
@@ -374,6 +586,7 @@ fn scan_expolygon(
     sin_a: f64,
     z: f32,
     speed_factor: f32,
+    flow_factor: f32,
     role: &ExtrusionRole,
     line_width: f32,
     adjust_for_solid: bool,
@@ -500,7 +713,7 @@ fn scan_expolygon(
                 y: slicer_ir::units_to_mm(sy + refpt_y),
                 z,
                 width: line_width,
-                flow_factor: 1.0,
+                flow_factor,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
@@ -510,7 +723,7 @@ fn scan_expolygon(
                 y: slicer_ir::units_to_mm(ey + refpt_y),
                 z,
                 width: line_width,
-                flow_factor: 1.0,
+                flow_factor,
                 overhang_quartile: None,
                 dist_to_top_mm: 0.0,
                 overhang_distance_mm: None,
@@ -521,6 +734,7 @@ fn scan_expolygon(
                 role: role.clone(),
                 speed_factor,
                 tool_index: None,
+                order_lock: None,
             });
 
             i += 2;

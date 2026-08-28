@@ -126,6 +126,48 @@ fn overhang_ramp_mesh() -> MeshIR {
     }
 }
 
+fn overlapping_two_object_mesh() -> MeshIR {
+    let (mut va, mut ia) = box_triangles(0, (0.0, 0.0, 0.0), (10.0, 10.0, 1.0));
+    let (v2, i2) = box_triangles(va.len() as u32, (5.0, 0.0, 1.0), (15.0, 10.0, 2.0));
+    va.extend(v2);
+    ia.extend(i2);
+    let (mut vb, mut ib) = box_triangles(0, (5.0, 0.0, 0.0), (15.0, 10.0, 1.0));
+    let (v4, i4) = box_triangles(vb.len() as u32, (10.0, 0.0, 1.0), (20.0, 10.0, 2.0));
+    vb.extend(v4);
+    ib.extend(i4);
+    MeshIR {
+        objects: vec![
+            ObjectMesh {
+                id: "object-a".into(),
+                mesh: IndexedTriangleSet {
+                    vertices: va,
+                    indices: ia,
+                },
+                transform: identity_transform(),
+                ..Default::default()
+            },
+            ObjectMesh {
+                id: "object-b".into(),
+                mesh: IndexedTriangleSet {
+                    vertices: vb,
+                    indices: ib,
+                },
+                transform: identity_transform(),
+                ..Default::default()
+            },
+        ],
+        build_volume: BoundingBox3 {
+            min: Point3::default(),
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
+        },
+        ..Default::default()
+    }
+}
+
 fn active_region(object_id: &str) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
@@ -148,6 +190,23 @@ fn two_global_layers() -> Vec<GlobalLayer> {
             index: 1,
             z: 1.5,
             active_regions: vec![active_region("ramp")],
+            ..Default::default()
+        },
+    ]
+}
+
+fn overlapping_two_global_layers() -> Vec<GlobalLayer> {
+    vec![
+        GlobalLayer {
+            index: 0,
+            z: 0.5,
+            active_regions: vec![active_region("object-a"), active_region("object-b")],
+            ..Default::default()
+        },
+        GlobalLayer {
+            index: 1,
+            z: 1.5,
+            active_regions: vec![active_region("object-a"), active_region("object-b")],
             ..Default::default()
         },
     ]
@@ -270,6 +329,8 @@ fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
     // both boxes' XY footprint so the cheap AABB prefilter overlaps.
     let (&overhang_layer_index, _) = surface_classification
         .overhang_quartile_polygons
+        .get("ramp")
+        .expect("ramp object has bands")
         .iter()
         .next()
         .expect("checked non-empty above");
@@ -338,6 +399,54 @@ fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
             "quartile band (q={}) bbox {band_bbox:?} must be contained within the region's \
              own polygon bbox {region_bbox:?} (AC-1)",
             band.quartile
+        );
+    }
+}
+
+#[test]
+fn overhang_areas_object_scoped_no_cross_object_leak() {
+    let blackboard = seed_slice_and_annotate(
+        overlapping_two_object_mesh(),
+        overlapping_two_global_layers(),
+    );
+    let sc = blackboard
+        .surface_classification()
+        .expect("classification committed");
+    let region_a = SlicedRegion {
+        object_id: "object-a".into(),
+        region_id: 1,
+        polygons: vec![covering_square(-1.0, -1.0, 16.0, 11.0)],
+        ..Default::default()
+    };
+    let region_b = SlicedRegion {
+        object_id: "object-b".into(),
+        region_id: 1,
+        polygons: vec![covering_square(4.0, -1.0, 21.0, 11.0)],
+        ..Default::default()
+    };
+    let data_a = sliced_region_to_data(&region_a, 1.5, vec![], Some(sc), 1);
+    let data_b = sliced_region_to_data(&region_b, 1.5, vec![], Some(sc), 1);
+
+    let a_boundary = wit_expolygons_bbox(&data_a.prev_layer_boundary).expect("object A boundary");
+    let b_boundary = wit_expolygons_bbox(&data_b.prev_layer_boundary).expect("object B boundary");
+    assert!(
+        a_boundary.0 < 50_000,
+        "object A boundary fixture must occupy x < 5mm: {a_boundary:?}"
+    );
+    assert!(
+        b_boundary.0 >= 50_000,
+        "object B view leaked object A boundary polygons: {b_boundary:?}"
+    );
+
+    let b_band_polygons = data_b
+        .overhang_quartile_polygons
+        .iter()
+        .flat_map(|band| band.polygons.clone())
+        .collect::<Vec<_>>();
+    if let Some(bbox) = wit_expolygons_bbox(&b_band_polygons) {
+        assert!(
+            bbox.0 >= 150_000,
+            "object B quartile bands leaked object A overhang polygons: {bbox:?}"
         );
     }
 }

@@ -489,7 +489,13 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
         // on one correct shared viewport.
         CapturedIr::Slice(s) => {
             for region in &s.regions {
-                for poly in region.polygons.iter().chain(region.infill_areas.iter()) {
+                for poly in region
+                    .polygons
+                    .iter()
+                    .chain(region.infill_areas.iter())
+                    .chain(region.internal_solid_fill.iter())
+                    .chain(region.internal_bridge_areas.iter())
+                {
                     push_expolygon_points(poly, &mut pts);
                 }
             }
@@ -507,10 +513,12 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
                     }
                 }
             }
-            for bands in sc.overhang_quartile_polygons.values() {
-                for band in bands {
-                    for poly in &band.polygons {
-                        push_expolygon_points(poly, &mut pts);
+            for bands_by_layer in sc.overhang_quartile_polygons.values() {
+                for bands in bands_by_layer.values() {
+                    for band in bands {
+                        for poly in &band.polygons {
+                            push_expolygon_points(poly, &mut pts);
+                        }
                     }
                 }
             }
@@ -992,11 +1000,23 @@ fn slice_shapes(
                 for poly in &region.infill_areas {
                     shapes.push(expolygon_fill_shape(poly, palette::INFILL_AREA));
                 }
+                for poly in &region.internal_solid_fill {
+                    shapes.push(expolygon_fill_shape(poly, palette::SOLID_INFILL));
+                }
+                for poly in &region.internal_bridge_areas {
+                    shapes.push(expolygon_fill_shape(poly, palette::SOLID_INFILL));
+                }
             }
         }
         GeometryView::FilamentLines => {
             for region in &s.regions {
-                for poly in region.polygons.iter().chain(region.infill_areas.iter()) {
+                for poly in region
+                    .polygons
+                    .iter()
+                    .chain(region.infill_areas.iter())
+                    .chain(region.internal_solid_fill.iter())
+                    .chain(region.internal_bridge_areas.iter())
+                {
                     shapes.extend(expolygon_outline_shapes(poly, palette::SLICE_REGION));
                 }
             }
@@ -1051,17 +1071,19 @@ fn surface_classification_shapes(
             }
         }
     }
-    // `overhang_quartile_polygons` IS per-layer keyed (its doc-pinned
-    // exception) — a direct keyed lookup, so no additional sort is needed.
-    if let Some(bands) = sc.overhang_quartile_polygons.get(&layer_index) {
-        for band in bands {
-            for poly in &band.polygons {
-                match view {
-                    GeometryView::FilledAreas => {
-                        shapes.push(expolygon_fill_shape(poly, palette::SURFACE_OVERHANG));
-                    }
-                    GeometryView::FilamentLines => {
-                        shapes.extend(expolygon_outline_shapes(poly, palette::SURFACE_OVERHANG));
+    // Render the selected layer's quartile bands from every object.
+    for bands_by_layer in sc.overhang_quartile_polygons.values() {
+        if let Some(bands) = bands_by_layer.get(&layer_index) {
+            for band in bands {
+                for poly in &band.polygons {
+                    match view {
+                        GeometryView::FilledAreas => {
+                            shapes.push(expolygon_fill_shape(poly, palette::SURFACE_OVERHANG));
+                        }
+                        GeometryView::FilamentLines => {
+                            shapes
+                                .extend(expolygon_outline_shapes(poly, palette::SURFACE_OVERHANG));
+                        }
                     }
                 }
             }
@@ -1146,6 +1168,7 @@ fn support_geometry_shapes(
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             };
             match view {
                 GeometryView::FilledAreas => {

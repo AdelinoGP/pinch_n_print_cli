@@ -167,6 +167,7 @@ fn infill_ir(tool_index: Option<u32>) -> slicer_ir::InfillIR {
         regions: vec![slicer_ir::InfillRegion {
             object_id: OBJECT_ID.into(),
             region_id: REGION_ID,
+            // exhaustive: tool-index fixture pins the complete IR path
             sparse_infill: vec![slicer_ir::ExtrusionPath3D {
                 points: vec![
                     Point3WithWidth {
@@ -189,6 +190,7 @@ fn infill_ir(tool_index: Option<u32>) -> slicer_ir::InfillIR {
                 role: slicer_ir::ExtrusionRole::SparseInfill,
                 speed_factor: 1.0,
                 tool_index,
+                order_lock: None,
             }],
             ..Default::default()
         }],

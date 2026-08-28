@@ -139,8 +139,12 @@ interface ir-handles {
         bottom-shell-index: func() -> option<u8>;
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
+        // Rust binding: internal_solid_fill.
+        internal-solid-fill: func() -> list<ex-polygon>;
         is-bridge: func() -> bool;
         bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: internal_bridge_areas.
+        internal-bridge-areas: func() -> list<ex-polygon>;
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
@@ -268,6 +272,7 @@ interface ir-handles {
         start-point: point3-with-width,
         end-point: point3-with-width,
         point-count: u32,
+        order-lock: option<u64>,
     }
 
     resource layer-collection-builder {

@@ -250,11 +250,14 @@ pub fn commit_hec_for_test(
         message: format!("invalid {what} output: {reason}"),
     };
 
+    // exhaustive: this helper pins every apply context field for a minimal commit fixture.
     let apply_ctx = StageApplyContext {
         stage_id,
         module_id,
         layer_index,
         seam_plan: seam_plan_ir,
+        config_view: None,
+        committed_slices: None,
     };
 
     let commit_opt: Option<LayerStageCommit> = match stage_id {
@@ -563,11 +566,14 @@ pub fn run_layer_and_commit_with_bundle(
     let commit_opt =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     let seam_plan_arc = blackboard.seam_plan().cloned();
+    // exhaustive: this helper pins every apply context field for the live bundle fixture.
     let ctx = StageApplyContext {
         stage_id,
         module_id: bundle.module.module_id(),
         layer_index: layer.index,
         seam_plan: seam_plan_arc.as_deref(),
+        config_view: Some(bundle.module.config_view().as_ref()),
+        committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
     };
     // PerimetersPostProcess(None) still needs apply so seam back-fill runs on
     // the existing arena perimeter even when the guest emitted no new perimeter.

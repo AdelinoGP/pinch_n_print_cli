@@ -2065,20 +2065,43 @@ fn wedge_multi_layer_top_bottom_evidence() {
     // `;TYPE:Bridge` and must NOT emit `;TYPE:Bottom surface`. Pre-fix
     // this layer carried the mis-counted Bottom-surface blocks; post-fix the
     // flat bridge over the enclosed slot gap replaces them.
-    let slot_ceiling = layer_type_markers(gcode, 28.0);
+    //
+    // 2026-08-23 correction (packet 234): the ceiling material sits at
+    // z=28.0 exactly, and per the first-containing-layer convention recorded
+    // above for the y-extension (material z=29..31 → print_z 29.2), the
+    // ceiling is attributed to print_z 28.2 — the layer at z=28.0 holds no
+    // ceiling material (exact-boundary slicing excludes the facet at the
+    // slice plane). Measured with the packet-234 gate: at z=28.0 the two
+    // stamped candidates are the wall ring, fully covered by the lower
+    // ring, so the gate correctly demotes them; at z=28.2 the gate retains
+    // the cavity interior (before=3, after=1) and the view receives
+    // bridge_areas=1. The Bridge assertion therefore targets print_z 28.2.
+    let slot_ceiling = layer_type_markers(gcode, 28.2);
     assert!(
         slot_ceiling.iter().any(|t| t == "Bridge"),
-        "packet-109: interior-slot ceiling at z=28.0 must emit `;TYPE:Bridge` \
-         — the enclosed flat gap span is a bridge. Markers found: {:?}. Preview:\n{}",
+        "packet-109: interior-slot ceiling must emit `;TYPE:Bridge` at print_z \
+         28.2 (first layer containing the z=28.0 ceiling material). Markers found: \
+         {:?}. Preview:\n{}",
         slot_ceiling,
         preview(gcode, 30)
     );
     assert!(
         !slot_ceiling.iter().any(|t| t == "Bottom surface"),
-        "packet-109: interior-slot ceiling at z=28.0 must NOT emit `;TYPE:Bottom \
-         surface` — the enclosed gap span is a bridge, not a bottom. Markers found: \
-         {:?}. Preview:\n{}",
+        "packet-109: interior-slot ceiling must NOT emit `;TYPE:Bottom \
+         surface` at print_z 28.2 — the enclosed gap span is a bridge, not a bottom. \
+         Markers found: {:?}. Preview:\n{}",
         slot_ceiling,
+        preview(gcode, 30)
+    );
+    // The z=28.0 layer itself must not regress to the old mis-counted
+    // Bottom-surface blocks (the ceiling material is not in that layer).
+    let slot_plane = layer_type_markers(gcode, 28.0);
+    assert!(
+        !slot_plane.iter().any(|t| t == "Bottom surface"),
+        "packet-109: the z=28.0 slice plane (no ceiling material) must NOT emit \
+         `;TYPE:Bottom surface` — its presence means the old mis-count regressed. \
+         Markers found: {:?}. Preview:\n{}",
+        slot_plane,
         preview(gcode, 30)
     );
 }

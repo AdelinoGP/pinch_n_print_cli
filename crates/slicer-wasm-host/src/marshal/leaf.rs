@@ -201,6 +201,7 @@ pub fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRol
         slicer_ir::ExtrusionRole::SupportBaseInterface => ExtrusionRole::SupportBaseInterface,
         slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
         slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+        slicer_ir::ExtrusionRole::InternalBridgeInfill => ExtrusionRole::InternalBridgeInfill,
         slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
         slicer_ir::ExtrusionRole::Custom(tag) => ExtrusionRole::Custom(tag.clone()),
         slicer_ir::ExtrusionRole::PrimeTower => {
@@ -240,6 +241,7 @@ pub fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionP
         role: ir_to_wit_extrusion_role(&path.role),
         speed_factor: path.speed_factor,
         tool_index: path.tool_index,
+        order_lock: path.order_lock,
     }
 }
 
@@ -389,6 +391,7 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         ExtrusionRole::SupportBaseInterface => slicer_ir::ExtrusionRole::SupportBaseInterface,
         ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
         ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
+        ExtrusionRole::InternalBridgeInfill => slicer_ir::ExtrusionRole::InternalBridgeInfill,
         ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
         ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG => {
             slicer_ir::ExtrusionRole::PrimeTower
@@ -443,6 +446,7 @@ pub fn convert_extrusion_path(
         role: convert_extrusion_role(&path.role),
         speed_factor: path.speed_factor,
         tool_index: path.tool_index,
+        order_lock: path.order_lock,
     })
 }
 

@@ -916,11 +916,13 @@ mod wall_sequence_reorder_tests {
             WallLoop {
                 perimeter_index: 0,
                 loop_type: LoopType::Outer,
+                // exhaustive: this test helper intentionally pins path defaults.
                 path: ExtrusionPath3D {
                     points: vec![],
                     role: ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
                     tool_index: None,
+                    order_lock: None,
                 },
                 width_profile: Default::default(),
                 feature_flags: Default::default(),
@@ -930,11 +932,13 @@ mod wall_sequence_reorder_tests {
         WallLoop {
             perimeter_index,
             loop_type,
+            // exhaustive: this test helper intentionally pins path defaults.
             path: ExtrusionPath3D {
                 points: vec![],
                 role,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             ..wall_loop_base()
         }

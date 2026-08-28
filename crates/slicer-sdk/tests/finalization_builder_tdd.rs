@@ -13,7 +13,22 @@ use slicer_ir::{LayerCollectionIR, PrintEntity, TravelMove};
 use slicer_sdk::prelude::*;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::print_entity_base;
-use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
+use slicer_sdk::{EntityMutation, OrderLockAllocator, SortKey, SyntheticLayerData};
+
+#[test]
+fn order_lock_allocator_sequence() {
+    let mut allocator = OrderLockAllocator::new();
+    assert_eq!(allocator.allocate(), Some(1));
+    assert_eq!(allocator.allocate(), Some(2));
+    assert_eq!(allocator.allocate(), Some(3));
+
+    let mut exhausted = OrderLockAllocator::from_next(1 << 63);
+    assert_eq!(exhausted.allocate(), None);
+
+    let mut last = OrderLockAllocator::from_next((1 << 63) - 1);
+    assert_eq!(last.allocate(), Some((1 << 63) - 1));
+    assert_eq!(last.allocate(), None);
+}
 
 // =============================================================================
 // Fixture helpers
@@ -87,6 +102,116 @@ fn make_layers(n: u32) -> Vec<LayerCollectionIR> {
     (0..n)
         .map(|i| make_layer(i, i as f32 * 0.2, vec![]))
         .collect()
+}
+
+#[test]
+fn order_lock_finalization_rejects_geometry_change() {
+    let mut locked = make_entity(1, ExtrusionRole::SparseInfill);
+    locked.path.order_lock = Some(7);
+    locked.path.points = vec![slicer_ir::Point3WithWidth {
+        x: 0.0,
+        y: 0.0,
+        z: 0.2,
+        width: 0.4,
+        ..Default::default()
+    }];
+    let original = make_layer(0, 0.2, vec![locked.clone()]);
+    let mut layers = vec![original.clone()];
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(
+            0,
+            1,
+            EntityMutation::SetPathPoints(vec![slicer_ir::Point3WithWidth {
+                x: 1.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                ..Default::default()
+            }]),
+        )
+        .expect("record geometry mutation");
+    let error = builder
+        .apply_to(&mut layers)
+        .expect_err("locked geometry must reject");
+    assert!(error.contains("locked") && error.contains("geometry"));
+    assert_eq!(layers, vec![original.clone()]);
+
+    let mut layers = vec![original.clone()];
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(0, 1, EntityMutation::SetSpeedFactor(0.5))
+        .expect("record speed mutation");
+    builder
+        .apply_to(&mut layers)
+        .expect("speed side mutation is legal");
+    assert_eq!(layers[0].ordered_entities[0].path.speed_factor, 0.5);
+
+    let mut first = make_entity(2, ExtrusionRole::OuterWall);
+    let mut second = make_entity(1, ExtrusionRole::OuterWall);
+    first.path.order_lock = Some(8);
+    second.path.order_lock = Some(8);
+    let original = make_layer(
+        0,
+        0.2,
+        vec![first, second, make_entity(3, ExtrusionRole::OuterWall)],
+    );
+    let mut layers = vec![original.clone()];
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .sort_layer_by(0, SortKey::ByEntityId)
+        .expect("record sort");
+    let error = builder
+        .apply_to(&mut layers)
+        .expect_err("reordered block must reject");
+    assert!(error.contains("locked entity block"));
+    assert_eq!(layers, vec![original]);
+
+    let mut first = make_entity(2, ExtrusionRole::OuterWall);
+    let mut second = make_entity(3, ExtrusionRole::OuterWall);
+    first.path.order_lock = Some(9);
+    second.path.order_lock = Some(9);
+    let mut layers = vec![make_layer(
+        0,
+        0.2,
+        vec![make_entity(1, ExtrusionRole::OuterWall), first, second],
+    )];
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .sort_layer_by(0, SortKey::ByEntityId)
+        .expect("record unit sort");
+    builder.apply_to(&mut layers).expect("whole block may move");
+}
+
+#[test]
+fn order_lock_remap_wired_at_finalization_merge() {
+    let mut first = make_entity(1, ExtrusionRole::OuterWall);
+    let mut second = make_entity(2, ExtrusionRole::OuterWall);
+    first.path.order_lock = Some(1);
+    second.path.order_lock = Some(2);
+    let mut layers = vec![make_layer(0, 0.2, vec![first, second])];
+    FinalizationOutputBuilder::new()
+        .apply_to(&mut layers)
+        .expect("finalization remap should succeed");
+    assert_eq!(layers[0].ordered_entities[0].path.order_lock, Some(1 << 63));
+    assert_eq!(
+        layers[0].ordered_entities[1].path.order_lock,
+        Some((1 << 63) | 1)
+    );
+
+    let mut existing_global = make_entity(1, ExtrusionRole::OuterWall);
+    let mut new_local = make_entity(2, ExtrusionRole::OuterWall);
+    existing_global.path.order_lock = Some(1 << 63);
+    new_local.path.order_lock = Some(1);
+    let mut layers = vec![make_layer(0, 0.2, vec![existing_global, new_local])];
+    FinalizationOutputBuilder::new()
+        .apply_to(&mut layers)
+        .expect("finalization remap should continue existing globals");
+    assert_eq!(layers[0].ordered_entities[0].path.order_lock, Some(1 << 63));
+    assert_eq!(
+        layers[0].ordered_entities[1].path.order_lock,
+        Some((1 << 63) | 1)
+    );
 }
 
 // =============================================================================

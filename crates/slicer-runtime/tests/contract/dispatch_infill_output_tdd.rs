@@ -470,6 +470,7 @@ fn invalid_nan_output_rejected_with_diagnostic() {
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         }],
         solid_paths: Vec::new(),
         ironing_paths: Vec::new(),

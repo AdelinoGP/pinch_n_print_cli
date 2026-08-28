@@ -59,6 +59,30 @@ max     = 300.0
 display = "Infill Speed"
 group   = "Infill"
 
+[config.schema.sparse_infill_speed]
+type    = "float"
+default = 60.0
+min     = 1.0
+max     = 300.0
+display = "Sparse Infill Speed"
+group   = "Infill"
+
+[config.schema.top_surface_speed]
+type    = "float"
+default = 60.0
+min     = 1.0
+max     = 300.0
+display = "Top Surface Speed"
+group   = "Infill"
+
+[config.schema.internal_solid_infill_speed]
+type    = "float"
+default = 60.0
+min     = 1.0
+max     = 300.0
+display = "Internal Solid Infill Speed"
+group   = "Infill"
+
 [config.schema.line_width]
 type    = "float"
 default = 0
@@ -81,6 +105,83 @@ default = 0.0
 min     = 0.0
 max     = 2.0
 display = "Bridge Line Width"
+group   = "Infill"
+
+[config.schema.bridge_density]
+type    = "float_or_percent"
+default = "100%"
+min     = 10.0
+max     = 120.0
+display = "Bridge Density"
+group   = "Infill"
+
+[config.schema.bridge_flow]
+type    = "float"
+default = 1.0
+min     = 0.0
+display = "Bridge Flow"
+group   = "Infill"
+
+[config.schema.thick_bridges]
+type    = "bool"
+default = false
+display = "Thick Bridges"
+group   = "Infill"
+
+[config.schema.bridge_speed]
+type    = "float"
+default = 25.0
+min     = 1.0
+max     = 300.0
+display = "Bridge Speed"
+group   = "Infill"
+
+[config.schema.internal_bridge_density]
+type    = "float_or_percent"
+default = "100%"
+min     = 10.0
+max     = 125.0
+display = "Internal Bridge Density"
+group   = "Infill"
+
+[config.schema.internal_bridge_flow]
+type    = "float"
+default = 1.0
+min     = 0.0
+display = "Internal Bridge Flow"
+group   = "Infill"
+
+[config.schema.thick_internal_bridges]
+type    = "bool"
+default = true
+display = "Thick Internal Bridges"
+group   = "Infill"
+
+[config.schema.internal_bridge_speed]
+type    = "float_or_percent"
+default = "150%"
+min     = 1.0
+display = "Internal Bridge Speed"
+group   = "Infill"
+
+[config.schema.internal_bridge_angle]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 180.0
+display = "Internal Bridge Angle"
+group   = "Infill"
+
+[config.schema.dont_filter_internal_bridges]
+type    = "bool"
+default = false
+display = "Do Not Filter Internal Bridges"
+group   = "Infill"
+
+[config.schema.enable_extra_bridge_layer]
+type    = "bool"
+default = false
+display = "Enable Extra Bridge Layer"
 group   = "Infill"
 
 [config.schema.sparse_infill_line_width]

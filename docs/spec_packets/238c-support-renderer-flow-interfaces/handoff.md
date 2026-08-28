@@ -468,7 +468,7 @@ Also: `tmp/layer_step.py 6 22` max ledge 0.566 (pre-fix 0.825), layers>0.35mm 13
   non-tree families resolve `Default`. `style_movement_for`'s live Strong composition
   was removed (canonical's `is_strong` block in `drop_nodes` is dead code — its result
   is unconditionally overwritten by the `normal(direction_to_outer)` chain), so Strong
-  now differs from Default only in the neighbour-sum weighting. DEV-150 filed; the
+  now differs from Default only in the neighbour-sum weighting. DEV-156 filed (renumbered from DEV-150 in the 2026-08-28 origin/master merge); the
   organic engine port (`TreeSupport3D.cpp`) is queued as row 7 (TASK-441) in
   `docs/specs/support-generation-remediation-plan.md`. Contract suite
   `tests/tree_style_styles_tdd.rs` rewritten canonical (E3: intentional product

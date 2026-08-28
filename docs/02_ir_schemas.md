@@ -388,14 +388,15 @@ caller must call this symbol rather than re-implementing the parse.
 
 **Stage:** Output of `PrePass::MeshAnalysis`  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 1.3.0** (Bumped from 1.2.0 to 1.3.0 by packet 193 — additive `prev_layer_boundaries` map, keyed by GLOBAL layer index exactly as `overhang_quartile_polygons`. Previously bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
+**Current schema_version: 2.0.0** (Bumped from 1.3.0 to 2.0.0 by packet 243 — major: the host-only `overhang_quartile_polygons` and `prev_layer_boundaries` maps changed from `HashMap<u32, Vec<…>>` to `HashMap<ObjectId, HashMap<u32, Vec<…>>>`, now keyed by object id first, then global layer index. Previously bumped to 1.3.0 by packet 193 — additive `prev_layer_boundaries` map, keyed by GLOBAL layer index exactly as `overhang_quartile_polygons`. Previously bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
 
 `SurfaceClassificationIR` is defined in `crates/slicer-ir/src/slice_ir.rs`.
 It contains per-object surface data plus the host-only
 `overhang_quartile_polygons` and `prev_layer_boundaries` maps, both keyed by
-global layer index and defaulting to empty maps.
+object id first, then global layer index (nested maps
+`HashMap<ObjectId, HashMap<u32, Vec<…>>>`) and defaulting to empty maps.
 
-Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by GLOBAL layer index.
+Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by object id first, then global layer index.
 
 **Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03.
 
@@ -620,10 +621,17 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 /// `Layer::Perimeters` commit (see
 /// `crates/slicer-runtime/src/region_partition.rs`):
 ///
-/// 1. **`bridge_areas`**, **`bottom_solid_fill`**, **`top_solid_fill`**, and
+/// 1. **`bridge_areas`** is claimed directly from the gated
+///    `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
+///    may extend beyond the wall-inset polygon — at a ceiling layer the
+///    perimeter module's infill area can be empty (the whole cross-section is
+///    top surface) and the canonical bridge site must survive.
+///    **`bottom_solid_fill`**, **`top_solid_fill`**, and
 ///    **`sparse_infill_area`** are pairwise disjoint subsets of the
 ///    corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-///    polygon).
+///    polygon). All four sets remain pairwise disjoint from each other via the
+///    precedence dedup (`bottom`/`top`/`sparse` are differenced against the
+///    bridge claim in `sync_perimeter_infill_areas_into_slice`).
 /// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
 ///    (OrcaSlicer `PrintObject::prepare_infill` parity).
 /// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
@@ -637,7 +645,10 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 ///
 /// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
-/// emits over exactly one of these polygons with zero polygon math.
+/// emits over exactly one of these polygons with zero polygon math. Exception:
+/// order-locked paths (ADR-0063) are self-clipping and may extend into
+/// neighboring fill domains; the linker differences untagged fill of the same
+/// region by their swept footprint instead of clipping them.
 
 ### Modifier sub-regions
 
@@ -1213,7 +1224,7 @@ responsibility. 138/139 inherit this contract.
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`
-**Current schema_version: 1.3.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 226 added the additive `ExtrusionPath3D.tool_index: Option<u32>` authored-coloring carrier (ADR-0058), bumping 1.2.0→1.3.0 — additive semver-minor, the field is `#[serde(default)]` so pre-1.3.0 serialized fixtures still parse and deserialize to `None` (host-resolved region tool, i.e. unchanged behaviour); packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
+**Current schema_version: 1.4.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 244 added the additive `ExtrusionPath3D.order_lock: Option<u64>` field (optional per-path ordering lock tag; `None`/absent preserves pre-1.4.0 behavior; local tags (bit 63 clear) are remapped to layer-unique global tags (bit 63 set) at host output boundaries), bumping 1.3.0→1.4.0; packet 226 added the additive `ExtrusionPath3D.tool_index: Option<u32>` authored-coloring carrier (ADR-0058), bumping 1.2.0→1.3.0 — additive semver-minor, the field is `#[serde(default)]` so pre-1.3.0 serialized fixtures still parse and deserialize to `None` (host-resolved region tool, i.e. unchanged behaviour); packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
 
 **Ownership lifecycle — three phases:**
 
@@ -1301,6 +1312,7 @@ Values below are ordered as they print (lowest first) and mirror
 | `RaftInfill`          | 50   |
 | `SparseInfill`        | 3000 |
 | `BridgeInfill`        | 3500 |
+| `InternalBridgeInfill` | 3500 |
 | `InternalSolidInfill` | 3800 |
 | `BottomSolidInfill`   | 4000 |
 | `TopSolidInfill`      | 4500 |

@@ -531,6 +531,7 @@ impl TraditionalSupport {
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
                     tool_index: None,
+                    order_lock: None,
                 });
 
                 i += 2;
@@ -585,6 +586,7 @@ impl TraditionalSupport {
                     role: ExtrusionRole::SupportMaterial,
                     speed_factor,
                     tool_index: None,
+                    order_lock: None,
                 });
                 i += 2;
             }
@@ -615,6 +617,7 @@ impl TraditionalSupport {
                 role: ExtrusionRole::SupportMaterial,
                 speed_factor,
                 tool_index: None,
+                order_lock: None,
             });
         }
 

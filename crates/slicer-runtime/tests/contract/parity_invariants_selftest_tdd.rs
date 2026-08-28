@@ -773,6 +773,7 @@ fn infill_region(jitter: f32) -> InfillRegion {
             jitter,
         )],
         ironing: vec![support_segment(2, ExtrusionRole::Ironing, jitter)],
+        internal_bridge_infill: Vec::new(),
     }
 }
 

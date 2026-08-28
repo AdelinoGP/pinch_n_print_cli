@@ -44,6 +44,10 @@ name = "algo_prepass_slice_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "bridge_orientation_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "algo_support_geometry_tdd"
 required-features = ["host-algos"]
 
@@ -103,6 +107,17 @@ name = "wall_sequence_reorder_tdd"
 
 [[test]]
 name = "sharp_corner_seam_threshold_tdd"
+
+[[test]]
+name = "bridge_over_infill_tdd"
+
+[[test]]
+name = "bridge_false_site_gating_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "bridge_support_gating_tdd"
+required-features = ["host-algos"]
 
 [[test]]
 name = "beading_distributed"

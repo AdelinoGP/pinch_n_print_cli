@@ -16,6 +16,7 @@ mod layer_collection_builder_contract_tdd;
 mod layer_height_transport_tdd;
 mod lightning_dispatch_per_region_keying_tdd;
 mod lightning_infill_guest_calls_lightning_tree_segments_tdd;
+mod order_lock_marshal_round_trip_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod prepass_output_builder_validation_tdd;
 mod production_guest_smoke_tdd;

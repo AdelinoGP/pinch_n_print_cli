@@ -12,10 +12,11 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
-    ConfigValue, ExPolygon, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
-    LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, Point2, Polygon, PrintEntity,
-    RegionKey, RegionMapIR, SeamPlanIR, SliceIR, StageId, SupportGeometryIR, SupportIR,
-    SupportPlanIR, SurfaceClassificationIR, WallFeatureFlags,
+    ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeIR, GlobalLayer, InfillIR,
+    LayerCollectionIR, LayerEntityIdGen, LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR,
+    Point2, Point3WithWidth, Polygon, PrintEntity, RegionKey, RegionMapIR, SeamPlanIR, SliceIR,
+    StageId, SupportGeometryIR, SupportIR, SupportPlanIR, SurfaceClassificationIR,
+    WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -462,6 +463,7 @@ fn append_same_z_entities(
                 role: slicer_ir::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             role: slicer_ir::ExtrusionRole::SupportMaterial,
             region_key: RegionKey::default(),
@@ -827,6 +829,8 @@ fn execute_single_layer_inner(
                     module_id: module.module_id().as_str(),
                     layer_index: layer.index,
                     seam_plan: seam_plan_ir_for_commit,
+                    config_view: Some(module.config_view().as_ref()),
+                    committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
                 };
                 if let Err(e) = apply(&mut arena, staged, &ctx) {
                     let message = e.to_string();
@@ -1216,9 +1220,10 @@ pub enum CapturedIr {
     /// [`BLACKBOARD_TAP_STAGE_IDS`]).
     Slice(SliceIR),
     /// Blackboard-read composite tap (packet 161, Step 4): the whole-print
-    /// committed `SurfaceClassificationIR`, unfiltered by layer (its only
-    /// per-layer-keyed field, `overhang_quartile_polygons`, stays keyed in
-    /// the captured payload for the renderer to filter at render time).
+    /// committed `SurfaceClassificationIR`, unfiltered by layer (its
+    /// `overhang_quartile_polygons` field stays keyed by object id first, then
+    /// global layer index in the captured payload for the renderer to filter at
+    /// render time).
     /// Covers `PrePass::MeshAnalysis` and `PrePass::OverhangAnnotation`.
     SurfaceClassification(SurfaceClassificationIR),
     /// Blackboard-read tap (packet 161, Step 4): the whole-print committed
@@ -1627,6 +1632,8 @@ pub fn execute_captured_stages_with_support_tools(
                         module_id: module.module_id().as_str(),
                         layer_index: layer.index,
                         seam_plan: seam_plan_ir_for_commit,
+                        config_view: Some(module.config_view().as_ref()),
+                        committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
                     };
                     apply(&mut arena, staged, &ctx).map_err(|e| {
                         CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
@@ -1909,7 +1916,7 @@ fn run_paint_annotation(
 /// committed order, emit one `PrintEntity` per wall loop (ordered by the
 /// region's own `walls` slice, whose order is guest-preserved); then for each
 /// `InfillRegion` in committed order, emit sparse / solid / ironing paths in
-/// that order; finally emit `SupportIR` paths (support / interface / raft /
+/// that order, then internal-bridge paths; finally emit `SupportIR` paths (support / interface / raft /
 /// ironing). `region_key` carries `(global_layer_index, object_id, region_id)`
 /// for perimeter and infill entities. `SupportIR` entries are attributed with
 /// their own `(object_id, region_id)`, so support `PrintEntity`s carry the
@@ -2250,6 +2257,9 @@ pub fn assemble_ordered_entities_with_support_identities(
             for path in &region.ironing {
                 infill_push(path, path.role.clone(), &mut out);
             }
+            for path in &region.internal_bridge_infill {
+                infill_push(path, path.role.clone(), &mut out);
+            }
         }
     }
 
@@ -2340,6 +2350,8 @@ pub struct OrderedEntityView {
     pub end_point: slicer_ir::Point3WithWidth,
     /// Number of points in `path.points`.
     pub point_count: u32,
+    /// Optional stable ordering lock carried by the extrusion path.
+    pub order_lock: Option<u64>,
 }
 
 /// Per-physical-event accounting recorded while anchored work is committed.
@@ -2386,6 +2398,7 @@ pub fn project_ordered_entities(arena: &LayerArena) -> Vec<OrderedEntityView> {
                 start_point,
                 end_point,
                 point_count: entity.path.points.len() as u32,
+                order_lock: entity.path.order_lock,
             }
         })
         .collect()
@@ -2602,6 +2615,11 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
             module_id: "host:anchored-events",
             layer_index: 0,
             seam_plan: None,
+            // Synthetic host-side context: no module config channel exists for
+            // anchored-event commits, so bridge post-processing falls back to
+            // canonical defaults.
+            config_view: None,
+            committed_slices: None,
         },
     )
     .map_err(|error| LayerExecutionError::AnchoredGeometry {
@@ -2680,6 +2698,10 @@ pub fn apply_entity_order_proposal(
         .ok_or_else(|| "set-entity-order: no LayerCollectionIR staged on arena".to_string())?
         .ordered_entities
         .len();
+    let lc = arena
+        .layer_collection()
+        .expect("layer_collection presence verified above");
+    validate_entity_order_locks(&lc.ordered_entities, proposal)?;
     let mut lc = arena
         .take_layer_collection()
         .expect("layer_collection presence verified above");
@@ -2691,6 +2713,135 @@ pub fn apply_entity_order_proposal(
     );
     arena.set_layer_collection(lc);
     result
+}
+
+fn validate_entity_order_locks(
+    entities: &[slicer_ir::PrintEntity],
+    proposal: &[(u32, bool)],
+) -> Result<(), String> {
+    for start in 0..entities.len() {
+        let Some(tag) = entities[start].path.order_lock else {
+            continue;
+        };
+        if start > 0 && entities[start - 1].path.order_lock == Some(tag) {
+            continue;
+        }
+        let end = (start + 1..=entities.len())
+            .find(|&i| i == entities.len() || entities[i].path.order_lock != Some(tag))
+            .unwrap_or(entities.len());
+        let positions: Vec<usize> = proposal
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, &(idx, reverse))| {
+                if (start..end).contains(&(idx as usize)) {
+                    if reverse {
+                        return Some(usize::MAX);
+                    }
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if positions.contains(&usize::MAX) {
+            return Err(format!("set-entity-order: locked block {tag} was reversed"));
+        }
+        if positions.len() != end - start {
+            return Err(format!("set-entity-order: locked block {tag} was split"));
+        }
+        let contiguous = positions.windows(2).all(|w| w[1] == w[0] + 1);
+        let ordered = positions
+            .iter()
+            .enumerate()
+            .all(|(i, &slot)| proposal[slot].0 as usize == start + i);
+        if !contiguous || !ordered {
+            return Err(format!(
+                "set-entity-order: locked block {tag} was interleaved or reordered"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn remap_infill_order_locks_from(
+    ir: &mut InfillIR,
+    mut next: u64,
+) -> Result<(), slicer_ir::LayerStageError> {
+    for region in &mut ir.regions {
+        slicer_runtime_order_lock_remap(&mut region.sparse_infill, &mut next)?;
+    }
+    Ok(())
+}
+
+fn next_global_infill_tag(ir: &InfillIR) -> u64 {
+    ir.regions
+        .iter()
+        .flat_map(|region| region.sparse_infill.iter())
+        .filter_map(|path| path.order_lock)
+        .filter(|tag| tag & (1 << 63) != 0)
+        .map(|tag| tag & !(1 << 63))
+        .max()
+        .map_or(0, |max| max + 1)
+}
+
+fn slicer_runtime_order_lock_remap(
+    paths: &mut [slicer_ir::ExtrusionPath3D],
+    next: &mut u64,
+) -> Result<(), slicer_ir::LayerStageError> {
+    crate::order_lock::remap_order_locks_to_global(paths, next)
+        .map_err(|message| slicer_ir::LayerStageError::OrderLockViolation { message })
+}
+
+fn validate_infill_order_locks(previous: &InfillIR, replacement: &InfillIR) -> Result<(), String> {
+    for old_region in &previous.regions {
+        let Some(new_region) = replacement
+            .regions
+            .iter()
+            .find(|r| r.object_id == old_region.object_id && r.region_id == old_region.region_id)
+        else {
+            if old_region
+                .sparse_infill
+                .iter()
+                .any(|p| p.order_lock.is_some())
+            {
+                return Err("locked infill region was dropped".into());
+            }
+            continue;
+        };
+        for start in 0..old_region.sparse_infill.len() {
+            let old = &old_region.sparse_infill[start];
+            let Some(tag) = old.order_lock else { continue };
+            if start > 0 && old_region.sparse_infill[start - 1].order_lock.is_some() {
+                continue;
+            }
+            let end = (start + 1..=old_region.sparse_infill.len())
+                .find(|&i| {
+                    i == old_region.sparse_infill.len()
+                        || old_region.sparse_infill[i].order_lock.is_none()
+                })
+                .unwrap_or(old_region.sparse_infill.len());
+            let mut found = None;
+            let block_len = end - start;
+            for i in 0..=new_region.sparse_infill.len().saturating_sub(block_len) {
+                let points_match = (0..block_len).all(|j| {
+                    new_region.sparse_infill[i + j].points
+                        == old_region.sparse_infill[start + j].points
+                });
+                let all_tagged =
+                    (0..block_len).all(|j| new_region.sparse_infill[i + j].order_lock.is_some());
+                if points_match && all_tagged {
+                    found = Some(i);
+                    break;
+                }
+            }
+            if found.is_none() {
+                return Err(format!(
+                    "locked infill block {tag} was dropped, reordered, or changed"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn apply_order_proposal<T>(
@@ -2756,6 +2907,11 @@ pub struct StageApplyContext<'a> {
     pub layer_index: u32,
     /// Seam plan consulted by the perimeter arms to back-fill `resolved_seam`.
     pub seam_plan: Option<&'a slicer_ir::SeamPlanIR>,
+    /// The module's already-resolved config view. Host bridge post-processing
+    /// reads rectilinear bridge settings from this same channel as the guest.
+    pub config_view: Option<&'a slicer_ir::ConfigView>,
+    /// Whole-print SliceIR committed by prepass; read-only cross-layer input.
+    pub committed_slices: Option<&'a [SliceIR]>,
 }
 
 /// Back-fill `resolved_seam` on perimeter regions that the guest left unresolved,
@@ -2974,7 +3130,11 @@ pub(crate) fn apply(
             }
         }
         LayerStageCommit::Infill(ir) => {
-            if let Some(mut existing) = arena.take_infill() {
+            let mut ir = ir;
+            let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
+            remap_infill_order_locks_from(&mut ir, next)?;
+            let existing = arena.take_infill();
+            if let Some(mut existing) = existing {
                 merge_infill_ir(&mut existing, ir);
                 arena
                     .set_infill(existing)
@@ -2986,6 +3146,188 @@ pub(crate) fn apply(
             }
         }
         LayerStageCommit::InfillPostProcess(ir) => {
+            let mut ir = ir;
+            if let Some(previous) = arena.infill() {
+                validate_infill_order_locks(previous, &ir).map_err(|message| {
+                    slicer_ir::LayerStageError::OrderLockViolation { message }
+                })?;
+            }
+            let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
+            remap_infill_order_locks_from(&mut ir, next)?;
+            if let Some(mut slice) = arena.take_slice() {
+                for region in &mut ir.regions {
+                    let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
+                        candidate.object_id == region.object_id
+                            && candidate.region_id == region.region_id
+                    }) else {
+                        continue;
+                    };
+                    // Packet 234a: construct qualified internal-bridge areas
+                    // only after committed walls and sparse anchors exist.
+                    if slice_region.internal_bridge_areas.is_empty() {
+                        continue;
+                    }
+                    let mut anchors: Vec<Vec<Point2>> = Vec::new();
+                    if let Some(perimeter_region) = arena.perimeter().and_then(|perimeter| {
+                        perimeter.regions.iter().find(|candidate| {
+                            candidate.object_id == region.object_id
+                                && candidate.region_id == region.region_id
+                        })
+                    }) {
+                        for wall in &perimeter_region.walls {
+                            let points: Vec<Point2> = wall
+                                .path
+                                .points
+                                .iter()
+                                .map(|point| Point2::from_mm(point.x, point.y))
+                                .collect();
+                            if points.len() >= 2 {
+                                anchors.push(points);
+                            }
+                        }
+                    }
+                    for path in &region.sparse_infill {
+                        let points: Vec<Point2> = path
+                            .points
+                            .iter()
+                            .map(|point| Point2::from_mm(point.x, point.y))
+                            .collect();
+                        if points.len() >= 2 {
+                            anchors.push(points);
+                        }
+                    }
+                    if anchors.is_empty() {
+                        continue;
+                    }
+                    let config = ctx.config_view;
+                    let value = |key: &str, default: f32| {
+                        config
+                            .and_then(|view| view.get_float(key))
+                            .map(|value| value as f32)
+                            .unwrap_or(default)
+                    };
+                    let nofilter = config
+                        .and_then(|view| view.get_bool("dont_filter_internal_bridges"))
+                        .unwrap_or(false);
+                    let flow = slicer_core::flow::canonical_bridging_flow(
+                        value("bridge_line_width", 0.0),
+                        value("internal_bridge_flow", 1.0),
+                        value("nozzle_diameter", 0.4),
+                    );
+                    // Cross-layer harvesting is sourced only from the committed
+                    // SliceIR blackboard slot; per-layer arenas remain isolated.
+                    let depth_layers: Vec<
+                        slicer_core::algos::bridge_over_infill::BridgeDepthLayer,
+                    > = ctx
+                        .committed_slices
+                        .unwrap_or(&[])
+                        .iter()
+                        .filter_map(|committed| {
+                            committed
+                                .regions
+                                .iter()
+                                .find(|candidate| {
+                                    candidate.object_id == region.object_id
+                                        && candidate.region_id == region.region_id
+                                })
+                                .map(|candidate| {
+                                    let mut not_sparse = candidate.top_solid_fill.clone();
+                                    not_sparse.extend(candidate.bottom_solid_fill.iter().cloned());
+                                    not_sparse
+                                        .extend(candidate.internal_solid_fill.iter().cloned());
+                                    not_sparse.extend(candidate.bridge_areas.iter().cloned());
+                                    slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
+                                        print_z: committed.z,
+                                        sparse_infill: candidate.infill_areas.clone(),
+                                        not_sparse_infill: not_sparse,
+                                    }
+                                })
+                        })
+                        .collect();
+                    let harvested = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                        &depth_layers,
+                        depth_layers.len().saturating_sub(1),
+                        value("layer_height", 0.2),
+                        slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                    );
+                    let angle_override = value("internal_bridge_angle", 0.0);
+                    for area in &slice_region.internal_bridge_areas {
+                        let deep_area = if harvested.is_empty() {
+                            &slice_region.sparse_infill_area
+                        } else {
+                            &harvested
+                        };
+                        let expanded =
+                            slicer_core::algos::bridge_over_infill::expand_candidate_area(
+                                std::slice::from_ref(area),
+                                deep_area,
+                                deep_area,
+                                &slice_region.internal_bridge_areas,
+                                flow.spacing_mm,
+                            );
+                        for area in expanded {
+                            let edges = vec![area.contour.points.clone()];
+                            let angle =
+                                slicer_core::algos::bridge_over_infill::determine_bridging_angle(
+                                    &anchors,
+                                    &edges,
+                                    angle_override,
+                                );
+                            let (bridge_polys, bridge_lines) =
+                                slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
+                                    &anchors,
+                                    std::slice::from_ref(&area),
+                                    angle,
+                                    flow.spacing_mm,
+                                    flow.thread_diameter_mm,
+                                );
+                            if bridge_polys.is_empty() || bridge_lines.is_empty() {
+                                continue;
+                            }
+                            if !nofilter
+                                && bridge_lines.iter().any(|line| {
+                                    line.windows(2)
+                                        .map(|pair| {
+                                            let dx = pair[1].x - pair[0].x;
+                                            let dy = pair[1].y - pair[0].y;
+                                            ((dx * dx + dy * dy) as f32).sqrt()
+                                        })
+                                        .sum::<f32>()
+                                        < flow.thread_diameter_mm
+                                })
+                            {
+                                continue;
+                            }
+                            region
+                                .internal_bridge_infill
+                                .extend(bridge_lines.into_iter().map(|line| {
+                                    ExtrusionPath3D {
+                                        points: line
+                                            .into_iter()
+                                            .map(|point| Point3WithWidth {
+                                                x: point.x as f32 / 10_000.0,
+                                                y: point.y as f32 / 10_000.0,
+                                                z: slice.z,
+                                                width: flow.thread_diameter_mm,
+                                                flow_factor: 1.0,
+                                                overhang_quartile: None,
+                                                dist_to_top_mm: 0.0,
+                                                overhang_distance_mm: None,
+                                            })
+                                            .collect(),
+                                        role: ExtrusionRole::InternalBridgeInfill,
+                                        speed_factor: 1.0,
+                                        tool_index: None,
+                                        order_lock: None,
+                                    }
+                                }));
+                        }
+                    }
+                }
+                arena
+                    .set_slice(slice)
+                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+            }
             let _ = arena.take_infill();
             arena
                 .set_infill(ir)
@@ -3226,6 +3568,9 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
                 target.sparse_infill.extend(new_region.sparse_infill);
                 target.solid_infill.extend(new_region.solid_infill);
                 target.ironing.extend(new_region.ironing);
+                target
+                    .internal_bridge_infill
+                    .extend(new_region.internal_bridge_infill);
             }
             None => existing.regions.push(new_region),
         }
@@ -3277,11 +3622,13 @@ mod tests {
                 overhang_distance_mm: None,
                 ..Default::default()
             };
+            // exhaustive: this test intentionally pins the path defaults.
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             }
         }
 
@@ -3344,11 +3691,13 @@ mod tests {
                 overhang_distance_mm: None,
                 ..Default::default()
             };
+            // exhaustive: this test intentionally pins the path defaults.
             slicer_ir::ExtrusionPath3D {
                 points: vec![point, point],
                 role,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             }
         }
 
@@ -3441,11 +3790,13 @@ mod tests {
             overhang_distance_mm: None,
             ..Default::default()
         };
+        // exhaustive: this test intentionally pins the path defaults.
         let wall_path = ExtrusionPath3D {
             points: vec![pt, pt],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         // feature_flags: tool_index = None  → paint_tool resolver returns None
         let flags = WallFeatureFlags {

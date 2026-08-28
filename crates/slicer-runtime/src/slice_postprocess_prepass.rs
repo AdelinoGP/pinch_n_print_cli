@@ -49,13 +49,16 @@
 //! See `docs/DEVIATION_LOG.md` for documented divergences (hollow-object
 //! continue path not ported; `top_solid_fill` flattened across shell sources).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
+use slicer_core::algos::prepass_slice::{
+    gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
+};
 use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
-use slicer_ir::{ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
+use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
 use slicer_ir::BlackboardError;
 
@@ -170,9 +173,68 @@ pub fn commit_shell_classification_builtin(
                 if let Some(fill) = edit.update.bottom_solid_fill {
                     region.bottom_solid_fill = fill;
                 }
+                if let Some(fill) = edit.update.internal_solid_fill {
+                    region.internal_solid_fill = fill;
+                }
             }
         }
     }
+
+    // Bridge candidates are produced during slicing, but only remain bridges
+    // where the committed lower-layer slice leaves an unsupported span. Keep
+    // layer presence separate from its polygons: an existing empty layer must
+    // retain candidates, while a missing previous layer must clear them.
+    let mut object_layers: HashMap<ObjectId, HashSet<u32>> = HashMap::new();
+    let mut lower_layer_polygons: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+    for slice in &new_vec {
+        for region in &slice.regions {
+            object_layers
+                .entry(region.object_id.clone())
+                .or_default()
+                .insert(slice.global_layer_index);
+            lower_layer_polygons
+                .entry((region.object_id.clone(), slice.global_layer_index))
+                .or_default()
+                .extend(region.infill_areas.iter().cloned());
+        }
+    }
+    for slice in &mut new_vec {
+        for region in &mut slice.regions {
+            let lower_layer_slices = slice
+                .global_layer_index
+                .checked_sub(1)
+                .filter(|lower_index| {
+                    object_layers
+                        .get(&region.object_id)
+                        .is_some_and(|layers| layers.contains(lower_index))
+                })
+                .and_then(|lower_index| {
+                    lower_layer_polygons
+                        .get(&(region.object_id.clone(), lower_index))
+                        .map(Vec::as_slice)
+                });
+            gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
+            // Packet 235 Step 2: orientation derives from the GATED geometry
+            // + RAW lower contours, overwriting the Slice-stage heuristic.
+            update_external_bridge_orientation(region, lower_layer_slices);
+        }
+    }
+
+    // Packet 234a: qualify internal-bridge sites against the committed layer
+    // below and author anchored bridge centerlines per region. Runs after the
+    // shell passes (top/bottom solid fills are populated for every layer
+    // above) and strictly after 234's false-site gate. Material exclusion
+    // flows through `bridge_areas`: the partition derives `sparse_infill_area`
+    // from it at Perimeters commit, so module sparse infill never covers the
+    // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
+    // not exist yet at this stage and would be overwritten.)
+    gate_internal_bridge_sites(
+        &mut new_vec,
+        &timelines,
+        &region_map,
+        &object_layers,
+        &lower_layer_polygons,
+    );
 
     blackboard.replace_slice_ir(Arc::new(new_vec))?;
     Ok(())
@@ -195,7 +257,9 @@ struct RegionUpdate {
     top_shell_index: Option<u8>,
     bottom_shell_index: Option<u8>,
     top_solid_fill: Option<Vec<ExPolygon>>,
+    top_solid_seed: Option<Vec<ExPolygon>>,
     bottom_solid_fill: Option<Vec<ExPolygon>>,
+    internal_solid_fill: Option<Vec<ExPolygon>>,
 }
 
 /// One layer's worth of shadow projected onto it by a single Pass-2 seed.
@@ -241,6 +305,7 @@ fn project_shadow<I>(
     object_id: &ObjectId,
     region_id: RegionId,
     timeline: &[usize],
+    shrink_mm: f32,
     steps: I,
 ) -> Vec<ShadowContribution>
 where
@@ -251,7 +316,12 @@ where
     for (depth, n_pos) in steps {
         let n_slice_idx = timeline[n_pos];
         let neighbor_polys = clone_region_polys(&snapshot[n_slice_idx], object_id, region_id);
-        let new_shadow = intersection(&shadow, &neighbor_polys);
+        let intersected = intersection(&shadow, &neighbor_polys);
+        let new_shadow = if shrink_mm > 0.0 {
+            offset(&intersected, -shrink_mm, OffsetJoinType::Miter, 0.0)
+        } else {
+            intersected
+        };
         if new_shadow.is_empty() {
             break;
         }
@@ -277,6 +347,9 @@ fn compute_region_updates(
     k_bot: u8,
     opening_r: f32,
 ) -> Vec<RegionEdit> {
+    // Pass 2 shrinks the shell shadow by one complete extrusion line width;
+    // `opening_r` is the half-width used only by Pass 1's anti-sliver opening.
+    let shell_width_mm = opening_r * 2.0;
     // Pass 1: depth-0 classification.
     //
     // A pure map over the timeline: position `pos` reads only the immutable
@@ -310,6 +383,7 @@ fn compute_region_updates(
                 let top_diff = apply_opening(&difference(&r_polys, &upper_polys), opening_r);
                 if !top_diff.is_empty() {
                     update.top_shell_index = Some(0);
+                    update.top_solid_seed = Some(top_diff.clone());
                     update.top_solid_fill = Some(top_diff);
                     touched = true;
                 }
@@ -328,7 +402,6 @@ fn compute_region_updates(
         })
         .collect();
     let mut local: HashMap<usize, RegionUpdate> = pass1.into_iter().collect();
-
     // Pass 2: shrinking-shadow projection for top (walk backward).
     //
     // Seeds are gathered from `local` *before* any Pass-2 write lands, so each
@@ -356,6 +429,7 @@ fn compute_region_updates(
                     object_id,
                     region_id,
                     timeline,
+                    shell_width_mm,
                     (1..k_top.min((*pos + 1) as u8)).map(|d| (d, *pos - d as usize)),
                 )
             })
@@ -397,6 +471,7 @@ fn compute_region_updates(
                     object_id,
                     region_id,
                     timeline,
+                    shell_width_mm,
                     (1..k_bot.min(remaining.saturating_add(1) as u8))
                         .map(|d| (d, *pos + d as usize)),
                 )
@@ -410,6 +485,16 @@ fn compute_region_updates(
                 None => contribution.depth,
                 Some(prev) => prev.min(contribution.depth),
             });
+        }
+    }
+
+    // The depth-0 exposed seed remains top solid, not internal solid. Only
+    // geometry propagated down from an upper shell layer is an internal-solid
+    // bridge candidate.
+    for update in local.values_mut() {
+        if let Some(top_fill) = update.top_solid_fill.as_ref() {
+            let top_seed = update.top_solid_seed.as_deref().unwrap_or_default();
+            update.internal_solid_fill = Some(difference(top_fill, top_seed));
         }
     }
 
@@ -474,6 +559,405 @@ fn resolve_opening_radius(
 // ============================================================================
 // Internal helpers
 // ============================================================================
+
+/// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
+/// functions landed in `slicer_core::algos::bridge_over_infill`). For each
+/// region timeline, qualifies the upper layer's `top_solid_fill` surfaces
+/// against the committed layer below and authors anchored internal-bridge
+/// polygons into `SlicedRegion::internal_bridge_areas` for the same-layer
+/// InfillPostProcess arm to construct and emit. Extends `bridge_areas` with the qualified
+/// polygons so the existing partition dataflow (`region_partition` derives
+/// `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at
+/// Perimeters commit) keeps module sparse infill out of the gated area.
+///
+/// Sequential by construction: only this prepass legally sees every committed
+/// layer; per-layer stage arms run under rayon with private arenas. Config
+/// resolves through `region_map.config_for(...).extensions`, mirroring how
+/// undeclared module keys are routed there by the host resolver (same keys the
+/// old arm read from the module config view).
+fn gate_internal_bridge_sites(
+    slices: &mut [SliceIR],
+    timelines: &HashMap<(ObjectId, RegionId), Vec<usize>>,
+    region_map: &RegionMapIR,
+    object_layers: &HashMap<ObjectId, HashSet<u32>>,
+    lower_layer_polygons: &HashMap<(ObjectId, u32), Vec<ExPolygon>>,
+) {
+    // Keep first-pass qualifications separate from carrier-free duplicates so a
+    // duplicated area cannot become a new qualification candidate on the next
+    // timeline entry.
+    let mut qualified_by_entry: HashMap<(usize, ObjectId, RegionId), Vec<ExPolygon>> =
+        HashMap::new();
+    let density_for = |region: &slicer_ir::SlicedRegion, layer_index: u32| {
+        let exact = RegionKey {
+            global_layer_index: layer_index,
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            variant_chain: region.variant_chain.clone(),
+        };
+        if let Some(plan) = region_map.entries.get(&exact) {
+            return region_map.config_for_raw(plan.config).infill_density;
+        }
+        crate::layer_executor::config_for_region_smallest_chain(
+            region_map,
+            layer_index,
+            &region.object_id,
+            region.region_id,
+        )
+        .map(|config| region_map.config_for_raw(config).infill_density)
+        .unwrap_or(0.0)
+    };
+    // Lower-layer solid support is pooled across regions. Dense regions are
+    // wholly solid; sparse regions contribute every persisted solid surface.
+    let mut lower_layer_solids: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+    for slice in slices.iter() {
+        for region in &slice.regions {
+            let entry = lower_layer_solids
+                .entry((region.object_id.clone(), slice.global_layer_index))
+                .or_default();
+            let density = density_for(region, slice.global_layer_index);
+            if density >= 0.999 {
+                entry.extend(region.infill_areas.iter().cloned());
+            } else {
+                entry.extend(region.top_solid_fill.iter().cloned());
+                entry.extend(region.bottom_solid_fill.iter().cloned());
+                entry.extend(region.internal_solid_fill.iter().cloned());
+                entry.extend(region.bridge_areas.iter().cloned());
+            }
+        }
+    }
+
+    for ((object_id, region_id), timeline) in timelines {
+        // Resolve this region's flow settings once from its first timeline
+        // entry, mirroring `resolve_opening_radius`'s key construction and
+        // contains_key guard (`config_for` panics on unknown keys).
+        let Some(&first_idx) = timeline.first() else {
+            continue;
+        };
+        let key = RegionKey {
+            global_layer_index: first_idx as u32,
+            object_id: object_id.clone(),
+            region_id: *region_id,
+            variant_chain: Vec::new(),
+        };
+        let resolved = if region_map.entries.contains_key(&key) {
+            Some(region_map.config_for(&key))
+        } else {
+            None
+        };
+        let ext_float = |name: &str, default: f32| -> f32 {
+            resolved
+                .and_then(|config| config.extensions.get(name))
+                .and_then(|value| match value {
+                    ConfigValue::Float(f) => Some(*f as f32),
+                    ConfigValue::Int(i) => Some(*i as f32),
+                    _ => None,
+                })
+                .unwrap_or(default)
+        };
+        let ext_abs = |name: &str, base: f32| -> Option<f32> {
+            match resolved?.extensions.get(name)? {
+                ConfigValue::Float(value) => Some(*value as f32),
+                ConfigValue::Int(value) => Some(*value as f32),
+                ConfigValue::Percent(value) => Some(*value as f32 / 100.0 * base),
+                ConfigValue::FloatOrPercent { value, is_percent } => Some(if *is_percent {
+                    *value as f32 / 100.0 * base
+                } else {
+                    *value as f32
+                }),
+                _ => None,
+            }
+        };
+        let nofilter = resolved
+            .and_then(|config| config.extensions.get("dont_filter_internal_bridges"))
+            .and_then(|value| match value {
+                ConfigValue::Bool(flag) => Some(*flag),
+                _ => None,
+            })
+            .unwrap_or(false);
+        let extra_bridge_layer = resolved
+            .and_then(|config| config.extensions.get("enable_extra_bridge_layer"))
+            .is_some_and(|value| match value {
+                ConfigValue::Bool(flag) => *flag,
+                ConfigValue::Int(value) => *value != 0,
+                ConfigValue::Float(value) | ConfigValue::Percent(value) => *value != 0.0,
+                ConfigValue::FloatOrPercent { value, .. } => *value != 0.0,
+                ConfigValue::String(value) => !value.is_empty() && value != "0" && value != "false",
+                ConfigValue::List(values) => !values.is_empty(),
+            });
+        let nozzle_diameter = ext_float("nozzle_diameter", 0.4);
+        let solid_infill_width = slicer_core::flow::resolve_role_width(
+            slicer_ir::ExtrusionRole::InternalSolidInfill,
+            false,
+            false,
+            &slicer_core::flow::RoleWidthContext {
+                line_width: resolved.map_or(0.0, |config| config.line_width),
+                nozzle_diameter,
+                internal_solid_infill_line_width: ext_abs(
+                    "internal_solid_infill_line_width",
+                    nozzle_diameter,
+                )
+                .unwrap_or(0.0),
+                ..Default::default()
+            },
+        );
+        // Canonical: expansion_multiplier 3 under strict filtering, 1 when the
+        // filter is relaxed in any way (ibfLimited / ibfNofilter).
+        let expansion_multiplier: f64 = if nofilter { 1.0 } else { 3.0 };
+
+        for &slice_idx in timeline {
+            // The first layer has no lower layer — nothing can span it.
+            let Some(lower_index) =
+                slices[slice_idx]
+                    .global_layer_index
+                    .checked_sub(1)
+                    .filter(|lower_index| {
+                        object_layers
+                            .get(object_id)
+                            .is_some_and(|layers| layers.contains(lower_index))
+                    })
+            else {
+                continue;
+            };
+            let Some(lower_fills) = lower_layer_polygons.get(&(object_id.clone(), lower_index))
+            else {
+                continue;
+            };
+            let empty_solids: Vec<ExPolygon> = Vec::new();
+            let lower_solids = lower_layer_solids
+                .get(&(object_id.clone(), lower_index))
+                .unwrap_or(&empty_solids);
+            let layer_index = slices[slice_idx].global_layer_index;
+            let print_z = slices[slice_idx].z;
+            let timeline_position = timeline
+                .iter()
+                .position(|&candidate| candidate == slice_idx)
+                .unwrap_or(0);
+            let target_flow_height = slices[slice_idx]
+                .regions
+                .iter()
+                .find(|candidate| {
+                    candidate.object_id == *object_id && candidate.region_id == *region_id
+                })
+                .and_then(|_candidate| {
+                    let key = RegionKey {
+                        global_layer_index: layer_index,
+                        object_id: object_id.clone(),
+                        region_id: *region_id,
+                        variant_chain: _candidate.variant_chain.clone(),
+                    };
+                    let key = if region_map.entries.contains_key(&key) {
+                        key
+                    } else {
+                        RegionKey {
+                            variant_chain: Vec::new(),
+                            ..key
+                        }
+                    };
+                    region_map.entries.contains_key(&key).then(|| {
+                        region_map
+                            .config_for(&key)
+                            .extensions
+                            .get("layer_height")
+                            .and_then(|value| match value {
+                                ConfigValue::Float(value) => Some(*value as f32),
+                                ConfigValue::Int(value) => Some(*value as f32),
+                                _ => None,
+                            })
+                    })
+                })
+                .flatten()
+                .unwrap_or(0.2);
+            let Ok(qualify_spacing_mm) =
+                slicer_core::flow::line_width_to_spacing(solid_infill_width, target_flow_height)
+            else {
+                log::error!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=invalid_solid_infill_flow",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z
+                );
+                continue;
+            };
+            let depth_layers: Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> =
+                timeline[..=timeline_position]
+                    .iter()
+                    .filter_map(|&lower_idx| {
+                        let lower = slices[lower_idx].regions.iter().find(|candidate| {
+                            candidate.object_id == *object_id && candidate.region_id == *region_id
+                        })?;
+                        let density = density_for(lower, slices[lower_idx].global_layer_index);
+                        let mut not_sparse = lower.top_solid_fill.clone();
+                        not_sparse.extend(lower.bottom_solid_fill.iter().cloned());
+                        not_sparse.extend(lower.internal_solid_fill.iter().cloned());
+                        not_sparse.extend(lower.bridge_areas.iter().cloned());
+                        Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
+                            print_z: slices[lower_idx].z,
+                            sparse_infill: if density < 0.999 {
+                                lower.infill_areas.clone()
+                            } else {
+                                Vec::new()
+                            },
+                            not_sparse_infill: if density >= 0.999 {
+                                let mut dense = lower.infill_areas.clone();
+                                dense.extend(not_sparse);
+                                dense
+                            } else {
+                                not_sparse
+                            },
+                        })
+                    })
+                    .collect();
+            let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                &depth_layers,
+                depth_layers.len().saturating_sub(1),
+                target_flow_height,
+                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+            );
+            let lower_candidates: Vec<
+                slicer_core::algos::bridge_over_infill::BridgeCandidateLayer,
+            > = timeline[..timeline_position]
+                .iter()
+                .filter_map(|&lower_idx| {
+                    let lower = slices[lower_idx].regions.iter().find(|candidate| {
+                        candidate.object_id == *object_id && candidate.region_id == *region_id
+                    })?;
+                    Some(
+                        slicer_core::algos::bridge_over_infill::BridgeCandidateLayer {
+                            print_z: slices[lower_idx].z,
+                            new_polys: lower.internal_bridge_areas.clone(),
+                        },
+                    )
+                })
+                .collect();
+            let deep_infill_area =
+                slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
+                    &deep_infill_area,
+                    &lower_candidates,
+                    print_z,
+                    target_flow_height,
+                );
+            let deep_infill_clip_area = offset(
+                &deep_infill_area,
+                1.5 * qualify_spacing_mm,
+                OffsetJoinType::Miter,
+                0.0,
+            );
+            let internal_unsupported_area = if deep_infill_area.is_empty() {
+                Vec::new()
+            } else {
+                offset(
+                    &deep_infill_area,
+                    -(4.5 * qualify_spacing_mm),
+                    OffsetJoinType::Miter,
+                    0.0,
+                )
+            };
+            let Some(region) = find_region_mut(&mut slices[slice_idx], object_id, *region_id)
+            else {
+                continue;
+            };
+            if region.internal_solid_fill.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z
+                );
+                continue;
+            }
+            // Canonical gather arithmetic: closing of lower fills shrunk by
+            // mult*spacing minus grown lower solids (Step 1 port), then the
+            // per-surface gates with the expand(4*spacing) clip.
+            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
+                lower_fills,
+                lower_solids,
+                qualify_spacing_mm,
+                expansion_multiplier,
+            );
+            if unsupported.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=unsupported_empty",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z
+                );
+                continue;
+            }
+            let mut qualified: Vec<ExPolygon> = Vec::new();
+            for surface in &region.internal_solid_fill {
+                let expanded_candidate = offset(
+                    std::slice::from_ref(surface),
+                    qualify_spacing_mm,
+                    OffsetJoinType::Miter,
+                    0.0,
+                );
+                if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
+                    log::debug!(
+                        "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
+                        object_id, region_id, layer_index, print_z
+                    );
+                    continue;
+                }
+                if let Some(polys) =
+                    slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+                        surface,
+                        &unsupported,
+                        qualify_spacing_mm,
+                        nofilter,
+                    )
+                {
+                    qualified.extend(polys);
+                }
+            }
+            qualified.retain(|polygon| {
+                !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+            });
+            if qualified.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z,
+                    region.internal_solid_fill.len()
+                );
+                continue;
+            }
+            // Persist the qualified carrier independently of downstream
+            // construction; Step 4 consumes this area after real walls exist.
+            region.internal_bridge_areas = qualified.clone();
+            region.bridge_areas.extend(qualified.clone());
+            qualified_by_entry.insert((slice_idx, object_id.clone(), *region_id), qualified);
+        }
+
+        if extra_bridge_layer {
+            for pair in timeline.windows(2) {
+                let [current_idx, upper_idx] = pair else {
+                    continue;
+                };
+                if slices[*current_idx].global_layer_index.checked_add(1)
+                    != Some(slices[*upper_idx].global_layer_index)
+                {
+                    continue;
+                }
+                let Some(current_areas) =
+                    qualified_by_entry.get(&(*current_idx, object_id.clone(), *region_id))
+                else {
+                    continue;
+                };
+                let Some(upper) = find_region_mut(&mut slices[*upper_idx], object_id, *region_id)
+                else {
+                    continue;
+                };
+                let duplicates = intersection(&upper.internal_solid_fill, current_areas);
+                upper.internal_bridge_areas.extend(duplicates);
+            }
+        }
+    }
+}
 
 fn build_region_timelines(slices: &[SliceIR]) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
     let mut timelines: HashMap<(ObjectId, RegionId), Vec<usize>> = HashMap::new();

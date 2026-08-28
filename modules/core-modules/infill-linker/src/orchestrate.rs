@@ -247,12 +247,44 @@ fn process_bucket_role(
     infill_overlap: f32,
     buckets: &mut [BucketPaths],
 ) {
+    for record in records {
+        let locked = selected_paths(record, bucket, role)
+            .into_iter()
+            .filter(|path| path.order_lock.is_some())
+            .cloned()
+            .collect::<Vec<_>>();
+        append_paths(&mut buckets[record.prior_index], bucket, locked);
+    }
+
+    let mut unlocked_records = records.to_vec();
+    for record in &mut unlocked_records {
+        record.sparse_paths.retain(|path| path.order_lock.is_none());
+        record.solid_paths.retain(|path| path.order_lock.is_none());
+    }
+
     // Per-role, per-region: `role`'s own partitioned polygon, never the union
     // of all four (see `RoleBoundaries::for_role`).
     let boundaries = records
         .iter()
-        .map(|record| record.boundaries.for_role(role))
+        .map(|record| {
+            record.boundaries.for_role(role).map(|boundary| {
+                let locked = record
+                    .sparse_paths
+                    .iter()
+                    .chain(&record.solid_paths)
+                    .filter(|path| path.order_lock.is_some())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let footprint = swept_footprint_polygons(&locked);
+                if footprint.is_empty() {
+                    boundary
+                } else {
+                    slicer_core::polygon_ops::difference_ex(&boundary, &footprint)
+                }
+            })
+        })
         .collect::<Vec<_>>();
+    let records = unlocked_records.as_slice();
 
     let active = (0..records.len())
         .filter(|&index| {
@@ -316,6 +348,65 @@ fn process_bucket_role(
             );
         }
     }
+}
+
+fn swept_footprint_polygons(paths: &[ExtrusionPath3D]) -> Vec<ExPolygon> {
+    const DISK_SEGMENTS: usize = 16;
+
+    let mut pieces = Vec::new();
+    for path in paths {
+        for pair in path.points.windows(2) {
+            let (start, end) = (&pair[0], &pair[1]);
+            let dx = end.x - start.x;
+            let dy = end.y - start.y;
+            let length = (dx * dx + dy * dy).sqrt();
+            if length <= f32::EPSILON {
+                continue;
+            }
+            let nx = -dy / length;
+            let ny = dx / length;
+            let start_half_width = start.width.max(0.0) / 2.0;
+            let end_half_width = end.width.max(0.0) / 2.0;
+            pieces.push(ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(
+                            start.x + nx * start_half_width,
+                            start.y + ny * start_half_width,
+                        ),
+                        Point2::from_mm(end.x + nx * end_half_width, end.y + ny * end_half_width),
+                        Point2::from_mm(end.x - nx * end_half_width, end.y - ny * end_half_width),
+                        Point2::from_mm(
+                            start.x - nx * start_half_width,
+                            start.y - ny * start_half_width,
+                        ),
+                    ],
+                },
+                holes: Vec::new(),
+            });
+        }
+
+        for point in &path.points {
+            let radius = point.width.max(0.0) / 2.0;
+            if radius <= f32::EPSILON {
+                continue;
+            }
+            let points = (0..DISK_SEGMENTS)
+                .map(|index| {
+                    let angle = std::f32::consts::TAU * index as f32 / DISK_SEGMENTS as f32;
+                    Point2::from_mm(
+                        point.x + radius * angle.cos(),
+                        point.y + radius * angle.sin(),
+                    )
+                })
+                .collect();
+            pieces.push(ExPolygon {
+                contour: Polygon { points },
+                holes: Vec::new(),
+            });
+        }
+    }
+    union_ex(&pieces)
 }
 
 fn roles_for_bucket(records: &[RegionRecord], bucket: PathBucket) -> Vec<ExtrusionRole> {

@@ -683,13 +683,20 @@ fn substitution_uses_overridden_temp_values() {
         "PRINT_START with overridden temps must appear exactly once"
     );
 
-    assert!(
-        !gcode.contains("S60"),
-        "default bed temp S60 must NOT appear when overridden to 65"
+    // Negative intent: DEFAULT temperature values must not leak into
+    // temperature-bearing commands. Scoped to M190/M109 and the PRINT_START
+    // macro args — a bare substring check is brittle because other gcode
+    // parameters legitimately collide with those digits (measured 2026-08-24:
+    // an `M73 Q24 S60` progress line tripped the old `contains("S60")`).
+    assert_eq!(
+        count_occurrences(&gcode, "M190 S60"),
+        0,
+        "default bed temp must not appear in M190 when overridden to 65"
     );
-    assert!(
-        !gcode.contains("S215"),
-        "default nozzle temp S215 must NOT appear when overridden to 220"
+    assert_eq!(
+        count_occurrences(&gcode, "M109 S215"),
+        0,
+        "default nozzle temp must not appear in M109 when overridden to 220"
     );
     assert!(
         !gcode.contains("EXTRUDER=215"),

@@ -820,16 +820,16 @@ fn pattern_shift_interleaves_layers() {
         all_eps_layer1.len()
     );
 
-    // Also: layer 0 is angle=0 (horizontal), layer 1 is angle=0+90=90°
-    // (vertical). Their orientations differ.
+    // Both layers retain the configured angle (horizontal); only the
+    // configured per-layer shift changes their endpoint positions.
     let avg_dy_0: f32 = paths0
         .iter()
         .map(|p| (p.points[0].y - p.points[1].y).abs())
         .sum::<f32>()
         / paths0.len() as f32;
-    let avg_dx_1: f32 = paths1
+    let avg_dy_1: f32 = paths1
         .iter()
-        .map(|p| (p.points[0].x - p.points[1].x).abs())
+        .map(|p| (p.points[0].y - p.points[1].y).abs())
         .sum::<f32>()
         / paths1.len() as f32;
     assert!(
@@ -838,9 +838,9 @@ fn pattern_shift_interleaves_layers() {
         avg_dy_0
     );
     assert!(
-        avg_dx_1 < 0.01,
-        "AC-7: layer 1 (angle=90) should be vertical, avg dx={}",
-        avg_dx_1
+        avg_dy_1 < 0.01,
+        "AC-7: layer 1 (angle=0) should remain horizontal, avg dy={}",
+        avg_dy_1
     );
 
     // AC-7 second part: with `infill_shift_step` nonzero, the scan-line

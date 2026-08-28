@@ -44,6 +44,7 @@ impl Guest for Component {
                     role: slicer::types::geometry::ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
                     tool_index: None,
+                    order_lock: None,
                 },
                 feature_flags: vec![slicer::ir_handles::ir_handles::WallFeatureFlag {
                     tool_index: None,

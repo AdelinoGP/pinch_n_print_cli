@@ -497,6 +497,62 @@ fn wipe_speed_resolves_correctly() {
     assert_eq!(resolved, 96.0 * 60.0);
 }
 
+#[test]
+fn internal_bridge_role_uses_internal_speed_and_label() {
+    let config = slicer_ir::FeedrateConfig {
+        internal_bridge_speed: 37.5,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
+
+    assert_eq!(
+        emitter
+            .resolve_feedrate(&ExtrusionRole::InternalBridgeInfill, 1.0)
+            .unwrap(),
+        37.5 * 60.0
+    );
+
+    let path = ExtrusionPath3D {
+        points: vec![
+            Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: 1.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+        ],
+        ..extrusion_path3d_base(ExtrusionRole::InternalBridgeInfill)
+    };
+    let entity = PrintEntity {
+        entity_id: 1,
+        path,
+        region_key: RegionKey::default(),
+        ..print_entity_base(ExtrusionRole::InternalBridgeInfill)
+    };
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity],
+        ..Default::default()
+    };
+    let gcode = emitter
+        .emit_gcode(&[layer])
+        .expect("internal bridge gcode must emit");
+    assert!(gcode.commands.iter().any(|command| {
+        matches!(command, GCodeCommand::Raw { text } if text == ";TYPE:Internal Bridge")
+    }));
+}
+
 // =============================================================================
 // Packet 189 - per-point speed factor carrier (EntitySpeedProfile)
 // =============================================================================

@@ -28,6 +28,7 @@ pub mod host_batch;
 pub mod layer_collection_builder;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
+pub mod order_lock;
 pub mod postpass_builders;
 pub mod postpass_types;
 pub mod prelude;
@@ -42,6 +43,7 @@ pub mod traits;
 pub mod views;
 
 pub use layer_collection_builder::LayerCollectionBuilder;
+pub use order_lock::OrderLockAllocator;
 pub use traits::{EntityMutation, PaintRegionLayerView, SortKey, SyntheticLayerData};
 pub use views::OrderedEntityView;
 

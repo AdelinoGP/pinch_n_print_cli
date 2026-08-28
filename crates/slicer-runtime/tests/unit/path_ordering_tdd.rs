@@ -283,6 +283,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 sparse_infill: vec![path_at(0.0, 0.0), path_at(0.0, 100.0)],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
             // exhaustive: fixture defines the complete second region used by ordering.
             InfillRegion {
@@ -291,6 +292,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 sparse_infill: vec![path_at(1.0, 0.0), path_at(1.0, 1.0)],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
         ],
     };
@@ -402,6 +404,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
                 ],
                 solid_infill: vec![],
                 ironing: vec![],
+                ..Default::default()
             },
         ],
     };

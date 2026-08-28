@@ -26,6 +26,7 @@
 # ---------------------------------------------------------------------------
 # OrcaSlicer reference checkout (documentation source, not part of this repo)
 /OrcaSlicerDocumented/
+/OrcaSlicer/
 # Local worktrees and scratch output
 .worktrees/
 tmp/

@@ -82,6 +82,16 @@ fn print_entity_fixture_with_id(
     }
 }
 
+fn print_entity_fixture_with_order_lock(
+    points: Vec<Point3WithWidth>,
+    role: ExtrusionRole,
+    order_lock: Option<u64>,
+) -> PrintEntity {
+    let mut entity = print_entity_fixture(points, role);
+    entity.path.order_lock = order_lock;
+    entity
+}
+
 fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
         global_layer_index: index,
@@ -1094,6 +1104,72 @@ fn skips_empty_layer_between_real_layers_without_gap() {
     assert!(
         all_layer_changes_have_moves,
         "every ;LAYER_CHANGE must be followed by a Move (no viewer gap)"
+    );
+}
+
+#[test]
+fn locked_paths_bypass_simplification_and_min_segment() {
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let points = vec![
+        point3_with_width(0.0, 0.0, 0.2),
+        point3_with_width(0.001, 0.0, 0.2),
+        point3_with_width(0.002, 0.0, 0.2),
+        point3_with_width(1.0, 0.0, 0.2),
+        point3_with_width(2.0, 0.0, 0.2),
+    ];
+    let layer = layer_with_entity(
+        0,
+        0.2,
+        print_entity_fixture_with_order_lock(points, ExtrusionRole::SparseInfill, Some(7)),
+    );
+
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
+    let emitted_moves = moves(&gcode_ir);
+
+    assert_eq!(
+        emitted_moves.len(),
+        5,
+        "locked paths must retain every authored point"
+    );
+    for (command, (x, y)) in emitted_moves.iter().zip([
+        (0.0, 0.0),
+        (0.001, 0.0),
+        (0.002, 0.0),
+        (1.0, 0.0),
+        (2.0, 0.0),
+    ]) {
+        assert_move_at(command, x, y, 0.2);
+    }
+}
+
+#[test]
+fn all_none_locks_neutrality() {
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let entity = print_entity_fixture(
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+            point3_with_width(2.0, 0.0, 0.2),
+        ],
+        ExtrusionRole::SparseInfill,
+    );
+    assert_eq!(entity.path.order_lock, None);
+
+    let gcode_ir = emitter
+        .emit_gcode(&[layer_with_entity(0, 0.2, entity)])
+        .unwrap();
+    let emitted_moves = moves(&gcode_ir);
+
+    assert_eq!(emitted_moves.len(), 2);
+    assert_move_at(emitted_moves[0], 0.0, 0.0, 0.2);
+    assert_move_at(emitted_moves[1], 2.0, 0.0, 0.2);
+    assert_eq!(
+        gcode_ir
+            .commands
+            .iter()
+            .filter(|command| matches!(command, GCodeCommand::Raw { text } if text == ";TYPE:Sparse infill"))
+            .count(),
+        1
     );
 }
 

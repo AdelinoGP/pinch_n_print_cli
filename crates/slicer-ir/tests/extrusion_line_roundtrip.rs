@@ -58,9 +58,9 @@ fn extrusion_line_roundtrip() {
 
 /// Locks the `SliceIR` schema-version bump performed by this packet
 /// (T-224): additive `ExtrusionLine`/`ExtrusionJunction` types bump
-/// `CURRENT_SLICE_IR_SCHEMA_VERSION` from 4.6.0 to 4.7.0 (minor, additive).
+/// `CURRENT_SLICE_IR_SCHEMA_VERSION` from 4.7.0 to 4.8.0 (minor, additive).
 #[test]
-fn slice_ir_schema_version_is_4_7() {
+fn slice_ir_schema_version_is_4_8() {
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION.major,
         4,
@@ -68,8 +68,8 @@ fn slice_ir_schema_version_is_4_7() {
     );
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION.minor,
-        7,
-        "minor version must be bumped to 7 by the ExtrusionLine/ExtrusionJunction addition"
+        8,
+        "minor version must be bumped to 8 by the InternalBridgeInfill addition"
     );
 }
 

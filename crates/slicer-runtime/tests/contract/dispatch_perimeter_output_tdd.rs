@@ -43,6 +43,7 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             feature_flags: vec![
                 WallFeatureFlag {
@@ -115,6 +116,7 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             feature_flags: vec![WallFeatureFlag {
                 tool_index: None,
@@ -178,6 +180,7 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             feature_flags: vec![WallFeatureFlag {
                 tool_index: None,
@@ -298,6 +301,7 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             },
             feature_flags: vec![
                 WallFeatureFlag {

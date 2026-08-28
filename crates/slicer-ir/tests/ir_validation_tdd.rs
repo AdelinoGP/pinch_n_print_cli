@@ -52,11 +52,13 @@ fn make_entity(entity_id: u64, x: f32, y: f32, z: f32) -> PrintEntity {
     // exhaustive: file-local base; sdk fixture home would pull host-algos into this crate's dev graph (packet 196 [FWD])
     PrintEntity {
         entity_id,
+        // exhaustive: validation fixture pins the complete IR path
         path: ExtrusionPath3D {
             points: vec![point(x, y, z), point(x + 5.0, y, z)],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         role: ExtrusionRole::OuterWall,
         tool_index: 1,

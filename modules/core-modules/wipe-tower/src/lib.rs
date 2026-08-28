@@ -310,6 +310,7 @@ impl WipeTower {
             role: ExtrusionRole::WipeTower,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         pairs.push((travel_path, region_key.clone()));
 
@@ -356,6 +357,7 @@ impl WipeTower {
                 role: ExtrusionRole::WipeTower,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             };
 
             pairs.push((path, region_key.clone()));
@@ -403,6 +405,7 @@ impl WipeTower {
             role: ExtrusionRole::WipeTower,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         pairs.push((prime_path, region_key.clone()));
 
@@ -634,6 +637,7 @@ mod tests {
                     role: ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
                     tool_index: None,
+                    order_lock: None,
                 },
                 role: ExtrusionRole::OuterWall,
                 tool_index: 0,

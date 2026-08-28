@@ -21,6 +21,7 @@ fn default_builder_matches_baseline() {
     assert!(view.bottom_solid_fill().is_empty());
     assert!(!view.is_bridge());
     assert!(view.bridge_areas().is_empty());
+    assert!(view.internal_bridge_areas().is_empty());
     assert!((view.bridge_orientation_deg() - 0.0).abs() < f32::EPSILON);
 }
 
@@ -74,6 +75,15 @@ fn bridge_areas_round_trip() {
         .bridge_areas(areas.clone())
         .build();
     assert_eq!(view.bridge_areas().len(), areas.len());
+}
+
+#[test]
+fn internal_bridge_areas_round_trip() {
+    let areas = vec![rect_polygon(0.0, 0.0, 10.0, 2.0)];
+    let view = SliceRegionViewBuilder::new()
+        .internal_bridge_areas(areas.clone())
+        .build();
+    assert_eq!(view.internal_bridge_areas().len(), areas.len());
 }
 
 #[test]

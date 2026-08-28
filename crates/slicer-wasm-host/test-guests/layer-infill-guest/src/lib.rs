@@ -75,6 +75,7 @@ impl Guest for Component {
             role: slicer::types::geometry::ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         };
         output.push_sparse_path(&path).expect("push failed");
         if lightning_segment_count > 0 {
@@ -92,6 +93,7 @@ impl Guest for Component {
                 role: slicer::types::geometry::ExtrusionRole::SparseInfill,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             };
             output
                 .push_sparse_path(&witness)

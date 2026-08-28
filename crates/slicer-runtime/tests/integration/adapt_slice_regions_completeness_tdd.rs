@@ -267,11 +267,14 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     slicer_runtime::apply_for_test(
         &mut arena,
         commit,
+        // exhaustive: adapter fixture explicitly pins all apply context metadata.
         &slicer_runtime::StageApplyContext {
             stage_id: &stage,
             module_id: module.module.module_id(),
             layer_index,
             seam_plan: None,
+            config_view: None,
+            committed_slices: None,
         },
     )
     .expect("commit must succeed");

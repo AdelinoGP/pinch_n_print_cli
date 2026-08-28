@@ -189,9 +189,11 @@ impl std::fmt::Display for SemVer {
 /// `SurfaceClassificationIR.prev_layer_boundaries` map of previous-layer slice
 /// boundary contours, keyed by global layer index.
 /// `#[serde(default)]` preserves backward compatibility with 1.2.0 fixtures.
+/// Major bump to 2.0.0 (packet 243) scopes both host-only aggregation maps by
+/// object ID before their global layer-index maps.
 pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 3,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
@@ -223,9 +225,10 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// existing `ExtrusionPath3D` wall surface. No existing field or type changed;
 /// `#[serde(default)]` on the new optional fields preserves backward
 /// compatibility with 4.6.0 fixtures that predate these types.
+/// Minor bump to 4.8.0 adds the typed `InternalBridgeInfill` extrusion role.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 7,
+    minor: 8,
     patch: 0,
 };
 
@@ -335,9 +338,11 @@ pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `LayerCollectionIR.speed_profiles` per-point speed carrier.
 /// 1.3.0 — packet `226-authored-coloring-carrier` added the additive
 /// `ExtrusionPath3D.tool_index` per-path authored-coloring carrier (ADR-0058).
+/// 1.4.0 — packet `244-order-locked-extrusion-sequences` added the additive
+/// `ExtrusionPath3D.order_lock` per-path ordering carrier.
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 3,
+    minor: 4,
     patch: 0,
 };
 
@@ -692,16 +697,16 @@ pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     /// Per-object surface data
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
-    /// Overhang polygons bucketed by severity quartile, keyed by global layer
-    /// index. Host-only aggregation populated by the PrePass overhang
+    /// Overhang polygons bucketed by severity quartile, keyed by object ID and
+    /// global layer index. Host-only aggregation populated by the PrePass
+    /// overhang annotation pipeline; not mirrored in the WIT boundary.
+    #[serde(default)]
+    pub overhang_quartile_polygons: HashMap<ObjectId, HashMap<u32, Vec<QuartileBand>>>,
+    /// Previous-layer slice boundary contours keyed by object ID and global
+    /// layer index. Host-only aggregation populated by the PrePass overhang
     /// annotation pipeline; not mirrored in the WIT boundary.
     #[serde(default)]
-    pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
-    /// Previous-layer slice boundary contours keyed by global layer index.
-    /// Host-only aggregation populated by the PrePass overhang annotation
-    /// pipeline; not mirrored in the WIT boundary.
-    #[serde(default)]
-    pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>,
+    pub prev_layer_boundaries: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
 }
 
 impl Default for SurfaceClassificationIR {
@@ -1829,6 +1834,12 @@ pub struct SlicedRegion {
     /// `crates/slicer-runtime/src/region_partition.rs`.
     #[serde(default)]
     pub sparse_infill_area: Vec<ExPolygon>,
+    /// dense-interior band (shell band minus depth-0 exposed seed); WIT-mirrored in a later step.
+    #[serde(default)]
+    pub internal_solid_fill: Vec<ExPolygon>,
+    /// host-only — qualified internal-bridge-over-infill areas; never mirrored into module views.
+    #[serde(default)]
+    pub internal_bridge_areas: Vec<ExPolygon>,
 }
 
 /// Slice IR
@@ -2235,6 +2246,8 @@ pub enum ExtrusionRole {
     Ironing,
     /// Bridge infill
     BridgeInfill,
+    /// Internal bridge infill over sparse infill
+    InternalBridgeInfill,
     /// Skirt / brim
     Skirt,
     /// Brim (bed-adhesion loops). Shares the skirt/brim module's geometry
@@ -2270,6 +2283,7 @@ impl ExtrusionRole {
             Self::ThinWall => 1700,
             Self::SparseInfill => 3000,
             Self::BridgeInfill => 3500,
+            Self::InternalBridgeInfill => 3500,
             Self::InternalSolidInfill => 3800,
             Self::BottomSolidInfill => 4000,
             Self::TopSolidInfill => 4500,
@@ -2362,6 +2376,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -2384,6 +2399,9 @@ pub struct ExtrusionPath3D {
     /// before — silently, never an error.
     #[serde(default)]
     pub tool_index: Option<u32>,
+    /// Optional stable ordering lock consumed by a later ordering stage.
+    #[serde(default)]
+    pub order_lock: Option<u64>,
 }
 
 impl ExtrusionPath3D {
@@ -2471,6 +2489,7 @@ pub fn extrusion_line_to_extrusion_path3d(
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -2582,6 +2601,9 @@ pub struct InfillRegion {
     pub solid_infill: Vec<ExtrusionPath3D>,
     /// Ironing paths
     pub ironing: Vec<ExtrusionPath3D>,
+    /// Internal bridge paths generated over sparse infill.
+    #[serde(default)]
+    pub internal_bridge_infill: Vec<ExtrusionPath3D>,
 }
 
 /// Infill IR

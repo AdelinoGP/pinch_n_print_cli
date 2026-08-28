@@ -15,8 +15,7 @@
 #![warn(unused_must_use)]
 
 pub mod aabb_tree;
-/// Pure algorithm modules (available only with the `host-algos` feature).
-#[cfg(feature = "host-algos")]
+/// Pure algorithm modules.
 pub mod algos;
 /// Arachne input preprocessing (M2 Arachne port, packet 110 step 5).
 pub mod arachne;

@@ -1,33 +1,44 @@
 //! Integration tests for packet-60: configurable slicing precision.
 //!
-//! Slices `resources/test_stl/ASCII/20mmbox-LF.stl` twice — once with default
-//! precision (all 7 packet-60 keys at their OrcaSlicer defaults) and once with
-//! all 7 keys at their legacy zero-cost values — and asserts:
+//! Slices `resources/test_stl/ASCII/20mmbox-LF.stl` under three precision
+//! configurations and asserts:
 //!
+//! - RES-1  (`explicit_defaults_match_omitted_keys_byte_for_byte`): passing the
+//!   7 packet-60 keys explicitly at exactly their `ResolvedConfig::default()`
+//!   values produces byte-identical output to passing no config keys at all —
+//!   overriding a declared key with its own default is an end-to-end no-op.
+//! - DET-2  (`legacy_precision_run_is_deterministic`): two runs of the legacy
+//!   zero-cost configuration produce byte-identical output.
+//! - INV-3  (`legacy_slice_structural_invariants`): the legacy slice is
+//!   structurally sound (analytic layer count, monotone Z-set, closed outer
+//!   wall loops, E monotonicity, decimal-formatting contract).
 //! - AC-10  (`default_emits_fewer_lines_than_legacy`): default G1 XY line count
 //!   is strictly less than legacy by ≥ 5%.
-//! - NEG-2  (`legacy_zero_matches_golden`): legacy output is byte-identical to a
-//!   pre-recorded golden file at
-//!   `crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode`.
 //!
-//! # Golden regeneration
+//! # History: the removed byte-golden
 //!
-//! If the legacy golden file needs to be (re-)recorded, run:
-//!
-//! ```text
-//! BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd -- legacy_zero_matches_golden --nocapture
-//! ```
-//!
-//! Legacy mode = all 7 packet-60 keys at their legacy values (zero-cost path).
-//! If this golden breaks in a future packet, either restore byte-identity for
-//! legacy mode or update the golden with a documented justification.
+//! Through packet 234a this file carried a fourth test,
+//! `legacy_zero_matches_golden`, which required byte-identity against a frozen
+//! full-G-code capture (`tests/fixtures/golden/precision_legacy_20mmbox.gcode`,
+//! gated by `BLESS_GOLDEN=1`). It was re-blessed six times between 2026-07-02
+//! and 2026-08-24 because every geometry packet legitimately shifts wall and
+//! infill coordinates; the churn drowned the signal. It was removed on
+//! 2026-08-25 in favor of RES-1 + DET-2 + INV-3: contract-level checks that
+//! never need re-blessing. Detection of *geometric drift* is intentionally
+//! delegated to the parity/invariant suites; this file proves the packet-60
+//! plumbing contracts only.
 //!
 //! AC-10 uses its own `sparse_fill_holder = "gyroid-infill"` config pair
 //! (`AC10_DEFAULT_PRECISION_JSON` / `AC10_LEGACY_PRECISION_JSON`) rather than
-//! NEG-2's plain rectilinear-holder configs — see the earlier precision-fixture
-//! correction in git history
+//! RES-1/DET-2's plain rectilinear-holder configs — see the earlier
+//! precision-fixture correction in git history
 //! for why straight rectilinear lines give D-P/min-segment simplification
 //! nothing to reduce.
+//!
+//! S6b evidence (2026-08-25): section counts changed only at Internal solid infill
+//! (4 -> 3) and Bridge (0 -> 1); all other counts and the 100-value Z set are identical.
+//! The changed extrusion distribution is expected from packet 234a's spacing-source fix
+//! and carrier-free extra-layer feature; no unexpected diff class was observed.
 
 #![allow(missing_docs)]
 
@@ -49,11 +60,6 @@ fn fixture_stl() -> PathBuf {
     repo_root().join("resources/test_stl/ASCII/20mmbox-LF.stl")
 }
 
-fn golden_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden/precision_legacy_20mmbox.gcode")
-}
-
 fn core_module_dirs() -> Vec<PathBuf> {
     crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::CoreModules,
@@ -70,6 +76,28 @@ const LEGACY_PRECISION_JSON: &str = r#"{
   "perimeter_arc_tolerance": 0.0,
   "slice_closing_radius": 0.0
 }"#;
+
+/// The same seven packet-60 keys at exactly the values
+/// `ResolvedConfig::default()` supplies when the keys are omitted (mirrored
+/// from the macro table in `crates/slicer-ir/src/resolved_config.rs`).
+///
+/// Paired with [`EMPTY_CONFIG_JSON`] in RES-1 to prove that overriding a
+/// declared key with its own default value is a no-op through resolution →
+/// modules → emit.
+const EXPLICIT_DEFAULT_PRECISION_JSON: &str = r#"{
+  "gcode_resolution": 0.0125,
+  "infill_resolution": 0.04,
+  "support_resolution": 0.0375,
+  "min_segment_length": 0.05,
+  "gcode_xy_decimals": 3,
+  "perimeter_arc_tolerance": 0.0125,
+  "slice_closing_radius": 0.049
+}"#;
+
+/// No keys at all: `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`)
+/// seeds `ResolvedConfig::default()` and applies zero overrides, so the run
+/// rides pure defaults.
+const EMPTY_CONFIG_JSON: &str = r#"{}"#;
 
 /// AC-10-only default-precision config: identical to [`LEGACY_PRECISION_JSON`]'s
 /// sibling default-value set (all 7 packet-60 keys at OrcaSlicer defaults)
@@ -205,96 +233,384 @@ fn default_emits_fewer_lines_than_legacy() {
 }
 
 // ---------------------------------------------------------------------------
-// NEG-2 — legacy output is byte-identical to golden
+// RES-1 — explicit-defaults config is byte-identical to omitted keys
 // ---------------------------------------------------------------------------
 
-/// NEG-2: Legacy-mode output must be byte-identical to the pre-recorded golden.
+/// RES-1: Passing the seven packet-60 config keys explicitly at exactly their
+/// `ResolvedConfig::default()` values must produce byte-identical *motion
+/// output* to passing no config keys at all.
 ///
-/// This proves zero-impact of the packet-60 precision keys on the legacy
-/// (zero-cost) configuration path — any byte difference indicates a regression
-/// in the legacy path.
+/// This proves that overriding a declared key with its own default value is a
+/// no-op everywhere those keys act — through `resolve_global_config`
+/// (`crates/slicer-scheduler/src/config_resolution.rs`), module dispatch, and
+/// the emit path. All seven keys manifest only in motion lines (geometry
+/// simplification/closing via the six numeric keys, coordinate formatting via
+/// `gcode_xy_decimals`), so a motion-byte difference means a default drifted
+/// from the mirror in [`EXPLICIT_DEFAULT_PRECISION_JSON`] or an override
+/// stopped being value-transparent.
 ///
-/// Re-blessed 2026-07-02 after `ea16e992` fixed a real duplicate
-/// gyroid/lightning fill-emission bug that the previous golden had (unknowingly)
-/// baked in.
-///
-/// Re-blessed 2026-07-18 after packet 171 made `gcode_flavor` an explicit
-/// CONFIG_BLOCK key; motion lines remain unchanged.
-/// This refresh captures packet 172's Orca `enable_support` key spelling and
-/// the currently emitted `M73` progress lines.
-///
-/// Re-blessed 2026-08-03 (packet 185 closure) after the post-172 geometry
-/// packets: 185 (role-aware width resolution — classic wall widths now
-/// resolve against `outer_wall_line_width`/`inner_wall_line_width`, shifting wall
-/// offsets by 0.025 mm), 187/188 (custom-gcode injection points), 190/191
-/// (overhang smoothing / mid-segment vertex insertion) and 193 (overhang
-/// distance prepass carrier). The golden is the pre-172-era baseline that
-/// the seven packet-60 precision keys are validated against; it is
-/// re-blessed only when the drift is canonical-correct (per CLAUDE.md Test
-/// Discipline), never to mask a defect. The diff at re-bless time was
-/// geometry-only (wall coordinates and sparse-infill path counts).
-///
-/// Re-blessed 2026-08-27 (238c ceremony) after full attribution of every
-/// delta class to two documented commits: `9048cd37` (solid shells scan at
-/// SOLID_DENSITY=1.0 instead of sparse spacing — bottom-surface re-pitch,
-/// M73 estimate churn, and the index-anchored `; path-optimization layer 0`
-/// comment shifting past the brim as the entity count grew) and `787ce004`
-/// (packet-238a support-key header block, `support_line_width` auto →
-/// nozzle 0.4). Move streams outside those classes were verified
-/// byte-identical before blessing.
-///
-/// Re-blessed a second time 2026-08-03 (packet 185 production-readiness
-/// pass): the absent-`line_width` fallback moved to the canonical auto-0
-/// sentinel (1.125 × nozzle) in `rectilinear-infill` / `gyroid-infill` /
-/// `lightning-infill` (and `arachne-perimeters`), so the sparse-infill line
-/// spacing shifted from 0.4 mm-based to 0.45 mm-based on profiles that
-/// omit `line_width`. Geometry-only drift; re-blessed with the documented
-/// justification.
-///
-/// To record the golden for the first time (or re-record after a justified change):
-/// ```text
-/// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd -- legacy_zero_matches_golden --nocapture
-/// ```
+/// Comment lines are excluded because the trailing CONFIG_BLOCK deliberately
+/// echoes invocation-supplied keys (`run_pipeline_core` overlays
+/// `raw_config_source` onto the resolved map; packet 55 AC-8 requires
+/// user-passed keys to appear) and pads to OrcaSlicer's minimum-key gate when
+/// few are supplied — two different-but-equivalent invocations legitimately
+/// produce different CONFIG_BLOCKs while emitting identical toolpaths.
 #[test]
-fn legacy_zero_matches_golden() {
-    let legacy_bytes = run_with_config(LEGACY_PRECISION_JSON);
+fn explicit_defaults_match_omitted_keys_byte_for_byte() {
+    let explicit_bytes = run_with_config(EXPLICIT_DEFAULT_PRECISION_JSON);
+    let omitted_bytes = run_with_config(EMPTY_CONFIG_JSON);
 
-    let golden = golden_path();
-    let bless = std::env::var("BLESS_GOLDEN")
-        .map(|v| v == "1")
-        .unwrap_or(false);
+    // Non-vacuous guard: both runs must have produced real layered geometry,
+    // otherwise two empty outputs would trivially "match".
+    let layer_markers = |bytes: &[u8]| -> usize {
+        std::str::from_utf8(bytes)
+            .expect("gcode is utf-8")
+            .lines()
+            .filter(|l| l.trim() == ";LAYER_CHANGE")
+            .count()
+    };
+    let explicit_layers = layer_markers(&explicit_bytes);
+    assert!(
+        explicit_layers >= 10,
+        "RES-1 BLOCKED: explicit-defaults run has only {explicit_layers} ;LAYER_CHANGE \
+         markers — the pipeline may not be emitting real geometry."
+    );
+    assert_eq!(
+        layer_markers(&omitted_bytes),
+        explicit_layers,
+        "RES-1: omitted-keys run produced a different layer count"
+    );
 
-    if bless {
-        // Bless mode: write the golden once, then assert it exists.
-        if let Some(parent) = golden.parent() {
-            std::fs::create_dir_all(parent).expect("create golden dir");
+    // Compare the motion stream only (non-comment lines). See the doc comment
+    // for why CONFIG_BLOCK comment lines legitimately differ between two
+    // equivalent invocations.
+    let motion_lines = |bytes: &[u8]| -> String {
+        std::str::from_utf8(bytes)
+            .expect("gcode is utf-8")
+            .lines()
+            .filter(|l| !l.trim_start().starts_with(';'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert_eq!(
+        motion_lines(&explicit_bytes),
+        motion_lines(&omitted_bytes),
+        "RES-1 FAILED: overriding the packet-60 keys with their own default values \
+         changed the emitted toolpath. Either a ResolvedConfig default no longer \
+         matches the mirror in EXPLICIT_DEFAULT_PRECISION_JSON, or key \
+         resolution/emit is no longer value-transparent for defaults."
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DET-2 — legacy path determinism
+// ---------------------------------------------------------------------------
+
+/// DET-2: Two identical legacy-configuration runs must produce byte-identical
+/// G-code.
+///
+/// Replaces the frozen golden's "stability across runs" role without pinning
+/// content: determinism violations surface here; geometric drift does not.
+#[test]
+fn legacy_precision_run_is_deterministic() {
+    let a = run_with_config(LEGACY_PRECISION_JSON);
+    let b = run_with_config(LEGACY_PRECISION_JSON);
+
+    let layers = std::str::from_utf8(&a)
+        .expect("gcode is utf-8")
+        .lines()
+        .filter(|l| l.trim() == ";LAYER_CHANGE")
+        .count();
+    assert!(
+        layers >= 10,
+        "DET-2 BLOCKED: only {layers} ;LAYER_CHANGE markers — the pipeline may not \
+         be emitting real geometry."
+    );
+
+    assert_eq!(
+        a, b,
+        "DET-2 FAILED: two identical legacy-mode runs produced different bytes — \
+         the pipeline is nondeterministic on the zero-cost precision path."
+    );
+}
+
+// ---------------------------------------------------------------------------
+// INV-3 — structural soundness of the legacy slice
+// ---------------------------------------------------------------------------
+
+/// One parsed layer of legacy output: z height and its extrusion runs.
+struct ParsedLayer {
+    z_mm: f64,
+    /// Contiguous E-positive XY runs; each run is a list of (x, y) points.
+    extrusion_runs: Vec<Vec<(f64, f64)>>,
+}
+
+/// Parse G-code into per-layer z + contiguous extrusion runs.
+///
+/// A new run starts at each `G0` travel or after a negative-E retract line;
+/// points are appended while lines carry positive E and both X and Y.
+fn parse_layers(gcode: &str) -> Vec<ParsedLayer> {
+    let mut layers = Vec::new();
+    let mut current_z: Option<f64> = None;
+    let mut current_layer: Option<ParsedLayer> = None;
+    let mut current_run: Vec<(f64, f64)> = Vec::new();
+
+    for line in gcode.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(";Z:") {
+            if let Ok(z) = rest.trim().parse::<f64>() {
+                if let Some(layer) = current_layer.take() {
+                    layers.push(layer);
+                }
+                current_z = Some(z);
+                current_layer = Some(ParsedLayer {
+                    z_mm: z,
+                    extrusion_runs: Vec::new(),
+                });
+                current_run.clear();
+            }
+            continue;
         }
-        std::fs::write(&golden, &legacy_bytes).expect("write golden file");
-        println!(
-            "NEG-2 BLESSED: golden written to {}  ({} bytes)",
-            golden.display(),
-            legacy_bytes.len()
+        if !line.starts_with('G') {
+            continue;
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        let x = tokens.iter().find_map(|t| t.strip_prefix('X'));
+        let y = tokens.iter().find_map(|t| t.strip_prefix('Y'));
+        let e = tokens.iter().find_map(|t| t.strip_prefix('E'));
+        match (
+            x.and_then(|v| v.parse::<f64>().ok()),
+            y.and_then(|v| v.parse::<f64>().ok()),
+        ) {
+            (Some(x), Some(y)) => {
+                let _ = current_z; // recorded via the ;Z: comment above
+                let e_val = e.and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                if e_val > 0.0 {
+                    current_run.push((x, y));
+                } else if !current_run.is_empty() {
+                    if let Some(layer) = current_layer.as_mut() {
+                        layer.extrusion_runs.push(std::mem::take(&mut current_run));
+                    }
+                }
+            }
+            _ => {
+                if !current_run.is_empty() {
+                    if let Some(layer) = current_layer.as_mut() {
+                        layer.extrusion_runs.push(std::mem::take(&mut current_run));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(layer) = current_layer.take() {
+        layers.push(layer);
+    }
+    layers
+}
+
+/// INV-3: The legacy slice must be structurally sound:
+///
+/// 1. **Analytic layer count** — exactly 100 `;LAYER_CHANGE` markers. The
+///    fixture is a solid 20 mm box (`resources/test_stl/ASCII/20mmbox-LF.stl`)
+///    and the default profile is 0.2 mm layers with 0.2 mm first-layer height,
+///    so 100 layers is derived from fixture geometry × documented defaults, NOT
+///    captured output. An intentional change to those defaults legitimately
+///    edits these constants — a pointed failure unlike the old blanket
+///    byte-diff.
+/// 2. **Monotone Z-set** — `;Z:` strictly increasing at uniform 0.2 mm steps.
+/// 3. **Closed outer walls** — every outer-wall extrusion run revisits its own
+///    start point (a closed loop).
+/// 4. **E monotonicity + non-degenerate extrusion** — E never decreases within
+///    an Outer wall section, consecutive points are distinct, every parsed
+///    layer extrudes something.
+/// 5. **Decimal-formatting contract** — legacy runs at `gcode_xy_decimals = 4`,
+///    so every X/Y token carries ≤ 4 decimals; the default-config run (decimals
+///    = 3) carries ≤ 3. Proves the key flows through resolution to the emitter
+///    on both paths.
+#[test]
+fn legacy_slice_structural_invariants() {
+    const EXPECTED_LAYERS: usize = 100;
+    const LAYER_HEIGHT_MM: f64 = 0.2;
+
+    let legacy_bytes = run_with_config(LEGACY_PRECISION_JSON);
+    let gcode = std::str::from_utf8(&legacy_bytes).expect("legacy gcode is utf-8");
+
+    // -- 1. Analytic layer count ---------------------------------------------
+    let layer_changes = gcode
+        .lines()
+        .filter(|l| l.trim() == ";LAYER_CHANGE")
+        .count();
+    assert_eq!(
+        layer_changes, EXPECTED_LAYERS,
+        "INV-3.1: expected {EXPECTED_LAYERS} layers (20mm box / 0.2mm default layer \
+         height); got {layer_changes}. If first_layer_height/layer_height defaults \
+         changed intentionally, update EXPECTED_LAYERS."
+    );
+
+    // -- 2. Monotone Z-set -----------------------------------------------------
+    let layers = parse_layers(gcode);
+    assert_eq!(
+        layers.len(),
+        EXPECTED_LAYERS,
+        "INV-3.2: parsed {} ;Z: blocks, expected {EXPECTED_LAYERS}",
+        layers.len()
+    );
+    for pair in layers.windows(2) {
+        let dz = pair[1].z_mm - pair[0].z_mm;
+        assert!(
+            dz > 0.0,
+            "INV-3.2: Z decreased from {} to {}",
+            pair[0].z_mm,
+            pair[1].z_mm
         );
-        return;
+        assert!(
+            (dz - LAYER_HEIGHT_MM).abs() < 1e-6,
+            "INV-3.2: non-uniform layer step {dz} between z={} and z={} \
+             (expected {LAYER_HEIGHT_MM})",
+            pair[0].z_mm,
+            pair[1].z_mm
+        );
+    }
+
+    // -- 3 & 4. Outer-wall closure + E monotonicity ----------------------------
+    // Split the file into ;TYPE: sections so we only inspect Outer wall runs.
+    //
+    // The serializer emits a travel-to-start line (`G1 X.. Y.. F..`, no E)
+    // INSIDE the `;TYPE:Outer wall` section before the loop's first extrusion.
+    // That line is the loop's anchor point, so runs are seeded with the last
+    // seen XY position — otherwise every run starts one vertex late and can
+    // never "close".
+    let mut current_type: Option<String> = None;
+    let mut outer_runs: Vec<Vec<(f64, f64)>> = Vec::new();
+    let mut open_run: Vec<(f64, f64)> = Vec::new();
+    let mut last_pos: Option<(f64, f64)> = None;
+    let mut last_e_in_section: Option<f64> = None;
+
+    for line in gcode.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(";TYPE:") {
+            if !open_run.is_empty() && current_type.as_deref() == Some("Outer wall") {
+                outer_runs.push(std::mem::take(&mut open_run));
+            }
+            open_run.clear();
+            last_e_in_section = None;
+            current_type = Some(rest.to_string());
+            continue;
+        }
+        if current_type.as_deref() != Some("Outer wall") || !line.starts_with('G') {
+            continue;
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        let x = tokens.iter().find_map(|t| t.strip_prefix('X'));
+        let y = tokens.iter().find_map(|t| t.strip_prefix('Y'));
+        let e = tokens.iter().find_map(|t| t.strip_prefix('E'));
+        match (
+            x.and_then(|v| v.parse::<f64>().ok()),
+            y.and_then(|v| v.parse::<f64>().ok()),
+        ) {
+            (Some(x), Some(y)) => {
+                let e_val = e.and_then(|v| v.parse::<f64>().ok());
+                if e_val.is_none() || e_val == Some(0.0) {
+                    // Travel / positioning move inside the section: it is the
+                    // loop's anchor. Close any open run and record position.
+                    if !open_run.is_empty() {
+                        outer_runs.push(std::mem::take(&mut open_run));
+                    }
+                    last_pos = Some((x, y));
+                } else if let Some(e) = e_val {
+                    if let Some(last) = last_e_in_section {
+                        assert!(
+                            e >= last - 1e-9,
+                            "INV-3.4: E went backwards inside an Outer wall section \
+                             ({last} -> {e})"
+                        );
+                    }
+                    last_e_in_section = Some(e);
+                    if open_run.is_empty() {
+                        if let Some(anchor) = last_pos {
+                            open_run.push(anchor);
+                        }
+                    }
+                    open_run.push((x, y));
+                }
+            }
+            _ => {
+                // Non-XY G-line (retract/unretract): closes the current run.
+                if !open_run.is_empty() {
+                    outer_runs.push(std::mem::take(&mut open_run));
+                }
+            }
+        }
+    }
+    if !open_run.is_empty() {
+        outer_runs.push(open_run);
     }
 
     assert!(
-        golden.exists(),
-        "NEG-2 BLOCKED: golden file missing at {}. \
-         Run with BLESS_GOLDEN=1 to record it:\n  \
-         BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd \
-         -- legacy_zero_matches_golden --nocapture",
-        golden.display()
+        !outer_runs.is_empty(),
+        "INV-3.3: no Outer wall extrusion runs found — section sentinels may have \
+         moved; check the serializer's ;TYPE emission."
     );
 
-    let golden_bytes = std::fs::read(&golden).expect("read golden file");
+    // Loop closure: each run must revisit its own start point later in itself
+    // (within one nozzle diameter). The perimeter loop returns to where it began.
+    const CLOSURE_TOL_MM: f64 = 0.45; // > max legacy wall spacing; < feature scale
+    for (i, run) in outer_runs.iter().enumerate() {
+        assert!(
+            run.len() >= 4,
+            "INV-3.3: outer-wall run {i} has only {} points — too short to be a loop",
+            run.len()
+        );
+        let (sx, sy) = run[0];
+        let closes = run[1..]
+            .iter()
+            .any(|&(x, y)| ((x - sx).powi(2) + (y - sy).powi(2)).sqrt() <= CLOSURE_TOL_MM);
+        assert!(
+            closes,
+            "INV-3.3: outer-wall run {i} ({} points) never returns to its start \
+             ({sx},{sy}) within {CLOSURE_TOL_MM}mm — the loop is broken.",
+            run.len()
+        );
 
-    assert_eq!(
-        legacy_bytes,
-        golden_bytes,
-        "NEG-2 FAILED: legacy-mode G-code is not byte-identical to the golden at {}. \
-         The legacy (zero-cost) path has changed. \
-         If this is intentional, re-bless with BLESS_GOLDEN=1 and document the justification.",
-        golden.display()
-    );
+        // INV-3.4 (geometry-side): consecutive points must be distinct.
+        for w in run.windows(2) {
+            assert!(
+                (w[0].0 - w[1].0).abs() > 1e-9 || (w[0].1 - w[1].1).abs() > 1e-9,
+                "INV-3.4: duplicate consecutive point in outer-wall run {i}"
+            );
+        }
+    }
+
+    // Per-layer positive extrusion exists.
+    for layer in &layers {
+        let total_e_points: usize = layer.extrusion_runs.iter().map(|r| r.len()).sum();
+        assert!(
+            total_e_points > 0,
+            "INV-3.4: layer at z={} extrudes nothing",
+            layer.z_mm
+        );
+    }
+
+    // -- 5. Decimal-formatting contract ----------------------------------------
+    let xy_decimals =
+        |token: &str| -> usize { token.split_once('.').map_or(0, |(_, frac)| frac.len()) };
+    let check_decimals = |gcode_text: &str, max_decimals: usize, label: &str| {
+        for line in gcode_text.lines().filter(|l| {
+            let l = l.trim();
+            l.starts_with("G1") && l.split_whitespace().any(|t| t.starts_with('X'))
+        }) {
+            for token in line.split_whitespace() {
+                if token.starts_with('X') || token.starts_with('Y') {
+                    assert!(
+                        xy_decimals(token) <= max_decimals,
+                        "INV-3.5: {label} run emitted `{token}` with >{max_decimals} decimals"
+                    );
+                }
+            }
+        }
+    };
+    check_decimals(gcode, 4, "legacy (gcode_xy_decimals=4)");
+    let default_bytes = run_with_config(EXPLICIT_DEFAULT_PRECISION_JSON);
+    let default_gcode = std::str::from_utf8(&default_bytes).expect("default gcode is utf-8");
+    check_decimals(default_gcode, 3, "default (gcode_xy_decimals=3)");
 }

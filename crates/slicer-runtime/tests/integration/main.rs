@@ -110,6 +110,7 @@ mod classic_min_width_top_surface_tdd;
 mod classic_wall_width_resolution_tdd;
 mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
+mod extra_bridge_layer_emission_semantics;
 mod extra_perimeters_config_tdd;
 mod extra_perimeters_on_overhangs_tdd;
 mod full_coverage_external_override_tdd;

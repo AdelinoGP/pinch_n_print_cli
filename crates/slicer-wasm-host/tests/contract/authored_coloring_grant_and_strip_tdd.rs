@@ -50,6 +50,7 @@ fn path_with_tool(tool_index: Option<u32>) -> ExtrusionPath3d {
         role: ExtrusionRole::SparseInfill,
         speed_factor: 1.0,
         tool_index,
+        order_lock: None,
     }
 }
 

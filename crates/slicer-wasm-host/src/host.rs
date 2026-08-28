@@ -183,10 +183,14 @@ pub struct SliceRegionData {
     pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Polygon-precise bottom solid fill from shrinking-shadow projection.
     pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Polygon-precise internal solid fill.
+    pub internal_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Per-layer internal (over-sparse-infill) bridge polygons.
+    pub internal_bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -2934,8 +2938,10 @@ mod region_origin_tests {
                     bottom_shell_index: None,
                     top_solid_fill: Vec::new(),
                     bottom_solid_fill: Vec::new(),
+                    internal_solid_fill: Vec::new(),
                     is_bridge: false,
                     bridge_areas: Vec::new(),
+                    internal_bridge_areas: Vec::new(),
                     bridge_orientation_deg: 0.0,
                     sparse_infill_area: Vec::new(),
                     held_claims: Vec::new(),
@@ -3273,6 +3279,13 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.top_solid_fill.clone())
     }
+    fn internal_solid_fill(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::types::geometry::ExPolygon>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.internal_solid_fill.clone())
+    }
     fn bottom_solid_fill(
         &mut self,
         self_: Resource<SliceRegionData>,
@@ -3291,6 +3304,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("SliceIR.regions.bridge-areas"));
         Ok(self.table.get(&self_)?.bridge_areas.clone())
+    }
+    fn internal_bridge_areas(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.internal-bridge-areas"));
+        Ok(self.table.get(&self_)?.internal_bridge_areas.clone())
     }
     fn bridge_orientation_deg(
         &mut self,
@@ -3922,6 +3943,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
             .ordered_entities
             .iter()
             .map(|v| ir::OrderedEntityView {
+                order_lock: v.order_lock,
                 original_index: v.original_index,
                 tool_index: v.tool_index,
                 region_key: ir::RegionKey {
@@ -4437,6 +4459,7 @@ mod finalization_impls {
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),
             speed_factor: p.speed_factor,
+            order_lock: p.order_lock,
             tool_index: p.tool_index,
         }
     }
@@ -4910,6 +4933,7 @@ mod finalization_impls {
                         role: fgeo::ExtrusionRole::OuterWall,
                         speed_factor: 1.0,
                         tool_index: None,
+                        order_lock: None,
                     },
                     0,
                     fm::RegionKey {

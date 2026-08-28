@@ -147,7 +147,9 @@ pub struct SliceRegionViewBuilder {
     bottom_shell_index: Option<u8>,
     bottom_solid_fill: Vec<ExPolygon>,
     is_bridge: bool,
+    is_internal_bridge: bool,
     bridge_areas: Vec<ExPolygon>,
+    internal_bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
     surface_group: Option<SurfaceGroup>,
@@ -186,7 +188,9 @@ impl SliceRegionViewBuilder {
             bottom_shell_index: None,
             bottom_solid_fill: Vec::new(),
             is_bridge: false,
+            is_internal_bridge: false,
             bridge_areas: Vec::new(),
+            internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             surface_group: None,
@@ -358,11 +362,26 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the internal-bridge classification flag.
+    #[must_use]
+    pub fn is_internal_bridge(mut self, on: bool) -> Self {
+        self.is_internal_bridge = on;
+        self
+    }
+
     /// Set the per-layer expanded bridge polygons.
     /// Mirrors [`SliceRegionView::set_bridge_areas`].
     #[must_use]
     pub fn bridge_areas(mut self, areas: Vec<ExPolygon>) -> Self {
         self.bridge_areas = areas;
+        self
+    }
+
+    /// Set the per-layer internal (over-sparse-infill) bridge polygons.
+    /// Mirrors [`SliceRegionView::set_internal_bridge_areas`].
+    #[must_use]
+    pub fn internal_bridge_areas(mut self, areas: Vec<ExPolygon>) -> Self {
+        self.internal_bridge_areas = areas;
         self
     }
 
@@ -442,7 +461,9 @@ impl SliceRegionViewBuilder {
             tmp.set_bottom_shell_index(self.bottom_shell_index);
             tmp.set_bottom_solid_fill(self.bottom_solid_fill);
             tmp.set_is_bridge(self.is_bridge);
+            tmp.set_is_internal_bridge(self.is_internal_bridge);
             tmp.set_bridge_areas(self.bridge_areas);
+            tmp.set_internal_bridge_areas(self.internal_bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);
             tmp.set_surface_group(self.surface_group);
@@ -565,6 +586,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -918,11 +940,13 @@ pub fn print_entity(
 ) -> PrintEntity {
     PrintEntity {
         entity_id,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         role,
         tool_index: 0,
@@ -962,6 +986,7 @@ pub fn extrusion_path3d_base(role: ExtrusionRole) -> ExtrusionPath3D {
         role,
         speed_factor: 1.0,
         tool_index: None,
+        order_lock: None,
     }
 }
 
@@ -986,11 +1011,13 @@ pub fn extrusion_path3d_base(role: ExtrusionRole) -> ExtrusionPath3D {
 pub fn print_entity_base(role: ExtrusionRole) -> PrintEntity {
     PrintEntity {
         entity_id: 0,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth::default()],
             role: role.clone(),
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         role,
         region_key: RegionKey::default(),
@@ -1028,11 +1055,13 @@ pub fn wall_loop_base(loop_type: LoopType, boundary_type: WallBoundaryType) -> W
     WallLoop {
         perimeter_index: 0,
         loop_type,
+        // exhaustive: fixture construction intentionally pins path defaults.
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth::default()],
             role,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         width_profile: WidthProfile { widths: vec![0.0] },
         feature_flags: Vec::new(),
@@ -1068,6 +1097,7 @@ pub fn ordered_entity_view_base(role: ExtrusionRole) -> crate::views::OrderedEnt
         start_point: Point3WithWidth::default(),
         end_point: Point3WithWidth::default(),
         point_count: 2,
+        order_lock: None,
     }
 }
 

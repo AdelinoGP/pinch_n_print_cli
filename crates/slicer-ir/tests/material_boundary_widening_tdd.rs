@@ -16,16 +16,16 @@ fn schema_version_is_current() {
     // 4.6.0 (packet 109 — compatible minor removal of the dead
     // `SlicedRegion.external_contour` field + its WIT accessor; see the docs/02
     // Contract note for why removal ships minor here), and 4.7.0 (packet 112 —
-    // additive `ExtrusionLine`/`ExtrusionJunction` IR). This pin tracks the live
-    // constant (the MaterialBoundary widening is still present at 4.7.0).
+    // additive `ExtrusionLine`/`ExtrusionJunction` IR), and 4.8.0 (packet 233 —
+    // additive `InternalBridgeInfill`). This pin tracks the live constant.
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {
             major: 4,
-            minor: 7,
+            minor: 8,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.7.0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.8.0)"
     );
 }
 

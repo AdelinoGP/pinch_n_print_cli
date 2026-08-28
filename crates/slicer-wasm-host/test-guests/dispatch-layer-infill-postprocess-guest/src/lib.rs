@@ -44,6 +44,7 @@ impl Guest for Component {
                 role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                 speed_factor: 1.0,
                 tool_index: None,
+                order_lock: None,
             };
             output
                 .push_solid_path(&path)

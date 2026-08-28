@@ -110,6 +110,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         // feature-flags must be parallel to path.points: 2 points = 2 flags
         feature_flags: vec![
@@ -657,6 +658,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         // Only 2 flags for 3 points â€” cardinality mismatch
         feature_flags: vec![
@@ -771,6 +773,7 @@ fn seam_z_outside_layer_envelope_rejected() {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         },
         feature_flags: vec![
             WallFeatureFlag {

@@ -46,11 +46,17 @@ pub struct SliceRegionView {
     top_solid_fill: Vec<ExPolygon>,
     /// Polygon-precise area to solid-fill from bottom shell projection.
     bottom_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from internal fill projection.
+    internal_solid_fill: Vec<ExPolygon>,
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
+    is_internal_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     bridge_areas: Vec<ExPolygon>,
+    /// Per-layer internal (over-sparse-infill) bridge polygons.
+    /// Empty when this region has no internal bridge areas.
+    internal_bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -105,8 +111,11 @@ impl Default for SliceRegionView {
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
+            internal_solid_fill: Vec::new(),
             is_bridge: false,
+            is_internal_bridge: false,
             bridge_areas: Vec::new(),
+            internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
@@ -137,8 +146,10 @@ impl SliceRegionView {
             bottom_shell_index: region.bottom_shell_index,
             top_solid_fill: region.top_solid_fill.clone(),
             bottom_solid_fill: region.bottom_solid_fill.clone(),
+            internal_solid_fill: region.internal_solid_fill.clone(),
             is_bridge: region.is_bridge,
             bridge_areas: region.bridge_areas.clone(),
+            internal_bridge_areas: region.internal_bridge_areas.clone(),
             bridge_orientation_deg: region.bridge_orientation_deg,
             sparse_infill_area: region.sparse_infill_area.clone(),
             held_claims,
@@ -256,10 +267,22 @@ impl SliceRegionView {
         self.is_bridge = is_bridge;
     }
 
+    /// Override the internal-bridge classification flag for legacy module APIs.
+    #[doc(hidden)]
+    pub fn set_is_internal_bridge(&mut self, is_internal_bridge: bool) {
+        self.is_internal_bridge = is_internal_bridge;
+    }
+
     /// Override the bridge areas (host-only, for testing).
     #[doc(hidden)]
     pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
         self.bridge_areas = bridge_areas;
+    }
+
+    /// Override the internal bridge areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_internal_bridge_areas(&mut self, internal_bridge_areas: Vec<ExPolygon>) {
+        self.internal_bridge_areas = internal_bridge_areas;
     }
 
     /// Override the bridge orientation (host-only, for testing).
@@ -375,6 +398,14 @@ impl SliceRegionView {
         &self.top_solid_fill
     }
 
+    /// Returns the polygon-precise internal solid fill area for this region.
+    ///
+    /// The dense-interior band mirror of `top_solid_fill`/`bottom_solid_fill`,
+    /// populated by `PrePass::ShellClassification`.
+    pub fn internal_solid_fill(&self) -> &[ExPolygon] {
+        &self.internal_solid_fill
+    }
+
     /// Returns the polygon-precise bottom solid fill area for this region.
     ///
     /// Empty when `bottom_shell_index()` is `None`.
@@ -394,6 +425,11 @@ impl SliceRegionView {
     /// a different fill strategy.
     pub fn is_bridge(&self) -> bool {
         self.is_bridge
+    }
+
+    /// Returns the legacy internal-bridge classification flag.
+    pub fn is_internal_bridge(&self) -> bool {
+        self.is_internal_bridge
     }
 
     /// Returns the object ID this region belongs to.
@@ -458,6 +494,13 @@ impl SliceRegionView {
     /// it is never deduped by another role.
     pub fn bridge_areas(&self) -> &[ExPolygon] {
         &self.bridge_areas
+    }
+
+    /// Returns the per-layer internal (over-sparse-infill) bridge polygons.
+    ///
+    /// Empty when this region has no internal bridge areas.
+    pub fn internal_bridge_areas(&self) -> &[ExPolygon] {
+        &self.internal_bridge_areas
     }
 
     /// Returns the best bridge direction across all valid bridge regions (degrees).
@@ -595,7 +638,9 @@ impl SliceRegionView {
             ExtrusionRole::TopSolidInfill => "claim:top-fill",
             ExtrusionRole::RaftInfill => "claim:raft-fill",
             ExtrusionRole::BottomSolidInfill => "claim:bottom-fill",
-            ExtrusionRole::BridgeInfill => "claim:bridge-fill",
+            ExtrusionRole::BridgeInfill | ExtrusionRole::InternalBridgeInfill => {
+                "claim:bridge-fill"
+            }
             ExtrusionRole::SparseInfill => "claim:sparse-fill",
             _ => return true,
         };
@@ -832,4 +877,6 @@ pub struct OrderedEntityView {
     pub end_point: Point3WithWidth,
     /// Total number of points on the entity's path (including endpoints).
     pub point_count: u32,
+    /// Optional stable ordering lock carried by the extrusion path.
+    pub order_lock: Option<u64>,
 }

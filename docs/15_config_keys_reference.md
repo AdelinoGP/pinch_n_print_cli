@@ -194,15 +194,29 @@ is the authoritative catalog of their defaults and ranges.
 | `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
+| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `bridge_speed` | float | `25.0` | [1.0, 300.0] | `rectilinear-infill` |
+| `dont_filter_internal_bridges` | bool | `false` | — | `rectilinear-infill` |
+| `enable_extra_bridge_layer` | bool | `false` | — | `rectilinear-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | `rectilinear-infill` |
+| `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | `rectilinear-infill` |
+| `internal_bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
+| `internal_bridge_speed` | float_or_percent | `"150%"` | >= 1.0 | `rectilinear-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `internal_solid_infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `rectilinear-infill` |
 | `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `sparse_infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
+| `thick_bridges` | bool | `false` | — | `rectilinear-infill` |
+| `thick_internal_bridges` | bool | `true` | — | `rectilinear-infill` |
 | `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `top_surface_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
@@ -273,6 +287,23 @@ is the authoritative catalog of their defaults and ranges.
 | `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `tree-support-planner` |
 | `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | `tree-support-planner` |
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support-planner` |
+| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `wave-overhangs` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | `wave-overhangs` |
+| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `wave-overhangs` |
+| `bridge_speed` | float | `25.0` | [1.0, 300.0] | `wave-overhangs` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | `wave-overhangs` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `wave-overhangs` |
+| `wall_count` | int | `3` | [1.0, 10.0] | `wave-overhangs` |
+| `wave_overhang_anchor_depth_mm` | float | `0.0` | [0.0, 20.0] | `wave-overhangs` |
+| `wave_overhang_flow_mm3_per_mm` | float | `0.15` | [0.02, 1.5] | `wave-overhangs` |
+| `wave_overhang_line_spacing` | float | `0.35` | [0.01, 5.0] | `wave-overhangs` |
+| `wave_overhang_max_iterations` | int | `0` | [0.0, 500.0] | `wave-overhangs` |
+| `wave_overhang_min_length` | float | `0.0` | [0.0, 100.0] | `wave-overhangs` |
+| `wave_overhang_min_new_area` | float | `0.01` | [0.0, 10.0] | `wave-overhangs` |
+| `wave_overhang_minimum_width` | float | `0.7` | [0.0, 10.0] | `wave-overhangs` |
+| `wave_overhang_pattern` | string | `"smart"` | — | `wave-overhangs` |
+| `wave_overhang_perimeter_overlap` | float | `0.1` | [0.0, 5.0] | `wave-overhangs` |
+| `wave_overhang_print_speed` | float | `2.0` | [0.1, 300.0] | `wave-overhangs` |
 | `bed_shape` | float-list | `—` | — | `wipe-tower` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `wipe-tower` |
 | `retract_length` | float | `2.0` | [0.0, 20.0] | `wipe-tower` |
@@ -282,6 +313,17 @@ is the authoritative catalog of their defaults and ranges.
 | `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 | `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
+
+**Note — `dont_filter_internal_bridges`:** since packet 234a the value selects
+between canonical lower-layer support filtering semantics, not merely a sliver
+guard: `false` maps to canonical `ibfDisabled` (full filtering — internal-bridge
+sites are qualified against the committed layer below via
+`unsupported_span_areas`/`qualify_internal_bridge_surface`, with the partial-area
+`9*spacing^2` gate applied; expansion multiplier 3), and `true` maps to canonical
+`ibfNofilter` (bypass of the area/partial gate; expansion multiplier 1). The
+qualification runs in the ShellClassification prepass
+(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`); the InfillPostProcess
+arm only emits the authored centerlines.
 
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
 default `-1`, but bottom interface layers are not yet implemented; `support-planner`
@@ -416,11 +458,13 @@ upstream or has no upstream equivalent.
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |
+| `internal_solid_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |
 | `ironing_speed` | `support-surface-ironing` | `30.0` | `20.0` |
 | `nozzle_temperature_initial_layer` | `machine-gcode-emit` | `215` | `200.0` |
 | `outer_wall_speed` | `classic-perimeters` | `30.0` | `60.0` |
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
+| `sparse_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |
 | `support_angle` | `traditional-support` | `60.0` | `0.0` |
 | `support_interface_spacing` | `traditional-support` | `0.4` | `0.5` |
 | `support_interface_spacing` | `tree-support` | `0.4` | `0.5` |
@@ -429,6 +473,7 @@ upstream or has no upstream equivalent.
 | `support_speed` | `traditional-support` | `50.0` | `80.0` |
 | `support_speed` | `tree-support` | `50.0` | `80.0` |
 | `top_shell_layers` | `resolved_config.rs::ResolvedConfig` | `3` | `4.0` |
+| `top_surface_speed` | `rectilinear-infill` | `60.0` | `100.0` |
 | `tree_support_branch_angle` | `tree-support-planner` | `45.0` | `40.0` |
 | `tree_support_branch_distance` | `tree-support-planner` | `1.0` | `5.0` |
 | `wipe_tower_x` | `wipe-tower` | `10.0` | `15.0` |

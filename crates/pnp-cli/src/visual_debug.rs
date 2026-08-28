@@ -1260,6 +1260,149 @@ fn run_postpass_taps(
     })
 }
 
+/// Canonical stable string name for a [`slicer_ir::PaintSemantic`], mirroring
+/// `slicer_core`'s `compose_variants::semantic_name`. Used only for JSON
+/// serialization of `segment_annotations` map keys in
+/// [`capture_ir_to_json`].
+fn paint_semantic_name(semantic: &slicer_ir::PaintSemantic) -> String {
+    match semantic {
+        slicer_ir::PaintSemantic::Material => "material".to_owned(),
+        slicer_ir::PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
+        slicer_ir::PaintSemantic::SupportEnforcer => "support_enforcer".to_owned(),
+        slicer_ir::PaintSemantic::SupportBlocker => "support_blocker".to_owned(),
+        slicer_ir::PaintSemantic::Custom(name) => name.clone(),
+    }
+}
+
+/// Serialize a [`slicer_runtime::CapturedIr`] to a JSON value, or `None` on
+/// serialization failure.
+///
+/// A straight `serde_json::to_value(&capture.ir)` silently produced `None` —
+/// and therefore a null `typed_capture` — for any `Layer::Slice` tap whose
+/// regions carry custom paint annotations. Root cause: `serde_json`'s map
+/// `KeySerializer` rejects the `PaintSemantic::Custom(String)` *newtype
+/// variant* when it appears as a `HashMap` key, raising
+/// `"key must be a string"`. `Custom` semantics are production-standard
+/// (`seam_enforcer`, `seam_blocker`, module IDs), so this was a latent
+/// production bug for any model with a non-empty
+/// `SlicedRegion.segment_annotations`, not a fixture artifact — a synthetic
+/// mixed-density fixture only *exposed* it because calicat's slices happen to
+/// carry an empty `segment_annotations` map.
+///
+/// The `Slice` variant is therefore rebuilt with `segment_annotations` keys
+/// normalized to their canonical string names via [`paint_semantic_name`]
+/// (the same mapping the rest of the codebase uses to name variants); every
+/// other `CapturedIr` variant serializes through its derived `Serialize`
+/// unchanged. The field list mirrors `SlicedRegion`/`SliceIR` in
+/// `crates/slicer-ir/src/slice_ir.rs` — keep them in the same order.
+fn capture_ir_to_json(ir: &slicer_runtime::CapturedIr) -> Option<serde_json::Value> {
+    let slice = match ir {
+        slicer_runtime::CapturedIr::Slice(slice) => slice,
+        other => return serde_json::to_value(other).ok(),
+    };
+    let mut regions = Vec::with_capacity(slice.regions.len());
+    for region in &slice.regions {
+        let mut obj = serde_json::Map::new();
+        obj.insert(
+            "object_id".into(),
+            serde_json::to_value(&region.object_id).ok()?,
+        );
+        obj.insert(
+            "region_id".into(),
+            serde_json::to_value(&region.region_id).ok()?,
+        );
+        obj.insert(
+            "polygons".into(),
+            serde_json::to_value(&region.polygons).ok()?,
+        );
+        obj.insert(
+            "infill_areas".into(),
+            serde_json::to_value(&region.infill_areas).ok()?,
+        );
+        obj.insert(
+            "nonplanar_surface".into(),
+            serde_json::to_value(&region.nonplanar_surface).ok()?,
+        );
+        obj.insert(
+            "effective_layer_height".into(),
+            serde_json::to_value(&region.effective_layer_height).ok()?,
+        );
+        let mut annotations = serde_json::Map::new();
+        for (semantic, per_layer) in &region.segment_annotations {
+            annotations.insert(
+                paint_semantic_name(semantic),
+                serde_json::to_value(per_layer).ok()?,
+            );
+        }
+        obj.insert(
+            "segment_annotations".into(),
+            serde_json::Value::Object(annotations),
+        );
+        obj.insert(
+            "variant_chain".into(),
+            serde_json::to_value(&region.variant_chain).ok()?,
+        );
+        obj.insert(
+            "top_shell_index".into(),
+            serde_json::to_value(&region.top_shell_index).ok()?,
+        );
+        obj.insert(
+            "bottom_shell_index".into(),
+            serde_json::to_value(&region.bottom_shell_index).ok()?,
+        );
+        obj.insert(
+            "top_solid_fill".into(),
+            serde_json::to_value(&region.top_solid_fill).ok()?,
+        );
+        obj.insert(
+            "bottom_solid_fill".into(),
+            serde_json::to_value(&region.bottom_solid_fill).ok()?,
+        );
+        obj.insert(
+            "is_bridge".into(),
+            serde_json::to_value(&region.is_bridge).ok()?,
+        );
+        obj.insert(
+            "bridge_areas".into(),
+            serde_json::to_value(&region.bridge_areas).ok()?,
+        );
+        obj.insert(
+            "bridge_orientation_deg".into(),
+            serde_json::to_value(&region.bridge_orientation_deg).ok()?,
+        );
+        obj.insert(
+            "sparse_infill_area".into(),
+            serde_json::to_value(&region.sparse_infill_area).ok()?,
+        );
+        obj.insert(
+            "internal_solid_fill".into(),
+            serde_json::to_value(&region.internal_solid_fill).ok()?,
+        );
+        obj.insert(
+            "internal_bridge_areas".into(),
+            serde_json::to_value(&region.internal_bridge_areas).ok()?,
+        );
+        regions.push(serde_json::Value::Object(obj));
+    }
+    let mut slice_obj = serde_json::Map::new();
+    slice_obj.insert(
+        "schema_version".into(),
+        serde_json::to_value(&slice.schema_version).ok()?,
+    );
+    slice_obj.insert(
+        "global_layer_index".into(),
+        serde_json::to_value(&slice.global_layer_index).ok()?,
+    );
+    slice_obj.insert("z".into(), serde_json::to_value(&slice.z).ok()?);
+    slice_obj.insert("regions".into(), serde_json::Value::Array(regions));
+    // `CapturedIr` is internally tagged (`#[serde(tag = "kind", content = "value")]`
+    // in `layer_executor.rs`), so the SliceIR must be wrapped in `{"kind": ..., "value": ...}`.
+    let mut tagged = serde_json::Map::new();
+    tagged.insert("kind".into(), serde_json::Value::String("Slice".into()));
+    tagged.insert("value".into(), serde_json::Value::Object(slice_obj));
+    Some(serde_json::Value::Object(tagged))
+}
+
 /// The `Model`-source body of [`run_visual_debug`] (packet 158): validates
 /// the requested taps and layers, and — only when taps were actually
 /// requested — loads the model and modules, runs the scheduler dependency
@@ -1518,7 +1661,7 @@ fn run_model_source(
             ir_schema_version: Some(capture.ir.schema_version_string()),
             gcode_parser_version: None,
             warnings: Vec::new(),
-            typed_capture: serde_json::to_value(&capture.ir).ok(),
+            typed_capture: capture_ir_to_json(&capture.ir),
             world_bounds_mm: None,
             overlay: None,
             overlay_events: None,
@@ -1603,7 +1746,7 @@ fn run_model_source(
                             ir_schema_version: Some(capture.ir.schema_version_string()),
                             gcode_parser_version: None,
                             warnings: Vec::new(),
-                            typed_capture: serde_json::to_value(&capture.ir).ok(),
+                            typed_capture: capture_ir_to_json(&capture.ir),
                             world_bounds_mm: Some(viewport_bounds),
                             overlay: Some(kind.name().to_string()),
                             overlay_events: Some(events),
@@ -1679,7 +1822,7 @@ fn run_model_source(
                     ir_schema_version: Some(capture.ir.schema_version_string()),
                     gcode_parser_version: None,
                     warnings: Vec::new(),
-                    typed_capture: serde_json::to_value(&capture.ir).ok(),
+                    typed_capture: capture_ir_to_json(&capture.ir),
                     world_bounds_mm: Some(viewport_bounds),
                     overlay: None,
                     overlay_events: None,

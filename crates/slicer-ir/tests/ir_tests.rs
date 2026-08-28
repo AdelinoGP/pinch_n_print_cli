@@ -678,7 +678,7 @@ fn slice_ir_schema_version_is_one_one_zero() {
 /// AC-10 (packet 36-rev1): bridge_detector_schema_versions_are_constant_sourced
 ///
 /// Asserts that:
-///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 3, 0 }
+///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 2, 0, 0 }
 ///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 6, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
@@ -688,11 +688,11 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     assert_eq!(
         slicer_ir::CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         slicer_ir::SemVer {
-            major: 1,
-            minor: 3,
+            major: 2,
+            minor: 0,
             patch: 0
         },
-        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 3, 0)"
+        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (2, 0, 0)"
     );
 
     // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding);
@@ -714,14 +714,15 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       struck/reserved by P106; see the docs/02 Contract note.)
     //       minor bump to 4.7.0 by packet 112 (AC-5) — additive new
     //       ExtrusionLine/ExtrusionJunction IR for Arachne extrusion wireup.
+    //       minor bump to 4.8.0 by packet 233 — additive InternalBridgeInfill role.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 7,
+            minor: 8,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 7, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 8, 0)"
     );
 
     // (c)

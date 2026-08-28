@@ -441,7 +441,11 @@ pub fn sliced_region_to_data(
     let overhang_quartile_polygons: Vec<
         crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand,
     > = surface_classification
-        .and_then(|sc| sc.overhang_quartile_polygons.get(&global_layer_index))
+        .and_then(|sc| {
+            sc.overhang_quartile_polygons
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
         .map(|bands| {
             bands
                 .iter()
@@ -481,7 +485,11 @@ pub fn sliced_region_to_data(
             .collect();
     let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
         surface_classification
-            .and_then(|sc| sc.prev_layer_boundaries.get(&global_layer_index))
+            .and_then(|sc| {
+                sc.prev_layer_boundaries
+                    .get(&region.object_id)
+                    .and_then(|by_layer| by_layer.get(&global_layer_index))
+            })
             .map(|polygons| ir_to_wit_expolygons(polygons))
             .unwrap_or_default();
 
@@ -500,8 +508,10 @@ pub fn sliced_region_to_data(
         bottom_shell_index: view.bottom_shell_index(),
         top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),
         bottom_solid_fill: ir_to_wit_expolygons(view.bottom_solid_fill()),
+        internal_solid_fill: ir_to_wit_expolygons(view.internal_solid_fill()),
         is_bridge: view.is_bridge(),
         bridge_areas: ir_to_wit_expolygons(view.bridge_areas()),
+        internal_bridge_areas: ir_to_wit_expolygons(view.internal_bridge_areas()),
         bridge_orientation_deg: view.bridge_orientation_deg(),
         sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
         held_claims: view.held_claims().to_vec(),

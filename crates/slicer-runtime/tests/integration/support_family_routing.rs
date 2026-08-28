@@ -151,6 +151,7 @@ fn support_entry(
         object_id: "object".into(),
         region_id: 0,
         role: SupportRole::SupportBody,
+        // exhaustive: support routing fixture pins the complete IR path
         paths: vec![ExtrusionPath3D {
             points: vec![
                 Point3WithWidth {
@@ -171,6 +172,7 @@ fn support_entry(
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
             tool_index: None,
+            order_lock: None,
         }],
     }
 }
@@ -520,11 +522,14 @@ fn swept_path_overlap() {
             )],
             ..Default::default()
         }),
+        // exhaustive: no Default exists; fixture pins every apply-context field
         &StageApplyContext {
             stage_id: "Layer::Support",
             module_id: "tree",
             layer_index: 0,
             seam_plan: None,
+            config_view: None,
+            committed_slices: None,
         },
     )
     .unwrap();
@@ -542,11 +547,14 @@ fn swept_path_overlap() {
             )],
             ..Default::default()
         }),
+        // exhaustive: no Default exists; fixture pins every apply-context field
         &StageApplyContext {
             stage_id: "Layer::Support",
             module_id: "traditional",
             layer_index: 0,
             seam_plan: None,
+            config_view: None,
+            committed_slices: None,
         },
     )
     .unwrap();

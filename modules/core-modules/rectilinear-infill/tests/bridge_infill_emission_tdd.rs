@@ -168,6 +168,119 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
     );
 }
 
+/// Canonical `Fill::make_fills` uses bridge flow and full density for a bridge
+/// surface; it must not reuse sparse infill's density or line width.
+#[test]
+fn bridge_fill_uses_bridge_width_and_full_density() {
+    let config = ConfigViewBuilder::new()
+        .float("infill_density", 0.2)
+        .float("line_width", 0.4)
+        .float("bridge_line_width", 0.8)
+        .float("bridge_flow", 0.7)
+        .float("bridge_speed", 25.0)
+        .build();
+    let bridge = rect_expoly_mm(0, 0, 10, 10);
+    let mut region = SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(bridge.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .is_bridge(true)
+        .bridge_areas(vec![bridge])
+        .bridge_orientation_deg(0.0)
+        .build();
+    region.set_held_claims(vec!["claim:bridge-fill".into()]);
+
+    let module = RectilinearInfill::from_config(&config).unwrap();
+    let mut output = InfillOutputBuilder::new();
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+        .unwrap();
+
+    let bridge_paths: Vec<_> = output
+        .solid_paths()
+        .iter()
+        .filter(|path| path.role == ExtrusionRole::BridgeInfill)
+        .collect();
+    assert!(
+        bridge_paths.len() > 6,
+        "bridge fill must use full density, got only {} paths",
+        bridge_paths.len()
+    );
+    assert!(
+        bridge_paths
+            .iter()
+            .flat_map(|path| path.points.iter())
+            .all(|point| (point.width - 0.8).abs() < 1e-5),
+        "bridge fill must use bridge_line_width rather than sparse line_width"
+    );
+    assert!(
+        bridge_paths
+            .iter()
+            .all(|path| (path.speed_factor - 1.0).abs() < 1e-5),
+        "bridge fill must use bridge_speed rather than infill_speed"
+    );
+    assert!(
+        bridge_paths
+            .iter()
+            .flat_map(|path| path.points.iter())
+            .all(|point| (point.flow_factor - 0.7).abs() < 1e-5),
+        "thin bridge fill must use bridge_flow"
+    );
+}
+
+/// Internal bridge surfaces use the distinct Orca role and their own
+/// density, flow, and speed settings while retaining the bridge claim.
+#[test]
+fn internal_bridge_uses_internal_role_settings() {
+    let config = ConfigViewBuilder::new()
+        .float("line_width", 0.4)
+        .float("bridge_line_width", 0.4)
+        .float("bridge_speed", 25.0)
+        .float("internal_bridge_speed", 37.5)
+        .float("internal_bridge_density", 0.5)
+        .float("internal_bridge_flow", 0.8)
+        .bool("thick_internal_bridges", false)
+        .build();
+    let bridge = rect_expoly_mm(0, 0, 10, 10);
+    let mut region = SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(bridge.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .is_bridge(true)
+        .is_internal_bridge(true)
+        .bridge_areas(vec![bridge])
+        .bridge_orientation_deg(0.0)
+        .build();
+    region.set_held_claims(vec!["claim:bridge-fill".into()]);
+
+    let module = RectilinearInfill::from_config(&config).unwrap();
+    let mut output = InfillOutputBuilder::new();
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+        .unwrap();
+
+    let paths = output.solid_paths();
+    assert!(!paths.is_empty());
+    assert!(paths.iter().all(|path| {
+        path.role == ExtrusionRole::InternalBridgeInfill
+            && (path.speed_factor - 1.0).abs() < 1e-5
+            && path
+                .points
+                .iter()
+                .all(|point| (point.flow_factor - 0.8).abs() < 1e-5)
+    }));
+    assert!(
+        paths.len() < 30,
+        "50% internal density should space bridge lines, got {}",
+        paths.len()
+    );
+}
+
 /// AC-8: straddling_expoly_partitioned_via_set_difference
 ///
 /// infill_areas = [0,0]–[20,20], bridge_areas = [5,5]–[15,15].
