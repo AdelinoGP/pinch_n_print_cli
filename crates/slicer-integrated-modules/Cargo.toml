@@ -29,6 +29,7 @@ tree-support = { path = "../../modules/core-modules/tree-support", optional = tr
 wipe-tower = { path = "../../modules/core-modules/wipe-tower", optional = true }
 path-optimization-default = { path = "../../modules/core-modules/path-optimization-default", optional = true }
 machine-gcode-emit = { path = "../../modules/core-modules/machine-gcode-emit", optional = true }
+wave-overhangs = { path = "../../modules/core-modules/wave-overhangs", optional = true }
 
 [features] # arachne-perimeters and tree-support-planner are optional pilot integrations
 default = []
@@ -53,3 +54,4 @@ tree-support = ["dep:tree-support"]
 wipe-tower = ["dep:wipe-tower"]
 path-optimization-default = ["dep:path-optimization-default"]
 machine-gcode-emit = ["dep:machine-gcode-emit"]
+wave-overhangs = ["dep:wave-overhangs"]

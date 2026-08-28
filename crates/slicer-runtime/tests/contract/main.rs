@@ -43,6 +43,7 @@ mod integrated_parity_support_surface_ironing_tdd;
 mod integrated_parity_top_surface_ironing_tdd;
 mod integrated_parity_traditional_support_tdd;
 mod integrated_parity_tree_support_tdd;
+mod integrated_parity_wave_overhangs_tdd;
 mod integrated_parity_wipe_tower_tdd;
 mod layer_stage_commit_stages_tdd;
 mod lightning_tree_per_region_roundtrip_tdd;

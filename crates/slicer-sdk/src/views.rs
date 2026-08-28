@@ -53,6 +53,9 @@ pub struct SliceRegionView {
     is_internal_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     bridge_areas: Vec<ExPolygon>,
+    /// Per-layer internal (over-sparse-infill) bridge polygons.
+    /// Empty when this region has no internal bridge areas.
+    internal_bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -111,6 +114,7 @@ impl Default for SliceRegionView {
             is_bridge: false,
             is_internal_bridge: false,
             bridge_areas: Vec::new(),
+            internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
@@ -144,6 +148,7 @@ impl SliceRegionView {
             internal_solid_fill: region.internal_solid_fill.clone(),
             is_bridge: region.is_bridge,
             bridge_areas: region.bridge_areas.clone(),
+            internal_bridge_areas: region.internal_bridge_areas.clone(),
             bridge_orientation_deg: region.bridge_orientation_deg,
             sparse_infill_area: region.sparse_infill_area.clone(),
             held_claims,
@@ -271,6 +276,12 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
         self.bridge_areas = bridge_areas;
+    }
+
+    /// Override the internal bridge areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_internal_bridge_areas(&mut self, internal_bridge_areas: Vec<ExPolygon>) {
+        self.internal_bridge_areas = internal_bridge_areas;
     }
 
     /// Override the bridge orientation (host-only, for testing).
@@ -445,6 +456,13 @@ impl SliceRegionView {
     /// it is never deduped by another role.
     pub fn bridge_areas(&self) -> &[ExPolygon] {
         &self.bridge_areas
+    }
+
+    /// Returns the per-layer internal (over-sparse-infill) bridge polygons.
+    ///
+    /// Empty when this region has no internal bridge areas.
+    pub fn internal_bridge_areas(&self) -> &[ExPolygon] {
+        &self.internal_bridge_areas
     }
 
     /// Returns the best bridge direction across all valid bridge regions (degrees).

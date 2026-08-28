@@ -3465,6 +3465,7 @@ dependencies = [
  "traditional-support",
  "tree-support",
  "tree-support-planner",
+ "wave-overhangs",
  "wipe-tower",
 ]
 
@@ -3563,6 +3564,7 @@ dependencies = [
  "tree-support-planner",
  "wasmtime",
  "wat",
+ "wave-overhangs",
  "wipe-tower",
  "wit-parser 0.247.0",
  "witness",
@@ -4813,6 +4815,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37cc86c54d8011b3202e265bfebada440733ea3a788ffaf46d395f7d2fdeacfb"
 dependencies = [
  "wast 256.0.0",
+]
+
+[[package]]
+name = "wave-overhangs"
+version = "0.1.0"
+dependencies = [
+ "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]

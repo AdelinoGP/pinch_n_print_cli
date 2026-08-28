@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 246-wave-overhang-bridge-fill
 task_ids:
   - TASK-356
@@ -38,6 +38,26 @@ in packet prose.
 - Unblocks: none (final packet in the wave-overhangs queue).
 - Activation blockers: none known; the module is opt-in via `bridge_fill_holder`.
 
+### Carried Defects from 244/245 (owned by this packet)
+
+Implementing this packet proved that the 244/245 order-lock chain was **inert end-to-end**: the
+carrier, the SDK allocator, the host remap and the lock-aware consumers were all correct, but the
+tag was silently dropped at every marshal boundary, so no order lock ever reached a consumer.
+Packets 244 and 245 shipped green because no test crossed the marshal. **This packet carries and
+fixes those defects rather than reopening 244/245.** All were found by AC-8 failing, and each is
+now pinned by a regression test that was proven to fail against the old code.
+
+| Site (crate-qualified path + symbol) | Effect | Pinned by |
+| --- | --- | --- |
+| `crates/slicer-wasm-host/src/marshal/leaf.rs::convert_extrusion_path` | dropped `order_lock` on the guest to host infill commit; `convert_infill_output` routes all sparse/solid/ironing paths through it, so no infill module could deliver a tag | `order_lock_survives_infill_marshal` |
+| `crates/slicer-wasm-host/src/host.rs::finalization_path_wit_to_ir` | dropped `order_lock` on the finalization commit, before the host own contiguity validator saw it | `order_lock_survives_finalization_marshal` |
+| `crates/slicer-macros/src/lib.rs::__slicer_wit_path_to_ir` | dropped `order_lock` on the host to guest read, so packet 245 `infill-linker` lock-aware branches were dead code | AC-8 e2e contiguity |
+| `crates/slicer-macros/src/lib.rs::__slicer_path_wit_to_ir` | same class on the finalization read direction; latent (no in-tree consumer at the time) | AC-8 e2e contiguity |
+| `crates/slicer-wasm-host/src/marshal/native.rs::build_native_layer_request` | never populated `prev_layer_boundary`, `overhang_areas`, `overhang_quartile_polygons`, `surface_group`, so native/integrated dispatch saw empty anchors and silently fell back to rectilinear. Affects ANY module reading those fields, not just this one | `integrated_parity_wave_overhangs_native_matches_wasm` |
+
+`docs/07_implementation_status.md` rows for 244 and 245 are left `implemented` — the features are
+now genuinely live, and the coverage gap is recorded here rather than by reopening them.
+
 ## Acceptance Criteria
 
 State ACs only here; `requirements.md` references their IDs.
@@ -61,7 +81,7 @@ State ACs only here; `requirements.md` references their IDs.
   holders, **then** `module_id_matches_holder("com.core.wave-overhangs", "wave-overhangs")` is true
   and the module holds `claim:bridge-fill`; with no override, `rectilinear-infill` remains the
   default bridge-fill holder. |
-  `cargo test -p slicer-scheduler --test contract -- module_id_matches_holder_wave_overhangs --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P246_HOLDER_SELECTION`
+  `cargo test -p slicer-scheduler --test scheduler_contract -- holder_matching_tdd::module_id_matches_holder_wave_overhangs --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P246_HOLDER_SELECTION`
 - **AC-4. Given** a region with nonempty external bridge areas and a resolvable anchor band, **when**
   the module runs, **then** waves are emitted as role `BridgeInfill`, order-locked (one tag per
   connected wave domain via `OrderLockAllocator`), anchor-first, with the first front intersecting
@@ -88,7 +108,7 @@ State ACs only here; `requirements.md` references their IDs.
   order-locked `BridgeInfill` block, and the emitted G-code wave speed and extruded volume match the
   configured `wave_overhang_print_speed` and `wave_overhang_flow_mm3_per_mm` (the discriminator
   against rectilinear fallback, which shares the role). |
-  `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P246_E2E`
+  `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e_tdd::wave_overhang_bridge_fill_e2e --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P246_E2E`
 - **AC-9. Given** the module, **when** the generator runs twice on identical input (and native vs
   wasm dispatch), **then** the output is byte-identical (deterministic smart traversal). |
   `cargo test -p wave-overhangs --test wave_overhangs_tdd -- deterministic_double_run --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed" && echo P246_DETERMINISM`

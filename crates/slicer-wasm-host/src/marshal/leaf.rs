@@ -444,7 +444,7 @@ pub fn convert_extrusion_path(
         role: convert_extrusion_role(&path.role),
         speed_factor: path.speed_factor,
         tool_index: path.tool_index,
-        order_lock: None,
+        order_lock: path.order_lock,
     })
 }
 

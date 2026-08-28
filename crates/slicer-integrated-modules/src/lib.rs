@@ -35,6 +35,8 @@ use top_surface_ironing::TopSurfaceIroning;
 use traditional_support::TraditionalSupport;
 #[cfg(feature = "tree-support")]
 use tree_support::TreeSupport;
+#[cfg(feature = "wave-overhangs")]
+use wave_overhangs::WaveOverhangs;
 #[cfg(feature = "wipe-tower")]
 use wipe_tower::WipeTower;
 
@@ -149,6 +151,11 @@ manifest_const!(
     MACHINE_GCODE_EMIT_MANIFEST,
     "machine-gcode-emit",
     "../../../modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml"
+);
+manifest_const!(
+    WAVE_OVERHANGS_MANIFEST,
+    "wave-overhangs",
+    "../../../modules/core-modules/wave-overhangs/wave-overhangs.toml"
 );
 
 macro_rules! integrated_registry {
@@ -324,6 +331,14 @@ integrated_registry!(
         Layer
     ),
     (
+        "wave-overhangs",
+        WAVE_OVERHANGS_MANIFEST,
+        WaveOverhangs,
+        "com.core.wave-overhangs",
+        "integrated://wave-overhangs",
+        Layer
+    ),
+    (
         "seam-placer",
         SEAM_PLACER_MANIFEST,
         SeamPlacer,
@@ -445,7 +460,8 @@ mod classic_perimeters_tests {
     not(feature = "tree-support"),
     not(feature = "wipe-tower"),
     not(feature = "path-optimization-default"),
-    not(feature = "machine-gcode-emit")
+    not(feature = "machine-gcode-emit"),
+    not(feature = "wave-overhangs")
 ))]
 #[test]
 fn integrated_registrations_are_empty_by_default() {
@@ -474,7 +490,8 @@ fn integrated_registrations_are_empty_by_default() {
     not(feature = "tree-support"),
     not(feature = "wipe-tower"),
     not(feature = "path-optimization-default"),
-    not(feature = "machine-gcode-emit")
+    not(feature = "machine-gcode-emit"),
+    not(feature = "wave-overhangs")
 ))]
 mod hybrid_pilot_tests {
     use super::{integrated_registrations, native_entries};
@@ -554,7 +571,8 @@ mod hybrid_pilot_tests {
     feature = "tree-support",
     feature = "wipe-tower",
     feature = "path-optimization-default",
-    feature = "machine-gcode-emit"
+    feature = "machine-gcode-emit",
+    feature = "wave-overhangs"
 ))]
 mod full_coverage_tests {
     use super::{integrated_inventory, integrated_registrations, native_entries, StageFamily};

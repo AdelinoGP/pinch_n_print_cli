@@ -108,6 +108,134 @@ fn native_paint_value(
     }
 }
 
+/// Axis-aligned bounding box in slice-space units (1 unit = 100 nm). `None`
+/// when the polygon set is empty (e.g. an unsliced region).
+type Bbox = (i64, i64, i64, i64);
+
+/// Bounding box (min_x, min_y, max_x, max_y) over every contour/hole vertex
+/// across the given polygons. Returns `None` for an empty slice.
+///
+/// IR-side twin of the wasm leg's `expolygons_bbox`
+/// (`crates/slicer-wasm-host/src/marshal/in_.rs`); duplicated rather than
+/// shared because the wasm leg's copy is private to that module.
+fn expolygons_bbox(polys: &[slicer_ir::ExPolygon]) -> Option<Bbox> {
+    let mut acc: Option<Bbox> = None;
+    for poly in polys {
+        for pt in poly
+            .contour
+            .points
+            .iter()
+            .chain(poly.holes.iter().flat_map(|h| h.points.iter()))
+        {
+            acc = Some(match acc {
+                None => (pt.x, pt.y, pt.x, pt.y),
+                Some((min_x, min_y, max_x, max_y)) => (
+                    min_x.min(pt.x),
+                    min_y.min(pt.y),
+                    max_x.max(pt.x),
+                    max_y.max(pt.y),
+                ),
+            });
+        }
+    }
+    acc
+}
+
+/// Cheap AABB-overlap prefilter between a region's bounding box and a
+/// candidate overhang polygon. Mirrors the wasm leg's `bbox_overlaps`.
+fn bbox_overlaps(region_bbox: Bbox, poly: &slicer_ir::ExPolygon) -> bool {
+    let Some(poly_bbox) = expolygons_bbox(std::slice::from_ref(poly)) else {
+        return false;
+    };
+    let (r_min_x, r_min_y, r_max_x, r_max_y) = region_bbox;
+    let (p_min_x, p_min_y, p_max_x, p_max_y) = poly_bbox;
+    r_min_x <= p_max_x && p_min_x <= r_max_x && r_min_y <= p_max_y && p_min_y <= r_max_y
+}
+
+/// Populate the four `SurfaceClassificationIR`-derived fields on a native
+/// `SliceRegionView`, mirroring the wasm leg's `sliced_region_to_data`
+/// (`crates/slicer-wasm-host/src/marshal/in_.rs`) exactly — same surface-group
+/// resolution by id, same AABB prefilter + exact `intersection_ex` clip with
+/// empty-band drop, same flatten for `overhang_areas`, same
+/// `prev_layer_boundaries` lookup. Without this the native/integrated leg hands
+/// every module empty anchors while the wasm leg sees real data.
+///
+/// `global_layer_index` must be `SliceIR::global_layer_index` (the key used by
+/// `SurfaceClassificationIR.overhang_quartile_polygons` /
+/// `prev_layer_boundaries`), not the per-object layer index.
+fn populate_surface_classification_fields(
+    view: &mut SliceRegionView,
+    region: &slicer_ir::SlicedRegion,
+    surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+    global_layer_index: u32,
+) {
+    let surface_group = region.nonplanar_surface.and_then(|sg_id| {
+        surface_classification
+            .and_then(|sc| sc.per_object.get(&region.object_id))
+            .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
+            .cloned()
+    });
+    view.set_surface_group(surface_group);
+
+    let region_bbox = expolygons_bbox(&region.polygons);
+    let overhang_quartile_polygons: Vec<slicer_ir::slice_ir::QuartileBand> =
+        surface_classification
+            .and_then(|sc| {
+                sc.overhang_quartile_polygons
+                    .get(&region.object_id)
+                    .and_then(|by_layer| by_layer.get(&global_layer_index))
+            })
+            .map(|bands| {
+                bands
+                    .iter()
+                    .filter_map(|band| {
+                        let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                            .polygons
+                            .iter()
+                            .filter(|poly| match region_bbox {
+                                Some(rb) => bbox_overlaps(rb, poly),
+                                None => false,
+                            })
+                            .cloned()
+                            .collect();
+                        if prefiltered.is_empty() {
+                            return None;
+                        }
+                        let clipped: Vec<slicer_ir::ExPolygon> =
+                            slicer_core::polygon_ops::intersection_ex(
+                                &prefiltered,
+                                &region.polygons,
+                            );
+                        if clipped.is_empty() {
+                            None
+                        } else {
+                            Some(slicer_ir::slice_ir::QuartileBand {
+                                quartile: band.quartile,
+                                polygons: clipped,
+                            })
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    let overhang_areas: Vec<slicer_ir::ExPolygon> = overhang_quartile_polygons
+        .iter()
+        .flat_map(|band| band.polygons.clone())
+        .collect();
+    view.set_overhang_quartile_polygons(overhang_quartile_polygons);
+    view.set_overhang_areas(overhang_areas);
+
+    let prev_layer_boundary: Vec<slicer_ir::ExPolygon> = surface_classification
+        .and_then(|sc| {
+            sc.prev_layer_boundaries
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
+        .cloned()
+        .unwrap_or_default();
+    view.set_prev_layer_boundary(prev_layer_boundary);
+}
+
 /// Build a native layer request without passing any wasm-host type across the
 /// SDK boundary.
 pub fn build_native_layer_request(
@@ -133,6 +261,12 @@ pub fn build_native_layer_request(
                             .unwrap_or_default(),
                     );
                     view.set_config((*module.config_view).clone());
+                    populate_surface_classification_fields(
+                        &mut view,
+                        region,
+                        input.surface_classification,
+                        slice.global_layer_index,
+                    );
                     view
                 })
                 .collect()

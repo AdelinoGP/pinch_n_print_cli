@@ -140,6 +140,8 @@ interface ir-handles {
         internal-solid-fill: func() -> list<ex-polygon>;
         is-bridge: func() -> bool;
         bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: internal_bridge_areas.
+        internal-bridge-areas: func() -> list<ex-polygon>;
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;

@@ -74,7 +74,7 @@ optimizer, and emitter (packet 245) preserve their anchor-first print order.
 | `wave_overhang_max_iterations` | int | `0` | 0 = unlimited |
 | `wave_overhang_flow_mm3_per_mm` | float | `0.15` | mm³/mm |
 | `wave_overhang_print_speed` | float | `2.0` | mm/s |
-| `wave_overhang_anchor_depth_mm` | float | `0.0` | PnP-only; 0.0 = canonical-auto `min(3 mm, bridge extrusion spacing × (wall_count + 1))`; positive override up to 20.0 |
+| `wave_overhang_anchor_depth_mm` | float | `0.0` | PnP-only; 0.0 = auto `anchors_size + base_spacing` where `anchors_size = min(3 mm, bridge extrusion spacing × (wall_count + 1))`; positive override up to 20.0. **Deviation from canonical-auto:** the bare canonical `anchors_size` never exceeds the generator internal `anchors_size`, leaving `inset_anchors` empty so ZERO waves generate and every component silently falls back to rectilinear (measured on `resources/A_upsidedown.obj`: 48 BridgeInfill paths, all speed_factor 1.0). The `+ base_spacing` floor makes waves engage out-of-the-box, which holder selection is meant to guarantee. Pinned by `waves_engage_with_default_anchor_depth`. |
 
 Required reads (declared in the manifest so the config view exposes them): `bridge_speed`,
 `bridge_line_width`, `bridge_flow`, `bridge_density`, `nozzle_diameter`, `wall_count`,
@@ -142,8 +142,8 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 | --- | --- | --- |
 | `cargo test -p wave-overhangs --test wave_overhangs_tdd` | generator, fallback, exclusion, determinism | FACT pass/fail; SNIPPETS <=20 lines on failure |
 | `cargo test -p slicer-sdk --test test_support_slice_region_view_builder_setters_tdd` | view accessor setter | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test contract` | holder matching + manifest validation | FACT pass/fail |
-| `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e --exact` | end-to-end discriminator | FACT pass/fail |
+| `cargo test -p slicer-scheduler --test scheduler_contract` | holder matching + manifest validation | FACT pass/fail |
+| `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e_tdd::wave_overhang_bridge_fill_e2e --exact` | end-to-end discriminator | FACT pass/fail |
 | `cargo check --workspace --all-targets` | all targets compile | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask check-literals` | struct-literal churn gate | FACT pass/fail |

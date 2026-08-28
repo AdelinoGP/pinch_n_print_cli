@@ -189,6 +189,8 @@ pub struct SliceRegionData {
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Per-layer internal (over-sparse-infill) bridge polygons.
+    pub internal_bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -2916,6 +2918,7 @@ mod region_origin_tests {
                     internal_solid_fill: Vec::new(),
                     is_bridge: false,
                     bridge_areas: Vec::new(),
+                    internal_bridge_areas: Vec::new(),
                     bridge_orientation_deg: 0.0,
                     sparse_infill_area: Vec::new(),
                     held_claims: Vec::new(),
@@ -3278,6 +3281,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("SliceIR.regions.bridge-areas"));
         Ok(self.table.get(&self_)?.bridge_areas.clone())
+    }
+    fn internal_bridge_areas(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.internal-bridge-areas"));
+        Ok(self.table.get(&self_)?.internal_bridge_areas.clone())
     }
     fn bridge_orientation_deg(
         &mut self,
@@ -4403,7 +4414,7 @@ mod finalization_impls {
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),
             speed_factor: p.speed_factor,
-            order_lock: None,
+            order_lock: p.order_lock,
             tool_index: p.tool_index,
         }
     }

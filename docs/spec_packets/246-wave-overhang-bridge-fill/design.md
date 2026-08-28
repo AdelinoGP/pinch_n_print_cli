@@ -68,8 +68,14 @@
 
 1. `supported_fill = prev_object_boundary ∩ union(top_solid_fill, bottom_solid_fill, sparse_infill_area)`
 2. `anchor_band = supported_fill ∩ expand(external_bridge_areas, anchor_depth)` where
-   `anchor_depth = wave_overhang_anchor_depth_mm` if > 0, else canonical-auto
-   `min(3 mm, bridge extrusion spacing × (wall_count + 1))`.
+   `anchor_depth = wave_overhang_anchor_depth_mm` if > 0, else auto
+   `anchors_size + base_spacing`, with `anchors_size = min(3 mm, bridge extrusion spacing ×
+   (wall_count + 1))`. **Deviation from canonical-auto (deliberate):** bare `anchors_size` never
+   exceeds the generator own `anchors_size`, so `inset_anchors` comes out empty, seed generation
+   fails, and every component falls back to rectilinear — measured as ZERO waves on
+   `resources/A_upsidedown.obj`. The `+ base_spacing` floor restores the packet intent that
+   selecting the module as `bridge_fill_holder` IS the enable. Pinned by
+   `waves_engage_with_default_anchor_depth`.
 3. `wave_domain = external_bridge_areas ∪ anchor_band`.
 4. Waves forced (holder selection); fallback on missing anchors / empty seeds / min-length-filtered
    components / iteration residual / empty output.
@@ -93,7 +99,16 @@
 - `modules/core-modules/wave-overhangs/tests/wave_overhangs_tdd.rs` - role: new; expected change: tests.
 - `modules/core-modules/wave-overhangs/wit-guest/` - role: new; expected change: guest glue.
 - `crates/slicer-schema/wit/deps/ir-types.wit` - role: edit; expected change: `internal-bridge-areas`.
-- `crates/slicer-sdk/src/views.rs` - role: edit; expected change: field + getter + setter.
+- `crates/slicer-sdk/src/views.rs` - role: edit; expected change: field + getter + setter (incl. the
+  hand-written `Default` impl and the `from_ir` clone — the latter is load-bearing, without it the
+  accessor always reads empty).
+- `crates/slicer-sdk/src/test_support/fixtures.rs` - role: edit; expected change: `SliceRegionViewBuilder`
+  field + default + builder method + `build()` setter call.
+- `crates/slicer-wasm-host/src/host.rs` - role: edit; expected change: `SliceRegionData` field, its
+  exhaustive literal, and the `slice-region-view` resource impl `internal_bridge_areas` (provenance
+  `"SliceIR.regions.internal-bridge-areas"`). Forced by the WIT resource gaining a func.
+- `crates/slicer-wasm-host/tests/contract/{slice_region_view_contract_tdd.rs,wit_boundary_tdd.rs}` -
+  role: edit; expected change: the 7 exhaustive `SliceRegionData` literals gain the new field.
 - `crates/slicer-macros/src/lib.rs` - role: edit; expected change: projection.
 - `crates/slicer-wasm-host/src/marshal/in_.rs` - role: edit; expected change: marshal.
 - `Cargo.toml`, `crates/slicer-integrated-modules/Cargo.toml`, `crates/pnp-cli/Cargo.toml` - role:

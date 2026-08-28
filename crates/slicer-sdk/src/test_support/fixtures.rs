@@ -149,6 +149,7 @@ pub struct SliceRegionViewBuilder {
     is_bridge: bool,
     is_internal_bridge: bool,
     bridge_areas: Vec<ExPolygon>,
+    internal_bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
     surface_group: Option<SurfaceGroup>,
@@ -189,6 +190,7 @@ impl SliceRegionViewBuilder {
             is_bridge: false,
             is_internal_bridge: false,
             bridge_areas: Vec::new(),
+            internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             surface_group: None,
@@ -375,6 +377,14 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the per-layer internal (over-sparse-infill) bridge polygons.
+    /// Mirrors [`SliceRegionView::set_internal_bridge_areas`].
+    #[must_use]
+    pub fn internal_bridge_areas(mut self, areas: Vec<ExPolygon>) -> Self {
+        self.internal_bridge_areas = areas;
+        self
+    }
+
     /// Set the best bridge direction across all valid bridge regions (degrees).
     /// Mirrors [`SliceRegionView::set_bridge_orientation_deg`].
     #[must_use]
@@ -453,6 +463,7 @@ impl SliceRegionViewBuilder {
             tmp.set_is_bridge(self.is_bridge);
             tmp.set_is_internal_bridge(self.is_internal_bridge);
             tmp.set_bridge_areas(self.bridge_areas);
+            tmp.set_internal_bridge_areas(self.internal_bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);
             tmp.set_surface_group(self.surface_group);

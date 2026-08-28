@@ -94,7 +94,7 @@
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo check -p wave-overhangs --all-targets 2>&1 | tee target/test-output.log | grep -qE "Finished|error" && echo P246_SCAFFOLD_COMPILES`
-  - `cargo test -p slicer-scheduler --test contract -- module_id_matches_holder_wave_overhangs --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
+  - `cargo test -p slicer-scheduler --test scheduler_contract -- holder_matching_tdd::module_id_matches_holder_wave_overhangs --exact 2>&1 | tee -a target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
   - `cargo xtask build-guests` then `cargo xtask build-guests --check` (exit 0)
 - Exit condition: the crate compiles, the manifest `rg` checks in AC-2 match, the holder-matching
   test passes, and the guest builds fresh.
@@ -190,7 +190,7 @@
   - `docs/19_visual_debug.md` - visual-debug bundle/tap contract (delegated SUMMARY)
 - OrcaSlicer refs: none.
 - Verification:
-  - `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
+  - `cargo test -p slicer-runtime --test e2e -- wave_overhang_bridge_fill_e2e_tdd::wave_overhang_bridge_fill_e2e --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed"`
 - Exit condition: the named test passes. If the visual-debug typed-capture does not expose
   `order_lock`, use the `run_pipeline`-based capturing runner instead (the `[FWD]` in `design.md`).
 

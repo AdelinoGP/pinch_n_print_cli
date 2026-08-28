@@ -1334,7 +1334,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     role: __slicer_role_wit_to_ir(p.role.clone()),
                     speed_factor: p.speed_factor,
                     tool_index: p.tool_index,
-                    order_lock: None,
+                    order_lock: p.order_lock,
                 }
             }
 
@@ -2456,6 +2456,11 @@ fn layer_light_helpers() -> TokenStream2 {
                     .iter()
                     .map(__slicer_wit_expolygon_to_ir)
                     .collect();
+                let internal_bridge_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .internal_bridge_areas()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
                 let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .sparse_infill_area()
                     .iter()
@@ -2469,6 +2474,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 );
                 sdk_view.set_is_bridge(r.is_bridge());
                 sdk_view.set_bridge_areas(bridge_areas);
+                sdk_view.set_internal_bridge_areas(internal_bridge_areas);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);
                 sdk_view.set_held_claims(r.held_claims());
@@ -2660,7 +2666,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 points: p.points.iter().map(__slicer_wit_point3w_to_ir).collect(),
                 role: __slicer_wit_role_to_ir(&p.role), speed_factor: p.speed_factor,
                 tool_index: p.tool_index,
-                order_lock: None,
+                order_lock: p.order_lock,
             }
         }
         fn __slicer_wit_looptype_to_ir(lt: WitWallLoopType) -> ::slicer_ir::LoopType {

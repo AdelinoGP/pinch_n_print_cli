@@ -520,6 +520,7 @@ pub fn sliced_region_to_data(
         internal_solid_fill: ir_to_wit_expolygons(view.internal_solid_fill()),
         is_bridge: view.is_bridge(),
         bridge_areas: ir_to_wit_expolygons(view.bridge_areas()),
+        internal_bridge_areas: ir_to_wit_expolygons(view.internal_bridge_areas()),
         bridge_orientation_deg: view.bridge_orientation_deg(),
         sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
         held_claims: view.held_claims().to_vec(),

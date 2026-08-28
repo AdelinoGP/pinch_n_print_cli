@@ -83,6 +83,9 @@ predicates = "3"
 [dev-dependencies.rectilinear-infill]
 path = "../../modules/core-modules/rectilinear-infill"
 
+[dev-dependencies.wave-overhangs]
+path = "../../modules/core-modules/wave-overhangs"
+
 [dev-dependencies.gyroid-infill]
 path = "../../modules/core-modules/gyroid-infill"
 
