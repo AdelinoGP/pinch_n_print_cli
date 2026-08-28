@@ -207,6 +207,11 @@ pub use visual_debug_render::{
     render_stage_capture_styled, GeometryView, Projector, RenderError, RenderStyle, RenderView,
     RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX, VIEWPORT_MARGIN_MM,
 };
+// Silhouette composite path (packet 247, schema 1.2.0).
+pub use visual_debug_render::{
+    compute_silhouette_viewport_bounds, render_silhouette_composite, union_silhouette_intervals,
+    SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView,
+};
 pub use visual_debug_style::{
     parse_hex_color, ColorBy, OverlayEvent, OverlayKind, ToolColors, LEGEND_VERSION,
 };

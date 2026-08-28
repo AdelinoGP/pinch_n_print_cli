@@ -915,8 +915,13 @@ region)` outline polygons independent of organic branch planning.
 
 `SupportGeometryIR` and `SupportGeometryKey` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. The IR carries support layer-height
-settings and coarse outline polygons keyed by support-layer index, object ID,
-and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
+settings and coarse outline polygons keyed by **model-layer (global) index on
+the support emit schedule**, object ID, and region ID: `execute_support_geometry`
+/ `build_emit_schedule` (`crates/slicer-core/src/algos/support_geometry.rs`) set
+`SupportGeometryKey.global_support_layer_index` from `global_layer.index`,
+emitting only at those model layers where accumulated per-object height crosses
+`support_layer_height_mm`. It is not an index into a separate support-layer
+grid. `u32::MAX` denotes an intermediate model-resolution layer.
 The `support_top_z_distance_mm` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.

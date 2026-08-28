@@ -114,6 +114,17 @@ pub mod palette {
     /// `SliceIR.regions[].polygons` closed-island outline fill (packet 161,
     /// Step 6) — distinct from `INFILL_AREA` (`infill_areas`).
     pub const SLICE_REGION: [u8; 3] = [140, 140, 140];
+    /// Silhouette class color for `SupportPlanRole::BaseInterface` role
+    /// regions (packet 247). Pairwise distinct from every other silhouette
+    /// class color and from `BACKGROUND`.
+    pub const SUPPORT_BASE_INTERFACE: [u8; 3] = [0, 110, 160];
+    /// Silhouette class color for `SupportPlanRole::BottomInterface` role
+    /// regions (packet 247).
+    pub const SUPPORT_BOTTOM_INTERFACE: [u8; 3] = [70, 180, 235];
+    /// Silhouette class color for `SupportPlanRole::RaftRelated` role regions
+    /// carried by a NON-negative-index plan entry (packet 247). Negative-index
+    /// (raft prefix) entries are skipped entirely with warning W1.
+    pub const SUPPORT_RAFT: [u8; 3] = [150, 60, 200];
 }
 
 /// A renderable geometry view, selected by the visual-debug request's
@@ -2309,5 +2320,577 @@ pub fn render_stage_capture_styled(
             height,
         },
         events,
+    ))
+}
+
+// ============================================================================
+// Silhouette composite renderer (packet 247)
+//
+// One composite X-Z ("front") or Y-Z ("side") image per (tap, view), built by
+// mathematically exact interval projection: the projection of a connected
+// region onto an axis is a single interval, and a hole cannot disconnect a
+// connected contour's projection - so only the CONTOUR is projected.
+//
+// This path NEVER defines its own world->pixel transform. It feeds the shared
+// [`Projector`] `(x_or_y_mm, z_mm)` as its world point; the projector's
+// built-in y-flip makes larger Z render toward the top of the canvas.
+//
+// Z is millimeter floats end-to-end and never round-trips through
+// `mm_to_units`; polygon X/Y is read through `Point2::to_mm` only.
+// ============================================================================
+
+/// The projection plane of a silhouette render (D5).
+///
+/// `Front` projects along Y onto the X-Z plane; `Side` projects along X onto
+/// the Y-Z plane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SilhouetteView {
+    /// X-Z plane (project along Y). The request default.
+    Front,
+    /// Y-Z plane (project along X).
+    Side,
+}
+
+impl SilhouetteView {
+    /// The stable request/manifest spelling of this view.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Side => "side",
+        }
+    }
+
+    /// Parse a request `options.view` value. `None` for anything unknown -
+    /// the caller fails closed with a named error rather than defaulting.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "front" => Some(Self::Front),
+            "side" => Some(Self::Side),
+            _ => None,
+        }
+    }
+
+    /// The horizontal (in-image) component of an XY millimeter point.
+    fn axis(self, xy: (f32, f32)) -> f32 {
+        match self {
+            Self::Front => xy.0,
+            Self::Side => xy.1,
+        }
+    }
+}
+
+/// One layer's Z slab in the caller-built silhouette schedule.
+///
+/// Caller-built on purpose: the renderer never reads a `Blackboard`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SilhouetteScheduleSlab {
+    /// Global layer index this slab describes.
+    pub index: u32,
+    /// Slab bottom, millimeters.
+    pub z_bottom: f32,
+    /// Slab top (the layer's Z), millimeters.
+    pub z_top: f32,
+}
+
+/// The caller-built per-layer Z slab schedule for one silhouette bundle.
+///
+/// Used for the vertical viewport extent, and as the slab source for taps
+/// whose IR carries no per-region layer height, or whose
+/// `effective_layer_height` is unusable.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SilhouetteSlabSchedule {
+    /// Slabs, one per selected layer.
+    pub slabs: Vec<SilhouetteScheduleSlab>,
+}
+
+impl SilhouetteSlabSchedule {
+    /// The scheduled slab for `layer_index`, if the caller supplied one.
+    fn slab_for(&self, layer_index: u32) -> Option<SilhouetteScheduleSlab> {
+        self.slabs.iter().copied().find(|s| s.index == layer_index)
+    }
+}
+
+/// A silhouette color class. Rectangles are painted class-by-class in
+/// [`SILHOUETTE_PAINT_ORDER`], so a later class fully occludes an earlier one
+/// over an overlapping horizontal range (D2).
+///
+/// The support arm (packet 247, Step 4) maps each `SupportPlanRole` to one
+/// class: body classes paint first, interface classes last, so an interface
+/// band is never hidden under the body it sits on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SilhouetteClass {
+    /// Slice-family body class, sourced from `SliceIR.regions[].polygons`.
+    SliceRegion,
+    /// `SupportPlanRole::SupportBody` role regions.
+    Support,
+    /// `SupportPlanRole::RaftRelated` role regions on a non-negative-index
+    /// plan entry. Negative-index (raft prefix) entries are skipped (W1).
+    SupportRaft,
+    /// `SupportPlanRole::BaseInterface` role regions.
+    SupportBaseInterface,
+    /// `SupportPlanRole::BottomInterface` role regions.
+    SupportBottomInterface,
+    /// `SupportPlanRole::TopInterface` role regions.
+    SupportInterface,
+}
+
+/// The pinned class paint order (D2), back to front. Rectangle emission
+/// follows ascending layer -> this order -> ascending interval start.
+///
+/// Body classes first (`SliceRegion`, `Support`), then `SupportRaft`,
+/// `SupportBaseInterface`, `SupportBottomInterface`, and `SupportInterface`
+/// LAST.
+const SILHOUETTE_PAINT_ORDER: &[SilhouetteClass] = &[
+    SilhouetteClass::SliceRegion,
+    SilhouetteClass::Support,
+    SilhouetteClass::SupportRaft,
+    SilhouetteClass::SupportBaseInterface,
+    SilhouetteClass::SupportBottomInterface,
+    SilhouetteClass::SupportInterface,
+];
+
+impl SilhouetteClass {
+    /// The class a `SupportPlanRole` region belongs to (D9).
+    fn from_support_role(role: slicer_ir::SupportPlanRole) -> Self {
+        match role {
+            slicer_ir::SupportPlanRole::SupportBody => Self::Support,
+            slicer_ir::SupportPlanRole::RaftRelated => Self::SupportRaft,
+            slicer_ir::SupportPlanRole::BaseInterface => Self::SupportBaseInterface,
+            slicer_ir::SupportPlanRole::BottomInterface => Self::SupportBottomInterface,
+            slicer_ir::SupportPlanRole::TopInterface => Self::SupportInterface,
+        }
+    }
+}
+
+impl SilhouetteClass {
+    /// Position in [`SILHOUETTE_PAINT_ORDER`]; lower paints first.
+    fn paint_rank(self) -> usize {
+        SILHOUETTE_PAINT_ORDER
+            .iter()
+            .position(|c| *c == self)
+            .unwrap_or(usize::MAX)
+    }
+
+    fn color(self) -> [u8; 3] {
+        match self {
+            Self::SliceRegion => palette::SLICE_REGION,
+            Self::Support => palette::SUPPORT,
+            Self::SupportRaft => palette::SUPPORT_RAFT,
+            Self::SupportBaseInterface => palette::SUPPORT_BASE_INTERFACE,
+            Self::SupportBottomInterface => palette::SUPPORT_BOTTOM_INTERFACE,
+            Self::SupportInterface => palette::SUPPORT_INTERFACE,
+        }
+    }
+}
+
+/// One projected, not-yet-unioned band: a class' horizontal interval on one
+/// layer, over that region's own Z slab.
+#[derive(Debug, Clone, Copy)]
+struct SilhouetteBand {
+    layer_index: u32,
+    class: SilhouetteClass,
+    z_bottom: f32,
+    z_top: f32,
+    start: f32,
+    end: f32,
+}
+
+/// Union a set of horizontal projection intervals: sorted endpoint sweep,
+/// merging when `next.start <= current.end`.
+///
+/// **Touching intervals merge** (`<=`, not `<`): two islands whose
+/// projections abut share a boundary point, and a silhouette must show one
+/// unbroken run there. Comparison is exact `f32` - no epsilon, so the result
+/// is a pure function of the input bits and the render stays deterministic.
+///
+/// Order-independent by construction: the sweep sorts first.
+///
+/// Public because merging is not observable in decoded pixels - two touching
+/// rectangles rasterize identically to one merged rectangle - so the
+/// touch-merge binding check has to assert on this function's output directly.
+#[must_use]
+pub fn union_silhouette_intervals(intervals: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let mut sorted: Vec<(f32, f32)> = intervals.to_vec();
+    sorted.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    let mut merged: Vec<(f32, f32)> = Vec::with_capacity(sorted.len());
+    for (start, end) in sorted {
+        match merged.last_mut() {
+            Some(last) if start <= last.1 => {
+                if end > last.1 {
+                    last.1 = end;
+                }
+            }
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
+/// The horizontal interval a closed contour projects onto the view axis.
+/// `None` for a degenerate (<3-point) contour - contributes nothing.
+fn contour_interval(contour: &Polygon, view: SilhouetteView) -> Option<(f32, f32)> {
+    if contour.points.len() < 3 {
+        return None;
+    }
+    let mut min = f32::MAX;
+    let mut max = f32::MIN;
+    for p in &contour.points {
+        let v = view.axis(p.to_mm());
+        min = min.min(v);
+        max = max.max(v);
+    }
+    if min.is_finite() && max.is_finite() {
+        Some((min, max))
+    } else {
+        None
+    }
+}
+
+/// The W1 caveat: negative-index (raft prefix) `SupportPlanIR` entries are
+/// never drawn. Names the count and the dropped `min..max` index range.
+fn silhouette_raft_warning(count: usize, min_index: i32, max_index: i32) -> String {
+    format!(
+        "support plan: {count} raft entry/entries with negative global_layer_index \
+         ({min_index}..{max_index}) skipped - raft prefix layers have no slab in the \
+         caller's layer schedule and are not drawn in the silhouette"
+    )
+}
+
+/// The W2 caveat: coarse `SupportGeometryIR.entries` are never drawn. Wording
+/// is pinned by the packet design; the basis is producer-verified
+/// (`execute_support_geometry` / `build_emit_schedule` key
+/// `SupportGeometryKey.global_support_layer_index` with a MODEL-layer index
+/// and emit only where accumulated height crosses `support_layer_height_mm`,
+/// plus a `u32::MAX` sentinel bucket).
+fn silhouette_coarse_entries_warning(count: usize) -> String {
+    format!(
+        "support geometry: {count} coarse SupportGeometryIR entries skipped - emit-schedule \
+         entries span multiple model layers (u32::MAX sentinel = intermediate layers) and \
+         cannot be honestly drawn on single-layer slabs; inspect them via the top-down view"
+    )
+}
+
+/// Extract every projected band from one capture, in source order.
+fn silhouette_bands(
+    capture: &StageCapture,
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    out: &mut Vec<SilhouetteBand>,
+) {
+    if let CapturedIr::SupportGeometry { plan, .. } = &capture.ir {
+        // Slab source is the CALLER's schedule, never a per-region height:
+        // support columns span air where no `ActiveRegion` is active, and
+        // per-region heights disagree across objects on a shared layer, so
+        // the schedule z-diff is the only height a plan entry can attest.
+        let Some(slab) = schedule.slab_for(capture.layer_index) else {
+            return;
+        };
+        // Whole-print, unfiltered-by-layer payload: restrict to this
+        // capture's layer. Negative indices are raft prefix layers - skipped
+        // here and reported by W1. Sorted by (object_id, region_id) exactly
+        // like `support_geometry_shapes`, for determinism.
+        let mut entries: Vec<&slicer_ir::SupportPlanEntry> = plan
+            .entries
+            .iter()
+            .filter(|e| {
+                e.global_layer_index >= 0 && e.global_layer_index as u32 == capture.layer_index
+            })
+            .collect();
+        entries.sort_by(|a, b| (&a.object_id, a.region_id).cmp(&(&b.object_id, b.region_id)));
+        for entry in entries {
+            for role in &entry.roles {
+                let class = SilhouetteClass::from_support_role(role.role);
+                for poly in &role.regions {
+                    // Contour only - a hole cannot disconnect a connected
+                    // contour's projection.
+                    if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                        out.push(SilhouetteBand {
+                            layer_index: capture.layer_index,
+                            class,
+                            z_bottom: slab.z_bottom,
+                            z_top: slab.z_top,
+                            start,
+                            end,
+                        });
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if let CapturedIr::Slice(s) = &capture.ir {
+        for region in &s.regions {
+            // Slab per region (D1): `[z - effective_layer_height, z]`, exact
+            // for catch-up layers and mixed-height objects. A layer's
+            // rectangles may therefore have differing bottoms.
+            let h = region.effective_layer_height;
+            let (z_bottom, z_top) = if h.is_finite() && h > 0.0 {
+                (capture.layer_z - h, capture.layer_z)
+            } else if let Some(slab) = schedule.slab_for(capture.layer_index) {
+                (slab.z_bottom, slab.z_top)
+            } else {
+                continue;
+            };
+            for poly in &region.polygons {
+                // Contour only: `infill_areas` lies inside the outer contour,
+                // so its interval is a subset - zero extra silhouette
+                // information, plus a false occlusion pairing.
+                if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                    out.push(SilhouetteBand {
+                        layer_index: capture.layer_index,
+                        class: SilhouetteClass::SliceRegion,
+                        z_bottom,
+                        z_top,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Compute the shared silhouette viewport for one bundle.
+///
+/// Horizontal extent = the view's axis over every capture's geometry, unioned
+/// with `model_extent`'s horizontal. Vertical extent = the schedule's Z range,
+/// unioned with `model_extent`'s vertical. `model_extent` carries **plane**
+/// semantics: its `min_x`/`max_x` are the X-or-Y extent and its
+/// `min_y`/`max_y` are the Z extent (`pnp-cli` builds it from
+/// `MeshIR::build_volume`). The result already carries the fixed margin.
+///
+/// Never depends on which layers were selected beyond the schedule the caller
+/// built, so a band bundle and an all-layers bundle frame identically (D3).
+#[must_use]
+pub fn compute_silhouette_viewport_bounds(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    model_extent: Option<ViewportBoundsMm>,
+) -> ViewportBoundsMm {
+    let mut min_h = f32::MAX;
+    let mut max_h = f32::MIN;
+    let mut min_z = f32::MAX;
+    let mut max_z = f32::MIN;
+    let mut touched_h = false;
+    let mut touched_z = false;
+
+    for capture in captures {
+        for xy in geometry_points_mm(&capture.ir) {
+            let h = view.axis(xy);
+            touched_h = true;
+            min_h = min_h.min(h);
+            max_h = max_h.max(h);
+        }
+    }
+    for slab in &schedule.slabs {
+        touched_z = true;
+        min_z = min_z.min(slab.z_bottom.min(slab.z_top));
+        max_z = max_z.max(slab.z_bottom.max(slab.z_top));
+    }
+    if let Some(extent) = model_extent {
+        touched_h = true;
+        min_h = min_h.min(extent.min_x);
+        max_h = max_h.max(extent.max_x);
+        touched_z = true;
+        min_z = min_z.min(extent.min_y);
+        max_z = max_z.max(extent.max_y);
+    }
+    if !touched_h {
+        min_h = 0.0;
+        max_h = 1.0;
+    }
+    if !touched_z {
+        min_z = 0.0;
+        max_z = 1.0;
+    }
+    ViewportBoundsMm {
+        min_x: min_h,
+        min_y: min_z,
+        max_x: max_h,
+        max_y: max_z,
+    }
+    .with_margin()
+}
+
+/// The occlusion caveat, emitted once per group when a later-painted class
+/// actually overlaps an earlier one on some layer.
+fn silhouette_occlusion_warning(layer_count: usize) -> String {
+    format!(
+        "silhouette occlusion: on {layer_count} layer(s) a later-painted class overlaps an \
+         earlier one along the view axis; geometry hidden behind the visible band is not drawn"
+    )
+}
+
+/// Render one composite silhouette image for a whole capture group.
+///
+/// `captures` arrive already sorted ascending by layer. Per capture, each
+/// region's contour is projected onto the view axis; intervals are unioned
+/// per (layer, class, slab); each union interval becomes an axis-aligned
+/// rectangle spanning that slab's Z range, drawn through the existing
+/// rasterizer and the shared [`Projector`].
+///
+/// Rectangle emission order is fully specified - ascending layer index, then
+/// [`SILHOUETTE_PAINT_ORDER`], then ascending slab, then ascending interval
+/// start - so the same `(captures, view, scale, viewport, schedule)` always
+/// produces byte-identical PNG bytes and an element-for-element equal warning
+/// list.
+///
+/// Fails closed with [`RenderError::MissingGeometryField`] when the **whole
+/// group** yields zero rectangles - never a blank PNG.
+pub fn render_silhouette_composite(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+
+    let mut bands: Vec<SilhouetteBand> = Vec::new();
+    for capture in captures {
+        silhouette_bands(capture, view, schedule, &mut bands);
+    }
+
+    // Group key: (layer, class paint rank, slab). Sorting by it first makes
+    // both the union grouping and the emission order fall out of one sort.
+    bands.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then(a.class.paint_rank().cmp(&b.class.paint_rank()))
+            .then(a.z_bottom.total_cmp(&b.z_bottom))
+            .then(a.z_top.total_cmp(&b.z_top))
+            .then(a.start.total_cmp(&b.start))
+    });
+
+    let mut shapes: Vec<Shape> = Vec::new();
+    // Per-layer, per-class merged intervals, for the occlusion check.
+    let mut per_layer_class: Vec<(u32, SilhouetteClass, Vec<(f32, f32)>)> = Vec::new();
+
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i];
+        let mut j = i;
+        let mut intervals: Vec<(f32, f32)> = Vec::new();
+        while j < bands.len()
+            && bands[j].layer_index == head.layer_index
+            && bands[j].class == head.class
+            && bands[j].z_bottom.to_bits() == head.z_bottom.to_bits()
+            && bands[j].z_top.to_bits() == head.z_top.to_bits()
+        {
+            intervals.push((bands[j].start, bands[j].end));
+            j += 1;
+        }
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, head.z_bottom),
+                    (end, head.z_bottom),
+                    (end, head.z_top),
+                    (start, head.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.class.color(),
+            });
+            match per_layer_class
+                .iter_mut()
+                .find(|(l, c, _)| *l == head.layer_index && *c == head.class)
+            {
+                Some((_, _, acc)) => acc.push((start, end)),
+                None => per_layer_class.push((head.layer_index, head.class, vec![(start, end)])),
+            }
+        }
+        i = j;
+    }
+
+    if shapes.is_empty() {
+        let (tap, layer_index) = captures.first().map_or_else(
+            || ("<empty capture group>".to_string(), 0),
+            |c| (c.stage_id.clone(), c.layer_index),
+        );
+        // Name the field that was actually empty for THIS group. A group of
+        // only `SupportGeometry` captures has no `regions[].polygons`; the
+        // empty thing is the plan's per-role regions. Mixed or
+        // unrecognised-capture groups fall back to the `Slice` field string.
+        let support_only = captures
+            .iter()
+            .any(|c| matches!(c.ir, CapturedIr::SupportGeometry { .. }))
+            && !captures
+                .iter()
+                .any(|c| matches!(c.ir, CapturedIr::Slice(_)));
+        let field = if support_only {
+            "plan.entries[].roles[].regions"
+        } else {
+            "regions[].polygons"
+        };
+        return Err(RenderError::MissingGeometryField {
+            tap,
+            layer_index,
+            field,
+        });
+    }
+
+    // Occlusion: a later-painted class' union interval ACTUALLY overlapping an
+    // earlier class' on the same layer. One deduped warning for the group.
+    let mut occluded_layers: Vec<u32> = Vec::new();
+    for (layer, class, intervals) in &per_layer_class {
+        let overlaps = per_layer_class.iter().any(|(l2, c2, other)| {
+            l2 == layer
+                && c2.paint_rank() > class.paint_rank()
+                && other
+                    .iter()
+                    .any(|(s2, e2)| intervals.iter().any(|(s, e)| s2 < e && s < e2))
+        });
+        if overlaps && !occluded_layers.contains(layer) {
+            occluded_layers.push(*layer);
+        }
+    }
+    // Fixed, deduped warning order: W1 (raft), W2 (coarse entries), then
+    // occlusion. The `SupportGeometry` payload is CLONED per layer capture,
+    // so W1/W2 counts are read from ONE capture, never summed across the
+    // group.
+    let mut warnings: Vec<String> = Vec::new();
+    let support_payload = captures.iter().find_map(|c| match &c.ir {
+        CapturedIr::SupportGeometry { geometry, plan } => Some((geometry, plan)),
+        _ => None,
+    });
+    if let Some((geometry, plan)) = support_payload {
+        let raft: Vec<i32> = plan
+            .entries
+            .iter()
+            .map(|e| e.global_layer_index)
+            .filter(|i| *i < 0)
+            .collect();
+        if !raft.is_empty() {
+            let min = raft.iter().copied().min().unwrap_or(0);
+            let max = raft.iter().copied().max().unwrap_or(0);
+            warnings.push(silhouette_raft_warning(raft.len(), min, max));
+        }
+        if !geometry.entries.is_empty() {
+            warnings.push(silhouette_coarse_entries_warning(geometry.entries.len()));
+        }
+    }
+    if !occluded_layers.is_empty() {
+        warnings.push(silhouette_occlusion_warning(occluded_layers.len()));
+    }
+
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let png_bytes = encode_png(width, height, &canvas.buf);
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        warnings,
     ))
 }

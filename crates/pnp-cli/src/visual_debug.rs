@@ -20,15 +20,88 @@ const VERSION: &str = "1.0.0";
 /// 1.0.0 (fail-closed, never silently ignored).
 const VERSION_1_1: &str = "1.1.0";
 
+/// Schema 1.2.0 (packet 247): adds the `silhouette` visualization kind
+/// (one composite X-Z / Y-Z side-view image per tap) and its
+/// `options.view` selector. Everything 1.1.0 accepts stays accepted;
+/// `silhouette` and `view` are rejected under any earlier declared version
+/// (fail-closed, never silently ignored).
+const VERSION_1_2: &str = "1.2.0";
+
+/// The schema 1.2.0 side-view visualization kind.
+const SILHOUETTE_KIND: &str = "silhouette";
+
+/// The taps a `silhouette` visualization may be requested for (packet 247):
+/// the four `CapturedIr::Slice` taps plus the support-plan tap - the
+/// Z-attributable set. Every other tap is rejected with a stated reason;
+/// later packets extend this list rather than bypassing validation.
+const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
+    "Layer::Slice",
+    "PrePass::PaintSegmentation",
+    "Layer::PaintRegionAnnotation",
+    "Layer::SlicePostProcess",
+    "PrePass::SupportGeometry",
+];
+
+/// Whether a declared schema version gets the strict typed `options` parse
+/// (`deny_unknown_fields`, typed option validation). True for 1.1.0 and
+/// 1.2.0; a 1.0.0 request keeps the legacy loose read.
+fn strict_options(schema_version: &str) -> bool {
+    schema_version == VERSION_1_1 || schema_version == VERSION_1_2
+}
+
+/// The resolved silhouette projection plane name for a visualization's
+/// options: `"front"` (X-Z, the default) or `"side"` (Y-Z). Unknown values
+/// fail closed.
+fn silhouette_view_name(view: Option<&str>) -> Result<&'static str, ValidationError> {
+    match view {
+        None | Some("front") => Ok("front"),
+        Some("side") => Ok("side"),
+        Some(other) => Err(ValidationError::InvalidSilhouetteView {
+            message: format!("view must be \"front\" (X-Z) or \"side\" (Y-Z), got \"{other}\""),
+        }),
+    }
+}
+
+/// Why a tap outside [`SILHOUETTE_TAP_STAGE_IDS`] cannot carry a
+/// silhouette. Never empty: a rejection that does not say why trains
+/// callers to guess.
+fn silhouette_tap_rejection_reason(tap: &str) -> String {
+    match tap {
+        "Layer::Perimeters" => "its captured geometry is arena-owned toolpath data with no \
+             per-region layer height to attribute a Z slab to"
+            .to_string(),
+        "PrePass::MeshAnalysis" | "PrePass::SeamPlanning" => {
+            "its capture carries no per-layer geometry, so no Z slab can be attributed to it"
+                .to_string()
+        }
+        "PrePass::RegionMapping" | "PrePass::OverhangAnnotation" => {
+            "silhouette class ordering for this tap's capture shape is not decided yet \
+             (owned by a follow-up packet)"
+                .to_string()
+        }
+        "PostPass::LayerFinalization" | "PostPass::GCodeEmit" => {
+            "its whole-print capture would have to be re-attributed to model-layer slabs; \
+             not supported by this packet"
+                .to_string()
+        }
+        _ => format!(
+            "'{tap}' is not one of the Z-attributable silhouette taps ({})",
+            SILHOUETTE_TAP_STAGE_IDS.join(", ")
+        ),
+    }
+}
+
 fn schema_supported(v: &str) -> bool {
-    v == VERSION || v == VERSION_1_1
+    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2
 }
 
 /// The legend version recorded for a bundle: a 1.0.0 request renders only
 /// the v1 legend; a 1.1.0 request's images may use the v1.1 glyph legend
 /// (a strict superset — see `slicer_runtime::visual_debug_style`).
+/// A 1.2.0 request records the same legend as 1.1.0: silhouettes add fill
+/// classes, not glyphs, so `LEGEND_VERSION` is deliberately not bumped.
 fn legend_version_for(schema_version: &str) -> &str {
-    if schema_version == VERSION_1_1 {
+    if schema_version == VERSION_1_1 || schema_version == VERSION_1_2 {
         slicer_runtime::LEGEND_VERSION
     } else {
         VERSION
@@ -57,6 +130,11 @@ pub struct VisualizationOptions {
     /// `z_hops`, `tool_changes`).
     #[serde(default)]
     pub overlays: Option<Vec<String>>,
+    /// Schema 1.2.0: the silhouette projection plane - `"front"` (X-Z,
+    /// the default) or `"side"` (Y-Z). `silhouette` visualizations only;
+    /// rejected on any other kind and under any pre-1.2.0 schema.
+    #[serde(default)]
+    pub view: Option<String>,
 }
 
 impl VisualizationOptions {
@@ -105,7 +183,7 @@ fn effective_visualization_options(
     schema_version: &str,
     viz: &VisualizationSpec,
 ) -> VisualizationOptions {
-    if schema_version == VERSION_1_1 {
+    if strict_options(schema_version) {
         return visualization_options(viz)
             .expect("validate_request already accepted these options");
     }
@@ -378,6 +456,37 @@ pub enum ValidationError {
     OverlayUnsupportedOnGcode {
         name: String,
     },
+    /// Schema 1.2.0 (packet 247): a `silhouette` visualization appeared in a
+    /// request declaring an earlier schema version. Named rather than
+    /// folded into `UnknownVisualizationKind` so the message can state the
+    /// fix (declare 1.2.0), exactly like `OptionRequiresSchema11`.
+    SilhouetteRequiresSchema12,
+    /// A `silhouette` visualization was mixed with a top-down kind in one
+    /// request. A silhouette bundle projects to one plane and every entry
+    /// shares one byte-identical `world_bounds_mm`; mixing planes would
+    /// break that pinned invariant. Two bundles cover the workflow.
+    SilhouetteMixedWithOtherKinds {
+        other_kind: String,
+    },
+    /// `frame: "plate"` was requested alongside a silhouette. The bed is an
+    /// XY polygon with no machine-height concept, so it cannot frame a
+    /// Z-bearing projection.
+    SilhouettePlateFrameUnsupported,
+    /// `options.view` carried an unknown value, was set on a non-silhouette
+    /// kind, was set under a pre-1.2.0 schema, or two silhouette
+    /// visualizations in one request resolved to different planes.
+    InvalidSilhouetteView {
+        message: String,
+    },
+    /// A silhouette was requested for a tap outside
+    /// [`SILHOUETTE_TAP_STAGE_IDS`]. Carries the tap and the reason.
+    SilhouetteUnsupportedForTap {
+        tap: String,
+        reason: String,
+    },
+    /// Interim (packet 247): a silhouette was requested against a
+    /// standalone final-G-code source. Lifted by packet 248.
+    SilhouetteUnsupportedOnGcodeSource,
 }
 
 impl fmt::Display for ValidationError {
@@ -421,6 +530,32 @@ impl fmt::Display for ValidationError {
             Self::OverlayUnsupportedOnGcode { name } => write!(
                 f,
                 "overlay '{name}' is not supported on a standalone gcode source"
+            ),
+            Self::SilhouetteRequiresSchema12 => write!(
+                f,
+                "visualization kind '{SILHOUETTE_KIND}' requires schema_version \"{VERSION_1_2}\""
+            ),
+            Self::SilhouetteMixedWithOtherKinds { other_kind } => write!(
+                f,
+                "a silhouette bundle may contain only silhouette visualizations; this request \
+                 also asks for '{other_kind}' - render it as a separate bundle"
+            ),
+            Self::SilhouettePlateFrameUnsupported => write!(
+                f,
+                "frame: \"plate\" is not supported for silhouette visualizations: the bed is an \
+                 XY polygon with no machine-height extent; use frame: \"model\""
+            ),
+            Self::InvalidSilhouetteView { message } => {
+                write!(f, "invalid silhouette view request: {message}")
+            }
+            Self::SilhouetteUnsupportedForTap { tap, reason } => write!(
+                f,
+                "silhouette is not supported for tap '{tap}': {reason}"
+            ),
+            Self::SilhouetteUnsupportedOnGcodeSource => write!(
+                f,
+                "silhouette is not supported on a standalone gcode source in this release; \
+                 use a model source"
             ),
         }
     }
@@ -512,7 +647,8 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     if !schema_supported(&req.schema_version) {
         return Err(ValidationError::SchemaVersion);
     }
-    let is_v1_1 = req.schema_version == VERSION_1_1;
+    let strict = strict_options(&req.schema_version);
+    let is_v1_2 = req.schema_version == VERSION_1_2;
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
@@ -524,7 +660,15 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     // are now named, fail-closed rejections.
     for viz in &req.visualizations {
         let kind = viz.kind();
-        if !matches!(
+        if kind == SILHOUETTE_KIND {
+            // Schema 1.2.0 (packet 247): the silhouette kind is version
+            // gated, so a pre-1.2 request gets a named requires-1.2.0
+            // error naming the fix rather than the generic unknown-kind
+            // rejection.
+            if !is_v1_2 {
+                return Err(ValidationError::SilhouetteRequiresSchema12);
+            }
+        } else if !matches!(
             kind,
             "filled_areas" | "filament_lines" | "diagnostic_overlay"
         ) {
@@ -536,12 +680,25 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         // legacy loose treatment (stray keys tolerated, only `base` read) —
         // EXCEPT that the 1.1-only option names are hard-rejected so an old
         // schema declaration can never silently drop a requested behavior.
-        if !is_v1_1 {
+        if !strict {
             if let VisualizationSpec::Detail { options, .. } = viz {
                 for option in ["color_by", "tool_color_source", "overlays"] {
                     if options.get(option).is_some() {
                         return Err(ValidationError::OptionRequiresSchema11 { option });
                     }
+                }
+                // `view` is 1.2.0-only. Under 1.0.0 the options object is
+                // read loosely, so probe the raw key: tolerating it as a
+                // stray would silently render the default plane instead of
+                // the requested one.
+                if options.get("view").is_some() {
+                    return Err(ValidationError::InvalidSilhouetteView {
+                        message: format!(
+                            "option 'view' requires schema_version \"{VERSION_1_2}\" (this request declares \
+                             '{}')",
+                            req.schema_version
+                        ),
+                    });
                 }
             }
             if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. })
@@ -551,6 +708,39 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             continue;
         }
         let opts = visualization_options(viz)?;
+        // Schema 1.2.0: `options.view` is silhouette-only and 1.2.0-only.
+        match opts.view.as_deref() {
+            None => {}
+            Some(_) if !is_v1_2 => {
+                return Err(ValidationError::InvalidSilhouetteView {
+                    message: format!(
+                        "option 'view' requires schema_version \"{VERSION_1_2}\" (this request declares '{}')",
+                        req.schema_version
+                    ),
+                });
+            }
+            Some(_) if kind != SILHOUETTE_KIND => {
+                return Err(ValidationError::InvalidSilhouetteView {
+                    message: format!(
+                        "view applies to '{SILHOUETTE_KIND}' visualizations, not '{kind}'"
+                    ),
+                });
+            }
+            Some(view) => {
+                silhouette_view_name(Some(view))?;
+            }
+        }
+        if kind == SILHOUETTE_KIND && opts.color_by.as_deref() == Some("tool") {
+            // Interim (packet 247): tool coloring on a silhouette needs the
+            // per-capture tool-availability contract that arrives with the
+            // toolpath taps; until then it is rejected rather than silently
+            // rendered role-colored. `color_by: "role"` is accepted.
+            return Err(ValidationError::InvalidColorBy {
+                message: "color_by: \"tool\" is not supported for silhouette visualizations in \
+                          this release; use \"role\""
+                    .into(),
+            });
+        }
         match opts.color_by.as_deref() {
             None | Some("role") | Some("tool") => {}
             Some(other) => {
@@ -619,6 +809,63 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                         }
                     }
                 }
+            }
+        }
+    }
+    // Schema 1.2.0 (packet 247): bundle-wide silhouette rules. Ordered so
+    // the most specific misuse is named first: mixing, then the bundle
+    // plane, then frame / source / tap support.
+    if is_v1_2
+        && req
+            .visualizations
+            .iter()
+            .any(|v| v.kind() == SILHOUETTE_KIND)
+    {
+        if let Some(other) = req
+            .visualizations
+            .iter()
+            .map(VisualizationSpec::kind)
+            .find(|k| *k != SILHOUETTE_KIND)
+        {
+            return Err(ValidationError::SilhouetteMixedWithOtherKinds {
+                other_kind: other.to_string(),
+            });
+        }
+        // One silhouette plane per bundle: every entry shares one
+        // byte-identical `world_bounds_mm`, which two planes cannot.
+        let mut bundle_view: Option<&'static str> = None;
+        for viz in &req.visualizations {
+            let opts = visualization_options(viz)?;
+            let view = silhouette_view_name(opts.view.as_deref())?;
+            match bundle_view {
+                None => bundle_view = Some(view),
+                Some(previous) if previous != view => {
+                    return Err(ValidationError::InvalidSilhouetteView {
+                        message: format!(
+                            "one silhouette plane per bundle: this request asks for both \
+                             '{previous}' and '{view}'; render them as two bundles"
+                        ),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        if matches!(req.frame, FrameMode::Plate) {
+            return Err(ValidationError::SilhouettePlateFrameUnsupported);
+        }
+        if matches!(req.source, VisualDebugSource::Gcode { .. }) {
+            return Err(ValidationError::SilhouetteUnsupportedOnGcodeSource);
+        }
+        for tap in &req.taps {
+            let id = match tap {
+                TapSelector::Name(name) => name.as_str(),
+                TapSelector::Detail { id } => id.as_str(),
+            };
+            if !SILHOUETTE_TAP_STAGE_IDS.contains(&id) {
+                return Err(ValidationError::SilhouetteUnsupportedForTap {
+                    tap: id.to_string(),
+                    reason: silhouette_tap_rejection_reason(id),
+                });
             }
         }
     }
@@ -744,8 +991,22 @@ pub struct Viewport {
 pub struct ImageEntry {
     pub source: String,
     pub tap: String,
-    pub layer_index: i64,
-    pub layer_z: Option<f64>,
+    /// The global layer index this entry rendered. `None` (and absent from
+    /// the manifest) only on a schema 1.2.0 silhouette entry, which is a
+    /// composite over many layers and has no single index; every 1.0/1.1
+    /// entry still serializes it, byte-unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_index: Option<i64>,
+    /// Tri-state, deliberately: `Some(Some(z))` serializes the number,
+    /// `Some(None)` serializes JSON `null`, and `None` omits the key.
+    /// The middle state is load-bearing - a standalone-G-code layer with no
+    /// `;Z:` marker has always serialized `"layer_z": null`
+    /// (`visual_debug_gcode::ParsedLayer::layer_z` is `None` there), so a
+    /// plain `Option<f64>` + `skip_serializing_if` would silently flip that
+    /// `null` to an absent key and break 1.0/1.1 byte-compatibility. Only a
+    /// silhouette entry omits the key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_z: Option<Option<f64>>,
     pub visualization: String,
     pub png_path: String,
     pub viewport: Viewport,
@@ -791,6 +1052,25 @@ pub struct ImageEntry {
     /// `"filament"`) when `color_by` is `"tool"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_color_source: Option<String>,
+    /// Schema 1.2.0: the silhouette projection plane this composite was
+    /// rendered on (`"front"` = X-Z, `"side"` = Y-Z). Absent on every
+    /// non-silhouette entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view: Option<String>,
+    /// Schema 1.2.0: the global layer indices the silhouette composite
+    /// actually drew, compressed to inclusive ranges. Absent on every
+    /// non-silhouette entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layers_rendered: Option<Vec<LayerRangeEntry>>,
+}
+
+/// One inclusive global-layer-index range in
+/// [`ImageEntry::layers_rendered`]. A single layer is `start == end`, so the
+/// encoding round-trips losslessly for any index set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct LayerRangeEntry {
+    pub start: i64,
+    pub end: i64,
 }
 
 /// One row of [`Manifest::tool_palette`]: the exact RGB a tool renders as
@@ -1031,6 +1311,64 @@ fn mesh_xy_bounds(mesh: &slicer_ir::MeshIR) -> Option<slicer_runtime::ViewportBo
         return None;
     }
     Some(bounds.with_margin())
+}
+
+/// The model-wide silhouette plane extent in millimeters (packet 247, D3):
+/// horizontal axis = the mesh's X (front) or Y (side) extent, vertical axis
+/// = its **Z** extent, both read from the same `MeshIR::build_volume`
+/// `mesh_xy_bounds` reads.
+///
+/// This is what makes the Z frame *model-wide* rather than selection-wide: it
+/// never varies with which layers a request selected, so two silhouette
+/// bundles over one model are directly comparable (AC-7).
+///
+/// Returned **unmargined**, unlike `mesh_xy_bounds`:
+/// `compute_silhouette_viewport_bounds` applies `with_margin` itself after
+/// unioning with the captured geometry. Degenerate handling mirrors
+/// `mesh_xy_bounds` — a non-finite or collapsed box yields `None` and the
+/// viewport falls back to captured geometry alone.
+fn mesh_silhouette_plane_extent(
+    mesh: &slicer_ir::MeshIR,
+    view: slicer_runtime::SilhouetteView,
+) -> Option<slicer_runtime::ViewportBoundsMm> {
+    if mesh.objects.is_empty() {
+        return None;
+    }
+    let bv = mesh.build_volume;
+    let (min_h, max_h) = match view {
+        slicer_runtime::SilhouetteView::Front => (bv.min.x, bv.max.x),
+        slicer_runtime::SilhouetteView::Side => (bv.min.y, bv.max.y),
+    };
+    let bounds = slicer_runtime::ViewportBoundsMm {
+        min_x: min_h,
+        min_y: bv.min.z,
+        max_x: max_h,
+        max_y: bv.max.z,
+    };
+    let degenerate = !(bounds.min_x.is_finite()
+        && bounds.min_y.is_finite()
+        && bounds.max_x.is_finite()
+        && bounds.max_y.is_finite())
+        || bounds.max_x <= bounds.min_x
+        || bounds.max_y <= bounds.min_y;
+    if degenerate {
+        return None;
+    }
+    Some(bounds)
+}
+
+/// Compress an ascending, de-duplicated global-layer-index list into maximal
+/// inclusive runs for [`ImageEntry::layers_rendered`]. Lossless: a lone index
+/// becomes `start == end`.
+fn compress_layer_ranges(indices: &[i64]) -> Vec<LayerRangeEntry> {
+    let mut out: Vec<LayerRangeEntry> = Vec::new();
+    for &i in indices {
+        match out.last_mut() {
+            Some(last) if i == last.end + 1 => last.end = i,
+            _ => out.push(LayerRangeEntry { start: i, end: i }),
+        }
+    }
+    out
 }
 
 /// The printer bed's XY extent in millimeters, margin included, for
@@ -1507,6 +1845,28 @@ fn run_model_source(
     // so two bundles over one model can be compared stage-to-stage.
     let model_bounds = mesh_xy_bounds(&mesh);
 
+    // Schema 1.2.0 silhouette bundle (packet 247): one bundle is either
+    // all-silhouette or all-XY (the mixing ban, enforced in
+    // `validate_request`), and every silhouette visualization in it resolves
+    // to the same plane, so the bundle's projection plane is a single value
+    // read off the first silhouette spec. The model-wide plane extent must be
+    // taken here, while `mesh` is still owned by this frame.
+    let silhouette_view: Option<slicer_runtime::SilhouetteView> = req
+        .visualizations
+        .iter()
+        .find(|v| v.kind() == SILHOUETTE_KIND)
+        .map(|v| {
+            let opts = effective_visualization_options(&req.schema_version, v);
+            silhouette_view_name(opts.view.as_deref()).map_err(VisualDebugError::Validation)
+        })
+        .transpose()?
+        .map(|name| {
+            slicer_runtime::SilhouetteView::parse(name)
+                .expect("silhouette_view_name only yields parseable plane names")
+        });
+    let silhouette_model_extent =
+        silhouette_view.and_then(|view| mesh_silhouette_plane_extent(&mesh, view));
+
     let mut ctx = slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source,
@@ -1648,12 +2008,115 @@ fn run_model_source(
     let mut images: Vec<ImageEntry> = Vec::new();
     let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
     let mut tool_palette: Option<Vec<ToolPaletteEntry>> = None;
-    if req.visualizations.is_empty() {
+    if let Some(view) = silhouette_view {
+        // Schema 1.2.0 silhouette bundle (packet 247). Disjoint from the
+        // per-capture render loop below by the mixing ban: a silhouette
+        // request produces exactly one composite image per (tap, view) group,
+        // never one per (capture, visualization) pair — which is also why two
+        // identical silhouette specs collapse into a single image (AC-9).
+
+        // Per-layer Z slab schedule over the *whole* layer plan, not just the
+        // selection: `GlobalLayer.z` is the layer **top**, so a slab's
+        // `z_bottom` is the previous layer's `z` (`0.0` for index 0). Z stays
+        // in millimeter floats end to end — it never round-trips through
+        // `mm_to_units`.
+        let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
+        if let Some(lp) = ctx.blackboard.layer_plan() {
+            let mut prev_z = 0.0f32;
+            for gl in &lp.global_layers {
+                let z_bottom = if gl.index == 0 { 0.0 } else { prev_z };
+                schedule
+                    .slabs
+                    .push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: gl.index,
+                        z_bottom,
+                        z_top: gl.z,
+                    });
+                prev_z = gl.z;
+            }
+        }
+
+        // One shared viewport for the whole bundle, framed model-wide (D3):
+        // horizontal = the mesh's X (front) / Y (side) extent, vertical = its
+        // Z extent, both unioned with the captured geometry. The selection
+        // never moves the frame, which is exactly what AC-7 pins. `frame:
+        // "plate"` has no silhouette meaning (a bed polygon carries no Z), so
+        // silhouette framing is always model-wide.
+        let viewport_bounds = slicer_runtime::compute_silhouette_viewport_bounds(
+            &output.captures,
+            view,
+            &schedule,
+            silhouette_model_extent,
+        );
+
+        // Group by tap, ordered by `STAGE_ORDER` position then tap string —
+        // an ordered map, never a `HashMap`: manifest order is a packet
+        // invariant.
+        let mut groups: std::collections::BTreeMap<
+            (usize, String),
+            Vec<slicer_runtime::StageCapture>,
+        > = std::collections::BTreeMap::new();
+        for capture in &output.captures {
+            let position = slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == capture.stage_id.as_str())
+                .unwrap_or(usize::MAX);
+            groups
+                .entry((position, capture.stage_id.clone()))
+                .or_default()
+                .push(capture.clone());
+        }
+
+        let legend = legend_version_for(&req.schema_version).to_string();
+        for ((_, tap), group) in groups {
+            let (rendered, warnings) = slicer_runtime::render_silhouette_composite(
+                &group,
+                view,
+                req.resolution_scale,
+                viewport_bounds,
+                &schedule,
+            )
+            .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+            let mut indices: Vec<i64> = group.iter().map(|c| i64::from(c.layer_index)).collect();
+            indices.sort_unstable();
+            indices.dedup();
+            let file_name = format!(
+                "{}_silhouette_{}.png",
+                sanitize_path_component(&tap),
+                view.name()
+            );
+            let relative_path = format!("images/{file_name}");
+            rendered_files.push((relative_path.clone(), rendered.png_bytes));
+            images.push(ImageEntry {
+                source: "model".into(),
+                tap: tap.clone(),
+                // A composite spans many layers: no single index or Z is
+                // truthful, so both keys are absent (D7).
+                layer_index: None,
+                layer_z: None,
+                visualization: SILHOUETTE_KIND.to_string(),
+                png_path: relative_path,
+                viewport: viewport.clone(),
+                legend_version: legend.clone(),
+                ir_schema_version: group.first().map(|c| c.ir.schema_version_string()),
+                gcode_parser_version: None,
+                warnings,
+                typed_capture: None,
+                world_bounds_mm: Some(viewport_bounds),
+                overlay: None,
+                overlay_events: None,
+                color_by: None,
+                tool_color_source: None,
+                view: Some(view.name().to_string()),
+                layers_rendered: Some(compress_layer_ranges(&indices)),
+            });
+        }
+    } else if req.visualizations.is_empty() {
         images.extend(output.captures.iter().map(|capture| ImageEntry {
             source: "model".into(),
             tap: capture.stage_id.clone(),
-            layer_index: capture.layer_index as i64,
-            layer_z: Some(capture.layer_z as f64),
+            layer_index: Some(capture.layer_index as i64),
+            layer_z: Some(Some(capture.layer_z as f64)),
             visualization: "typed_ir".into(),
             png_path: String::new(),
             viewport: viewport.clone(),
@@ -1667,6 +2130,8 @@ fn run_model_source(
             overlay_events: None,
             color_by: None,
             tool_color_source: None,
+            view: None,
+            layers_rendered: None,
         }));
     } else {
         let viewport_bounds = match req.frame {
@@ -1737,8 +2202,8 @@ fn run_model_source(
                         images.push(ImageEntry {
                             source: "model".into(),
                             tap: capture.stage_id.clone(),
-                            layer_index: capture.layer_index as i64,
-                            layer_z: Some(capture.layer_z as f64),
+                            layer_index: Some(capture.layer_index as i64),
+                            layer_z: Some(Some(capture.layer_z as f64)),
                             visualization: viz.kind().to_string(),
                             png_path: relative_path,
                             viewport: viewport.clone(),
@@ -1752,6 +2217,8 @@ fn run_model_source(
                             overlay_events: Some(events),
                             color_by: None,
                             tool_color_source: None,
+                            view: None,
+                            layers_rendered: None,
                         });
                     }
                     continue;
@@ -1813,8 +2280,8 @@ fn run_model_source(
                 images.push(ImageEntry {
                     source: "model".into(),
                     tap: capture.stage_id.clone(),
-                    layer_index: capture.layer_index as i64,
-                    layer_z: Some(capture.layer_z as f64),
+                    layer_index: Some(capture.layer_index as i64),
+                    layer_z: Some(Some(capture.layer_z as f64)),
                     visualization: viz.kind().to_string(),
                     png_path: relative_path,
                     viewport: viewport.clone(),
@@ -1830,6 +2297,8 @@ fn run_model_source(
                         .then(|| "tool".to_string()),
                     tool_color_source: (color_by == slicer_runtime::ColorBy::Tool)
                         .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
+                    view: None,
+                    layers_rendered: None,
                 });
             }
         }
@@ -2138,8 +2607,11 @@ pub fn run_visual_debug(
                             images.push(ImageEntry {
                                 source: "gcode".into(),
                                 tap: tap.clone(),
-                                layer_index: image.layer_index,
-                                layer_z: image.layer_z,
+                                layer_index: Some(image.layer_index),
+                                // `Some(None)` when the layer had no `;Z:`
+                                // marker: preserves the historical
+                                // `"layer_z": null` exactly.
+                                layer_z: Some(image.layer_z),
                                 visualization: image.visualization.name().to_string(),
                                 png_path: relative_path,
                                 viewport: viewport.clone(),
@@ -2159,6 +2631,8 @@ pub fn run_visual_debug(
                                     .then(|| "tool".to_string()),
                                 tool_color_source: (*is_tool && overlay_kind.is_none())
                                     .then(|| "palette".to_string()),
+                                view: None,
+                                layers_rendered: None,
                             });
                         }
                     }

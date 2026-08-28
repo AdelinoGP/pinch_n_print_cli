@@ -117,6 +117,152 @@ as many pixels; `resolution_scale: 3` uses nine times as many. Select the
 smallest scale that makes the suspected feature visible to avoid unnecessary
 image context cost.
 
+## Silhouette Side Views (schema 1.2.0)
+
+`schema_version: "1.2.0"` adds the `silhouette` visualization: a **side-on
+projection** of the print, rendered in a vertical plane rather than looking down
+at one layer. Every other view in this document answers "what does layer N look
+like"; a silhouette answers "how do these layers stack, and where do the
+interface bands sit". Read it as a projection, not a section.
+
+```json
+{"schema_version": "1.2.0",
+ "visualizations": [
+   {"type": "silhouette", "tap": "Layer::Slice", "options": {"view": "front"}}
+ ]}
+```
+
+`options.view` selects the projection plane:
+
+| `view`     | Plane | Horizontal axis |
+|------------|-------|-----------------|
+| `"front"`  | X–Z   | X (default when `view` is omitted) |
+| `"side"`   | Y–Z   | Y |
+
+An unknown `view` value is rejected, and `view` on a non-silhouette
+visualization is rejected. An explicit `view` key under a declared `"1.0.0"` or
+`"1.1.0"` schema is **hard-rejected naming `"1.2.0"`** — it is never silently
+tolerated, and the `silhouette` kind itself is likewise rejected naming
+`"1.2.0"` under those schemas.
+
+**One plane per bundle.** Silhouette never mixes with `filled_areas`,
+`filament_lines`, or `diagnostic_overlay` in one request, and every silhouette
+spec in a single request must resolve to the **same** `view`. This is what lets
+the whole bundle share one byte-identical `world_bounds_mm`; render front and
+side as two separate bundles. `frame: "plate"` plus silhouette is also rejected
+— a plate frame is an XY footprint and has no Z meaning.
+
+### Supported And Rejected Taps
+
+Supported in this release: `Layer::Slice`, `PrePass::PaintSegmentation`,
+`Layer::PaintRegionAnnotation`, `Layer::SlicePostProcess` (all `CapturedIr::Slice`),
+plus `PrePass::SupportGeometry`. Every other tap is rejected with a named
+reason rather than rendered empty — including `Layer::Perimeters` and the other
+per-layer arena taps, `PrePass::MeshAnalysis`, `PrePass::SeamPlanning`,
+`PrePass::RegionMapping`, `PrePass::OverhangAnnotation`,
+`PostPass::LayerFinalization`, and `PostPass::GCodeEmit`.
+
+Three further rejections are **interim**, expected to lift in later releases:
+silhouette on a **G-code source**; `options.color_by: "tool"` on a silhouette
+(`color_by: "role"` is accepted); and `options.composited_overlays`.
+
+### Manifest Shape
+
+A silhouette entry carries `"visualization": "silhouette"`, `"view"`,
+`"layers_rendered"`, and `"world_bounds_mm"`, and **omits `"layer_index"` and
+`"layer_z"` entirely** — a silhouette spans layers, so there is no single layer
+to name.
+
+```json
+{"visualization": "silhouette",
+ "view": "front",
+ "layers_rendered": [{"start": 0, "end": 11}, {"start": 20, "end": 24}],
+ "world_bounds_mm": {"min_x": -2.0, "max_x": 62.0, "min_y": -2.0, "max_y": 41.5},
+ "png_path": "images/Layer__Slice_silhouette_front.png"}
+```
+
+`layers_rendered` is a list of **inclusive** `{"start", "end"}` ranges: the
+maximal runs of consecutive rendered layer indices, ascending, non-overlapping,
+and lossless — every rendered layer appears in exactly one run.
+
+`world_bounds_mm` reuses the top-down bounds object, but **inside a silhouette
+bundle its `min_y`/`max_y` carry Z millimetres**, while `min_x`/`max_x` carry X
+(`view: "front"`) or Y (`view: "side"`). Do not read a silhouette's `min_y` as a
+Y coordinate.
+
+`legend_version` for a `1.2.0` bundle is still `"1.1.0"`: silhouettes add fill
+classes, not glyphs. `1.0.0` and `1.1.0` manifests are byte-unchanged by this
+schema, and a G-code layer with no `;Z:` marker still serializes
+`"layer_z": null`.
+
+Entry ordering is deterministic but mildly surprising: `Layer::Slice` is not a
+`STAGE_ORDER` member (the scheduler stage is `PrePass::Slice`), so a
+`Layer::Slice` entry sorts **after** `Layer::SlicePostProcess`. That is observed,
+correct ordering — not an unsorted manifest.
+
+### Filenames
+
+One image per `(tap, view)` group, written as
+`images/{sanitized_tap}_silhouette_{view}.png` — e.g.
+`images/Layer__Slice_silhouette_front.png`. Duplicate specs collapse into a
+single group, and no two entries in a bundle ever share a `png_path`.
+
+### Framing And Scale
+
+The Z frame is **model-wide**, exactly as the XY viewport is: it is taken from
+`MeshIR::build_volume`, unioned with the captured geometry so nothing is
+clipped, then margined. Selecting a layer subset therefore does **not** zoom the
+image — two bundles over the same model record byte-identical `world_bounds_mm`
+regardless of which layers each selected, which is what makes them directly
+comparable.
+
+Because selection cannot zoom, `resolution_scale` is the only lever for detail:
+**for interface-band inspection on tall models, raise** `resolution_scale`
+rather than narrowing the layer selection, which will not change the framing at
+all. Select the smallest scale that makes the band visible.
+
+### Paint Order And The Occlusion Caveat
+
+Fill classes paint in one fixed order, back to front:
+
+1. `SliceRegion` (body) / `Support` (body)
+2. `SupportRaft`
+3. `SupportBaseInterface`
+4. `SupportBottomInterface`
+5. `SupportInterface` (last, always on top)
+
+**A silhouette is a projection, not a section — overlapping structures
+occlude.** Where a later class overlaps an earlier one in the projected
+interval, the later class's colour wins and the earlier class's extent is
+hidden. When overlap actually occurs, the manifest entry carries a per-entry
+occlusion warning naming the affected layer count; when no overlap occurs there
+is no warning at all, so this caveat is your only notice that a hidden extent is
+possible. Never conclude a body region is missing from a silhouette alone.
+
+Vertical extents come from per-region slabs, never a uniform one. For the
+Slice-family taps each region's slab is `[z − effective_layer_height, z]`
+**per region**, so a catch-up region's slab bottom correctly reaches below its
+neighbours'. For `PrePass::SupportGeometry` the slabs come from the layer
+schedule. Holes never split a projected interval (the contour is what is
+projected), and touching intervals merge into one run.
+
+### Warnings Inventory
+
+Nothing is ever inferred or inflated: sub-pixel bands are **not** inflated to a
+minimum pixel width, and every omission is either a named warning or a named
+rejection.
+
+- **W1 — raft.** `SupportPlanIR` entries with a negative `global_layer_index`
+  are skipped; the warning names the count and the dropped index range. Raft
+  prefix layers have no slab in the layer schedule and so are not drawn. Tracked
+  as an open deviation in `docs/DEVIATION_LOG.md`.
+- **W2 — coarse support geometry.** Non-empty coarse `SupportGeometryIR.entries`
+  are skipped; the warning names the count. Emit-schedule entries span multiple
+  model layers (the `u32::MAX` sentinel denotes intermediate layers) and cannot
+  be honestly drawn on single-layer slabs — inspect them via the top-down view
+  instead.
+- **Occlusion.** Per-entry, as described above, only when overlap occurred.
+
 ## Framing
 
 Every render is **aspect-preserving**: one uniform scale is applied to both
