@@ -4,6 +4,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod anchored_rows;
 pub mod blackboard;
 /// Builtin pipeline step producers.
 pub mod builtins;

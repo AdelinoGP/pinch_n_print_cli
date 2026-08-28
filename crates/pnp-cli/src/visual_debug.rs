@@ -1145,15 +1145,22 @@ fn run_postpass_taps(
     // Tier 2: run every per-layer stage for every layer (no truncation —
     // the finalization/emission tiers below need every layer's committed
     // LayerCollectionIR).
-    let (mut layer_irs, _layer_audits) =
-        slicer_runtime::layer_executor::execute_per_layer_with_events_and_support_tools(
+    //
+    // visual-debug builds its `PrepassContext` directly and never constructs a
+    // `PipelineConfig`, so it has no anchored-entity payload of its own: the
+    // empty slice below is the behaviour-preserving choice.
+    let (committed_events, _layer_audits) =
+        slicer_runtime::layer_executor::execute_per_layer_with_committed_anchored_events_and_support_tools(
             &ctx.plan,
             &ctx.blackboard,
             &ctx.layer_runner,
             &slicer_runtime::NoopLayerProgressSink,
             &ctx.wasm_handles,
             support_tools,
+            &[],
         )
+        .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+    let mut layer_irs = slicer_runtime::anchored_rows::synthesize_anchored_rows(committed_events)
         .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
 
     // Tier 3: layer finalization (module-based, if any is bound in this plan).

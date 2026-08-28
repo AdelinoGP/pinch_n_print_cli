@@ -1898,6 +1898,7 @@ mod tests {
         let mut entries = BTreeMap::new();
         entries.insert(
             "spacing".to_string(),
+            // exhaustive: asserts every ConfigFieldEntry field reaches the schema JSON.
             ConfigFieldEntry {
                 field_type: "float".to_string(),
                 default: Some("0.4".to_string()),

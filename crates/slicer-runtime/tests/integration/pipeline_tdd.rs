@@ -676,6 +676,102 @@ fn run_pipeline_with_layers_produces_output() {
     assert_eq!(output.gcode_text, "layers:3");
 }
 
+// ---------- TASK-400: payload-capturing emitter baseline (AC-6) ----------
+/// Pre-change baseline for AC-6: records the exact `LayerCollectionIR` row
+/// sequence a support-free (`anchored_entities` empty) pipeline run hands to
+/// the G-code emitter. The concrete `(len, global_layer_index, z)` values are
+/// inlined below so a later executor switch can be proven equivalent on the
+/// empty-anchored-collection path.
+///
+/// Setup copied from `run_pipeline_with_layers_produces_output`.
+#[test]
+fn payload_capturing_emitter_records_row_sequence() {
+    struct CountingSerializer;
+    impl GCodeSerializer for CountingSerializer {
+        fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
+            Ok(format!("layers:{}", gcode_ir.metadata.layer_count))
+        }
+    }
+
+    struct ThreeLayerPrepass;
+    impl PrepassStageRunner for ThreeLayerPrepass {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![
+                    make_global_layer(0, 0.2),
+                    make_global_layer(1, 0.4),
+                    make_global_layer(2, 0.6),
+                ],
+                ..Default::default()
+            })))
+        }
+    }
+
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_module("PrePass::LayerPlanning", "layer-planner")],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+
+        ..Default::default()
+    };
+
+    let emitter = common::CapturedRowsEmitter::new();
+    // Clone the capture handle out BEFORE the emitter is boxed and moved.
+    let captured_handle = emitter.handle();
+
+    let config = PipelineConfig {
+        ..common::pipeline_config_base(
+            empty_mesh_ir(),
+            plan,
+            common::pipeline_stage_runners_base(
+                Box::new(ThreeLayerPrepass),
+                Box::new(NoopLayerRunner),
+                Box::new(NoopFinalizationRunner),
+                Box::new(NoopPostpassRunner),
+                Box::new(emitter),
+                Box::new(CountingSerializer),
+            ),
+        )
+    };
+    assert!(
+        config.anchored_entities.is_empty(),
+        "baseline must be recorded on the support-free path"
+    );
+
+    run_pipeline(config).unwrap();
+
+    let captured = captured_handle.lock().unwrap().clone();
+    assert!(!captured.is_empty(), "emitter captured no rows");
+
+    // Recorded baseline (AC-6), captured before any executor switch exists.
+    assert_eq!(captured.len(), 3, "captured row count");
+
+    let expected: [(u32, f32); 3] = [(0, 0.2), (1, 0.4), (2, 0.6)];
+    for (i, (expected_index, expected_z)) in expected.iter().enumerate() {
+        assert_eq!(
+            captured[i].global_layer_index, *expected_index,
+            "row {i} global_layer_index"
+        );
+        assert!(
+            (captured[i].z - *expected_z).abs() < 1e-6,
+            "row {i} z: got {}, want {expected_z}",
+            captured[i].z
+        );
+    }
+}
+
 // ---------- Test 9: prepass LayerPlanIR is promoted into global_layers ----------
 /// Regression guard: `run_pipeline_with_events` must promote the `LayerPlanIR`
 /// committed by a prepass runner into `plan.global_layers` before the per-layer

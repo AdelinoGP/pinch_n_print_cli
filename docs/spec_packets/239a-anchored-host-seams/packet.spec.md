@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 239a-anchored-host-seams
 supersedes: 239-support-independent-layer-z
 task_ids:
@@ -114,8 +114,15 @@ which are **top-level `#[test] fn` wrappers declared directly in
   identical in their full `(z, global_layer_index)` pair sequence and in per-row entity ordering. |
   `cargo test -p slicer-runtime --test integration -- offgrid_rows_tdd::offgrid_row_order_identical_serial_and_parallel --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4 (Z-spanning atomicity — the plan doc's "Z-spanning atomicity" invariant, under
-  ADR-0059).** Given a `AnchoredGeometryContract::ZSpanning` `same-z-support` entity spanning
-  several object layers, **when** the pipeline executes, **then** its paths appear as **one
+  ADR-0059).** Scoped at the **executor call plus row synthesis**, not at the pipeline, for the
+  same reason as AC-3: `PipelineConfig.anchored_entities` reaches the executor, but no pipeline
+  entry point exposes the committed `Vec<CommittedLayerEvent>` in which a Z-spanning block's
+  position inside its anchor row can be observed — by the time rows reach the emitter, the
+  `Model` row and the block have already been merged into one `LayerCollectionIR`. The test
+  therefore drives `execute_anchored_event_collections_with_mode` and lowers the result through
+  `synthesize_anchored_rows`, which is the seam the placement rule actually lives on. Given a
+  `AnchoredGeometryContract::ZSpanning` `same-z-support` entity spanning
+  several object layers, **when** that path executes, **then** its paths appear as **one
   contiguous block inside its anchor layer's ordinary row** — that is, inside the
   `ordered_entities` of the `CommittedLayerEvent::Model` row for the anchor global layer, at that
   layer's normal position, on **no** separate synthesized row — and are never split into
@@ -242,3 +249,101 @@ This packet was generated against the context_discipline preamble shared by `spe
 - obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
+
+## Implementation Deviations
+
+Recorded at Step 10 (`TASK-408`). Each was measured during execution; none is an estimate.
+
+**D1 — capability-complete committed ladder.** Steps 6/7/8 as written specified switching the
+three non-anchored call sites directly to `execute_per_layer_with_committed_anchored_events`.
+Measured during execution: that function is a composition layer whose body calls
+`execute_per_layer_with_events`, which hardcodes `SupportToolSelection::default()`,
+`&NoopInstrumentation`, and `cancel_flag = None`; no `execute_per_layer_*` variant accepted
+`anchored_entities` together with any capability parameter. A literal switch would therefore have
+silently dropped production support-tool selection, all pipeline instrumentation, and
+cancellation. Step 4 instead added two additive rungs in
+`crates/slicer-runtime/src/layer_executor.rs` —
+`execute_per_layer_with_committed_anchored_events_and_support_tools` (`pub`) and
+`execute_per_layer_with_committed_anchored_events_instrumented` (`pub(crate)`, the real body) —
+with the pre-existing entry point kept signature-identical and delegating with the old defaults.
+Every existing caller retains byte-identical behaviour. Verified by the
+`run_pipeline_with_instrumentation` suite (4 passed) and the
+`visual_debug_forwards_support_tool_selection` tripwire, both green after the switch.
+
+**D2 — Step 8's exit condition restated.** As written ("no
+`execute_per_layer_with_events_and_support_tools` or
+`execute_per_layer_with_instrumentation_and_support_tools` call remains in any production file")
+it became unsatisfiable once D1 landed, because the ladder's real body calls the latter by
+design. Restated as: no non-anchored per-layer call remains at any pipeline or CLI **call site**,
+i.e. outside `layer_executor.rs`'s own ladder. Verified: 11 sweep hits, 9 ladder-internal in
+`layer_executor.rs`, 3 in one test file, zero production call sites elsewhere.
+
+**D3 — out-of-scope literal-gate fix.** `cargo xtask check-literals` was already RED at HEAD
+before any packet edit, at `crates/slicer-scheduler/src/manifest.rs` (a `ConfigFieldEntry`
+literal in `#[cfg(test)] mod tests`, left by commit a50bfc28). Fixed with a single-line
+`// exhaustive:` waiver under explicit user authorisation, so the packet's own gate could go
+green. `..Default::default()` was rejected because it trips `clippy::needless_update`.
+
+**D4 — guest freshness gate is unsatisfiable on this tree (NOT caused by this packet).**
+`cargo xtask build-guests --check` returned exit 1 with 33 stale guests on the UNMODIFIED tree
+before any edit. A full `cargo xtask build-guests` succeeded ("built 44 guest(s)", exit 0) and
+`--check` still returned exit 1 (33 stale, all "fingerprint mismatch"; the count oscillated
+33 -> 14 -> 33 across runs). Exit was 1 not 3, so `wasm-tools` is present and the WIT decode path
+works — the defect is in the code-input fingerprint. This packet's edit list is host-only.
+Flagged for separate investigation; it must not be used to license "unrelated to my changes"
+claims. **Filed as `DEV-158`** in `docs/DEVIATION_LOG.md` at closure review, with one added
+observation this packet did not have: the `contract` binary's own
+`guest_fixture_freshness_tdd::guest_components_are_not_stale` passes on the same tree, so the
+artifact-decoding oracle disagrees with the fingerprint oracle and says clean.
+
+**D5 — plane-plane coalescing.** Closure review found `synthesize_anchored_rows`
+(`crates/slicer-runtime/src/anchored_rows.rs`) merged only object-vs-plane: planes are grouped
+PER COLLECTION, so two anchored collections declaring the same off-grid Z produced two adjacent
+synthesized rows at identical Z, contradicting AC-5's "merge iff `|dz| <= EPSILON`, no duplicate
+Z". Unreachable in production today (no `AnchoredEntity` producer exists), but
+`239c-support-layer-height-producer` would hit it first. Closed by an additive coalescing pass
+after the global `(z_units, collection_ordinal)` sort: a run opens at the first plane and a
+successor joins iff within `MERGE_EPSILON_UNITS` of the RUN ANCHOR (never of its predecessor,
+which would let small steps chain-drift); the run keeps the anchor's Z and concatenates entities
+in run order. Covered by `planes_within_epsilon_across_collections_merge_into_one_row`.
+
+**D6 — AC-4 restated as executor-level; it was written pipeline-level and implemented
+executor-level.** As originally written AC-4 said "when the pipeline executes", but
+`zspanning_support_entity_emits_atomic_single_block` drives
+`execute_anchored_event_collections_with_mode` plus `synthesize_anchored_rows`, exactly as AC-3
+does. The mismatch was found by the closure review, not during execution, and the AC text has now
+been corrected to match. The reason the pipeline level is not available: AC-4's claim is about
+**where inside its anchor row** the block sits, and the pipeline only ever exposes the post-merge
+`&[LayerCollectionIR]` to the emitter — by then the anchor `Model` row and the spanning block are
+one row and the placement decision is no longer observable. `implementation-plan.md` Step 9 and
+`task-map.md` `TASK-407` both already described AC-4 at this level; only `packet.spec.md`'s
+Given/When/Then said otherwise. No test changed; the AC text did.
+
+**D7 — a pre-existing red in this packet's own test binary, recorded not fixed.**
+`runtime_wiring_tdd::config_schema_json_matches_documented_shape` fails in
+`cargo test -p slicer-runtime --test integration` (`left: Some("1.1.0")`, `right: Some("1.0.0")`)
+— the binary carrying eight of this packet's nine AC tests. It is **not** caused by 239a:
+the test file is untouched by this packet's diff, and the only edit to
+`crates/slicer-scheduler/src/manifest.rs` (which owns `build_config_schema_json`) is D3's
+single-line `// exhaustive:` comment inside `#[cfg(test)] mod tests`. The cause is commit
+a50bfc28's config-schema wire bump 1.0.0 -> 1.1.0, which updated the emitter but not this
+assertion — the same commit that left `check-literals` red in D3. It went unnoticed during
+execution because every AC command is an `--exact` single-test filter and no step runs the whole
+binary. Full-binary state at closure: **331 passed, 1 failed**, that one failure. Fixing it
+belongs to whoever owns a50bfc28's fallout, not to this host-seam packet.
+
+**D8 — silent Z-spanning drop, found at closure review and fixed.** `synthesize_anchored_rows`
+routed `ZSpanning` entities with an `if let Some(row) = ...find(anchor)` and **no `else`**, so an
+entity whose `anchor_global_layer_index` matched no committed `Model` row had its paths discarded
+with no error and no diagnostic — contradicting AC-2's "neither dropped nor duplicated". Reachable
+by construction, not only in theory: `route_of` (`crates/slicer-runtime/src/layer_executor.rs`)
+sends an entity whose anchor is absent from `plan.global_layers` down the `AnchoredCollection`
+route, so such an entity arrives at synthesis. Unreachable in production today (no
+`AnchoredEntity` producer), but `239c-support-layer-height-producer` would meet it first — the
+same reasoning that justified fixing D5. Closed by returning
+`Result<Vec<LayerCollectionIR>, LayerExecutionError>`: the unmatched-anchor branch now yields
+`LayerExecutionError::AnchoredGeometry` naming the offending `local_id` and the missing anchor
+layer. Both `pipeline.rs` call sites propagate with `?` through the existing
+`From<LayerExecutionError> for PipelineError`; `visual_debug.rs` maps to
+`VisualDebugError::CaptureFailed`. Covered by
+`z_spanning_entity_with_no_anchor_row_is_an_error_not_a_silent_drop`.

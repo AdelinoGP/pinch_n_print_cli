@@ -133,6 +133,7 @@ mod multi_infill_holder_dispatch_tdd;
 mod narrow_island_smaller_perimeter_tdd;
 mod no_linker_module_degraded_raw_output_tdd;
 mod nonplanar_shell_emission_tdd;
+mod offgrid_rows_tdd;
 mod outer_inner_width_and_spacing_tdd;
 mod overhang_classifier_refactor_regression_tdd;
 mod overhang_pipeline_e2e_tdd;
