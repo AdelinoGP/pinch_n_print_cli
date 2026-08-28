@@ -758,6 +758,117 @@ pub fn extract_float_or_first(
 
 // ── Declarative DSL ────────────────────────────────────────────────────────
 
+// ── Host-key wire contract (ticket 02) ─────────────────────────────────────
+//
+// `module config-schema` historically reported only module-manifest keys, so
+// the 62 keys declared here and in `feedrate.rs` were invisible to the GUI —
+// no type, no default, no scope, and therefore no `ConfigOptionDef` on the
+// OrcaSlicer side. The declarations below let the same DSL that owns the
+// fields also own their wire description, so the probe reports the whole key
+// universe and the GUI needs no hand-maintained mirror.
+
+/// Preset scope a config key belongs to on the GUI side. The GUI appends the
+/// key to the matching preset option list, so a mis-scoped key round-trips
+/// into the wrong preset file.
+pub const SCOPE_PRINT: &str = "print";
+/// Filament-scoped key (per-filament preset).
+pub const SCOPE_FILAMENT: &str = "filament";
+/// Printer-scoped key (per-printer preset).
+pub const SCOPE_PRINTER: &str = "printer";
+
+/// One host-declared config key as reported by `module config-schema`'s
+/// `host` array.
+///
+/// Deliberately narrower than a module manifest's `ConfigFieldEntry`: host
+/// keys are declared in Rust, not in a manifest, so they carry no display
+/// name, group or range. `key`/`field_type`/`default`/`scope` is exactly what
+/// a consumer needs to synthesise a config-option definition and persist the
+/// key; richer UI metadata is a separate concern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostConfigKey {
+    /// Config key name as it appears in the CLI/JSON config source.
+    pub key: &'static str,
+    /// Wire type string, matching the module-manifest vocabulary
+    /// (`bool`/`int`/`float`/`string`/`float-list`/`string-list`/
+    /// `float_or_percent`).
+    pub field_type: &'static str,
+    /// Preset scope: one of [`SCOPE_PRINT`], [`SCOPE_FILAMENT`],
+    /// [`SCOPE_PRINTER`].
+    pub scope: &'static str,
+    /// Default rendered as a string, read from the live `Default` impl rather
+    /// than restated, so it cannot drift from the value the slicer uses.
+    pub default: Option<String>,
+}
+
+/// Maps a declared Rust field type onto the config-schema wire vocabulary and
+/// renders its default.
+///
+/// Implemented for exactly the types the `declare_resolved_config!` invocation
+/// uses; a new field type is a compile error until it is mapped here, which is
+/// the point — an unmapped type must not silently reach the GUI.
+pub trait HostWireField {
+    /// Wire type string for this Rust type.
+    const WIRE_TYPE: &'static str;
+    /// This value rendered as the wire `default` string.
+    fn wire_default(&self) -> Option<String>;
+}
+
+macro_rules! impl_host_wire_scalar {
+    ($ty:ty, $wire:literal) => {
+        impl HostWireField for $ty {
+            const WIRE_TYPE: &'static str = $wire;
+            fn wire_default(&self) -> Option<String> {
+                Some(self.to_string())
+            }
+        }
+    };
+}
+
+impl_host_wire_scalar!(f32, "float");
+impl_host_wire_scalar!(f64, "float");
+impl_host_wire_scalar!(u32, "int");
+impl_host_wire_scalar!(bool, "bool");
+impl_host_wire_scalar!(String, "string");
+
+impl HostWireField for Vec<f64> {
+    const WIRE_TYPE: &'static str = "float-list";
+    fn wire_default(&self) -> Option<String> {
+        Some(
+            self.iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+    }
+}
+
+impl HostWireField for Vec<String> {
+    const WIRE_TYPE: &'static str = "string-list";
+    fn wire_default(&self) -> Option<String> {
+        Some(self.join(","))
+    }
+}
+
+impl HostWireField for ResolvedFloatOrPercent {
+    const WIRE_TYPE: &'static str = "float_or_percent";
+    fn wire_default(&self) -> Option<String> {
+        Some(if self.is_percent {
+            format!("{}%", self.value)
+        } else {
+            self.value.to_string()
+        })
+    }
+}
+
+/// An optional field keeps its inner type on the wire; `None` means "no
+/// default", which is distinct from a default of zero.
+impl<T: HostWireField> HostWireField for Option<T> {
+    const WIRE_TYPE: &'static str = T::WIRE_TYPE;
+    fn wire_default(&self) -> Option<String> {
+        self.as_ref().and_then(HostWireField::wire_default)
+    }
+}
+
 /// Declare every `ResolvedConfig` field in one place. Each line is one of:
 ///
 /// - `plain <field>: <Ty> = <default>;` — struct field + Default only; the
@@ -784,13 +895,15 @@ macro_rules! declare_resolved_config {
         // reference `self` directly across separate macro arms — see the
         // `let __drc_cfg = ...` binding in the terminal arm.)
         $crate::__drc!(@parse
-            fields:   { }
-            defaults: { }
-            cli_arms: { }
-            cfg:      __drc_cfg
-            key:      __drc_key
-            value:    __drc_value
-            input:    { $($t)* }
+            fields:    { }
+            defaults:  { }
+            cli_arms:  { }
+            host_keys: { }
+            cfg:       __drc_cfg
+            key:       __drc_key
+            value:     __drc_value
+            dflt:      __drc_dflt
+            input:     { $($t)* }
         );
     };
 }
@@ -800,13 +913,15 @@ macro_rules! declare_resolved_config {
 macro_rules! __drc {
     // Done parsing — emit struct, Default, and apply_cli_key.
     (@parse
-        fields:   { $($sf:tt)* }
-        defaults: { $($df:tt)* }
-        cli_arms: { $($arm:tt)* }
-        cfg:      $cfg:ident
-        key:      $key:ident
-        value:    $value:ident
-        input:    { }
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        input:     { }
     ) => {
         /// Fully merged config produced by the host resolver and consumed by
         /// every per-region/per-object planning stage.
@@ -859,17 +974,31 @@ macro_rules! __drc {
                     _ => ::core::result::Result::Ok(false),
                 }
             }
+
+            /// Every CLI-bound declared field, as a config-schema `host`
+            /// entry.
+            ///
+            /// Defaults are read off [`ResolvedConfig::default`] rather than
+            /// restated, so the wire cannot disagree with the value the
+            /// slicer actually uses. `plain` rows are absent by design: they
+            /// bind to no config key.
+            pub fn host_config_keys() -> ::std::vec::Vec<$crate::resolved_config::HostConfigKey> {
+                let $dflt = ResolvedConfig::default();
+                ::std::vec![ $($hk)* ]
+            }
         }
     };
 
     // `plain <field>: <ty> = <default>;` — struct + default, no CLI dispatch.
     (@parse
-        fields:   { $($sf:tt)* }
-        defaults: { $($df:tt)* }
-        cli_arms: { $($arm:tt)* }
-        cfg:      $cfg:ident
-        key:      $key:ident
-        value:    $value:ident
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
         input: {
             $(#[$m:meta])*
             plain $field:ident : $ty:ty = $default:expr ;
@@ -886,23 +1015,132 @@ macro_rules! __drc {
                 $($df)*
                 $field: $default,
             }
-            cli_arms: { $($arm)* }
-            cfg:      $cfg
-            key:      $key
-            value:    $value
-            input: { $($rest)* }
+            cli_arms:  { $($arm)* }
+            host_keys: { $($hk)* }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            input:     { $($rest)* }
+        );
+    };
+
+    // `cli @<scope> "<key>" <field>: <ty> = <default> => <extractor>;`
+    // — as `cli`, but declares a non-print preset scope (`filament` /
+    //   `printer`) for the config-schema `host` entry.
+    (@parse
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        input: {
+            $(#[$m:meta])*
+            cli @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms: {
+                $($arm)*
+                $cli_key => {
+                    $cfg.$field = $crate::resolved_config::$extractor($key, $value)?;
+                    ::core::result::Result::Ok(true)
+                }
+            }
+            host_keys: {
+                $($hk)*
+                $crate::resolved_config::HostConfigKey {
+                    key: $cli_key,
+                    field_type: <$ty as $crate::resolved_config::HostWireField>::WIRE_TYPE,
+                    scope: ::core::stringify!($scope),
+                    default: $crate::resolved_config::HostWireField::wire_default(&$dflt.$field),
+                },
+            }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            input:     { $($rest)* }
+        );
+    };
+
+    // `cli_opt @<scope> "<key>" <field>: Option<T> = ... => <extractor>;`
+    // — as `cli_opt`, but declares a non-print preset scope.
+    (@parse
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        input: {
+            $(#[$m:meta])*
+            cli_opt @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms: {
+                $($arm)*
+                $cli_key => {
+                    $cfg.$field = ::core::option::Option::Some(
+                        $crate::resolved_config::$extractor($key, $value)?
+                    );
+                    ::core::result::Result::Ok(true)
+                }
+            }
+            host_keys: {
+                $($hk)*
+                $crate::resolved_config::HostConfigKey {
+                    key: $cli_key,
+                    field_type: <$ty as $crate::resolved_config::HostWireField>::WIRE_TYPE,
+                    scope: ::core::stringify!($scope),
+                    default: $crate::resolved_config::HostWireField::wire_default(&$dflt.$field),
+                },
+            }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            input:     { $($rest)* }
         );
     };
 
     // `cli "<key>" <field>: <ty> = <default> => <extractor>;`
     // — required CLI-bound field; extractor returns T directly.
     (@parse
-        fields:   { $($sf:tt)* }
-        defaults: { $($df:tt)* }
-        cli_arms: { $($arm:tt)* }
-        cfg:      $cfg:ident
-        key:      $key:ident
-        value:    $value:ident
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
         input: {
             $(#[$m:meta])*
             cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -926,22 +1164,34 @@ macro_rules! __drc {
                     ::core::result::Result::Ok(true)
                 }
             }
-            cfg:      $cfg
-            key:      $key
-            value:    $value
-            input: { $($rest)* }
+            host_keys: {
+                $($hk)*
+                $crate::resolved_config::HostConfigKey {
+                    key: $cli_key,
+                    field_type: <$ty as $crate::resolved_config::HostWireField>::WIRE_TYPE,
+                    scope: $crate::resolved_config::SCOPE_PRINT,
+                    default: $crate::resolved_config::HostWireField::wire_default(&$dflt.$field),
+                },
+            }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            input:     { $($rest)* }
         );
     };
 
     // `cli_opt "<key>" <field>: Option<T> = <default> => <extractor>;`
     // — optional CLI-bound field; extracted T is wrapped in `Some(...)`.
     (@parse
-        fields:   { $($sf:tt)* }
-        defaults: { $($df:tt)* }
-        cli_arms: { $($arm:tt)* }
-        cfg:      $cfg:ident
-        key:      $key:ident
-        value:    $value:ident
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
         input: {
             $(#[$m:meta])*
             cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -967,10 +1217,20 @@ macro_rules! __drc {
                     ::core::result::Result::Ok(true)
                 }
             }
-            cfg:      $cfg
-            key:      $key
-            value:    $value
-            input: { $($rest)* }
+            host_keys: {
+                $($hk)*
+                $crate::resolved_config::HostConfigKey {
+                    key: $cli_key,
+                    field_type: <$ty as $crate::resolved_config::HostWireField>::WIRE_TYPE,
+                    scope: $crate::resolved_config::SCOPE_PRINT,
+                    default: $crate::resolved_config::HostWireField::wire_default(&$dflt.$field),
+                },
+            }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            input:     { $($rest)* }
         );
     };
 }
@@ -1004,7 +1264,7 @@ declare_resolved_config! {
     /// filament); this is the default-config scalar, taken from entry 0.
     /// Per-tool diameters reach the estimator through the per-tool config map
     /// built in `slicer-gcode`'s emit path, not from this field.
-    cli "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float_or_first;
+    cli @filament "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float_or_first;
 
     // Walls
     /// Number of walls (perimeters).
@@ -1171,31 +1431,31 @@ declare_resolved_config! {
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
     /// Maximum acceleration while extruding, in mm/s² (optional).
-    cli_opt "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float_or_first;
     /// Maximum acceleration for travel moves, in mm/s² (optional).
-    cli_opt "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float_or_first;
     /// Maximum X-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float_or_first;
     /// Maximum Y-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float_or_first;
     /// Maximum Z-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float_or_first;
     /// Maximum extruder (E-axis) speed in mm/s (optional).
-    cli_opt "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float_or_first;
     /// Maximum X-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float_or_first;
     /// Maximum Y-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float_or_first;
     /// Maximum Z-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float_or_first;
     /// Maximum extruder (E-axis) jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float_or_first;
 
     /// Filament density in g/cm³ (optional).
     /// Filament density in g/cm³, one entry per filament (Orca `coFloats`).
     /// Indexed by extruder/tool id — see [`ResolvedConfig::filament_density_for`].
     /// Empty means "not configured", which omits every weight output.
-    cli "filament_density" filament_density: Vec<f64> = Vec::new() => extract_float_list;
+    cli @filament "filament_density" filament_density: Vec<f64> = Vec::new() => extract_float_list;
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future
