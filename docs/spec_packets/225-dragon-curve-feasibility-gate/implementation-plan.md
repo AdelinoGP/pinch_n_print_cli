@@ -108,7 +108,7 @@
 
 - Task IDs: `TASK-336`
 - Objective: Generate with the experimental local backend, compile/embed as UTF-16, and measure through the same oracle.
-- Precondition: MoonBit has a terminal result; the user confirms concurrent async-support work is committed; the fork is clean on `feat/assemblyscript-backend`; its latest HEAD is captured immediately before generation.
+- Precondition: MoonBit has a terminal result; the user confirms concurrent async-support work is committed; the fork is clean on `feat/assemblyscript-no-async`; its latest HEAD is captured immediately before generation.
 - Postcondition: `assemblyscript-text-postprocess.md` satisfies AC-5 and AC-6.
 - Files allowed to read: shared README/AssemblyScript fixture; local generator ranges at the captured HEAD.
 - Files allowed to edit, fixture batches: at most three AssemblyScript fixture files per batch.

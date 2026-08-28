@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 226-authored-coloring-carrier
 task_ids:
   - TASK-337

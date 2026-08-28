@@ -11,7 +11,7 @@ Use the smallest existing string-bearing world as a common language oracle: `sli
 - Candidate success requires both instantiation and exact invocation output. Component validity alone is insufficient.
 - Candidate priority is immutable: MoonBit, AssemblyScript, C++, Go, Rust fallback.
 - Missing tooling is not a result. The worker stops the current step, asks the user to install it, includes exact install and version-verification instructions, and resumes only after confirmation.
-- `D:\wit-bindgen` is read-only. Its latest committed clean HEAD on `feat/assemblyscript-backend` is resolved after explicit user confirmation immediately before generation, then held constant across the AssemblyScript and C++ probes. No workspace path dependency is introduced.
+- `D:\wit-bindgen` is read-only. Its latest committed clean HEAD on `feat/assemblyscript-no-async` is resolved after explicit user confirmation immediately before generation, then held constant across the AssemblyScript and C++ probes. No workspace path dependency is introduced.
 - AssemblyScript uses UTF-16 canonical embedding; the backend's unsupported async/future/stream/error-context surfaces are irrelevant to the synchronous text world but remain recorded limitations.
 - No WIT/schema/IR version changes and no new ADR.
 <!-- snippet: wasm-staleness -->
