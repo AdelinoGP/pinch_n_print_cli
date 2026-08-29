@@ -15,10 +15,10 @@ use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use std::collections::HashMap;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
@@ -35,7 +35,7 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
 /// `None` exercises the default path (no `retract_mode` field present).
 fn config_for_external_travel(mode_override: Option<&str>) -> ConfigView {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert("retract_length".to_string(), ConfigValue::Float(0.8));
+    fields.insert("retraction_length".to_string(), ConfigValue::Float(0.8));
     fields.insert(
         "path_optimization_emit_layer_markers".to_string(),
         ConfigValue::Bool(false),

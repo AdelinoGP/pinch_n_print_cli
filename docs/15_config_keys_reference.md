@@ -191,10 +191,10 @@ is the authoritative catalog of their defaults and ranges.
 | `slow_down_layer_time` | float | `5.0` | >= 0.0 | `part-cooling` |
 | `slow_down_min_speed` | float | `10.0` | >= 0.0 | `part-cooling` |
 | `path_optimization_emit_layer_markers` | bool | `true` | — | `path-optimization-default` |
-| `retract_length` | float | `0.8` | — | `path-optimization-default` |
 | `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
-| `retract_speed` | float | `25.0` | — | `path-optimization-default` |
-| `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
+| `retraction_length` | float | `0.8` | — | `path-optimization-default` |
+| `retraction_speed` | float | `30.0` | — | `path-optimization-default` |
+| `z_hop` | float | `0.4` | [0.0, 5.0] | `path-optimization-default` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |

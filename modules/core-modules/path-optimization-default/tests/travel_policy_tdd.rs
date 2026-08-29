@@ -12,10 +12,10 @@ use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use std::collections::HashMap;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
@@ -26,11 +26,11 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
 }).build().wall_loops()[0].clone()
 }
 
-fn config_with_retract(retract_length: f64) -> ConfigView {
+fn config_with_retract(retraction_length: f64) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert(
-        "retract_length".to_string(),
-        ConfigValue::Float(retract_length),
+        "retraction_length".to_string(),
+        ConfigValue::Float(retraction_length),
     );
     // Disable markers so they don't interfere with command-sequence assertions.
     fields.insert(
@@ -40,13 +40,13 @@ fn config_with_retract(retract_length: f64) -> ConfigView {
     ConfigView::from_map(fields)
 }
 
-fn config_with_retract_and_z_hop(retract_length: f64, z_hop: f64) -> ConfigView {
+fn config_with_retract_and_z_hop(retraction_length: f64, z_hop: f64) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert(
-        "retract_length".to_string(),
-        ConfigValue::Float(retract_length),
+        "retraction_length".to_string(),
+        ConfigValue::Float(retraction_length),
     );
-    fields.insert("travel_z_hop".to_string(), ConfigValue::Float(z_hop));
+    fields.insert("z_hop".to_string(), ConfigValue::Float(z_hop));
     fields.insert(
         "path_optimization_emit_layer_markers".to_string(),
         ConfigValue::Bool(false),
@@ -185,7 +185,7 @@ fn internal_travel_suppresses_retraction() {
     );
 }
 
-/// AC-z-hop (module level): external travel with travel_z_hop=0.2 emits a ZHop entry
+/// AC-z-hop (module level): external travel with z_hop=0.2 emits a ZHop entry
 /// alongside the retract/unretract pair.
 #[test]
 fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
@@ -227,7 +227,7 @@ fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
     });
     assert!(
         z_hop.is_some(),
-        "travel_z_hop=0.2 must emit ZHop{{hop_height:0.2}}, got: {commands:#?}"
+        "z_hop=0.2 must emit ZHop{{hop_height:0.2}}, got: {commands:#?}"
     );
 
     let retract = commands

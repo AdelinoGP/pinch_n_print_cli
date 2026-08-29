@@ -545,18 +545,19 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 22 core modules as of 2026-08-15: packet 97 deleted the dead
+    // We expect exactly 23 core modules as of 2026-08-28: packet 97 deleted the dead
     // mesh-segmentation WASM-guest module (21 -> 20), packet 108 deleted the fake
     // iterative-inset `arachne-perimeters` module (20 -> 19; the former
     // `classic-perimeters` was the sole perimeter generator until real Arachne landed),
     // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
     // BeadingStrategy pipeline via the host-service bridge (19 -> 20), packet 133 added
-    // the real `infill-linker` guest (20 -> 21), and packet 222 added the
-    // `traditional-support-planner` guest (21 -> 22).
+    // the real `infill-linker` guest (20 -> 21), packet 222 added the
+    // `traditional-support-planner` guest (21 -> 22), and packet 246 added the
+    // `wave-overhangs` module (22 -> 23).
     assert_eq!(
         report.modules.len(),
-        22,
-        "expected 22 core modules, got {}: {:?}",
+        23,
+        "expected 23 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -765,6 +766,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.skirt-brim",
         "com.core.top-surface-ironing",
         "com.core.infill-linker",
+        "com.core.wave-overhangs",
         "com.core.wipe-tower",
         "com.core.overhang-classifier-default",
     ];

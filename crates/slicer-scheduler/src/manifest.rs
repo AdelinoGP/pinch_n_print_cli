@@ -1548,8 +1548,18 @@ fn known_stage_ids() -> &'static [&'static str] {
 /// `host_keys_doc_lock_tdd` ties each value back to its owner.
 const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str)] = &[
     // (key, wire type, scope, default)
-    ("use_relative_e_distances", "bool", slicer_ir::resolved_config::SCOPE_PRINTER, "true"),
-    ("thumbnail_path", "string", slicer_ir::resolved_config::SCOPE_PRINTER, ""),
+    (
+        "use_relative_e_distances",
+        "bool",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "true",
+    ),
+    (
+        "thumbnail_path",
+        "string",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "",
+    ),
     (
         "wall_generator",
         "string",
@@ -1874,7 +1884,10 @@ mod tests {
         assert_eq!(by_key("use_relative_e_distances")["type"], "bool");
 
         // An unset `cli_opt` has no default, which is not the same as zero.
-        assert_eq!(by_key("arachne_min_feature_size")["default"], serde_json::Value::Null);
+        assert_eq!(
+            by_key("arachne_min_feature_size")["default"],
+            serde_json::Value::Null
+        );
 
         // Scope routes the key to a preset list on the GUI side; getting it
         // wrong round-trips the key into the wrong preset file.
@@ -1901,21 +1914,8 @@ mod tests {
             ConfigFieldEntry {
                 field_type: "float".to_string(),
                 default: Some("0.4".to_string()),
-                parsed_default: None,
-                min: None,
-                max: None,
-                step: None,
-                display: None,
-                description: None,
-                group: None,
-                unit: None,
-                advanced: false,
-                values: None,
-                max_length: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
                 tags: vec!["walls".to_string()],
+                ..Default::default()
             },
         );
 

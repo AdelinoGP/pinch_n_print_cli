@@ -25,7 +25,10 @@ off-map, after.
 - **Pinch 'n Print renamed Orca's keys — now being standardised away.**
   Ticket 07's ruling: **standardise to Orca's names**, not document. The rename
   workstream is tickets **99–107** (26 keys: 22 exact rows + 3 duplicate
-  collapses + `ironing_spacing_mm`); it **gates the queue by owner** — each
+  collapses + `ironing_spacing_mm`); ticket 108 (filed by ticket 10's
+  authoring) adjudicates a possible 27th — `wipe_tower_speed` →
+  `wipe_tower_max_purge_speed` — before any rename work may treat it as
+  settled. It **gates the queue by owner** — each
   packet ticket is blocked by the rename tickets that touch *its* owner (wired
   in ticket 100 after the original wiring was found to gate nothing: 09–98 were
   blocked only by the already-resolved 06). 20 packets touch no renamed owner
@@ -170,6 +173,62 @@ off-map, after.
   Map wiring corrected: the queue gate the Notes claimed did not exist, so 67
   packet tickets were re-wired to gate on the rename tickets touching their
   owner; **P01 (ticket 08) is now the unblocked queue head**.
+- [08 — Author packet P01 — Cooling / Notes — part-cooling](issues/08-author-packet-p01-cooling-notes-part-cooling.md)
+  — packet `docs/spec_packets/253-part-cooling-fan-scale-and-cooling-keys/`
+  authored (`draft`), preflight **PASS**: percent-normalizes the two fan-scale
+  keys, ports the canonical fan curve + role-fan/±1/threshold/re-timing
+  semantics, co-declares the 4 header/footer keys into `machine-gcode-emit`
+  for placeholder reachability, and records honest dispositions —
+  `dont_slow_down_outer_wall` has no in-tree slowdown decision point (declared +
+  emitted, gap recorded; the stage is future work). Grounding also found the
+  snapshot's `overhang_fan_threshold` default (50%) contradicts a fresh
+  canonical read (`95%`, `Overhang_threshold_bridge`) — packet follows the fresh
+  read. Ledger fact: `OrcaSlicerDocumented/` is the **sibling**
+  `..\pinch_n_print_cli\OrcaSlicerDocumented` in this clone, not in-tree; future
+  tickets/packets must pin that path.
+- [09 — Author packet P02 — Multimaterial / Prime tower (1/2) — wipe-tower](issues/09-author-packet-p02-multimaterial-prime-tower-wipe-tower.md)
+  — packet `docs/spec_packets/254-prime-tower-keys-wipe-tower/` authored
+  (`draft`), preflight **PASS**. Grounding found **only one of the 13 keys has
+  a live decision point** (`prime_tower_infill_gap` → the tower's scan-line
+  pitch, hardcoded `y += line_width` today); the packet wires that one
+  (output-changing at defaults: 0.4 → 0.6 mm pitch) and records
+  decision-point gaps for the other 12 (interface cluster, ramming,
+  framework, brim/Auto, flat-ironing, skip-points travel-avoid — the last
+  canonically a **plain bool**, not a point list). Six canonical coFloats/coInts
+  keys declared scalar-global per ticket 04's ruling; per-filament model
+  stays with the Tier-D fog. Percent-default threading into the CONFIG_BLOCK
+  (packet-185 machinery) verified in code, not assumed. No deviation rows; no
+  human sign-off consumed.
+- [10 — Author packet P03 — Multimaterial / Prime tower (2/2) — wipe-tower](issues/10-author-packet-p03-multimaterial-prime-tower-wipe-tower.md)
+  — packet `docs/spec_packets/255-wipe-tower-geometry-keys/` authored
+  (`draft`), preflight **PASS**. Grounding found one live decision point:
+  `wipe_tower_extra_flow` wires to the purge scan-lines' hardcoded
+  `flow_factor: 1.0` (identity at defaults); 10 keys declared-with-gaps
+  (cone/rib/fillet/bridging/rotation/wall-type/flush/ramming/sparse — all
+  canonically scalar, the Tier-D fog is *not* engaged); and one **alias
+  finding**: host key `wipe_tower_speed` already implements canonical
+  `wipe_tower_max_purge_speed` (defaults both 90) — excluded from the packet
+  as a duplicate-spelling and filed as
+  [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md).
+  P03 therefore covers 12 keys, not 13. Output change at defaults is exactly
+  +2 CONFIG_BLOCK lines (the two percent defaults thread via packet-185);
+  geometry byte-identical. No deviation rows; no human sign-off consumed.
+- [101 — Rename path-optimization keys to Orca names](issues/101-rename-path-optimization-keys.md)
+  — three renames merged (`retract_length` → `retraction_length`,
+  `retract_speed` → `retraction_speed`, `travel_z_hop` → `z_hop`), tree green
+  on all gates. **User ruling: align both mismatching defaults** —
+  `retraction_speed` 25.0 → 30.0, `z_hop` 0.0 → 0.4 with canonical range
+  [0, 5] adopted; deviation table stays at 27 rows (no new deviations).
+  The wipe-tower-owned `retract_length` (host typed arm, 2.0, consumed by
+  `retract_length_for_tool`) is a different key — canonical's toolchange
+  retract is `retract_length_toolchange` (Tier B queue) — and stays.
+  **Guest-artifact correction to ticket 99's note:** guest WASMs *do* embed
+  config key names, so renames must rebuild guests (proven by byte-search).
+  Two pre-existing reds repaired in-ticket: the core-module count test
+  (22 → 23, packet 246's wave-overhangs) and the wire-version pin
+  (1.0.0 → `CONFIG_SCHEMA_WIRE_VERSION` 1.1.0) plus the last
+  `check-literals` violation; `slicer-sdk --doc` remains red at HEAD
+  (13 doc examples missing `ExtrusionPath3D.order_lock`) — flagged to the map.
 
 ## Not yet specified
 

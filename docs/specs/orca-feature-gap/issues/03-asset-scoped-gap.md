@@ -62,9 +62,9 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `fan_min_speed` | `fan_speed_min` | `part-cooling` | exact (word order) — **renamed in ticket 99**; same scale deviation + declared-but-never-read → reclassified as gap work (P01) |
 | `enable_overhang_bridge_fan` | `enable_overhang_fan` | `part-cooling` | exact — **renamed in ticket 99** |
 | `resolution` | `gcode_resolution` | `[host]` | exact |
-| `retraction_length` | `retract_length` | `path-optimization-default` | exact |
-| `retraction_speed` | `retract_speed` | `path-optimization-default` | exact |
-| `z_hop` | `travel_z_hop` | `path-optimization-default` | exact |
+| `retraction_length` | `retract_length` | `path-optimization-default` | exact — **renamed in ticket 101**; default 0.8 matches Orca |
+| `retraction_speed` | `retract_speed` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 25.0 → **30.0** (user ruling in-ticket) |
+| `z_hop` | `travel_z_hop` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 0.0 → **0.4** and range `[0, 5]` adopted (user ruling in-ticket) |
 | `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact |
 | `wall_loops` | `wall_count` | `classic-perimeters` | exact |
 | `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) — **renamed in ticket 100** |
