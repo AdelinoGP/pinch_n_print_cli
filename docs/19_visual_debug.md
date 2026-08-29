@@ -156,17 +156,32 @@ side as two separate bundles. `frame: "plate"` plus silhouette is also rejected
 
 Supported in this release: `Layer::Slice`, `PrePass::PaintSegmentation`,
 `Layer::PaintRegionAnnotation`, `Layer::SlicePostProcess` (all `CapturedIr::Slice`),
-plus `PrePass::SupportGeometry`. Every other tap is rejected with a named
-reason rather than rendered empty — including `Layer::Perimeters` and the other
-per-layer arena taps, `PrePass::MeshAnalysis`, `PrePass::SeamPlanning`,
-`PrePass::RegionMapping`, `PrePass::OverhangAnnotation`,
-`PostPass::LayerFinalization`, and `PostPass::GCodeEmit`.
+`PrePass::SupportGeometry`, and `PostPass::LayerFinalization`. Every other tap
+is rejected with a named reason rather than rendered empty — including
+`Layer::Perimeters` and the other per-layer arena taps, `PrePass::MeshAnalysis`,
+`PrePass::SeamPlanning`, `PrePass::RegionMapping`, and
+`PrePass::OverhangAnnotation`. `PostPass::GCodeEmit` remains rejected; packet
+250 owns G-code-emit silhouettes.
 
-Two further rejections are **interim**, expected to lift in later releases:
-`options.color_by: "tool"` on a silhouette **of the model source**
-(`color_by: "role"` is accepted); and `options.composited_overlays`. Silhouette
-on a standalone **G-code source** is supported — see "Standalone G-code
-Silhouettes" below, where `color_by: "tool"` *is* accepted.
+One further rejection is **interim**, expected to lift in a later release:
+`options.composited_overlays`. `color_by: "tool"` is supported; see "Tool-Colored
+Silhouettes" below. Silhouette on a standalone **G-code source** is also
+supported — see "Standalone G-code Silhouettes" below.
+
+### Postpass Silhouettes And The Single Whole-Print Capture
+
+`PostPass::LayerFinalization` is a supported silhouette tap. A silhouette bundle
+uses a **single whole-print capture**: one `StageCapture` carries the finalized
+`Vec<LayerCollectionIR>` once. It never stores one whole-print clone per layer,
+which would scale to an out-of-memory failure on large models. The per-layer
+capture rows read by top-down consumers are unchanged and byte-stable.
+
+Finalized-layer slabs are schedule-Z-diff slabs: each layer occupies
+`[previous finalized layer z, own z]`, with the first finalized layer starting at
+`0`. These are the only heights a finalized layer can honestly attest to because
+`LayerCollectionIR` carries no per-region `effective_layer_height`. For a
+postpass silhouette entry, `layers_rendered` is the resolved selection intersected
+with finalized layer indices, compressed into maximal inclusive ranges.
 
 ### Manifest Shape
 
@@ -207,7 +222,9 @@ correct ordering — not an unsorted manifest.
 One image per `(tap, view)` group, written as
 `images/{sanitized_tap}_silhouette_{view}.png` — e.g.
 `images/Layer__Slice_silhouette_front.png`. Duplicate specs collapse into a
-single group, and no two entries in a bundle ever share a `png_path`.
+single group, and no two entries in a bundle ever share a `png_path`. A
+ tool-colored silhouette adds the `_tool` suffix after the view suffix, for
+ example `images/PostPass__LayerFinalization_silhouette_front_tool.png`.
 
 ### Framing And Scale
 
@@ -241,6 +258,11 @@ occlusion warning naming the affected layer count; when no overlap occurs there
 is no warning at all, so this caveat is your only notice that a hidden extent is
 possible. Never conclude a body region is missing from a silhouette alone.
 
+For a tool-colored silhouette, this caveat applies **per tool**: a later tool's
+fill occludes an earlier tool's entire slab area wherever their projected areas
+overlap. Paint order is ascending tool index, so an earlier tool's hidden extent
+cannot be recovered from the image alone.
+
 Vertical extents come from per-region slabs, never a uniform one. For the
 Slice-family taps each region's slab is `[z − effective_layer_height, z]`
 **per region**, so a catch-up region's slab bottom correctly reaches below its
@@ -269,6 +291,21 @@ rejection.
   offending layer index and the Z values involved (or the marker's absence).
   See "Standalone G-code Silhouettes" below.
 - **Occlusion.** Per-entry, as described above, only when overlap occurred.
+
+### Tool-Colored Silhouettes
+
+`options.color_by: "tool"` is legal on silhouettes. The R7 `tool_color_source`
+rules are unchanged: `tool_color_source` still requires `color_by: "tool"`, and
+its values remain `"palette"` or `"filament"`. A capture with no tool assignment
+(for example, a blackboard tap such as `Layer::Slice`) fails closed with
+`ToolColorUnavailable`, and the error names the tap. Tool fills paint in
+ascending tool-index order, the manifest emits a `tool_palette` table, and the
+filename uses the `_tool` suffix described above.
+
+The occlusion caveat is per tool: in an overlap, a later tool's fill occludes an
+earlier tool's entire slab area. A tool-colored silhouette is therefore a
+projection of tool-painted slabs, not a section that can reveal every tool's
+full extent.
 
 ### Standalone G-code Silhouettes
 

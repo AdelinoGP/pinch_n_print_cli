@@ -2487,10 +2487,12 @@ impl SilhouetteClass {
 
 /// One projected, not-yet-unioned band: a class' horizontal interval on one
 /// layer, over that region's own Z slab.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct SilhouetteBand {
     layer_index: u32,
-    class: SilhouetteClass,
+    group: String,
+    order_key: String,
+    color: [u8; 3],
     z_bottom: f32,
     z_top: f32,
     start: f32,
@@ -2577,15 +2579,24 @@ fn silhouette_bands(
     capture: &StageCapture,
     view: SilhouetteView,
     schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
     out: &mut Vec<SilhouetteBand>,
-) {
+) -> Result<(), RenderError> {
+    if matches!(style.color_by, ColorBy::Tool)
+        && !matches!(capture.ir, CapturedIr::LayerFinalization(_))
+    {
+        return Err(RenderError::ToolColorUnavailable {
+            tap: capture.stage_id.clone(),
+            layer_index: capture.layer_index,
+        });
+    }
     if let CapturedIr::SupportGeometry { plan, .. } = &capture.ir {
         // Slab source is the CALLER's schedule, never a per-region height:
         // support columns span air where no `ActiveRegion` is active, and
         // per-region heights disagree across objects on a shared layer, so
         // the schedule z-diff is the only height a plan entry can attest.
         let Some(slab) = schedule.slab_for(capture.layer_index) else {
-            return;
+            return Ok(());
         };
         // Whole-print, unfiltered-by-layer payload: restrict to this
         // capture's layer. Negative indices are raft prefix layers - skipped
@@ -2608,7 +2619,9 @@ fn silhouette_bands(
                     if let Some((start, end)) = contour_interval(&poly.contour, view) {
                         out.push(SilhouetteBand {
                             layer_index: capture.layer_index,
-                            class,
+                            group: format!("legacy:{}", class.paint_rank()),
+                            order_key: format!("legacy:{:03}", class.paint_rank()),
+                            color: class.color(),
                             z_bottom: slab.z_bottom,
                             z_top: slab.z_top,
                             start,
@@ -2618,7 +2631,70 @@ fn silhouette_bands(
                 }
             }
         }
-        return;
+        return Ok(());
+    }
+    if let CapturedIr::LayerFinalization(layers) = &capture.ir {
+        let mut ordered: Vec<&LayerCollectionIR> = layers.iter().collect();
+        ordered.sort_by_key(|layer| layer.global_layer_index);
+        for layer in ordered {
+            let Some(slab) = schedule.slab_for(layer.global_layer_index) else {
+                continue;
+            };
+            for entity in &layer.ordered_entities {
+                if entity.path.points.len() < 2 {
+                    continue;
+                }
+                let (group, order_key, color) = match style.color_by {
+                    ColorBy::Tool => {
+                        let tool = entity.tool_index;
+                        (
+                            format!("tool:{tool}"),
+                            format!("tool:{tool:010}"),
+                            style.tool_colors.color(tool),
+                        )
+                    }
+                    ColorBy::Role => {
+                        let name = silhouette_role_name(&entity.role);
+                        let support_rank = match entity.role {
+                            ExtrusionRole::SupportMaterial => Some(0),
+                            ExtrusionRole::SupportBaseInterface => Some(1),
+                            ExtrusionRole::SupportInterface => Some(2),
+                            _ => None,
+                        };
+                        let key = support_rank.map_or_else(
+                            || format!("role:0:{name}"),
+                            |rank| format!("role:1:{rank}:{name}"),
+                        );
+                        (
+                            format!("role:{:?}", entity.role),
+                            key,
+                            role_color(&entity.role),
+                        )
+                    }
+                };
+                for pair in entity.path.points.windows(2) {
+                    let a = pair[0];
+                    let b = pair[1];
+                    let h0 = view.axis((a.x, a.y));
+                    let h1 = view.axis((b.x, b.y));
+                    let start = (h0 - a.width / 2.0).min(h1 - b.width / 2.0);
+                    let end = (h0 + a.width / 2.0).max(h1 + b.width / 2.0);
+                    if start.is_finite() && end.is_finite() && start <= end {
+                        out.push(SilhouetteBand {
+                            layer_index: layer.global_layer_index,
+                            group: group.clone(),
+                            order_key: order_key.clone(),
+                            color,
+                            z_bottom: slab.z_bottom,
+                            z_top: slab.z_top,
+                            start,
+                            end,
+                        });
+                    }
+                }
+            }
+        }
+        return Ok(());
     }
     if let CapturedIr::Slice(s) = &capture.ir {
         for region in &s.regions {
@@ -2640,7 +2716,9 @@ fn silhouette_bands(
                 if let Some((start, end)) = contour_interval(&poly.contour, view) {
                     out.push(SilhouetteBand {
                         layer_index: capture.layer_index,
-                        class: SilhouetteClass::SliceRegion,
+                        group: "legacy:0".to_string(),
+                        order_key: "legacy:000".to_string(),
+                        color: SilhouetteClass::SliceRegion.color(),
                         z_bottom,
                         z_top,
                         start,
@@ -2649,6 +2727,14 @@ fn silhouette_bands(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn silhouette_role_name(role: &ExtrusionRole) -> String {
+    match role {
+        ExtrusionRole::Custom(name) => name.clone(),
+        _ => format!("{role:?}"),
     }
 }
 
@@ -2747,6 +2833,25 @@ pub fn render_silhouette_composite(
     viewport: ViewportBoundsMm,
     schedule: &SilhouetteSlabSchedule,
 ) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_silhouette_composite_styled(
+        captures,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        &RenderStyle::default(),
+    )
+}
+
+/// Render a silhouette composite using the requested role or tool coloring.
+pub fn render_silhouette_composite_styled(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
     if !(1..=3).contains(&resolution_scale) {
         return Err(RenderError::UnsupportedResolutionScale {
             scale: resolution_scale,
@@ -2755,7 +2860,7 @@ pub fn render_silhouette_composite(
 
     let mut bands: Vec<SilhouetteBand> = Vec::new();
     for capture in captures {
-        silhouette_bands(capture, view, schedule, &mut bands);
+        silhouette_bands(capture, view, schedule, style, &mut bands)?;
     }
 
     // Group key: (layer, class paint rank, slab). Sorting by it first makes
@@ -2763,7 +2868,7 @@ pub fn render_silhouette_composite(
     bands.sort_by(|a, b| {
         a.layer_index
             .cmp(&b.layer_index)
-            .then(a.class.paint_rank().cmp(&b.class.paint_rank()))
+            .then(a.order_key.cmp(&b.order_key))
             .then(a.z_bottom.total_cmp(&b.z_bottom))
             .then(a.z_top.total_cmp(&b.z_top))
             .then(a.start.total_cmp(&b.start))
@@ -2771,16 +2876,16 @@ pub fn render_silhouette_composite(
 
     let mut shapes: Vec<Shape> = Vec::new();
     // Per-layer, per-class merged intervals, for the occlusion check.
-    let mut per_layer_class: Vec<(u32, SilhouetteClass, Vec<(f32, f32)>)> = Vec::new();
+    let mut per_layer_class: Vec<(u32, String, String, Vec<(f32, f32)>)> = Vec::new();
 
     let mut i = 0;
     while i < bands.len() {
-        let head = bands[i];
+        let head = bands[i].clone();
         let mut j = i;
         let mut intervals: Vec<(f32, f32)> = Vec::new();
         while j < bands.len()
             && bands[j].layer_index == head.layer_index
-            && bands[j].class == head.class
+            && bands[j].group == head.group
             && bands[j].z_bottom.to_bits() == head.z_bottom.to_bits()
             && bands[j].z_top.to_bits() == head.z_top.to_bits()
         {
@@ -2796,14 +2901,19 @@ pub fn render_silhouette_composite(
                     (start, head.z_top),
                 ],
                 holes: Vec::new(),
-                color: head.class.color(),
+                color: head.color,
             });
             match per_layer_class
                 .iter_mut()
-                .find(|(l, c, _)| *l == head.layer_index && *c == head.class)
+                .find(|(l, group, _, _)| *l == head.layer_index && *group == head.group)
             {
-                Some((_, _, acc)) => acc.push((start, end)),
-                None => per_layer_class.push((head.layer_index, head.class, vec![(start, end)])),
+                Some((_, _, _, acc)) => acc.push((start, end)),
+                None => per_layer_class.push((
+                    head.layer_index,
+                    head.group.clone(),
+                    head.order_key.clone(),
+                    vec![(start, end)],
+                )),
             }
         }
         i = j;
@@ -2839,10 +2949,10 @@ pub fn render_silhouette_composite(
     // Occlusion: a later-painted class' union interval ACTUALLY overlapping an
     // earlier class' on the same layer. One deduped warning for the group.
     let mut occluded_layers: Vec<u32> = Vec::new();
-    for (layer, class, intervals) in &per_layer_class {
-        let overlaps = per_layer_class.iter().any(|(l2, c2, other)| {
+    for (layer, _group, order_key, intervals) in &per_layer_class {
+        let overlaps = per_layer_class.iter().any(|(l2, _group2, c2, other)| {
             l2 == layer
-                && c2.paint_rank() > class.paint_rank()
+                && c2 > order_key
                 && other
                     .iter()
                     .any(|(s2, e2)| intervals.iter().any(|(s, e)| s2 < e && s < e2))

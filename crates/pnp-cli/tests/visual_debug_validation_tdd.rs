@@ -763,7 +763,6 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
         "PrePass::SeamPlanning",
         "PrePass::RegionMapping",
         "PrePass::OverhangAnnotation",
-        "PostPass::LayerFinalization",
         "PostPass::GCodeEmit",
     ];
 
@@ -791,9 +790,36 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
                     "the rejection for '{unsupported}' must state why, never just refuse"
                 );
             }
-            other => panic!("expected SilhouetteUnsupportedForTap for '{unsupported}', got {other:?}"),
+            other => {
+                panic!("expected SilhouetteUnsupportedForTap for '{unsupported}', got {other:?}")
+            }
         }
     }
+}
+
+#[test]
+fn gcode_emit_silhouette_still_rejected() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+        vec![TapSelector::Name("PostPass::GCodeEmit".to_string())],
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "GCodeEmit is not a silhouette-capable tap in this packet",
+    );
+    assert!(
+        matches!(
+            &err,
+            ValidationError::SilhouetteUnsupportedForTap { tap, .. }
+                if tap == "PostPass::GCodeEmit"
+        ),
+        "expected SilhouetteUnsupportedForTap for GCodeEmit, got {err:?}"
+    );
 }
 
 // ───────────────── packet 248: gcode-source silhouette validation ───────────
@@ -845,6 +871,50 @@ fn silhouette_on_gcode_source_accepted() {
     assert_bundle_empty(&output);
 }
 
+#[test]
+fn tool_color_source_rules_inherited_on_silhouette() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "tool_color_source": "filament" }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &tmp.path().join("bundle-misuse"),
+        "tool_color_source without tool coloring must be rejected",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidColorBy { .. }),
+        "expected InvalidColorBy for tool_color_source without color_by tool, got {err:?}"
+    );
+
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({
+                "color_by": "tool",
+                "tool_color_source": "unknown"
+            }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &tmp.path().join("bundle-unknown"),
+        "an unknown tool_color_source must be rejected",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidColorBy { .. }),
+        "expected InvalidColorBy for unknown tool_color_source, got {err:?}"
+    );
+}
+
 // ─────────────────────────── packet 248 AC-N3 ───────────────────────────────
 
 #[test]
@@ -870,7 +940,10 @@ fn gcode_silhouette_overlay_rejections_unchanged() {
     );
     match &err {
         ValidationError::OverlayUnsupportedOnGcode { name } => {
-            assert_eq!(name, "seams", "the rejection must name the offending overlay");
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
         }
         other => panic!("expected OverlayUnsupportedOnGcode for 'seams', got {other:?}"),
     }
@@ -934,61 +1007,6 @@ fn gcode_silhouette_rejects_named_taps() {
 
 // ─────────────────────────── packet 248 AC-N6 ───────────────────────────────
 
-#[test]
-fn model_silhouette_tool_coloring_still_rejected() {
-    let tmp = TempDir::new().expect("tempdir");
-
-    // The packet-247 interim rejection is narrowed, not removed: a
-    // MODEL-source silhouette still lacks the per-capture tool-availability
-    // contract, so `color_by: "tool"` stays rejected there.
-    let output = tmp.path().join("bundle-model-tool");
-    let req = silhouette_model_request(
-        "1.2.0",
-        vec![detail_viz(
-            "silhouette",
-            serde_json::json!({ "color_by": "tool" }),
-        )],
-        slice_tap(),
-    );
-    let err = expect_validation_error(
-        req,
-        &output,
-        "tool coloring on a model-source silhouette is still unsupported",
-    );
-    assert!(
-        matches!(err, ValidationError::InvalidColorBy { .. }),
-        "expected InvalidColorBy for color_by: \"tool\" on a model silhouette, got {err:?}"
-    );
-
-    // A gcode-source silhouette reads tool numbers straight from the `T`
-    // commands, so both `role` and `tool` are accepted by validation.
-    for color_by in ["role", "tool"] {
-        let req = gcode_silhouette_request(
-            tmp.path().join("nonexistent.gcode"),
-            vec![detail_viz(
-                "silhouette",
-                serde_json::json!({ "color_by": color_by }),
-            )],
-        );
-        // End to end, for the same reason as
-        // `silhouette_on_gcode_source_accepted`: acceptance is only
-        // meaningful if the command reaches the render.
-        let output = tmp.path().join(format!("bundle-gcode-{color_by}"));
-        let err = run_visual_debug(req, &output, false)
-            .expect_err("the fixture's gcode path deliberately does not exist");
-        assert!(
-            !matches!(err, VisualDebugError::Validation(_)),
-            "color_by: {color_by:?} on a gcode silhouette must be accepted by \
-             validation, got {err:?}"
-        );
-        assert!(
-            matches!(err, VisualDebugError::CaptureFailed(_)),
-            "the request must fail only on the missing gcode file, got {err:?}"
-        );
-        assert_bundle_empty(&output);
-    }
-}
-
 // ─────────────────────────── packet 248 AC-N7 ───────────────────────────────
 
 #[test]
@@ -1042,50 +1060,6 @@ fn composited_overlays_not_accepted_by_247() {
         matches!(&err, ValidationError::InvalidVisualizationOptions { kind, .. }
             if kind == "silhouette"),
         "expected InvalidVisualizationOptions for the silhouette spec, got {err:?}"
-    );
-}
-
-// ─────────────────────────────── AC-N8 ──────────────────────────────────────
-
-#[test]
-fn silhouette_tool_coloring_rejected_role_accepted() {
-    let tmp = TempDir::new().expect("tempdir");
-
-    let output = tmp.path().join("bundle-tool");
-    let req = silhouette_model_request(
-        "1.2.0",
-        vec![detail_viz(
-            "silhouette",
-            serde_json::json!({ "color_by": "tool" }),
-        )],
-        slice_tap(),
-    );
-    let err = expect_validation_error(
-        req,
-        &output,
-        "tool coloring on a silhouette is not supported in this release",
-    );
-    assert!(
-        matches!(err, ValidationError::InvalidColorBy { .. }),
-        "expected InvalidColorBy for color_by: \"tool\" on a silhouette, got {err:?}"
-    );
-
-    // `color_by: "role"` is ACCEPTED: this request must get past validation
-    // entirely and fail later, on the deliberately nonexistent model.
-    let output = tmp.path().join("bundle-role");
-    let req = silhouette_model_request(
-        "1.2.0",
-        vec![detail_viz(
-            "silhouette",
-            serde_json::json!({ "color_by": "role" }),
-        )],
-        slice_tap(),
-    );
-    let err = run_visual_debug(req, &output, false)
-        .expect_err("the model paths are deliberately nonexistent, so the run still fails");
-    assert!(
-        !matches!(err, VisualDebugError::Validation(_)),
-        "color_by: \"role\" on a silhouette must be accepted by validation, got {err:?}"
     );
 }
 

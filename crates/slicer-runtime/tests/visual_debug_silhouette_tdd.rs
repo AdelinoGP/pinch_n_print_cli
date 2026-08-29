@@ -16,13 +16,15 @@
 //!   byte-identical PNG and element-for-element equal warnings.
 
 use slicer_ir::{
-    ExPolygon, Point2, Polygon, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
+    ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point2, Point3WithWidth, Polygon,
+    PrintEntity, RegionKey, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
     SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
 };
 use slicer_runtime::{
-    compute_silhouette_viewport_bounds, render_silhouette_composite, union_silhouette_intervals,
-    CapturedIr, Projector, RenderError, SilhouetteScheduleSlab, SilhouetteSlabSchedule,
-    SilhouetteView, StageCapture, ViewportBoundsMm,
+    compute_silhouette_viewport_bounds, render_silhouette_composite,
+    render_silhouette_composite_styled, union_silhouette_intervals, CapturedIr, ColorBy, Projector,
+    RenderError, RenderStyle, SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView,
+    StageCapture, ToolColors, ViewportBoundsMm,
 };
 use std::collections::HashMap;
 
@@ -692,4 +694,331 @@ fn silhouette_class_colors_are_pairwise_distinct() {
             assert_ne!(a, b, "{na} and {nb} must be distinct silhouette colors");
         }
     }
+}
+
+fn final_entity(
+    id: u64,
+    role: ExtrusionRole,
+    tool_index: u32,
+    x0: f32,
+    x1: f32,
+    width: f32,
+) -> PrintEntity {
+    // exhaustive: PrintEntity has no Default impl; FRU would let a new plan field default silently
+    PrintEntity {
+        entity_id: id,
+        // exhaustive: ExtrusionPath3D has no Default impl; every path field is intentional in this fixture
+        path: ExtrusionPath3D {
+            points: vec![
+                Point3WithWidth {
+                    x: x0,
+                    y: 0.0,
+                    z: 0.0,
+                    width,
+                    ..Point3WithWidth::default()
+                },
+                Point3WithWidth {
+                    x: x1,
+                    y: 0.0,
+                    z: 0.0,
+                    width,
+                    ..Point3WithWidth::default()
+                },
+            ],
+            role: role.clone(),
+            speed_factor: 1.0,
+            tool_index: Some(tool_index),
+            order_lock: None,
+        },
+        role,
+        region_key: RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            ..RegionKey::default()
+        },
+        topo_order: id as u32,
+        tool_index,
+    }
+}
+
+fn final_capture(layers: Vec<LayerCollectionIR>) -> StageCapture {
+    StageCapture {
+        stage_id: "Layer::Finalization".to_string(),
+        layer_index: 0,
+        layer_z: 0.0,
+        ir: CapturedIr::LayerFinalization(layers),
+    }
+}
+
+fn final_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
+    LayerCollectionIR {
+        global_layer_index: index,
+        z,
+        ordered_entities: entities,
+        ..LayerCollectionIR::default()
+    }
+}
+
+fn final_bounds() -> ViewportBoundsMm {
+    ViewportBoundsMm {
+        min_x: -1.0,
+        min_y: -0.1,
+        max_x: 11.0,
+        max_y: 0.5,
+    }
+}
+
+#[test]
+fn finalized_layer_slabs_and_half_width_inflation() {
+    let captures = vec![final_capture(vec![
+        final_layer(
+            0,
+            0.2,
+            vec![final_entity(
+                1,
+                ExtrusionRole::SparseInfill,
+                0,
+                2.0,
+                8.0,
+                0.4,
+            )],
+        ),
+        final_layer(
+            1,
+            0.4,
+            vec![final_entity(
+                2,
+                ExtrusionRole::SparseInfill,
+                0,
+                2.0,
+                8.0,
+                0.4,
+            )],
+        ),
+    ])];
+    let sched = schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let (image, _) =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched).unwrap();
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.1),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.3),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.21),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(sample(&rgb, bounds, w, h, 5.0, 0.41), BACKGROUND);
+    let narrow = vec![final_capture(vec![final_layer(
+        0,
+        0.2,
+        vec![final_entity(
+            1,
+            ExtrusionRole::SparseInfill,
+            0,
+            2.0,
+            8.0,
+            0.2,
+        )],
+    )])];
+    let narrow_sched = schedule(&[(0, 0.0, 0.2)]);
+    let (narrow_image, _) =
+        render_silhouette_composite(&narrow, SilhouetteView::Front, 1, bounds, &narrow_sched)
+            .unwrap();
+    let (nw, nh, nrgb) = decode_rgb(&narrow_image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 1.85, 0.1),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(sample(&nrgb, bounds, nw, nh, 1.85, 0.1), BACKGROUND);
+}
+
+#[test]
+fn schedule_filter_gates_whole_print_layers() {
+    let capture = final_capture(vec![
+        final_layer(
+            0,
+            0.2,
+            vec![final_entity(
+                1,
+                ExtrusionRole::SparseInfill,
+                0,
+                0.0,
+                2.0,
+                0.2,
+            )],
+        ),
+        final_layer(
+            1,
+            0.4,
+            vec![final_entity(
+                2,
+                ExtrusionRole::SparseInfill,
+                0,
+                3.0,
+                5.0,
+                0.2,
+            )],
+        ),
+        final_layer(
+            2,
+            0.6,
+            vec![final_entity(
+                3,
+                ExtrusionRole::SparseInfill,
+                0,
+                6.0,
+                8.0,
+                0.2,
+            )],
+        ),
+    ]);
+    let sched = schedule(&[(1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let (image, _) =
+        render_silhouette_composite(&[capture], SilhouetteView::Front, 1, bounds, &sched).unwrap();
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 4.0, 0.3),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(sample(&rgb, bounds, w, h, 1.0, 0.1), BACKGROUND);
+    assert_eq!(sample(&rgb, bounds, w, h, 7.0, 0.5), BACKGROUND);
+}
+
+#[test]
+fn finalization_role_paint_order_deterministic() {
+    let entities = vec![
+        final_entity(1, ExtrusionRole::SparseInfill, 0, 0.0, 8.0, 0.2),
+        final_entity(2, ExtrusionRole::SupportMaterial, 0, 2.0, 10.0, 0.2),
+        final_entity(3, ExtrusionRole::SupportInterface, 0, 4.0, 6.0, 0.2),
+    ];
+    let sched = schedule(&[(0, 0.0, 0.2)]);
+    let bounds = final_bounds();
+    let (image, _) = render_silhouette_composite(
+        &[final_capture(vec![final_layer(0, 0.2, entities)])],
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+    )
+    .unwrap();
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 1.0, 0.1),
+        slicer_runtime::visual_debug_render::palette::SPARSE_INFILL
+    );
+    assert_eq!(sample(&rgb, bounds, w, h, 3.0, 0.1), support_color());
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.1),
+        support_interface_color()
+    );
+}
+
+#[test]
+fn tool_classes_paint_ascending_tool_index() {
+    let entities = vec![
+        final_entity(1, ExtrusionRole::SparseInfill, 0, 0.0, 8.0, 0.2),
+        final_entity(2, ExtrusionRole::SparseInfill, 1, 4.0, 10.0, 0.2),
+    ];
+    let sched = schedule(&[(0, 0.0, 0.2)]);
+    let style = RenderStyle {
+        color_by: ColorBy::Tool,
+        tool_colors: ToolColors::default(),
+    };
+    let bounds = final_bounds();
+    let (image, _) = render_silhouette_composite_styled(
+        &[final_capture(vec![final_layer(0, 0.2, entities)])],
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+    )
+    .unwrap();
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 2.0, 0.1),
+        style.tool_colors.color(0)
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.1),
+        style.tool_colors.color(1)
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 9.0, 0.1),
+        style.tool_colors.color(1)
+    );
+    let err = render_silhouette_composite_styled(
+        &[slice_capture(
+            0,
+            0.2,
+            vec![region(0.2, vec![rect_expolygon(0.0, 1.0, 0.0, 1.0)])],
+        )],
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, RenderError::ToolColorUnavailable { ref tap, layer_index: 0 } if tap == "Layer::Slice")
+    );
+}
+
+#[test]
+fn styled_composite_is_deterministic_and_default_equivalent() {
+    let sched = schedule(&[(0, 0.0, 0.2)]);
+    let captures = vec![
+        final_capture(vec![final_layer(
+            0,
+            0.2,
+            vec![final_entity(
+                1,
+                ExtrusionRole::SparseInfill,
+                0,
+                1.0,
+                4.0,
+                0.2,
+            )],
+        )]),
+        slice_capture(
+            0,
+            0.2,
+            vec![region(0.2, vec![rect_expolygon(5.0, 8.0, 0.0, 1.0)])],
+        ),
+    ];
+    let bounds = final_bounds();
+    let style = RenderStyle::default();
+    let first = render_silhouette_composite_styled(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+    )
+    .unwrap();
+    let second = render_silhouette_composite_styled(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+    )
+    .unwrap();
+    let plain =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched).unwrap();
+    assert_eq!(first.0.png_bytes, second.0.png_bytes);
+    assert_eq!(first.1, second.1);
+    assert_eq!(first.0.png_bytes, plain.0.png_bytes);
+    assert_eq!(first.1, plain.1);
 }

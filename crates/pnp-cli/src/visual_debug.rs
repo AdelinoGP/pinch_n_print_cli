@@ -45,6 +45,7 @@ const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
     "Layer::PaintRegionAnnotation",
     "Layer::SlicePostProcess",
     "PrePass::SupportGeometry",
+    "PostPass::LayerFinalization",
 ];
 
 /// Whether a declared schema version gets the strict typed `options` parse
@@ -741,26 +742,6 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             Some(view) => {
                 silhouette_view_name(Some(view))?;
             }
-        }
-        if kind == SILHOUETTE_KIND
-            && opts.color_by.as_deref() == Some("tool")
-            && matches!(req.source, VisualDebugSource::Model { .. })
-        {
-            // Interim (packet 247): tool coloring on a MODEL-source
-            // silhouette needs the per-capture tool-availability contract
-            // that arrives with the toolpath taps; until then it is rejected
-            // rather than silently rendered role-colored. `color_by: "role"`
-            // is accepted. A gcode-source silhouette (packet 248) reads tool
-            // numbers straight from the `T` commands, so it accepts
-            // `color_by: "tool"`; as on the gcode top-down path,
-            // `tool_color_source: "filament"` resolves to the fixed palette
-            // because a standalone gcode source has no config to read
-            // `filament_colour` from.
-            return Err(ValidationError::InvalidColorBy {
-                message: "color_by: \"tool\" is not supported for silhouette visualizations in \
-                          this release; use \"role\""
-                    .into(),
-            });
         }
         match opts.color_by.as_deref() {
             None | Some("role") | Some("tool") => {}
@@ -1496,10 +1477,88 @@ fn map_capture_error(e: slicer_runtime::CaptureExecutionError) -> VisualDebugErr
 /// `LayerCollectionIR`/`GCodeIR` shape this capture needs, only cosmetic
 /// G-code formatting choices that belong to `pnp_cli slice`'s production
 /// emission path, not visual-debug capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PostpassCaptureShape {
+    PerLayer,
+    WholePrint,
+}
+
+/// Builds deterministic visual-debug rows from whole-print postpass artifacts.
+pub fn postpass_stage_captures(
+    capture: &slicer_runtime::postpass::PostPassCapture,
+    stage_ids: &[String],
+    applicable: &[u32],
+    applicable_layer_z: &dyn Fn(u32) -> f32,
+    shape: PostpassCaptureShape,
+) -> Vec<slicer_runtime::StageCapture> {
+    let mut captures = Vec::new();
+    match shape {
+        PostpassCaptureShape::PerLayer => {
+            for &layer_index in applicable {
+                let layer_z = applicable_layer_z(layer_index);
+                for tap in stage_ids {
+                    let ir = match tap.as_str() {
+                        "PostPass::LayerFinalization" => {
+                            slicer_runtime::CapturedIr::LayerFinalization(
+                                capture.finalized_layers.clone(),
+                            )
+                        }
+                        "PostPass::GCodeEmit" => {
+                            slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
+                        }
+                        _ => unreachable!(
+                            "tap validated against POSTPASS_TAP_STAGE_IDS at function entry"
+                        ),
+                    };
+                    captures.push(slicer_runtime::StageCapture {
+                        stage_id: tap.clone(),
+                        layer_index,
+                        layer_z,
+                        ir,
+                    });
+                }
+            }
+        }
+        PostpassCaptureShape::WholePrint => {
+            for tap in stage_ids {
+                let ir = match tap.as_str() {
+                    "PostPass::LayerFinalization" => slicer_runtime::CapturedIr::LayerFinalization(
+                        capture.finalized_layers.clone(),
+                    ),
+                    "PostPass::GCodeEmit" => {
+                        slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
+                    }
+                    _ => unreachable!(
+                        "tap validated against POSTPASS_TAP_STAGE_IDS at function entry"
+                    ),
+                };
+                // Whole-print rows have no meaningful layer identity.
+                captures.push(slicer_runtime::StageCapture {
+                    stage_id: tap.clone(),
+                    layer_index: 0,
+                    layer_z: 0.0,
+                    ir,
+                });
+            }
+        }
+    }
+    captures.sort_by_key(|c| {
+        (
+            slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+    captures
+}
+
 fn run_postpass_taps(
     ctx: &mut slicer_runtime::PrepassContext,
     request: &slicer_runtime::CaptureRequest,
     support_tools: slicer_runtime::layer_executor::SupportToolSelection,
+    shape: PostpassCaptureShape,
 ) -> Result<slicer_runtime::CaptureOutput, VisualDebugError> {
     for tap in &request.stage_ids {
         if !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
@@ -1568,41 +1627,20 @@ fn run_postpass_taps(
         return Err(VisualDebugError::NoApplicableLayer);
     }
 
-    let mut captures = Vec::new();
-    for &layer_index in &applicable {
-        let layer_z = capture
-            .finalized_layers
-            .iter()
-            .find(|l| l.global_layer_index == layer_index)
-            .map(|l| l.z)
-            .unwrap_or(0.0);
-        for tap in &request.stage_ids {
-            let ir = match tap.as_str() {
-                "PostPass::LayerFinalization" => {
-                    slicer_runtime::CapturedIr::LayerFinalization(capture.finalized_layers.clone())
-                }
-                "PostPass::GCodeEmit" => {
-                    slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
-                }
-                _ => unreachable!("tap validated against POSTPASS_TAP_STAGE_IDS at function entry"),
-            };
-            captures.push(slicer_runtime::StageCapture {
-                stage_id: tap.clone(),
-                layer_index,
-                layer_z,
-                ir,
-            });
-        }
-    }
-    captures.sort_by_key(|c| {
-        (
-            slicer_runtime::STAGE_ORDER
+    let captures = postpass_stage_captures(
+        &capture,
+        &request.stage_ids,
+        &applicable.iter().copied().collect::<Vec<_>>(),
+        &|layer_index| {
+            capture
+                .finalized_layers
                 .iter()
-                .position(|s| *s == c.stage_id.as_str())
-                .unwrap_or(usize::MAX),
-            c.layer_index,
-        )
-    });
+                .find(|l| l.global_layer_index == layer_index)
+                .map(|l| l.z)
+                .unwrap_or(0.0)
+        },
+        shape,
+    );
 
     // Whole-print closure (this function's documented minimal-closure
     // deviation): every per-layer / finalization / postpass stage, and
@@ -1985,7 +2023,16 @@ fn run_model_source(
             stage_ids: postpass_tap_ids,
             layer_indices: layer_indices.clone(),
         };
-        postpass_output = run_postpass_taps(&mut ctx, &capture_request, support_tools)?;
+        postpass_output = run_postpass_taps(
+            &mut ctx,
+            &capture_request,
+            support_tools,
+            if silhouette_view.is_some() {
+                PostpassCaptureShape::WholePrint
+            } else {
+                PostpassCaptureShape::PerLayer
+            },
+        )?;
     }
 
     // Merge the three closures' outputs into one, deterministically ordered
@@ -2045,45 +2092,37 @@ fn run_model_source(
         // never one per (capture, visualization) pair — which is also why two
         // identical silhouette specs collapse into a single image (AC-9).
 
-        // Per-layer Z slab schedule over the *whole* layer plan, not just the
-        // selection: `GlobalLayer.z` is the layer **top**, so a slab's
-        // `z_bottom` is the previous layer's `z` (`0.0` for index 0). Z stays
-        // in millimeter floats end to end — it never round-trips through
-        // `mm_to_units`.
-        let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
-        if let Some(lp) = ctx.blackboard.layer_plan() {
-            let mut prev_z = 0.0f32;
-            for gl in &lp.global_layers {
-                let z_bottom = if gl.index == 0 { 0.0 } else { prev_z };
-                schedule
-                    .slabs
-                    .push(slicer_runtime::SilhouetteScheduleSlab {
-                        index: gl.index,
-                        z_bottom,
-                        z_top: gl.z,
-                    });
-                prev_z = gl.z;
-            }
-        }
-
         // One shared viewport for the whole bundle, framed model-wide (D3):
         // horizontal = the mesh's X (front) / Y (side) extent, vertical = its
         // Z extent, both unioned with the captured geometry. The selection
         // never moves the frame, which is exactly what AC-7 pins. `frame:
         // "plate"` has no silhouette meaning (a bed polygon carries no Z), so
         // silhouette framing is always model-wide.
+        let mut viewport_schedule = slicer_runtime::SilhouetteSlabSchedule::default();
+        if let Some(lp) = ctx.blackboard.layer_plan() {
+            let mut previous_z = 0.0f32;
+            for gl in &lp.global_layers {
+                viewport_schedule
+                    .slabs
+                    .push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: gl.index,
+                        z_bottom: previous_z,
+                        z_top: gl.z,
+                    });
+                previous_z = gl.z;
+            }
+        }
         let viewport_bounds = slicer_runtime::compute_silhouette_viewport_bounds(
             &output.captures,
             view,
-            &schedule,
+            &viewport_schedule,
             silhouette_model_extent,
         );
 
-        // Group by tap, ordered by `STAGE_ORDER` position then tap string —
-        // an ordered map, never a `HashMap`: manifest order is a packet
-        // invariant.
+        // Group by tap and requested color mode. An ordered map keeps role
+        // before tool within each tap and makes duplicate specs collapse.
         let mut groups: std::collections::BTreeMap<
-            (usize, String),
+            (usize, String, bool),
             Vec<slicer_runtime::StageCapture>,
         > = std::collections::BTreeMap::new();
         for capture in &output.captures {
@@ -2091,29 +2130,98 @@ fn run_model_source(
                 .iter()
                 .position(|s| *s == capture.stage_id.as_str())
                 .unwrap_or(usize::MAX);
-            groups
-                .entry((position, capture.stage_id.clone()))
-                .or_default()
-                .push(capture.clone());
+            for viz in &req.visualizations {
+                let opts = effective_visualization_options(&req.schema_version, viz);
+                groups
+                    .entry((
+                        position,
+                        capture.stage_id.clone(),
+                        opts.color_by() == slicer_runtime::ColorBy::Tool,
+                    ))
+                    .or_default()
+                    .push(capture.clone());
+            }
         }
 
         let legend = legend_version_for(&req.schema_version).to_string();
-        for ((_, tap), group) in groups {
-            let (rendered, warnings) = slicer_runtime::render_silhouette_composite(
+        for ((_, tap, is_tool), group) in groups {
+            let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
+            if let Some(finalized) = group.iter().find_map(|capture| match &capture.ir {
+                slicer_runtime::CapturedIr::LayerFinalization(layers) => Some(layers),
+                _ => None,
+            }) {
+                let mut layers = finalized.iter().collect::<Vec<_>>();
+                layers.sort_by_key(|layer| layer.global_layer_index);
+                let mut previous_z = 0.0f32;
+                for layer in layers {
+                    schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: layer.global_layer_index,
+                        z_bottom: previous_z,
+                        z_top: layer.z,
+                    });
+                    previous_z = layer.z;
+                }
+            } else if let Some(lp) = ctx.blackboard.layer_plan() {
+                let mut previous_z = 0.0f32;
+                for gl in &lp.global_layers {
+                    schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: gl.index,
+                        z_bottom: previous_z,
+                        z_top: gl.z,
+                    });
+                    previous_z = gl.z;
+                }
+            }
+            let selected: std::collections::BTreeSet<u32> = layer_indices.iter().copied().collect();
+            schedule.slabs.retain(|slab| selected.contains(&slab.index));
+            let indices: Vec<i64> = schedule
+                .slabs
+                .iter()
+                .filter(|slab| selected.contains(&slab.index))
+                .map(|slab| i64::from(slab.index))
+                .collect();
+            let tool_color_source = if is_tool {
+                req.visualizations.iter().find_map(|viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    (opts.color_by() == slicer_runtime::ColorBy::Tool).then(|| {
+                        opts.tool_color_source
+                            .clone()
+                            .unwrap_or_else(|| "palette".to_string())
+                    })
+                })
+            } else {
+                None
+            };
+            let tool_colors = if tool_color_source.as_deref() == Some("filament") {
+                filament_tool_colors(&config_source_raw)
+            } else {
+                slicer_runtime::ToolColors::default()
+            };
+            if is_tool && tool_palette.is_none() {
+                tool_palette = Some(tool_palette_entries(&tool_colors));
+            }
+            let render_style = slicer_runtime::RenderStyle {
+                color_by: if is_tool {
+                    slicer_runtime::ColorBy::Tool
+                } else {
+                    slicer_runtime::ColorBy::Role
+                },
+                tool_colors,
+            };
+            let (rendered, warnings) = slicer_runtime::render_silhouette_composite_styled(
                 &group,
                 view,
                 req.resolution_scale,
                 viewport_bounds,
                 &schedule,
+                &render_style,
             )
             .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
-            let mut indices: Vec<i64> = group.iter().map(|c| i64::from(c.layer_index)).collect();
-            indices.sort_unstable();
-            indices.dedup();
             let file_name = format!(
-                "{}_silhouette_{}.png",
+                "{}_silhouette_{}{}.png",
                 sanitize_path_component(&tap),
-                view.name()
+                view.name(),
+                if is_tool { "_tool" } else { "" }
             );
             let relative_path = format!("images/{file_name}");
             rendered_files.push((relative_path.clone(), rendered.png_bytes));
@@ -2135,8 +2243,8 @@ fn run_model_source(
                 world_bounds_mm: Some(viewport_bounds),
                 overlay: None,
                 overlay_events: None,
-                color_by: None,
-                tool_color_source: None,
+                color_by: is_tool.then(|| "tool".to_string()),
+                tool_color_source,
                 view: Some(view.name().to_string()),
                 layers_rendered: Some(compress_layer_ranges(&indices)),
             });
