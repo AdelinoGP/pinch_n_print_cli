@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 250-visual-debug-silhouette-gcode-emit
 task_ids:
   - TASK-452

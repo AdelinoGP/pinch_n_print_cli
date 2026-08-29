@@ -1102,16 +1102,12 @@ pub fn silhouette_segment_width_mm(
     slab_height_mm: f64,
     filament_diameter_mm: f64,
 ) -> f64 {
-    if length_mm <= 0.0 || slab_height_mm <= 0.0 || filament_diameter_mm <= 0.0 {
-        return 0.0;
-    }
-    let filament_area_mm2 = std::f64::consts::PI * (filament_diameter_mm / 2.0).powi(2);
-    let width = e_delta_mm * filament_area_mm2 / (length_mm * slab_height_mm);
-    if width.is_finite() {
-        width
-    } else {
-        0.0
-    }
+    slicer_runtime::silhouette_flow_width_mm(
+        e_delta_mm,
+        length_mm,
+        slab_height_mm,
+        filament_diameter_mm,
+    )
 }
 
 // ───────────────────────── silhouette composite render ────────────────────

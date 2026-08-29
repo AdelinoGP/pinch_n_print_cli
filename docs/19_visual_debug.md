@@ -183,6 +183,22 @@ Finalized-layer slabs are schedule-Z-diff slabs: each layer occupies
 postpass silhouette entry, `layers_rendered` is the resolved selection intersected
 with finalized layer indices, compressed into maximal inclusive ranges.
 
+`PostPass::GCodeEmit` is likewise a whole-print postpass tap, but renders the
+**pre-rewrite** emit IR: the typed `GCodeIR` before `PostPass::GCodePostProcess`
+rewrites it — the tap's unique value. A defect visible here yet absent from the
+final `.gcode` localizes to the postprocess modules. Widths are recovered from
+consecutive accumulated `Move.e` positions: Δe by differencing; an `e: None`
+travel carries the carried position but contributes no interval; and a negative
+delta — an inline purge retract — is non-extruding, contributes no segment,
+while the carried position still updates through it. Each move is bucketed by
+**Z-containment** (containment first: `z_bottom < z ≤ z_top`): a move whose Z is
+outside every schedule slab draws at the nearest slab with a W4 warning naming
+the affected Z, whereas a move contained in an unselected slab draws nothing —
+that is selection, not loss. This E-inversion is **testable mainly against itself**: it is a second inversion, deliberately separate from the standalone
+G-code source's parser-based one, and is anchored externally by the emitter
+round-trip test. Images are
+`PostPass__GCodeEmit_silhouette_{view}[_tool].png`.
+
 ### Manifest Shape
 
 A silhouette entry carries `"visualization": "silhouette"`, `"view"`,
@@ -290,6 +306,13 @@ rejection.
   carries no `;Z:` marker at all, is skipped entirely; the warning names the
   offending layer index and the Z values involved (or the marker's absence).
   See "Standalone G-code Silhouettes" below.
+- **W4 — out-of-slab Z on an emit silhouette.** A `PostPass::GCodeEmit` move
+  whose Z is outside every schedule slab is drawn at the nearest slab; the
+  warning reads
+  `gcode emit: extruding move at z=... outside every schedule slab; drawn at
+  nearest slab ...` and names the affected Z. Containment is checked **first**:
+  a move contained in an unselected slab draws nothing and emits no warning —
+  selection, not loss.
 - **Occlusion.** Per-entry, as described above, only when overlap occurred.
 
 ### Tool-Colored Silhouettes
@@ -363,13 +386,16 @@ linear-E model over volumetric E values silently produces wrong widths.
 **The width shown is deposited width**, reconstructed from the file's own E
 values: a move printed with a low `flow_factor` renders genuinely thin. **Do not
 cite the silhouette as a width-measurement tool** — it shows what the G-code
-asks the printer to deposit, not a measured extrusion.
+asks the printer to deposit, not a measured extrusion. The `PostPass::GCodeEmit`
+width recovery is the same inversion over the emit `Move.e` stream (see the
+GCodeEmit paragraph above), not a separate model.
 
 **Foreign files carry a systematic bias.** The inversion assumes our emitter's
 rectangular cross-section. Foreign slicers commonly model a stadium
 (rounded-end) cross-section, so widths reconstructed from a foreign `.gcode` are
 still derived from that file's own data, but are not a cross-slicer-comparable
-measurement.
+measurement. The `PostPass::GCodeEmit` E-differencing inversion carries the same
+rectangular-model bias.
 
 **Multi-tool diameters.** `; filament_diameter = …` may carry a comma-separated
 per-extruder list; a segment uses the entry at its tool index, **clamped to the

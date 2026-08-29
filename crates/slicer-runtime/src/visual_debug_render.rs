@@ -2499,6 +2499,181 @@ struct SilhouetteBand {
     end: f32,
 }
 
+/// The extrusion width in mm implied by one move's flow, in closed form.
+///
+/// Inverts the standard authoring relation `Δe = L × w × h / A_filament`
+/// (extruded filament volume equals the deposited bead's volume) for `w`:
+///
+/// ```text
+/// w = Δe × π·(d/2)² / (L × h)
+/// ```
+///
+/// `pub` so the closed form can be pinned directly by a test rather than
+/// only observed through a rendered raster.
+///
+/// Returns `0.0` for a degenerate input (`L` or `h` non-positive, or a
+/// non-finite result) rather than an infinity or NaN that would poison a
+/// downstream polygon offset.
+#[must_use]
+pub fn silhouette_flow_width_mm(
+    e_delta_mm: f64,
+    length_mm: f64,
+    slab_height_mm: f64,
+    filament_diameter_mm: f64,
+) -> f64 {
+    if length_mm <= 0.0 || slab_height_mm <= 0.0 || filament_diameter_mm <= 0.0 {
+        return 0.0;
+    }
+    let filament_area_mm2 = std::f64::consts::PI * (filament_diameter_mm / 2.0).powi(2);
+    let width = e_delta_mm * filament_area_mm2 / (length_mm * slab_height_mm);
+    if width.is_finite() {
+        width
+    } else {
+        0.0
+    }
+}
+
+/// One positive-extrusion move recovered from the final G-code IR.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GcodeEmitSegment {
+    /// Tool active for the move.
+    pub tool: u32,
+    /// Extrusion role carried by the move.
+    pub role: slicer_ir::ExtrusionRole,
+    /// Schedule slab receiving the move.
+    pub slab_index: u32,
+    /// Start coordinate on the view's horizontal axis, in millimeters.
+    pub h0_mm: f32,
+    /// End coordinate on the view's horizontal axis, in millimeters.
+    pub h1_mm: f32,
+    /// Recovered deposited width, in millimeters.
+    pub width_mm: f32,
+}
+
+/// Recover silhouette segments from the emitter's absolute-E position stream.
+#[must_use]
+pub fn gcode_emit_silhouette_segments(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    filament_diameter_mm: f32,
+) -> (Vec<GcodeEmitSegment>, Vec<String>) {
+    let mut segments = Vec::new();
+    let mut warnings_z = Vec::new();
+    let mut position = (0.0_f32, 0.0_f32, 0.0_f32);
+    let mut last_e = 0.0_f32;
+    let mut tool = 0_u32;
+
+    for command in &g.commands {
+        match command {
+            slicer_ir::GCodeCommand::ToolChange { to, .. } => tool = *to,
+            slicer_ir::GCodeCommand::Move {
+                x, y, z, e, role, ..
+            } => {
+                let start = position;
+                if let Some(value) = x {
+                    position.0 = *value;
+                }
+                if let Some(value) = y {
+                    position.1 = *value;
+                }
+                if let Some(value) = z {
+                    position.2 = *value;
+                }
+                let delta_e = e.map(|value| {
+                    let delta = value - last_e;
+                    last_e = value;
+                    delta
+                });
+                let dx = position.0 - start.0;
+                let dy = position.1 - start.1;
+                let dz = position.2 - start.2;
+                let length = (dx * dx + dy * dy + dz * dz).sqrt();
+                let Some(delta_e) = delta_e.filter(|delta| *delta > 0.0) else {
+                    continue;
+                };
+                if length <= 0.0 {
+                    continue;
+                }
+
+                let containing = schedule
+                    .slabs
+                    .iter()
+                    .find(|slab| slab.z_bottom < position.2 && position.2 <= slab.z_top)
+                    .copied();
+                let slab = if let Some(slab) = containing {
+                    slab
+                } else {
+                    let nearest = schedule.slabs.iter().copied().min_by(|a, b| {
+                        let distance = |slab: SilhouetteScheduleSlab| {
+                            if position.2 < slab.z_bottom {
+                                slab.z_bottom - position.2
+                            } else if position.2 > slab.z_top {
+                                position.2 - slab.z_top
+                            } else {
+                                0.0
+                            }
+                        };
+                        distance(*a)
+                            .total_cmp(&distance(*b))
+                            .then(a.index.cmp(&b.index))
+                    });
+                    let Some(nearest) = nearest else { continue };
+                    if !warnings_z.contains(&position.2) {
+                        warnings_z.push(position.2);
+                    }
+                    nearest
+                };
+                let height = slab.z_top - slab.z_bottom;
+                let width = silhouette_flow_width_mm(
+                    f64::from(delta_e),
+                    f64::from(length),
+                    f64::from(height),
+                    f64::from(filament_diameter_mm),
+                ) as f32;
+                segments.push(GcodeEmitSegment {
+                    tool,
+                    role: role.clone(),
+                    slab_index: slab.index,
+                    h0_mm: view.axis((start.0, start.1)),
+                    h1_mm: view.axis((position.0, position.1)),
+                    width_mm: width,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    warnings_z.sort_by(|a, b| a.total_cmp(b));
+    let mut warnings = Vec::new();
+    for z in warnings_z.iter().take(8) {
+        let slab = schedule.slabs.iter().copied().min_by(|a, b| {
+            let distance = |s: SilhouetteScheduleSlab| {
+                if *z < s.z_bottom {
+                    s.z_bottom - *z
+                } else if *z > s.z_top {
+                    *z - s.z_top
+                } else {
+                    0.0
+                }
+            };
+            distance(*a)
+                .total_cmp(&distance(*b))
+                .then(a.index.cmp(&b.index))
+        });
+        if let Some(slab) = slab {
+            warnings.push(format!(
+                "gcode emit: extruding move at z={z:.3} outside every schedule slab; drawn at nearest slab [{:.3}, {:.3}]",
+                slab.z_bottom, slab.z_top
+            ));
+        }
+    }
+    if warnings_z.len() > 8 {
+        warnings.push(format!("gcode emit: +{} more", warnings_z.len() - 8));
+    }
+    (segments, warnings)
+}
+
 /// Union a set of horizontal projection intervals: sorted endpoint sweep,
 /// merging when `next.start <= current.end`.
 ///
@@ -2528,6 +2703,112 @@ pub fn union_silhouette_intervals(intervals: &[(f32, f32)]) -> Vec<(f32, f32)> {
         }
     }
     merged
+}
+
+/// Render the silhouette recovered from final G-code emission.
+/// Containment is judged against the full `schedule`; `selected_slabs` gates
+/// drawing only.
+pub fn render_gcode_emit_silhouette(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    filament_diameter_mm: f32,
+    selected_slabs: &[u32],
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+
+    let (segments, warnings) =
+        gcode_emit_silhouette_segments(g, view, schedule, filament_diameter_mm);
+    // Keep the class key explicit and sorted rather than relying on map
+    // iteration, matching the staged silhouette renderer's deterministic
+    // paint order.
+    let mut bands: Vec<(u32, String, String, [u8; 3], f32, f32)> = segments
+        .into_iter()
+        .filter(|segment| selected_slabs.binary_search(&segment.slab_index).is_ok())
+        .map(|segment| {
+            let (group, order_key, color) = match style.color_by {
+                ColorBy::Tool => (
+                    format!("tool:{}", segment.tool),
+                    format!("tool:{:010}", segment.tool),
+                    style.tool_colors.color(segment.tool),
+                ),
+                ColorBy::Role => {
+                    let order_key = silhouette_class_order_key(&segment.role);
+                    (
+                        format!("role:{:?}", segment.role),
+                        order_key,
+                        role_color(&segment.role),
+                    )
+                }
+            };
+            let start = segment.h0_mm.min(segment.h1_mm) - segment.width_mm / 2.0;
+            let end = segment.h0_mm.max(segment.h1_mm) + segment.width_mm / 2.0;
+            (segment.slab_index, group, order_key, color, start, end)
+        })
+        .filter(|(_, _, _, _, start, end)| start.is_finite() && end.is_finite() && start <= end)
+        .collect();
+    bands.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then(a.2.cmp(&b.2))
+            .then(a.4.total_cmp(&b.4))
+            .then(a.5.total_cmp(&b.5))
+    });
+
+    let mut shapes = Vec::new();
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i].clone();
+        let mut j = i;
+        let mut intervals = Vec::new();
+        while j < bands.len() && bands[j].0 == head.0 && bands[j].1 == head.1 {
+            intervals.push((bands[j].4, bands[j].5));
+            j += 1;
+        }
+        let Some(slab) = schedule.slabs.iter().find(|slab| slab.index == head.0) else {
+            i = j;
+            continue;
+        };
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, slab.z_bottom),
+                    (end, slab.z_bottom),
+                    (end, slab.z_top),
+                    (start, slab.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.3,
+            });
+        }
+        i = j;
+    }
+
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: "GCodeEmit".to_string(),
+            layer_index: 0,
+            field: "commands",
+        });
+    }
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    Ok((
+        RenderedImage {
+            png_bytes: encode_png(width, height, &canvas.buf),
+            width,
+            height,
+        },
+        warnings,
+    ))
 }
 
 /// The horizontal interval a closed contour projects onto the view axis.
@@ -2654,17 +2935,7 @@ fn silhouette_bands(
                         )
                     }
                     ColorBy::Role => {
-                        let name = silhouette_role_name(&entity.role);
-                        let support_rank = match entity.role {
-                            ExtrusionRole::SupportMaterial => Some(0),
-                            ExtrusionRole::SupportBaseInterface => Some(1),
-                            ExtrusionRole::SupportInterface => Some(2),
-                            _ => None,
-                        };
-                        let key = support_rank.map_or_else(
-                            || format!("role:0:{name}"),
-                            |rank| format!("role:1:{rank}:{name}"),
-                        );
+                        let key = silhouette_class_order_key(&entity.role);
                         (
                             format!("role:{:?}", entity.role),
                             key,
@@ -2736,6 +3007,20 @@ fn silhouette_role_name(role: &ExtrusionRole) -> String {
         ExtrusionRole::Custom(name) => name.clone(),
         _ => format!("{role:?}"),
     }
+}
+
+fn silhouette_class_order_key(role: &ExtrusionRole) -> String {
+    let name = silhouette_role_name(role);
+    let support_rank = match role {
+        ExtrusionRole::SupportMaterial => Some(0),
+        ExtrusionRole::SupportBaseInterface => Some(1),
+        ExtrusionRole::SupportInterface => Some(2),
+        _ => None,
+    };
+    support_rank.map_or_else(
+        || format!("role:0:{name}"),
+        |rank| format!("role:1:{rank}:{name}"),
+    )
 }
 
 /// Compute the shared silhouette viewport for one bundle.

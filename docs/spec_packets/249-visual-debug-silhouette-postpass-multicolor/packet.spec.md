@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 249-visual-debug-silhouette-postpass-multicolor
 task_ids:
   - TASK-449

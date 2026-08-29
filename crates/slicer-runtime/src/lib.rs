@@ -209,8 +209,9 @@ pub use visual_debug_render::{
 };
 // Silhouette composite path (packet 247, schema 1.2.0).
 pub use visual_debug_render::{
-    compute_silhouette_viewport_bounds, render_silhouette_composite,
-    render_silhouette_composite_styled, union_silhouette_intervals, SilhouetteScheduleSlab,
+    compute_silhouette_viewport_bounds, gcode_emit_silhouette_segments,
+    render_gcode_emit_silhouette, render_silhouette_composite, render_silhouette_composite_styled,
+    silhouette_flow_width_mm, union_silhouette_intervals, GcodeEmitSegment, SilhouetteScheduleSlab,
     SilhouetteSlabSchedule, SilhouetteView,
 };
 pub use visual_debug_style::{

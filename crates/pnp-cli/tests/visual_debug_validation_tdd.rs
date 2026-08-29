@@ -763,7 +763,6 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
         "PrePass::SeamPlanning",
         "PrePass::RegionMapping",
         "PrePass::OverhangAnnotation",
-        "PostPass::GCodeEmit",
     ];
 
     let tmp = TempDir::new().expect("tempdir");
@@ -798,7 +797,7 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
 }
 
 #[test]
-fn gcode_emit_silhouette_still_rejected() {
+fn gcode_emit_silhouette_accepted() {
     let tmp = TempDir::new().expect("tempdir");
     let output = tmp.path().join("bundle");
     let req = silhouette_model_request(
@@ -807,18 +806,11 @@ fn gcode_emit_silhouette_still_rejected() {
         vec![TapSelector::Name("PostPass::GCodeEmit".to_string())],
     );
 
-    let err = expect_validation_error(
-        req,
-        &output,
-        "GCodeEmit is not a silhouette-capable tap in this packet",
-    );
+    let err = run_visual_debug(req, &output, false)
+        .expect_err("unreachable fixture must fail after validation");
     assert!(
-        matches!(
-            &err,
-            ValidationError::SilhouetteUnsupportedForTap { tap, .. }
-                if tap == "PostPass::GCodeEmit"
-        ),
-        "expected SilhouetteUnsupportedForTap for GCodeEmit, got {err:?}"
+        !matches!(err, VisualDebugError::Validation(_)),
+        "GCodeEmit was rejected during validation: {err:?}"
     );
 }
 

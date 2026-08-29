@@ -16,13 +16,15 @@
 //!   byte-identical PNG and element-for-element equal warnings.
 
 use slicer_ir::{
-    ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point2, Point3WithWidth, Polygon,
-    PrintEntity, RegionKey, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
-    SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, Point2,
+    Point3WithWidth, Polygon, PrintEntity, RegionKey, ResolvedConfig, SliceIR, SlicedRegion,
+    SupportGeometryIR, SupportGeometryKey, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    SupportPlanRoleRegion,
 };
 use slicer_runtime::{
-    compute_silhouette_viewport_bounds, render_silhouette_composite,
-    render_silhouette_composite_styled, union_silhouette_intervals, CapturedIr, ColorBy, Projector,
+    compute_silhouette_viewport_bounds, gcode_emit_silhouette_segments,
+    render_gcode_emit_silhouette, render_silhouette_composite, render_silhouette_composite_styled,
+    union_silhouette_intervals, CapturedIr, ColorBy, DefaultGCodeEmitter, GCodeEmitter, Projector,
     RenderError, RenderStyle, SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView,
     StageCapture, ToolColors, ViewportBoundsMm,
 };
@@ -767,6 +769,303 @@ fn final_bounds() -> ViewportBoundsMm {
         max_x: 11.0,
         max_y: 0.5,
     }
+}
+
+#[test]
+fn gcode_emit_e_inversion_roundtrips_emitter_width() {
+    let mut entity = final_entity(1, ExtrusionRole::SparseInfill, 0, 0.0, 10.0, 0.5);
+    for point in &mut entity.path.points {
+        point.flow_factor = 1.0;
+        point.z = 0.2;
+    }
+    let layer = final_layer(0, 0.2, vec![entity]);
+    let config = ResolvedConfig {
+        filament_diameter: 2.85,
+        ..Default::default()
+    };
+    let gcode = DefaultGCodeEmitter::new("test".into())
+        .with_resolved_config(config)
+        .emit_gcode(&[layer])
+        .expect("emitter output");
+    let (segments, warnings) = gcode_emit_silhouette_segments(
+        &gcode,
+        SilhouetteView::Front,
+        &schedule(&[(0, 0.0, 0.2)]),
+        2.85,
+    );
+    assert!(warnings.is_empty());
+    assert!(!segments.is_empty());
+    assert!(segments.iter().all(|s| (s.width_mm - 0.5).abs() <= 1e-3));
+}
+
+fn move_command(x: Option<f32>, z: Option<f32>, e: Option<f32>) -> GCodeCommand {
+    GCodeCommand::Move {
+        x,
+        y: None,
+        z,
+        e,
+        f: None,
+        role: ExtrusionRole::SparseInfill,
+    }
+}
+
+#[test]
+fn gcode_emit_travel_carries_position_and_negative_delta_skipped() {
+    let mut gcode = GCodeIR::default();
+    gcode.commands.extend([
+        move_command(Some(1.0), Some(0.1), Some(1.0)),
+        move_command(Some(2.0), None, None),
+        move_command(Some(3.0), None, Some(2.0)),
+        move_command(Some(4.0), None, Some(1.2)),
+    ]);
+    let (segments, warnings) = gcode_emit_silhouette_segments(
+        &gcode,
+        SilhouetteView::Front,
+        &schedule(&[(0, 0.0, 0.2)]),
+        1.75,
+    );
+    assert!(warnings.is_empty());
+    assert_eq!(segments.len(), 2);
+    assert!((segments[1].h1_mm - segments[1].h0_mm - 1.0).abs() < 1e-6);
+    gcode
+        .commands
+        .push(move_command(Some(5.0), None, Some(3.0)));
+    let (segments, _) = gcode_emit_silhouette_segments(
+        &gcode,
+        SilhouetteView::Front,
+        &schedule(&[(0, 0.0, 0.2)]),
+        1.75,
+    );
+    assert_eq!(segments.len(), 3);
+    assert!((segments[2].h1_mm - segments[2].h0_mm - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn gcode_emit_top_edge_containment_has_no_warning() {
+    let mut gcode = GCodeIR::default();
+    gcode
+        .commands
+        .push(move_command(Some(1.0), Some(0.2), Some(1.0)));
+    let (_, warnings) = gcode_emit_silhouette_segments(
+        &gcode,
+        SilhouetteView::Front,
+        &schedule(&[(0, 0.0, 0.2)]),
+        1.75,
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn gcode_emit_nearest_slab_warns_in_ascending_order_and_caps() {
+    let mut gcode = GCodeIR::default();
+    for i in 0..10 {
+        gcode.commands.push(move_command(
+            Some(i as f32 + 1.0),
+            Some(1.0 + i as f32 * 0.1),
+            Some(i as f32 + 1.0),
+        ));
+    }
+    let (segments, warnings) = gcode_emit_silhouette_segments(
+        &gcode,
+        SilhouetteView::Front,
+        &schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]),
+        1.75,
+    );
+    assert_eq!(segments.len(), 10);
+    assert_eq!(warnings.len(), 9);
+    assert!(warnings[0].contains("z=1.000"));
+    assert!(warnings.last().is_some_and(|w| w.contains("+2 more")));
+}
+
+#[test]
+fn gcode_emit_z_containment_buckets_without_w4() {
+    let mut gcode = GCodeIR::default();
+    gcode.commands.extend([
+        move_command(Some(2.0), Some(0.2), Some(0.1)),
+        move_command(Some(4.0), Some(0.4), Some(0.2)),
+    ]);
+    let sched = schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let (image, warnings) = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0, 1],
+    )
+    .unwrap();
+    assert!(warnings.is_empty());
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_ne!(sample(&rgb, bounds, w, h, 1.0, 0.1), BACKGROUND);
+    assert_eq!(sample(&rgb, bounds, w, h, 1.0, 0.3), BACKGROUND);
+    assert_ne!(sample(&rgb, bounds, w, h, 4.0, 0.3), BACKGROUND);
+    assert_eq!(sample(&rgb, bounds, w, h, 4.0, 0.1), BACKGROUND);
+}
+
+#[test]
+fn gcode_emit_unselected_slab_draws_nothing_without_warning() {
+    let mut gcode = GCodeIR::default();
+    gcode.commands.extend([
+        move_command(Some(2.0), Some(0.1), Some(0.1)),
+        move_command(Some(4.0), Some(0.3), Some(0.2)),
+    ]);
+    let sched = schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let (image, warnings) = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0],
+    )
+    .unwrap();
+    assert!(warnings.is_empty());
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_ne!(sample(&rgb, bounds, w, h, 1.0, 0.1), BACKGROUND);
+    assert_eq!(sample(&rgb, bounds, w, h, 3.0, 0.3), BACKGROUND);
+
+    gcode
+        .commands
+        .push(move_command(Some(6.0), Some(0.7), Some(0.3)));
+    let (_, warnings) = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0, 1],
+    )
+    .unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("z=0.700"));
+}
+
+#[test]
+fn gcode_emit_out_of_slab_draws_nearest_with_w4() {
+    let mut gcode = GCodeIR::default();
+    gcode
+        .commands
+        .push(move_command(Some(4.0), Some(0.7), Some(0.1)));
+    let sched = schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let (image, warnings) = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0, 1],
+    )
+    .unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("z=0.700") && warnings[0].contains("nearest slab"));
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_ne!(sample(&rgb, bounds, w, h, 4.0, 0.3), BACKGROUND);
+}
+
+#[test]
+fn gcode_emit_tool_classes_track_toolchange() {
+    let mut gcode = GCodeIR::default();
+    gcode.commands.extend([
+        move_command(Some(6.0), Some(0.2), Some(0.1)),
+        GCodeCommand::ToolChange {
+            after_entity_index: u32::MAX,
+            from: 0,
+            to: 1,
+        },
+        move_command(Some(2.0), None, None),
+        move_command(Some(8.0), None, Some(0.2)),
+    ]);
+    let sched = schedule(&[(0, 0.0, 0.2)]);
+    let style = RenderStyle {
+        color_by: ColorBy::Tool,
+        ..RenderStyle::default()
+    };
+    let bounds = final_bounds();
+    let (image, _) = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+        1.75,
+        &[0],
+    )
+    .unwrap();
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 4.0, 0.1),
+        style.tool_colors.color(1)
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 1.0, 0.1),
+        style.tool_colors.color(0)
+    );
+}
+
+#[test]
+fn gcode_emit_silhouette_is_deterministic() {
+    let mut gcode = GCodeIR::default();
+    gcode
+        .commands
+        .push(move_command(Some(4.0), Some(0.7), Some(0.1)));
+    let sched = schedule(&[(0, 0.0, 0.2), (1, 0.2, 0.4)]);
+    let bounds = final_bounds();
+    let first = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0, 1],
+    )
+    .unwrap();
+    let second = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0, 1],
+    )
+    .unwrap();
+    assert_eq!(first.0.png_bytes, second.0.png_bytes);
+    assert_eq!(first.1, second.1);
+}
+
+#[test]
+fn gcode_emit_all_negative_deltas_fail_closed() {
+    let mut gcode = GCodeIR::default();
+    gcode
+        .commands
+        .push(move_command(Some(2.0), Some(0.2), Some(-1.0)));
+    let err = render_gcode_emit_silhouette(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        final_bounds(),
+        &schedule(&[(0, 0.0, 0.2)]),
+        &RenderStyle::default(),
+        1.75,
+        &[0],
+    )
+    .unwrap_err();
+    assert!(matches!(err, RenderError::MissingGeometryField { .. }));
 }
 
 #[test]

@@ -46,6 +46,7 @@ const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
     "Layer::SlicePostProcess",
     "PrePass::SupportGeometry",
     "PostPass::LayerFinalization",
+    "PostPass::GCodeEmit",
 ];
 
 /// Whether a declared schema version gets the strict typed `options` parse
@@ -1559,14 +1560,14 @@ fn run_postpass_taps(
     request: &slicer_runtime::CaptureRequest,
     support_tools: slicer_runtime::layer_executor::SupportToolSelection,
     shape: PostpassCaptureShape,
-) -> Result<slicer_runtime::CaptureOutput, VisualDebugError> {
+) -> Result<(slicer_runtime::CaptureOutput, Vec<(u32, f32)>), VisualDebugError> {
     for tap in &request.stage_ids {
         if !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
             return Err(VisualDebugError::UnsupportedTap(tap.clone()));
         }
     }
     if request.stage_ids.is_empty() {
-        return Ok(slicer_runtime::CaptureOutput::default());
+        return Ok((slicer_runtime::CaptureOutput::default(), Vec::new()));
     }
 
     // Tier 2: run every per-layer stage for every layer (no truncation —
@@ -1596,7 +1597,8 @@ fn run_postpass_taps(
     // Tier 4: postpass, with the read-only capture sink enabled so we get
     // back the finalized (travel-reconciled) layers and the initially
     // emitted GCodeIR without altering what would ordinarily be emitted.
-    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string());
+    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string())
+        .with_resolved_config((*ctx.default_resolved_config).clone());
     let serializer = slicer_runtime::DefaultGCodeSerializer::new();
     let mut capture = slicer_runtime::postpass::PostPassCapture::default();
     slicer_runtime::postpass::execute_postpass_with_capture(
@@ -1617,6 +1619,12 @@ fn run_postpass_taps(
         .iter()
         .map(|l| l.global_layer_index)
         .collect();
+    let mut finalized_schedule: Vec<(u32, f32)> = capture
+        .finalized_layers
+        .iter()
+        .map(|layer| (layer.global_layer_index, layer.z))
+        .collect();
+    finalized_schedule.sort_by_key(|(index, _)| *index);
     let applicable: std::collections::BTreeSet<u32> = request
         .layer_indices
         .iter()
@@ -1658,12 +1666,15 @@ fn run_postpass_taps(
     closure_stage_ids.extend(ctx.plan.postpass_stages.iter().map(|s| s.stage_id.clone()));
     closure_stage_ids.push("PostPass::GCodeSerialize".to_string());
 
-    Ok(slicer_runtime::CaptureOutput {
-        captures,
-        expansions: Vec::new(),
-        closure_stage_ids,
-        executed_layer_indices: real_layer_indices.into_iter().collect(),
-    })
+    Ok((
+        slicer_runtime::CaptureOutput {
+            captures,
+            expansions: Vec::new(),
+            closure_stage_ids,
+            executed_layer_indices: real_layer_indices.into_iter().collect(),
+        },
+        finalized_schedule,
+    ))
 }
 
 /// Canonical stable string name for a [`slicer_ir::PaintSemantic`], mirroring
@@ -2018,12 +2029,13 @@ fn run_model_source(
     }
 
     let mut postpass_output = slicer_runtime::CaptureOutput::default();
+    let mut postpass_schedule: Vec<(u32, f32)> = Vec::new();
     if !postpass_tap_ids.is_empty() {
         let capture_request = slicer_runtime::CaptureRequest {
             stage_ids: postpass_tap_ids,
             layer_indices: layer_indices.clone(),
         };
-        postpass_output = run_postpass_taps(
+        (postpass_output, postpass_schedule) = run_postpass_taps(
             &mut ctx,
             &capture_request,
             support_tools,
@@ -2099,7 +2111,19 @@ fn run_model_source(
         // "plate"` has no silhouette meaning (a bed polygon carries no Z), so
         // silhouette framing is always model-wide.
         let mut viewport_schedule = slicer_runtime::SilhouetteSlabSchedule::default();
-        if let Some(lp) = ctx.blackboard.layer_plan() {
+        if !postpass_schedule.is_empty() {
+            let mut previous_z = 0.0f32;
+            for (index, z) in &postpass_schedule {
+                viewport_schedule
+                    .slabs
+                    .push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: *index,
+                        z_bottom: previous_z,
+                        z_top: *z,
+                    });
+                previous_z = *z;
+            }
+        } else if let Some(lp) = ctx.blackboard.layer_plan() {
             let mut previous_z = 0.0f32;
             for gl in &lp.global_layers {
                 viewport_schedule
@@ -2146,33 +2170,31 @@ fn run_model_source(
         let legend = legend_version_for(&req.schema_version).to_string();
         for ((_, tap, is_tool), group) in groups {
             let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
-            if let Some(finalized) = group.iter().find_map(|capture| match &capture.ir {
-                slicer_runtime::CapturedIr::LayerFinalization(layers) => Some(layers),
-                _ => None,
-            }) {
-                let mut layers = finalized.iter().collect::<Vec<_>>();
-                layers.sort_by_key(|layer| layer.global_layer_index);
+            let mut previous_z = 0.0f32;
+            for (index, z) in &postpass_schedule {
+                schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                    index: *index,
+                    z_bottom: previous_z,
+                    z_top: *z,
+                });
+                previous_z = *z;
+            }
+            if schedule.slabs.is_empty() {
                 let mut previous_z = 0.0f32;
-                for layer in layers {
-                    schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
-                        index: layer.global_layer_index,
-                        z_bottom: previous_z,
-                        z_top: layer.z,
-                    });
-                    previous_z = layer.z;
-                }
-            } else if let Some(lp) = ctx.blackboard.layer_plan() {
-                let mut previous_z = 0.0f32;
-                for gl in &lp.global_layers {
-                    schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
-                        index: gl.index,
-                        z_bottom: previous_z,
-                        z_top: gl.z,
-                    });
-                    previous_z = gl.z;
+                if let Some(lp) = ctx.blackboard.layer_plan() {
+                    for gl in &lp.global_layers {
+                        schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                            index: gl.index,
+                            z_bottom: previous_z,
+                            z_top: gl.z,
+                        });
+                        previous_z = gl.z;
+                    }
                 }
             }
             let selected: std::collections::BTreeSet<u32> = layer_indices.iter().copied().collect();
+            let full_schedule = schedule;
+            let mut schedule = full_schedule.clone();
             schedule.slabs.retain(|slab| selected.contains(&slab.index));
             let indices: Vec<i64> = schedule
                 .slabs
@@ -2180,6 +2202,7 @@ fn run_model_source(
                 .filter(|slab| selected.contains(&slab.index))
                 .map(|slab| i64::from(slab.index))
                 .collect();
+            let selected_slabs: Vec<u32> = indices.iter().map(|index| *index as u32).collect();
             let tool_color_source = if is_tool {
                 req.visualizations.iter().find_map(|viz| {
                     let opts = effective_visualization_options(&req.schema_version, viz);
@@ -2208,14 +2231,36 @@ fn run_model_source(
                 },
                 tool_colors,
             };
-            let (rendered, warnings) = slicer_runtime::render_silhouette_composite_styled(
-                &group,
-                view,
-                req.resolution_scale,
-                viewport_bounds,
-                &schedule,
-                &render_style,
-            )
+            let (rendered, warnings) = if tap == "PostPass::GCodeEmit" {
+                let gcode = group
+                    .iter()
+                    .find_map(|capture| match &capture.ir {
+                        slicer_runtime::CapturedIr::GCodeEmit(gcode) => Some(gcode),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        VisualDebugError::RenderFailed("missing GCodeEmit capture".into())
+                    })?;
+                slicer_runtime::render_gcode_emit_silhouette(
+                    gcode,
+                    view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                    &full_schedule,
+                    &render_style,
+                    ctx.default_resolved_config.filament_diameter,
+                    &selected_slabs,
+                )
+            } else {
+                slicer_runtime::render_silhouette_composite_styled(
+                    &group,
+                    view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                    &schedule,
+                    &render_style,
+                )
+            }
             .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
             let file_name = format!(
                 "{}_silhouette_{}{}.png",
