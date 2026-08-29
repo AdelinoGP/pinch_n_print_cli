@@ -28,6 +28,7 @@
 //! [`palette`] is a fixed, request-independent set of RGB colors keyed by
 //! extrusion role / overlay kind. Never derived from request input (AC-4).
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use png::{BitDepth, ColorType, Encoder};
@@ -1791,14 +1792,18 @@ pub fn collect_overlay_events(
             .regions
             .iter()
             .filter_map(seam_marker_point)
-            .map(|(x, y)| OverlayEvent::Seam { x, y })
+            .map(|(x, y)| OverlayEvent::Seam { x, y, z: None })
             .collect()),
         CapturedIr::SeamPlan(sp) if kind == OverlayKind::Seams => Ok(sp
             .entries
             .iter()
             .map(|entry| {
                 let p = entry.chosen_candidate.point;
-                OverlayEvent::Seam { x: p.x, y: p.y }
+                OverlayEvent::Seam {
+                    x: p.x,
+                    y: p.y,
+                    z: None,
+                }
             })
             .collect()),
         CapturedIr::GCodeEmit(g) => match kind {
@@ -2142,7 +2147,7 @@ fn draw_overlay_events(canvas: &mut Canvas, events: &[OverlayEvent], glyph_half:
                     );
                 }
             }
-            OverlayEvent::Seam { x, y }
+            OverlayEvent::Seam { x, y, .. }
             | OverlayEvent::Retraction { x, y, .. }
             | OverlayEvent::Unretraction { x, y, .. }
             | OverlayEvent::ZHop { x, y, .. }
@@ -2718,6 +2723,33 @@ pub fn render_gcode_emit_silhouette(
     filament_diameter_mm: f32,
     selected_slabs: &[u32],
 ) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_gcode_emit_silhouette_seamed(
+        g,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        style,
+        filament_diameter_mm,
+        selected_slabs,
+        None,
+    )
+    .map(|(image, _events, warnings)| (image, warnings))
+}
+
+/// Render the silhouette recovered from final G-code emission, optionally
+/// compositing seam glyphs onto the same canvas before PNG encoding.
+pub fn render_gcode_emit_silhouette_seamed(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    filament_diameter_mm: f32,
+    selected_slabs: &[u32],
+    seams: Option<(&slicer_ir::SeamPlanIR, &BTreeSet<u32>)>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
     if !(1..=3).contains(&resolution_scale) {
         return Err(RenderError::UnsupportedResolutionScale {
             scale: resolution_scale,
@@ -2801,12 +2833,20 @@ pub fn render_gcode_emit_silhouette(
     let height = BASE_DIMENSION_PX * resolution_scale;
     let mut canvas = Canvas::new(width, height, viewport);
     draw_shapes(&mut canvas, &shapes);
+    let events = seams.map_or_else(Vec::new, |(plan, layers)| {
+        silhouette_seam_events(plan, view, layers)
+    });
+    if seams.is_some() {
+        let glyph_half = style::GLYPH_HALF_PX * i64::from(resolution_scale);
+        draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    }
     Ok((
         RenderedImage {
             png_bytes: encode_png(width, height, &canvas.buf),
             width,
             height,
         },
+        events,
         warnings,
     ))
 }
@@ -3129,6 +3169,10 @@ pub fn render_silhouette_composite(
 }
 
 /// Render a silhouette composite using the requested role or tool coloring.
+///
+/// Thin wrapper over [`render_silhouette_composite_seamed`] with
+/// `seams: None` — preserves this function's original 6-arg signature and
+/// byte-exact output (packet 251's delegation-equivalence contract).
 pub fn render_silhouette_composite_styled(
     captures: &[StageCapture],
     view: SilhouetteView,
@@ -3137,6 +3181,175 @@ pub fn render_silhouette_composite_styled(
     schedule: &SilhouetteSlabSchedule,
     style: &RenderStyle,
 ) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_silhouette_composite_seamed(
+        captures,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        style,
+        None,
+    )
+    .map(|(image, _events, warnings)| (image, warnings))
+}
+
+/// The silhouette seam events for one render: every `SeamPlanIR` entry whose
+/// `region_key.global_layer_index` is in `rendered_layers`, in `entries`
+/// source order (no map iteration, no re-sorting).
+///
+/// Each event carries BOTH world-space millimeter coordinates of the entry's
+/// `chosen_candidate.point` plus its Z, so the event is self-describing
+/// independent of view: `x: p.x, y: p.y, z: Some(p.z)`. The per-view
+/// projection (`x` for [`SilhouetteView::Front`], `y` for
+/// [`SilhouetteView::Side`], against `z`) is applied by the glyph pass, not
+/// here — hence `view` is part of the signature for call-site clarity but is
+/// not consulted while building the events.
+#[must_use]
+pub fn silhouette_seam_events(
+    seam_plan: &slicer_ir::SeamPlanIR,
+    _view: SilhouetteView,
+    rendered_layers: &BTreeSet<u32>,
+) -> Vec<OverlayEvent> {
+    seam_plan
+        .entries
+        .iter()
+        .filter(|entry| rendered_layers.contains(&entry.region_key.global_layer_index))
+        .map(|entry| {
+            let p = entry.chosen_candidate.point;
+            OverlayEvent::Seam {
+                x: p.x,
+                y: p.y,
+                z: Some(p.z),
+            }
+        })
+        .collect()
+}
+
+/// Draw the seam glyphs of a silhouette render: one filled circle per event,
+/// in event order, after every rectangle. The glyph's in-image anchor is the
+/// event's per-view horizontal coordinate against its Z, projected through
+/// the canvas' shared [`Projector`]; its radius is
+/// [`style::GLYPH_HALF_PX`] scaled by the raster's `resolution_scale`.
+fn draw_silhouette_seam_glyphs(
+    canvas: &mut Canvas,
+    view: SilhouetteView,
+    events: &[OverlayEvent],
+    glyph_half: i64,
+) {
+    for event in events {
+        if let OverlayEvent::Seam { x, y, z: Some(z) } = event {
+            canvas.glyph(
+                GlyphKind::Circle,
+                (view.axis((*x, *y)), *z),
+                glyph_half,
+                style::overlay_palette::SEAM,
+            );
+        }
+    }
+}
+
+/// Render the isolated seam overlay for one silhouette capture group: the
+/// group's role-mode rectangles built by the same packet-247 composite
+/// internals, recolored [`style::overlay_palette::FAINT_BASE`] (the
+/// [`recolor_shapes`] precedent), then the seam glyphs over them.
+///
+/// Returns the image, the exact [`OverlayEvent`]s the glyphs were drawn from
+/// ([`silhouette_seam_events`], in `SeamPlanIR.entries` source order), and
+/// the group's warnings. Fails closed exactly like the composite path when
+/// the whole group yields zero rectangles.
+pub fn render_silhouette_seam_overlay(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    seam_plan: &slicer_ir::SeamPlanIR,
+    rendered_layers: &BTreeSet<u32>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
+    let (mut shapes, warnings) = silhouette_composite_shapes(
+        captures,
+        view,
+        resolution_scale,
+        schedule,
+        &RenderStyle::default(),
+    )?;
+    recolor_shapes(&mut shapes, style::overlay_palette::FAINT_BASE);
+    let events = silhouette_seam_events(seam_plan, view, rendered_layers);
+
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let glyph_half = style::GLYPH_HALF_PX * i64::from(resolution_scale);
+    draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    let png_bytes = encode_png(width, height, &canvas.buf);
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        events,
+        warnings,
+    ))
+}
+
+/// Render a silhouette composite using the requested role or tool coloring,
+/// optionally compositing seam glyphs onto the same canvas BEFORE PNG
+/// encoding.
+///
+/// With `seams: Some((seam_plan, rendered_layers))`, the filtered,
+/// source-ordered [`silhouette_seam_events`] are drawn as seam glyphs after
+/// all rectangles and returned alongside the image and warnings. With
+/// `seams: None` the output is byte-equivalent to
+/// [`render_silhouette_composite_styled`] (which delegates here) and the
+/// event list is empty.
+pub fn render_silhouette_composite_seamed(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    seams: Option<(&slicer_ir::SeamPlanIR, &BTreeSet<u32>)>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
+    let (shapes, warnings) =
+        silhouette_composite_shapes(captures, view, resolution_scale, schedule, style)?;
+
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let events = seams.map_or_else(Vec::new, |(plan, layers)| {
+        silhouette_seam_events(plan, view, layers)
+    });
+    if seams.is_some() {
+        let glyph_half = crate::visual_debug_style::GLYPH_HALF_PX * i64::from(resolution_scale);
+        draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    }
+    let png_bytes = encode_png(width, height, &canvas.buf);
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        events,
+        warnings,
+    ))
+}
+
+/// Build the composite's role/tool-colored rectangle shapes and the group's
+/// warnings — the whole packet-247 composite pipeline up to (but excluding)
+/// rasterization, shared by the plain composite, the seamed composite, and
+/// the isolated seam overlay.
+fn silhouette_composite_shapes(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+) -> Result<(Vec<Shape>, Vec<String>), RenderError> {
     if !(1..=3).contains(&resolution_scale) {
         return Err(RenderError::UnsupportedResolutionScale {
             scale: resolution_scale,
@@ -3275,17 +3488,5 @@ pub fn render_silhouette_composite_styled(
         warnings.push(silhouette_occlusion_warning(occluded_layers.len()));
     }
 
-    let width = BASE_DIMENSION_PX * resolution_scale;
-    let height = BASE_DIMENSION_PX * resolution_scale;
-    let mut canvas = Canvas::new(width, height, viewport);
-    draw_shapes(&mut canvas, &shapes);
-    let png_bytes = encode_png(width, height, &canvas.buf);
-    Ok((
-        RenderedImage {
-            png_bytes,
-            width,
-            height,
-        },
-        warnings,
-    ))
+    Ok((shapes, warnings))
 }

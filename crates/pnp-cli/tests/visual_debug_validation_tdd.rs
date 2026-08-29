@@ -910,7 +910,11 @@ fn tool_color_source_rules_inherited_on_silhouette() {
 // ─────────────────────────── packet 248 AC-N3 ───────────────────────────────
 
 #[test]
-fn gcode_silhouette_overlay_rejections_unchanged() {
+fn gcode_seam_overlay_forms_rejected() {
+    // Packet 251 (R10): final G-code carries no seam marker, so EVERY
+    // gcode-source seam-overlay form is unsourceable and rejected by name —
+    // the legacy `diagnostic_overlay` arm (unchanged from packet 248) plus
+    // both new silhouette forms (isolated `overlays` and composited).
     let tmp = TempDir::new().expect("tempdir");
 
     // (a) R10 is unchanged: the standalone parser cannot source seams for a
@@ -940,9 +944,8 @@ fn gcode_silhouette_overlay_rejections_unchanged() {
         other => panic!("expected OverlayUnsupportedOnGcode for 'seams', got {other:?}"),
     }
 
-    // (b) `overlays` still applies to `diagnostic_overlay` only. A
-    // silhouette carrying it is rejected — silhouette seam overlays are
-    // packet 251's, and must never be silently ignored here.
+    // (b) A gcode silhouette asking for isolated seam overlay images hits the
+    // same named rejection — the parser cannot source them in either form.
     let output = tmp.path().join("bundle-silhouette");
     let req = gcode_silhouette_request(
         tmp.path().join("nonexistent.gcode"),
@@ -954,12 +957,46 @@ fn gcode_silhouette_overlay_rejections_unchanged() {
     let err = expect_validation_error(
         req,
         &output,
-        "overlays on a silhouette must fail closed, not be ignored",
+        "a gcode silhouette seam overlay must fail closed, not be ignored",
     );
-    assert!(
-        matches!(err, ValidationError::InvalidOverlays { .. }),
-        "expected InvalidOverlays for overlays on a silhouette, got {err:?}"
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
+        }
+        other => panic!(
+            "expected OverlayUnsupportedOnGcode for silhouette overlays ['seams'], got {other:?}"
+        ),
+    }
+
+    // (c) The composited form is equally unsourceable on a gcode source.
+    let output = tmp.path().join("bundle-silhouette-composited");
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
     );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a gcode silhouette composited seam overlay must fail closed, not be ignored",
+    );
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
+        }
+        other => panic!(
+            "expected OverlayUnsupportedOnGcode for silhouette composited_overlays ['seams'], \
+             got {other:?}"
+        ),
+    }
 }
 
 // ─────────────────────────── packet 248 AC-N5 ───────────────────────────────
@@ -1025,36 +1062,6 @@ fn gcode_silhouette_plate_frame_rejected() {
     );
 }
 
-// ─────────────────────────────── AC-N7 ──────────────────────────────────────
-
-#[test]
-fn composited_overlays_not_accepted_by_247() {
-    // `composited_overlays` is a later packet's option name. The strict
-    // typed options parse (`deny_unknown_fields`) must reject it now, so it
-    // can never be silently ignored on a bundle this packet renders.
-    let tmp = TempDir::new().expect("tempdir");
-    let output = tmp.path().join("bundle");
-    let req = silhouette_model_request(
-        "1.2.0",
-        vec![detail_viz(
-            "silhouette",
-            serde_json::json!({ "composited_overlays": ["seams"] }),
-        )],
-        slice_tap(),
-    );
-
-    let err = expect_validation_error(
-        req,
-        &output,
-        "an option this packet does not implement must fail closed, not be ignored",
-    );
-    assert!(
-        matches!(&err, ValidationError::InvalidVisualizationOptions { kind, .. }
-            if kind == "silhouette"),
-        "expected InvalidVisualizationOptions for the silhouette spec, got {err:?}"
-    );
-}
-
 // ─────────────────────────────── AC-N9 ──────────────────────────────────────
 
 #[test]
@@ -1110,5 +1117,304 @@ fn unknown_kind_still_rejected_under_1_2() {
         matches!(&err, ValidationError::UnknownVisualizationKind { kind }
             if kind == "totally_bogus_visualization"),
         "expected UnknownVisualizationKind under 1.2.0, got {err:?}"
+    );
+}
+
+// ───────────── packet 251: silhouette seam overlay validation (R9/R10) ──────
+
+// ─────────────────────────────── AC-N1 ──────────────────────────────────────
+
+#[test]
+fn silhouette_overlays_reject_non_seam_kinds() {
+    // A silhouette's only overlayable event class is seams. BOTH overlay
+    // options accept `"seams"` and nothing else; a non-seam member fails
+    // closed with a message naming `seams` as the only silhouette overlay
+    // kind.
+    for options in [
+        serde_json::json!({ "overlays": ["travel"] }),
+        serde_json::json!({ "composited_overlays": ["travel"] }),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz("silhouette", options.clone())],
+            slice_tap(),
+        );
+
+        let err = expect_validation_error(
+            req,
+            &output,
+            "a non-seam silhouette overlay must fail closed, not be ignored",
+        );
+        match &err {
+            ValidationError::InvalidOverlays { message } => {
+                assert!(
+                    message.contains("seams"),
+                    "the rejection must name 'seams' as the only silhouette overlay kind; \
+                     got: {message}"
+                );
+            }
+            other => panic!("expected InvalidOverlays for options {options}, got {other:?}"),
+        }
+    }
+
+    // The legal form passes validation outright: a model-source silhouette
+    // with seam overlays (either form) must fail only later, on the
+    // deliberately nonexistent model path — never in `validate_request`.
+    for options in [
+        serde_json::json!({ "overlays": ["seams"] }),
+        serde_json::json!({ "composited_overlays": ["seams"] }),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz("silhouette", options.clone())],
+            slice_tap(),
+        );
+
+        let err = run_visual_debug(req, &output, false)
+            .expect_err("the fixture's model path deliberately does not exist");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "options {options}: a silhouette seam overlay must be accepted by validation, \
+             got {err:?}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N2 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_rejected_on_non_silhouette_kind() {
+    // `composited_overlays` composites seam glyphs onto a silhouette image;
+    // on any other kind it is a named validation error (never a parse or
+    // unknown-key failure).
+    for kind in ["filled_areas", "diagnostic_overlay"] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz(
+                kind,
+                serde_json::json!({ "composited_overlays": ["seams"] }),
+            )],
+            slice_tap(),
+        );
+
+        let err = expect_validation_error(
+            req,
+            &output,
+            "composited_overlays on a non-silhouette kind must fail closed",
+        );
+        match &err {
+            ValidationError::InvalidOverlays { message } => {
+                assert!(
+                    message.contains("silhouette"),
+                    "the rejection must state the silhouette-only rule; got: {message}"
+                );
+            }
+            other => {
+                panic!(
+                    "expected InvalidOverlays for composited_overlays on '{kind}', got {other:?}"
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────── AC-N4 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_require_schema_1_2() {
+    // (a) Typed 1.1.0 path: `#[serde(default)]` now lets the key PARSE under
+    // 1.1.0, so validation itself must gate it. `filled_areas` keeps the
+    // silhouette-kind gate (SilhouetteRequiresSchema12) out of the way, so
+    // only the schema gate under test can fire.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle-1-1");
+    let req = silhouette_model_request(
+        "1.1.0",
+        vec![detail_viz(
+            "filled_areas",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "composited_overlays under a declared 1.1.0 schema must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("1.2.0"),
+                "the rejection must name the required schema version; got: {message}"
+            );
+        }
+        other => {
+            panic!("expected InvalidOverlays for composited_overlays under 1.1.0, got {other:?}")
+        }
+    }
+
+    // (b) Loose 1.0.0 path: the options object is read loosely, so the
+    // stray-key probe (the `view` precedent) must catch `composited_overlays`
+    // and name 1.2.0 — never a generic unknown-option or
+    // OptionRequiresSchema11 error. This is the falsifying arm: a gate that
+    // checks only the typed 1.1.0 parse and forgets the loose 1.0.0 loop
+    // silently accepts this request, and this test must catch that.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle-1-0");
+    let req = silhouette_model_request(
+        "1.0.0",
+        vec![detail_viz(
+            "filled_areas",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a composited_overlays key under a declared 1.0.0 schema must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("1.2.0"),
+                "the rejection must name the required schema version; got: {message}"
+            );
+        }
+        other => panic!(
+            "expected InvalidOverlays (never OptionRequiresSchema11 or an unknown-option \
+             error) for a 1.0.0 composited_overlays stray key, got {other:?}"
+        ),
+    }
+}
+
+// ─────────────────────────────── AC-N5 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_empty_list_rejected() {
+    // Mirrors the existing empty-`overlays` rule: an empty list names no
+    // overlay and would silently render the base image.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "composited_overlays": [] }),
+        )],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "an empty composited_overlays list must fail closed, not render the base image",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidOverlays { .. }),
+        "expected InvalidOverlays for an empty composited_overlays list, got {err:?}"
+    );
+}
+
+// ─────────────────────────────── AC-N6 ──────────────────────────────────────
+
+#[test]
+fn conflicting_overlay_options_in_one_group_rejected() {
+    // One composite image is rendered per (tap, view, color mode) group, so
+    // two silhouette specs resolving to the same group must agree on BOTH
+    // overlay options (absent = absent; present-with-same-members = agree) —
+    // otherwise whichever spec the grouping happened to keep would silently
+    // win.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz(
+                "silhouette",
+                serde_json::json!({ "composited_overlays": ["seams"] }),
+            ),
+        ],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "two silhouette specs in one group disagreeing on overlay options must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("group"),
+                "the rejection must state the conflicting-group rule; got: {message}"
+            );
+        }
+        other => panic!("expected InvalidOverlays for a conflicting group, got {other:?}"),
+    }
+
+    // Agreement within a group is fine (two identical specs still collapse
+    // into one image), and disagreement ACROSS groups is fine (distinct
+    // images): both requests must pass validation and fail only on the
+    // deliberately nonexistent model path.
+    for visualizations in [
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+        ],
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz(
+                "silhouette",
+                serde_json::json!({ "color_by": "tool", "composited_overlays": ["seams"] }),
+            ),
+        ],
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request("1.2.0", visualizations, slice_tap());
+        let err = run_visual_debug(req, &output, false)
+            .expect_err("the fixture's model path deliberately does not exist");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "agreeing specs (or specs in distinct groups) must pass validation, got {err:?}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N7 ──────────────────────────────────────
+
+#[test]
+fn unknown_option_keys_still_rejected() {
+    // `deny_unknown_fields` loosens for exactly one new field
+    // (`composited_overlays`); a typo'd key still fails closed via the typed
+    // options parse, never silently ignored.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "compositedoverlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "an unknown option key must fail closed, not be silently ignored",
+    );
+    assert!(
+        matches!(&err, ValidationError::InvalidVisualizationOptions { kind, .. }
+            if kind == "silhouette"),
+        "expected InvalidVisualizationOptions for the silhouette spec, got {err:?}"
     );
 }

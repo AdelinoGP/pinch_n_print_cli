@@ -1654,7 +1654,7 @@ fn render_overlay(
                     );
                 }
             }
-            OverlayEvent::Seam { x, y }
+            OverlayEvent::Seam { x, y, .. }
             | OverlayEvent::Retraction { x, y, .. }
             | OverlayEvent::Unretraction { x, y, .. }
             | OverlayEvent::ZHop { x, y, .. }

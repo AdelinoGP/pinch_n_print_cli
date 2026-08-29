@@ -156,17 +156,66 @@ side as two separate bundles. `frame: "plate"` plus silhouette is also rejected
 
 Supported in this release: `Layer::Slice`, `PrePass::PaintSegmentation`,
 `Layer::PaintRegionAnnotation`, `Layer::SlicePostProcess` (all `CapturedIr::Slice`),
-`PrePass::SupportGeometry`, and `PostPass::LayerFinalization`. Every other tap
-is rejected with a named reason rather than rendered empty — including
-`Layer::Perimeters` and the other per-layer arena taps, `PrePass::MeshAnalysis`,
-`PrePass::SeamPlanning`, `PrePass::RegionMapping`, and
-`PrePass::OverhangAnnotation`. `PostPass::GCodeEmit` remains rejected; packet
-250 owns G-code-emit silhouettes.
+`PrePass::SupportGeometry`, `PostPass::LayerFinalization`, and
+`PostPass::GCodeEmit`. Every other tap is rejected with a named reason rather
+than rendered empty — including `Layer::Perimeters` and the other per-layer
+arena taps, `PrePass::MeshAnalysis`, `PrePass::SeamPlanning`,
+`PrePass::RegionMapping`, and `PrePass::OverhangAnnotation`.
 
-One further rejection is **interim**, expected to lift in a later release:
-`options.composited_overlays`. `color_by: "tool"` is supported; see "Tool-Colored
+`options.composited_overlays` is now **accepted** in schema 1.2.0 for seam
+overlays — see "Seam overlays" below. `color_by: "tool"` is supported; see "Tool-Colored
 Silhouettes" below. Silhouette on a standalone **G-code source** is also
 supported — see "Standalone G-code Silhouettes" below.
+
+### Seam overlays
+
+Seams are Z-sensitive (seam towers, layer-to-layer drift), so side views can
+draw the committed seam plan as glyphs. Seams are **model-source only** and come
+straight from the blackboard's committed `SeamPlanIR` (`chosen_candidate.point`,
+in mm) — a silhouette never re-derives or guesses a seam, and `SeamPlanIR`
+remains rejected as a silhouette *tap*. Two forms exist, both requested through
+the silhouette spec's `options`:
+
+- **Isolated overlay** — `options: {"overlays": ["seams"]}`. Renders one extra
+  image per (tap, view) named
+  `images/{sanitized_tap}_silhouette_{view}_overlay_seams.png` (for example
+  `images/Layer__Slice_silhouette_front_overlay_seams.png`), emitted once
+  regardless of `color_by` (the base is a uniform faint gray, `FAINT_BASE`
+  `[210,210,210]`, so role and tool groups share it). The glyphs are the
+  legend-1.1.0 red filled circles (`[220,0,0]`) at the seams' projected
+  (horizontal, z) positions, and every rendered seam is mirrored into the
+  entry's `overlay_events`.
+- **Composited overlay** — `options: {"composited_overlays": ["seams"]}`.
+  Draws the same glyphs **onto the colored silhouette base image itself** — no
+  extra file. The entry carries `"composited_overlays": ["seams"]` plus the same
+  `overlay_events` mirror. A spec may carry **both** options; the isolated
+  image and the composited base then coexist without filename collision.
+
+Seam events in `overlay_events` carry a `z` field (mm) on silhouette renders.
+This field is additive: schema 1.0/1.1 output never contains `z` on seam
+events, and the top-down isolated-overlay seam events stay `z`-less. Only
+seams whose layer was rendered draw — events are filtered by the
+scheduled/rendered layer set, filtered in the seam plan's source order, and
+`chosen_candidate` is the only position that draws.
+
+**R9 validation (all named errors, never silent tolerance):** `overlays` and
+`composited_overlays` on a silhouette accept only `"seams"`; travel, retraction,
+z-hop and tool-change glyphs have no silhouette story (they need their own Z
+story) and are rejected. `composited_overlays` is silhouette-only and
+model-source-only — the gcode source rejects both seam forms with
+`OverlayUnsupportedOnGcode`, and other Kinds reject `composited_overlays`. It is
+1.2.0-only: a declared 1.1.0 (or a stray key under 1.0.0) request is rejected
+naming `"1.2.0"`, and an empty list is rejected. Silhouette specs that resolve
+to the same (tap, view, color mode) must agree on both overlay options —
+conflicting demands for one base filename are rejected. A seams request whose
+pipeline committed no seam plan fails closed with an error naming the seam plan
+— never a silently glyph-less image.
+
+**Visibility caveat:** the fixed red glyph can blend into similar hues in a
+tool-colored palette (glyph color is identical across role and tool palettes by
+design — the legend does not fork per palette). The isolated form is the
+legibility escape hatch. A seam above a sub-pixel-height slab band can also
+appear to float over the background; its Z is real and honest.
 
 ### Postpass Silhouettes And The Single Whole-Print Capture
 

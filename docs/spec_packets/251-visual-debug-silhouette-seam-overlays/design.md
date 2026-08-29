@@ -57,7 +57,7 @@ Justification for exceeding three primaries: the `Seam.z` addition mechanically 
 ## Read-Only Context
 
 - `crates/slicer-ir/src/slice_ir.rs` — `SeamPlanIR`/`SeamPlanEntry`/`SeamPosition`/`Point3WithWidth`/`RegionKey` shapes only — never edited.
-- `crates/slicer-runtime/src/layer_executor.rs` — the `blackboard.seam_plan()` accessor and `TapSourceUnavailable` precedent only — never edited.
+- `crates/slicer-runtime/src/blackboard.rs` — the `seam_plan()` accessor (correction during implementation: not `layer_executor.rs` as originally written) and the `TapSourceUnavailable` precedent — never edited.
 - `crates/pnp-cli/tests/visual_debug_overlays_tdd.rs` — event-assertion patterns; edit only if a pin conflicts (its assertions are key-presence-based, tolerant of the additive field — verified; the suite is a required regression run regardless).
 - Packet 247/248/249/250 spec/design files — export contracts; never edit those directories.
 

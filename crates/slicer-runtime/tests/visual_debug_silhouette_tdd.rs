@@ -17,18 +17,20 @@
 
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, Point2,
-    Point3WithWidth, Polygon, PrintEntity, RegionKey, ResolvedConfig, SliceIR, SlicedRegion,
-    SupportGeometryIR, SupportGeometryKey, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
-    SupportPlanRoleRegion,
+    Point3WithWidth, Polygon, PrintEntity, RegionKey, ResolvedConfig, SeamPlanEntry, SeamPlanIR,
+    SeamPosition, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey, SupportPlanEntry,
+    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
 };
 use slicer_runtime::{
     compute_silhouette_viewport_bounds, gcode_emit_silhouette_segments,
-    render_gcode_emit_silhouette, render_silhouette_composite, render_silhouette_composite_styled,
-    union_silhouette_intervals, CapturedIr, ColorBy, DefaultGCodeEmitter, GCodeEmitter, Projector,
-    RenderError, RenderStyle, SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView,
-    StageCapture, ToolColors, ViewportBoundsMm,
+    render_gcode_emit_silhouette, render_gcode_emit_silhouette_seamed, render_silhouette_composite,
+    render_silhouette_composite_seamed, render_silhouette_composite_styled,
+    render_silhouette_seam_overlay, silhouette_seam_events, union_silhouette_intervals, CapturedIr,
+    ColorBy, DefaultGCodeEmitter, GCodeEmitter, OverlayEvent, Projector, RenderError, RenderStyle,
+    SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView, StageCapture, ToolColors,
+    ViewportBoundsMm,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 const BACKGROUND: [u8; 3] = [255, 255, 255];
 
@@ -906,6 +908,45 @@ fn gcode_emit_z_containment_buckets_without_w4() {
 }
 
 #[test]
+fn gcode_emit_seamed_draws_filtered_seam_glyphs() {
+    let mut gcode = GCodeIR::default();
+    gcode
+        .commands
+        .push(move_command(Some(2.0), Some(0.1), Some(0.1)));
+    let sched = schedule(&[(0, 0.0, 0.2)]);
+    let bounds = final_bounds();
+    let seam_plan = SeamPlanIR {
+        entries: vec![seam_entry(0, 2.0, 4.0, 0.1), seam_entry(1, 8.0, 4.0, 0.1)],
+        ..SeamPlanIR::default()
+    };
+    let rendered_layers: BTreeSet<u32> = [0].into_iter().collect();
+    let (image, events, warnings) = render_gcode_emit_silhouette_seamed(
+        &gcode,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &RenderStyle::default(),
+        1.75,
+        &[0],
+        Some((&seam_plan, &rendered_layers)),
+    )
+    .expect("a populated GCodeEmit silhouette with seams must render");
+    assert!(warnings.is_empty());
+    assert_eq!(
+        events,
+        vec![OverlayEvent::Seam {
+            x: 2.0,
+            y: 4.0,
+            z: Some(0.1)
+        }]
+    );
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(sample(&rgb, bounds, w, h, 2.0, 0.1), seam_color());
+    assert_ne!(sample(&rgb, bounds, w, h, 8.0, 0.1), seam_color());
+}
+
+#[test]
 fn gcode_emit_unselected_slab_draws_nothing_without_warning() {
     let mut gcode = GCodeIR::default();
     gcode.commands.extend([
@@ -1320,4 +1361,267 @@ fn styled_composite_is_deterministic_and_default_equivalent() {
     assert_eq!(first.1, second.1);
     assert_eq!(first.0.png_bytes, plain.0.png_bytes);
     assert_eq!(first.1, plain.1);
+}
+
+// ============================================================================
+// Packet 251, Step 3 - seam glyphs on silhouettes.
+//
+// - `seam_glyphs_filter_by_rendered_layers_and_carry_source_coords` (AC-2):
+//   only SeamPlanIR entries whose `region_key.global_layer_index` is in the
+//   rendered-layer set produce an event/glyph, in entries source order, each
+//   event carrying the source point's world coordinates verbatim.
+// - `seam_overlay_render_is_deterministic` (AC-6): two isolated seam-overlay
+//   renders are byte-identical with equal event lists, and the composited
+//   form with `seams: None` is byte-equivalent to the frozen styled entry
+//   point (delegation equivalence).
+// ============================================================================
+
+fn seam_color() -> [u8; 3] {
+    slicer_runtime::visual_debug_style::overlay_palette::SEAM
+}
+
+fn faint_base_color() -> [u8; 3] {
+    slicer_runtime::visual_debug_style::overlay_palette::FAINT_BASE
+}
+
+fn seam_entry(global_layer_index: u32, x: f32, y: f32, z: f32) -> SeamPlanEntry {
+    SeamPlanEntry {
+        region_key: RegionKey {
+            global_layer_index,
+            object_id: "obj-0".to_string(),
+            ..RegionKey::default()
+        },
+        chosen_candidate: SeamPosition {
+            point: Point3WithWidth {
+                x,
+                y,
+                z,
+                ..Point3WithWidth::default()
+            },
+            ..SeamPosition::default()
+        },
+        ..SeamPlanEntry::default()
+    }
+}
+
+/// The AC-2 fixture: seams on layers 0, 1, 1, 2 in that source order; the
+/// capture group and schedule cover only layer 1.
+fn seam_fixture() -> (Vec<StageCapture>, SilhouetteSlabSchedule, SeamPlanIR) {
+    let captures = vec![slice_capture(
+        1,
+        0.4,
+        vec![region(0.2, vec![rect_expolygon(0.0, 10.0, 0.0, 5.0)])],
+    )];
+    let sched = schedule(&[(1, 0.2, 0.4)]);
+    let seam_plan = SeamPlanIR {
+        entries: vec![
+            seam_entry(0, 2.0, 1.0, 0.1),
+            seam_entry(1, 5.0, 2.0, 0.3),
+            seam_entry(1, 7.0, 1.5, 0.35),
+            seam_entry(2, 8.0, 3.0, 0.5),
+        ],
+        ..SeamPlanIR::default()
+    };
+    (captures, sched, seam_plan)
+}
+
+/// AC-2. With `rendered_layers = {1}` only the two layer-1 entries survive,
+/// in `SeamPlanIR.entries` source order, each event carrying the source
+/// `chosen_candidate.point`'s world coordinates. The isolated render draws
+/// exactly those two glyphs (per-view horizontal against z) over a faint
+/// base; the filtered-out layers' seam positions stay glyph-free.
+#[test]
+fn seam_glyphs_filter_by_rendered_layers_and_carry_source_coords() {
+    let (captures, sched, seam_plan) = seam_fixture();
+    let rendered_layers: BTreeSet<u32> = [1].into_iter().collect();
+    let bounds = compute_silhouette_viewport_bounds(&captures, SilhouetteView::Front, &sched, None);
+
+    let events = silhouette_seam_events(&seam_plan, SilhouetteView::Front, &rendered_layers);
+    assert_eq!(
+        events,
+        vec![
+            OverlayEvent::Seam {
+                x: 5.0,
+                y: 2.0,
+                z: Some(0.3),
+            },
+            OverlayEvent::Seam {
+                x: 7.0,
+                y: 1.5,
+                z: Some(0.35),
+            },
+        ],
+        "only layer-1 entries, in entries source order, verbatim source coords"
+    );
+
+    let (image, events, warnings) = render_silhouette_seam_overlay(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &seam_plan,
+        &rendered_layers,
+    )
+    .expect("a populated capture group with seams must render");
+    assert!(warnings.is_empty(), "single body class: {warnings:?}");
+    assert_eq!(
+        events,
+        vec![
+            OverlayEvent::Seam {
+                x: 5.0,
+                y: 2.0,
+                z: Some(0.3),
+            },
+            OverlayEvent::Seam {
+                x: 7.0,
+                y: 1.5,
+                z: Some(0.35),
+            },
+        ],
+        "the returned events are exactly the drawn events, in source order"
+    );
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+
+    // Front view: the glyph's in-image horizontal is the point's x.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.3),
+        seam_color(),
+        "the first layer-1 seam must draw a seam glyph at its source (x, z)"
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 7.0, 0.35),
+        seam_color(),
+        "the second layer-1 seam must draw a seam glyph at its source (x, z)"
+    );
+    // Filtered-out layers' seam positions: no glyph. Both land outside the
+    // layer-1 slab, so the canvas there is untouched background.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 2.0, 0.1),
+        BACKGROUND,
+        "the layer-0 seam is filtered out: no glyph at its (x, z)"
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 8.0, 0.5),
+        BACKGROUND,
+        "the layer-2 seam is filtered out: no glyph at its (x, z)"
+    );
+    // The base rectangles are the 247 role-mode rectangles recolored faint.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 1.0, 0.38),
+        faint_base_color(),
+        "base rectangles must be recolored FAINT_BASE under the isolated overlay"
+    );
+}
+
+/// AC-6. Two isolated seam-overlay renders from the same inputs are
+/// byte-identical with element-for-element equal event lists (in entries
+/// source order) and equal warnings; the composited form is likewise
+/// deterministic, and `seams: None` is byte-equivalent to the frozen styled
+/// composite entry point.
+#[test]
+fn seam_overlay_render_is_deterministic() {
+    let (captures, sched, seam_plan) = seam_fixture();
+    let rendered_layers: BTreeSet<u32> = [1].into_iter().collect();
+    let bounds = compute_silhouette_viewport_bounds(&captures, SilhouetteView::Front, &sched, None);
+
+    let first = render_silhouette_seam_overlay(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &seam_plan,
+        &rendered_layers,
+    )
+    .expect("first isolated render must succeed");
+    let second = render_silhouette_seam_overlay(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &seam_plan,
+        &rendered_layers,
+    )
+    .expect("second isolated render must succeed");
+    assert_eq!(
+        first.0.png_bytes, second.0.png_bytes,
+        "the isolated seam overlay must be byte-identical across runs"
+    );
+    assert_eq!(
+        first.1, second.1,
+        "event lists must be equal element-for-element, in source order"
+    );
+    assert_eq!(first.2, second.2, "warning lists must be equal");
+
+    // Composited form: same seam glyphs onto the role-colored canvas.
+    let style = RenderStyle::default();
+    let composited_first = render_silhouette_composite_seamed(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+        Some((&seam_plan, &rendered_layers)),
+    )
+    .expect("first composited render must succeed");
+    let composited_second = render_silhouette_composite_seamed(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+        Some((&seam_plan, &rendered_layers)),
+    )
+    .expect("second composited render must succeed");
+    assert_eq!(
+        composited_first.0.png_bytes, composited_second.0.png_bytes,
+        "the composited seam render must be byte-identical across runs"
+    );
+    assert_eq!(composited_first.1, composited_second.1);
+    assert_eq!(composited_first.2, composited_second.2);
+    assert_eq!(
+        composited_first.1, first.1,
+        "both forms draw from the same filtered, source-ordered event list"
+    );
+    let (w, h, rgb) = decode_rgb(&composited_first.0.png_bytes);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.3),
+        seam_color(),
+        "composited glyphs land at the same source coordinates"
+    );
+
+    // Delegation equivalence: `seams: None` must reproduce the frozen styled
+    // composite byte-for-byte, with an empty event list.
+    let styled = render_silhouette_composite_styled(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+    )
+    .expect("the styled composite must render");
+    let no_seams = render_silhouette_composite_seamed(
+        &captures,
+        SilhouetteView::Front,
+        1,
+        bounds,
+        &sched,
+        &style,
+        None,
+    )
+    .expect("the seamed composite with seams: None must render");
+    assert_eq!(
+        styled.0.png_bytes, no_seams.0.png_bytes,
+        "seams: None must be byte-equivalent to render_silhouette_composite_styled"
+    );
+    assert_eq!(styled.1, no_seams.2, "warnings pass through unchanged");
+    assert!(
+        no_seams.1.is_empty(),
+        "seams: None yields an empty event list"
+    );
 }

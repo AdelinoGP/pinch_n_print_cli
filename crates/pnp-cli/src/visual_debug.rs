@@ -142,6 +142,11 @@ pub struct VisualizationOptions {
     /// rejected on any other kind and under any pre-1.2.0 schema.
     #[serde(default)]
     pub view: Option<String>,
+    /// Schema 1.2.0 (packet 251): overlay event classes composited onto the
+    /// silhouette image itself (not isolated images). `silhouette`
+    /// visualizations only; `"seams"` is the only member.
+    #[serde(default)]
+    pub composited_overlays: Option<Vec<String>>,
 }
 
 impl VisualizationOptions {
@@ -714,6 +719,18 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                         ),
                     });
                 }
+                // `composited_overlays` is 1.2.0-only (packet 251). Same
+                // fail-closed probe as `view`: the loose read would
+                // otherwise silently drop the requested overlay.
+                if options.get("composited_overlays").is_some() {
+                    return Err(ValidationError::InvalidOverlays {
+                        message: format!(
+                            "option 'composited_overlays' requires schema_version \"{VERSION_1_2}\" \
+                             (this request declares '{}')",
+                            req.schema_version
+                        ),
+                    });
+                }
             }
             if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. })
             {
@@ -774,7 +791,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             });
         }
         if let Some(overlays) = &opts.overlays {
-            if kind != "diagnostic_overlay" {
+            if kind != "diagnostic_overlay" && kind != SILHOUETTE_KIND {
                 return Err(ValidationError::InvalidOverlays {
                     message: format!("overlays applies to diagnostic_overlay, not '{kind}'"),
                 });
@@ -784,14 +801,84 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                     message: "overlays must name at least one overlay".into(),
                 });
             }
-            for name in overlays {
-                if slicer_runtime::OverlayKind::parse(name).is_none() {
+            if kind == SILHOUETTE_KIND {
+                // Packet 251 (R9): a silhouette's only overlayable event
+                // class is seams; anything else fails closed by name.
+                for name in overlays {
+                    if name != "seams" {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "unknown silhouette overlay '{name}' (\"seams\" is the only \
+                                 silhouette overlay kind)"
+                            ),
+                        });
+                    }
+                }
+            } else {
+                for name in overlays {
+                    if slicer_runtime::OverlayKind::parse(name).is_none() {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "unknown overlay '{name}' (expected travel, seams, retractions, \
+                                 z_hops, or tool_changes)"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        // Schema 1.2.0 (packet 251, R9): `composited_overlays` is
+        // silhouette-only and 1.2.0-only. The schema gate runs first so a
+        // pre-1.2.0 request hears about the version, not the kind; the kind
+        // gate is a named validation error, never a parse/unknown-key one.
+        if let Some(composited) = &opts.composited_overlays {
+            if !is_v1_2 {
+                return Err(ValidationError::InvalidOverlays {
+                    message: format!(
+                        "option 'composited_overlays' requires schema_version \"{VERSION_1_2}\" \
+                         (this request declares '{}')",
+                        req.schema_version
+                    ),
+                });
+            }
+            if kind != SILHOUETTE_KIND {
+                return Err(ValidationError::InvalidOverlays {
+                    message: format!(
+                        "composited_overlays applies to '{SILHOUETTE_KIND}' visualizations, \
+                         not '{kind}'"
+                    ),
+                });
+            }
+            if composited.is_empty() {
+                return Err(ValidationError::InvalidOverlays {
+                    message: "composited_overlays must name at least one overlay".into(),
+                });
+            }
+            for name in composited {
+                if name != "seams" {
                     return Err(ValidationError::InvalidOverlays {
                         message: format!(
-                            "unknown overlay '{name}' (expected travel, seams, retractions, \
-                             z_hops, or tool_changes)"
+                            "unknown silhouette overlay '{name}' (\"seams\" is the only \
+                             silhouette overlay kind)"
                         ),
                     });
+                }
+            }
+        }
+        if kind == SILHOUETTE_KIND && matches!(req.source, VisualDebugSource::Gcode { .. }) {
+            // R10 (packet 251): final G-code carries no seam marker, so BOTH
+            // silhouette seam-overlay forms are unsourceable on a standalone
+            // gcode source — the same named rejection as the
+            // diagnostic_overlay arm below. Runs after the member checks, so
+            // a non-seam member keeps the normal InvalidOverlays path.
+            for name in opts
+                .overlays
+                .iter()
+                .flatten()
+                .chain(opts.composited_overlays.iter().flatten())
+            {
+                if name == "seams" {
+                    return Err(ValidationError::OverlayUnsupportedOnGcode { name: name.clone() });
                 }
             }
         }
@@ -851,6 +938,43 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                     });
                 }
                 Some(_) => {}
+            }
+        }
+        // Packet 251 (R9): overlay options are per-GROUP, not per-spec. One
+        // composite image is rendered per (tap, view, color mode) group and
+        // every silhouette spec applies to every selected tap, so two specs
+        // resolving to the same group must agree on BOTH overlay options
+        // (absent = absent, present-with-same-members = agree) — otherwise
+        // whichever spec the grouping happened to keep would silently win.
+        let mut group_overlay_options: std::collections::BTreeMap<
+            (&'static str, bool),
+            (Option<Vec<String>>, Option<Vec<String>>),
+        > = std::collections::BTreeMap::new();
+        for viz in &req.visualizations {
+            let opts = visualization_options(viz)?;
+            let key = (
+                silhouette_view_name(opts.view.as_deref())?,
+                opts.color_by() == slicer_runtime::ColorBy::Tool,
+            );
+            let overlay_options = (opts.overlays.clone(), opts.composited_overlays.clone());
+            match group_overlay_options.entry(key) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(overlay_options);
+                }
+                std::collections::btree_map::Entry::Occupied(entry) => {
+                    if entry.get() != &overlay_options {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "silhouette visualizations in the same (tap, view, color mode) \
+                                 group must agree on 'overlays' and 'composited_overlays' \
+                                 (view '{}', color mode '{}'): they render one composite image, \
+                                 so render the differing forms as separate bundles",
+                                key.0,
+                                if key.1 { "tool" } else { "role" }
+                            ),
+                        });
+                    }
+                }
             }
         }
         if matches!(req.frame, FrameMode::Plate) {
@@ -1074,6 +1198,19 @@ pub struct ImageEntry {
     /// non-silhouette entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layers_rendered: Option<Vec<LayerRangeEntry>>,
+    /// Schema 1.2.0: overlay kinds composited onto this silhouette image.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composited_overlays: Option<Vec<String>>,
+}
+
+/// Resolve the seam plan required by a silhouette seam overlay. Overlay
+/// requests fail closed when the seam-planner prepass did not publish a plan.
+pub fn require_seam_plan(
+    plan: Option<&Arc<slicer_ir::SeamPlanIR>>,
+) -> Result<&slicer_ir::SeamPlanIR, VisualDebugError> {
+    plan.map(Arc::as_ref).ok_or_else(|| {
+        VisualDebugError::CaptureFailed("silhouette seam overlay requires a seam plan".into())
+    })
 }
 
 /// One inclusive global-layer-index range in
@@ -2168,6 +2305,24 @@ fn run_model_source(
         }
 
         let legend = legend_version_for(&req.schema_version).to_string();
+        let seam_requested = req.visualizations.iter().any(|viz| {
+            let opts = effective_visualization_options(&req.schema_version, viz);
+            opts.overlays
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .any(|name| name == "seams")
+                || opts
+                    .composited_overlays
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|name| name == "seams")
+        });
+        let seam_plan = seam_requested
+            .then(|| require_seam_plan(ctx.blackboard.seam_plan()))
+            .transpose()?;
+        let mut emitted_isolated_seams = std::collections::BTreeSet::<(String, String)>::new();
         for ((_, tap, is_tool), group) in groups {
             let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
             let mut previous_z = 0.0f32;
@@ -2203,6 +2358,39 @@ fn run_model_source(
                 .map(|slab| i64::from(slab.index))
                 .collect();
             let selected_slabs: Vec<u32> = indices.iter().map(|index| *index as u32).collect();
+            let rendered_layers: std::collections::BTreeSet<u32> =
+                selected_slabs.iter().copied().collect();
+            let (isolated_seams, composited_seams) = req
+                .visualizations
+                .iter()
+                .filter(|viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    opts.color_by()
+                        == if is_tool {
+                            slicer_runtime::ColorBy::Tool
+                        } else {
+                            slicer_runtime::ColorBy::Role
+                        }
+                })
+                .fold((false, false), |(isolated, composited), viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    (
+                        isolated
+                            || opts
+                                .overlays
+                                .as_deref()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|name| name == "seams"),
+                        composited
+                            || opts
+                                .composited_overlays
+                                .as_deref()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|name| name == "seams"),
+                    )
+                });
             let tool_color_source = if is_tool {
                 req.visualizations.iter().find_map(|viz| {
                     let opts = effective_visualization_options(&req.schema_version, viz);
@@ -2231,7 +2419,7 @@ fn run_model_source(
                 },
                 tool_colors,
             };
-            let (rendered, warnings) = if tap == "PostPass::GCodeEmit" {
+            let (rendered, overlay_events, warnings) = if tap == "PostPass::GCodeEmit" {
                 let gcode = group
                     .iter()
                     .find_map(|capture| match &capture.ir {
@@ -2241,27 +2429,109 @@ fn run_model_source(
                     .ok_or_else(|| {
                         VisualDebugError::RenderFailed("missing GCodeEmit capture".into())
                     })?;
-                slicer_runtime::render_gcode_emit_silhouette(
-                    gcode,
-                    view,
-                    req.resolution_scale,
-                    viewport_bounds,
-                    &full_schedule,
-                    &render_style,
-                    ctx.default_resolved_config.filament_diameter,
-                    &selected_slabs,
-                )
+                if composited_seams {
+                    slicer_runtime::render_gcode_emit_silhouette_seamed(
+                        gcode,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &full_schedule,
+                        &render_style,
+                        ctx.default_resolved_config.filament_diameter,
+                        &selected_slabs,
+                        Some((
+                            seam_plan.expect("seam plan resolved above"),
+                            &rendered_layers,
+                        )),
+                    )
+                } else {
+                    slicer_runtime::render_gcode_emit_silhouette(
+                        gcode,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &full_schedule,
+                        &render_style,
+                        ctx.default_resolved_config.filament_diameter,
+                        &selected_slabs,
+                    )
+                    .map(|(image, warnings)| (image, Vec::new(), warnings))
+                }
             } else {
-                slicer_runtime::render_silhouette_composite_styled(
-                    &group,
-                    view,
-                    req.resolution_scale,
-                    viewport_bounds,
-                    &schedule,
-                    &render_style,
-                )
+                if composited_seams {
+                    slicer_runtime::render_silhouette_composite_seamed(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        &render_style,
+                        Some((
+                            seam_plan.expect("seam plan resolved above"),
+                            &rendered_layers,
+                        )),
+                    )
+                } else {
+                    slicer_runtime::render_silhouette_composite_styled(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        &render_style,
+                    )
+                    .map(|(image, warnings)| (image, Vec::new(), warnings))
+                }
             }
             .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+            if isolated_seams
+                && emitted_isolated_seams.insert((tap.clone(), view.name().to_string()))
+            {
+                let (isolated, events, isolated_warnings) =
+                    slicer_runtime::render_silhouette_seam_overlay(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        seam_plan.expect("seam plan resolved above"),
+                        &rendered_layers,
+                    )
+                    .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                let relative_path = format!(
+                    "images/{}_silhouette_{}_overlay_seams.png",
+                    sanitize_path_component(&tap),
+                    view.name()
+                );
+                rendered_files.push((relative_path.clone(), isolated.png_bytes));
+                images.push(ImageEntry {
+                    source: "model".into(),
+                    tap: tap.clone(),
+                    layer_index: None,
+                    layer_z: None,
+                    visualization: SILHOUETTE_KIND.to_string(),
+                    png_path: relative_path,
+                    viewport: viewport.clone(),
+                    legend_version: legend.clone(),
+                    ir_schema_version: group.first().map(|c| c.ir.schema_version_string()),
+                    gcode_parser_version: None,
+                    warnings: isolated_warnings,
+                    typed_capture: None,
+                    world_bounds_mm: Some(viewport_bounds),
+                    overlay: Some("seams".into()),
+                    overlay_events: Some(events),
+                    // The isolated base is uniformly `FAINT_BASE` regardless
+                    // of the group's color mode (one image per (tap, view)),
+                    // so the entry is never tool-colored — the manifest
+                    // marker would depend on which color-mode group emitted
+                    // it first.
+                    color_by: None,
+                    tool_color_source: None,
+                    view: Some(view.name().into()),
+                    layers_rendered: Some(compress_layer_ranges(&indices)),
+                    composited_overlays: None,
+                });
+            }
             let file_name = format!(
                 "{}_silhouette_{}{}.png",
                 sanitize_path_component(&tap),
@@ -2287,11 +2557,12 @@ fn run_model_source(
                 typed_capture: None,
                 world_bounds_mm: Some(viewport_bounds),
                 overlay: None,
-                overlay_events: None,
+                overlay_events: (!overlay_events.is_empty()).then_some(overlay_events),
                 color_by: is_tool.then(|| "tool".to_string()),
                 tool_color_source,
                 view: Some(view.name().to_string()),
                 layers_rendered: Some(compress_layer_ranges(&indices)),
+                composited_overlays: composited_seams.then(|| vec!["seams".to_string()]),
             });
         }
     } else if req.visualizations.is_empty() {
@@ -2315,6 +2586,7 @@ fn run_model_source(
             tool_color_source: None,
             view: None,
             layers_rendered: None,
+            composited_overlays: None,
         }));
     } else {
         let viewport_bounds = match req.frame {
@@ -2402,6 +2674,7 @@ fn run_model_source(
                             tool_color_source: None,
                             view: None,
                             layers_rendered: None,
+                            composited_overlays: None,
                         });
                     }
                     continue;
@@ -2482,6 +2755,7 @@ fn run_model_source(
                         .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
                     view: None,
                     layers_rendered: None,
+                    composited_overlays: None,
                 });
             }
         }
@@ -2827,6 +3101,7 @@ pub fn run_visual_debug(
                             tool_color_source: is_tool.then(|| "palette".to_string()),
                             view: Some(view.name().to_string()),
                             layers_rendered: Some(compress_layer_ranges(&indices)),
+                            composited_overlays: None,
                         });
                     }
                     let gcode_tool_palette = silhouette_tool
@@ -2947,6 +3222,7 @@ pub fn run_visual_debug(
                                         .then(|| "palette".to_string()),
                                     view: None,
                                     layers_rendered: None,
+                                    composited_overlays: None,
                                 });
                             }
                         }

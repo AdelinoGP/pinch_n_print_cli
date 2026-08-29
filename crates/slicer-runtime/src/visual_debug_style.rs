@@ -189,6 +189,9 @@ pub enum OverlayEvent {
         x: f32,
         /// Y, mm.
         y: f32,
+        /// Z, mm — silhouette seam events only; absent (None) on all 1.0/1.1 paths.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        z: Option<f32>,
     },
     /// A retraction at a point.
     Retraction {
@@ -532,5 +535,28 @@ mod tests {
     fn travel_polyline_length_is_summed() {
         let pts = [[0.0_f32, 0.0], [3.0, 4.0], [3.0, 4.0]];
         assert!((polyline_length_mm(&pts) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn seam_event_omits_z_key_when_none() {
+        // Byte-frozen 1.0/1.1 shape: exactly `event`, `x`, `y` — no `z`.
+        let ev = OverlayEvent::Seam {
+            x: 1.5,
+            y: -2.25,
+            z: None,
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert_eq!(s, r#"{"event":"seam","x":1.5,"y":-2.25}"#);
+    }
+
+    #[test]
+    fn seam_event_serializes_z_key_when_some() {
+        let ev = OverlayEvent::Seam {
+            x: 1.0,
+            y: 2.0,
+            z: Some(3.0),
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert_eq!(s, r#"{"event":"seam","x":1.0,"y":2.0,"z":3.0}"#);
     }
 }
