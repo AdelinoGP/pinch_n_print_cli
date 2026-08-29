@@ -1,3 +1,9 @@
+use crate::resolved_config::HostKeyMeta;
+
+/// `HostKeyMeta::NONE` as a *value*: the FRU base for annotated entries in
+/// [`SPEED_META`].
+const HOST_META_NONE: HostKeyMeta = HostKeyMeta::NONE;
+
 /// Feedrate configuration holding mm/s speed values.
 #[derive(Debug, Clone)]
 pub struct FeedrateConfig {
@@ -116,12 +122,89 @@ fn read_speed(
     }
 }
 
+/// Display metadata for the host speed keys that carry any (wire 1.2.0,
+/// SchemaBridgeMap ticket 10), positionally aligned with [`SPEED_KEYS`].
+///
+/// `None` means "no metadata": `module config-schema` reports `null` and the
+/// GUI falls back to the raw key name. Only the speeds with no Orca
+/// counterpart are listed — an identity-routed speed renders through Orca's
+/// own definition on the fork, so a label here would never be seen. `min =
+/// 0.0` encodes `docs/config/host-keys.toml`'s speed ranges (`"> 0"`) as an
+/// inclusive floor, because the GUI clamps at `min` rather than rejecting;
+/// the strict inequality stays prose in the toml.
+pub const SPEED_META: [Option<HostKeyMeta>; SPEED_KEY_COUNT] = [
+    None, // outer_wall_speed (Orca identity)
+    None, // inner_wall_speed (Orca identity)
+    Some(HostKeyMeta {
+        // thin_wall_speed
+        display: Some("Thin Wall Speed"),
+        description: Some("Speed used to fill thin-wall regions the perimeter pass cannot (mm/s)."),
+        group: Some("Speed"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // top_surface_speed (Orca identity)
+    Some(HostKeyMeta {
+        // bottom_surface_speed
+        display: Some("Bottom surface speed"),
+        description: Some("Speed for bottom solid infill surfaces (mm/s)."),
+        group: Some("Speed"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // sparse_infill_speed (Orca identity)
+    None, // bridge_speed (Orca identity)
+    None, // internal_bridge_speed (Orca identity)
+    None, // support_speed (Orca identity)
+    None, // support_interface_speed (Orca identity)
+    None, // gap_infill_speed (Orca identity)
+    None, // ironing_speed (Orca identity)
+    None, // skirt_speed (Orca identity)
+    Some(HostKeyMeta {
+        // wipe_tower_speed
+        display: Some("Wipe tower speed"),
+        description: Some("Speed inside the wipe/prime tower (mm/s)."),
+        group: Some("Wipe Tower"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    Some(HostKeyMeta {
+        // prime_tower_speed
+        display: Some("Prime tower speed"),
+        description: Some("Speed for prime-tower purge moves (mm/s)."),
+        group: Some("Multimaterial"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // travel_speed (Orca identity)
+    None, // travel_speed_z (Orca identity)
+    None, // initial_layer_speed (Orca identity)
+    None, // initial_layer_infill_speed (Orca identity)
+    None, // initial_layer_travel_speed (Orca identity)
+    None, // wipe_speed (Orca identity)
+    None, // overhang_1_4_speed (Orca identity)
+    None, // overhang_2_4_speed (Orca identity)
+    None, // overhang_3_4_speed (Orca identity)
+    None, // overhang_4_4_speed (Orca identity)
+    None, // filament_ironing_speed (Orca identity)
+];
+
+/// `SPEED_META` must stay positionally aligned with [`SPEED_KEYS`]; this
+/// assertion fails the build when the two arrays' lengths drift apart.
+const _: () = assert!(SPEED_KEYS.len() == SPEED_META.len());
+
 /// Every host speed key, paired with the [`FeedrateConfig`] field it fills.
 ///
 /// Single source for both directions: [`FeedrateConfig::from_raw_config`]
 /// reads through it, and `module config-schema` reports it as part of the
 /// `host` key universe so the GUI can bind these keys (ticket 02). All are
-/// `float`, mm/s, and print-scoped.
+/// `float`, mm/s, and print-scoped. [`SPEED_META`] carries the wire 1.2.0
+/// display metadata (SchemaBridgeMap ticket 10) for the speeds rendered as
+/// their own controls rather than bound to an Orca identity row.
 pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("outer_wall_speed", |fc| &mut fc.outer_wall_speed),
     ("inner_wall_speed", |fc| &mut fc.inner_wall_speed),
@@ -132,7 +215,9 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("bridge_speed", |fc| &mut fc.bridge_speed),
     ("internal_bridge_speed", |fc| &mut fc.internal_bridge_speed),
     ("support_speed", |fc| &mut fc.support_speed),
-    ("support_interface_speed", |fc| &mut fc.support_interface_speed),
+    ("support_interface_speed", |fc| {
+        &mut fc.support_interface_speed
+    }),
     ("gap_infill_speed", |fc| &mut fc.gap_infill_speed),
     ("ironing_speed", |fc| &mut fc.ironing_speed),
     ("skirt_speed", |fc| &mut fc.skirt_speed),
@@ -141,15 +226,26 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("travel_speed", |fc| &mut fc.travel_speed),
     ("travel_speed_z", |fc| &mut fc.travel_speed_z),
     ("initial_layer_speed", |fc| &mut fc.initial_layer_speed),
-    ("initial_layer_infill_speed", |fc| &mut fc.initial_layer_infill_speed),
-    ("initial_layer_travel_speed", |fc| &mut fc.initial_layer_travel_speed),
+    ("initial_layer_infill_speed", |fc| {
+        &mut fc.initial_layer_infill_speed
+    }),
+    ("initial_layer_travel_speed", |fc| {
+        &mut fc.initial_layer_travel_speed
+    }),
     ("wipe_speed", |fc| &mut fc.wipe_speed),
     ("overhang_1_4_speed", |fc| &mut fc.overhang_1_4_speed),
     ("overhang_2_4_speed", |fc| &mut fc.overhang_2_4_speed),
     ("overhang_3_4_speed", |fc| &mut fc.overhang_3_4_speed),
     ("overhang_4_4_speed", |fc| &mut fc.overhang_4_4_speed),
-    ("filament_ironing_speed", |fc| &mut fc.filament_ironing_speed),
+    ("filament_ironing_speed", |fc| {
+        &mut fc.filament_ironing_speed
+    }),
 ];
+
+/// Number of entries in [`SPEED_KEYS`] (and therefore in [`SPEED_META`]),
+/// spelled out so the meta table can be typed against it before the const
+/// assertion below compares the two.
+pub const SPEED_KEY_COUNT: usize = SPEED_KEYS.len();
 
 impl FeedrateConfig {
     /// Builds the feedrate table from a raw config source keyed by the

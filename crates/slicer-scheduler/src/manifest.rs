@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use slicer_ir::resolved_config::HostKeyMeta;
 use slicer_ir::{ConfigValue, ModuleId, SemVer, StageId};
 use toml::Value;
 
@@ -17,7 +18,13 @@ use toml::Value;
 /// consumed by `pnp_cli module config-schema`. Semver `"<major>.<minor>.<patch>"`;
 /// consumers (e.g. `pinch_n_print_studio`) gate on the major. See
 /// `docs/11_operational_governance_and_acceptance_gate.md` for bumping rules.
-pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.1.0";
+///
+/// History: 1.0.0 module manifests only; 1.1.0 added the top-level `host`
+/// array and per-field `scope`; 1.2.0 (SchemaBridgeMap ticket 10) made host
+/// entries carry optional display metadata — `display`/`group`/`unit`/
+/// `description`/`min`/`max`/`values`/`advanced` per entry, `null` where
+/// un-annotated. Additive: a wire-1.1.0 consumer ignores the new fields.
+pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.2.0";
 
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
@@ -1546,15 +1553,39 @@ fn known_stage_ids() -> &'static [&'static str] {
 /// Defaults are restated here because their owning constants live in
 /// `slicer-runtime`, which depends on this crate; the lock test
 /// `host_keys_doc_lock_tdd` ties each value back to its owner.
-const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str)] = &[
-    // (key, wire type, scope, default)
-    ("use_relative_e_distances", "bool", slicer_ir::resolved_config::SCOPE_PRINTER, "true"),
-    ("thumbnail_path", "string", slicer_ir::resolved_config::SCOPE_PRINTER, ""),
+///
+/// The reachable-annotation note under `[speeds]` applies here too:
+/// `wall_generator` and `use_relative_e_distances` are Orca identity rows, so
+/// `thumbnail_path` is the only one this table annotates.
+const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str, HostKeyMeta)] = &[
+    // (key, wire type, scope, default, display meta)
+    (
+        "use_relative_e_distances",
+        "bool",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "true",
+        HostKeyMeta::NONE,
+    ),
+    (
+        "thumbnail_path",
+        "string",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "",
+        HostKeyMeta {
+            display: Some("Thumbnail path"),
+            description: Some(
+                "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
+            ),
+            group: Some("Output"),
+            ..HostKeyMeta::NONE
+        },
+    ),
     (
         "wall_generator",
         "string",
         slicer_ir::resolved_config::SCOPE_PRINT,
         crate::execution_plan::DEFAULT_WALL_GENERATOR,
+        HostKeyMeta::NONE,
     ),
 ];
 
@@ -1581,42 +1612,62 @@ fn module_field_scope() -> &'static str {
 /// of them is a module manifest, so before wire version 1.1.0 none of them
 /// appeared in `module config-schema` at all — leaving a consumer that treated
 /// the reply as the whole key universe blind to 62 keys the slicer actually
-/// reads. A key may also be declared by a module manifest; that is not a
-/// conflict, and both entries are reported.
+/// reads. Since wire 1.2.0 (SchemaBridgeMap ticket 10) each entry also carries
+/// optional display metadata (`display`/`group`/`unit`/`description`/`min`/
+/// `max`/`values`/`advanced`), `null` where the declaring channel annotates
+/// nothing; see [`HostKeyMeta`]. A key may also be declared by a module
+/// manifest; that is not a conflict, and both entries are reported.
 fn build_host_key_entries() -> Vec<serde_json::Value> {
+    use slicer_ir::resolved_config::HostKeyMeta;
+
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();
 
-    let mut push = |key: &str, field_type: &str, scope: &str, default: Option<String>| {
-        if !seen.insert(key.to_string()) {
-            return;
-        }
-        out.push(serde_json::json!({
-            "key": key,
-            "type": field_type,
-            "default": default,
-            "scope": scope,
-        }));
-    };
+    let mut push =
+        |key: &str, field_type: &str, scope: &str, default: Option<String>, meta: &HostKeyMeta| {
+            if !seen.insert(key.to_string()) {
+                return;
+            }
+            let wire_type = meta.wire_type.unwrap_or(field_type);
+            out.push(serde_json::json!({
+                "key": key,
+                "type": wire_type,
+                "default": default,
+                "scope": scope,
+                "display": meta.display,
+                "group": meta.group,
+                "unit": meta.unit,
+                "description": meta.description,
+                "min": meta.min,
+                "max": meta.max,
+                "values": meta.values,
+                "advanced": meta.advanced,
+            }));
+        };
 
     for hk in slicer_ir::resolved_config::ResolvedConfig::host_config_keys() {
-        push(hk.key, hk.field_type, hk.scope, hk.default);
+        push(hk.key, hk.field_type, hk.scope, hk.default, &hk.meta);
     }
 
     let speed_defaults = slicer_ir::FeedrateConfig::default();
-    for (key, field) in slicer_ir::feedrate::SPEED_KEYS {
+    for (index, (key, field)) in slicer_ir::feedrate::SPEED_KEYS.iter().enumerate() {
         let mut probe = speed_defaults.clone();
         let default = *field(&mut probe);
+        let meta = slicer_ir::feedrate::SPEED_META
+            .get(index)
+            .and_then(|m| m.as_ref())
+            .unwrap_or(&HostKeyMeta::NONE);
         push(
             key,
             "float",
             slicer_ir::resolved_config::SCOPE_PRINT,
             Some(default.to_string()),
+            meta,
         );
     }
 
-    for (key, field_type, scope, default) in HOST_RUNTIME_KEYS {
-        push(key, field_type, scope, Some((*default).to_string()));
+    for (key, field_type, scope, default, meta) in HOST_RUNTIME_KEYS {
+        push(key, field_type, scope, Some((*default).to_string()), meta);
     }
 
     out.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
@@ -1654,9 +1705,12 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
 /// the preset a GUI should persist the key into; see [`module_field_scope`].
 ///
 /// Alongside `schema` the reply carries a top-level `host` array of
-/// `{key, type, default, scope}` objects — the config keys pnp reads that no
-/// module manifest declares. See [`build_host_key_entries`]; wire version
-/// 1.1.0 added it.
+/// `{key, type, default, scope, display, group, unit, description, min, max,
+/// values, advanced}` objects — the config keys pnp reads that no module
+/// manifest declares. The display fields are additive from wire 1.2.0 and
+/// `null` where the declaring channel annotates nothing. See
+/// [`build_host_key_entries`]; wire version 1.1.0 added the array, 1.2.0 the
+/// metadata.
 ///
 /// Wildcard schema entries (`<prefix>:*`) are **excluded** from the wire:
 /// they are runtime key-access declarations, not user-configurable fields
@@ -1842,7 +1896,7 @@ mod tests {
         let json = build_config_schema_json(&[]);
         let host = json["host"]
             .as_array()
-            .expect("wire 1.1.0 must always carry a top-level 'host' array");
+            .expect("wire 1.1.0+ must always carry a top-level 'host' array");
 
         // One representative per declaration channel: a ResolvedConfig `cli`
         // row, a `cli_opt` row, a FeedrateConfig speed, and a [host_runtime]
@@ -1874,7 +1928,33 @@ mod tests {
         assert_eq!(by_key("use_relative_e_distances")["type"], "bool");
 
         // An unset `cli_opt` has no default, which is not the same as zero.
-        assert_eq!(by_key("arachne_min_feature_size")["default"], serde_json::Value::Null);
+        assert_eq!(
+            by_key("arachne_min_feature_size")["default"],
+            serde_json::Value::Null
+        );
+
+        // Wire 1.2.0 (SchemaBridgeMap ticket 10): optional display metadata.
+        // An annotated key carries label, group and range; an un-annotated
+        // one reports nulls and the GUI falls back to the key name.
+        let thin = by_key("thin_wall_speed");
+        assert_eq!(thin["display"], "Thin Wall Speed");
+        assert_eq!(thin["group"], "Speed");
+        assert_eq!(thin["unit"], "mm/s");
+        assert_eq!(thin["min"], 0.0);
+        let travel = by_key("travel_speed");
+        assert!(
+            travel["display"].is_null(),
+            "an identity-routed speed stays un-annotated"
+        );
+        assert!(travel["group"].is_null());
+        // An enum-promoted string key reports the enum wire type and its
+        // domain.
+        let join = by_key("flat_bridge_closing_join");
+        assert_eq!(join["type"], "enum");
+        assert_eq!(
+            join["values"],
+            serde_json::json!(["miter", "square", "round"])
+        );
 
         // Scope routes the key to a preset list on the GUI side; getting it
         // wrong round-trips the key into the wrong preset file.
@@ -1901,21 +1981,8 @@ mod tests {
             ConfigFieldEntry {
                 field_type: "float".to_string(),
                 default: Some("0.4".to_string()),
-                parsed_default: None,
-                min: None,
-                max: None,
-                step: None,
-                display: None,
-                description: None,
-                group: None,
-                unit: None,
-                advanced: false,
-                values: None,
-                max_length: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
                 tags: vec!["walls".to_string()],
+                ..Default::default()
             },
         );
 
@@ -1945,7 +2012,7 @@ mod tests {
             Some(CONFIG_SCHEMA_WIRE_VERSION),
             "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
         );
-        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.1.0");
+        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.2.0");
         assert!(
             json["schema"].is_array(),
             "top-level 'schema' must always be an array"
