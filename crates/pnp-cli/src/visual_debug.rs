@@ -42,6 +42,8 @@ const GCODE_SILHOUETTE_NO_TAPS_REASON: &str =
 const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
     "Layer::Slice",
     "PrePass::PaintSegmentation",
+    "PrePass::RegionMapping",
+    "PrePass::OverhangAnnotation",
     "Layer::PaintRegionAnnotation",
     "Layer::SlicePostProcess",
     "PrePass::SupportGeometry",
@@ -79,11 +81,6 @@ fn silhouette_tap_rejection_reason(tap: &str) -> String {
             .to_string(),
         "PrePass::MeshAnalysis" | "PrePass::SeamPlanning" => {
             "its capture carries no per-layer geometry, so no Z slab can be attributed to it"
-                .to_string()
-        }
-        "PrePass::RegionMapping" | "PrePass::OverhangAnnotation" => {
-            "silhouette class ordering for this tap's capture shape is not decided yet \
-             (owned by a follow-up packet)"
                 .to_string()
         }
         "PostPass::LayerFinalization" | "PostPass::GCodeEmit" => {
@@ -2323,7 +2320,13 @@ fn run_model_source(
             .then(|| require_seam_plan(ctx.blackboard.seam_plan()))
             .transpose()?;
         let mut emitted_isolated_seams = std::collections::BTreeSet::<(String, String)>::new();
+        let silhouette_height_index = slicer_runtime::build_silhouette_slice_height_index(
+            ctx.blackboard
+                .slice_ir()
+                .map_or(&[], |slice_ir| slice_ir.as_ref()),
+        );
         for ((_, tap, is_tool), group) in groups {
+            let layer_index = group.first().map_or(0, |capture| capture.layer_index);
             let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
             let mut previous_z = 0.0f32;
             for (index, z) in &postpass_schedule {
@@ -2457,7 +2460,34 @@ fn run_model_source(
                     )
                     .map(|(image, warnings)| (image, Vec::new(), warnings))
                 }
+            } else if tap == "PrePass::OverhangAnnotation" {
+                if is_tool {
+                    return Err(VisualDebugError::RenderFailed(
+                        slicer_runtime::RenderError::ToolColorUnavailable {
+                            tap: tap.clone(),
+                            layer_index,
+                        }
+                        .to_string(),
+                    ));
+                }
+                slicer_runtime::render_silhouette_overhang_composite(
+                    &group,
+                    view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                    &silhouette_height_index,
+                )
+                .map(|(image, warnings)| (image, Vec::new(), warnings))
             } else {
+                if is_tool && tap == "PrePass::RegionMapping" {
+                    return Err(VisualDebugError::RenderFailed(
+                        slicer_runtime::RenderError::ToolColorUnavailable {
+                            tap: tap.clone(),
+                            layer_index,
+                        }
+                        .to_string(),
+                    ));
+                }
                 if composited_seams {
                     slicer_runtime::render_silhouette_composite_seamed(
                         &group,

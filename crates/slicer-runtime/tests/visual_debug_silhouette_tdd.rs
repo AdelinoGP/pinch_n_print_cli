@@ -15,20 +15,23 @@
 //! - `silhouette_composite_is_deterministic` (AC-6): same inputs twice →
 //!   byte-identical PNG and element-for-element equal warnings.
 
+use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, Point2,
-    Point3WithWidth, Polygon, PrintEntity, RegionKey, ResolvedConfig, SeamPlanEntry, SeamPlanIR,
-    SeamPosition, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey, SupportPlanEntry,
-    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    Point3WithWidth, Polygon, PrintEntity, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SeamPlanEntry, SeamPlanIR, SeamPosition, SliceIR, SlicedRegion, SupportGeometryIR,
+    SupportGeometryKey, SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    SurfaceClassificationIR,
 };
 use slicer_runtime::{
-    compute_silhouette_viewport_bounds, gcode_emit_silhouette_segments,
-    render_gcode_emit_silhouette, render_gcode_emit_silhouette_seamed, render_silhouette_composite,
+    build_silhouette_slice_height_index, compute_silhouette_viewport_bounds,
+    gcode_emit_silhouette_segments, render_gcode_emit_silhouette,
+    render_gcode_emit_silhouette_seamed, render_silhouette_composite,
     render_silhouette_composite_seamed, render_silhouette_composite_styled,
-    render_silhouette_seam_overlay, silhouette_seam_events, union_silhouette_intervals, CapturedIr,
-    ColorBy, DefaultGCodeEmitter, GCodeEmitter, OverlayEvent, Projector, RenderError, RenderStyle,
-    SilhouetteScheduleSlab, SilhouetteSlabSchedule, SilhouetteView, StageCapture, ToolColors,
-    ViewportBoundsMm,
+    render_silhouette_overhang_composite, render_silhouette_seam_overlay, silhouette_seam_events,
+    union_silhouette_intervals, CapturedIr, ColorBy, DefaultGCodeEmitter, GCodeEmitter,
+    OverlayEvent, Projector, RenderError, RenderStyle, SilhouetteScheduleSlab,
+    SilhouetteSlabSchedule, SilhouetteView, StageCapture, ToolColors, ViewportBoundsMm,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -1623,5 +1626,582 @@ fn seam_overlay_render_is_deterministic() {
     assert!(
         no_seams.1.is_empty(),
         "seams: None yields an empty event list"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Packet 252, Step 1 — `PrePass::RegionMapping` silhouette extraction arm.
+// ---------------------------------------------------------------------------
+
+fn region_key(global_layer_index: u32, object_id: &str, region_id: u64) -> RegionKey {
+    RegionKey {
+        global_layer_index,
+        object_id: object_id.to_string(),
+        region_id,
+        variant_chain: Vec::new(),
+    }
+}
+
+fn mapping_region(
+    object_id: &str,
+    region_id: u64,
+    effective_layer_height: f32,
+    polygons: Vec<ExPolygon>,
+) -> SlicedRegion {
+    SlicedRegion {
+        object_id: object_id.to_string(),
+        region_id,
+        polygons,
+        effective_layer_height,
+        ..SlicedRegion::default()
+    }
+}
+
+fn region_mapping_capture(
+    layer_index: u32,
+    layer_z: f32,
+    region_map: RegionMapIR,
+    slice_ir: Vec<SliceIR>,
+) -> StageCapture {
+    StageCapture {
+        stage_id: "PrePass::RegionMapping".to_string(),
+        layer_index,
+        layer_z,
+        ir: CapturedIr::RegionMapping {
+            region_map,
+            slice_ir,
+        },
+    }
+}
+
+fn overhang_capture(layer_z: f32, bands: Vec<QuartileBand>) -> StageCapture {
+    let mut by_layer = HashMap::new();
+    by_layer.insert(0, bands);
+    let mut overhang_quartile_polygons = HashMap::new();
+    overhang_quartile_polygons.insert("obj-0".to_string(), by_layer);
+    StageCapture {
+        stage_id: "PrePass::OverhangAnnotation".to_string(),
+        layer_index: 0,
+        layer_z,
+        ir: CapturedIr::SurfaceClassification(SurfaceClassificationIR {
+            overhang_quartile_polygons,
+            ..SurfaceClassificationIR::default()
+        }),
+    }
+}
+
+fn overhang_index(classes: &[(f32, f32, f32, f32)]) -> slicer_runtime::SilhouetteSliceHeightIndex {
+    build_silhouette_slice_height_index(&[SliceIR {
+        global_layer_index: 0,
+        regions: classes
+            .iter()
+            .map(|&(height, x0, x1, y1)| region(height, vec![rect_expolygon(x0, x1, 0.0, y1)]))
+            .collect(),
+        ..SliceIR::default()
+    }])
+}
+
+fn overhang_bounds() -> ViewportBoundsMm {
+    ViewportBoundsMm {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 10.0,
+        max_y: 1.0,
+    }
+}
+
+#[test]
+fn overhang_bands_single_height_slabs_and_quartile_order() {
+    let capture = overhang_capture(
+        1.0,
+        vec![
+            QuartileBand {
+                quartile: 1,
+                polygons: vec![rect_expolygon(1.0, 9.0, 0.0, 1.0)],
+            },
+            QuartileBand {
+                quartile: 4,
+                polygons: vec![rect_expolygon(3.0, 7.0, 0.0, 1.0)],
+            },
+        ],
+    );
+    let index = overhang_index(&[(0.2, 0.0, 10.0, 1.0)]);
+    let (image, _) = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &index,
+    )
+    .expect("overhang bands render");
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!(
+        sample(&rgb, overhang_bounds(), w, h, 5.0, 0.9),
+        slicer_runtime::visual_debug_render::palette::OVERHANG_QUARTILE_4
+    );
+    assert_eq!(
+        sample(&rgb, overhang_bounds(), w, h, 2.0, 0.9),
+        slicer_runtime::visual_debug_render::palette::OVERHANG_QUARTILE_1
+    );
+    assert_eq!(sample(&rgb, overhang_bounds(), w, h, 2.0, 0.7), BACKGROUND);
+}
+
+#[test]
+fn overhang_bands_partition_across_mixed_height_classes() {
+    let capture = overhang_capture(
+        1.0,
+        vec![QuartileBand {
+            quartile: 2,
+            polygons: vec![
+                rect_expolygon(0.0, 6.0, 0.0, 5.0),
+                rect_expolygon(4.0, 10.0, 10.0, 15.0),
+            ],
+        }],
+    );
+    let index = build_silhouette_slice_height_index(&[SliceIR {
+        global_layer_index: 0,
+        regions: vec![
+            region(0.2, vec![rect_expolygon(0.0, 6.0, 0.0, 5.0)]),
+            region(0.6, vec![rect_expolygon(4.0, 10.0, 10.0, 15.0)]),
+        ],
+        ..SliceIR::default()
+    }]);
+    let (image, _) = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &index,
+    )
+    .expect("mixed-height bands render");
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+    let color = slicer_runtime::visual_debug_render::palette::OVERHANG_QUARTILE_2;
+    assert_eq!(sample(&rgb, overhang_bounds(), w, h, 2.0, 0.9), color);
+    assert_eq!(sample(&rgb, overhang_bounds(), w, h, 7.0, 0.5), color);
+    assert_eq!(sample(&rgb, overhang_bounds(), w, h, 7.0, 0.3), BACKGROUND);
+}
+
+#[test]
+fn overhang_composite_is_deterministic() {
+    let capture = overhang_capture(
+        1.0,
+        vec![QuartileBand {
+            quartile: 3,
+            polygons: vec![rect_expolygon(1.0, 9.0, 0.0, 1.0)],
+        }],
+    );
+    let index = overhang_index(&[(0.2, 0.0, 10.0, 1.0)]);
+    let a = render_silhouette_overhang_composite(
+        &[capture.clone()],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &index,
+    )
+    .unwrap();
+    let b = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &index,
+    )
+    .unwrap();
+    assert_eq!(a.0.png_bytes, b.0.png_bytes);
+    assert_eq!(a.1, b.1);
+}
+
+#[test]
+fn overhang_invalid_quartile_fails_closed() {
+    let capture = overhang_capture(
+        1.0,
+        vec![QuartileBand {
+            quartile: 5,
+            polygons: vec![rect_expolygon(0.0, 1.0, 0.0, 1.0)],
+        }],
+    );
+    let err = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &overhang_index(&[(0.2, 0.0, 10.0, 1.0)]),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        RenderError::InvalidQuartile { quartile: 5, .. }
+    ));
+}
+
+#[test]
+fn overhang_empty_bands_fail_closed() {
+    let capture = overhang_capture(1.0, Vec::new());
+    let err = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &overhang_index(&[(0.2, 0.0, 10.0, 1.0)]),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        RenderError::MissingGeometryField {
+            field: "overhang_quartile_polygons",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn overhang_missing_height_index_layer_fails_closed() {
+    let capture = overhang_capture(
+        1.0,
+        vec![QuartileBand {
+            quartile: 1,
+            polygons: vec![rect_expolygon(0.0, 1.0, 0.0, 1.0)],
+        }],
+    );
+    let err = render_silhouette_overhang_composite(
+        &[capture],
+        SilhouetteView::Front,
+        1,
+        overhang_bounds(),
+        &Default::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        RenderError::MissingGeometryField {
+            field: "silhouette_slice_height_index.layers",
+            ..
+        }
+    ));
+}
+
+/// AC-1 (packet 252): a `CapturedIr::RegionMapping` capture joined against
+/// its OWN retained `slice_ir` draws each joined region over its own slab
+/// `[z - effective_layer_height, z]` — the catch-up-sized region's bottom
+/// strictly below the other's, never one uniform slab — each painted its own
+/// `config_tint` color.
+#[test]
+fn region_mapping_slabs_follow_joined_effective_layer_height() {
+    // Layer top 1.0 mm. Region 0: normal 0.2 mm layer -> bottom 0.8.
+    // Region 1: catch-up-sized 0.6 mm layer -> bottom 0.4.
+    let mut region_map = RegionMapIR::default();
+    let id_a = region_map.intern_config(ResolvedConfig {
+        filament_diameter: 1.75,
+        ..Default::default()
+    });
+    let id_b = region_map.intern_config(ResolvedConfig {
+        filament_diameter: 2.85,
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        region_key(0, "obj-0", 0),
+        RegionPlan {
+            config: id_a,
+            ..RegionPlan::default()
+        },
+    );
+    region_map.entries.insert(
+        region_key(0, "obj-0", 1),
+        RegionPlan {
+            config: id_b,
+            ..RegionPlan::default()
+        },
+    );
+    // An entry on ANOTHER layer: filtered out of a layer-0 capture.
+    region_map.entries.insert(
+        region_key(1, "obj-0", 0),
+        RegionPlan {
+            config: id_a,
+            ..RegionPlan::default()
+        },
+    );
+    let slice_ir = vec![
+        SliceIR {
+            global_layer_index: 0,
+            z: 1.0,
+            regions: vec![
+                mapping_region("obj-0", 0, 0.2, vec![rect_expolygon(0.0, 10.0, 0.0, 5.0)]),
+                mapping_region("obj-0", 1, 0.6, vec![rect_expolygon(20.0, 30.0, 0.0, 5.0)]),
+            ],
+            ..SliceIR::default()
+        },
+        SliceIR {
+            global_layer_index: 1,
+            z: 1.2,
+            regions: vec![mapping_region(
+                "obj-0",
+                0,
+                0.2,
+                vec![rect_expolygon(40.0, 50.0, 0.0, 5.0)],
+            )],
+            ..SliceIR::default()
+        },
+    ];
+    let captures = vec![region_mapping_capture(0, 1.0, region_map, slice_ir)];
+    let sched = schedule(&[(0, 0.4, 1.0), (1, 1.0, 1.2)]);
+    let bounds = compute_silhouette_viewport_bounds(&captures, SilhouetteView::Front, &sched, None);
+    let (image, warnings) =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched)
+            .expect("a populated region-mapping capture group must render");
+    assert!(
+        warnings.is_empty(),
+        "disjoint tint classes never occlude and every entry joins: {warnings:?}"
+    );
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+
+    // Each region paints its own `config_tint` color: a stable non-background
+    // tint in the documented 60..=239 channel range, distinct per distinct
+    // config content, and never the legacy Slice body palette color.
+    let tint_a = sample(&rgb, bounds, w, h, 5.0, 0.9);
+    let tint_b = sample(&rgb, bounds, w, h, 25.0, 0.9);
+    for tint in [tint_a, tint_b] {
+        assert_ne!(tint, BACKGROUND, "a joined region must be painted");
+        assert_ne!(
+            tint,
+            body_color(),
+            "region mapping paints config_tint, not the Slice body class"
+        );
+        assert!(
+            tint.iter().all(|c| (60..=239).contains(c)),
+            "config_tint channels stay in 60..=239, got {tint:?}"
+        );
+    }
+    assert_ne!(
+        tint_a, tint_b,
+        "distinct ResolvedConfig contents must paint distinct tints"
+    );
+
+    // Region 0 stops at 0.8: below it is background.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 5.0, 0.6),
+        BACKGROUND,
+        "region 0's 0.2 mm slab must not reach down to region 1's bottom"
+    );
+    // Region 1 reaches to 0.4 at the same Z where region 0 is already gone.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 25.0, 0.6),
+        tint_b,
+        "region 1's 0.6 mm slab must still be painted below region 0's bottom"
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 25.0, 0.5),
+        tint_b,
+        "region 1's slab bottom is 0.4, not 0.8"
+    );
+    // And region 1 itself stops at 0.4 — the slab is exact, not unbounded.
+    assert_eq!(sample(&rgb, bounds, w, h, 25.0, 0.2), BACKGROUND);
+
+    // The other layer's entry is filtered out of this capture.
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 45.0, 1.1),
+        BACKGROUND,
+        "a layer-1 RegionMapIR entry must not be drawn by the layer-0 capture"
+    );
+}
+
+#[test]
+fn region_mapping_nonpositive_height_fails_closed() {
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(ResolvedConfig::default());
+    region_map.entries.insert(
+        region_key(0, "obj-0", 0),
+        RegionPlan {
+            config,
+            ..RegionPlan::default()
+        },
+    );
+    let slice_ir = vec![SliceIR {
+        global_layer_index: 0,
+        regions: vec![mapping_region(
+            "obj-0",
+            0,
+            0.0,
+            vec![rect_expolygon(0.0, 1.0, 0.0, 1.0)],
+        )],
+        ..SliceIR::default()
+    }];
+    let capture = region_mapping_capture(0, 1.0, region_map, slice_ir);
+    let schedule = schedule(&[(0, 0.8, 1.0)]);
+    let bounds = compute_silhouette_viewport_bounds(
+        std::slice::from_ref(&capture),
+        SilhouetteView::Front,
+        &schedule,
+        None,
+    );
+    let err = render_silhouette_composite(&[capture], SilhouetteView::Front, 1, bounds, &schedule)
+        .expect_err("nonpositive joined region height must fail closed");
+    assert!(matches!(
+        err,
+        RenderError::MissingGeometryField {
+            field: "slice_ir.regions.effective_layer_height",
+            ..
+        }
+    ));
+}
+
+/// AC-2 (packet 252): two `RegionMapIR` entries on one layer with distinct
+/// `ResolvedConfig` contents (distinct `config_tint` RGB triples) and
+/// overlapping projected intervals — the overlap paints the
+/// lexicographically-larger (r, g, b) tint (ascending-RGB class paint order,
+/// later class wins); the occlusion warning fires naming the affected layer
+/// count; rendering twice yields byte-identical PNG bytes.
+#[test]
+fn region_mapping_tint_class_order_and_determinism() {
+    let mut region_map = RegionMapIR::default();
+    let id_a = region_map.intern_config(ResolvedConfig {
+        filament_diameter: 1.75,
+        ..Default::default()
+    });
+    let id_b = region_map.intern_config(ResolvedConfig {
+        filament_diameter: 2.85,
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        region_key(0, "obj-0", 0),
+        RegionPlan {
+            config: id_a,
+            ..RegionPlan::default()
+        },
+    );
+    region_map.entries.insert(
+        region_key(0, "obj-0", 1),
+        RegionPlan {
+            config: id_b,
+            ..RegionPlan::default()
+        },
+    );
+    let slice_ir = vec![SliceIR {
+        global_layer_index: 0,
+        z: 1.0,
+        regions: vec![
+            // Overlap on the projected X axis: [0, 10] and [5, 15].
+            mapping_region("obj-0", 0, 0.2, vec![rect_expolygon(0.0, 10.0, 0.0, 5.0)]),
+            mapping_region("obj-0", 1, 0.2, vec![rect_expolygon(5.0, 15.0, 0.0, 5.0)]),
+        ],
+        ..SliceIR::default()
+    }];
+    let captures = vec![region_mapping_capture(0, 1.0, region_map, slice_ir)];
+    let sched = schedule(&[(0, 0.8, 1.0)]);
+    let bounds = compute_silhouette_viewport_bounds(&captures, SilhouetteView::Front, &sched, None);
+
+    let (image, warnings) =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched)
+            .expect("overlapping tint classes must render");
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+
+    // Learn each class' tint from its non-overlapping run, then the overlap
+    // must paint the lexicographically-larger (r, g, b) triple.
+    let tint_a = sample(&rgb, bounds, w, h, 2.0, 0.9);
+    let tint_b = sample(&rgb, bounds, w, h, 13.0, 0.9);
+    assert_ne!(tint_a, BACKGROUND);
+    assert_ne!(tint_b, BACKGROUND);
+    assert_ne!(
+        tint_a, tint_b,
+        "the fixture needs two distinct tints to witness paint order"
+    );
+    let winner = tint_a.max(tint_b);
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 7.0, 0.9),
+        winner,
+        "the overlap must paint the lexicographically-larger tint: \
+         classes paint in ascending (r, g, b) order, later class wins"
+    );
+
+    // 247's occlusion warning fires unchanged, naming the affected layer count.
+    let occlusion: Vec<&String> = warnings
+        .iter()
+        .filter(|w| w.contains("silhouette occlusion"))
+        .collect();
+    assert_eq!(
+        occlusion.len(),
+        1,
+        "exactly one deduped occlusion warning expected, got {warnings:?}"
+    );
+    assert!(
+        occlusion[0].contains("1 layer(s)"),
+        "the occlusion warning must name the affected layer count: {}",
+        occlusion[0]
+    );
+    assert_eq!(
+        warnings.len(),
+        1,
+        "every entry joined, so no region-mapping warning is due: {warnings:?}"
+    );
+
+    // Determinism: same inputs twice -> byte-identical PNG and warnings.
+    let (image2, warnings2) =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched)
+            .expect("the second render must succeed");
+    assert_eq!(
+        image.png_bytes, image2.png_bytes,
+        "HashMap iteration order must never reach pixels: byte-identical re-render"
+    );
+    assert_eq!(warnings, warnings2);
+}
+
+/// AC-3 (packet 252): a `RegionMapIR` entry on a selected layer with no
+/// matching `SlicedRegion` in the capture's retained `slice_ir` contributes
+/// no pixels; the returned warnings contain ONE warning naming the
+/// unjoined-entry count — never a silent drop.
+#[test]
+fn region_mapping_unjoined_entries_warn_and_skip() {
+    let mut region_map = RegionMapIR::default();
+    let id = region_map.intern_config(ResolvedConfig::default());
+    let plan = || RegionPlan {
+        config: id,
+        ..RegionPlan::default()
+    };
+    // Joined: matches the layer-0 SliceIR row (obj-0, region 0).
+    region_map.entries.insert(region_key(0, "obj-0", 0), plan());
+    // Unjoined: region 99 has no SlicedRegion on layer 0.
+    region_map
+        .entries
+        .insert(region_key(0, "obj-0", 99), plan());
+    // Unjoined on ANOTHER layer: not counted by a layer-0 capture.
+    region_map
+        .entries
+        .insert(region_key(1, "obj-0", 42), plan());
+    let slice_ir = vec![SliceIR {
+        global_layer_index: 0,
+        z: 1.0,
+        regions: vec![mapping_region(
+            "obj-0",
+            0,
+            0.2,
+            vec![rect_expolygon(0.0, 10.0, 0.0, 5.0)],
+        )],
+        ..SliceIR::default()
+    }];
+    let captures = vec![region_mapping_capture(0, 1.0, region_map, slice_ir)];
+    let sched = schedule(&[(0, 0.8, 1.0)]);
+    let bounds = compute_silhouette_viewport_bounds(&captures, SilhouetteView::Front, &sched, None);
+    let (image, warnings) =
+        render_silhouette_composite(&captures, SilhouetteView::Front, 1, bounds, &sched)
+            .expect("the joined entry must still render");
+    let (w, h, rgb) = decode_rgb(&image.png_bytes);
+
+    // The joined entry paints; nothing else does.
+    assert_ne!(
+        sample(&rgb, bounds, w, h, 5.0, 0.9),
+        BACKGROUND,
+        "the joined entry must paint its interval"
+    );
+    assert_eq!(
+        sample(&rgb, bounds, w, h, 11.0, 0.9),
+        BACKGROUND,
+        "the unjoined entry contributes no pixels"
+    );
+
+    // Exactly ONE warning, naming the unjoined-entry count for THIS layer
+    // only — the layer-1 miss is not this capture's to report.
+    assert_eq!(
+        warnings,
+        vec!["region mapping: 1 entries had no joined SliceIR region and were skipped".to_string()],
+        "one deduped warning naming the unjoined-entry count, never a silent drop"
     );
 }

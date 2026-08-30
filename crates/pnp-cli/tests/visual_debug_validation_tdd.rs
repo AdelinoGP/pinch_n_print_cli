@@ -761,8 +761,6 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
         "Layer::Perimeters",
         "PrePass::MeshAnalysis",
         "PrePass::SeamPlanning",
-        "PrePass::RegionMapping",
-        "PrePass::OverhangAnnotation",
     ];
 
     let tmp = TempDir::new().expect("tempdir");
@@ -794,6 +792,40 @@ fn silhouette_unsupported_taps_rejected_with_reasons() {
             }
         }
     }
+}
+
+#[test]
+fn silhouette_region_mapping_and_overhang_taps_accepted() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    for tap in ["PrePass::RegionMapping", "PrePass::OverhangAnnotation"] {
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            vec![TapSelector::Name(tap.to_string())],
+        );
+        let err = run_visual_debug(req, &tmp.path().join(tap), false)
+            .expect_err("unreachable fixture must fail after validation");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "{tap} was rejected during validation: {err:?}"
+        );
+    }
+
+    let err = expect_validation_error(
+        silhouette_model_request(
+            "1.2.0",
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            vec![TapSelector::Name("PrePass::MeshAnalysis".to_string())],
+        ),
+        &tmp.path().join("mesh-analysis"),
+        "MeshAnalysis remains unsupported for silhouette rendering",
+    );
+    assert!(
+        matches!(err, ValidationError::SilhouetteUnsupportedForTap { ref tap, .. }
+            if tap == "PrePass::MeshAnalysis"),
+        "expected MeshAnalysis silhouette rejection, got {err:?}"
+    );
 }
 
 #[test]

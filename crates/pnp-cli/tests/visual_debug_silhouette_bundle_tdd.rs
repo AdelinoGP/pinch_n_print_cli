@@ -17,8 +17,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::{
-    run_visual_debug, FrameMode, LayerSelector, TapSelector, VisualDebugRequest, VisualDebugSource,
-    VisualizationSpec,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, VisualDebugError, VisualDebugRequest,
+    VisualDebugSource, VisualizationSpec,
 };
 use serde_json::{json, Value};
 use tempfile::TempDir;
@@ -101,7 +101,10 @@ fn expand_layer_ranges(value: &Value) -> Vec<i64> {
     for range in value.as_array().expect("layers_rendered is an array") {
         let start = range["start"].as_i64().expect("range start is an integer");
         let end = range["end"].as_i64().expect("range end is an integer");
-        assert!(start <= end, "range must be non-empty and ascending: {range}");
+        assert!(
+            start <= end,
+            "range must be non-empty and ascending: {range}"
+        );
         out.extend(start..=end);
     }
     out
@@ -142,7 +145,9 @@ fn silhouette_bundle_entry_shape_and_default_front_view() {
         "composite filename is {{sanitized_tap}}_silhouette_{{view}}.png with no _l{{layer}} suffix"
     );
     assert!(
-        output.join("images/Layer__Slice_silhouette_front.png").exists(),
+        output
+            .join("images/Layer__Slice_silhouette_front.png")
+            .exists(),
         "the referenced composite PNG must exist on disk"
     );
 
@@ -244,6 +249,93 @@ fn z_frame_is_model_wide_not_selection_wide() {
         "the silhouette Z frame is model-wide (MeshIR::build_volume), so a layer \
          subset and the full model must record byte-identical world_bounds_mm"
     );
+}
+
+#[test]
+fn region_mapping_bundle_entry_and_model_wide_frame() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = write_bounded_config(tmp.path());
+    let subset_out = tmp.path().join("region-subset");
+    let subset_manifest = run_visual_debug(
+        silhouette_request(
+            vec!["PrePass::RegionMapping"],
+            vec![LayerSelector::Range { start: 0, end: 2 }],
+            config.clone(),
+            vec![json!({"view": "front"})],
+        ),
+        &subset_out,
+        false,
+    )
+    .expect("subset RegionMapping silhouette bundle succeeds");
+    let all_out = tmp.path().join("region-all");
+    let all_manifest = run_visual_debug(
+        silhouette_request(
+            vec!["PrePass::RegionMapping"],
+            vec![LayerSelector::Range {
+                start: 0,
+                end: 1_000_000,
+            }],
+            config,
+            vec![json!({"view": "front"})],
+        ),
+        &all_out,
+        false,
+    )
+    .expect("all-layer RegionMapping silhouette bundle succeeds");
+    let subset = manifest_at(&subset_manifest);
+    let all = manifest_at(&all_manifest);
+    for (bundle, output) in [(&subset, &subset_out), (&all, &all_out)] {
+        let images = bundle["images"].as_array().expect("images array");
+        assert_eq!(images.len(), 1, "one RegionMapping silhouette image");
+        let entry = &images[0];
+        assert_eq!(
+            entry["png_path"],
+            "images/PrePass__RegionMapping_silhouette_front.png"
+        );
+        assert_eq!(entry["visualization"], "silhouette");
+        assert_eq!(entry["view"], "front");
+        assert!(entry["layers_rendered"].is_array());
+        let object = entry.as_object().expect("image entry object");
+        assert!(!object.contains_key("layer_index"));
+        assert!(!object.contains_key("layer_z"));
+        assert!(output
+            .join("images/PrePass__RegionMapping_silhouette_front.png")
+            .exists());
+    }
+    assert_eq!(
+        serde_json::to_string(&subset["images"][0]["world_bounds_mm"]).unwrap(),
+        serde_json::to_string(&all["images"][0]["world_bounds_mm"]).unwrap(),
+        "RegionMapping silhouette framing is model-wide"
+    );
+}
+
+#[test]
+fn silhouette_tool_on_remaining_taps_fails_tool_color_unavailable() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = write_bounded_config(tmp.path());
+    for tap in ["PrePass::RegionMapping", "PrePass::OverhangAnnotation"] {
+        let result = run_visual_debug(
+            silhouette_request(
+                vec![tap],
+                vec![LayerSelector::Range { start: 0, end: 2 }],
+                config.clone(),
+                vec![json!({"view": "front", "color_by": "tool"})],
+            ),
+            &tmp.path().join(tap.replace("::", "-")),
+            false,
+        );
+        let error = result.expect_err("tool-colored remaining tap must fail");
+        let rendered = format!("{error:?}\n{error}");
+        assert!(
+            matches!(error, VisualDebugError::RenderFailed(ref message)
+                if message.contains("color_by \"tool\" is unavailable")),
+            "expected the wrapped ToolColorUnavailable contract: {rendered}"
+        );
+        assert!(
+            rendered.contains(tap),
+            "error must name tap {tap}: {rendered}"
+        );
+    }
 }
 
 // ───────────────────────────── AC-9 ──────────────────────────────

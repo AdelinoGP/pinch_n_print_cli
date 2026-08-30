@@ -156,11 +156,16 @@ side as two separate bundles. `frame: "plate"` plus silhouette is also rejected
 
 Supported in this release: `Layer::Slice`, `PrePass::PaintSegmentation`,
 `Layer::PaintRegionAnnotation`, `Layer::SlicePostProcess` (all `CapturedIr::Slice`),
-`PrePass::SupportGeometry`, `PostPass::LayerFinalization`, and
-`PostPass::GCodeEmit`. Every other tap is rejected with a named reason rather
-than rendered empty — including `Layer::Perimeters` and the other per-layer
-arena taps, `PrePass::MeshAnalysis`, `PrePass::SeamPlanning`,
-`PrePass::RegionMapping`, and `PrePass::OverhangAnnotation`.
+`PrePass::SupportGeometry`, `PrePass::RegionMapping`, `PrePass::OverhangAnnotation`,
+`PostPass::LayerFinalization`, and `PostPass::GCodeEmit`. Every other tap is
+rejected with a named reason rather than rendered empty — including
+`Layer::Perimeters` and the other per-layer arena taps, `PrePass::MeshAnalysis`,
+and `PrePass::SeamPlanning`.
+
+| Tap | Silhouette semantics |
+|-----|----------------------|
+| `PrePass::RegionMapping` | Joined per-region slabs `[z − effective_layer_height, z]`; deterministic `tint class` paint order is ascending RGB of the region config tint, with overlapping classes painting the larger tint last. Unjoined entries are warned and skipped. |
+| `PrePass::OverhangAnnotation` | Per-`quartile` band colors paint in ascending quartile order (Q1–Q4, most severe last and winning overlaps), with slab heights from SliceIR-derived height classes, never schedule Z-diffs. Bridge/overhang XY footprints are deliberately excluded because they have no honest Z attribution. |
 
 `options.composited_overlays` is now **accepted** in schema 1.2.0 for seam
 overlays — see "Seam overlays" below. `color_by: "tool"` is supported; see "Tool-Colored

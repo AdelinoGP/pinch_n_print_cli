@@ -28,7 +28,7 @@
 //! [`palette`] is a fixed, request-independent set of RGB colors keyed by
 //! extrusion role / overlay kind. Never derived from request input (AC-4).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use png::{BitDepth, ColorType, Encoder};
@@ -126,6 +126,14 @@ pub mod palette {
     /// carried by a NON-negative-index plan entry (packet 247). Negative-index
     /// (raft prefix) entries are skipped entirely with warning W1.
     pub const SUPPORT_RAFT: [u8; 3] = [150, 60, 200];
+    /// Silhouette color for overhang severity quartile 1.
+    pub const OVERHANG_QUARTILE_1: [u8; 3] = [20, 240, 20];
+    /// Silhouette color for overhang severity quartile 2.
+    pub const OVERHANG_QUARTILE_2: [u8; 3] = [20, 20, 240];
+    /// Silhouette color for overhang severity quartile 3.
+    pub const OVERHANG_QUARTILE_3: [u8; 3] = [240, 20, 20];
+    /// Silhouette color for overhang severity quartile 4.
+    pub const OVERHANG_QUARTILE_4: [u8; 3] = [240, 20, 240];
 }
 
 /// A renderable geometry view, selected by the visual-debug request's
@@ -353,6 +361,15 @@ pub enum RenderError {
         /// The unsupported overlay's stable name.
         overlay: &'static str,
     },
+    /// A surface-classification quartile outside the documented 1..=4 range.
+    InvalidQuartile {
+        /// The tap carrying the invalid band.
+        tap: String,
+        /// The layer carrying the invalid band.
+        layer_index: u32,
+        /// The invalid quartile value.
+        quartile: u8,
+    },
 }
 
 impl fmt::Display for RenderError {
@@ -386,6 +403,14 @@ impl fmt::Display for RenderError {
                 f,
                 "tap '{tap}' layer {layer_index}: overlay '{overlay}' has no source field on this \
                  tap's captured IR"
+            ),
+            Self::InvalidQuartile {
+                tap,
+                layer_index,
+                quartile,
+            } => write!(
+                f,
+                "tap '{tap}' layer {layer_index}: invalid overhang quartile {quartile} (must be 1..=4)"
             ),
         }
     }
@@ -2504,6 +2529,55 @@ struct SilhouetteBand {
     end: f32,
 }
 
+/// Height class and footprint for one model layer in the overhang silhouette.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SilhouetteLayerHeightClass {
+    /// Region effective layer height in millimeters.
+    pub effective_layer_height: f32,
+    /// Concatenated region polygons for this height class.
+    pub footprint: Vec<ExPolygon>,
+}
+
+/// Exact-bit grouped layer heights used to partition overhang bands.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SilhouetteSliceHeightIndex {
+    /// Layer index to exact-height classes, sorted by height.
+    pub layers: BTreeMap<u32, Vec<SilhouetteLayerHeightClass>>,
+}
+
+/// Build the model-source height classes without consulting a slab schedule.
+#[must_use]
+pub fn build_silhouette_slice_height_index(
+    slice_rows: &[slicer_ir::SliceIR],
+) -> SilhouetteSliceHeightIndex {
+    let mut layers = BTreeMap::new();
+    for row in slice_rows {
+        let mut grouped: BTreeMap<u32, (f32, Vec<ExPolygon>)> = BTreeMap::new();
+        for region in &row.regions {
+            let key = region.effective_layer_height.to_bits();
+            let entry = grouped
+                .entry(key)
+                .or_insert_with(|| (region.effective_layer_height, Vec::new()));
+            entry.1.extend(region.polygons.iter().cloned());
+        }
+        let mut classes: Vec<_> = grouped.into_values().collect();
+        classes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        layers.insert(
+            row.global_layer_index,
+            classes
+                .into_iter()
+                .map(
+                    |(effective_layer_height, footprint)| SilhouetteLayerHeightClass {
+                        effective_layer_height,
+                        footprint,
+                    },
+                )
+                .collect(),
+        );
+    }
+    SilhouetteSliceHeightIndex { layers }
+}
+
 /// The extrusion width in mm implied by one move's flow, in closed form.
 ///
 /// Inverts the standard authoring relation `Δe = L × w × h / A_filament`
@@ -2895,6 +2969,10 @@ fn silhouette_coarse_entries_warning(count: usize) -> String {
     )
 }
 
+fn silhouette_region_mapping_unjoined_warning(count: usize) -> String {
+    format!("region mapping: {count} entries had no joined SliceIR region and were skipped")
+}
+
 /// Extract every projected band from one capture, in source order.
 fn silhouette_bands(
     capture: &StageCapture,
@@ -2902,6 +2980,7 @@ fn silhouette_bands(
     schedule: &SilhouetteSlabSchedule,
     style: &RenderStyle,
     out: &mut Vec<SilhouetteBand>,
+    unjoined_region_mapping_entries: &mut usize,
 ) -> Result<(), RenderError> {
     if matches!(style.color_by, ColorBy::Tool)
         && !matches!(capture.ir, CapturedIr::LayerFinalization(_))
@@ -3039,6 +3118,71 @@ fn silhouette_bands(
             }
         }
     }
+    if let CapturedIr::RegionMapping {
+        region_map,
+        slice_ir,
+    } = &capture.ir
+    {
+        let mut entries: Vec<(&slicer_ir::RegionKey, &slicer_ir::RegionPlan)> = region_map
+            .entries
+            .iter()
+            .filter(|(key, _)| key.global_layer_index == capture.layer_index)
+            .collect();
+        entries.sort_by(|a, b| {
+            (&a.0.object_id, a.0.region_id, &a.0.variant_chain).cmp(&(
+                &b.0.object_id,
+                b.0.region_id,
+                &b.0.variant_chain,
+            ))
+        });
+        for (key, _plan) in entries {
+            let Some(slice) = slice_ir
+                .iter()
+                .find(|slice| slice.global_layer_index == key.global_layer_index)
+            else {
+                *unjoined_region_mapping_entries += 1;
+                continue;
+            };
+            let Some(region) = slice.regions.iter().find(|region| {
+                region.object_id == key.object_id
+                    && region.region_id == key.region_id
+                    && region.variant_chain == key.variant_chain
+            }) else {
+                *unjoined_region_mapping_entries += 1;
+                continue;
+            };
+            let height = region.effective_layer_height;
+            let (z_bottom, z_top) = if height.is_finite() && height > 0.0 {
+                (capture.layer_z - height, capture.layer_z)
+            } else {
+                return Err(RenderError::MissingGeometryField {
+                    tap: capture.stage_id.clone(),
+                    layer_index: capture.layer_index,
+                    field: "slice_ir.regions.effective_layer_height",
+                });
+            };
+            let tint = config_tint(region_map.config_for(key));
+            let group = format!(
+                "region-mapping:{:03}:{:03}:{:03}",
+                tint[0], tint[1], tint[2]
+            );
+            for poly in &region.polygons {
+                if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                    out.push(SilhouetteBand {
+                        layer_index: capture.layer_index,
+                        group: group.clone(),
+                        order_key: group.clone(),
+                        color: tint,
+                        z_bottom,
+                        z_top,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+        return Ok(());
+    }
     Ok(())
 }
 
@@ -3166,6 +3310,209 @@ pub fn render_silhouette_composite(
         schedule,
         &RenderStyle::default(),
     )
+}
+
+fn render_silhouette_band_set(
+    mut bands: Vec<SilhouetteBand>,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    tap: &str,
+    layer_index: u32,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    bands.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then(a.order_key.cmp(&b.order_key))
+            .then(a.z_bottom.total_cmp(&b.z_bottom))
+            .then(a.start.total_cmp(&b.start))
+    });
+    let mut shapes = Vec::new();
+    let mut per_layer_class: Vec<(u32, String, Vec<(f32, f32)>)> = Vec::new();
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i].clone();
+        let mut j = i;
+        let mut intervals = Vec::new();
+        while j < bands.len()
+            && bands[j].layer_index == head.layer_index
+            && bands[j].group == head.group
+            && bands[j].z_bottom.to_bits() == head.z_bottom.to_bits()
+            && bands[j].z_top.to_bits() == head.z_top.to_bits()
+        {
+            intervals.push((bands[j].start, bands[j].end));
+            j += 1;
+        }
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, head.z_bottom),
+                    (end, head.z_bottom),
+                    (end, head.z_top),
+                    (start, head.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.color,
+            });
+            if let Some((_, _, acc)) = per_layer_class
+                .iter_mut()
+                .find(|(l, group, _)| *l == head.layer_index && *group == head.group)
+            {
+                acc.push((start, end));
+            } else {
+                per_layer_class.push((head.layer_index, head.group.clone(), vec![(start, end)]));
+            }
+        }
+        i = j;
+    }
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: tap.to_string(),
+            layer_index,
+            field: "overhang_quartile_polygons",
+        });
+    }
+    let mut occluded_layers = Vec::new();
+    for (layer, group, intervals) in &per_layer_class {
+        let overlaps = per_layer_class.iter().any(|(l2, group2, other)| {
+            l2 == layer
+                && group2 > group
+                && other
+                    .iter()
+                    .any(|(s2, e2)| intervals.iter().any(|(s, e)| s2 < e && s < e2))
+        });
+        if overlaps && !occluded_layers.contains(layer) {
+            occluded_layers.push(*layer);
+        }
+    }
+    let warnings = if occluded_layers.is_empty() {
+        Vec::new()
+    } else {
+        vec![silhouette_occlusion_warning(occluded_layers.len())]
+    };
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    Ok((
+        RenderedImage {
+            png_bytes: encode_png(width, height, &canvas.buf),
+            width,
+            height,
+        },
+        warnings,
+    ))
+}
+
+/// Render model-source overhang quartile bands over their exact layer-height slabs.
+pub fn render_silhouette_overhang_composite(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    height_index: &SilhouetteSliceHeightIndex,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+    let mut bands = Vec::new();
+    let mut first = None;
+    for capture in captures {
+        let CapturedIr::SurfaceClassification(sc) = &capture.ir else {
+            continue;
+        };
+        let mut objects = sc.overhang_quartile_polygons.iter().collect::<Vec<_>>();
+        objects.sort_by_key(|(object_id, _)| *object_id);
+        let layer_bands = objects
+            .into_iter()
+            .filter_map(|(_, by_layer)| by_layer.get(&capture.layer_index))
+            .flatten()
+            .collect::<Vec<_>>();
+        if layer_bands.is_empty()
+            && !sc
+                .overhang_quartile_polygons
+                .values()
+                .any(|by_layer| by_layer.contains_key(&capture.layer_index))
+        {
+            continue;
+        }
+        if first.is_none() {
+            first = Some((capture.stage_id.clone(), capture.layer_index));
+        }
+        let mut ordered = layer_bands;
+        ordered.sort_by_key(|band| band.quartile);
+        let Some(classes) = height_index.layers.get(&capture.layer_index) else {
+            return Err(RenderError::MissingGeometryField {
+                tap: capture.stage_id.clone(),
+                layer_index: capture.layer_index,
+                field: "silhouette_slice_height_index.layers",
+            });
+        };
+        for band in ordered {
+            let color = match band.quartile {
+                1 => palette::OVERHANG_QUARTILE_1,
+                2 => palette::OVERHANG_QUARTILE_2,
+                3 => palette::OVERHANG_QUARTILE_3,
+                4 => palette::OVERHANG_QUARTILE_4,
+                quartile => {
+                    return Err(RenderError::InvalidQuartile {
+                        tap: capture.stage_id.clone(),
+                        layer_index: capture.layer_index,
+                        quartile,
+                    });
+                }
+            };
+            for poly in &band.polygons {
+                if classes.len() == 1 {
+                    if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                        bands.push(SilhouetteBand {
+                            layer_index: capture.layer_index,
+                            group: format!("overhang:{:03}", band.quartile),
+                            order_key: format!("overhang:{:03}", band.quartile),
+                            color,
+                            z_bottom: capture.layer_z - classes[0].effective_layer_height,
+                            z_top: capture.layer_z,
+                            start,
+                            end,
+                        });
+                    }
+                } else {
+                    for (class_index, class) in classes.iter().enumerate() {
+                        let pieces = slicer_core::polygon_ops::intersection(
+                            std::slice::from_ref(poly),
+                            &class.footprint,
+                        );
+                        for piece in pieces {
+                            if let Some((start, end)) = contour_interval(&piece.contour, view) {
+                                bands.push(SilhouetteBand {
+                                    layer_index: capture.layer_index,
+                                    group: format!(
+                                        "overhang:{:03}:{class_index:03}",
+                                        band.quartile
+                                    ),
+                                    order_key: format!("overhang:{:03}", band.quartile),
+                                    color,
+                                    z_bottom: capture.layer_z - class.effective_layer_height,
+                                    z_top: capture.layer_z,
+                                    start,
+                                    end,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let (tap, layer_index) = first
+        .or_else(|| {
+            captures
+                .first()
+                .map(|capture| (capture.stage_id.clone(), capture.layer_index))
+        })
+        .unwrap_or_else(|| ("<empty capture group>".to_string(), 0));
+    render_silhouette_band_set(bands, resolution_scale, viewport, &tap, layer_index)
 }
 
 /// Render a silhouette composite using the requested role or tool coloring.
@@ -3357,8 +3704,16 @@ fn silhouette_composite_shapes(
     }
 
     let mut bands: Vec<SilhouetteBand> = Vec::new();
+    let mut unjoined_region_mapping_entries = 0;
     for capture in captures {
-        silhouette_bands(capture, view, schedule, style, &mut bands)?;
+        silhouette_bands(
+            capture,
+            view,
+            schedule,
+            style,
+            &mut bands,
+            &mut unjoined_region_mapping_entries,
+        )?;
     }
 
     // Group key: (layer, class paint rank, slab). Sorting by it first makes
@@ -3486,6 +3841,11 @@ fn silhouette_composite_shapes(
     }
     if !occluded_layers.is_empty() {
         warnings.push(silhouette_occlusion_warning(occluded_layers.len()));
+    }
+    if unjoined_region_mapping_entries > 0 {
+        warnings.push(silhouette_region_mapping_unjoined_warning(
+            unjoined_region_mapping_entries,
+        ));
     }
 
     Ok((shapes, warnings))
