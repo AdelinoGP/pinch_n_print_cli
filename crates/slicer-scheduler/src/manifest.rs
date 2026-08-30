@@ -1266,7 +1266,7 @@ fn parse_config_field_entry(
         &format!("config.schema.{field_key}.type"),
         "type",
     )?;
-    let default = table.get("default").map(|v| v.to_string());
+    let default = table.get("default").map(toml_default_to_wire);
     // Retain the parsed percent default on the entry (packet 185 / DEV-100)
     // instead of discarding it, so the resolver can thread the
     // `Percent` / `FloatOrPercent` variant into `ResolvedConfig.extensions`.
@@ -1430,6 +1430,28 @@ fn get_string(
 
 fn get_string_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<String> {
     table.get(key).and_then(|v| v.as_str().map(String::from))
+}
+
+/// Render a manifest `[config.schema.<key>]` `default` as the wire string.
+///
+/// `toml::Value::to_string()` is the *TOML document* serializer: on a string
+/// value it emits the quoted literal (`"gcode"` becomes `"\"gcode\""` on the
+/// wire), which every consumer then reads back as a value with literal quotes.
+/// Scalars must be unwrapped to their bare text; array defaults render
+/// comma-joined, matching how an Orca vector option deserializes a list.
+fn toml_default_to_wire(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => s.clone(),
+        toml::Value::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                toml::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        other => other.to_string(),
+    }
 }
 
 fn get_float_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<f64> {
@@ -1889,6 +1911,57 @@ mod tests {
         )
         .config_schema(schema)
         .build()
+    }
+
+    /// SchemaBridgeMap ticket 11 (fork side): a TOML string default reached the
+    /// wire as the quoted TOML literal (`"gcode"` became `"\"gcode\""`), because
+    /// the extraction used `toml::Value::to_string()` — the document
+    /// serializer, not a value renderer. The GUI deserializes the wire default
+    /// verbatim, so every enum/string/percent control on its generated page
+    /// opened at the zero value with a "does not parse" warning instead of the
+    /// module's declared default. Scalars must arrive bare; list defaults as a
+    /// comma-joined vector string.
+    #[test]
+    fn module_defaults_reach_the_wire_unquoted() {
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::String("gcode".into())),
+            "gcode",
+            "a string default must not carry TOML quotes"
+        );
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::from(0.35)),
+            "0.35"
+        );
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::Boolean(true)),
+            "true"
+        );
+
+        // A list default renders the way an Orca vector option deserializes.
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::Array(vec![
+                toml::Value::Float(0.0),
+                toml::Value::Float(1.24),
+            ])),
+            "0.0,1.24",
+            "list defaults render comma-joined, not TOML-bracketed"
+        );
+
+        // End to end through the reply builder: an enum field's default is the
+        // bare identifier a dropdown can select.
+        let mut entries = std::collections::BTreeMap::new();
+        entries.insert(
+            "retract_mode".to_string(),
+            ConfigFieldEntry {
+                field_type: "enum".to_string(),
+                default: Some("gcode".to_string()),
+                values: Some(vec!["gcode".to_string(), "firmware".to_string()]),
+                ..Default::default()
+            },
+        );
+        let module = synthetic_module("com.test.quotes", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+        assert_eq!(json["schema"][0]["fields"][0]["default"], "gcode");
     }
 
     #[test]
