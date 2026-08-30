@@ -25,7 +25,7 @@
 //!    `PaintRegionLayerView::support_plan_entries_for`, honouring paint
 //!    overrides through `SupportPaintPolicy`.
 //! 2. For each planned role region (`SupportBody` / `TopInterface` /
-//!    `BottomInterface`), render the polygon with `render_polygon`: `wall_count`
+//!    `BottomInterface`), render the polygon with `render_polygon`: `tree_support_wall_count`
 //!    inset perimeter passes plus a scan fill inset clear of them.
 //! 3. Derive body and interface pitches from canonical flow spacing helpers.
 //! 4. Stamp `ExtrusionRole::SupportInterface` on interface paths so
@@ -74,7 +74,7 @@ pub struct TreeSupport {
     /// Resolved interface flow ratio as a percentage.
     interface_flow_percent: f32,
     /// Number of perimeter passes used to represent a support body.
-    wall_count: usize,
+    wall_loops: usize,
     /// Configured top-interface line gap in millimeters (canonical
     /// `support_interface_spacing`). This is the *gap*, not the pitch.
     top_interface_spacing_mm: f32,
@@ -268,7 +268,7 @@ impl LayerModule for TreeSupport {
             Some(ConfigValue::Int(value)) => *value as f32,
             _ => 100.0,
         };
-        let wall_count = match config.get("tree_support_wall_count") {
+        let wall_loops = match config.get("tree_support_wall_count") {
             Some(ConfigValue::Int(value)) => (*value).max(1) as usize,
             Some(ConfigValue::Float(value)) => (*value).max(1.0) as usize,
             _ => 2,
@@ -293,7 +293,7 @@ impl LayerModule for TreeSupport {
             support_speed,
             line_width,
             interface_flow_percent,
-            wall_count,
+            wall_loops,
             top_interface_spacing_mm,
             bottom_interface_spacing_mm,
             base_pattern_spacing_mm,
@@ -428,7 +428,7 @@ impl LayerModule for TreeSupport {
                             speed_factor,
                             fill_spacing,
                             vertical,
-                            self.wall_count + extra_walls,
+                            self.wall_loops + extra_walls,
                         );
                         if matches!(
                             role,
@@ -487,7 +487,7 @@ impl TreeSupport {
     ///
     /// Each wall is inset half a line width past the previous one and the fill
     /// region is inset clear of all of them, so the passes do not overlap.
-    /// Before packet 224 this emitted `wall_count` copies of the *same* contour
+    /// Before packet 224 this emitted `tree_support_wall_count` copies of the *same* contour
     /// (coincident, no inset) and then scan-filled the full polygon at a
     /// `line_width` pitch — solid regardless of configured spacing — so a
     /// support body was extruded several times over.
@@ -509,7 +509,7 @@ impl TreeSupport {
             speed_factor,
             fill_spacing_mm,
             vertical,
-            self.wall_count,
+            self.wall_loops,
         )
     }
 
@@ -522,7 +522,7 @@ impl TreeSupport {
         speed_factor: f32,
         fill_spacing_mm: f32,
         vertical: bool,
-        wall_count: usize,
+        wall_loops: usize,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
         if expoly.contour.points.len() < 3 {
@@ -531,7 +531,7 @@ impl TreeSupport {
         let line_width = self.line_width.max(f32::EPSILON);
         let source = [expoly.clone()];
 
-        for wall_index in 0..wall_count {
+        for wall_index in 0..wall_loops {
             let inset = -line_width * (wall_index as f32 + 0.5);
             let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
             for ring_poly in &ring_set {
@@ -557,12 +557,12 @@ impl TreeSupport {
         }
 
         // Fill only the area the walls do not already cover.
-        let fill_regions = if wall_count == 0 {
+        let fill_regions = if wall_loops == 0 {
             source.to_vec()
         } else {
             host::offset_polygons(
                 &source,
-                -line_width * wall_count as f32,
+                -line_width * wall_loops as f32,
                 OffsetJoinType::Miter,
                 0.0,
             )
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn walls_are_inset_and_fill_does_not_overlap_them() {
-        // Guards the packet-224 fix: `render_polygon` used to emit `wall_count`
+        // Guards the packet-224 fix: `render_polygon` used to emit `tree_support_wall_count`
         // coincident copies of the same contour and then scan-fill the whole
         // polygon at a `line_width` pitch, so a body was extruded several times
         // over the same area.
@@ -793,7 +793,11 @@ mod tests {
         let paths = module.render_polygon(&square, 1.0, 1.0, 2.5, false);
         let closed: Vec<&ExtrusionPath3D> =
             paths.iter().filter(|path| path.points.len() > 2).collect();
-        assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
+        assert_eq!(
+            closed.len(),
+            2,
+            "expected exactly `tree_support_wall_count` wall loops"
+        );
 
         // Each wall must sit at its own inset, not on top of the previous one.
         let extent = |path: &ExtrusionPath3D| {

@@ -7,7 +7,7 @@
 //!
 //! Two acceptance cases:
 //!  - a long narrow rect island (20 mm × 0.6 mm) with
-//!    `smaller_perimeter_threshold_mm=0.8` and `smaller_perimeter_line_width=0.3`
+//!    `small_perimeter_threshold=0.8` and `smaller_perimeter_line_width=0.3`
 //!    must emit its outer wall with per-vertex width 0.3 mm.
 //!  - a wider island (20 mm × 5 mm) in the same fixture must keep the default
 //!    `outer_wall_line_width` on its outer wall.
@@ -50,9 +50,9 @@ fn outer_wall_widths_for(config: &slicer_ir::ConfigView, region: &SliceRegionVie
 #[test]
 fn narrow_island_uses_smaller_perimeter_width() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", 0.5)
-        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("small_perimeter_threshold", 0.8)
         .float("smaller_perimeter_line_width", 0.3)
         .build();
 
@@ -75,9 +75,9 @@ fn narrow_island_uses_smaller_perimeter_width() {
 #[test]
 fn wide_island_keeps_default_outer_wall_width() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", 0.5)
-        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("small_perimeter_threshold", 0.8)
         .float("smaller_perimeter_line_width", 0.3)
         .build();
 

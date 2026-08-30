@@ -134,7 +134,7 @@ fn chosen_position_uses_supplied_layer_z() {
 /// `paint_annotation_type` / `candidate_paint_classification` shipped correct
 /// but with **zero production callers** — the whole of `src/visibility.rs` was
 /// unreachable from `run_seam_planning`, so seam paint could not move the seam
-/// on the default `seam_mode = "aligned"` (where `seam-placer` consumes the
+/// on the default `seam_position = "aligned"` (where `seam-placer` consumes the
 /// planner's `resolved_seam` rather than the perimeter-side candidates). The
 /// exactness tests passed anyway because they `#[path]`-include the module
 /// source. This test drives the production entry point instead.
@@ -197,7 +197,11 @@ fn seam_blocker_paint_excludes_vertex_from_planner_candidates() {
 
     let entries = run_aligned_planning_entries(&view, false);
 
-    assert_eq!(entries[0].scored_candidates.len(), 3, "blocked vertex dropped");
+    assert_eq!(
+        entries[0].scored_candidates.len(),
+        3,
+        "blocked vertex dropped"
+    );
     assert!(
         !entries[0]
             .scored_candidates

@@ -86,9 +86,9 @@ is the authoritative catalog of their defaults and ranges.
 | `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `arachne-perimeters` |
 | `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
-| `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
 | `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
+| `wall_loops` | int | `2` | >= 1.0 | `arachne-perimeters` |
 | `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] | `arachne-perimeters` |
 | `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] | `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
@@ -124,14 +124,14 @@ is the authoritative catalog of their defaults and ranges.
 | `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters` |
 | `slice_has_paint` | bool | `false` | — | `classic-perimeters` |
+| `small_perimeter_threshold` | float | `0.0` | [0.0, 10.0] | `classic-perimeters` |
 | `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
-| `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `classic-perimeters` |
 | `spiral_vase` | bool | `false` | — | `classic-perimeters` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `classic-perimeters` |
 | `thick_bridges` | bool | `false` | — | `classic-perimeters` |
 | `top_bottom_infill_wall_overlap` | percent | `"25%"` | — | `classic-perimeters` |
-| `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |
+| `wall_loops` | int | `2` | [1.0, 10.0] | `classic-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
 | `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
@@ -218,8 +218,8 @@ is the authoritative catalog of their defaults and ranges.
 | `thick_internal_bridges` | bool | `true` | — | `rectilinear-infill` |
 | `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `top_surface_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
-| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
+| `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
+| `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
@@ -294,7 +294,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_speed` | float | `25.0` | [1.0, 300.0] | `wave-overhangs` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | `wave-overhangs` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `wave-overhangs` |
-| `wall_count` | int | `3` | [1.0, 10.0] | `wave-overhangs` |
+| `wall_loops` | int | `2` | [1.0, 10.0] | `wave-overhangs` |
 | `wave_overhang_anchor_depth_mm` | float | `0.0` | [0.0, 20.0] | `wave-overhangs` |
 | `wave_overhang_flow_mm3_per_mm` | float | `0.15` | [0.02, 1.5] | `wave-overhangs` |
 | `wave_overhang_line_spacing` | float | `0.35` | [0.01, 5.0] | `wave-overhangs` |
@@ -332,7 +332,7 @@ emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic
 packet 118) before the layer loop when the value is not `-1`. See
 `docs/specs/_OLD/support-modules-orca-port.md` (archived spec).
 
-### `seam_mode` values
+### `seam_position` values
 
 Accepted on both `seam-placer` and `seam-planner-default` (default `"aligned"` —
 packet 180 changed the default from `"nearest"` in both manifests together, matching
@@ -927,18 +927,18 @@ Defaults and source-of-truth live in
 
 | Key | Type | Default | Range / values | Description |
 |---|---|---|---|---|
-| `wall_count` | int | `3` | >= 1 | User-facing per-region perimeter count; consumed as `max_bead_count = 2 × wall_count` (Orca `WallToolPaths.cpp:525`). |
+| `wall_loops` | int | `2` | >= 1 | User-facing per-region perimeter count; consumed as `max_bead_count = 2 × wall_loops` (Orca `WallToolPaths.cpp:525`). |
 | `wall_direction` | string | `"counter_clockwise"` | `counter_clockwise`, `clockwise` | Contour (outer-surface) winding direction; holes are always wound opposite the contour. |
-| `only_one_wall_first_layer` | bool | `false` | — | When `true`, forces a single wall (`max_bead_count = 2`) on layer 0 instead of `wall_count`. |
+| `only_one_wall_first_layer` | bool | `false` | — | When `true`, forces a single wall (`max_bead_count = 2`) on layer 0 instead of `wall_loops`. |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] mm | Overhang-steepness threshold for `overhang_reverse`; `0` treats every overhang as steep and reverses. |
 | `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] mm | Minimum wall line-segment length (mm) for Arachne wall simplification; replaces `meshfix_maximum_resolution` on the wall path. |
 | `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] mm | Allowed positional error (mm) for Arachne wall simplification; replaces `meshfix_maximum_deviation` on the wall path. |
 
-**`wall_count`** — OrcaSlicer's user-facing per-region perimeter count. `arachne-perimeters` translates it to `max_bead_count = 2 × wall_count` (Orca `Arachne/WallToolPaths.cpp:525`) when `max_bead_count` is not explicitly set; an explicit `max_bead_count` still wins. Closes G1's sibling `wall_count` gap and the AC-1 `wall_count` acceptance criterion.
+**`wall_loops`** — OrcaSlicer's user-facing per-region perimeter count (renamed from PnP's `wall_count`, wayfinder ticket 102). `arachne-perimeters` translates it to `max_bead_count = 2 × wall_loops` (Orca `Arachne/WallToolPaths.cpp:525`) when `max_bead_count` is not explicitly set; an explicit `max_bead_count` still wins. Closes G1's sibling `wall_loops` gap and the AC-1 acceptance criterion.
 
 **`wall_direction`** — OrcaSlicer `wall_direction` (`coEnum`, `PrintConfig.cpp:2188-2198`, default `CounterClockwise`). Contour (`ExteriorSurface`) loops are forced CCW or CW per this key; hole loops are always wound opposite the contour (`PerimeterGenerator.cpp:527-545`). Closes G1.
 
-**`only_one_wall_first_layer`** — OrcaSlicer `only_one_wall_first_layer` (`coBool`, `PrintConfig.cpp:1513-1517`). On layer 0 the perimeter generator forces `loop_number = 0` — a single outer wall — regardless of `wall_count` (`PerimeterGenerator.cpp:2137-2139`). Also registered on `classic-perimeters` (see the "Walls (packet 104)" table above). Closes G2.
+**`only_one_wall_first_layer`** — OrcaSlicer `only_one_wall_first_layer` (`coBool`, `PrintConfig.cpp:1513-1517`). On layer 0 the perimeter generator forces `loop_number = 0` — a single outer wall — regardless of `wall_loops` (`PerimeterGenerator.cpp:2137-2139`). Also registered on `classic-perimeters` (see the "Walls (packet 104)" table above). Closes G2.
 
 **`overhang_reverse_threshold`** — OrcaSlicer `overhang_reverse_threshold` (`coFloatOrPercent`, `PerimeterGenerator.cpp:68-77`). Advisory companion to `overhang_reverse` / `overhang_reverse_internal_only` (see "Overhangs (packet 149)" above): when `0`, overhang detection treats every overhang as steep and reverses wall direction on odd layers. Closes G7.
 
@@ -984,7 +984,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 **`outer_wall_offset`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; it is an internal Arachne algorithm parameter (`coord_t`) threaded through `BeadingStrategyFactory`/`OuterWallInsetBeadingStrategy`. Maps to `OuterWallInsetBeadingStrategy`'s offset amount; `0` (matches the packet's original suggestion) disables the decorator's inward offset.
 
-**`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold. The manifest default is `0`, meaning auto-derive `2 × wall_count`; an explicit non-zero `max_bead_count` overrides that.
+**`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold. The manifest default is `0`, meaning auto-derive `2 × wall_loops`; an explicit non-zero `max_bead_count` overrides that.
 
 **`inner_wall_line_width` / `outer_wall_line_width`** (on `arachne-perimeters`) — `float_or_percent` keys with default `0` (the auto sentinel, matching upstream `coFloatOrPercent` default `0`), mirroring the classic-perimeters keys. The module derives its two beading targets from them: `optimal_width` (struct field; canonical `bead_width_x` = `perimeter_flow.scaled_spacing()`, i.e. the INNER wall) from `inner_wall_line_width`, and `preferred_bead_width_outer` (struct field; canonical `bead_width_0` = `ext_perimeter_flow.scaled_spacing()`, i.e. the OUTER wall) from `outer_wall_line_width`, converting width → Flow spacing via `line_width_to_spacing` before feeding the strategy stack and converting back at emission (`VariableWidth.cpp::thick_polyline_to_multi_path`). The former config keys `optimal_width`/`preferred_bead_width_outer` — Arachne-internal knobs exposed as user config — are RETIRED per ADR-0043 because they shadowed the wall widths. The `ArachneParams` STRUCT fields keep the canonical names; only the config keys are gone.
 

@@ -32,14 +32,14 @@ fn resolves_paint_config_namespace() {
     // Build a source map with a global perimeter_count=2 and an override for
     // the "fuzzy_skin" paint semantic.
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
-    source.insert("wall_count".to_string(), config_value_int(2));
+    source.insert("wall_loops".to_string(), config_value_int(2));
     source.insert(
-        "paint_config:fuzzy_skin:wall_count".to_string(),
+        "paint_config:fuzzy_skin:wall_loops".to_string(),
         config_value_int(5),
     );
 
     let global = ResolvedConfig {
-        wall_count: 2,
+        wall_loops: 2,
         ..ResolvedConfig::default()
     };
 
@@ -51,7 +51,7 @@ fn resolves_paint_config_namespace() {
             .expect("resolution should not fail");
     assert!(result.contains_key(&PaintSemantic::Custom("fuzzy_skin".to_string())));
     assert_eq!(
-        result[&PaintSemantic::Custom("fuzzy_skin".to_string())].wall_count,
+        result[&PaintSemantic::Custom("fuzzy_skin".to_string())].wall_loops,
         5
     );
     let _: Result<(), ConfigResolutionError> = Ok(()); // keep import used
@@ -64,7 +64,7 @@ fn resolves_paint_config_namespace() {
 fn unknown_semantic_warns_then_ignores() {
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
     source.insert(
-        "paint_config:UNKNOWN_SEMANTIC:wall_count".to_string(),
+        "paint_config:UNKNOWN_SEMANTIC:wall_loops".to_string(),
         config_value_int(5),
     );
 

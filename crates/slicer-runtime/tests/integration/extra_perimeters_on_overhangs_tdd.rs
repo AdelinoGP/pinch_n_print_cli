@@ -60,12 +60,12 @@ fn mean_x_mm(w: &WallLoop) -> f32 {
     sum / pts.len() as f32
 }
 
-/// AC-6 positive case: base wall_count=2, extra_perimeters_on_overhangs=true,
+/// AC-6 positive case: base wall_loops=2, extra_perimeters_on_overhangs=true,
 /// overhang_areas covers the left square → left gets 3 walls, right stays 2.
 #[test]
 fn overhang_extra_adds_one_wall_inside_overhang_only() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .bool("extra_perimeters_on_overhangs", true)
         .build();
     // Overhang footprint covers (and slightly overshoots) the left square only.
@@ -78,20 +78,20 @@ fn overhang_extra_adds_one_wall_inside_overhang_only() {
 
     assert_eq!(
         left_count, 3,
-        "overhang-covered square should get wall_count+1=3 walls; got {left_count}"
+        "overhang-covered square should get wall_loops+1=3 walls; got {left_count}"
     );
     assert_eq!(
         right_count, 2,
-        "non-overhang square should stay at base wall_count=2; got {right_count}"
+        "non-overhang square should stay at base wall_loops=2; got {right_count}"
     );
 }
 
 /// AC-6 negative case: same overhang footprint, but extra_perimeters_on_overhangs
-/// is false → both squares emit exactly the base wall_count everywhere.
+/// is false → both squares emit exactly the base wall_loops everywhere.
 #[test]
 fn overhang_extra_disabled_leaves_wall_count_uniform() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .bool("extra_perimeters_on_overhangs", false)
         .build();
     let overhang = rect_polygon(-10.0, 0.0, 12.0, 12.0);
@@ -110,7 +110,7 @@ fn overhang_extra_disabled_leaves_wall_count_uniform() {
 #[test]
 fn overhang_extra_with_empty_overhang_areas_is_noop() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .bool("extra_perimeters_on_overhangs", true)
         .build();
 

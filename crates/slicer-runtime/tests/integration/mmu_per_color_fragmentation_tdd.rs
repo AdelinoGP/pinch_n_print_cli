@@ -20,7 +20,7 @@ use slicer_sdk::views::SliceRegionView;
 /// outer-wall count is simple to reason about.
 fn fragmentation_config() -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("outer_wall_line_width", 0.4_f64)
         .float("inner_wall_line_width", 0.4_f64)
         .build()
@@ -68,7 +68,7 @@ fn per_color_regions_each_trace_own_outer_wall() {
 
     let walls = output.wall_loops();
 
-    // Count outer loops: wall_count=1 so every loop is outer (perimeter_index==0).
+    // Count outer loops: wall_loops=1 so every loop is outer (perimeter_index==0).
     let outer_loops: Vec<_> = walls
         .iter()
         .filter(|w| w.loop_type == LoopType::Outer)

@@ -10,7 +10,7 @@
 //! the discriminator OrcaSlicer uses. It does NOT ring the outer region boundary,
 //! so per-color MMU bisector edges produce no phantom slivers.
 //!
-//! Positive fixture: a 1.8 mm × 8 mm thin rectangle. With `wall_count = 2`,
+//! Positive fixture: a 1.8 mm × 8 mm thin rectangle. With `wall_loops = 2`,
 //! `outer_wall_line_width = inner_wall_line_width = 0.4 mm` and no overlap
 //! keys configured (code fallback `infill_wall_overlap = 0.0`):
 //!
@@ -40,7 +40,7 @@ use slicer_sdk::views::SliceRegionView;
 
 /// Build a 1.8 mm × 8 mm thin rectangle centered at the origin.
 ///
-/// With `wall_count = 2` and `outer/inner_wall_line_width = 0.4 mm`:
+/// With `wall_loops = 2` and `outer/inner_wall_line_width = 0.4 mm`:
 /// after two wall insets (Flow-spacing based per packet 185's D-105 closure;
 /// outer at ~0.179, inner at ~0.357, total ~0.536 mm per side) the core is
 /// ≈0.73 mm × 6.93 mm. The infill inset is `spacing − overlap` ≈ 0.357 mm
@@ -76,7 +76,7 @@ fn make_thin_arm_region(z: f32) -> SliceRegionView {
 /// AC-4: a 1.8 mm × 8 mm thin arm must produce ≥1 GapFill loop after
 /// two wall insets leave a residual arm as a gap.
 ///
-/// Config: `inner_wall_line_width = 0.4 mm`, `wall_count = 2`,
+/// Config: `inner_wall_line_width = 0.4 mm`, `wall_loops = 2`,
 /// `gap_infill_speed = 30.0 mm/s`, `filter_out_gap_fill = 0.5 mm` (AC-4 value).
 /// The medial-axis width floor is computed internally as
 /// `inner_wall_line_width * 0.25 ≈ 0.1 mm`; the ~0.3 mm gap width passes.
@@ -102,7 +102,7 @@ fn gap_fill_emitted_for_narrow_gap() {
     let filter_mm = 0.5_f32;
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("gap_infill_speed", 30.0)
@@ -245,7 +245,7 @@ fn no_gaps_case() {
     let inner_w = 0.4_f32;
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("gap_infill_speed", 30.0)

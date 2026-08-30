@@ -69,7 +69,7 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
             "Layer::Perimeters",
             "arachne-perimeters/arachne-perimeters.wasm",
             [
-                ("wall_count", ConfigValue::Int(3)),
+                ("wall_loops", ConfigValue::Int(3)),
                 (
                     "wall_sequence",
                     ConfigValue::String(wall_sequence.to_string()),

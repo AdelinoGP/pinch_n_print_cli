@@ -4,5 +4,5 @@
   "bottom_fill_holder": "rectilinear-infill",
   "bridge_fill_holder": "rectilinear-infill",
   "infill_density": 0.2,
-  "wall_count": 2
+  "wall_loops": 2
 }

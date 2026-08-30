@@ -247,7 +247,7 @@ fn enforcer_bias_flips_seam_placer_selection() {
 #[test]
 fn classic_perimeters_blocker_excludes_painted_corner() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();

@@ -402,7 +402,7 @@ fn seam_aligned_default_e2e() {
     use slicer_sdk::traits::LayerModule;
 
     let config = slicer_ir::ConfigView::from_map(std::collections::HashMap::from([(
-        slicer_ir::ConfigKey::from("seam_mode"),
+        slicer_ir::ConfigKey::from("seam_position"),
         slicer_ir::ConfigValue::String("aligned".to_string()),
     )]));
     let placer = seam_placer::SeamPlacer::from_config(&config).expect("start seam placer");

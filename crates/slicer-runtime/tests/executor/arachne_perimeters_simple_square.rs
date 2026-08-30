@@ -228,7 +228,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
     // (d) Correct widths for a UNIFORM region: a 10mm square with
     // `line_width = 0.4` explicitly configured (see the config_view above;
     // packet 185's auto-0 defaults mean an absent key now resolves to
-    // 1.125 × nozzle instead of 0.4 mm), 0.2mm layer height, wall_count 3
+    // 1.125 × nozzle instead of 0.4 mm), 0.2mm layer height, wall_loops 3
     // must emit exactly 3 walls whose every per-vertex width equals the
     // configured 0.4mm — the emission round-trip
     // `flow_to_width(line_width_to_spacing(0.4, 0.2), 0.2) = 0.4`
@@ -246,7 +246,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
     assert_eq!(
         region.walls.len(),
         3,
-        "a 10mm square at default wall_count 3 must emit exactly 3 walls, got {}",
+        "a 10mm square at default wall_loops 3 must emit exactly 3 walls, got {}",
         region.walls.len()
     );
     const CONFIGURED_WIDTH_MM: f32 = 0.4;

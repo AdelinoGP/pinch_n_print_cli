@@ -1206,9 +1206,9 @@ fn read_config_schema(root: &Value, manifest_path: &Path) -> Result<ConfigSchema
 /// Parses a single `[config.schema.<key>]` entry from a TOML value.
 ///
 /// Handles both the shorthand string form:
-///   `wall_count = "int"`
+///   `wall_loops = "int"`
 /// and the full table form:
-///   `[config.schema.wall_count]`
+///   `[config.schema.wall_loops]`
 ///   `type = "int"`
 ///   `default = 3`
 ///   `min = 1`
@@ -2023,7 +2023,7 @@ mod tests {
     fn build_config_schema_json_emits_empty_tags_array_when_absent() {
         let mut entries = BTreeMap::new();
         entries.insert(
-            "wall_count".to_string(),
+            "wall_loops".to_string(),
             ConfigFieldEntry {
                 field_type: "int".to_string(),
                 default: Some("3".to_string()),

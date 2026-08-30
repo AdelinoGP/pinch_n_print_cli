@@ -28,8 +28,8 @@
 //! ```
 //!
 //! Both portions then pass through the normal inset → `build_wall_flags` →
-//! emit pipeline. The `top_portion` uses `wall_count = 1`; the
-//! `non_top_portion` uses the full configured `wall_count`.
+//! emit pipeline. The `top_portion` uses `wall_loops = 1`; the
+//! `non_top_portion` uses the full configured `wall_loops`.
 //!
 //! # Sliver filtering
 //! Near-zero-area fragments produced by Clipper2 at collinear or near-collinear
@@ -54,11 +54,11 @@ const MIN_AREA_UNITS_SQ: f64 = 300_000.0;
 pub struct TopSurfaceSplit {
     /// Intersection of region polygons with top_solid_fill.
     ///
-    /// This sub-region should be emitted with `wall_count = 1`.
+    /// This sub-region should be emitted with `wall_loops = 1`.
     pub top_portion: Vec<ExPolygon>,
     /// Difference of region polygons minus top_solid_fill.
     ///
-    /// This sub-region should be emitted with the full configured `wall_count`.
+    /// This sub-region should be emitted with the full configured `wall_loops`.
     pub non_top_portion: Vec<ExPolygon>,
 }
 

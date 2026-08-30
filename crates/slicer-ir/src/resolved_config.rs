@@ -80,8 +80,8 @@ impl ResolvedConfig {
             ConfigValue::Float(f64::from(self.initial_layer_line_width)),
         );
         m.insert(
-            "wall_count".into(),
-            ConfigValue::Int(i64::from(self.wall_count)),
+            "wall_loops".into(),
+            ConfigValue::Int(i64::from(self.wall_loops)),
         );
         m.insert(
             "outer_wall_speed".into(),
@@ -1312,8 +1312,8 @@ declare_resolved_config! {
     cli @filament "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float_or_first;
 
     // Walls
-    /// Number of walls (perimeters).
-    cli "wall_count"             wall_count: u32 = 2 => extract_int_as_u32;
+    /// Number of walls (perimeters). Orca key `wall_loops`.
+    cli "wall_loops"             wall_loops: u32 = 2 => extract_int_as_u32;
     /// Outer wall speed in mm/s.
     cli "outer_wall_speed"       outer_wall_speed: f32 = 50.0 => extract_float;
     /// Inner wall speed in mm/s.
@@ -1519,7 +1519,7 @@ impl PartialEq for ResolvedConfig {
             && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
             && self.initial_layer_line_width.to_bits() == other.initial_layer_line_width.to_bits()
             && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
-            && self.wall_count == other.wall_count
+            && self.wall_loops == other.wall_loops
             && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
             && self.inner_wall_speed.to_bits() == other.inner_wall_speed.to_bits()
             && self.wall_generator == other.wall_generator
@@ -1627,7 +1627,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.first_layer_height.to_bits().hash(state);
         self.initial_layer_line_width.to_bits().hash(state);
         self.filament_diameter.to_bits().hash(state);
-        self.wall_count.hash(state);
+        self.wall_loops.hash(state);
         self.outer_wall_speed.to_bits().hash(state);
         self.inner_wall_speed.to_bits().hash(state);
         self.wall_generator.hash(state);

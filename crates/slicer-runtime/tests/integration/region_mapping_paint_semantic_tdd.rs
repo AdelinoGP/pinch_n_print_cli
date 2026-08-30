@@ -145,7 +145,7 @@ fn region_overlap_applies_override() {
     paint_semantic_configs.insert(
         PaintSemantic::Custom("fuzzy_skin".to_string()),
         ResolvedConfig {
-            wall_count: 5,
+            wall_loops: 5,
             ..ResolvedConfig::default()
         },
     );
@@ -203,9 +203,9 @@ fn region_overlap_applies_override() {
         "paint_overrides must contain fuzzy_skin"
     );
     assert_eq!(
-        rm.config_for(&fuzzy_key).wall_count,
+        rm.config_for(&fuzzy_key).wall_loops,
         5,
-        "effective config.wall_count must be 5 from paint override"
+        "effective config.wall_loops must be 5 from paint override"
     );
 }
 
@@ -312,14 +312,14 @@ fn overlap_precedence_is_deterministic() {
     paint_semantic_configs.insert(
         sem_aaa.clone(),
         ResolvedConfig {
-            wall_count: 3,
+            wall_loops: 3,
             ..ResolvedConfig::default()
         },
     );
     paint_semantic_configs.insert(
         sem_zzz.clone(),
         ResolvedConfig {
-            wall_count: 9,
+            wall_loops: 9,
             ..ResolvedConfig::default()
         },
     );
@@ -397,9 +397,9 @@ fn overlap_precedence_is_deterministic() {
             "paint_overrides must contain zzz_last"
         );
         assert_eq!(
-            rm.config_for(&both_key).wall_count,
+            rm.config_for(&both_key).wall_loops,
             9,
-            "zzz_last (lexicographically last) must win -> wall_count=9"
+            "zzz_last (lexicographically last) must win -> wall_loops=9"
         );
     };
 

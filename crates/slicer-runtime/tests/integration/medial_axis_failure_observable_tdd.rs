@@ -171,7 +171,7 @@ fn no_spurious_diagnostics_on_happy_path() {
     let nozzle_d = 0.4_f32;
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("nozzle_diameter", nozzle_d as f64)

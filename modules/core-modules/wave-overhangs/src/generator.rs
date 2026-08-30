@@ -34,7 +34,7 @@
 //!
 //! # Inert canonical settings
 //!
-//! The canonical fork reads `spacing_mode` and `seam_mode` into its parameter
+//! The canonical fork reads `spacing_mode` and `seam_position` into its parameter
 //! block but never acts on them. They are deliberately not ported. (There is
 //! no `min_angle` field in canonical `CommonParams`; the similarly named
 //! `corner_angle_threshold` and `min_length_mm` are both genuinely used.)
@@ -127,7 +127,7 @@ pub(crate) struct WaveParams {
     /// regularization and the anchoring expansion all key off this value.
     pub(crate) base_spacing: f32,
     /// Perimeter count of the enclosing region (anchor sizing).
-    pub(crate) wall_count: u32,
+    pub(crate) wall_loops: u32,
 }
 
 /// Why the generator could not produce waves for a component.
@@ -300,9 +300,9 @@ fn point_in_ring(p: Point2, ring: &Polygon) -> bool {
 
 /// Containment test against a polygon set (contour minus holes).
 fn point_in_polys(p: Point2, polys: &[ExPolygon]) -> bool {
-    polys.iter().any(|exp| {
-        point_in_ring(p, &exp.contour) && !exp.holes.iter().any(|h| point_in_ring(p, h))
-    })
+    polys
+        .iter()
+        .any(|exp| point_in_ring(p, &exp.contour) && !exp.holes.iter().any(|h| point_in_ring(p, h)))
 }
 
 /// Minimum distance from `p` to `pl`, and whether the closest projection foot
@@ -585,7 +585,14 @@ fn closing_pass(
         let comp_slice = std::slice::from_ref(comp);
         // Width test: a component survives erosion by half the threshold only
         // if it is wider than the threshold somewhere.
-        if offset(comp_slice, -min_half, OffsetJoinType::Round, ARC_TOLERANCE_MM).is_empty() {
+        if offset(
+            comp_slice,
+            -min_half,
+            OffsetJoinType::Round,
+            ARC_TOLERANCE_MM,
+        )
+        .is_empty()
+        {
             continue;
         }
         let center = strip_centerline(comp, tolerance, step);
@@ -892,7 +899,12 @@ fn should_generate_waves_for_region(
 
 /// Score a candidate front against already-emitted paths (canonical
 /// `support_score`).
-fn support_score(candidate: &[Point2], support: &[Polyline], reach: f64, prefix_length: f64) -> f64 {
+fn support_score(
+    candidate: &[Point2],
+    support: &[Polyline],
+    reach: f64,
+    prefix_length: f64,
+) -> f64 {
     if support.is_empty() || candidate.len() < 2 {
         return -1.0;
     }
@@ -1119,7 +1131,7 @@ pub(crate) fn generate(
     let base_spacing_mm = params.base_spacing.max(EPSILON_MM);
     let seed_expansion_mm = (base_spacing_mm / 10.0).max(EPSILON_MM);
     let anchors_size_mm =
-        EXTERNAL_INFILL_MARGIN_MM.min(base_spacing_mm * (params.wall_count as f32 + 1.0));
+        EXTERNAL_INFILL_MARGIN_MM.min(base_spacing_mm * (params.wall_loops as f32 + 1.0));
     let regularization_mm = (base_spacing_mm / 2.0).max(EPSILON_MM);
     let zig_zag_connector_limit =
         units(wave_spacing_mm.max(flow_width_mm) + params.perimeter_overlap);
@@ -1330,7 +1342,12 @@ pub(crate) fn generate(
         append_zig_zag_front_levels(&levels_all, zig_zag_connector_limit)
     } else {
         let flat: Vec<Polyline> = levels_all.into_iter().flatten().collect();
-        append_wave_fronts(&flat, flow_width_mm, zig_zag_connector_limit, params.pattern)
+        append_wave_fronts(
+            &flat,
+            flow_width_mm,
+            zig_zag_connector_limit,
+            params.pattern,
+        )
     };
 
     // 12. Drop empty paths; keep the unioned filled region.

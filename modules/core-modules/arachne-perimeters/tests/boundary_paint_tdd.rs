@@ -31,9 +31,9 @@ use slicer_sdk::views::SliceRegionView;
 /// `optimal_width`/`preferred_bead_width_outer` are `unit = "units"` keys
 /// (1 unit = 100 nm), unlike classic-perimeters' bare-mm `line_width` key —
 /// see `arachne_parity_outer_wall_boundary_type_tdd.rs`'s identical helper.
-fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+fn make_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
         .build()
@@ -106,7 +106,7 @@ fn material_paint_sets_tool_index_on_outer_and_inner_walls() {
     assert!(!outer_walls.is_empty(), "should have an outer wall");
     assert!(
         !inner_walls.is_empty(),
-        "wall_count=2 should also produce at least one inner wall"
+        "wall_loops=2 should also produce at least one inner wall"
     );
 
     for wall in outer_walls.iter().chain(inner_walls.iter()) {

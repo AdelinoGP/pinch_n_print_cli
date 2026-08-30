@@ -1,8 +1,8 @@
 # 102 — Rename classic-perimeters and seam keys to Orca names
 
 Type: task
-Status: open
-Assignee: —
+Status: in-progress
+Assignee: wayfinder session (ses_faf34295dffe6k8VXja3tV2zfB) — claimed 2026-08-29, re-claimed 2026-08-30 (continuation)
 Blocked by: —
 Map: ../map.md
 

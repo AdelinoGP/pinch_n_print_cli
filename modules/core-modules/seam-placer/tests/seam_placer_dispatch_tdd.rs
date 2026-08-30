@@ -31,7 +31,7 @@ fn empty_seam_config() -> ConfigView {
 fn random_seam_config() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("random".to_string()),
     );
     ConfigView::from_map(fields)

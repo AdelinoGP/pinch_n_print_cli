@@ -1127,7 +1127,7 @@ The host instantiates exactly one WASM instance for finalization modules regardl
 `seam-placer` (stage `Layer::PerimetersPostProcess`) consumes the host-injected
 `SeamPlanIR` produced by the `PrePass::SeamPlanning` stage (`seam-planner-default`)
 and projects each planner target onto the final wall geometry. The default
-`seam_mode` for both modules is **`aligned`**, matching OrcaSlicer's canonical
+`seam_position` for both modules is **`aligned`**, matching OrcaSlicer's canonical
 `spAligned` default (see `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 amendment recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`).
 

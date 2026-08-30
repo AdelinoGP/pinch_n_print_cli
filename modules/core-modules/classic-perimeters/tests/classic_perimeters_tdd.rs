@@ -16,23 +16,23 @@ fn make_square(side_mm: f32) -> ExPolygon {
     square_polygon(0.0, 0.0, side_mm)
 }
 
-/// Create a config with specified wall_count and line_width.
-fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
+/// Create a config with specified wall_loops and line_width.
+fn make_config(wall_loops: u32, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("line_width", line_width)
         .build()
 }
 
 /// Create a config with speed settings too.
 fn make_speed_config(
-    wall_count: u32,
+    wall_loops: u32,
     line_width: f64,
     outer_speed: f64,
     inner_speed: f64,
 ) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("line_width", line_width)
         .float("outer_wall_speed", outer_speed)
         .float("inner_wall_speed", inner_speed)
@@ -118,7 +118,7 @@ fn infill_boundary_inset_uses_flow_spacing_not_raw_width() {
     let line_width = 0.8_f32;
     let layer_height = 0.2_f32;
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("line_width", line_width as f64)
         .float("outer_wall_line_width", line_width as f64)
         .float("inner_wall_line_width", line_width as f64)
@@ -267,7 +267,7 @@ fn empty_polygon_no_output() {
 }
 
 #[test]
-fn wall_count_zero() {
+fn wall_loops_zero() {
     let config = make_config(0, 0.4);
     let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
@@ -281,7 +281,7 @@ fn wall_count_zero() {
     assert_eq!(
         output.wall_loops().len(),
         0,
-        "No wall loops with wall_count=0"
+        "No wall loops with wall_loops=0"
     );
     // Infill areas should be the input polygons themselves
     assert!(
@@ -300,7 +300,7 @@ fn wall_count_zero() {
 #[test]
 fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .bool("alternate_extra_wall", true)
         .float("sparse_infill_density", 20.0)
@@ -336,7 +336,7 @@ fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
 fn alternate_extra_wall_suppressed_by_spiral_vase_and_zero_density() {
     let base = |spiral: bool, density: f64| {
         ConfigViewBuilder::new()
-            .int("wall_count", 2)
+            .int("wall_loops", 2)
             .float("line_width", 0.4)
             .bool("alternate_extra_wall", true)
             .bool("spiral_vase", spiral)
@@ -432,7 +432,7 @@ fn speed_factor_from_config() {
 
 fn make_overlap_config(infill_overlap: f64, top_bottom_overlap: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -516,7 +516,7 @@ fn overlap_uses_top_bottom_key_for_topmost_top_shell() {
 #[test]
 fn only_one_wall_top_topmost_is_unconditional() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -544,7 +544,7 @@ fn only_one_wall_top_topmost_is_unconditional() {
 fn only_one_wall_top_non_topmost_uses_min_width_top_surface() {
     let make_config_with_threshold = |threshold| {
         ConfigViewBuilder::new()
-            .int("wall_count", 2)
+            .int("wall_loops", 2)
             .float("line_width", 0.4)
             .float("outer_wall_line_width", 0.4)
             .float("inner_wall_line_width", 0.4)
@@ -572,12 +572,12 @@ fn only_one_wall_top_non_topmost_uses_min_width_top_surface() {
         .run_perimeters(1, &regions, &paint, &mut high_output, &high_threshold)
         .unwrap();
 
-    let low_wall_count = low_output.wall_loops().len();
-    let high_wall_count = high_output.wall_loops().len();
+    let low_wall_loops = low_output.wall_loops().len();
+    let high_wall_loops = high_output.wall_loops().len();
     assert!(
-        high_wall_count > low_wall_count,
+        high_wall_loops > low_wall_loops,
         "a non-topmost top sub-area below min_width_top_surface must keep full walls: \
-         low={low_wall_count}, high={high_wall_count}"
+         low={low_wall_loops}, high={high_wall_loops}"
     );
 }
 

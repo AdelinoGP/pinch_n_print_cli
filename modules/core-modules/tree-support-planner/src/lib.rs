@@ -2221,7 +2221,7 @@ impl SupportPlanner {
         let tan_angle = self.branch_angle_deg.to_radians().tan();
         let tan_diameter_angle = self.tree_support_branch_diameter_angle.to_radians().tan();
         let branch_radius = self.tree_support_branch_diameter / 2.0;
-        // wall_count multiplier — fall back to 1 per canonical
+        // tree_support_wall_count multiplier — fall back to 1 per canonical
         // `generate_toolpaths` (`TreeSupport.cpp`)
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
@@ -2527,7 +2527,7 @@ impl SupportPlanner {
             //
             // Until packet 224 step 5 this stepped toward a 1/d^2 weighted
             // *mean of neighbour positions*, capped the displacement at
-            // `tan_angle * layer_height * wall_count`, then post-hoc clamped
+            // `tan_angle * layer_height * tree_support_wall_count`, then post-hoc clamped
             // the result out of avoidance and dropped the node with a typed
             // code-1002 `node-clamped-out` diagnostic when the escape exceeded
             // that budget. None of the capping, the clamping or the escape

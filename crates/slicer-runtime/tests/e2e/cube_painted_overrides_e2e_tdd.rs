@@ -4,7 +4,7 @@
 //! Fixture: cube_4color.3mf stores its paint strokes under the
 //! `paint_color="..."` attribute, which the loader maps to
 //! `PaintSemantic::Material`; the override key is
-//! `paint_config:material:wall_count`. This is a parse-only smoke (gcode-level
+//! `paint_config:material:wall_loops`. This is a parse-only smoke (gcode-level
 //! wall-count diff is intentionally not asserted because the painted region
 //! geometry cannot fit the requested override).
 //!
@@ -51,7 +51,7 @@ fn paint_config_override_visibly_differs_gcode() {
     std::fs::write(
         &baseline_cfg_path,
         br#"{
-  "wall_count": 2
+  "wall_loops": 2
 }"#,
     )
     .expect("write baseline config");
@@ -60,8 +60,8 @@ fn paint_config_override_visibly_differs_gcode() {
     std::fs::write(
         &override_cfg_path,
         br#"{
-  "wall_count": 2,
-  "paint_config:material:wall_count": 5
+  "wall_loops": 2,
+  "paint_config:material:wall_loops": 5
 }"#,
     )
     .expect("write override config");

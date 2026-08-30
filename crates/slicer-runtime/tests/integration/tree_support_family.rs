@@ -270,7 +270,7 @@ pub fn tree_support_family() {
     // the inset. What IS canonically true — and what the pre-224 renderer
     // violated — is that `render_polygon` insets each wall pass by half a line
     // width past the previous one, so no two wall loops may be COINCIDENT. The
-    // old renderer emitted `wall_count` copies of the same contour at zero
+    // old renderer emitted `wall_loops` copies of the same contour at zero
     // inset and then scan-filled the full polygon at 100% density, extruding
     // one area several times; a `>= 3` count was satisfied by exactly that bug.
     assert!(

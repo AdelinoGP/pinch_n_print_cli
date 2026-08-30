@@ -25,11 +25,11 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.seam_mode]
+[config.schema.seam_position]
 type    = "enum"
 values  = ["nearest", "rear", "random", "aligned", "aligned_back"]
 default = "aligned"
-display = "Seam Mode"
+display = "Seam Position"
 group   = "Seam"
 
 [config.overridable-per-region]

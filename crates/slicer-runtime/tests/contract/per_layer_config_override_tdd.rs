@@ -1,5 +1,5 @@
 // per_layer_config_override_tdd.rs — LayerOverrides per-layer config plumbing
-// (wall_count, outer_wall_speed, inner_wall_speed read per invocation)
+// (wall_loops, outer_wall_speed, inner_wall_speed read per invocation)
 
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ fn square_region(z: f32) -> SliceRegionView {
 }
 
 fn config_with_wall_count(n: i64) -> ConfigView {
-    ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(n))].into())
+    ConfigView::from_map([("wall_loops".to_string(), ConfigValue::Int(n))].into())
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn per_layer_config_wall_count_override() {
     let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
         .expect("from_config should succeed");
 
-    // Layer 0: base wall_count = 2 (default)
+    // Layer 0: base wall_loops = 2 (default)
     let region0 = square_region(0.2);
     let mut output0 = PerimeterOutputBuilder::new();
     let config0 = config_with_wall_count(2);
@@ -51,10 +51,10 @@ fn per_layer_config_wall_count_override() {
     assert_eq!(
         output0.wall_loops().len(),
         2,
-        "layer 0 with wall_count=2 should emit 2 walls"
+        "layer 0 with wall_loops=2 should emit 2 walls"
     );
 
-    // Layer 5: wall_count = 5 (override)
+    // Layer 5: wall_loops = 5 (override)
     let region5 = square_region(1.0);
     let mut output5 = PerimeterOutputBuilder::new();
     let config5 = config_with_wall_count(5);
@@ -70,7 +70,7 @@ fn per_layer_config_wall_count_override() {
     assert_eq!(
         output5.wall_loops().len(),
         5,
-        "layer 5 with wall_count=5 should emit 5 walls"
+        "layer 5 with wall_loops=5 should emit 5 walls"
     );
 }
 
@@ -90,27 +90,27 @@ fn per_layer_config_wall_count_zero_emits_only_infill() {
             &mut output,
             &config,
         )
-        .expect("run_perimeters with wall_count=0 should succeed");
+        .expect("run_perimeters with wall_loops=0 should succeed");
 
     assert!(
         output.wall_loops().is_empty(),
-        "wall_count=0 should emit no walls"
+        "wall_loops=0 should emit no walls"
     );
     assert!(
         !output.infill_areas().is_empty(),
-        "wall_count=0 should emit infill areas"
+        "wall_loops=0 should emit infill areas"
     );
 }
 
 #[test]
 fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
-    let config = ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(3))].into());
+    let config = ConfigView::from_map([("wall_loops".to_string(), ConfigValue::Int(3))].into());
     let module = ClassicPerimeters::from_config(&config)
-        .expect("from_config with wall_count=3 should succeed");
+        .expect("from_config with wall_loops=3 should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
-    // No wall_count in per-layer config → falls back to from_config value (3)
+    // No wall_loops in per-layer config → falls back to from_config value (3)
     let empty_config = ConfigView::from_map(HashMap::new());
     module
         .run_perimeters(
@@ -125,7 +125,7 @@ fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
     assert_eq!(
         output.wall_loops().len(),
         3,
-        "fallback to from_config wall_count=3 should emit 3 walls"
+        "fallback to from_config wall_loops=3 should emit 3 walls"
     );
 }
 
@@ -138,7 +138,7 @@ fn per_layer_config_speed_override() {
     let mut output = PerimeterOutputBuilder::new();
     let config = ConfigView::from_map(
         [
-            ("wall_count".to_string(), ConfigValue::Int(2)),
+            ("wall_loops".to_string(), ConfigValue::Int(2)),
             ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
             ("inner_wall_speed".to_string(), ConfigValue::Float(40.0)),
         ]

@@ -177,43 +177,43 @@ fn rejects_negative_support_branch_merge_distance() {
 
 #[test]
 fn accepts_boundary_min() {
-    // `wall_count` is an Int-typed declared field so the value lands on the
+    // `wall_loops` is an Int-typed declared field so the value lands on the
     // matching `ResolvedConfig` slot via `apply_cli_key`.
-    let bounds = single_module_bounds("wall_count", Some(2.0), Some(8.0));
+    let bounds = single_module_bounds("wall_loops", Some(2.0), Some(8.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(2));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(2));
 
     let resolved = resolve_global_config(&source, &bounds).expect("min boundary must accept");
-    assert_eq!(resolved.wall_count, 2);
+    assert_eq!(resolved.wall_loops, 2);
 }
 
 #[test]
 fn accepts_boundary_max() {
-    let bounds = single_module_bounds("wall_count", Some(2.0), Some(8.0));
+    let bounds = single_module_bounds("wall_loops", Some(2.0), Some(8.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(8));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(8));
 
     let resolved = resolve_global_config(&source, &bounds).expect("max boundary must accept");
-    assert_eq!(resolved.wall_count, 8);
+    assert_eq!(resolved.wall_loops, 8);
 }
 
 #[test]
 fn accepts_when_only_min_declared() {
-    let bounds = single_module_bounds("wall_count", Some(1.0), None);
+    let bounds = single_module_bounds("wall_loops", Some(1.0), None);
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(1_000));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(1_000));
 
     resolve_global_config(&source, &bounds).expect("unbounded above: large value must accept");
 }
 
 #[test]
 fn rejects_below_min_when_only_min_declared() {
-    let bounds = single_module_bounds("wall_count", Some(1.0), None);
+    let bounds = single_module_bounds("wall_loops", Some(1.0), None);
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(0));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(0));
 
     let err = resolve_global_config(&source, &bounds).expect_err("below min must reject");
-    assert_out_of_range(err, "wall_count", 0.0, None);
+    assert_out_of_range(err, "wall_loops", 0.0, None);
 }
 
 #[test]
@@ -272,12 +272,12 @@ fn no_bounds_declared_accepts_any_value() {
 #[test]
 fn int_value_coerced_to_f64_for_check() {
     // Int values are coerced to f64 for the bounds comparison.
-    let bounds = single_module_bounds("wall_count", Some(0.0), Some(100.0));
+    let bounds = single_module_bounds("wall_loops", Some(0.0), Some(100.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(2_000_000_000));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(2_000_000_000));
 
     let err = resolve_global_config(&source, &bounds).expect_err("Int above max must reject");
-    assert_out_of_range(err, "wall_count", 2_000_000_000.0, None);
+    assert_out_of_range(err, "wall_loops", 2_000_000_000.0, None);
 }
 
 #[test]
@@ -308,13 +308,13 @@ fn intersection_strictest_min_max_wins() {
     // range is [5, 10] â€” strictest of each side.
     let bounds = ConfigBoundsIndex::from_declarations([
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(0.0),
             max: Some(10.0),
             module_id: "mod.a".to_string(),
         },
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(5.0),
             max: Some(100.0),
             module_id: "mod.b".to_string(),
@@ -322,21 +322,21 @@ fn intersection_strictest_min_max_wins() {
     ]);
 
     let mut below = HashMap::new();
-    below.insert("wall_count".to_string(), ConfigValue::Int(3));
+    below.insert("wall_loops".to_string(), ConfigValue::Int(3));
     let err =
         resolve_global_config(&below, &bounds).expect_err("3 below strictest min (5) must reject");
-    assert_out_of_range(err, "wall_count", 3.0, None);
+    assert_out_of_range(err, "wall_loops", 3.0, None);
 
     let mut inside = HashMap::new();
-    inside.insert("wall_count".to_string(), ConfigValue::Int(7));
+    inside.insert("wall_loops".to_string(), ConfigValue::Int(7));
     let resolved = resolve_global_config(&inside, &bounds).expect("7 inside [5,10] must accept");
-    assert_eq!(resolved.wall_count, 7);
+    assert_eq!(resolved.wall_loops, 7);
 
     let mut above = HashMap::new();
-    above.insert("wall_count".to_string(), ConfigValue::Int(50));
+    above.insert("wall_loops".to_string(), ConfigValue::Int(50));
     let err = resolve_global_config(&above, &bounds)
         .expect_err("50 above strictest max (10) must reject");
-    assert_out_of_range(err, "wall_count", 50.0, None);
+    assert_out_of_range(err, "wall_loops", 50.0, None);
 }
 
 #[test]
@@ -345,13 +345,13 @@ fn intersection_empty_range_rejects_all_values() {
     // intersection is empty (5 < 10). Every value must be rejected.
     let bounds = ConfigBoundsIndex::from_declarations([
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(0.0),
             max: Some(5.0),
             module_id: "mod.a".to_string(),
         },
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(10.0),
             max: Some(100.0),
             module_id: "mod.b".to_string(),
@@ -360,7 +360,7 @@ fn intersection_empty_range_rejects_all_values() {
 
     for v in [-5, 0, 3, 7, 50, 200] {
         let mut source = HashMap::new();
-        source.insert("wall_count".to_string(), ConfigValue::Int(v));
+        source.insert("wall_loops".to_string(), ConfigValue::Int(v));
         let err = resolve_global_config(&source, &bounds)
             .expect_err("every value must reject when intersection is empty");
         match err {

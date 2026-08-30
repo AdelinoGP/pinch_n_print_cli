@@ -233,7 +233,7 @@ fn arachne_params_from_config(
         line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
-    let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
+    let wall_loops = config.get_int("wall_loops").map(|v| v.max(0) as u32).unwrap_or(2);
     // extra_perimeters (TASK-328): per-region bonus wall count, read with the
     // byte-identical expression classic-perimeters uses so the two generators
     // cannot drift on clamping/defaulting.
@@ -248,14 +248,14 @@ fn arachne_params_from_config(
     // Canonical `process_arachne` (`PerimeterGenerator.cpp`) passes
     // `WallToolPaths(..., coord_t(loop_number + 1), ...)` with
     // `loop_number = wall_loops + extra_perimeters - 1`, so `inset_count`
-    // is `wall_count + extra_perimeters`. A zero/absent max_bead_count therefore
-    // means "auto-derive `2 * (wall_count + extra_perimeters)`" (even, and —
+    // is `wall_loops + extra_perimeters`. A zero/absent max_bead_count therefore
+    // means "auto-derive `2 * (wall_loops + extra_perimeters)`" (even, and —
     // unlike a fixed manifest default — actually tracks both keys). A positive
     // value is an explicit advanced override (e.g. the `max_bead_count_cap`
     // parity fixture) and is honoured verbatim.
     let max_bead_count = match max_bead_count_explicit {
         Some(v) if v > 0 => v as u32,
-        _ => (2 * (wall_count + extra_perimeters)).max(1),
+        _ => (2 * (wall_loops + extra_perimeters)).max(1),
     };
     let distribution_count = config
         .get_int("wall_distribution_count")

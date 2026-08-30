@@ -49,7 +49,7 @@ const TOLERANCE_MM: f32 = 1e-3;
 /// `Some`, so callers can exercise the "key absent" default path.
 fn make_config(precise_outer_wall: Option<bool>, wall_sequence: Option<&str>) -> ConfigView {
     let mut builder = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
         .float("outer_wall_line_width", OUTER_WIDTH_MM as f64);
     if let Some(p) = precise_outer_wall {

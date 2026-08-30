@@ -1078,15 +1078,38 @@ impl WasmRuntimeDispatcher {
         }?;
 
         // Handle module-returned error (inner Result).
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedExportCall,
-            reason: format!(
-                "module error (code={}, fatal={}): {}",
-                module_err.code, module_err.fatal, module_err.message
-            ),
+        //
+        // WIT contract (`common.wit` `module-error.fatal` doc + `slicer-sdk`
+        // `error.rs`): fatal=false means "host logs and continues" — a
+        // degraded-success signal, not a layer abort. Only a fatal=true error
+        // escalates to `DispatchError` (and through the runner to
+        // `LayerStageError::FatalModule`). The degraded module output (walls
+        // preserved, best-effort rotation skipped) has already landed in the
+        // output builder, so continuing reclaims the guaranteed-emit contract
+        // that `run_wall_postprocess`'s code-6 degraded fallback relies on
+        // (pinned by `modules/core-modules/seam-placer/tests/
+        // seam_degraded_fallback_tdd.rs`).
+        call_result.map_err(|module_err| {
+            if !module_err.fatal {
+                log::warn!(
+                    "module {} at stage {} (export `{}`) reported non-fatal error (code={}): {}",
+                    module_id,
+                    stage_id,
+                    export_name,
+                    module_err.code,
+                    module_err.message
+                );
+            }
+            DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason: format!(
+                    "module error (code={}, fatal={}): {}",
+                    module_err.code, module_err.fatal, module_err.message
+                ),
+            }
         })?;
 
         let mem_peak_bytes = store.data().mem_tracker.peak_bytes;
@@ -1425,15 +1448,26 @@ impl WasmRuntimeDispatcher {
             }),
         }?;
 
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedExportCall,
-            reason: format!(
-                "module error (code={}, fatal={}): {}",
-                module_err.code, module_err.fatal, module_err.message
-            ),
+        call_result.map_err(|module_err| {
+            if !module_err.fatal {
+                log::warn!(
+                    "module {} at stage {} reported non-fatal error (code={}): {}",
+                    module_id,
+                    stage_id,
+                    module_err.code,
+                    module_err.message
+                );
+            }
+            DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason: format!(
+                    "module error (code={}, fatal={}): {}",
+                    module_err.code, module_err.fatal, module_err.message
+                ),
+            }
         })?;
 
         // Drain diagnostics from the context into the thread-local stash
@@ -1565,15 +1599,26 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedExportCall,
-            reason: format!(
-                "module error (code={}, fatal={}): {}",
-                module_err.code, module_err.fatal, module_err.message
-            ),
+        call_result.map_err(|module_err| {
+            if !module_err.fatal {
+                log::warn!(
+                    "module {} at stage {} reported non-fatal error (code={}): {}",
+                    module_id,
+                    stage_id,
+                    module_err.code,
+                    module_err.message
+                );
+            }
+            DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason: format!(
+                    "module error (code={}, fatal={}): {}",
+                    module_err.code, module_err.fatal, module_err.message
+                ),
+            }
         })?;
 
         // Forward module log messages to the host log facade before the

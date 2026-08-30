@@ -25,7 +25,7 @@ use slicer_sdk::views::SliceRegionView;
 
 fn make_config(bridge_flow: f32, thick_bridges: bool) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .float("bridge_flow", bridge_flow as f64)
@@ -42,7 +42,7 @@ fn make_config(bridge_flow: f32, thick_bridges: bool) -> ConfigView {
 /// vertices under the retired unclamped-inset regime, whose 9 insets (and
 /// ~7.14mm odd-center medial bead — the very defect this campaign removed)
 /// reached the region's middle. Under the correct `max_bead_count = 2 *
-/// wall_count` clamp, 2 walls sit within ~0.8mm of the boundary and a
+/// wall_loops` clamp, 2 walls sit within ~0.8mm of the boundary and a
 /// centered 4mm square can never overlap them, so both tests died on their
 /// own anti-vacuity guard. The bridge area now covers a wall corner, which
 /// is where wall vertices actually live for a simplified rectangular loop.

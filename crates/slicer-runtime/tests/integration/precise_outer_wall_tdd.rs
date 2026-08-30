@@ -55,7 +55,7 @@ fn precise_mode_inner_first_and_spacing2() {
     let inner_w = 0.4_f32;
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .string("wall_sequence", "InnerOuter")
@@ -129,7 +129,7 @@ fn precise_mode_off_standard_spacing() {
     let inner_w = 0.4_f32;
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .string("wall_sequence", "InnerOuter")
@@ -186,7 +186,7 @@ fn gate_off_case_precise_true_outer_inner_sequence() {
 
     // precise=true + OuterInner → should behave like precise=false + OuterInner
     let config_precise = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .string("wall_sequence", "OuterInner")
@@ -195,7 +195,7 @@ fn gate_off_case_precise_true_outer_inner_sequence() {
 
     // precise=false + OuterInner → reference
     let config_standard = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .string("wall_sequence", "OuterInner")

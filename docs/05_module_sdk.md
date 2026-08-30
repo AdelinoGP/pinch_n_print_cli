@@ -792,7 +792,7 @@ independently by the seam-planning prepass (`seam-planner-default`), whose
 `Enforced` above `Neutral`; `choose_region_candidate` then restricts to the
 top score before dispatching on the planning mode, so an enforcer is never
 overridden by a geometric preference. Which consumer actually determines the
-seam depends on `seam_mode`: under the default `aligned` (and `aligned_back`),
+seam depends on `seam_position`: under the default `aligned` (and `aligned_back`),
 `seam-placer` takes the planner's injected `resolved_seam` and only falls back
 to the perimeter-emitted `seam_candidates` when it is absent — so on default
 settings the **planner** decides and the perimeter bias merely shapes the
@@ -883,7 +883,7 @@ output. The contract is enforced by:
 **Wall-preservation invariant.** Every region's walls must reach the
 output regardless of seam state, missing plan, or degenerate geometry. No
 path in this contract may drop, skip, or fail to emit a region's wall
-loop. The default `seam_mode` is `"aligned"` in both `seam-placer.toml`
+loop. The default `seam_position` is `"aligned"` in both `seam-placer.toml`
 and `seam-planner-default.toml` (matching OrcaSlicer's `spAligned`); see
 `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` amendment
 recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`. The

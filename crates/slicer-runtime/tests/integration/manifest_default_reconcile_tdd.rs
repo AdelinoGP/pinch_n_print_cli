@@ -89,10 +89,10 @@ fn square_region(z: f32) -> SliceRegionView {
 
 /// Drive `run_perimeters` for module `M` with an empty config so every value is
 /// supplied by the code fallback, then recover those fallbacks from the emitted
-/// wall loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
+/// wall loops. Returns `(wall_loops, outer_wall_speed, inner_wall_speed)`.
 ///
 /// A 10mm square at the default 0.4mm line width fits the default 3 walls, so the
-/// emitted loop count equals the `wall_count` code fallback, and the outer
+/// emitted loop count equals the `wall_loops` code fallback, and the outer
 /// (perimeter_index 0) / inner (perimeter_index >= 1) loops carry the speed
 /// fallbacks as `speed_factor`.
 fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
@@ -126,11 +126,11 @@ fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
     )
 }
 
-fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) {
+fn assert_reconciled(manifest: &str, wall_loops: usize, outer: f32, inner: f32) {
     assert_eq!(
-        wall_count as f64,
-        manifest_default(manifest, "wall_count"),
-        "wall_count code fallback must equal the manifest default"
+        wall_loops as f64,
+        manifest_default(manifest, "wall_loops"),
+        "wall_loops code fallback must equal the manifest default"
     );
     let expected_outer = manifest_default(manifest, "outer_wall_speed");
     assert!(
@@ -146,8 +146,8 @@ fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) 
 
 #[test]
 fn classic_perimeters_defaults_match_manifest() {
-    let (wall_count, outer, inner) = observed_code_fallbacks::<ClassicPerimeters>();
-    assert_reconciled(CLASSIC_MANIFEST, wall_count, outer, inner);
+    let (wall_loops, outer, inner) = observed_code_fallbacks::<ClassicPerimeters>();
+    assert_reconciled(CLASSIC_MANIFEST, wall_loops, outer, inner);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -176,7 +176,7 @@ use CodeFallback::*;
 /// Transcribed from `classic-perimeters/src/lib.rs` — `from_config` and
 /// the R2 per-invocation block at the top of `run_perimeters`.
 const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
-    ("wall_count", Int(3)),       // from_config `_ => 3`
+    ("wall_loops", Int(2)), // from_config `_ => 2` (Orca default; user ruling, ticket 102)
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
     // DEV-125: the two safety conjuncts of the `alternate_extra_wall` gate in
@@ -221,7 +221,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     // DEV-124: PnP's name for canonical `raft_layers`; the first PRINTED layer.
     ("support_raft_layers", Int(0)), // get_int(..).unwrap_or(0)
     ("smaller_perimeter_line_width", Float(0.25)),
-    ("smaller_perimeter_threshold_mm", Float(0.8)),
+    ("small_perimeter_threshold", Float(0.0)),
     ("narrow_loop_length_threshold_mm", Float(10.0)),
     ("detect_overhang_wall", Unread), // declared; classic never reads it
     ("overhang_reverse", Unread),
@@ -260,10 +260,10 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("outer_wall_offset", Float(0.0)),               // units; defaults 0.0
     ("min_central_distance", Float(0.0)),            // units; defaults 0.0
     ("min_width", Float(4000.0)),                    // units; defaults 0.4mm
-    // 0 is the "auto: 2 * wall_count" sentinel; an absent key takes the same
+    // 0 is the "auto: 2 * wall_loops" sentinel; an absent key takes the same
     // branch, so 0 IS the code fallback.
     ("max_bead_count", Int(0)),
-    ("wall_count", Int(3)),
+    ("wall_loops", Int(2)),
     ("extra_perimeters", Int(0)), // get_int(..).unwrap_or(0).max(0)
     ("wall_direction", Str("counter_clockwise")),
     // Packet 185: `inner_wall_line_width` resolved via `get_abs_value` against

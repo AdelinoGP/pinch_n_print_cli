@@ -184,16 +184,16 @@ max-ir-schema     = "5.0.0"
   default     = 0
   min         = 0
   display     = "Maximum bead count"
-  description = "Cap threshold consumed by LimitedBeadingStrategy. Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream computes it internally as 2 * inset_count in Arachne/WallToolPaths.cpp:525, which is ALWAYS EVEN (LimitedBeadingStrategy's ctor warns on odd counts, and its odd-center compute branch parks the whole surplus thickness in one wide centre bead — a physically impossible extrusion). Default 0 = auto-derive 2 * wall_count (even, tracks wall_count) rather than shadowing it with a fixed odd cap. A positive override is honoured verbatim (advanced/cap-testing only)."
+  description = "Cap threshold consumed by LimitedBeadingStrategy. Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream computes it internally as 2 * inset_count in Arachne/WallToolPaths.cpp:525, which is ALWAYS EVEN (LimitedBeadingStrategy's ctor warns on odd counts, and its odd-center compute branch parks the whole surplus thickness in one wide centre bead — a physically impossible extrusion). Default 0 = auto-derive 2 * wall_loops (even, tracks wall_loops) rather than shadowing it with a fixed odd cap. A positive override is honoured verbatim (advanced/cap-testing only)."
   group       = "Arachne"
   advanced    = true
 
-  [config.schema.wall_count]
+  [config.schema.wall_loops]
   type        = "int"
-  default     = 3
+  default     = 2
   min         = 1
-  display     = "Wall count (line perimeters)"
-  description = "User-facing per-region perimeter count; consumed as max_bead_count = 2 × wall_count (Orca WallToolPaths.cpp:525)."
+  display     = "Wall Loops (line perimeters)"
+  description = "User-facing per-region perimeter count; consumed as max_bead_count = 2 × wall_loops (Orca WallToolPaths.cpp:525)."
   group       = "Walls"
 
   [config.schema.wall_direction]
@@ -338,7 +338,7 @@ default = 0
 min     = 0
 max     = 10
 display = "Extra perimeters (per-region bonus wall count)"
-description = "Per-region bonus wall count, folded into the auto-derived bead cap as max_bead_count = 2 * (wall_count + extra_perimeters); ignored when max_bead_count is set to a positive explicit override."
+description = "Per-region bonus wall count, folded into the auto-derived bead cap as max_bead_count = 2 * (wall_loops + extra_perimeters); ignored when max_bead_count is set to a positive explicit override."
 group   = "Walls"
 
 [config.schema.extra_perimeters_on_overhangs]
@@ -405,7 +405,7 @@ group   = "Walls"
 type        = "bool"
 default     = false
 display     = "Only one wall on first layer"
-description = "OrcaSlicer coBool key only_one_wall_first_layer; on the first PRINTED layer, forces a single wall (max_bead_count=2) instead of wall_count (canonical process_arachne sets loop_number = 0 when is_bottom_layer)."
+description = "OrcaSlicer coBool key only_one_wall_first_layer; on the first PRINTED layer, forces a single wall (max_bead_count=2) instead of wall_loops (canonical process_arachne sets loop_number = 0 when is_bottom_layer)."
 group       = "Walls"
 
 [config.schema.support_raft_layers]

@@ -56,8 +56,8 @@ use slicer_sdk::views::SliceRegionView;
 /// are read per-invocation from `_config` in `run_perimeters`, NOT cached here.
 /// Only machine constants that cannot change mid-print are cached.
 pub struct ClassicPerimeters {
-    /// Number of wall loops to generate.
-    wall_count: u32,
+    /// Number of wall loops to generate (Orca key `wall_loops`).
+    wall_loops: u32,
     /// Speed factor for outer walls (outer_wall_speed / BASE_SPEED).
     outer_speed_factor: f32,
     /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
@@ -84,9 +84,9 @@ const ERR_NEGATIVE_SPACING: u32 = 1;
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let wall_count = match config.get("wall_count") {
+        let wall_loops = match config.get("wall_loops") {
             Some(ConfigValue::Int(n)) => *n as u32,
-            _ => 3, // default
+            _ => 2, // default
         };
 
         let outer_wall_speed = match config.get("outer_wall_speed") {
@@ -107,7 +107,7 @@ impl LayerModule for ClassicPerimeters {
         };
 
         Ok(Self {
-            wall_count,
+            wall_loops,
             outer_speed_factor: outer_wall_speed / BASE_SPEED,
             inner_speed_factor: inner_wall_speed / BASE_SPEED,
             perimeter_arc_tolerance,
@@ -245,14 +245,14 @@ impl LayerModule for ClassicPerimeters {
             .unwrap_or(0.2);
 
         let base_wall_count = _config
-            .get_int("wall_count")
+            .get_int("wall_loops")
             .map(|n| n as u32)
-            .unwrap_or(self.wall_count);
+            .unwrap_or(self.wall_loops);
         // extra_perimeters (T-070/T-071, P108): per-region bonus wall count.
         // OrcaSlicer PerimeterGenerator.cpp:1569 —
         // `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;`
         // (0-indexed loops). Translated to an actual wall count, this is simply
-        // `wall_count + extra_perimeters`.
+        // `wall_loops + extra_perimeters`.
         let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
         let base_wall_count = base_wall_count + extra_perimeters;
         // alternate_extra_wall (DEV-125): canonical `process_classic` and
@@ -294,10 +294,10 @@ impl LayerModule for ClassicPerimeters {
             .get_float("smaller_perimeter_line_width")
             .map(|v| v as f32)
             .unwrap_or(0.25);
-        let smaller_perimeter_threshold_mm = _config
-            .get_float("smaller_perimeter_threshold_mm")
+        let small_perimeter_threshold = _config
+            .get_float("small_perimeter_threshold")
             .map(|v| v as f32)
-            .unwrap_or(0.8);
+            .unwrap_or(0.0);
         let narrow_loop_length_threshold_mm = _config
             .get_float("narrow_loop_length_threshold_mm")
             .map(|v| v as f32)
@@ -401,14 +401,14 @@ impl LayerModule for ClassicPerimeters {
                 .unwrap_or(0.0) as f32;
             // A topmost top sub-area unconditionally collapses to one wall. The
             // min_width_top_surface gate applies only to non-topmost sub-areas.
-            let wall_count = if only_one_wall_top && top_shell == Some(0) {
+            let wall_loops = if only_one_wall_top && top_shell == Some(0) {
                 1
             } else {
                 layer_wall_count
             };
             let polygons = region.polygons();
             let z = region.z();
-            if wall_count == 0 {
+            if wall_loops == 0 {
                 output.set_infill_areas(polygons.to_vec())?;
                 continue;
             }
@@ -416,10 +416,10 @@ impl LayerModule for ClassicPerimeters {
             // Narrow-island override (T-072/T-073, P108): classify against the
             // full region polygon set, additive with extra_perimeters — the
             // narrow-island check only swaps the outer-wall width/spacing,
-            // it does not change wall_count.
+            // it does not change wall_loops.
             let region_outer_wall_line_width = if classify_narrow_island(
                 polygons,
-                smaller_perimeter_threshold_mm,
+                small_perimeter_threshold,
                 narrow_loop_length_threshold_mm,
                 self.perimeter_arc_tolerance,
             ) {
@@ -451,7 +451,7 @@ impl LayerModule for ClassicPerimeters {
                         true,
                         true,
                         output,
-                        wall_count + 1,
+                        wall_loops + 1,
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
@@ -483,7 +483,7 @@ impl LayerModule for ClassicPerimeters {
                         true,
                         true,
                         output,
-                        wall_count,
+                        wall_loops,
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
@@ -613,7 +613,7 @@ impl LayerModule for ClassicPerimeters {
                     true,
                     true,
                     output,
-                    wall_count,
+                    wall_loops,
                     outer_speed_factor,
                     inner_speed_factor,
                     region.bridge_areas(),
@@ -643,9 +643,9 @@ impl LayerModule for ClassicPerimeters {
 }
 
 impl ClassicPerimeters {
-    /// Returns the configured wall count.
-    pub fn wall_count(&self) -> u32 {
-        self.wall_count
+    /// Returns the configured wall-loop count.
+    pub fn wall_loops_count(&self) -> u32 {
+        self.wall_loops
     }
 
     /// Emit wall loops (plus seam candidates and infill) for `polygons`.
@@ -684,7 +684,7 @@ impl ClassicPerimeters {
         emit_outer: bool,
         emit_inner: bool,
         output: &mut PerimeterOutputBuilder,
-        wall_count: u32,
+        wall_loops: u32,
         outer_speed_factor: f32,
         inner_speed_factor: f32,
         bridge_areas: &[ExPolygon],
@@ -754,7 +754,7 @@ impl ClassicPerimeters {
             0.5 * (ext_perimeter_spacing + perimeter_spacing)
         };
 
-        for i in 0..wall_count {
+        for i in 0..wall_loops {
             let inset_delta = if i == 0 {
                 // R1 (P105 AC-7): precise mode uses ext_perimeter_spacing2 for the
                 // outer wall inset (same as the gap between outer and first inner);
@@ -1335,7 +1335,7 @@ fn ex_polygon_min_width_mm(ep: &ExPolygon) -> f32 {
 ///
 /// Loosely follows canonical OrcaSlicer `PerimeterGenerator`'s "narrow but not
 /// too long" island classification, adapted to this port's own
-/// `smaller_perimeter_threshold_mm` / `narrow_loop_length_threshold_mm`
+/// `small_perimeter_threshold` / `narrow_loop_length_threshold_mm`
 /// config keys (see classic-perimeters.toml).
 fn classify_narrow_island(
     polygons: &[ExPolygon],
@@ -1382,10 +1382,10 @@ mod tests {
     fn from_config_defaults() {
         let config = ConfigView::from_map(HashMap::new());
         let module = ClassicPerimeters::from_config(&config).unwrap();
-        assert_eq!(module.wall_count, 3);
+        assert_eq!(module.wall_loops, 2);
         // R2: inner_wall_line_width is now read per-invocation, not cached.
         // Verify the module still initialises without error (struct fields reduced).
-        let _ = module.wall_count();
+        let _ = module.wall_loops_count();
     }
 
     // Packet 150 Step 6 (AC-5): classic-perimeters reads `nozzle_diameter`

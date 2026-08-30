@@ -4,8 +4,8 @@
 //! `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;
 //! // 0-indexed loops`
 //!
-//! A region with base `wall_count=2` and `extra_perimeters=2` must emit exactly
-//! 4 walls (loop_number = wall_count + extra_perimeters - 1, zero-indexed);
+//! A region with base `wall_loops=2` and `extra_perimeters=2` must emit exactly
+//! 4 walls (loop_number = wall_loops + extra_perimeters - 1, zero-indexed);
 //! with `extra_perimeters=0` it must emit exactly 2 walls (bonus is a no-op).
 
 use classic_perimeters::ClassicPerimeters;
@@ -41,11 +41,11 @@ fn run_with_config(config: slicer_ir::ConfigView) -> Vec<slicer_ir::WallLoop> {
         .collect()
 }
 
-/// AC-1 positive case: base wall_count=2, extra_perimeters=2 → 4 walls.
+/// AC-1 positive case: base wall_loops=2, extra_perimeters=2 → 4 walls.
 #[test]
 fn extra_perimeters_bonus_adds_to_wall_count() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .int("extra_perimeters", 2)
         .build();
 
@@ -53,16 +53,16 @@ fn extra_perimeters_bonus_adds_to_wall_count() {
     assert_eq!(
         walls.len(),
         4,
-        "Expected 4 wall loops (wall_count=2 + extra_perimeters=2); got {}",
+        "Expected 4 wall loops (wall_loops=2 + extra_perimeters=2); got {}",
         walls.len()
     );
 }
 
-/// AC-1 no-op case: base wall_count=2, extra_perimeters=0 → 2 walls (unchanged).
+/// AC-1 no-op case: base wall_loops=2, extra_perimeters=0 → 2 walls (unchanged).
 #[test]
 fn extra_perimeters_zero_is_noop() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .int("extra_perimeters", 0)
         .build();
 
@@ -70,7 +70,7 @@ fn extra_perimeters_zero_is_noop() {
     assert_eq!(
         walls.len(),
         2,
-        "Expected 2 wall loops (wall_count=2 + extra_perimeters=0); got {}",
+        "Expected 2 wall loops (wall_loops=2 + extra_perimeters=0); got {}",
         walls.len()
     );
 }
@@ -78,7 +78,7 @@ fn extra_perimeters_zero_is_noop() {
 // ---------------------------------------------------------------------------
 // Packet 212 — arachne parity for `extra_perimeters` (AC-1/AC-2/AC-3/AC-N1/AC-N2)
 //
-// `arachne-perimeters` auto-derives `max_bead_count = 2 * wall_count` in
+// `arachne-perimeters` auto-derives `max_bead_count = 2 * wall_loops` in
 // `arachne_params_from_config` and never reads `extra_perimeters`, so switching
 // `wall_generator` silently discards the bonus walls. The fixture below is the
 // 20 mm square / 1.0 mm bead fixture from
@@ -137,19 +137,19 @@ fn classic_wall_count(config: &ConfigView, layer_index: u32) -> usize {
         .count()
 }
 
-/// `wall_count=2`, `extra_perimeters=<n>`, NO `max_bead_count` key — the
+/// `wall_loops=2`, `extra_perimeters=<n>`, NO `max_bead_count` key — the
 /// auto-derivation path that must fold the bonus in.
 fn arachne_config(extra_perimeters: i64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("inner_wall_line_width", BEAD_WIDTH_MM)
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .int("extra_perimeters", extra_perimeters)
         .build()
 }
 
 /// AC-1: arachne must fold `extra_perimeters` into the auto-derived cap.
-/// `max_bead_count = 2 * (wall_count + extra_perimeters) = 2 * (2 + 2) = 8`,
+/// `max_bead_count = 2 * (wall_loops + extra_perimeters) = 2 * (2 + 2) = 8`,
 /// and the measured even-cap mapping gives `8 / 2 = 4` emitted walls.
 #[test]
 fn arachne_extra_perimeters_bonus_adds_to_wall_count() {
@@ -157,7 +157,7 @@ fn arachne_extra_perimeters_bonus_adds_to_wall_count() {
     let walls = arachne_wall_count(&config, 0);
     assert_eq!(
         walls, 4,
-        "arachne must emit 4 wall loops for wall_count=2 + extra_perimeters=2 \
+        "arachne must emit 4 wall loops for wall_loops=2 + extra_perimeters=2 \
          (auto max_bead_count = 2*(2+2) = 8, emitted = 8/2); got {walls}"
     );
 }
@@ -186,12 +186,12 @@ fn extra_perimeters_survives_wall_generator_switch() {
 
     assert_eq!(
         classic_count, arachne_count,
-        "wall_count=2 + extra_perimeters=2 must emit the same wall-loop count \
+        "wall_loops=2 + extra_perimeters=2 must emit the same wall-loop count \
          under both generators; classic={classic_count}, arachne={arachne_count}"
     );
     assert_eq!(
         arachne_count, 4,
-        "both generators must emit 4 wall loops for wall_count=2 + \
+        "both generators must emit 4 wall loops for wall_loops=2 + \
          extra_perimeters=2; got {arachne_count}"
     );
 }
@@ -204,7 +204,7 @@ fn arachne_explicit_max_bead_count_override_ignores_extra_perimeters() {
     let config = ConfigViewBuilder::new()
         .float("inner_wall_line_width", BEAD_WIDTH_MM)
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .int("extra_perimeters", 2)
         .int("max_bead_count", 4)
         .build();
@@ -227,7 +227,7 @@ fn arachne_extra_perimeters_composes_with_alternate_extra_wall() {
     let config = ConfigViewBuilder::new()
         .float("inner_wall_line_width", BEAD_WIDTH_MM)
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .int("extra_perimeters", 2)
         .bool("alternate_extra_wall", true)
         .bool("spiral_vase", false)

@@ -29,7 +29,7 @@ fn l_shape() -> ExPolygon {
 #[test]
 fn concave_region_emits_outer_wall_without_panic() {
     let cfg = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .build();
     let module = ClassicPerimeters::from_config(&cfg).unwrap();

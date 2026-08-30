@@ -20,7 +20,7 @@ use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 fn config_with_mode(mode: &str) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String(mode.to_string()),
     );
     ConfigView::from_map(fields)

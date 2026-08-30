@@ -53,7 +53,7 @@ fn slice() -> SliceIR {
 #[test]
 fn integrated_parity_seam_planner() {
     let config = Arc::new(ConfigView::from_map(
-        [("seam_mode".into(), ConfigValue::String("nearest".into()))]
+        [("seam_position".into(), ConfigValue::String("nearest".into()))]
             .into_iter()
             .collect(),
     ));

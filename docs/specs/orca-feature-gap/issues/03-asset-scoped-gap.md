@@ -65,14 +65,14 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `retraction_length` | `retract_length` | `path-optimization-default` | exact — **renamed in ticket 101**; default 0.8 matches Orca |
 | `retraction_speed` | `retract_speed` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 25.0 → **30.0** (user ruling in-ticket) |
 | `z_hop` | `travel_z_hop` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 0.0 → **0.4** and range `[0, 5]` adopted (user ruling in-ticket) |
-| `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact |
-| `wall_loops` | `wall_count` | `classic-perimeters` | exact |
+| `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact — **renamed in ticket 102**; default `aligned` already matches Orca (`spAligned`) |
+| `wall_loops` | `wall_count` | `classic-perimeters` | exact — **renamed in ticket 102**; default aligned 3 → **2** to match Orca (user ruling in-ticket; host `ResolvedConfig` was already 2) |
 | `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) — **renamed in ticket 100** |
 | `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact — **renamed in ticket 100**; default deviation surfaced: Pinch `10.0` vs Orca `45.0` (see 100) |
 | `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact — **renamed in ticket 100**; the rename also makes Orca 3MF `enable_prime_tower` a *declared* key, so it now reaches the typed extractor instead of `extensions` |
 | `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact — **renamed in ticket 100**; defaults match Orca (60.0), no deviation |
 | `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) |
-| `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) |
+| `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) — **renamed in ticket 102**; default aligned 0.8 → **0.0** to match Orca's "0 = no threshold effect" (user ruling in-ticket) |
 | `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact |
 | `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact |
 | `raft_layers` | `support_raft_layers` + `base_raft_layers` + `interface_raft_layers` | `support-planner` | **split** — one Orca key became three |

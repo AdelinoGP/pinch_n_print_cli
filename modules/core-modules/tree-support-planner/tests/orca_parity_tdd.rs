@@ -343,17 +343,17 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     );
 }
 
-/// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * wall_count.
+/// AC-5: wall-count scaling — max XY distance ≤ tan(angle) * height * tree_support_wall_count.
 #[test]
 fn wall_count_scales_max_move_distance() {
     // When wall-count-aware move scaling is implemented:
-    //   max_move_distance = tan(branch_angle) * effective_height * wall_count
+    //   max_move_distance = tan(branch_angle) * effective_height * tree_support_wall_count
     //
     // Config keys:
     //   - tree_support_branch_angle (default 45.0)
     //   - support_wall_count (default 0 = auto, typically 1-2)
     //
-    // Current v1 behavior: step_xy = tan_angle * effective_height (no wall_count factor).
+    // Current v1 behavior: step_xy = tan_angle * effective_height (no wall-count factor).
     // This test documents expected behavior once AC-5 is implemented.
 
     let branch_angle_deg = 45.0_f32;
@@ -366,16 +366,16 @@ fn wall_count_scales_max_move_distance() {
 
     assert!(
         no_wall_max_move < with_wall_max_move,
-        "AC-5: wall_count should scale max_move_distance upward; \
-         v1 planner uses no_wall_max_move={no_wall_max_move} without wall_count factor"
+        "AC-5: tree_support_wall_count should scale max_move_distance upward; \
+         v1 planner uses no_wall_max_move={no_wall_max_move} without wall-count factor"
     );
 
-    // Verify: with wall_count=2, max_move should be 2x the no-wall value
+    // Verify: with tree_support_wall_count=2, max_move should be 2x the no-wall value
     let ratio = with_wall_max_move / no_wall_max_move;
     assert!(
         (ratio - wall_count as f32).abs() < 1e-6,
-        "AC-5 FAILED: with_wall_max_move should be wall_count * no_wall_max_move; \
-         got ratio={ratio}, expected wall_count={wall_count}"
+        "AC-5 FAILED: with_wall_max_move should be tree_support_wall_count * no_wall_max_move; \
+         got ratio={ratio}, expected tree_support_wall_count={wall_count}"
     );
 }
 

@@ -25,12 +25,12 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.wall_count]
+[config.schema.wall_loops]
 type    = "int"
-default = 3
+default = 2
 min     = 1
 max     = 10
-display = "Wall Count"
+display = "Wall Loops"
 group   = "Walls"
 
 [config.schema.extra_perimeters]
@@ -212,12 +212,12 @@ max     = 2.0
 display = "Smaller perimeter line width (narrow-island override, mm)"
 group   = "Walls"
 
-[config.schema.smaller_perimeter_threshold_mm]
+[config.schema.small_perimeter_threshold]
 type    = "float"
-default = 0.8
+default = 0.0
 min     = 0.0
 max     = 10.0
-display = "Narrow-island width threshold (mm)"
+display = "Small perimeters threshold (mm)"
 group   = "Walls"
 
 [config.schema.narrow_loop_length_threshold_mm]

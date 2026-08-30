@@ -75,7 +75,7 @@ fn wave_config(anchor_depth_mm: f32) -> slicer_ir::ConfigView {
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
         .float("wave_overhang_anchor_depth_mm", f64::from(anchor_depth_mm))
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .build()
 }
 
@@ -135,7 +135,7 @@ fn wave_config_auto_anchor() -> slicer_ir::ConfigView {
             "wave_overhang_flow_mm3_per_mm",
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .build()
 }
 
@@ -277,7 +277,7 @@ fn speed_config(wave_speed: f32) -> slicer_ir::ConfigView {
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
         .float("wave_overhang_anchor_depth_mm", 3.0)
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .build()
 }
 

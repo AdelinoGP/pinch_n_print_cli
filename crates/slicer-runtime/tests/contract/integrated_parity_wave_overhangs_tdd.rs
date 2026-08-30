@@ -133,7 +133,7 @@ fn config() -> Arc<ConfigView> {
             "wave_overhang_anchor_depth_mm".to_string(),
             slicer_ir::ConfigValue::Float(3.0),
         ),
-        ("wall_count".to_string(), slicer_ir::ConfigValue::Int(3)),
+        ("wall_loops".to_string(), slicer_ir::ConfigValue::Int(3)),
     ])))
 }
 

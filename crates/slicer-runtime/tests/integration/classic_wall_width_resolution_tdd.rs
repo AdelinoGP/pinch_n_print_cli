@@ -39,7 +39,7 @@ fn zero_width_resolves_to_canonical_auto_extrusion_width() {
     let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("nozzle_diameter", nozzle_diameter as f64)
         .float("outer_wall_line_width", 0.0)
         .float("layer_height", 0.2)
@@ -96,7 +96,7 @@ fn absent_width_keys_resolve_to_canonical_auto_width() {
     let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
 
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("nozzle_diameter", nozzle_diameter as f64)
         .float("layer_height", 0.2)
         .build();

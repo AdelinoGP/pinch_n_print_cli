@@ -13,16 +13,16 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Create a config with wall_count and line_width, enough for Arachne to
+/// Create a config with wall_loops and line_width, enough for Arachne to
 /// produce a multi-wall bead sequence.
 ///
 /// `optimal_width`/`preferred_bead_width_outer` are `unit = "units"` keys
 /// (1 unit = 100 nm, see `arachne-perimeters.toml`), so `line_width` (given
 /// in mm) must be converted via [`mm_to_units`] before being stored — unlike
 /// classic-perimeters' `line_width` key, which is read as a bare mm float.
-fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+fn make_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
         .build()

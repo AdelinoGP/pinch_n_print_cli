@@ -242,7 +242,7 @@ fn parse_sparse_blocks(gcode: &str) -> Vec<SparseBlock> {
 /// "a modifier does not add wall loops" is only meaningful against an
 /// independently-established per-contour loop count. Reading it from the
 /// fixture's own output would make the assertion self-fulfilling; hardcoding it
-/// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_count` key
+/// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_loops` key
 /// is not usable here — it reports 2 while the emitted geometry carries 3 loops
 /// per contour, a discrepancy tracked separately as TASK-299 in
 /// `docs/07_implementation_status.md`.)

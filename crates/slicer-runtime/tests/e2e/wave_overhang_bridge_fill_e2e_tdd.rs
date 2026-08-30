@@ -22,7 +22,7 @@
 //! Selecting the module as `bridge_fill_holder` is the enable; waves must
 //! engage out of the box, so this test exercises the DEFAULT (auto) anchor
 //! depth. The original auto formula (`min(3mm, bridge_spacing *
-//! (wall_count + 1))` = 1.8 mm at nozzle 0.4 / wall_count 3) never exceeded
+//! (wall_loops + 1))` = 1.8 mm at nozzle 0.4 / wall_loops 3) never exceeded
 //! the generator's own `anchors_size` (the same expression), `inset_anchors`
 //! came out empty, seed generation failed, and every connected component fell
 //! back to rectilinear bridge fill — measured on this very fixture: 48
@@ -76,7 +76,7 @@ fn write_config(path: &Path) {
         "layer_height": 0.2,
         "first_layer_height": 0.2,
         "nozzle_diameter": 0.4,
-        "wall_count": 3,
+        "wall_loops": 3,
         "filament_diameter": FILAMENT_DIAMETER_MM,
         "bridge_fill_holder": "wave-overhangs",
         "bridge_speed": BRIDGE_SPEED_MM_S,

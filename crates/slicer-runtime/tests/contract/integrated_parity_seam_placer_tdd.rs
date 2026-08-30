@@ -70,7 +70,7 @@ fn perimeter() -> PerimeterIR {
 #[test]
 fn integrated_parity_seam_placer() {
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([(
-        "seam_mode".into(),
+        "seam_position".into(),
         ConfigValue::String("nearest".into()),
     )])));
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
@@ -179,7 +179,7 @@ fn native_seam_placer_aligned_commits_resolved_seam_with_origin() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([(
-        "seam_mode".into(),
+        "seam_position".into(),
         ConfigValue::String("aligned".into()),
     )])));
     let native_module = CompiledModuleBuilder::new("com.core.seam-placer")

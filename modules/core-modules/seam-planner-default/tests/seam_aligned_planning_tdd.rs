@@ -95,9 +95,9 @@ fn region_input() -> SeamPlanningView {
     }
 }
 
-fn run(seam_mode: &str) -> Vec<SeamPlanEntry> {
+fn run(seam_position: &str) -> Vec<SeamPlanEntry> {
     let config = ConfigViewBuilder::new()
-        .string("seam_mode", seam_mode)
+        .string("seam_position", seam_position)
         .build();
     let planner = SeamPlannerDefault::from_config(&config).expect("from_config must succeed");
     let mut output = SeamPlanningOutput::new();

@@ -20,10 +20,10 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a `ConfigView` with `wall_count=1`, `line_width=0.4`.
+/// Build a `ConfigView` with `wall_loops=1`, `line_width=0.4`.
 fn config_1_wall() -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("line_width", 0.4)
         .build()
 }

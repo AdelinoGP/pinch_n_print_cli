@@ -516,7 +516,7 @@ fn wedge_per_region_config_delivery_structural_canary() {
     for required in [
         "layer_height",
         "line_width",
-        "wall_count",
+        "wall_loops",
         "wall_loops",
         "sparse_infill_density",
         "sparse_fill_holder",

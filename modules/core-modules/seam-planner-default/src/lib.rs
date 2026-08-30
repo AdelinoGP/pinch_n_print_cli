@@ -48,7 +48,7 @@ use crate::visibility::candidate_paint_classification;
 /// Default extrusion flow width used for seam scoring. Units: mm.
 const DEFAULT_FLOW_WIDTH_MM: f32 = 0.4;
 
-/// Seam planning mode parsed from the `seam_mode` config key.
+/// Seam planning mode parsed from the `seam_position` config key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeamPlannerMode {
     /// Score-based nearest selection (default).
@@ -282,7 +282,7 @@ fn run_aligned_planning(
 #[slicer_module]
 impl PrepassModule for SeamPlannerDefault {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let mode = match config.get("seam_mode") {
+        let mode = match config.get("seam_position") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "nearest" => SeamPlannerMode::Nearest,
                 "rear" => SeamPlannerMode::Rear,
@@ -290,7 +290,10 @@ impl PrepassModule for SeamPlannerDefault {
                 "aligned" => SeamPlannerMode::Aligned,
                 "aligned_back" => SeamPlannerMode::AlignedBack,
                 other => {
-                    return Err(ModuleError::fatal(1, format!("unknown seam_mode: {other}")));
+                    return Err(ModuleError::fatal(
+                        1,
+                        format!("unknown seam_position: {other}"),
+                    ));
                 }
             },
             _ => SeamPlannerMode::Nearest,
@@ -377,8 +380,14 @@ mod tests {
         let first = choose_region_candidate(&candidates, SeamPlannerMode::Random, 0).unwrap();
         let second = choose_region_candidate(&candidates, SeamPlannerMode::Random, 1).unwrap();
         let third = choose_region_candidate(&candidates, SeamPlannerMode::Random, 2).unwrap();
-        assert_ne!((first.position.x, first.position.y), (second.position.x, second.position.y));
-        assert_eq!((first.position.x, first.position.y), (third.position.x, third.position.y));
+        assert_ne!(
+            (first.position.x, first.position.y),
+            (second.position.x, second.position.y)
+        );
+        assert_eq!(
+            (first.position.x, first.position.y),
+            (third.position.x, third.position.y)
+        );
     }
 
     /// With no paint every candidate scores 0.0, so the filter is a no-op and

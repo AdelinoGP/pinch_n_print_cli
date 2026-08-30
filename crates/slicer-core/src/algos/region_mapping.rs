@@ -174,8 +174,8 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     if overlay.initial_layer_line_width != d.initial_layer_line_width {
         r.initial_layer_line_width = overlay.initial_layer_line_width;
     }
-    if overlay.wall_count != d.wall_count {
-        r.wall_count = overlay.wall_count;
+    if overlay.wall_loops != d.wall_loops {
+        r.wall_loops = overlay.wall_loops;
     }
     if overlay.outer_wall_speed != d.outer_wall_speed {
         r.outer_wall_speed = overlay.outer_wall_speed;

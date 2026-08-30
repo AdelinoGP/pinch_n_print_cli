@@ -95,14 +95,14 @@ fn manifest_has_config_key(key: &str) -> bool {
 // `modules/core-modules/arachne-perimeters/tests/`.
 // ---------------------------------------------------------------------------
 
-/// Config with a nominal wall_count + bead width, no thin-wall detection.
+/// Config with a nominal wall_loops + bead width, no thin-wall detection.
 /// Mirrors `arachne_parity_outer_wall_boundary_type_tdd.rs::make_config` /
 /// `arachne_parity_is_bridge_flag_tdd.rs::make_config` /
 /// `arachne_parity_overhang_quartile_tdd.rs::make_config` /
 /// `arachne_parity_seam_candidate_tdd.rs::make_config`.
-fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+fn native_wall_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
         .build()
@@ -113,7 +113,7 @@ fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
 /// `arachne_parity_is_thin_wall_flag_tdd.rs::make_config`.
 fn native_thin_wall_config(detect_thin_wall_on: bool) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .bool("detect_thin_wall", detect_thin_wall_on)
@@ -148,8 +148,8 @@ fn native_thin_strip_region(z: f32) -> SliceRegionView {
 /// The `bridge_side_mm` parameter is **intentionally ignored** — its `_` prefix
 /// signals this. The strict point-in-polygon bridge detector
 /// (`crates/slicer-core/src/perimeter_utils.rs:608`) requires wall vertices to
-/// lie STRICTLY inside the bridge area. Under the packet-151 `wall_count →
-/// max_bead_count = 2 × wall_count` wiring, the emitted walls on a centered
+/// lie STRICTLY inside the bridge area. Under the packet-151 `wall_loops →
+/// max_bead_count = 2 × wall_loops` wiring, the emitted walls on a centered
 /// 10×10 region are at half-widths ~5 (Outer) and ~4.6 (Inner), so a 4×4
 /// centered bridge area (the old default) never intersects any wall and no
 /// vertex ever gets `is_bridge=true`. We hardcode a 12×12 bridge area (larger
@@ -366,7 +366,7 @@ fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
 #[test]
 fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .float("bridge_flow", 0.7)
@@ -548,7 +548,7 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
 
     let make_config = |precise_outer_wall: bool| -> ConfigView {
         ConfigViewBuilder::new()
-            .int("wall_count", 2)
+            .int("wall_loops", 2)
             .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
             .float("outer_wall_line_width", OUTER_WIDTH_MM as f64)
             .bool("precise_outer_wall", precise_outer_wall)

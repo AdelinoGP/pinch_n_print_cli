@@ -3009,7 +3009,7 @@ mod tests {
         // 0 or 1 in a real Orca 3MF. `mmu_segmented_region_interlocking_depth`
         // is the key that crashed `resources/cube_4color.3mf`.
         for key in [
-            "wall_count",
+            "wall_loops",
             "top_shell_layers",
             "bottom_shell_layers",
             "mmu_segmented_region_interlocking_depth",

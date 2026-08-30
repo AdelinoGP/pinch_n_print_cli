@@ -127,7 +127,7 @@ pub struct WaveOverhangs {
     /// Nozzle diameter, in mm.
     nozzle_diameter: f32,
     /// Wall (perimeter) count of the enclosing region.
-    wall_count: u32,
+    wall_loops: u32,
     /// Layer height, in mm.
     layer_height: f32,
     /// Whether the printer profile enables thick (round-thread) bridges.
@@ -244,7 +244,12 @@ fn rotate_polys(polys: &[ExPolygon], cos: f64, sin: f64) -> Vec<ExPolygon> {
         .iter()
         .map(|exp| ExPolygon {
             contour: Polygon {
-                points: exp.contour.points.iter().map(|p| rotate(*p, cos, sin)).collect(),
+                points: exp
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| rotate(*p, cos, sin))
+                    .collect(),
             },
             holes: exp
                 .holes
@@ -292,8 +297,14 @@ fn rectilinear_scanlines(polys: &[ExPolygon], angle_deg: f32, spacing_units: f64
     while y < max_y as f64 {
         let yi = y.round() as i64;
         lines.push(vec![
-            Point2 { x: min_x - 1, y: yi },
-            Point2 { x: max_x + 1, y: yi },
+            Point2 {
+                x: min_x - 1,
+                y: yi,
+            },
+            Point2 {
+                x: max_x + 1,
+                y: yi,
+            },
         ]);
         y += spacing_units;
     }
@@ -387,7 +398,7 @@ impl LayerModule for WaveOverhangs {
             bridge_flow: cfg_float(config, "bridge_flow", 1.0),
             bridge_density: cfg_density(config, "bridge_density", 1.0),
             nozzle_diameter: cfg_float(config, "nozzle_diameter", 0.4),
-            wall_count: cfg_u32(config, "wall_count", 3),
+            wall_loops: cfg_u32(config, "wall_loops", 2),
             layer_height: cfg_float(config, "layer_height", 0.2),
             // Not a manifest key: printer profiles supply it, and its absence
             // means the flat-thread bridge model, matching the host default.
@@ -413,8 +424,7 @@ impl LayerModule for WaveOverhangs {
             }
 
             // ---- Speed factor (AC-7). Fatal, never a silent clamp. ----------
-            let print_speed =
-                resolve_float(region, "wave_overhang_print_speed", self.print_speed);
+            let print_speed = resolve_float(region, "wave_overhang_print_speed", self.print_speed);
             let bridge_speed = resolve_float(region, "bridge_speed", self.bridge_speed);
             let speed_factor = if bridge_speed > 0.0 {
                 print_speed / bridge_speed
@@ -473,12 +483,15 @@ impl LayerModule for WaveOverhangs {
                 self.nozzle_diameter,
             )
             .spacing_mm;
-            let anchor_depth_cfg =
-                resolve_float(region, "wave_overhang_anchor_depth_mm", self.anchor_depth_mm);
+            let anchor_depth_cfg = resolve_float(
+                region,
+                "wave_overhang_anchor_depth_mm",
+                self.anchor_depth_mm,
+            );
             // Reproduces the generator's own canonical `anchors_size`
-            // (`EXTERNAL_INFILL_MARGIN_MM.min(base_spacing * (wall_count + 1))`).
-            let anchors_size_mm = AUTO_ANCHOR_DEPTH_CAP_MM
-                .min(bridge_spacing_mm * (self.wall_count as f32 + 1.0));
+            // (`EXTERNAL_INFILL_MARGIN_MM.min(base_spacing * (wall_loops + 1))`).
+            let anchors_size_mm =
+                AUTO_ANCHOR_DEPTH_CAP_MM.min(bridge_spacing_mm * (self.wall_loops as f32 + 1.0));
             let anchor_depth = if anchor_depth_cfg > 0.0 {
                 anchor_depth_cfg
             } else {
@@ -543,7 +556,7 @@ impl LayerModule for WaveOverhangs {
                 // FLOW-derived spacing, deliberately distinct from
                 // `line_spacing` (canonical `overhang_flow.scaled_spacing()`).
                 base_spacing: bridge_spacing_mm,
-                wall_count: self.wall_count,
+                wall_loops: self.wall_loops,
             };
 
             // ---- Conventional bridge fill parameters (fallback). ------------
@@ -663,9 +676,7 @@ impl LayerModule for WaveOverhangs {
             }
 
             // ---- Internal-qualified polygons: unlocked rectilinear. ---------
-            for pl in
-                rectilinear_scanlines(&internal_qualified, angle, fallback_spacing_units)
-            {
+            for pl in rectilinear_scanlines(&internal_qualified, angle, fallback_spacing_units) {
                 output
                     .push_solid_path(to_path(
                         &pl,

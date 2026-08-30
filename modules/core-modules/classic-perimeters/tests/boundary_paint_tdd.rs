@@ -15,18 +15,18 @@ use slicer_sdk::views::SliceRegionView;
 // Import the module under test
 use classic_perimeters::ClassicPerimeters;
 
-/// Helper: default config with wall_count=1 for simpler test output.
+/// Helper: default config with wall_loops=1 for simpler test output.
 fn config_1_wall() -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("line_width", 0.4)
         .build()
 }
 
-/// Helper: default config with wall_count=2 for inner wall tests.
+/// Helper: default config with wall_loops=2 for inner wall tests.
 fn config_2_walls() -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .build()
 }

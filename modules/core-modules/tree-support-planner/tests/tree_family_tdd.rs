@@ -628,7 +628,7 @@ fn branch_angle_scales_the_per_layer_lateral_move() {
     );
 
     // The cap is an upper bound as well as an ordering: no single layer step may
-    // exceed `tan(angle) * layer_height * wall_count` per node, so the spread
+    // exceed `tan(angle) * layer_height * tree_support_wall_count` per node, so the spread
     // (two nodes closing on each other) may shrink by at most twice that.
     for (angle_deg, spread) in [(30.0_f32, &shallow_spread), (60.0_f32, &steep_spread)] {
         let budget = 2.0 * angle_deg.to_radians().tan() * 0.2 * 1.0 + 1e-3;
@@ -640,7 +640,7 @@ fn branch_angle_scales_the_per_layer_lateral_move() {
             }
             assert!(
                 above - below <= budget,
-                "branch closed {} mm of lateral distance between layers {lower} and {upper} at                  {angle_deg} deg, exceeding the canonical per-layer budget {budget} mm                  (tan(angle) * layer_height * wall_count, doubled for two converging nodes)",
+                "branch closed {} mm of lateral distance between layers {lower} and {upper} at                  {angle_deg} deg, exceeding the canonical per-layer budget {budget} mm                  (tan(angle) * layer_height * tree_support_wall_count, doubled for two converging nodes)",
                 above - below
             );
         }

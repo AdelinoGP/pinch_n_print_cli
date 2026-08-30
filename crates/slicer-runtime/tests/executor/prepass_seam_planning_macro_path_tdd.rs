@@ -189,7 +189,7 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
     );
     let mut config_map = HashMap::new();
     config_map.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("nearest".to_string()),
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())

@@ -51,8 +51,8 @@ pub struct SeamPlacer {
 }
 
 impl SeamPlacer {
-    /// Returns the seam mode as a string (for testing).
-    pub fn seam_mode(&self) -> &str {
+    /// Returns the seam position mode as a string (for testing).
+    pub fn seam_position(&self) -> &str {
         match self.mode {
             SeamMode::Nearest => "nearest",
             SeamMode::Rear => "rear",
@@ -407,7 +407,7 @@ fn rotate_wall_loop(
 #[slicer_module]
 impl LayerModule for SeamPlacer {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let mode = match config.get("seam_mode") {
+        let mode = match config.get("seam_position") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "nearest" => SeamMode::Nearest,
                 "rear" => SeamMode::Rear,
@@ -415,7 +415,10 @@ impl LayerModule for SeamPlacer {
                 "aligned" => SeamMode::Aligned,
                 "aligned_back" => SeamMode::AlignedBack,
                 other => {
-                    return Err(ModuleError::fatal(1, format!("unknown seam_mode: {other}")));
+                    return Err(ModuleError::fatal(
+                        1,
+                        format!("unknown seam_position: {other}"),
+                    ));
                 }
             },
             _ => SeamMode::Nearest,
@@ -591,20 +594,20 @@ mod tests {
     }
 
     #[test]
-    fn seam_mode_display() {
+    fn seam_position_display() {
         let s = SeamPlacer {
             mode: SeamMode::Nearest,
         };
-        assert_eq!(s.seam_mode(), "nearest");
+        assert_eq!(s.seam_position(), "nearest");
 
         let s = SeamPlacer {
             mode: SeamMode::Rear,
         };
-        assert_eq!(s.seam_mode(), "rear");
+        assert_eq!(s.seam_position(), "rear");
 
         let s = SeamPlacer {
             mode: SeamMode::Random,
         };
-        assert_eq!(s.seam_mode(), "random");
+        assert_eq!(s.seam_position(), "random");
     }
 }

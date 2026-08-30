@@ -18,10 +18,10 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a config with wall_count=2, line_width=0.4.
+/// Build a config with wall_loops=2, line_width=0.4.
 fn config_2_walls() -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .build()
 }
@@ -79,7 +79,7 @@ fn inner_wall_has_material_boundary_with_multi_tool_region() {
     let inner_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index > 0).collect();
     assert!(
         !inner_walls.is_empty(),
-        "wall_count=2 must produce at least one inner wall (perimeter_index > 0)"
+        "wall_loops=2 must produce at least one inner wall (perimeter_index > 0)"
     );
 
     // Every inner wall must have WallBoundaryType::MaterialBoundary (NOT Interior).

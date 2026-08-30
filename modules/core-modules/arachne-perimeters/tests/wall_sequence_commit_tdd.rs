@@ -9,7 +9,7 @@ use slicer_sdk::views::SliceRegionView;
 
 fn config(mode: &str) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .string("wall_sequence", mode)
         .build()
 }

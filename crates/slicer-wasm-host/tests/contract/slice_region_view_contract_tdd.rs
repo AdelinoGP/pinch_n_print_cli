@@ -116,7 +116,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
     let boundary = square_with_bounds(-20_000, 120_000);
     let mut ctx = HostExecutionContextBuilder::new("slice-region-live", 0.4, 0.2).build();
     let mut fields = HashMap::new();
-    fields.insert("wall_count".into(), ConfigValueStorage::Int(2));
+    fields.insert("wall_loops".into(), ConfigValueStorage::Int(2));
     fields.insert(
         "inner_wall_line_width".into(),
         ConfigValueStorage::Float(0.4),

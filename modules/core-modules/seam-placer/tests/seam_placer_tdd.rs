@@ -107,7 +107,7 @@ fn region_with_candidates(candidates: Vec<SeamCandidate>, z: f32) -> PerimeterRe
 fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::from_config(&config).unwrap();
-    assert_eq!(module.seam_mode(), "nearest");
+    assert_eq!(module.seam_position(), "nearest");
 }
 
 // ============================================================================
@@ -118,12 +118,12 @@ fn from_config_defaults() {
 fn from_config_custom() {
     let mut fields = HashMap::new();
     fields.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("rear".to_string()),
     );
     let config = ConfigView::from_map(fields);
     let module = SeamPlacer::from_config(&config).unwrap();
-    assert_eq!(module.seam_mode(), "rear");
+    assert_eq!(module.seam_position(), "rear");
 }
 
 // ============================================================================
@@ -208,7 +208,7 @@ fn no_candidates_no_seam() {
 fn rear_mode_prefers_back() {
     let mut fields = HashMap::new();
     fields.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("rear".to_string()),
     );
     let config = ConfigView::from_map(fields);
@@ -241,7 +241,7 @@ fn rear_mode_prefers_back() {
 fn random_mode_produces_seam() {
     let mut fields = HashMap::new();
     fields.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("random".to_string()),
     );
     let config = ConfigView::from_map(fields);

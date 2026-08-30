@@ -15,9 +15,9 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+fn make_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
         .build()
@@ -27,7 +27,7 @@ fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
 /// center-based convention) with the bridge area centered on the region's
 /// (-, -) CORNER so it contains that corner's wall vertices (D-166: an
 /// origin-centered 4mm bridge square sits ~3mm from the nearest wall under
-/// the `max_bead_count = 2 * wall_count` clamp, so the flag comparison ran
+/// the `max_bead_count = 2 * wall_loops` clamp, so the flag comparison ran
 /// vacuously — every vertex outside, every flag false).
 fn make_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
     let corner = -side_mm / 2.0;

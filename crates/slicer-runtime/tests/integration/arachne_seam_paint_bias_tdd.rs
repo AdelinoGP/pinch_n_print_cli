@@ -24,7 +24,7 @@ fn run_region<M: LayerModule>(
 #[test]
 fn arachne_and_classic_exclude_same_painted_corner() {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();

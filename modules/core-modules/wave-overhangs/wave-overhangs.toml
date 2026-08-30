@@ -148,12 +148,12 @@ unit    = "mm"
 display = "Nozzle diameter"
 group   = "Printer"
 
-[config.schema.wall_count]
+[config.schema.wall_loops]
 type    = "int"
-default = 3
+default = 2
 min     = 1
 max     = 10
-display = "Wall Count"
+display = "Wall Loops"
 group   = "Walls"
 
 [config.schema.layer_height]

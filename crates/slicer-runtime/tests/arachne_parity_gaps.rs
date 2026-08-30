@@ -97,10 +97,10 @@ fn run_walls(config: &ConfigView, regions: &[SliceRegionView], layer_index: u32)
     output.wall_loops().to_vec()
 }
 
-/// Baseline config: 0.4 mm beads, `wall_count` walls.
-fn base_config(wall_count: i64) -> ConfigViewBuilder {
+/// Baseline config: 0.4 mm beads, `wall_loops` walls.
+fn base_config(wall_loops: i64) -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .int("wall_count", wall_count)
+        .int("wall_loops", wall_loops)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
 }
@@ -218,7 +218,7 @@ fn arachne_parity_pipeline_only_one_wall_first_layer_forces_single_wall() {
     assert!(
         key_registered && indices.len() == 1,
         "PARITY GAP: only_one_wall_first_layer | expected: with \
-         only_one_wall_first_layer=true and wall_count=3, layer 0 emits \
+         only_one_wall_first_layer=true and wall_loops=3, layer 0 emits \
          exactly one wall (loop_number forced to 0, \
          PerimeterGenerator.cpp:2137-2139; key defined at \
          PrintConfig.cpp:1513-1517) | got: key registered in \
@@ -259,7 +259,7 @@ fn arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top() {
     assert!(
         indices.len() == 1,
         "PARITY GAP: only_one_wall_top | expected: with only_one_wall_top=true \
-         and wall_count=3, a topmost region (top_shell_index == Some(0)) emits \
+         and wall_loops=3, a topmost region (top_shell_index == Some(0)) emits \
          exactly one wall — Orca forces loop_number = 0 on the topmost layer \
          (PerimeterGenerator.cpp:2140-2144) and re-runs Arachne for remaining \
          inner walls on non-top area only (PerimeterGenerator.cpp:2160-2246) | \
@@ -346,8 +346,8 @@ fn arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one() {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", true)
         .build();
-    // Packet-151 fixture correction: under corrected max_bead_count = 2*wall_count
-    // (= 4 for wall_count=2), the emitted Outer/Inner walls sit at half-widths
+    // Packet-151 fixture correction: under corrected max_bead_count = 2*wall_loops
+    // (= 4 for wall_loops=2), the emitted Outer/Inner walls sit at half-widths
     // ~5.0 / ~4.6 mm, well outside a 4×4 centred bridge area. The 4×4 area
     // therefore intersected no wall vertices, so no is_bridge flag was ever set
     // and the fixture guard tripped. Enlarging to a 12×12 centred area (mirrors
@@ -651,10 +651,10 @@ fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
     );
 }
 
-/// AC-1 (packet 151): wall_count → max_bead_count = 2 × wall_count wiring.
-/// The toml registers both keys; the module reads wall_count when
+/// AC-1 (packet 151): wall_loops → max_bead_count = 2 × wall_loops wiring.
+/// The toml registers both keys; the module reads wall_loops when
 /// max_bead_count is absent (get_int → None, since ConfigView never merges
-/// schema defaults). On a 10 mm square with wall_count=3, the distinct
+/// schema defaults). On a 10 mm square with wall_loops=3, the distinct
 /// Outer/Inner perimeter_index set must be {0,1,2} (3 walls), NOT
 /// {0,1,2,3,4} (the legacy max_bead_count=9 collapse).
 #[test]
@@ -666,7 +666,7 @@ fn arachne_parity_wall_count_wires_max_bead_count() {
     assert_eq!(
         indices,
         BTreeSet::from([0u32, 1, 2]),
-        "wall_count=3 must yield exactly {{0,1,2}} walls; got {:?} — wall_count \
+        "wall_loops=3 must yield exactly {{0,1,2}} walls; got {:?} — wall_loops \
          is not being read by arachne_params_from_config, so the module is still \
          falling back to defaults.max_bead_count=9 (Orca WallToolPaths.cpp:525: \
          max_bead_count = 2 * inset_count)",

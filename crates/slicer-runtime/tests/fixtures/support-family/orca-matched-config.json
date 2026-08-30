@@ -5,7 +5,7 @@
   "nozzle_diameter": 0.5,
   "filament_diameter": 1.75,
   "sparse_infill_density": 25.0,
-  "wall_count": 3,
+  "wall_loops": 3,
 
   "enable_support": true,
   "support_type": "normal(auto)",
