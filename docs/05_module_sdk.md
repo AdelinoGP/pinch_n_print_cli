@@ -1220,7 +1220,19 @@ pnp_cli module diagnose [--module-dir <PATH>]
     - Claim names are recognized
 
 pnp_cli module config-schema [--module-dir <PATH>]
-  Emit combined config schema JSON from loaded modules.
+  Emit the combined config schema JSON: every config key pnp reads, with its
+  type, default and preset scope. Two arrays:
+    schema[] - per-module manifest fields, one entry per loaded module
+    host[]   - {key, type, default, scope} for the keys host built-ins read,
+               which no manifest declares (ResolvedConfig's cli/cli_opt rows,
+               FeedrateConfig's speeds, and the [host_runtime] keys)
+  Wire version 1.1.0 added `host` and the per-field `scope`. Before it, a
+  consumer that treated the reply as the whole key universe was blind to the
+  62 host keys - which is what the OrcaSlicer GUI fork hit.
+  Wire version 1.2.0 made each host entry carry optional display metadata -
+  display/group/unit/description/min/max/values/advanced, null where the
+  declaring channel annotates nothing - so a generated settings page can
+  label host keys without a fork-side mirror (SchemaBridgeMap ticket 10).
 
 pnp_cli slice --model <file.stl> [--config <config.json>] [--output <file.gcode>]
   Slice a model using the loaded module set.

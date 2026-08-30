@@ -1,3 +1,9 @@
+use crate::resolved_config::HostKeyMeta;
+
+/// `HostKeyMeta::NONE` as a *value*: the FRU base for annotated entries in
+/// [`SPEED_META`].
+const HOST_META_NONE: HostKeyMeta = HostKeyMeta::NONE;
+
 /// Feedrate configuration holding mm/s speed values.
 #[derive(Debug, Clone)]
 pub struct FeedrateConfig {
@@ -116,6 +122,131 @@ fn read_speed(
     }
 }
 
+/// Display metadata for the host speed keys that carry any (wire 1.2.0,
+/// SchemaBridgeMap ticket 10), positionally aligned with [`SPEED_KEYS`].
+///
+/// `None` means "no metadata": `module config-schema` reports `null` and the
+/// GUI falls back to the raw key name. Only the speeds with no Orca
+/// counterpart are listed — an identity-routed speed renders through Orca's
+/// own definition on the fork, so a label here would never be seen. `min =
+/// 0.0` encodes `docs/config/host-keys.toml`'s speed ranges (`"> 0"`) as an
+/// inclusive floor, because the GUI clamps at `min` rather than rejecting;
+/// the strict inequality stays prose in the toml.
+pub const SPEED_META: [Option<HostKeyMeta>; SPEED_KEY_COUNT] = [
+    None, // outer_wall_speed (Orca identity)
+    None, // inner_wall_speed (Orca identity)
+    Some(HostKeyMeta {
+        // thin_wall_speed
+        display: Some("Thin Wall Speed"),
+        description: Some("Speed used to fill thin-wall regions the perimeter pass cannot (mm/s)."),
+        group: Some("Speed"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // top_surface_speed (Orca identity)
+    Some(HostKeyMeta {
+        // bottom_surface_speed
+        display: Some("Bottom surface speed"),
+        description: Some("Speed for bottom solid infill surfaces (mm/s)."),
+        group: Some("Speed"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // sparse_infill_speed (Orca identity)
+    None, // bridge_speed (Orca identity)
+    None, // internal_bridge_speed (Orca identity)
+    None, // support_speed (Orca identity)
+    None, // support_interface_speed (Orca identity)
+    None, // gap_infill_speed (Orca identity)
+    None, // ironing_speed (Orca identity)
+    None, // skirt_speed (Orca identity)
+    Some(HostKeyMeta {
+        // wipe_tower_speed
+        display: Some("Wipe tower speed"),
+        description: Some("Speed inside the wipe/prime tower (mm/s)."),
+        group: Some("Wipe Tower"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    Some(HostKeyMeta {
+        // prime_tower_speed
+        display: Some("Prime tower speed"),
+        description: Some("Speed for prime-tower purge moves (mm/s)."),
+        group: Some("Multimaterial"),
+        unit: Some("mm/s"),
+        min: Some(0.0),
+        ..HOST_META_NONE
+    }),
+    None, // travel_speed (Orca identity)
+    None, // travel_speed_z (Orca identity)
+    None, // initial_layer_speed (Orca identity)
+    None, // initial_layer_infill_speed (Orca identity)
+    None, // initial_layer_travel_speed (Orca identity)
+    None, // wipe_speed (Orca identity)
+    None, // overhang_1_4_speed (Orca identity)
+    None, // overhang_2_4_speed (Orca identity)
+    None, // overhang_3_4_speed (Orca identity)
+    None, // overhang_4_4_speed (Orca identity)
+    None, // filament_ironing_speed (Orca identity)
+];
+
+/// `SPEED_META` must stay positionally aligned with [`SPEED_KEYS`]; this
+/// assertion fails the build when the two arrays' lengths drift apart.
+const _: () = assert!(SPEED_KEYS.len() == SPEED_META.len());
+
+/// Every host speed key, paired with the [`FeedrateConfig`] field it fills.
+///
+/// Single source for both directions: [`FeedrateConfig::from_raw_config`]
+/// reads through it, and `module config-schema` reports it as part of the
+/// `host` key universe so the GUI can bind these keys (ticket 02). All are
+/// `float`, mm/s, and print-scoped. [`SPEED_META`] carries the wire 1.2.0
+/// display metadata (SchemaBridgeMap ticket 10) for the speeds rendered as
+/// their own controls rather than bound to an Orca identity row.
+pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
+    ("outer_wall_speed", |fc| &mut fc.outer_wall_speed),
+    ("inner_wall_speed", |fc| &mut fc.inner_wall_speed),
+    ("thin_wall_speed", |fc| &mut fc.thin_wall_speed),
+    ("top_surface_speed", |fc| &mut fc.top_surface_speed),
+    ("bottom_surface_speed", |fc| &mut fc.bottom_surface_speed),
+    ("sparse_infill_speed", |fc| &mut fc.sparse_infill_speed),
+    ("bridge_speed", |fc| &mut fc.bridge_speed),
+    ("internal_bridge_speed", |fc| &mut fc.internal_bridge_speed),
+    ("support_speed", |fc| &mut fc.support_speed),
+    ("support_interface_speed", |fc| {
+        &mut fc.support_interface_speed
+    }),
+    ("gap_infill_speed", |fc| &mut fc.gap_infill_speed),
+    ("ironing_speed", |fc| &mut fc.ironing_speed),
+    ("skirt_speed", |fc| &mut fc.skirt_speed),
+    ("wipe_tower_speed", |fc| &mut fc.wipe_tower_speed),
+    ("prime_tower_speed", |fc| &mut fc.prime_tower_speed),
+    ("travel_speed", |fc| &mut fc.travel_speed),
+    ("travel_speed_z", |fc| &mut fc.travel_speed_z),
+    ("initial_layer_speed", |fc| &mut fc.initial_layer_speed),
+    ("initial_layer_infill_speed", |fc| {
+        &mut fc.initial_layer_infill_speed
+    }),
+    ("initial_layer_travel_speed", |fc| {
+        &mut fc.initial_layer_travel_speed
+    }),
+    ("wipe_speed", |fc| &mut fc.wipe_speed),
+    ("overhang_1_4_speed", |fc| &mut fc.overhang_1_4_speed),
+    ("overhang_2_4_speed", |fc| &mut fc.overhang_2_4_speed),
+    ("overhang_3_4_speed", |fc| &mut fc.overhang_3_4_speed),
+    ("overhang_4_4_speed", |fc| &mut fc.overhang_4_4_speed),
+    ("filament_ironing_speed", |fc| {
+        &mut fc.filament_ironing_speed
+    }),
+];
+
+/// Number of entries in [`SPEED_KEYS`] (and therefore in [`SPEED_META`]),
+/// spelled out so the meta table can be typed against it before the const
+/// assertion below compares the two.
+pub const SPEED_KEY_COUNT: usize = SPEED_KEYS.len();
+
 impl FeedrateConfig {
     /// Builds the feedrate table from a raw config source keyed by the
     /// `[speeds]` host names (the Orca key names the GUI's translated config
@@ -127,48 +258,27 @@ impl FeedrateConfig {
     /// `resolve_feedrate` previously read `FeedrateConfig::default()` on every
     /// run, so every F value in the G-code was a pnp default scaled by module
     /// speed factors.
+    /// Builds the feedrate table from a raw config source keyed by the
+    /// `[speeds]` host names (the Orca key names the GUI's translated config
+    /// uses; all mm/s). Keys that are absent or not numeric keep the
+    /// [`FeedrateConfig::default`] value, so `docs/config/host-keys.toml`'s
+    /// `[speeds]` table stays the source of truth for the defaults.
+    ///
+    /// This is what wires host speeds into the G-code emitter: the emitter's
+    /// `resolve_feedrate` previously read `FeedrateConfig::default()` on every
+    /// run, so every F value in the G-code was a pnp default scaled by module
+    /// speed factors.
+    ///
+    /// Driven by [`SPEED_KEYS`], which is also what `module config-schema`
+    /// reports as the feedrate half of its `host` array — so a speed the
+    /// slicer reads and a speed the GUI can bind cannot diverge.
     pub fn from_raw_config(config: &std::collections::HashMap<String, crate::ConfigValue>) -> Self {
         let mut fc = Self::default();
-        fc.outer_wall_speed = read_speed(config, "outer_wall_speed").unwrap_or(fc.outer_wall_speed);
-        fc.inner_wall_speed = read_speed(config, "inner_wall_speed").unwrap_or(fc.inner_wall_speed);
-        fc.thin_wall_speed = read_speed(config, "thin_wall_speed").unwrap_or(fc.thin_wall_speed);
-        fc.top_surface_speed =
-            read_speed(config, "top_surface_speed").unwrap_or(fc.top_surface_speed);
-        fc.bottom_surface_speed =
-            read_speed(config, "bottom_surface_speed").unwrap_or(fc.bottom_surface_speed);
-        fc.sparse_infill_speed =
-            read_speed(config, "sparse_infill_speed").unwrap_or(fc.sparse_infill_speed);
-        fc.bridge_speed = read_speed(config, "bridge_speed").unwrap_or(fc.bridge_speed);
-        fc.internal_bridge_speed =
-            read_speed(config, "internal_bridge_speed").unwrap_or(fc.internal_bridge_speed);
-        fc.support_speed = read_speed(config, "support_speed").unwrap_or(fc.support_speed);
-        fc.support_interface_speed =
-            read_speed(config, "support_interface_speed").unwrap_or(fc.support_interface_speed);
-        fc.gap_infill_speed = read_speed(config, "gap_infill_speed").unwrap_or(fc.gap_infill_speed);
-        fc.ironing_speed = read_speed(config, "ironing_speed").unwrap_or(fc.ironing_speed);
-        fc.skirt_speed = read_speed(config, "skirt_speed").unwrap_or(fc.skirt_speed);
-        fc.wipe_tower_speed = read_speed(config, "wipe_tower_speed").unwrap_or(fc.wipe_tower_speed);
-        fc.prime_tower_speed =
-            read_speed(config, "prime_tower_speed").unwrap_or(fc.prime_tower_speed);
-        fc.travel_speed = read_speed(config, "travel_speed").unwrap_or(fc.travel_speed);
-        fc.travel_speed_z = read_speed(config, "travel_speed_z").unwrap_or(fc.travel_speed_z);
-        fc.initial_layer_speed =
-            read_speed(config, "initial_layer_speed").unwrap_or(fc.initial_layer_speed);
-        fc.initial_layer_infill_speed = read_speed(config, "initial_layer_infill_speed")
-            .unwrap_or(fc.initial_layer_infill_speed);
-        fc.initial_layer_travel_speed = read_speed(config, "initial_layer_travel_speed")
-            .unwrap_or(fc.initial_layer_travel_speed);
-        fc.wipe_speed = read_speed(config, "wipe_speed").unwrap_or(fc.wipe_speed);
-        fc.overhang_1_4_speed =
-            read_speed(config, "overhang_1_4_speed").unwrap_or(fc.overhang_1_4_speed);
-        fc.overhang_2_4_speed =
-            read_speed(config, "overhang_2_4_speed").unwrap_or(fc.overhang_2_4_speed);
-        fc.overhang_3_4_speed =
-            read_speed(config, "overhang_3_4_speed").unwrap_or(fc.overhang_3_4_speed);
-        fc.overhang_4_4_speed =
-            read_speed(config, "overhang_4_4_speed").unwrap_or(fc.overhang_4_4_speed);
-        fc.filament_ironing_speed =
-            read_speed(config, "filament_ironing_speed").unwrap_or(fc.filament_ironing_speed);
+        for (key, field) in SPEED_KEYS {
+            if let Some(value) = read_speed(config, key) {
+                *field(&mut fc) = value;
+            }
+        }
         fc
     }
 }

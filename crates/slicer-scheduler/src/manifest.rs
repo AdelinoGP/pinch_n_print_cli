@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use slicer_ir::resolved_config::HostKeyMeta;
 use slicer_ir::{ConfigValue, ModuleId, SemVer, StageId};
 use toml::Value;
 
@@ -17,7 +18,13 @@ use toml::Value;
 /// consumed by `pnp_cli module config-schema`. Semver `"<major>.<minor>.<patch>"`;
 /// consumers (e.g. `pinch_n_print_studio`) gate on the major. See
 /// `docs/11_operational_governance_and_acceptance_gate.md` for bumping rules.
-pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.0.0";
+///
+/// History: 1.0.0 module manifests only; 1.1.0 added the top-level `host`
+/// array and per-field `scope`; 1.2.0 (SchemaBridgeMap ticket 10) made host
+/// entries carry optional display metadata — `display`/`group`/`unit`/
+/// `description`/`min`/`max`/`values`/`advanced` per entry, `null` where
+/// un-annotated. Additive: a wire-1.1.0 consumer ignores the new fields.
+pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.2.0";
 
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
@@ -1259,7 +1266,7 @@ fn parse_config_field_entry(
         &format!("config.schema.{field_key}.type"),
         "type",
     )?;
-    let default = table.get("default").map(|v| v.to_string());
+    let default = table.get("default").map(toml_default_to_wire);
     // Retain the parsed percent default on the entry (packet 185 / DEV-100)
     // instead of discarding it, so the resolver can thread the
     // `Percent` / `FloatOrPercent` variant into `ResolvedConfig.extensions`.
@@ -1425,6 +1432,28 @@ fn get_string_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Opt
     table.get(key).and_then(|v| v.as_str().map(String::from))
 }
 
+/// Render a manifest `[config.schema.<key>]` `default` as the wire string.
+///
+/// `toml::Value::to_string()` is the *TOML document* serializer: on a string
+/// value it emits the quoted literal (`"gcode"` becomes `"\"gcode\""` on the
+/// wire), which every consumer then reads back as a value with literal quotes.
+/// Scalars must be unwrapped to their bare text; array defaults render
+/// comma-joined, matching how an Orca vector option deserializes a list.
+fn toml_default_to_wire(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => s.clone(),
+        toml::Value::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                toml::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        other => other.to_string(),
+    }
+}
+
 fn get_float_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<f64> {
     table
         .get(key)
@@ -1539,6 +1568,134 @@ fn known_stage_ids() -> &'static [&'static str] {
     crate::stage_order::known_stage_ids()
 }
 
+/// Config keys read straight from the CLI/JSON config source by host
+/// built-ins, with no `ResolvedConfig` field and no manifest entry
+/// (`docs/config/host-keys.toml` `[host_runtime]`).
+///
+/// Defaults are restated here because their owning constants live in
+/// `slicer-runtime`, which depends on this crate; the lock test
+/// `host_keys_doc_lock_tdd` ties each value back to its owner.
+///
+/// The reachable-annotation note under `[speeds]` applies here too:
+/// `wall_generator` and `use_relative_e_distances` are Orca identity rows, so
+/// `thumbnail_path` is the only one this table annotates.
+const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str, HostKeyMeta)] = &[
+    // (key, wire type, scope, default, display meta)
+    (
+        "use_relative_e_distances",
+        "bool",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "true",
+        HostKeyMeta::NONE,
+    ),
+    (
+        "thumbnail_path",
+        "string",
+        slicer_ir::resolved_config::SCOPE_PRINTER,
+        "",
+        HostKeyMeta {
+            display: Some("Thumbnail path"),
+            description: Some(
+                "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
+            ),
+            group: Some("Output"),
+            ..HostKeyMeta::NONE
+        },
+    ),
+    (
+        "wall_generator",
+        "string",
+        slicer_ir::resolved_config::SCOPE_PRINT,
+        crate::execution_plan::DEFAULT_WALL_GENERATOR,
+        HostKeyMeta::NONE,
+    ),
+];
+
+/// Preset scope of a module-manifest config field.
+///
+/// Always print. A module field describes how a slice is produced, which is a
+/// print-preset concern; every one of the 171 manifest keys at this revision is
+/// print-scoped, and the manifest has no way to say otherwise. Scope is emitted
+/// anyway so a consumer reads one uniform field across the `schema` and `host`
+/// halves rather than special-casing which array it came from.
+///
+/// If a module ever needs a filament- or printer-scoped key, that is a real
+/// `scope` key on the field (§ Common per-field keys), not a `tags` entry —
+/// `docs/03_wit_and_manifest.md` rules out namespaced tags, and scope is a
+/// routing declaration rather than UI taxonomy.
+fn module_field_scope() -> &'static str {
+    slicer_ir::resolved_config::SCOPE_PRINT
+}
+
+/// Every host-declared config key, deduplicated by name.
+///
+/// Three declaration channels feed this: `ResolvedConfig`'s `cli`/`cli_opt`
+/// DSL rows, `FeedrateConfig`'s speed table, and [`HOST_RUNTIME_KEYS`]. None
+/// of them is a module manifest, so before wire version 1.1.0 none of them
+/// appeared in `module config-schema` at all — leaving a consumer that treated
+/// the reply as the whole key universe blind to 62 keys the slicer actually
+/// reads. Since wire 1.2.0 (SchemaBridgeMap ticket 10) each entry also carries
+/// optional display metadata (`display`/`group`/`unit`/`description`/`min`/
+/// `max`/`values`/`advanced`), `null` where the declaring channel annotates
+/// nothing; see [`HostKeyMeta`]. A key may also be declared by a module
+/// manifest; that is not a conflict, and both entries are reported.
+fn build_host_key_entries() -> Vec<serde_json::Value> {
+    use slicer_ir::resolved_config::HostKeyMeta;
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+
+    let mut push =
+        |key: &str, field_type: &str, scope: &str, default: Option<String>, meta: &HostKeyMeta| {
+            if !seen.insert(key.to_string()) {
+                return;
+            }
+            let wire_type = meta.wire_type.unwrap_or(field_type);
+            out.push(serde_json::json!({
+                "key": key,
+                "type": wire_type,
+                "default": default,
+                "scope": scope,
+                "display": meta.display,
+                "group": meta.group,
+                "unit": meta.unit,
+                "description": meta.description,
+                "min": meta.min,
+                "max": meta.max,
+                "values": meta.values,
+                "advanced": meta.advanced,
+            }));
+        };
+
+    for hk in slicer_ir::resolved_config::ResolvedConfig::host_config_keys() {
+        push(hk.key, hk.field_type, hk.scope, hk.default, &hk.meta);
+    }
+
+    let speed_defaults = slicer_ir::FeedrateConfig::default();
+    for (index, (key, field)) in slicer_ir::feedrate::SPEED_KEYS.iter().enumerate() {
+        let mut probe = speed_defaults.clone();
+        let default = *field(&mut probe);
+        let meta = slicer_ir::feedrate::SPEED_META
+            .get(index)
+            .and_then(|m| m.as_ref())
+            .unwrap_or(&HostKeyMeta::NONE);
+        push(
+            key,
+            "float",
+            slicer_ir::resolved_config::SCOPE_PRINT,
+            Some(default.to_string()),
+            meta,
+        );
+    }
+
+    for (key, field_type, scope, default, meta) in HOST_RUNTIME_KEYS {
+        push(key, field_type, scope, Some((*default).to_string()), meta);
+    }
+
+    out.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
+    out
+}
+
 /// Build the documented config-schema JSON response from loaded modules.
 ///
 /// Per `docs/01_system_architecture.md`, the config-schema query response
@@ -1565,6 +1722,17 @@ fn known_stage_ids() -> &'static [&'static str] {
 /// Every per-field key is always present: `Option<T>::None` → JSON `null`;
 /// `bool` → JSON `true`/`false`; `Vec<T>` → JSON array (`[]` when empty).
 /// The top-level `schema_version` is [`CONFIG_SCHEMA_WIRE_VERSION`].
+///
+/// Each field also carries `scope` (`"print"` / `"filament"` / `"printer"`),
+/// the preset a GUI should persist the key into; see [`module_field_scope`].
+///
+/// Alongside `schema` the reply carries a top-level `host` array of
+/// `{key, type, default, scope, display, group, unit, description, min, max,
+/// values, advanced}` objects — the config keys pnp reads that no module
+/// manifest declares. The display fields are additive from wire 1.2.0 and
+/// `null` where the declaring channel annotates nothing. See
+/// [`build_host_key_entries`]; wire version 1.1.0 added the array, 1.2.0 the
+/// metadata.
 ///
 /// Wildcard schema entries (`<prefix>:*`) are **excluded** from the wire:
 /// they are runtime key-access declarations, not user-configurable fields
@@ -1610,6 +1778,7 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
                         "max_list_length": entry.max_list_length,
                         "validate": entry.validate,
                         "tags": entry.tags,
+                        "scope": module_field_scope(),
                     })
                 })
                 .collect();
@@ -1623,6 +1792,7 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
     serde_json::json!({
         "schema_version": CONFIG_SCHEMA_WIRE_VERSION,
         "schema": schema_entries,
+        "host": build_host_key_entries(),
     })
 }
 
@@ -1743,6 +1913,170 @@ mod tests {
         .build()
     }
 
+    /// SchemaBridgeMap ticket 11 (fork side): a TOML string default reached the
+    /// wire as the quoted TOML literal (`"gcode"` became `"\"gcode\""`), because
+    /// the extraction used `toml::Value::to_string()` — the document
+    /// serializer, not a value renderer. The GUI deserializes the wire default
+    /// verbatim, so every enum/string/percent control on its generated page
+    /// opened at the zero value with a "does not parse" warning instead of the
+    /// module's declared default. Scalars must arrive bare; list defaults as a
+    /// comma-joined vector string.
+    #[test]
+    fn module_defaults_reach_the_wire_unquoted() {
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::String("gcode".into())),
+            "gcode",
+            "a string default must not carry TOML quotes"
+        );
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::from(0.35)),
+            "0.35"
+        );
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::Boolean(true)),
+            "true"
+        );
+
+        // A list default renders the way an Orca vector option deserializes.
+        assert_eq!(
+            super::toml_default_to_wire(&toml::Value::Array(vec![
+                toml::Value::Float(0.0),
+                toml::Value::Float(1.24),
+            ])),
+            "0.0,1.24",
+            "list defaults render comma-joined, not TOML-bracketed"
+        );
+
+        // End to end through the reply builder: an enum field's default is the
+        // bare identifier a dropdown can select.
+        let mut entries = std::collections::BTreeMap::new();
+        entries.insert(
+            "retract_mode".to_string(),
+            ConfigFieldEntry {
+                field_type: "enum".to_string(),
+                default: Some("gcode".to_string()),
+                values: Some(vec!["gcode".to_string(), "firmware".to_string()]),
+                ..Default::default()
+            },
+        );
+        let module = synthetic_module("com.test.quotes", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+        assert_eq!(json["schema"][0]["fields"][0]["default"], "gcode");
+    }
+
+    #[test]
+    fn config_schema_host_array_reports_every_host_declaration_channel() {
+        let json = build_config_schema_json(&[]);
+        let host = json["host"]
+            .as_array()
+            .expect("wire 1.1.0+ must always carry a top-level 'host' array");
+
+        // One representative per declaration channel: a ResolvedConfig `cli`
+        // row, a `cli_opt` row, a FeedrateConfig speed, and a [host_runtime]
+        // key. Before wire 1.1.0 none of these appeared in the reply.
+        for key in [
+            "top_shell_layers",
+            "arachne_min_feature_size",
+            "bottom_surface_speed",
+            "use_relative_e_distances",
+        ] {
+            assert!(
+                host.iter().any(|e| e["key"] == key),
+                "host array must report '{key}'"
+            );
+        }
+
+        let by_key = |key: &str| {
+            host.iter()
+                .find(|e| e["key"] == key)
+                .unwrap_or_else(|| panic!("missing host key '{key}'"))
+                .clone()
+        };
+
+        // Types come from the declared Rust type, defaults from the live
+        // Default impl — neither is restated on the wire.
+        assert_eq!(by_key("top_shell_layers")["type"], "int");
+        assert_eq!(by_key("top_shell_layers")["default"], "3");
+        assert_eq!(by_key("bottom_surface_speed")["type"], "float");
+        assert_eq!(by_key("use_relative_e_distances")["type"], "bool");
+
+        // An unset `cli_opt` has no default, which is not the same as zero.
+        assert_eq!(
+            by_key("arachne_min_feature_size")["default"],
+            serde_json::Value::Null
+        );
+
+        // Wire 1.2.0 (SchemaBridgeMap ticket 10): optional display metadata.
+        // An annotated key carries label, group and range; an un-annotated
+        // one reports nulls and the GUI falls back to the key name.
+        let thin = by_key("thin_wall_speed");
+        assert_eq!(thin["display"], "Thin Wall Speed");
+        assert_eq!(thin["group"], "Speed");
+        assert_eq!(thin["unit"], "mm/s");
+        assert_eq!(thin["min"], 0.0);
+        let travel = by_key("travel_speed");
+        assert!(
+            travel["display"].is_null(),
+            "an identity-routed speed stays un-annotated"
+        );
+        assert!(travel["group"].is_null());
+        // An enum-promoted string key reports the enum wire type and its
+        // domain.
+        let join = by_key("flat_bridge_closing_join");
+        assert_eq!(join["type"], "enum");
+        assert_eq!(
+            join["values"],
+            serde_json::json!(["miter", "square", "round"])
+        );
+
+        // Scope routes the key to a preset list on the GUI side; getting it
+        // wrong round-trips the key into the wrong preset file.
+        assert_eq!(by_key("machine_max_jerk_x")["scope"], "printer");
+        assert_eq!(by_key("filament_diameter")["scope"], "filament");
+        assert_eq!(by_key("top_shell_layers")["scope"], "print");
+
+        // Keys are unique and sorted, so a consumer can bisect and cannot
+        // register the same key twice.
+        let keys: Vec<&str> = host.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        let mut sorted = keys.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(keys, sorted, "host array must be sorted and deduplicated");
+    }
+
+    #[test]
+    fn module_schema_fields_carry_a_preset_scope() {
+        // A consumer registers keys from both halves of the reply; emitting
+        // `scope` on module fields too means one read path, not two.
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "spacing".to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                default: Some("0.4".to_string()),
+                tags: vec!["walls".to_string()],
+                ..Default::default()
+            },
+        );
+
+        let module = LoadedModuleBuilder::new(
+            "com.test.scoped",
+            SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            "Layer::Perimeters",
+            slicer_schema::TIER_LAYER,
+            PathBuf::from("fixtures/scoped.wasm"),
+        )
+        .config_schema(ConfigSchema { entries })
+        .build();
+
+        let json = build_config_schema_json(&[module]);
+        assert_eq!(json["schema"][0]["fields"][0]["scope"], "print");
+    }
+
     #[test]
     fn build_config_schema_json_emits_top_level_schema_version() {
         let json = build_config_schema_json(&[]);
@@ -1751,7 +2085,7 @@ mod tests {
             Some(CONFIG_SCHEMA_WIRE_VERSION),
             "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
         );
-        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.0.0");
+        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.2.0");
         assert!(
             json["schema"].is_array(),
             "top-level 'schema' must always be an array"
