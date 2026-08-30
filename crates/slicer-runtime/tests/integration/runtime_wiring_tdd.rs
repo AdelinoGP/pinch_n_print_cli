@@ -585,14 +585,17 @@ layer-parallel-safe = true
 
 #[test]
 fn config_schema_json_matches_documented_shape() {
-    // Per docs/01_system_architecture.md, the response shape is:
-    // {"schema_version": "1.0.0",
-    //  "schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}]}
+    // The wire version is owned by `CONFIG_SCHEMA_WIRE_VERSION`
+    // (`crates/slicer-scheduler/src/manifest.rs`); 1.1.0 added the top-level
+    // `host` key array. Bumping rules live in
+    // docs/11_operational_governance_and_acceptance_gate.md. Compare against the
+    // constant itself so this test can never lag a bump again (it did once:
+    // a50bfc28 bumped 1.0.0 -> 1.1.0 and updated the emitter but not this test).
     let json = build_config_schema_json(&[]);
     assert_eq!(
         json["schema_version"].as_str(),
-        Some("1.0.0"),
-        "top-level schema_version must equal the wire-format constant '1.0.0'"
+        Some(slicer_scheduler::manifest::CONFIG_SCHEMA_WIRE_VERSION),
+        "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
     );
     assert!(
         json.get("schema").is_some(),

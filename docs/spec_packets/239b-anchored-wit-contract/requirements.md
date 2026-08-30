@@ -5,7 +5,7 @@
 - Grouped task IDs: `TASK-508`, `TASK-509`, `TASK-510`, `TASK-511`, `TASK-512`, `TASK-513`,
   `TASK-514`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 - Supersedes: `239-support-independent-layer-z` (jointly with `239a-anchored-host-seams` and
   `239c-support-layer-height-producer`)
@@ -301,7 +301,7 @@ judged solely by exit code.
 | `cargo test -p slicer-runtime --test executor -- anchored_events_roundtrip_tdd::guest_emitting_no_anchored_events_produces_no_commit --exact` | AC-N2 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test executor -- anchored_events_roundtrip_tdd::duplicate_anchored_proposal_is_rejected_and_commits_nothing --exact` | AC-N3 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test executor -- support_anchored_reach_tdd::support_stage_guest_reaches_anchored_drain_with_exact_canonical_z --exact` | AC-8: a `Layer::Support` guest reaches the drain and its `s64` anchor Z survives intact — the proof that the two-builder widening did its job | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test contract -- stage_list_consistency_tdd:: 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | Proves the new `STAGE_ORDER` entry was classified as user-targetable (`VALID_STAGES`) rather than host-only. `crates/slicer-scheduler/tests/contract/main.rs` is **also** a `mod` aggregator (`mod stage_list_consistency_tdd;`), so a bare test name under `--exact` matches zero here too. This row deliberately uses the module prefix as a **substring** filter (no `--exact`) so it runs every test in that file — at authoring time those were `valid_stages_is_subset_of_stage_order` and `host_only_stages_partition_stage_order_into_valid_stages`, but re-derive the current set from the file rather than trusting those names | FACT pass/fail |
+| `cargo test -p slicer-scheduler --test scheduler_contract -- stage_list_consistency_tdd:: 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | Proves the new `STAGE_ORDER` entry was classified as user-targetable (`VALID_STAGES`) rather than host-only. The scheduler test target is named `scheduler_contract` (`crates/slicer-scheduler/Cargo.toml` `[[test]] name = "scheduler_contract"`; this row originally said `--test contract` and was corrected per Implementation Deviations #2). `crates/slicer-scheduler/tests/contract/main.rs` is **also** a `mod` aggregator (`mod stage_list_consistency_tdd;`), so a bare test name under `--exact` matches zero here too. This row deliberately uses the module prefix as a **substring** filter (no `--exact`) so it runs every test in that file — at authoring time those were `valid_stages_is_subset_of_stage_order` and `host_only_stages_partition_stage_order_into_valid_stages`, but re-derive the current set from the file rather than trusting those names | FACT pass/fail |
 | `cargo xtask test --summary --workspace --no-fail-fast` | Closure ceremony ONLY, per `CLAUDE.md` Test Discipline; dispatch to a sub-agent with a `FACT pass/fail` return and never absorb the full output | FACT pass/fail |
 
 Feature-gating note: `slicer-schema`, `slicer-runtime` (`default = ["report"]`), and

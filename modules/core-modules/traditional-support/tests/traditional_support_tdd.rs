@@ -104,7 +104,14 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
     let paint = paint_with_interface_plan();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     output.interface_paths().to_vec()
 }
@@ -120,7 +127,14 @@ fn support_disabled_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -141,7 +155,14 @@ fn single_region_generates_support() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     let paths = output.support_paths();
@@ -164,7 +185,14 @@ fn extrusion_role_is_support_material() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -188,7 +216,14 @@ fn speed_factor_from_config() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -218,10 +253,24 @@ fn base_spacing_affects_line_count() {
     let mut output_high = SupportOutputBuilder::new();
 
     module_low
-        .run_support(0, &[region_low], &paint, &mut output_low, &config_low)
+        .run_support(
+            0,
+            &[region_low],
+            &paint,
+            &mut output_low,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config_low,
+        )
         .unwrap();
     module_high
-        .run_support(0, &[region_high], &paint, &mut output_high, &config_high)
+        .run_support(
+            0,
+            &[region_high],
+            &paint,
+            &mut output_high,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config_high,
+        )
         .unwrap();
 
     let count_low = output_low.support_paths().len();
@@ -250,10 +299,24 @@ fn alternating_angle() {
     let mut output1 = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region0], &paint, &mut output0, &config)
+        .run_support(
+            0,
+            &[region0],
+            &paint,
+            &mut output0,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     module
-        .run_support(1, &[region1], &paint1, &mut output1, &config)
+        .run_support(
+            1,
+            &[region1],
+            &paint1,
+            &mut output1,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     let paths0 = output0.support_paths();
@@ -310,7 +373,14 @@ fn empty_regions_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -331,7 +401,14 @@ fn disabled_support_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -349,7 +426,14 @@ fn opposite_family_plan_is_rejected() {
     let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &[region],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
 
     assert!(result.is_err(), "non-traditional family must be rejected");
     assert!(output.support_paths().is_empty());
@@ -404,7 +488,14 @@ fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
     let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     let fill_paths: Vec<_> = output
         .support_paths()

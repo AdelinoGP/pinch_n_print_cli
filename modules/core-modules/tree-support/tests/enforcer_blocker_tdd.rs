@@ -134,7 +134,7 @@ fn fully_blocked_region_generates_zero_support() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert_eq!(
@@ -157,7 +157,7 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(
@@ -184,7 +184,7 @@ fn blocked_plus_enforced_resolves_to_zero_support() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert_eq!(
@@ -207,7 +207,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     // Existing behaviour: support is generated for all provided ExPolygons.
@@ -231,7 +231,7 @@ fn planned_region_renders_regardless_of_eligibility_flag() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -248,7 +248,7 @@ fn blocked_planned_region_generates_zero_support() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(
@@ -282,7 +282,7 @@ fn blocker_overrides_needs_support_true() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert_eq!(

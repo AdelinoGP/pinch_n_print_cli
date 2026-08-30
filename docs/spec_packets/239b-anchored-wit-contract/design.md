@@ -730,4 +730,4 @@ budgeted into a named step rather than discovered by a later `cargo check`:
   it; the separate 20→21 change this packet already owns belongs to the **new**
   `layer-anchored-events.wit` file and must not be conflated with this signature edit.
 
-  The packet stays `status: draft`; this question no longer blocks activation.
+  The packet is now `status: implemented`; this question no longer blocks activation.

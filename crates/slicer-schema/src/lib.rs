@@ -163,6 +163,17 @@ pub const STAGES: &[StageSpec] = &[
         wit_world: "support-postprocess-module",
     },
     StageSpec {
+        method: "run_anchored_events",
+        stage_id: "Layer::AnchoredEvents",
+        wit_export: "run",
+        tier_id: TIER_LAYER,
+        trait_name: "LayerModule",
+        wit_dir: "layer-anchored-events",
+        wit_package: "slicer:layer-anchored-events@1.0.0",
+        wit_interface: "anchored-events",
+        wit_world: "anchored-events-module",
+    },
+    StageSpec {
         method: "run_path_optimization",
         stage_id: "Layer::PathOptimization",
         wit_export: "run",
@@ -492,6 +503,7 @@ pub const VALID_STAGES: &[&str] = &[
     "Layer::InfillPostProcess",
     "Layer::Support",
     "Layer::SupportPostProcess",
+    "Layer::AnchoredEvents",
     "Layer::PathOptimization",
     "PostPass::LayerFinalization",
     "PostPass::GCodePostProcess",
@@ -542,14 +554,15 @@ mod tests {
     fn stage_table_has_one_entry_per_routed_export() {
         // Matches the total stage exports the host dispatcher and macro
         // route end-to-end. Currently:
-        //   Layer world: 8 (slice-postprocess, perimeters, wall-postprocess,
+        //   Layer world: 9 (slice-postprocess, perimeters, wall-postprocess,
         //                   infill, infill-postprocess, support,
-        //                   support-postprocess, path-optimization)
+        //                   support-postprocess, path-optimization,
+        //                   anchored-events)
         //   Prepass world: 5 (mesh-analysis, layer-planning,
         //                     paint-segmentation, seam-planning, support-generation)
         //   Finalization world: 1
         //   Postpass world: 2
-        assert_eq!(STAGES.len(), 16);
+        assert_eq!(STAGES.len(), 17);
     }
 
     #[test]

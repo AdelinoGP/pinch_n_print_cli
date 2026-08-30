@@ -108,7 +108,14 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
     let paint = paint_with_interface_plan();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     output.interface_paths().to_vec()
 }
@@ -142,7 +149,14 @@ fn square_region_produces_paths() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(
@@ -162,7 +176,14 @@ fn paths_have_support_role() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -186,7 +207,14 @@ fn disabled_no_paths() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -207,7 +235,14 @@ fn zero_density_no_paths() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -238,7 +273,14 @@ fn empty_regions_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -296,7 +338,14 @@ fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
     let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     let fill_paths: Vec<_> = output
         .support_paths()
@@ -324,7 +373,14 @@ fn paths_at_correct_z() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -356,7 +412,14 @@ fn tree_support_wall_count() {
         let paint = paint_with_plan("tree");
         let mut output = SupportOutputBuilder::new();
         module
-            .run_support(0, &[region], &paint, &mut output, &config)
+            .run_support(
+                0,
+                &[region],
+                &paint,
+                &mut output,
+                &mut slicer_sdk::LayerCollectionBuilder::new(),
+                &config,
+            )
             .unwrap();
         output
             .support_paths()
@@ -415,6 +478,7 @@ fn extra_wall_count_printed_from_skeleton() {
             &[make_square_region(10.0, 0.3)],
             &paint,
             &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config,
         )
         .unwrap();
@@ -441,7 +505,14 @@ fn width_matches_config() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -465,7 +536,14 @@ fn opposite_family_plan_is_rejected() {
     let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
 
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &[region],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
 
     assert!(result.is_err());
     assert!(output.support_paths().is_empty());
@@ -488,6 +566,7 @@ fn tree_bodies_render_hollow_concentric_walls() {
             &[make_square_region(10.0, 0.3)],
             &paint_with_plan("tree"),
             &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config,
         )
         .unwrap();
@@ -515,6 +594,7 @@ fn body_fill_alternates_direction_across_layers() {
             &[make_square_region(10.0, 0.3)],
             &paint_with_plan("tree"),
             &mut horizontal,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config,
         )
         .unwrap();
@@ -526,6 +606,7 @@ fn body_fill_alternates_direction_across_layers() {
             &[make_square_region(10.0, 0.5)],
             &paint,
             &mut vertical,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config,
         )
         .unwrap();
@@ -554,6 +635,7 @@ fn sub_pitch_tip_region_emits_solid_center_line() {
             &[make_square_region(0.5, 0.3)],
             &paint_with_plan("tree"),
             &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config,
         )
         .unwrap();

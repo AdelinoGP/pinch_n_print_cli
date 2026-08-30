@@ -473,6 +473,26 @@ pub mod layer_support {
 }
 
 #[allow(missing_docs)]
+pub mod layer_anchored_events {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-anchored-events/anchored-events-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::AnchoredEventsModule as LayerModule;
+}
+
+#[allow(missing_docs)]
 pub mod layer_support_postprocess {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
@@ -613,6 +633,7 @@ pub mod prepass_support_geometry {
 }
 
 // Re-export commonly used generated types for convenience.
+pub use layer_anchored_events::LayerModule as LayerAnchoredEventsModule;
 pub use layer_infill::LayerModule as LayerInfillModule;
 pub use layer_infill_postprocess::LayerModule as LayerInfillPostprocessModule;
 pub use layer_path_optimization::LayerModule as LayerPathOptimizationModule;
@@ -1078,8 +1099,8 @@ pub mod postpass_text {
 pub use postpass_text::TextPostprocessModule;
 
 pub use crate::marshal::accumulators::{
-    GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected, PerimeterOutputCollected,
-    SlicePostprocessCollected, SupportOutputCollected,
+    AnchoredEventsCollected, GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected,
+    PerimeterOutputCollected, SlicePostprocessCollected, SupportOutputCollected,
 };
 pub use crate::marshal::out::{
     collect_postpass_output, convert_infill_output, convert_perimeter_output,
@@ -1158,6 +1179,8 @@ pub struct HostExecutionContext {
     pub(crate) perimeter_output: PerimeterOutputCollected,
     /// Support output collected during a call.
     pub(crate) support_output: SupportOutputCollected,
+    /// Anchored event collection collected during a call.
+    pub(crate) anchored_events: AnchoredEventsCollected,
     /// GCode output collected during a call.
     pub(crate) gcode_output: GcodeOutputCollected,
     /// Slice postprocess output collected during a call.
@@ -1429,6 +1452,7 @@ impl HostExecutionContextBuilder {
             infill_output: InfillOutputCollected::default(),
             perimeter_output: PerimeterOutputCollected::default(),
             support_output: SupportOutputCollected::default(),
+            anchored_events: AnchoredEventsCollected::default(),
             gcode_output: GcodeOutputCollected::default(),
             slice_postprocess_output: SlicePostprocessCollected::default(),
             current_perimeter_region: None,
@@ -1509,6 +1533,16 @@ impl HostExecutionContext {
     /// Mutable handle to the per-call support output collector.
     pub fn support_output_mut(&mut self) -> &mut SupportOutputCollected {
         &mut self.support_output
+    }
+
+    /// Per-call anchored event collection.
+    pub fn anchored_events(&self) -> &AnchoredEventsCollected {
+        &self.anchored_events
+    }
+
+    /// Mutable handle to the per-call anchored event collection.
+    pub fn anchored_events_mut(&mut self) -> &mut AnchoredEventsCollected {
+        &mut self.anchored_events
     }
 
     /// Per-call GCode output collector.
@@ -1843,6 +1877,7 @@ impl HostExecutionContext {
         ordered_entities: Vec<crate::dispatch::OrderedEntityView>,
     ) -> wasmtime::Result<Resource<LayerCollectionBuilderData>> {
         self.layer_collection_proposal = None;
+        self.anchored_events.collection = None;
         self.host_get_ordered_entities_call_count = 0;
         Ok(self
             .table
@@ -3979,6 +4014,18 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
         self.runtime_reads
             .push(String::from("LayerCollectionIR.ordered_entities"));
         Ok(views)
+    }
+    fn set_anchored_event_collection(
+        &mut self,
+        self_: Resource<LayerCollectionBuilderData>,
+        collection: ir::OrderedEventCollection,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.table.get(&self_)?;
+        self.anchored_events.collection = Some(
+            crate::marshal::convert_anchored_events(&collection).map_err(wasmtime::Error::msg)?,
+        );
+        self.record_write("OrderedEventCollection");
+        Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<LayerCollectionBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

@@ -611,7 +611,7 @@ impl LayerStageCommit {
     /// corresponding row in `slicer-schema::STAGES`. `None` for the test-only
     /// `SeedLayerCollection`, which has no production stage.
     ///
-    /// The non-`None` set is exactly the eight `world-layer` stages — a property
+    /// The non-`None` set is exactly the nine `world-layer` stages — a property
     /// pinned by a meta-test so the enum and `STAGES` cannot drift (ADR-0020).
     pub fn stage_id(&self) -> Option<&'static str> {
         Some(match self {

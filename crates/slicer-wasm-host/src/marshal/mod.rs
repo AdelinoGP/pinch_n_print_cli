@@ -8,8 +8,8 @@ pub mod origin;
 pub mod out;
 
 pub use accumulators::{
-    GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected, PerimeterOutputCollected,
-    SlicePostprocessCollected, SupportOutputCollected,
+    AnchoredEventsCollected, GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected,
+    PerimeterOutputCollected, SlicePostprocessCollected, SupportOutputCollected,
 };
 pub use in_::{
     harvest_seam_plan_ir_from, object_mesh_to_wit_mesh_object_view, perimeter_region_to_data,
@@ -30,10 +30,10 @@ pub use origin::{MarshalError, OriginBucket, OriginId};
 // harvest_*_from functions are pub(crate) in in_.rs and accessed directly by dispatch.rs
 // via `use crate::marshal::in_::harvest_*_from` — not re-exported at the marshal:: level.
 pub use out::{
-    authored_coloring_granted, collect_postpass_output, convert_infill_output,
-    convert_perimeter_output, convert_support_output, convert_support_output_with_plan,
-    infill_ir_to_prior_regions, merge_slice_postprocess_into, AuthoredColoringContext,
-    AUTHORED_COLORING_CLAIM,
+    authored_coloring_granted, collect_postpass_output, convert_anchored_events,
+    convert_infill_output, convert_perimeter_output, convert_support_output,
+    convert_support_output_with_plan, infill_ir_to_prior_regions, merge_slice_postprocess_into,
+    validate_anchored_entity_geometry, AuthoredColoringContext, AUTHORED_COLORING_CLAIM,
 };
 
 /// Return the effective height for a global layer across all participating objects.

@@ -904,6 +904,10 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
+                let collection = store
+                    .data_mut()
+                    .push_layer_collection_builder(project_ordered_entities_from(layer_collection))
+                    .map_err(mk_ctx_err)?;
                 let call_result = bindings
                     .slicer_layer_support_support()
                     .call_run(
@@ -912,6 +916,82 @@ impl WasmRuntimeDispatcher {
                         &region_handles,
                         own(paint),
                         own(output),
+                        own(collection),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::AnchoredEvents" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
+                host::layer_anchored_events::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_anchored_events::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                )
+                .map_err(mk_ctx_err)?;
+                let snapshot = project_ordered_entities_from(layer_collection);
+                let collection = store
+                    .data_mut()
+                    .push_layer_collection_builder(snapshot)
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_anchored_events_anchored_events()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(collection),
                         own(config_handle),
                     )
                     .map_err(mk_call_err)?;
@@ -3447,7 +3527,7 @@ pub fn build_paint_layer_data_for_test(
 /// placeholder field to leak (the structural fix for the anchor bug). The
 /// `Layer::Perimeters` seam injection is no longer flagged — it is implied by the
 /// `Perimeters` variant and performed inside `apply`.
-fn deconstruct_layer_ctx(
+pub fn deconstruct_layer_ctx(
     stage_id: &str,
     module_id: &str,
     layer_index: u32,
@@ -3488,7 +3568,16 @@ fn deconstruct_layer_ctx(
                 && support.interface_paths.is_empty()
                 && support.raft_paths.is_empty()
             {
-                return Ok(None);
+                let Some(collection) = ctx.anchored_events.collection.as_ref() else {
+                    return Ok(None);
+                };
+                for entity in &collection.events {
+                    crate::marshal::validate_anchored_entity_geometry(entity)
+                        .map_err(|reason| mk_fatal("anchored events", reason))?;
+                }
+                return Ok(Some(LayerStageCommit::AnchoredEvents(vec![
+                    collection.clone()
+                ])));
             }
             let ir = crate::marshal::convert_support_output_with_plan(
                 support,
@@ -3501,6 +3590,18 @@ fn deconstruct_layer_ctx(
             } else {
                 LayerStageCommit::Support(ir)
             }))
+        }
+        "Layer::AnchoredEvents" => {
+            let Some(collection) = ctx.anchored_events.collection.as_ref() else {
+                return Ok(None);
+            };
+            for entity in &collection.events {
+                crate::marshal::validate_anchored_entity_geometry(entity)
+                    .map_err(|reason| mk_fatal("anchored events", reason))?;
+            }
+            Ok(Some(LayerStageCommit::AnchoredEvents(vec![
+                collection.clone()
+            ])))
         }
         "Layer::Perimeters" => {
             let perimeter = &ctx.perimeter_output;

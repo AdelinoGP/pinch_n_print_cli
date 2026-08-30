@@ -78,7 +78,7 @@ fn run_support(
     let module = TraditionalSupport::from_config(&config).unwrap();
     let paint = paint_with_plan(points);
     let mut output = SupportOutputBuilder::new();
-    module.run_support(0, &[region(points)], &paint, &mut output, &config)?;
+    module.run_support(0, &[region(points)], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)?;
     Ok(output.support_paths().to_vec())
 }
 

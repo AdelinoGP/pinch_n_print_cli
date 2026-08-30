@@ -278,6 +278,7 @@ interface ir-handles {
     resource layer-collection-builder {
         set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
         get-ordered-entities: func() -> list<ordered-entity-view>;
+        set-anchored-event-collection: func(collection: ordered-event-collection) -> result<_, string>;
     }
 
     resource support-output-builder {

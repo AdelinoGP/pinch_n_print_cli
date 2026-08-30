@@ -496,6 +496,7 @@ pub trait LayerModule: Sized {
         _regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         _output: &mut SupportOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
@@ -539,6 +540,20 @@ pub trait LayerModule: Sized {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run anchored-event generation for a global layer.
+    ///
+    /// The collection builder carries one atomic ordered-event proposal from
+    /// the guest back to the host.
+    fn run_anchored_events(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
         _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

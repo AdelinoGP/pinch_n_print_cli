@@ -130,7 +130,7 @@ until then a row reaching `generated` means authored and preflight-clean, not im
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
 | 1 | `239a-anchored-host-seams` | Give the host an anchored-entity input seam, switch all three non-anchored `execute_per_layer*` call sites to the committed anchored variant, and lower `CommittedLayerEvent::Anchored` into off-grid print rows using the canonical `\|dz\| <= EPSILON` merge rule. | TASK-399..TASK-408 | - | closed | `docs/spec_packets/239a-anchored-host-seams/` |
-| 2 | `239b-anchored-wit-contract` | Wire the orphaned `ir-types.wit` anchored records into a real world/interface with host lift/lower glue and SDK drain glue, so a guest module can round-trip an `ordered-event-collection`. | TASK-508..TASK-514 | - | generated | - |
+| 2 | `239b-anchored-wit-contract` | Wire the orphaned `ir-types.wit` anchored records into a real world/interface with host lift/lower glue and SDK drain glue, so a guest module can round-trip an `ordered-event-collection`. | TASK-508..TASK-514 | - | closed | `docs/spec_packets/239b-anchored-wit-contract/` |
 | 3 | `239c-support-layer-height-producer` | Declare `independent_support_layer_height`, decouple support Z from `LayerPlanView`, emit off-grid support rows from the support modules, and settle the measure-first `height_delta` verdict. | TASK-515..TASK-522 | #1, #2 | generated | - |
 
 ### Seam decision (approved 2026-08-28)

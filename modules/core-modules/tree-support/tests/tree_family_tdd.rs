@@ -88,7 +88,7 @@ fn polygon_renderer_identity() {
     let module = TreeSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
     assert!(
         output.support_paths().len() > 2,
@@ -134,7 +134,7 @@ fn mismatched_family_rejected() {
     let (config, region, paint) = fixture("traditional", None);
     let module = TreeSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config);
     assert!(result.is_err());
     assert!(output.support_paths().is_empty());
 }
@@ -145,7 +145,7 @@ fn declined_or_empty_plan_has_no_fallback_paths() {
     let module = TreeSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region.clone()], &paint, &mut output, &config)
+        .run_support(0, &[region.clone()], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
     assert!(output.support_paths().is_empty());
     assert!(output.interface_paths().is_empty());
@@ -156,7 +156,7 @@ fn declined_or_empty_plan_has_no_fallback_paths() {
     }));
     let mut empty_output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &empty_paint, &mut empty_output, &config)
+        .run_support(0, &[region], &empty_paint, &mut empty_output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
     assert!(empty_output.support_paths().is_empty());
     assert!(empty_output.interface_paths().is_empty());

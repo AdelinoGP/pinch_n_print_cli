@@ -125,7 +125,7 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(
@@ -147,7 +147,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(
@@ -171,7 +171,7 @@ fn default_eligible_region_generates_support() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(
@@ -192,7 +192,7 @@ fn enforcer_overrides_needs_support_false() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(0, &[region], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)
         .unwrap();
 
     assert!(

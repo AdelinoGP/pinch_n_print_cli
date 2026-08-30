@@ -110,9 +110,13 @@ fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, M
     Ok(NativeLayerResponse {
         infill: None,
         perimeters: None,
-        support: Some(support),
+        support: Some(slicer_sdk::native::NativeSupportOutput {
+            output: support,
+            collection: slicer_sdk::LayerCollectionBuilder::new(),
+        }),
         slice_postprocess: None,
         path_optimization: None,
+        anchored_events: None,
     })
 }
 

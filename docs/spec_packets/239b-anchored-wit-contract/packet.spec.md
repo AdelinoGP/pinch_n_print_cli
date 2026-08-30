@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 239b-anchored-wit-contract
 supersedes: 239-support-independent-layer-z
 task_ids:
@@ -57,9 +57,10 @@ and a real production producer are `239c-support-layer-height-producer`.
   received only a `support-output-builder`; `layer-path-optimization.wit` was the sole world
   receiving a `layer-collection-builder`) — the decision is what closes the gap they describe.
   239c records the same resolution. This packet owns the widening and its full blast radius in
-  Step 5c and proves support-stage reachability in Step 5d (AC-8). The packet remains
-  `status: draft` pending normal authoring gates, not pending this seam. `[FWD]` questions still
-  live in `design.md` §Open Questions.
+  Step 5c and proves support-stage reachability in Step 5d (AC-8). The packet reached
+  `status: implemented` after passing its acceptance ceremony (both counter repairs and the
+  review-time repairs in `implementation-plan.md` §Implementation Deviations 11-13). `[FWD]`
+  questions still live in `design.md` §Open Questions.
 
 Honest limitation, stated up front and repeated in `requirements.md`: every acceptance criterion
 below is driven by a purpose-built test guest, not by a production module — **including AC-8**,

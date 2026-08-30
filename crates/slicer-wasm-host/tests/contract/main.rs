@@ -6,6 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod anchored_events_both_legs_tdd;
 mod authored_coloring_grant_and_strip_tdd;
 mod effective_perimeter_origin_integration_tdd;
 mod exact_z_support_query;

@@ -6,6 +6,7 @@ fn main() {
         "../slicer-schema/wit/deps/config.wit",
         "../slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit",
         "../slicer-schema/wit/deps/ir-types.wit",
+        "../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit",
         "../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit",
         "../slicer-schema/wit/deps/layer-infill/layer-infill.wit",
         "../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit",

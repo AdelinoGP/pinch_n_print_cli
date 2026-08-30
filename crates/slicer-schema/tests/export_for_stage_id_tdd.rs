@@ -40,3 +40,24 @@ fn export_for_stage_id_is_total_over_stages_and_rejects_unknown() {
         "expected None for empty stage id"
     );
 }
+
+#[test]
+fn anchored_events_stage_is_fully_declared() {
+    let stage_id = "Layer::AnchoredEvents";
+    assert!(slicer_schema::stage_by_id(stage_id).is_some());
+    assert_eq!(
+        slicer_schema::wit_world_for_stage_id(stage_id),
+        Some("anchored-events-module")
+    );
+    assert_eq!(
+        slicer_schema::interface_for_stage_id(stage_id),
+        Some("anchored-events")
+    );
+    assert_eq!(
+        slicer_schema::package_for_stage_id(stage_id),
+        Some("slicer:layer-anchored-events@1.0.0")
+    );
+    assert!(!slicer_schema::qualified_export_for_stage_id(stage_id)
+        .expect("anchored-events export must be declared")
+        .is_empty());
+}

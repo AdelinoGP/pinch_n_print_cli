@@ -531,3 +531,10 @@ Packets implementing the [`docs/specs/_OLD/perimeter-modules-orca-parity-roadmap
 - [x] **P153 — Arachne line-junctions restructure + stitch faithfulness** (no TASK-###; packet 153). Restructured `EdgeJunctions` to a single `Vec<ExtrusionJunction>` per edge (OrcaSlicer `LineJunctions`), ordered peak-side to boundary-side with `perimeter_index == junction_idx`. Ported OrcaSlicer's `canReverse` parity gate and the `3 * max_stitch_distance` tiny-polygon non-closure rule into `stitch_extrusions`; AC-3 + AC-4b regression-anchored. `docs/DEVIATION_LOG.md`: `the line-junction and stitch work` registered (closed). `packet.spec.md` `status: implemented`.
 
 - [x] **M2 — Real Arachne N1–N13 parity chain (P141–P147) COMPLETE** (2026-07-08) — full canonical Arachne emission + transitions + post-process, supersedes PNP "ADAPTATION" divergence; documented in ADR 0035 + the Arachne chain closure. **AC-1 e2e closure gate MET and un-ignored 2026-07-16** (0/699 sub-loops fail to close, mean gap 0.0000mm across all 125 layers; was kept `#[ignore]`d 2026-07-08 for a wall/infill residual that proved to be an upstream beading defect, closed as D5+D4 by the Arachne Parity Recovery campaign). All ACs green.
+- [x] **TASK-508** — Packet 239b Step 1: declared and registered the anchored-events stage.
+- [x] **TASK-509** — Packet 239b Step 2: wired the anchored-events WIT interface and world.
+- [x] **TASK-510** — Packet 239b Step 3: added host lift/lower support for anchored records.
+- [x] **TASK-511** — Packet 239b Step 4: connected the anchored-event producer arms.
+- [x] **TASK-512** — Packet 239b Steps 5a-5d: added SDK drain and collection transport glue.
+- [x] **TASK-513** — Packet 239b Step 6: completed anchored-event dispatch and integration coverage.
+- [x] **TASK-514** — Packet 239b Step 7: closed documentation, backlog, and guest-freshness registration.

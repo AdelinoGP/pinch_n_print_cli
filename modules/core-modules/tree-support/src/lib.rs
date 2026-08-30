@@ -51,6 +51,7 @@ use slicer_sdk::host::{self, OffsetJoinType};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
+use slicer_sdk::LayerCollectionBuilder;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
@@ -306,6 +307,7 @@ impl LayerModule for TreeSupport {
         regions: &[SliceRegionView],
         paint: &PaintRegionLayerView,
         output: &mut SupportOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if !self.enabled {

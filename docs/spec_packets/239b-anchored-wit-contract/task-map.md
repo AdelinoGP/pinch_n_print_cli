@@ -36,9 +36,9 @@ that `set-anchored-event-collection` was not reachable from a `Layer::Support` g
 `239c-support-layer-height-producer` needs — is resolved by an approved decision: the
 `layer-support` world's `run` gains `collection: layer-collection-builder`, matching
 `layer-path-optimization.wit`'s existing two-builder `run`. 239b (Steps 5c/5d, `TASK-512`) owns
-the change and the AC-8 proof; 239c records the same resolution. The packet stays `status: draft`
-pending normal authoring gates, and nothing in this task map may be registered in
-`docs/07_implementation_status.md` until the packet reaches `status: implemented`.
+the change and the AC-8 proof; 239c records the same resolution. The packet is
+`status: implemented` (acceptance ceremony passed 2026-08-30); all rows below are registered in
+`docs/07_implementation_status.md`.
 
 Costs are copied from `implementation-plan.md` §Per-Step Budget Roll-Up. Aggregate is `M`; no row
 is `L`. If Step 2 measures `L` in practice, split at the boundary recorded in `design.md`

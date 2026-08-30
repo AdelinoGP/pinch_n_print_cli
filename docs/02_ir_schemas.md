@@ -1291,6 +1291,13 @@ capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
 cooling accounting, and time accounting. These types are additive beside the
 layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
 
+#### Anchored-event WIT transport
+
+The anchored-event transport is exposed by the `Layer::AnchoredEvents` stage
+through the `slicer:layer-anchored-events@1.0.0` package. Its lift rule
+preserves anchored coordinates exactly: 1 unit is 100 nm, and `s64` values are
+carried as `i64` with no scaling or intermediate `f32` conversion.
+
 ### Extrusion-role default priority (Normative)
 
 `ExtrusionRole::default_priority()` returns a `u32` used by
