@@ -253,7 +253,23 @@ off-map, after.
   `slicer-sdk --doc` red. Gates green; guests rebuilt fresh.
 - [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md) is
   still open (filed by ticket 10's authoring); the rename workstream's
-  remaining member is 107, which this ticket unblocked.
+  remaining members are 103–107, all unblocked.
+- [11 — Author packet P04 — Printer / Machine / Print volume — wipe-tower](issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md)
+  — packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
+  (`draft`), preflight **PASS**. Grounding found `bed_exclude_area` is a true
+  zero-occurrence gap whose canonical consumers **disagree on the value's
+  geometry** (one polygon in `get_bed_excluded_area`, 4-point rectangles in
+  `Model.cpp`, exactly-4 in `get_path_of_change_filament`) and that the wipe
+  tower itself is never validated against it — the packet follows the validation
+  consumer (`Print::validate`, fatal collision message) translated to the port's
+  only live bed-validation decision point: the wipe-tower `run_finalization`
+  4-corner check. Canonical's degenerate single-point default → **no manifest
+  default** (no doc-15 deviation row, no CONFIG_BLOCK line at defaults);
+  degenerate values decay to no-exclusion. Orca 3MF point-string ingest rides
+  the ticket-100 adapter unchanged (`slicer_ir::parse_orca_point_string`) —
+  zero host-side changes. The object-hull validation (canonical's fuller
+  semantics) is recorded as a Tier-B/C gap, and the tier row's gcode-side half
+  is deferred to the `printable_height` P18/P19 family.
 
 ## Not yet specified
 
