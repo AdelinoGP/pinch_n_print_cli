@@ -27,7 +27,7 @@ impl FinalizationModule for SdkFinalizationModule {
         // round-trip step so a test can still assert the typed
         // `ModuleError { code, fatal, message }` marshalling.
         if let Some(code) = config.get_int("intentional_error_code") {
-            return Err(ModuleError::non_fatal(
+            return Err(ModuleError::fatal(
                 code as u32,
                 "sdk-finalization-guest: intentional typed error from config",
             ));

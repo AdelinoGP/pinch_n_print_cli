@@ -32,7 +32,7 @@ impl PrepassModule for SdkPrepassModule {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if let Some(code) = config.get_int("intentional_error_code") {
-            return Err(ModuleError::non_fatal(
+            return Err(ModuleError::fatal(
                 code as u32,
                 "sdk-prepass-guest: intentional typed error from config",
             ));

@@ -228,7 +228,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
     // (d) Correct widths for a UNIFORM region: a 10mm square with
     // `line_width = 0.4` explicitly configured (see the config_view above;
     // packet 185's auto-0 defaults mean an absent key now resolves to
-    // 1.125 × nozzle instead of 0.4 mm), 0.2mm layer height, wall_loops 3
+    // 1.125 × nozzle instead of 0.4 mm), 0.2mm layer height, wall_loops 2
     // must emit exactly 3 walls whose every per-vertex width equals the
     // configured 0.4mm — the emission round-trip
     // `flow_to_width(line_width_to_spacing(0.4, 0.2), 0.2) = 0.4`
@@ -243,10 +243,13 @@ fn arachne_perimeters_simple_square_produces_walls() {
     // (the 7th such test — see docs/specs/arachne-parity-recovery.md).
     // A uniform region under a correct beading strategy emits uniform,
     // config-matching widths; variability here would be the BUG.
+    // Ticket 102 aligned `wall_loops` to Orca's default 2 (user ruling;
+    // previously the Pinch default 3), so a 10mm square at defaults emits
+    // exactly 2 walls.
     assert_eq!(
         region.walls.len(),
-        3,
-        "a 10mm square at default wall_loops 3 must emit exactly 3 walls, got {}",
+        2,
+        "a 10mm square at default wall_loops 2 must emit exactly 2 walls, got {}",
         region.walls.len()
     );
     const CONFIGURED_WIDTH_MM: f32 = 0.4;

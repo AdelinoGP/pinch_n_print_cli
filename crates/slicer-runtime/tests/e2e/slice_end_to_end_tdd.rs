@@ -462,8 +462,10 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
 fn wedge_per_region_config_delivery_structural_canary() {
     /// Layers in the default wedge slice: 40mm of model at 0.2mm.
     const EXPECTED_LAYERS: usize = 200;
-    /// Wall loops per contour under the default config: one outer, two inner.
-    const INNER_LOOPS_PER_OUTER: usize = 2;
+    /// Wall loops per contour under the default config: one outer, one inner.
+    /// Ticket 102 aligned `wall_loops` to Orca's default 2 (user ruling;
+    /// previously the Pinch default 3 = one outer + two inner).
+    const INNER_LOOPS_PER_OUTER: usize = 1;
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let output = tmp.path().join("wedge.gcode");
@@ -516,7 +518,6 @@ fn wedge_per_region_config_delivery_structural_canary() {
     for required in [
         "layer_height",
         "line_width",
-        "wall_loops",
         "wall_loops",
         "sparse_infill_density",
         "sparse_fill_holder",

@@ -148,9 +148,12 @@ fn annulus_true_hole_produces_inner_perimeters() {
         .map(|region| region.walls.len())
         .max()
         .unwrap_or(0);
+    // Ticket 102 aligned `wall_loops` to Orca's default 2 (user ruling;
+    // previously the Pinch default 3), so the frame now yields 4 walls
+    // (2 outer + 2 hole).
     assert_eq!(
-        max_walls, 6,
-        "true-hole frame must yield 6 wall loops (3 outer + 3 hole); got {max_walls}"
+        max_walls, 4,
+        "true-hole frame must yield 4 wall loops (2 outer + 2 hole); got {max_walls}"
     );
     let has_hole_wall = perimeters.iter().any(|perimeter| {
         perimeter.regions.iter().any(|region| {
