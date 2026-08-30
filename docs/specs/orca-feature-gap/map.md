@@ -297,6 +297,15 @@ off-map, after.
   updating `test_support` doc examples). Unchanged at HEAD through
   tickets 99–102; a narrow-crate repair, not queue work.
 
+- **Object-footprint validation against `bed_exclude_area`.** Surfaced by
+  ticket 11: canonical `Print::validate` intersects each model volume's 2D
+  convex hull with the exclusion polygon (fatal, `Print.cpp`); the port's
+  packet 256 wires the wipe-tower rectangle instead (the only live bed
+  decision point) and records the object-hull check as a gap. Whether to
+  build the object-side check — and where it lives in this tree's
+  orchestration — depends on whether the print-orchestration packets
+  (P18/P19, tickets 86/87) stand up a `Print::validate`-level stage. Fog
+  until those packets' grounding decides.
 - **Where filament-level config even lives.** 47 keys (Tier D) are deferred
   on this question: does Pinch 'n Print have a per-filament config model at
   all, or do these keys imply a new subsystem? 11 filament keys were found
