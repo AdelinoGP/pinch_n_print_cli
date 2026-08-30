@@ -229,8 +229,57 @@ off-map, after.
   (1.0.0 → `CONFIG_SCHEMA_WIRE_VERSION` 1.1.0) plus the last
   `check-literals` violation; `slicer-sdk --doc` remains red at HEAD
   (13 doc examples missing `ExtrusionPath3D.order_lock`) — flagged to the map.
+- [102 — Rename classic-perimeters and seam keys to Orca names](issues/102-rename-classic-perimeters-seam-keys.md)
+  — three renames merged (`wall_count` → `wall_loops` across
+  classic/arachne/wave + the host typed field,
+  `smaller_perimeter_threshold_mm` → `small_perimeter_threshold`,
+  `seam_mode` → `seam_position` on both seam modules), **defaults aligned to
+  Orca by user ruling**: `wall_loops` 3 → 2 (host `ResolvedConfig` was
+  already 2 — the tree was internally inconsistent at HEAD) and
+  `small_perimeter_threshold` 0.8 → 0.0; deviation table stays at 27 rows.
+  The rename **surfaced a pre-existing latent defect, fixed in-ticket**: the
+  wasm dispatch escalated every module error — including the WIT contract's
+  `fatal=false` "logs and continues" — into a layer-fatal, so activating the
+  real aligned-seam path (the 3MF's `seam_position` finally reaching the
+  placer under its new name) aborted every painted slice on the seam
+  placer's designed code-6 degraded fallback. Non-fatal now logs-and-continues;
+  the three test-guests' intentional-error witness channel flipped to
+  `fatal` to keep the macro round-trip assertions meaningful under the
+  corrected contract. Four test baselines updated to the Orca-aliged
+  defaults with measured justification. Three follow-ups flagged to the
+  fog: the seam plan never covering painted-variant regions (per-layer
+  degraded fallbacks on any aligned painted slice — non-fatal today), the
+  degraded warn not surfacing in slice degraded stats, and the persistent
+  `slicer-sdk --doc` red. Gates green; guests rebuilt fresh.
+- [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md) is
+  still open (filed by ticket 10's authoring); the rename workstream's
+  remaining member is 107, which this ticket unblocked.
 
 ## Not yet specified
+
+- **The prepass seam plan never covers painted-variant regions.** Surfaced
+  by ticket 102: `PrePass::SeamPlanning` runs before
+  `PrePass::PaintSegmentation`, so its plan keys are `(global_layer_index
+  ≥ 1, region_id 0, chain [])` only — painted-variant `PerimeterIR`
+  regions (material-chain ids 1/2/3/…) never match, and the aligned
+  `seam-placer` takes its code-6 degraded fallback once per painted
+  region per layer (`seam_degraded_fallback_tdd.rs` semantics: walls
+  preserved, local candidate chosen). Non-fatal since the dispatch fix,
+  but every aligned painted slice now emits one warn per region per
+  layer (~125 on cube_4color). The fix shape (plan per painted variant,
+  or teach the placer to key the base region's plan entry) is geometry
+  work — queue-sized, not a rename follow-up. Fog until a packet picks
+  it up.
+- **Degraded module errors don't surface in slice stats.** The wasm
+  dispatch's `fatal=false` warn is a log line only; `SliceEventCollector`
+  never hears it, so a slice carried entirely on degraded fallbacks still
+  reports `degraded: false` / `non_fatal_error_count: 0`. Observability
+  gap only (docs/09 §Required Events); pair it with the seam-plan fix
+  above when that packets.
+- **The persistent `slicer-sdk --doc` red.** 13 doctest failures missing
+  `ExtrusionPath3D.order_lock` (packet 25398ebf added the field without
+  updating `test_support` doc examples). Unchanged at HEAD through
+  tickets 99–102; a narrow-crate repair, not queue work.
 
 - **Where filament-level config even lives.** 47 keys (Tier D) are deferred
   on this question: does Pinch 'n Print have a per-filament config model at
