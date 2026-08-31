@@ -378,6 +378,29 @@ off-map, after.
   check/clippy clean; slicer-ir 20 binaries, slicer-core host-algos 599 tests,
   modules + slicer-gcode green, runtime e2e 136/136; all 44 guests rebuilt
   (slicer-ir sits in every guest's dependency closure).
+- [18 — Author packet P11 — Support / Interface — support-planner](issues/18-author-packet-p11-support-interface-support-planner.md)
+  — packet `docs/spec_packets/260-support-interface-keys/` authored (`draft`), preflight
+  **PASS**. Grounding re-derived the tier picture: the tier-table owner `support-planner`
+  (a claim held by the two planner modules) is a mis-attribution — the four keys'
+  decision points live in `tree-support` + `traditional-support`, and the packet declares
+  there (owner correction rides the closure). **Two keys wired + verified**: the two
+  spacing keys are already declared + consumed in both modules (density formula
+  canonically exact vs `SupportParameters`). Canonical read overturned the top default:
+  Orca's `support_interface_spacing` is **0.5**, not 0.4 (port comment mis-derived; 238c
+  had fixed bottom already) — **user ruling: align 0.4 → 0.5**, removing the two known
+  doc-15 deviation rows (27 → 25, re-measured). Canonical has **no -1 sentinel** on
+  `support_bottom_interface_spacing` (that sentinel belongs to
+  `support_interface_bottom_layers`) — the port's negative-mirrors-top branch is a PnP
+  extension; **user ruling: keep as recorded divergence** (AC-3 witness + AC-4
+  `-1.0`-legal bounds arm). **Two keys zero-occurrence, re-adjudicated declared-with-gap**:
+  `support_interface_pattern` (canonical `contact_fill_pattern` branch order pinned;
+  sparse-density default resolves to `ipSupportBase`, a `FillSupportBase : FillRectilinear`
+  filler at `spacing/density` — same rectilinear family as the port's scan-line, so
+  default behavior is structurally faithful) and `support_interface_loop_pattern`
+  (**coBool** default false — canonical type correction; `LoopInterfaceProcessor`
+  `n_contact_loops` absent in-tree). No deviation rows; no CONFIG_BLOCK twins (none of the
+  four keys in `SUPPORT_CONFIG_DEFAULTS`/`ORCA_CONFIG_PADDING`); both modules need the
+  `toml` dev-dep for the guard tests.
 
 ## Not yet specified
 
@@ -430,6 +453,27 @@ off-map, after.
   variant (or hole metadata on `WallLoop`) — and which consumers beyond
   fuzzy-skin would use it — is queue-sized IR work, not a queue packet;
   fog until a packet or IR effort picks it up.
+- **Support-interface pattern dispatch and angle specialization.** Surfaced by
+  ticket 18's authoring: canonical `support_interface_pattern` selects the
+  interface filler through `SupportParameters`' `contact_fill_pattern` branch
+  order (grid→`FillGrid`, interlaced→`FillRectilinear` with ±45° alternation,
+  auto-with-zero-gap→`FillConcentric`, density>0.95→`FillRectilinear`, else
+  `ipSupportBase` — a `FillSupportBase : FillRectilinear` filler) plus the
+  per-pattern angles in `support_interface_angle()` (snug −45°, interlaced
+  ±45°, grid = `base_angle`, auto/concentric = `interface_angle`). The port's
+  interface generator is a single scan-line path with a universal 90°-per-layer
+  alternation; packet 260 declares the enum with-gap. Building the dispatch
+  (concentric/grid/interlaced generators + angle semantics) is Tier B+ geometry
+  work in the support modules — fog until a queue packet or the
+  support-interface closure packets pick it up.
+- **Contact-loop interface generation (`support_interface_loop_pattern`).**
+  Surfaced by ticket 18's authoring: canonical's `LoopInterfaceProcessor`
+  (`n_contact_loops = value ? 1 : 0` in `generate_support_toolpaths`,
+  `SupportMaterial::has_contact_loops`) prints the top contact layer of
+  supports as concentric loops; the port has no contact-loop generator at all
+  (packet 260 declares the coBool with-gap, default false). Wiring it is new
+  geometry (a loop-filling pass over the interface plan regions) — queue-sized,
+  Tier B+; fog until picked up.
 
 ## Out of scope
 

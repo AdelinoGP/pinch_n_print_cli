@@ -1,0 +1,7 @@
+# Task Map: support-interface-keys
+
+Use this crosswalk when a packet spans more than one task ID, reopens prior work, or supersedes an earlier packet. **This packet emits the template's own skip clause:** it is a single-coherent-slice packet with `task_ids: []` (queue precedent — packets 234a, 253, 254, 255, 256, 257, 258, 259), so the `docs/07` crosswalk is N-A. Implementation is recorded against wayfinder ticket 18 (`docs/specs/orca-feature-gap/issues/18-author-packet-p11-support-interface-support-planner.md`).
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| — (queue packet, `task_ids: []`) | Steps 1–4 | `docs/15_config_keys_reference.md` (generated) | `modules/core-modules/{traditional-support,tree-support}/{*.toml,src/lib.rs,tests/*}` + scheduler/runtime integration arms + `support-family` fixture | `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (four `def()`s), `Support/SupportParameters.hpp` (`SupportParameters::SupportParameters`, `support_interface_angle()`), `Support/SupportCommon.cpp` (`generate_support_toolpaths`, `LoopInterfaceProcessor`), `Support/SupportMaterial.hpp` (`has_contact_loops`), `Support/TreeSupport.cpp` (`generate_toolpaths`) | S/M | Queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap"; no TASK rows; re-derive the crosswalk question at completion time per the ledger-fact rule |
