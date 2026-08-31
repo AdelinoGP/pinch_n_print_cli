@@ -48,7 +48,8 @@ off-map, after.
   that a boolean default "matches Orca" was never actually checked. Re-verify
   rather than trust those.
 - **The scoped target is 407 queue keys** (03's 414 minus 04's 11 rulings plus
-  07's 2 reclassified ironing keys plus 99's 2 fan-scale keys) — per-key tier table in
+  07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
+  12's dead-in-canonical `brim_ears` ruling: **406**; per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
@@ -270,6 +271,22 @@ off-map, after.
   zero host-side changes. The object-hull validation (canonical's fuller
   semantics) is recorded as a Tier-B/C gap, and the tier row's gcode-side half
   is deferred to the `printable_height` P18/P19 family.
+- [12 — Author packet P05 — Others / Brim — skirt-brim](issues/12-author-packet-p05-others-brim-skirt-brim.md)
+  — packet `docs/spec_packets/257-brim-type-and-brim-keys/` authored
+  (`draft`), preflight **PASS**. Scope ruling (user-confirmed): P05 covers
+  **5 keys, not 6** — canonical's `brim_ears` bool is dead (declared in
+  `PrintConfig.cpp`, no reads, no typed-struct member; ear physics live in
+  `brim_type` modes `brim_ears`/`painted`) → dead-in-canonical out-of-scope;
+  **queue 407 → 406**. Exactly one live decision point exists in-tree (the
+  on/off gate in `SkirtBrim`); the packet wires `brim_type = "no_brim"`
+  suppression (default-path identity + `brim_width` precedence pinned by
+  invariant tests) and declares the other four keys with-gap, each with its
+  canonical consumer pinned (`Brim.cpp::outer_inner_brim_area`,
+  `make_brim_ears_auto`, `use_brim_efc_outline`). Manifest-declared defaults
+  are canonical-identical — no deviation rows. CONFIG_BLOCK padding twins
+  stay (module bool/int/float/enum manifest defaults don't thread into raw
+  config; packet-254/255 precedent); explicit values reach the block once via
+  `emit_config_kv` dedup (AC-5).
 
 ## Not yet specified
 
