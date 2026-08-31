@@ -2,7 +2,7 @@
 
 use slicer_ir::{
     AnchoredEntity, AnchoredEntityProvenance, AnchoredEventRuntimeHooks, AnchoredGeometryContract,
-    ConfigView, OrderedEventCollection, Point3,
+    ConfigView, ExtrusionRole, OrderedEventCollection, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -43,17 +43,24 @@ impl LayerModule for SupportAnchoredReachGuest {
                         source_plan_entry: "support-plan-entry".to_string(),
                     },
                     path_points: vec![
-                        Point3 {
+                        Point3WithWidth {
                             x: 1.0,
                             y: 1.0,
                             z: 123.4567,
+                            width: 0.45,
+                            flow_factor: 1.0,
+                            ..Default::default()
                         },
-                        Point3 {
+                        Point3WithWidth {
                             x: 2.0,
                             y: 2.0,
                             z: 123.4567,
+                            width: 0.45,
+                            flow_factor: 1.0,
+                            ..Default::default()
                         },
                     ],
+                    role: ExtrusionRole::SupportMaterial,
                 }],
                 runtime_hooks: AnchoredEventRuntimeHooks::default(),
             })

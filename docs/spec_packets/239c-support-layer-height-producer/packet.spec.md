@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 239c-support-layer-height-producer
 supersedes: 239-support-independent-layer-z
 depends_on: 239a-anchored-host-seams, 239b-anchored-wit-contract

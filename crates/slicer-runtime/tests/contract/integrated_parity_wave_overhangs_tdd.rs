@@ -21,8 +21,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, ExPolygon, ExtrusionRole, GlobalLayer, Point2, Polygon, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, StageId,
-    SurfaceClassificationIR,
+    RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 use wave_overhangs::WaveOverhangs;
@@ -216,7 +215,9 @@ fn integrated_parity_wave_overhangs_native_matches_wasm() {
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena.set_slice(bridge_slice()).expect("wasm slice");
-    native_arena.set_slice(bridge_slice()).expect("native slice");
+    native_arena
+        .set_slice(bridge_slice())
+        .expect("native slice");
 
     let layer = GlobalLayer {
         index: LAYER_INDEX,
@@ -273,4 +274,3 @@ fn integrated_parity_wave_overhangs_native_matches_wasm() {
     assert_parity_structural(&native, &wasm, ParityTolerance::default(), 0.4)
         .expect("wave-overhangs native/wasm parity");
 }
-

@@ -19,8 +19,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, GCodeIR, GlobalLayer,
-    LayerCollectionIR, LayerPlanIR, LayerStageCommit, MeshIR, Point3, StageId,
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ExtrusionRole, GCodeIR,
+    GlobalLayer, LayerCollectionIR, LayerPlanIR, LayerStageCommit, MeshIR, Point3WithWidth,
+    StageId,
 };
 use slicer_runtime::pipeline::{run_pipeline, run_pipeline_with_instrumentation, PipelineConfig};
 use slicer_runtime::{
@@ -140,17 +141,24 @@ fn planar_entity(local_id: u64, plane_units: i64, plane_mm: f32, feature: &str) 
             source_plan_entry: feature.to_string(),
         },
         path_points: vec![
-            Point3 {
+            Point3WithWidth {
                 x: 1.0,
                 y: 1.0,
                 z: plane_mm,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             },
-            Point3 {
+            Point3WithWidth {
                 x: 2.0,
                 y: 1.0,
                 z: plane_mm,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             },
         ],
+        role: ExtrusionRole::SupportMaterial,
     }
 }
 
@@ -207,6 +215,28 @@ impl LayerStageRunner for NoopLayerRunner {
         _input: LayerStageInput<'_>,
     ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         Ok(None)
+    }
+}
+
+struct AnchoredProducerLayerRunner;
+impl LayerStageRunner for AnchoredProducerLayerRunner {
+    fn run_stage(
+        &self,
+        _stage_id: &StageId,
+        layer: &GlobalLayer,
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+        if layer.index != ANCHOR_LAYER_INDEX {
+            return Ok(None);
+        }
+        Ok(Some(LayerStageCommit::AnchoredEvents(vec![
+            slicer_ir::OrderedEventCollection {
+                anchor_global_layer_index: ANCHOR_LAYER_INDEX,
+                events: vec![offgrid_entity(901)],
+                runtime_hooks: Default::default(),
+            },
+        ])))
     }
 }
 
@@ -269,6 +299,15 @@ fn grid_plan() -> ExecutionPlan {
     }
 }
 
+fn producer_plan() -> ExecutionPlan {
+    let mut plan = grid_plan();
+    plan.per_layer_stages.push(CompiledStage {
+        stage_id: "Layer::Support".into(),
+        modules: vec![make_dummy_module("anchored-support-producer")],
+    });
+    plan
+}
+
 fn empty_mesh_ir() -> Arc<MeshIR> {
     Arc::new(MeshIR::default())
 }
@@ -308,6 +347,45 @@ fn capture_rows(anchored_entities: Vec<AnchoredEntity>) -> Vec<LayerCollectionIR
     let rows = captured_handle.lock().unwrap().clone();
     assert!(!rows.is_empty(), "emitter captured no rows at all");
     rows
+}
+
+/// Regression for packet 239c's producer drain: anchored collections committed
+/// by a per-layer module must survive the worker arena and reach row synthesis.
+#[test]
+fn layer_stage_anchored_commit_reaches_synthesized_rows() {
+    const PRODUCER_ENTITY_ID: u64 = 901;
+    const CONFIGURED_ENTITY_ID: u64 = 902;
+    let emitter = common::CapturedRowsEmitter::new();
+    let captured_handle = emitter.handle();
+    let mut config = common::pipeline_config_base(
+        empty_mesh_ir(),
+        producer_plan(),
+        common::pipeline_stage_runners_base(
+            Box::new(TwoLayerGridPrepass),
+            Box::new(AnchoredProducerLayerRunner),
+            Box::new(NoopFinalizationRunner),
+            Box::new(NoopPostpassRunner),
+            Box::new(emitter),
+            Box::new(MinimalSerializer),
+        ),
+    );
+    config.anchored_entities = vec![offgrid_entity(CONFIGURED_ENTITY_ID)];
+
+    run_pipeline(config).expect("module-produced anchored collection must reach the emitter");
+    let rows = captured_handle.lock().unwrap().clone();
+    let row = require_declared_z_row(&rows);
+    assert_eq!(
+        rows_carrying(&rows, PRODUCER_ENTITY_ID),
+        vec![row],
+        "per-layer LayerStageCommit::AnchoredEvents was dropped before synthesis: [{}]",
+        describe(&rows)
+    );
+    assert_eq!(
+        rows_carrying(&rows, CONFIGURED_ENTITY_ID),
+        vec![row],
+        "merging producer collections dropped configured anchored entities: [{}]",
+        describe(&rows)
+    );
 }
 
 /// Locate the single row at the declared off-grid Z, failing with a message
@@ -534,9 +612,7 @@ layer-parallel-safe = true
 /// Load a `layer-parallel-safe` module through the scheduler, mirroring the
 /// fixture idiom of `anchored_parallel_determinism.rs`. The caller owns the
 /// `TempDir` so the manifest outlives the returned module.
-fn parallel_safe_module(
-    directory: &tempfile::TempDir,
-) -> slicer_scheduler::manifest::LoadedModule {
+fn parallel_safe_module(directory: &tempfile::TempDir) -> slicer_scheduler::manifest::LoadedModule {
     let manifest_path = directory.path().join("anchored.toml");
     let wasm_path = directory.path().join("anchored.wasm");
     std::fs::write(&manifest_path, PARALLEL_SAFE_MANIFEST)
@@ -738,7 +814,8 @@ fn offgrid_row_order_identical_serial_and_parallel() {
         describe(&parallel_rows)
     );
     assert_eq!(
-        parallel_rows, serial_rows,
+        parallel_rows,
+        serial_rows,
         "parallel execution changed the synthesized row sequence.\n serial:   [{}]\n parallel: \
          [{}]",
         describe(&serial_rows),
@@ -796,7 +873,12 @@ fn zspanning_support_entity_emits_atomic_single_block() {
 
     /// A `ZSpanning` `same-z-support` entity whose path points sit at the given
     /// Zs — several of them on DIFFERENT object layers.
-    fn spanning_entity(local_id: u64, min_mm: f32, max_mm: f32, point_zs: &[f32]) -> AnchoredEntity {
+    fn spanning_entity(
+        local_id: u64,
+        min_mm: f32,
+        max_mm: f32,
+        point_zs: &[f32],
+    ) -> AnchoredEntity {
         let mut entity = planar_entity(
             local_id,
             slicer_ir::mm_to_units(min_mm),
@@ -810,10 +892,13 @@ fn zspanning_support_entity_emits_atomic_single_block() {
         entity.path_points = point_zs
             .iter()
             .enumerate()
-            .map(|(index, z)| Point3 {
+            .map(|(index, z)| Point3WithWidth {
                 x: index as f32,
                 y: 0.0,
                 z: *z,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             })
             .collect();
         entity
@@ -1126,7 +1211,8 @@ fn offgrid_row_merge_matches_canonical_epsilon_rule() {
         describe(&split)
     );
     assert_eq!(
-        split[0].global_layer_index, ANCHOR_LAYER_INDEX,
+        split[0].global_layer_index,
+        ANCHOR_LAYER_INDEX,
         "the solo row adopts the UPPER global layer's index (ADR-0059); got: [{}]",
         describe(&split)
     );
@@ -1235,7 +1321,8 @@ fn support_free_slice_row_sequence_unchanged() {
 
     for (i, (baseline_index, baseline_z)) in BASELINE_ROWS.iter().enumerate() {
         assert_eq!(
-            rows[i].global_layer_index, *baseline_index,
+            rows[i].global_layer_index,
+            *baseline_index,
             "committed path changed row {i} global_layer_index: got {}, baseline recorded \
              {baseline_index}; captured rows: [{}]",
             rows[i].global_layer_index,

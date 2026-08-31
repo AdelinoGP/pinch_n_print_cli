@@ -1280,7 +1280,9 @@ above; read them from source rather than from a copy here.
 Anchored events are represented by the additive `AnchoredEntity` contract
 beside the ordinary layer collection. Each entity has a stable `local_id`, an
 `anchor_global_layer_index`, planar or Z-spanning geometry, input/output
-capabilities, provenance, and ordered `path_points`. `AnchoredEntityProvenance`
+capabilities, provenance, a mandatory extrusion role, and ordered `path_points`
+carrying the same width and flow-factor metadata as `Point3WithWidth`.
+`AnchoredEntityProvenance`
 records the producing module and source identity needed to retain attribution.
 
 The host groups entities into an `OrderedEventCollection`. The collection is

@@ -268,7 +268,8 @@ pub fn synthesize_anchored_rows(
 mod tests {
     use super::*;
     use slicer_ir::{
-        AnchoredEntityProvenance, AnchoredEventRuntimeHooks, OrderedEventCollection, Point3,
+        AnchoredEntityProvenance, AnchoredEventRuntimeHooks, ExtrusionRole, OrderedEventCollection,
+        Point3WithWidth,
     };
 
     const ANCHOR: u32 = 1;
@@ -291,11 +292,15 @@ mod tests {
                 requesting_feature: "same-z-support".to_string(),
                 source_plan_entry: "same-z-support".to_string(),
             },
-            path_points: vec![Point3 {
+            path_points: vec![Point3WithWidth {
                 x: 1.0,
                 y: 1.0,
                 z: slicer_ir::units_to_mm(z_units),
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             }],
+            role: ExtrusionRole::SupportMaterial,
         }
     }
 
@@ -595,10 +600,7 @@ mod tests {
             ]
         };
 
-        assert_eq!(
-            synth(build()),
-            synth(build())
-        );
+        assert_eq!(synth(build()), synth(build()));
         let rows = synth(build());
         assert_eq!(
             rows[0]

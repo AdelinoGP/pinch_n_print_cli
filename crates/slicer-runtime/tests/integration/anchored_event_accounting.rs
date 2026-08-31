@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, GlobalLayer, MeshIR,
-    Point3, SliceIR,
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ExtrusionRole, GlobalLayer,
+    MeshIR, Point3WithWidth, SliceIR,
 };
 use slicer_runtime::layer_executor::execute_anchored_event_collections_with_accounting;
 use slicer_runtime::{Blackboard, NoopLayerProgressSink};
@@ -41,13 +41,24 @@ fn event(local_id: u64, z: f32, feature: &str) -> AnchoredEntity {
             source_plan_entry: feature.to_string(),
         },
         path_points: vec![
-            Point3 {
+            Point3WithWidth {
                 x: z + local_id as f32,
                 y: 1.0,
                 z,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             },
-            Point3 { x: z, y: 0.0, z },
+            Point3WithWidth {
+                x: z,
+                y: 0.0,
+                z,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
         ],
+        role: ExtrusionRole::SupportMaterial,
     }
 }
 

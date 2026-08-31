@@ -179,6 +179,43 @@ fn different_layers_of_one_object_both_survive_xy_overlap() {
     assert!(!result.degraded);
 }
 
+#[test]
+fn different_anchor_planes_on_one_dispatch_layer_both_survive() {
+    let exact_z = exact_z(&["object"]);
+    let mut lower = entry(
+        "tree",
+        "lower-body",
+        "object",
+        0,
+        polygon(100, 100, 300, 300),
+    );
+    lower.anchor_z = 20_000;
+    let mut intermediate = entry(
+        "tree",
+        "intermediate-body",
+        "object",
+        0,
+        polygon(100, 100, 300, 300),
+    );
+    intermediate.anchor_z = 21_000;
+
+    let result = try_aggregate_support_plans(SupportAggregationInput {
+        plans: vec![plan(lower), plan(intermediate)],
+        exact_z: &exact_z,
+    })
+    .expect("structured aggregation");
+
+    assert_eq!(result.retained.len(), 2);
+    assert_eq!(
+        result
+            .retained
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<std::collections::BTreeSet<_>>(),
+        [20_000, 21_000].into_iter().collect()
+    );
+}
+
 /// The guard must still fire for its actual purpose: one object, one layer, two
 /// families both claiming positive area in the same place.
 #[test]

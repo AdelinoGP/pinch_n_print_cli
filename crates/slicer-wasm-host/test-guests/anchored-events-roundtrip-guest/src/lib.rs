@@ -2,7 +2,7 @@
 
 use slicer_ir::{
     AnchoredEntity, AnchoredEntityProvenance, AnchoredEventRuntimeHooks, AnchoredGeometryContract,
-    ConfigView, OrderedEventCollection, Point3,
+    ConfigView, ExtrusionRole, OrderedEventCollection, Point3WithWidth,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
@@ -55,7 +55,25 @@ impl LayerModule for AnchoredEventsRoundtripGuest {
                 requesting_feature: "same-z-support".to_string(),
                 source_plan_entry: "plan-entry-4".to_string(),
             },
-            path_points: vec![Point3 { x: 1.0, y: 1.0, z }, Point3 { x: 2.0, y: 2.0, z }],
+            path_points: vec![
+                Point3WithWidth {
+                    x: 1.0,
+                    y: 1.0,
+                    z,
+                    width: 0.45,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+                Point3WithWidth {
+                    x: 2.0,
+                    y: 2.0,
+                    z,
+                    width: 0.45,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+            ],
+            role: ExtrusionRole::SupportMaterial,
         };
         let proposal = OrderedEventCollection {
             anchor_global_layer_index: 7,

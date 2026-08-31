@@ -156,14 +156,17 @@ impl PaintRegionLayerView {
         let Some(plan) = self.support_plan.as_ref() else {
             return Vec::new();
         };
-        plan.entries
+        let mut entries: Vec<_> = plan
+            .entries
             .iter()
             .filter(|entry| {
-                entry.global_layer_index == self.layer_index as i32
+                entry.anchor_layer_index == self.layer_index
                     && entry.object_id == object_id
                     && entry.region_id == region_id
             })
-            .collect()
+            .collect();
+        entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
+        entries
     }
 
     /// Legacy branch-path view. Structural plans intentionally contain no

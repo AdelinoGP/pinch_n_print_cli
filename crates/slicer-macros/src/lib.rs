@@ -3119,7 +3119,37 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             AnchoredGeometryContract as WitAnchoredGeometryContract,
             OrderedEventCollection as WitOrderedEventCollection,
         };
-        use self::slicer::types::geometry::Point3 as WitPoint3;
+        use self::slicer::types::geometry::{
+            ExtrusionRole as AnchoredWitExtrusionRole,
+            Point3WithWidth as AnchoredWitPoint3WithWidth,
+        };
+
+        fn __slicer_ir_anchored_role_to_wit(
+            role: &::slicer_ir::ExtrusionRole,
+        ) -> AnchoredWitExtrusionRole {
+            match role {
+                ::slicer_ir::ExtrusionRole::OuterWall => AnchoredWitExtrusionRole::OuterWall,
+                ::slicer_ir::ExtrusionRole::InnerWall => AnchoredWitExtrusionRole::InnerWall,
+                ::slicer_ir::ExtrusionRole::ThinWall => AnchoredWitExtrusionRole::ThinWall,
+                ::slicer_ir::ExtrusionRole::TopSolidInfill => AnchoredWitExtrusionRole::TopSolidInfill,
+                ::slicer_ir::ExtrusionRole::BottomSolidInfill => AnchoredWitExtrusionRole::BottomSolidInfill,
+                ::slicer_ir::ExtrusionRole::InternalSolidInfill => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/internal-solid-infill@1")),
+                ::slicer_ir::ExtrusionRole::SparseInfill => AnchoredWitExtrusionRole::SparseInfill,
+                ::slicer_ir::ExtrusionRole::RaftInfill => AnchoredWitExtrusionRole::RaftInfill,
+                ::slicer_ir::ExtrusionRole::SupportMaterial => AnchoredWitExtrusionRole::SupportMaterial,
+                ::slicer_ir::ExtrusionRole::SupportInterface => AnchoredWitExtrusionRole::SupportInterface,
+                ::slicer_ir::ExtrusionRole::SupportBaseInterface => AnchoredWitExtrusionRole::SupportBaseInterface,
+                ::slicer_ir::ExtrusionRole::WipeTower => AnchoredWitExtrusionRole::WipeTower,
+                ::slicer_ir::ExtrusionRole::PrimeTower => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
+                ::slicer_ir::ExtrusionRole::Ironing => AnchoredWitExtrusionRole::Ironing,
+                ::slicer_ir::ExtrusionRole::BridgeInfill => AnchoredWitExtrusionRole::BridgeInfill,
+                ::slicer_ir::ExtrusionRole::InternalBridgeInfill => AnchoredWitExtrusionRole::InternalBridgeInfill,
+                ::slicer_ir::ExtrusionRole::Skirt => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1")),
+                ::slicer_ir::ExtrusionRole::Brim => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1")),
+                ::slicer_ir::ExtrusionRole::Custom(value) => AnchoredWitExtrusionRole::Custom(value.clone()),
+                ::slicer_ir::ExtrusionRole::GapFill => AnchoredWitExtrusionRole::GapFill,
+            }
+        }
 
         fn __slicer_ir_anchored_collection_to_wit(
             collection: &::slicer_ir::OrderedEventCollection,
@@ -3141,9 +3171,17 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                         requesting_feature: event.provenance.requesting_feature.clone(),
                         source_plan_entry: event.provenance.source_plan_entry.clone(),
                     },
-                    path_points: event.path_points.iter().map(|point| WitPoint3 {
-                        x: point.x, y: point.y, z: point.z,
+                    path_points: event.path_points.iter().map(|point| AnchoredWitPoint3WithWidth {
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        width: point.width,
+                        flow_factor: point.flow_factor,
+                        overhang_quartile: point.overhang_quartile,
+                        dist_to_top_mm: point.dist_to_top_mm,
+                        overhang_distance_mm: point.overhang_distance_mm,
                     }).collect(),
+                    role: __slicer_ir_anchored_role_to_wit(&event.role),
                 }).collect(),
                 runtime_hooks: WitAnchoredEventRuntimeHooks {
                     optimize_paths: collection.runtime_hooks.optimize_paths,

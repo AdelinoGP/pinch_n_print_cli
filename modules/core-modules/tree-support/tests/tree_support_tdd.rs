@@ -44,6 +44,40 @@ fn paint_with_plan(family_id: &str) -> PaintRegionLayerView {
     paint_with_plan_at(family_id, 0)
 }
 
+// Packet 239c: anchor_z is the declared print plane, in canonical units. The
+// default fixture declares the 0.3 mm plane every default region uses;
+// `paint_with_plan_at_z` lets a test pin a different declared plane (e.g. the
+// z=1.5 mm `paths_at_correct_z` fixture) so its entry stays on-grid.
+fn paint_with_plan_at_z(
+    family_id: &str,
+    layer_index: i32,
+    anchor_z_mm: f32,
+) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: layer_index,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: layer_index as u32,
+        anchor_z: slicer_ir::mm_to_units(anchor_z_mm),
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(layer_index as u32).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
 fn paint_with_plan_at(family_id: &str, layer_index: i32) -> PaintRegionLayerView {
     // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let entry = slicer_ir::SupportPlanEntry {
@@ -57,8 +91,11 @@ fn paint_with_plan_at(family_id: &str, layer_index: i32) -> PaintRegionLayerView
         }],
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
-        anchor_layer_index: 0,
-        anchor_z: 0,
+        anchor_layer_index: layer_index as u32,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -84,7 +121,10 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
         anchor_layer_index: 0,
-        anchor_z: 0,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -369,7 +409,7 @@ fn paths_at_correct_z() {
     let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, z);
-    let paint = paint_with_plan("tree");
+    let paint = paint_with_plan_at_z("tree", 0, z);
     let mut output = SupportOutputBuilder::new();
 
     module
@@ -454,7 +494,10 @@ fn extra_wall_count_printed_from_skeleton() {
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
         anchor_layer_index: 0,
-        anchor_z: 0,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: Some(SupportPlanSkeleton {
             points: vec![Point3 {
                 x: 0.5,
@@ -599,7 +642,7 @@ fn body_fill_alternates_direction_across_layers() {
         )
         .unwrap();
     let mut vertical = SupportOutputBuilder::new();
-    let paint = paint_with_plan_at("tree", 1);
+    let paint = paint_with_plan_at_z("tree", 1, 0.5);
     module
         .run_support(
             1,

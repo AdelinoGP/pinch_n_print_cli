@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, GlobalLayer, MeshIR,
-    SliceIR,
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ExtrusionRole, GlobalLayer,
+    MeshIR, SliceIR,
 };
 use slicer_runtime::layer_executor::{
     execute_per_layer_with_committed_anchored_events, CommittedLayerEvent,
@@ -29,6 +29,7 @@ fn event(
             source_plan_entry: feature.to_string(),
         },
         path_points: Vec::new(),
+        role: ExtrusionRole::SupportMaterial,
     }
 }
 

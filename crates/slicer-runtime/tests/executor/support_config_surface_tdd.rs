@@ -11,9 +11,9 @@ use slicer_ir::{
     SemVer, SupportPlanIR, Transform3d,
 };
 use slicer_runtime::{
-    build_wasm_instance_pool, execute_prepass_with_builtins, Blackboard, CompiledModuleBuilder,
-    CompiledStage, ExecutionPlan, LoadedModuleBuilder, WasmArtifactMetadata, WasmEngine,
-    WasmRuntimeDispatcher,
+    bind_module_config_view, build_wasm_instance_pool, execute_prepass_with_builtins, Blackboard,
+    CompiledModuleBuilder, CompiledStage, ExecutionPlan, LoadedModuleBuilder, WasmArtifactMetadata,
+    WasmEngine, WasmRuntimeDispatcher,
 };
 
 use crate::common::{wasm_cache, TestModuleBundle};
@@ -260,4 +260,45 @@ fn support_max_branches_per_layer_config_reaches_tree_planner() {
     )])));
     assert!(capped_count < default_count,
         "branch cap must affect the dispatched plan: default={default_count}, capped={capped_count}");
+}
+
+/// Packet 239c AC-6: `independent_support_layer_height` is declared in BOTH
+/// shipped `*-support-planner` manifests as `type = "bool"`, `default = true`,
+/// and a global config carrying the key binds through `bind_module_config_view`
+/// so each planner's `ConfigView` sees `Some(true)`.
+#[test]
+fn independent_support_layer_height_is_declared_and_bound_on_both_planners() {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let source = HashMap::from([(
+        "independent_support_layer_height".to_string(),
+        ConfigValue::Bool(true),
+    )]);
+    for stem in ["tree-support-planner", "traditional-support-planner"] {
+        let dir = repo_root.join("modules/core-modules").join(stem);
+        let module = slicer_scheduler::manifest::load_module_from_paths(
+            &dir.join(format!("{stem}.toml")),
+            &dir.join(format!("{stem}.wasm")),
+        )
+        .unwrap_or_else(|error| panic!("load {stem} manifest: {error:?}"));
+        let entry = module
+            .config_schema()
+            .entries
+            .get("independent_support_layer_height")
+            .unwrap_or_else(|| {
+                panic!("{stem} must declare [config.schema.independent_support_layer_height]")
+            });
+        assert_eq!(entry.field_type, "bool", "{stem} field_type");
+        assert_eq!(entry.default.as_deref(), Some("true"), "{stem} default");
+        let view = bind_module_config_view(&module, &source);
+        assert_eq!(
+            view.get_bool("independent_support_layer_height"),
+            Some(true),
+            "{stem} bound ConfigView must expose independent_support_layer_height"
+        );
+    }
 }

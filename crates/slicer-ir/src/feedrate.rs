@@ -132,7 +132,9 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("bridge_speed", |fc| &mut fc.bridge_speed),
     ("internal_bridge_speed", |fc| &mut fc.internal_bridge_speed),
     ("support_speed", |fc| &mut fc.support_speed),
-    ("support_interface_speed", |fc| &mut fc.support_interface_speed),
+    ("support_interface_speed", |fc| {
+        &mut fc.support_interface_speed
+    }),
     ("gap_infill_speed", |fc| &mut fc.gap_infill_speed),
     ("ironing_speed", |fc| &mut fc.ironing_speed),
     ("skirt_speed", |fc| &mut fc.skirt_speed),
@@ -141,14 +143,20 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("travel_speed", |fc| &mut fc.travel_speed),
     ("travel_speed_z", |fc| &mut fc.travel_speed_z),
     ("initial_layer_speed", |fc| &mut fc.initial_layer_speed),
-    ("initial_layer_infill_speed", |fc| &mut fc.initial_layer_infill_speed),
-    ("initial_layer_travel_speed", |fc| &mut fc.initial_layer_travel_speed),
+    ("initial_layer_infill_speed", |fc| {
+        &mut fc.initial_layer_infill_speed
+    }),
+    ("initial_layer_travel_speed", |fc| {
+        &mut fc.initial_layer_travel_speed
+    }),
     ("wipe_speed", |fc| &mut fc.wipe_speed),
     ("overhang_1_4_speed", |fc| &mut fc.overhang_1_4_speed),
     ("overhang_2_4_speed", |fc| &mut fc.overhang_2_4_speed),
     ("overhang_3_4_speed", |fc| &mut fc.overhang_3_4_speed),
     ("overhang_4_4_speed", |fc| &mut fc.overhang_4_4_speed),
-    ("filament_ironing_speed", |fc| &mut fc.filament_ironing_speed),
+    ("filament_ironing_speed", |fc| {
+        &mut fc.filament_ironing_speed
+    }),
 ];
 
 impl FeedrateConfig {

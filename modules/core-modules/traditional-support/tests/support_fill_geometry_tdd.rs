@@ -57,7 +57,10 @@ fn paint_with_plan(points: &[(f32, f32)]) -> PaintRegionLayerView {
         demand_ids: vec!["fill-geometry-demand".into()],
         body_ids: vec!["fill-geometry-body".into()],
         anchor_layer_index: 0,
-        anchor_z: 0,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -78,7 +81,14 @@ fn run_support(
     let module = TraditionalSupport::from_config(&config).unwrap();
     let paint = paint_with_plan(points);
     let mut output = SupportOutputBuilder::new();
-    module.run_support(0, &[region(points)], &paint, &mut output, &mut slicer_sdk::LayerCollectionBuilder::new(), &config)?;
+    module.run_support(
+        0,
+        &[region(points)],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    )?;
     Ok(output.support_paths().to_vec())
 }
 

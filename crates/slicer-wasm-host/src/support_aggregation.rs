@@ -504,9 +504,12 @@ fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
         let entry_cell = routing_cell(&entry);
         let matching = merged.iter().enumerate().position(|(index, existing)| {
             existing.family_id == entry.family_id
-                && existing.global_layer_index == entry.global_layer_index
-                && existing.object_id == entry.object_id
-                && (same_body(existing, &entry) || group_cells[index] == entry_cell)
+                    && existing.global_layer_index == entry.global_layer_index
+                    && existing.object_id == entry.object_id
+                    // Independent support rows share the dispatch layer but
+                    // intentionally carry distinct physical planes.
+                    && existing.anchor_z == entry.anchor_z
+                    && (same_body(existing, &entry) || group_cells[index] == entry_cell)
         });
         let Some(index) = matching else {
             merged.push(entry);

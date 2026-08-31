@@ -1109,8 +1109,10 @@ pub struct AnchoredEntity {
     pub output_capabilities: Vec<String>,
     /// Origin of the entity.
     pub provenance: AnchoredEntityProvenance,
-    /// The entity's committed output path in millimeters.
-    pub path_points: Vec<Point3>,
+    /// The entity's committed extrusion path, including per-point flow metadata.
+    pub path_points: Vec<Point3WithWidth>,
+    /// Extrusion role applied to the whole committed path.
+    pub role: ExtrusionRole,
 }
 
 /// Capability closure used to derive stages without an event-kind table.
@@ -2211,7 +2213,6 @@ pub struct Point3WithWidth {
 }
 
 /// Extrusion role
-#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExtrusionRole {
     /// Outer wall

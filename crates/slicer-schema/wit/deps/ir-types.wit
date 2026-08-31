@@ -61,7 +61,8 @@ interface ir-handles {
         input-capabilities: list<string>,
         output-capabilities: list<string>,
         provenance: anchored-entity-provenance,
-        path-points: list<point3>,
+        path-points: list<point3-with-width>,
+        role: extrusion-role,
     }
 
     /// Capability closure used to derive execution stages without event kinds.

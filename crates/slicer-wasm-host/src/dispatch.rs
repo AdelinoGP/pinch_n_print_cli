@@ -2032,7 +2032,7 @@ fn build_paint_layer_data_with_plan(
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
-            if entry.global_layer_index != layer_index as i32 {
+            if entry.anchor_layer_index != layer_index {
                 continue;
             }
             let key = (entry.object_id.clone(), entry.region_id.to_string());
@@ -2072,6 +2072,9 @@ fn build_paint_layer_data_with_plan(
                         slicer_ir::SupportPlanDeclineReason::UnsupportedMode => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::UnsupportedMode,
                     }),
                 });
+        }
+        for entries in data.support_plan_entries.values_mut() {
+            entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
         }
     }
     if let Some(ir) = lightning_tree_ir {
@@ -3517,6 +3520,15 @@ pub fn build_paint_layer_data_for_test(
     build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir))
 }
 
+/// Build support-plan paint-layer data for dispatch contract tests.
+#[doc(hidden)]
+pub fn build_support_plan_layer_data_for_test(
+    layer_index: u32,
+    support_plan_ir: &slicer_ir::SupportPlanIR,
+) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None)
+}
+
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into
 /// the per-stage [`slicer_ir::LayerStageCommit`] the runtime's `apply` consumes
 /// (ADR-0020). Produces only plain IR values — no arena mutations. Returns
@@ -3564,20 +3576,24 @@ pub fn deconstruct_layer_ctx(
         }
         "Layer::Support" | "Layer::SupportPostProcess" => {
             let support = &ctx.support_output;
-            if support.support_paths.is_empty()
-                && support.interface_paths.is_empty()
-                && support.raft_paths.is_empty()
+            let anchored_events = if let Some(collection) = ctx.anchored_events.collection.as_ref()
             {
-                let Some(collection) = ctx.anchored_events.collection.as_ref() else {
-                    return Ok(None);
-                };
                 for entity in &collection.events {
                     crate::marshal::validate_anchored_entity_geometry(entity)
                         .map_err(|reason| mk_fatal("anchored events", reason))?;
                 }
-                return Ok(Some(LayerStageCommit::AnchoredEvents(vec![
-                    collection.clone()
-                ])));
+                Some(vec![collection.clone()])
+            } else {
+                None
+            };
+            if support.support_paths.is_empty()
+                && support.interface_paths.is_empty()
+                && support.raft_paths.is_empty()
+            {
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
             }
             let ir = crate::marshal::convert_support_output_with_plan(
                 support,
@@ -3585,10 +3601,19 @@ pub fn deconstruct_layer_ctx(
                 support_plan,
             )
             .map_err(|r| mk_fatal("support", r))?;
-            Ok(Some(if stage_id == "Layer::SupportPostProcess" {
-                LayerStageCommit::SupportPostProcess(ir)
-            } else {
-                LayerStageCommit::Support(ir)
+            Ok(Some(match (stage_id, anchored_events) {
+                ("Layer::SupportPostProcess", Some(anchored_events)) => {
+                    LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+                        support: ir,
+                        anchored_events,
+                    }
+                }
+                ("Layer::SupportPostProcess", None) => LayerStageCommit::SupportPostProcess(ir),
+                (_, Some(anchored_events)) => LayerStageCommit::SupportWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                },
+                (_, None) => LayerStageCommit::Support(ir),
             }))
         }
         "Layer::AnchoredEvents" => {

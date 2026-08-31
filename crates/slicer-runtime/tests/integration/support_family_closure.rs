@@ -195,6 +195,199 @@ fn interface_block_count(gcode: &str) -> usize {
         .count()
 }
 
+// ── Packet 239c: independent support layer height ───────────────────────────
+
+/// Shared slice driver: the tracked Orca-matched config as base, family
+/// selection applied, plus arbitrary extra overrides on top (packet 239c).
+fn run_slice_for_family_with_extra(
+    support_type: &str,
+    extra: &[(&str, ConfigValue)],
+) -> Result<String, String> {
+    let mesh = cached_load_model(&support_test_path());
+    let mut overrides = matched_config_for(true, support_type);
+    for (key, value) in extra {
+        overrides.insert((*key).to_string(), value.clone());
+    }
+    let opts = slicer_runtime::run::SliceRunOptions {
+        mesh,
+        config_overrides: overrides,
+        module_dirs: core_module_dirs(),
+        ..Default::default()
+    };
+    let outcome = slicer_runtime::run::run_slice(opts)
+        .map_err(|e| format!("run_slice({support_type}) failed: {e}"))?;
+    Ok(outcome.gcode_text)
+}
+
+/// Ordered distinct `;Z:` sequence of a G-code text: first-occurrence order,
+/// duplicates removed. `;Z:{z}` is emitted by `crates/slicer-gcode/src/emit.rs`
+/// immediately after each `;LAYER_CHANGE`.
+fn distinct_z_sequence(gcode: &str) -> Vec<String> {
+    let mut sequence: Vec<String> = Vec::new();
+    for line in gcode.lines() {
+        let line = line.trim_end();
+        if line.starts_with(";Z:") && !sequence.iter().any(|seen| seen == line) {
+            sequence.push(line.to_string());
+        }
+    }
+    sequence
+}
+
+/// True iff `z_line` (a full `;Z:...` line) occurs in `gcode` and is followed
+/// by a `;TYPE:Support` marker before the next `;LAYER_CHANGE`.
+fn z_followed_by_support_block(gcode: &str, z_line: &str) -> bool {
+    let mut active = false;
+    for line in gcode.lines() {
+        let line = line.trim_end();
+        if line.starts_with(";LAYER_CHANGE") {
+            active = false;
+        } else if line == z_line {
+            active = true;
+        } else if active && line.starts_with(";TYPE:Support") {
+            return true;
+        }
+    }
+    false
+}
+
+/// AC-N1 baseline (packet 239c, Step 1): the ordered distinct `;Z:` sequence
+/// of the real slice over `tests/fixtures/support-family/SupportTest.stl` with
+/// `tests/fixtures/support-family/orca-matched-config.json`
+/// (`support_type = "normal(auto)"`), captured at commit
+/// b04d14616caf146958ae0dede1f3b37eabde1469 BEFORE any planner behavior change
+/// for `independent_support_layer_height` (the key is declared but unread at
+/// that commit). Step 2's falsifier: a disabled run must reproduce this
+/// sequence exactly.
+const DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z: &[&str] = &[
+    ";Z:0.2", ";Z:0.4", ";Z:0.6", ";Z:0.8", ";Z:1", ";Z:1.2", ";Z:1.4", ";Z:1.6", ";Z:1.8", ";Z:2",
+    ";Z:2.2", ";Z:2.4", ";Z:2.6", ";Z:2.8", ";Z:3", ";Z:3.2", ";Z:3.4", ";Z:3.6", ";Z:3.8", ";Z:4",
+    ";Z:4.2", ";Z:4.4", ";Z:4.6", ";Z:4.8", ";Z:5", ";Z:5.2", ";Z:5.4", ";Z:5.6", ";Z:5.8", ";Z:6",
+    ";Z:6.2", ";Z:6.4", ";Z:6.6", ";Z:6.8", ";Z:7", ";Z:7.2", ";Z:7.4", ";Z:7.6", ";Z:7.8", ";Z:8",
+    ";Z:8.2", ";Z:8.4", ";Z:8.6", ";Z:8.8", ";Z:9", ";Z:9.2", ";Z:9.4", ";Z:9.6", ";Z:9.8",
+    ";Z:10", ";Z:10.2", ";Z:10.4", ";Z:10.6", ";Z:10.8", ";Z:11", ";Z:11.2", ";Z:11.4", ";Z:11.6",
+    ";Z:11.8", ";Z:12", ";Z:12.2", ";Z:12.4", ";Z:12.6", ";Z:12.8", ";Z:13", ";Z:13.2", ";Z:13.4",
+    ";Z:13.6", ";Z:13.8", ";Z:14", ";Z:14.2", ";Z:14.4", ";Z:14.6", ";Z:14.8", ";Z:15", ";Z:15.2",
+    ";Z:15.4", ";Z:15.6", ";Z:15.8", ";Z:16", ";Z:16.2", ";Z:16.4", ";Z:16.6", ";Z:16.8", ";Z:17",
+    ";Z:17.2", ";Z:17.4", ";Z:17.6", ";Z:17.8", ";Z:18", ";Z:18.2", ";Z:18.4", ";Z:18.6",
+    ";Z:18.8", ";Z:19", ";Z:19.2", ";Z:19.4", ";Z:19.6", ";Z:19.8", ";Z:20", ";Z:20.2", ";Z:20.4",
+    ";Z:20.6", ";Z:20.8", ";Z:21", ";Z:21.2", ";Z:21.4", ";Z:21.6", ";Z:21.8", ";Z:22", ";Z:22.2",
+    ";Z:22.4", ";Z:22.6", ";Z:22.8", ";Z:23", ";Z:23.2", ";Z:23.4", ";Z:23.6", ";Z:23.8", ";Z:24",
+    ";Z:24.2", ";Z:24.4", ";Z:24.6", ";Z:24.8", ";Z:25", ";Z:25.2", ";Z:25.4", ";Z:25.6",
+    ";Z:25.8", ";Z:26", ";Z:26.2", ";Z:26.4", ";Z:26.6", ";Z:26.8", ";Z:27", ";Z:27.2", ";Z:27.4",
+    ";Z:27.6", ";Z:27.8", ";Z:28", ";Z:28.2", ";Z:28.4", ";Z:28.6", ";Z:28.8", ";Z:29", ";Z:29.2",
+    ";Z:29.4", ";Z:29.6", ";Z:29.8", ";Z:30",
+];
+
+/// AC-N1: with `independent_support_layer_height = false`, support rows are
+/// grid-exact copies of the object layer grid — the emitted `;Z:` sequence
+/// must equal the pre-change baseline captured in Step 1.
+pub fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence(
+) -> Result<(), String> {
+    let gcode = run_slice_for_family_with_extra(
+        "normal(auto)",
+        &[("independent_support_layer_height", ConfigValue::Bool(false))],
+    )?;
+    let actual = distinct_z_sequence(&gcode);
+    let expected: Vec<String> = DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z
+        .iter()
+        .map(|z| (*z).to_string())
+        .collect();
+    if actual != expected {
+        let rendered = actual
+            .iter()
+            .map(|z| format!("    \"{z}\","))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "disabled run must reproduce the Step-1 baseline `;Z:` sequence element-wise; \
+             expected {} entries, got {};\nactual sequence (paste-able):\n{rendered}",
+            expected.len(),
+            actual.len()
+        ));
+    }
+    Ok(())
+}
+
+/// AC-1 (packet 239c): with `independent_support_layer_height = true` and a
+/// support pitch finer than the object layer height, the enabled run emits
+/// support rows OFF the object grid.
+///
+/// RED until Step 4 lands the planner behavior: today the key is declared but
+/// unread, so the enabled run equals the disabled run and this check fails.
+pub fn independent_support_layer_height_emits_support_row_off_object_grid() -> Result<(), String> {
+    // orca-matched-config.json sets `support_layer_height_mm = 0.0` (the
+    // "same as the model layer height" sentinel) at a 0.2 mm object layer
+    // height, so a finer support pitch must be stated explicitly.
+    let enabled = run_slice_for_family_with_extra(
+        "normal(auto)",
+        &[
+            ("independent_support_layer_height", ConfigValue::Bool(true)),
+            ("support_layer_height_mm", ConfigValue::Float(0.1)),
+        ],
+    )?;
+    let disabled = run_slice_for_family_with_extra(
+        "normal(auto)",
+        &[("independent_support_layer_height", ConfigValue::Bool(false))],
+    )?;
+    let enabled_z = distinct_z_sequence(&enabled);
+    let disabled_z = distinct_z_sequence(&disabled);
+    let missing: Vec<&String> = disabled_z
+        .iter()
+        .filter(|z| !enabled_z.contains(z))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "enabled run must be a superset of the disabled grid; missing {missing:?}"
+        ));
+    }
+    let enabled_only: Vec<&String> = enabled_z
+        .iter()
+        .filter(|z| !disabled_z.contains(z))
+        .collect();
+    if enabled_only.is_empty() {
+        return Err(
+            "enabled run emitted no off-grid `;Z:` rows — the enabled set must be a STRICT \
+             superset of the disabled set"
+                .into(),
+        );
+    }
+    if !enabled_only
+        .iter()
+        .any(|z| z_followed_by_support_block(&enabled, z))
+    {
+        return Err(format!(
+            "no enabled-only `;Z:` row is followed by a `;TYPE:Support` block before the next \
+             `;LAYER_CHANGE`; enabled-only rows: {enabled_only:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// AC-N2 (packet 239c): `enable_support = false` must emit no support rows
+/// even when `independent_support_layer_height = true`.
+pub fn support_disabled_emits_no_support_rows_even_with_independent_height() -> Result<(), String> {
+    let gcode = run_slice_for_family_with_extra(
+        "normal(auto)",
+        &[
+            ("enable_support", ConfigValue::Bool(false)),
+            ("independent_support_layer_height", ConfigValue::Bool(true)),
+        ],
+    )?;
+    let offenders: Vec<&str> = gcode
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| *line == ";TYPE:Support" || *line == ";TYPE:Support interface")
+        .collect();
+    if !offenders.is_empty() {
+        return Err(format!(
+            "support-disabled run emitted {} support-type markers (first: {:?})",
+            offenders.len(),
+            offenders.first()
+        ));
+    }
+    Ok(())
+}
+
 /// AC-1: runs both real support families on SupportTest.stl and records
 /// positive closure, termination, exact-Z exclusion, and disabled-output evidence.
 /// Plate tolerance is derived from layer plan's effective_layer_height, not hardcoded.
@@ -1116,9 +1309,8 @@ fn is_interface(role: SupportPlanRole) -> bool {
 /// Invariant 1: no support geometry may intersect model occupancy at the exact
 /// physical Z of the layer the geometry is printed on.
 ///
-/// The Z used is the entry's own `global_layer_index` Z from the committed
-/// `LayerPlanIR` — not `anchor_z`, which is where the column *lands*, one or
-/// more layers below the geometry being checked.
+/// Grid rows use their `global_layer_index` Z from the committed `LayerPlanIR`.
+/// Synthesized rows use their declared off-grid `anchor_z` print plane.
 pub fn support_never_intersects_model_at_exact_z() -> Result<(), String> {
     let mut families_with_geometry = 0usize;
     for (family, support_type) in FAMILIES {
@@ -1127,15 +1319,31 @@ pub fn support_never_intersects_model_at_exact_z() -> Result<(), String> {
             let evidence = invariant_evidence(model_rel, support_type)?;
             let exact_z = ExactZQueryService::new(Arc::clone(&evidence.mesh));
             for entry in accepted_entries(&evidence.plan) {
-                let z_mm = *evidence
-                    .layer_z_mm
-                    .get(&entry.global_layer_index)
-                    .ok_or_else(|| {
-                        format!(
-                            "{model_rel} [{hazard}] {family}: entry references global layer {} absent from LayerPlanIR",
+                let z_mm = if let Some(z_mm) = evidence.layer_z_mm.get(&entry.global_layer_index) {
+                    *z_mm
+                } else {
+                    let anchor_layer_z = evidence
+                        .layer_z_mm
+                        .get(&(entry.anchor_layer_index as i32))
+                        .ok_or_else(|| {
+                            format!(
+                                "{model_rel} [{hazard}] {family}: entry references anchor layer {} absent from LayerPlanIR",
+                                entry.anchor_layer_index
+                            )
+                        })?;
+                    let anchor_layer_z = slicer_ir::mm_to_units(*anchor_layer_z);
+                    // A missing plane identity is valid only for a synthesized row whose
+                    // declared print plane is genuinely off its anchor object layer.
+                    if (entry.anchor_z - anchor_layer_z).abs()
+                        <= slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                    {
+                        return Err(format!(
+                            "{model_rel} [{hazard}] {family}: entry references global layer {} absent from LayerPlanIR without an off-grid anchor_z",
                             entry.global_layer_index
-                        )
-                    })?;
+                        ));
+                    }
+                    slicer_ir::units_to_mm(entry.anchor_z)
+                };
                 let query = exact_z
                     .query(entry.object_id.as_str(), entry.region_id, z_mm)
                     .map_err(|error| {

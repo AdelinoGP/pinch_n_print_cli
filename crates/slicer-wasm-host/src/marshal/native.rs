@@ -1195,36 +1195,64 @@ pub fn commit_native_layer_response(
                 return Ok(None);
             };
             let collected = collect_support(&support.output);
-            if collected.support_paths.is_empty()
-                && collected.interface_paths.is_empty()
-                && collected.raft_paths.is_empty()
-            {
-                let Some(collection) = support.collection.anchored_proposal() else {
-                    return Ok(None);
-                };
+            let anchored_events = if let Some(collection) = support.collection.anchored_proposal() {
                 for entity in &collection.events {
                     crate::marshal::validate_anchored_entity_geometry(entity)?;
                 }
-                return Ok(Some(LayerStageCommit::AnchoredEvents(vec![
-                    collection.clone()
-                ])));
-            }
-            let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
-            Ok(Some(LayerStageCommit::Support(ir)))
-        }
-        "Layer::SupportPostProcess" => {
-            let Some(builder) = response.support.as_ref() else {
-                return Ok(None);
+                Some(vec![collection.clone()])
+            } else {
+                None
             };
-            let collected = collect_support(&builder.output);
             if collected.support_paths.is_empty()
                 && collected.interface_paths.is_empty()
                 && collected.raft_paths.is_empty()
             {
-                return Ok(None);
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
             }
             let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
-            Ok(Some(LayerStageCommit::SupportPostProcess(ir)))
+            Ok(Some(if let Some(anchored_events) = anchored_events {
+                LayerStageCommit::SupportWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                }
+            } else {
+                LayerStageCommit::Support(ir)
+            }))
+        }
+        "Layer::SupportPostProcess" => {
+            let Some(support) = response.support.as_ref() else {
+                return Ok(None);
+            };
+            let collected = collect_support(&support.output);
+            let anchored_events = if let Some(collection) = support.collection.anchored_proposal() {
+                for entity in &collection.events {
+                    crate::marshal::validate_anchored_entity_geometry(entity)?;
+                }
+                Some(vec![collection.clone()])
+            } else {
+                None
+            };
+            if collected.support_paths.is_empty()
+                && collected.interface_paths.is_empty()
+                && collected.raft_paths.is_empty()
+            {
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
+            }
+            let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
+            Ok(Some(if let Some(anchored_events) = anchored_events {
+                LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                }
+            } else {
+                LayerStageCommit::SupportPostProcess(ir)
+            }))
         }
         "Layer::AnchoredEvents" => {
             let Some(builder) = response.anchored_events.as_ref() else {

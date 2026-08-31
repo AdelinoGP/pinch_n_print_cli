@@ -45,12 +45,10 @@ pub fn convert_anchored_events(
                 path_points: event
                     .path_points
                     .iter()
-                    .map(|point| slicer_ir::Point3 {
-                        x: point.x,
-                        y: point.y,
-                        z: point.z,
-                    })
-                    .collect(),
+                    .enumerate()
+                    .map(|(index, point)| convert_anchored_point(point, index))
+                    .collect::<Result<Vec<_>, _>>()?,
+                role: convert_extrusion_role(&event.role),
             };
             Ok(entity)
         })
@@ -64,6 +62,26 @@ pub fn convert_anchored_events(
             account_time: collection.runtime_hooks.account_time,
         },
     })
+}
+
+fn convert_anchored_point(
+    point: &crate::host::layer_anchored_events::slicer::types::geometry::Point3WithWidth,
+    index: usize,
+) -> Result<slicer_ir::Point3WithWidth, String> {
+    let point = crate::marshal::leaf::convert_point(point, index)?;
+    if point.width <= 0.0 {
+        return Err(format!(
+            "anchored entity point[{index}].width must be positive, got {}",
+            point.width
+        ));
+    }
+    if point.flow_factor <= 0.0 {
+        return Err(format!(
+            "anchored entity point[{index}].flow_factor must be positive, got {}",
+            point.flow_factor
+        ));
+    }
+    Ok(point)
 }
 
 /// Validate an anchored entity's path against its declared Z contract.
@@ -120,11 +138,18 @@ mod anchored_events_tests {
                 requesting_feature: "feature".into(),
                 source_plan_entry: "entry".into(),
             },
-            path_points: vec![wit::Point3 {
+            // exhaustive: WIT boundary fixture must populate every transported point field
+            path_points: vec![wit::Point3WithWidth {
                 x: 1.0,
                 y: 2.0,
                 z: 0.3,
+                width: 0.45,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
             }],
+            role: wit::ExtrusionRole::SupportMaterial,
         }
     }
 
@@ -157,6 +182,44 @@ mod anchored_events_tests {
     }
 
     #[test]
+    fn convert_anchored_point_rejects_non_positive_width() {
+        let mut entity = wit_entity(wit::AnchoredGeometryContract::Planar(3000));
+        entity.path_points[0].width = 0.0;
+        let collection = wit::OrderedEventCollection {
+            anchor_global_layer_index: 2,
+            events: vec![entity],
+            runtime_hooks: wit::AnchoredEventRuntimeHooks {
+                optimize_paths: false,
+                account_cooling: false,
+                account_time: false,
+            },
+        };
+
+        assert!(convert_anchored_events(&collection)
+            .unwrap_err()
+            .contains("width must be positive"));
+    }
+
+    #[test]
+    fn convert_anchored_point_rejects_non_positive_flow_factor() {
+        let mut entity = wit_entity(wit::AnchoredGeometryContract::Planar(3000));
+        entity.path_points[0].flow_factor = 0.0;
+        let collection = wit::OrderedEventCollection {
+            anchor_global_layer_index: 2,
+            events: vec![entity],
+            runtime_hooks: wit::AnchoredEventRuntimeHooks {
+                optimize_paths: false,
+                account_cooling: false,
+                account_time: false,
+            },
+        };
+
+        assert!(convert_anchored_events(&collection)
+            .unwrap_err()
+            .contains("flow_factor must be positive"));
+    }
+
+    #[test]
     fn validate_anchored_entity_geometry_rejects_both_contract_violations() {
         // exhaustive: test-only IR fixture intentionally names every contract field
         let planar = slicer_ir::AnchoredEntity {
@@ -169,11 +232,15 @@ mod anchored_events_tests {
                 requesting_feature: String::new(),
                 source_plan_entry: String::new(),
             },
-            path_points: vec![slicer_ir::Point3 {
+            path_points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,
                 y: 0.0,
                 z: 0.04,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             }],
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
         };
         assert!(validate_anchored_entity_geometry(&planar)
             .unwrap_err()
@@ -183,10 +250,13 @@ mod anchored_events_tests {
                 min_z: 3000,
                 max_z: 5000,
             },
-            path_points: vec![slicer_ir::Point3 {
+            path_points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,
                 y: 0.0,
                 z: 0.06,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             }],
             ..planar
         };

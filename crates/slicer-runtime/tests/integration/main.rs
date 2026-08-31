@@ -169,6 +169,24 @@ fn support_never_intersects_model_at_exact_z() {
 }
 
 #[test]
+fn independent_support_layer_height_emits_support_row_off_object_grid() {
+    support_family_closure::independent_support_layer_height_emits_support_row_off_object_grid()
+        .unwrap();
+}
+
+#[test]
+fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence() {
+    support_family_closure::disabled_independent_support_layer_height_reproduces_baseline_z_sequence()
+        .unwrap();
+}
+
+#[test]
+fn support_disabled_emits_no_support_rows_even_with_independent_height() {
+    support_family_closure::support_disabled_emits_no_support_rows_even_with_independent_height()
+        .unwrap();
+}
+
+#[test]
 fn accepted_demands_terminate_on_plate_or_model() {
     support_family_closure::accepted_demands_terminate_on_plate_or_model().unwrap();
 }

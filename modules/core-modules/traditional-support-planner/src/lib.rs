@@ -64,6 +64,12 @@ pub struct SupportPlanner {
     support_top_z_distance_mm: f32,
     /// Support layer height in mm (0.0 = use model layer height).
     support_layer_height_mm: f32,
+    /// Packet 239c: support rows may leave the object layer grid. When true,
+    /// canonical `bottom_contact_layer` (enabled branch) plus
+    /// `generate_support_layers` let intermediate support rows print between
+    /// object planes; when false, `anchor_z` stays a grid-exact copy of the
+    /// object plane (canonical `sync_gap_with_object_layer`).
+    independent_support_layer_height: bool,
     /// XY clearance in mm held between support and the object during base-layer
     /// trimming, mirroring canonical `SupportParameters::gap_xy`.
     support_object_xy_distance: f32,
@@ -104,6 +110,14 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(v)) => *v as f32,
             _ => 0.0,
         };
+        // Packet 239c: default true, matching the manifest declaration and
+        // canonical `PrintConfig.cpp` `init_fff_params` (coBool, default
+        // true). When true, `plan_candidate` derives free-floating
+        // intermediate support planes; when false the plan is byte-identical
+        // to the pre-239c grid-exact behavior.
+        let independent_support_layer_height = config
+            .get_bool("independent_support_layer_height")
+            .unwrap_or(true);
         // `support_overhang_angle` is no longer read here. Contact detection
         // moved to `PrePass::SupportAnalysis`, which consumes that key from the
         // resolved config and hands this planner finished contacts.
@@ -125,6 +139,7 @@ impl PrepassModule for SupportPlanner {
             support_base_pattern,
             support_top_z_distance_mm,
             support_layer_height_mm,
+            independent_support_layer_height,
             support_object_xy_distance,
             line_width_mm,
         })
@@ -202,6 +217,11 @@ impl SupportPlanner {
             return Ok(());
         }
 
+        // Intermediate planes need identities distinct from their bracketing
+        // grid rows. Reuse an identity when candidates declare the same plane
+        // so same-family aggregation can still union their geometry.
+        let mut intermediate_plane_indices = BTreeMap::<i64, i32>::new();
+
         for candidate in support_analysis
             .candidates
             .iter()
@@ -210,7 +230,14 @@ impl SupportPlanner {
             if candidate_family(candidate, support_analysis).as_deref() != Some("traditional") {
                 continue;
             }
-            self.plan_candidate(obj, layer_plan, support_analysis, candidate, output)?;
+            self.plan_candidate(
+                obj,
+                layer_plan,
+                support_analysis,
+                candidate,
+                &mut intermediate_plane_indices,
+                output,
+            )?;
         }
 
         Ok(())
@@ -222,6 +249,7 @@ impl SupportPlanner {
         layer_plan: &LayerPlanView,
         support_analysis: &SupportAnalysisView,
         candidate: &SupportAnalysisCandidate,
+        intermediate_plane_indices: &mut BTreeMap<i64, i32>,
         output: &mut SupportGeometryOutput,
     ) -> Result<(), ModuleError> {
         let num_layers = layer_plan.layers.len() as u32;
@@ -465,6 +493,11 @@ impl SupportPlanner {
             }
         };
 
+        // Support-bearing rows already pushed by this candidate's emit loop,
+        // ascending. The previous row below is the lower bracket for the
+        // packet-239c intermediate-plane derivation.
+        let mut previous_supported_layer: Option<u32> = None;
+
         for layer in (termination_layer..=emit_top_layer).rev() {
             let is_interface_layer = (top_interface_layers > 0
                 && layer >= interface_top_layer.saturating_sub(top_interface_layers - 1))
@@ -548,6 +581,74 @@ impl SupportPlanner {
                 });
             }
             let z = layer_plan.layers[layer as usize].z;
+            // Packet 239c Step 2: when the flag is enabled, the gap between
+            // the previously pushed row above and this row is filled with
+            // off-grid intermediate rows BEFORE this row's entry is built,
+            // because this row's `roles` move into it. Canonical
+            // `generate_support_layers` (`Support/SupportCommon.cpp`):
+            // `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`,
+            // `step = dist / n_layers_extra`, `print_z = bottom_z + k * step`.
+            // Each intermediate entry clones THIS row's roles — the lower
+            // bracket — with its own strictly-between declared plane; the
+            // column cross-section changes by at most one step across the
+            // bracketed gap, and the grid rows themselves never move
+            // (canonical `bottom_contact_layer` disabled path /
+            // `sync_gap_with_object_layer` keeps them grid-exact).
+            if self.independent_support_layer_height {
+                if let Some(above) = previous_supported_layer {
+                    let pitch_mm = if self.support_layer_height_mm > 0.0 {
+                        self.support_layer_height_mm
+                    } else {
+                        // [FWD] 0.0 sentinel decision, option (b): pitch =
+                        // the object's own effective layer height, so no gap
+                        // is ever finer and the enabled branch degrades to
+                        // grid-exact (safer default-profile behavior;
+                        // documented in design.md §Open Questions).
+                        model_layer_height
+                    };
+                    let above_z = layer_plan.layers[above as usize].z;
+                    for plane in packet239c_intermediate_planes(z, above_z, pitch_mm as f64) {
+                        let plane_ordinal = i32::try_from(intermediate_plane_indices.len())
+                            .map_err(|_| {
+                                ModuleError::fatal(
+                                    1,
+                                    "too many intermediate traditional-support planes",
+                                )
+                            })?;
+                        let next_index = i32::MIN.checked_add(plane_ordinal).ok_or_else(|| {
+                            ModuleError::fatal(
+                                1,
+                                "too many intermediate traditional-support planes",
+                            )
+                        })?;
+                        let global_layer_index = *intermediate_plane_indices
+                            .entry(plane)
+                            .or_insert(next_index);
+                        let clone = SupportPlanEntry {
+                            global_layer_index,
+                            object_id: obj.object_id.clone(),
+                            region_id: candidate.region_id.clone(),
+                            family_id: "traditional".to_string(),
+                            demand_ids: vec![demand_id.clone()],
+                            body_ids: vec![body_id.clone()],
+                            anchor_layer_index: layer,
+                            anchor_z: plane,
+                            roles: roles.clone(),
+                            skeleton: None,
+                            capabilities: vec![format!(
+                                "traditional-base-pattern:{}",
+                                self.support_base_pattern
+                            )],
+                            provenance: vec!["traditional-support-planner".to_string()],
+                            decline_reason: None,
+                        };
+                        output.push_support_plan_entry(clone).map_err(|e| {
+                            ModuleError::fatal(1, format!("push_support_plan failed: {e}"))
+                        })?;
+                    }
+                }
+                previous_supported_layer = Some(layer);
+            }
             output
                 .push_support_plan_entry(SupportPlanEntry {
                     global_layer_index: layer as i32,
@@ -572,6 +673,43 @@ impl SupportPlanner {
 
         Ok(())
     }
+}
+
+/// Packet 239c (Step 2): canonical `generate_support_layers`
+/// (`Support/SupportCommon.cpp`) intermediate-row stepping for one vertical
+/// gap between two bracketing support rows.
+///
+/// Canonical rule (flag-independent there; gated here by
+/// `independent_support_layer_height`):
+/// `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`,
+/// `step = dist / n_layers_extra`, `print_z = bottom_z + k * step`.
+///
+/// `below_z_mm` / `above_z_mm` are the two bracketing support planes
+/// (ascending, mm). Returns the k = 1..n rows strictly between the brackets,
+/// in canonical units, ascending. EPSILON is canonical's 1e-4 mm — exactly
+/// one canonical unit. Insertion happens only when the configured pitch is
+/// finer than the gap (`n >= 2`), so the bracketing grid planes themselves
+/// never move and no plane is duplicated, deleted, or inverted.
+/// Deterministic: pure function of the pair plus the pitch. Mirrors the
+/// identically-named helper in `tree-support-planner/src/lib.rs`.
+fn packet239c_intermediate_planes(below_z_mm: f32, above_z_mm: f32, pitch_mm: f64) -> Vec<i64> {
+    const EPSILON_MM: f64 = 1e-4;
+    let below_units = slicer_ir::mm_to_units(below_z_mm);
+    let above_units = slicer_ir::mm_to_units(above_z_mm);
+    if pitch_mm <= 0.0 || above_units <= below_units {
+        return Vec::new();
+    }
+    let dist = (above_z_mm - below_z_mm) as f64;
+    let n = ((dist - EPSILON_MM) / pitch_mm).ceil();
+    if n < 2.0 {
+        return Vec::new();
+    }
+    let step = dist / n;
+    let n = n as i64;
+    (1..n)
+        .map(|k| slicer_ir::mm_to_units((below_z_mm as f64 + k as f64 * step) as f32))
+        .filter(|plane| *plane > below_units && *plane < above_units)
+        .collect()
 }
 
 fn push_declined(

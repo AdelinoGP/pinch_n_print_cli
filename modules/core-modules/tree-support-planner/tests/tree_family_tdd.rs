@@ -924,6 +924,240 @@ fn anchored_heights_and_termination() {
 }
 
 #[test]
+fn enabled_independent_height_produces_free_floating_anchor_z() {
+    // Packet 239c AC-2: canonical enabled semantics — free-floating
+    // `anchor_z`. With `independent_support_layer_height` enabled (the
+    // default) and a support pitch finer than the object layer height, at
+    // least one emitted `SupportPlanEntry.anchor_z` differs from
+    // `mm_to_units(layer_plan.layers[..].z)` by more than
+    // `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS`, planes are
+    // distinct and strictly ordered per object, and the intermediate planes
+    // follow the canonical `generate_support_layers` stepping.
+    //
+    // Fixture: a 10-layer 0.2 mm plan (1.8 mm tall tree contact at layer 8)
+    // with a 0.1 mm support pitch. Every adjacent pair of support rows
+    // (0.2 mm apart) admits n = ceil((0.2 - 1e-4)/0.1) = 2 canonical rows,
+    // so one strictly-between plane per adjacent pair is expected.
+    let demand_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 51,
+            object_id: "indep".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![demand_region],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    // The default planner already carries `independent_support_layer_height
+    // = true`; state the pitch explicitly through the config.
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(0.1))],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[overhang("indep", 0.0, 0.0, 4.0)],
+            &layer_plan(),
+            &regions("indep"),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    assert!(
+        !output.entries().is_empty(),
+        "tree contact must produce plan entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    let off_grid: Vec<i64> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            let grid_z = layer_plan().layers[entry.anchor_layer_index.min(9) as usize].z;
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(grid_z)) > tolerance as u64
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        !off_grid.is_empty(),
+        "enabled branch must produce at least one off-grid anchor_z \
+         (>{tolerance} units from its object layer's Z); got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| (e.global_layer_index, e.anchor_z))
+            .collect::<Vec<_>>()
+    );
+    // Intermediate planes follow the canonical stepping: with a 0.2 mm gap
+    // and a 0.1 mm pitch every off-grid plane sits at bottom_z + 0.1 mm for
+    // some adjacent pair of grid rows.
+    let grid: std::collections::BTreeSet<i64> = layer_plan()
+        .layers
+        .iter()
+        .map(|layer| slicer_ir::mm_to_units(layer.z))
+        .collect();
+    for plane in &off_grid {
+        let between = grid
+            .range((plane + 1)..)
+            .next()
+            .copied()
+            .expect("an off-grid plane must sit below some grid plane");
+        let step = between - plane;
+        assert!(
+            plane + step == between && grid.contains(&between),
+            "off-grid plane {plane} must sit one canonical step below grid plane {between}"
+        );
+    }
+    // Distinct and strictly increasing when ordered by plane.
+    let mut planes: Vec<i64> = output.entries().iter().map(|e| e.anchor_z).collect();
+    planes.sort_unstable();
+    planes.dedup();
+    let distinct_ordered = planes.len() == output.entries().len();
+    assert!(
+        distinct_ordered,
+        "declared planes must be distinct; got {planes:?}"
+    );
+}
+
+#[test]
+fn intermediate_planes_generated_per_support_body_not_per_layer() {
+    let object = overhang("two-regions", 0.0, 0.0, 4.0);
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(0.1))],
+    ))
+    .expect("from_config");
+    let segmentation = RegionSegmentationView {
+        entries: (0..10)
+            .map(|layer_index| RegionSegmentationViewEntry {
+                object_id: object.object_id.clone(),
+                layer_index,
+                region_ids: vec!["0".into(), "1".into()],
+            })
+            .collect(),
+        region_support_configs: vec![],
+    };
+    let candidate_geometry = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 71,
+            object_id: object.object_id.clone(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![candidate_geometry],
+            ..Default::default()
+        }],
+        family_assignments: vec![
+            SupportFamilyAssignment {
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                family_id: "tree".into(),
+            },
+            SupportFamilyAssignment {
+                object_id: object.object_id.clone(),
+                region_id: "1".into(),
+                family_id: "tree".into(),
+            },
+        ],
+        ..Default::default()
+    };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object],
+            &layer_plan(),
+            &segmentation,
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+
+    let grid: std::collections::BTreeSet<_> = layer_plan()
+        .layers
+        .iter()
+        .map(|layer| slicer_ir::mm_to_units(layer.z))
+        .collect();
+    let mut off_grid_by_region: std::collections::BTreeMap<_, Vec<_>> =
+        std::collections::BTreeMap::new();
+    for entry in output.entries() {
+        if !grid.contains(&entry.anchor_z) {
+            off_grid_by_region
+                .entry(entry.region_id.clone())
+                .or_default()
+                .push(entry);
+        }
+    }
+    assert_eq!(
+        off_grid_by_region.len(),
+        2,
+        "each assigned region is a support body"
+    );
+    let first = &off_grid_by_region["0"];
+    let second = &off_grid_by_region["1"];
+    assert_eq!(
+        first.iter().map(|entry| entry.anchor_z).collect::<Vec<_>>(),
+        second
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        "each body must receive every intermediate plane"
+    );
+    for entry in first.iter().chain(second) {
+        // Real planner streams are exact-Z validated before renderer dispatch.
+        // Intermediate rows therefore inherit the lower bracket's bottom-up
+        // projection; upper-row geometry can overlap model occupancy between
+        // object planes.
+        let lower = output
+            .entries()
+            .iter()
+            .filter(|candidate| {
+                candidate.region_id == entry.region_id
+                    && candidate.anchor_z < entry.anchor_z
+                    && grid.contains(&candidate.anchor_z)
+            })
+            .max_by_key(|candidate| candidate.anchor_z)
+            .expect("lower bracket");
+        assert_eq!(
+            entry.roles, lower.roles,
+            "intermediate geometry is seeded from the lower row"
+        );
+    }
+}
+
+#[test]
 fn mixed_height_contacts_keep_body_and_roof_on_the_same_layer() {
     let square = |x0: f32, side: f32| ExPolygon {
         contour: Polygon {

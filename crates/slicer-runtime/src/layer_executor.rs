@@ -355,19 +355,22 @@ pub(crate) fn execute_per_layer_with_committed_anchored_events_instrumented(
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
     anchored_entities: &[slicer_ir::AnchoredEntity],
 ) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    let (layers, audits) = execute_per_layer_with_instrumentation_and_support_tools(
-        plan,
-        blackboard,
-        runner,
-        sink,
-        instrumentation,
-        wasm_handles,
-        support_tools,
-        cancel_flag,
-    )?;
+    let (layers, audits, mut producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            instrumentation,
+            wasm_handles,
+            support_tools,
+            cancel_flag,
+        )?;
     let mut layers = layers;
     append_same_z_entities(&mut layers, plan, anchored_entities)?;
-    let collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    let mut collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    collections.append(&mut producer_collections);
+    collections.sort_by_key(|collection| collection.anchor_global_layer_index);
     let mut committed = Vec::with_capacity(layers.len() + collections.len());
     let mut collections = collections.into_iter().peekable();
     for layer in layers {
@@ -577,22 +580,13 @@ pub(crate) fn anchored_entity_to_print_entity(
     PrintEntity {
         entity_id: entity.local_id,
         path: slicer_ir::ExtrusionPath3D {
-            points: entity
-                .path_points
-                .iter()
-                .map(|point| slicer_ir::Point3WithWidth {
-                    x: point.x,
-                    y: point.y,
-                    z: point.z,
-                    ..Default::default()
-                })
-                .collect(),
-            role: slicer_ir::ExtrusionRole::SupportMaterial,
+            points: entity.path_points.clone(),
+            role: entity.role.clone(),
             speed_factor: 1.0,
             tool_index: None,
             order_lock: None,
         },
-        role: slicer_ir::ExtrusionRole::SupportMaterial,
+        role: entity.role.clone(),
         region_key: RegionKey::default(),
         topo_order,
         tool_index: 0,
@@ -616,16 +610,18 @@ pub fn execute_per_layer_with_events_and_support_tools(
     >,
     support_tools: SupportToolSelection,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation_and_support_tools(
-        plan,
-        blackboard,
-        runner,
-        sink,
-        &NoopInstrumentation,
-        wasm_handles,
-        support_tools,
-        None,
-    )
+    let (layers, audits, _producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            &NoopInstrumentation,
+            wasm_handles,
+            support_tools,
+            None,
+        )?;
+    Ok((layers, audits))
 }
 
 /// Like [`execute_per_layer_with_events`] but additionally records timing,
@@ -651,16 +647,18 @@ pub fn execute_per_layer_with_instrumentation(
     >,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation_and_support_tools(
-        plan,
-        blackboard,
-        runner,
-        sink,
-        instrumentation,
-        wasm_handles,
-        SupportToolSelection::default(),
-        cancel_flag,
-    )
+    let (layers, audits, _producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            instrumentation,
+            wasm_handles,
+            SupportToolSelection::default(),
+            cancel_flag,
+        )?;
+    Ok((layers, audits))
 }
 
 pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
@@ -679,40 +677,55 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
     >,
     support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        Vec<LayerCollectionIR>,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     let global_layers = &plan.global_layers;
 
     use rayon::iter::ParallelIterator;
-    let results: Result<Vec<(LayerCollectionIR, Vec<ModuleAccessAudit>)>, LayerExecutionError> =
-        global_layers
-            .par_iter()
-            .map(|layer| {
-                if cancel_flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
-                    return Err(LayerExecutionError::Cancelled);
-                }
-                execute_single_layer(
-                    plan,
-                    blackboard,
-                    runner,
-                    sink,
-                    instrumentation,
-                    &[],
-                    layer,
-                    wasm_handles,
-                    support_tools,
-                )
-            })
-            .collect();
+    let results: Result<
+        Vec<(
+            LayerCollectionIR,
+            Vec<ModuleAccessAudit>,
+            Vec<slicer_ir::OrderedEventCollection>,
+        )>,
+        LayerExecutionError,
+    > = global_layers
+        .par_iter()
+        .map(|layer| {
+            if cancel_flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+                return Err(LayerExecutionError::Cancelled);
+            }
+            execute_single_layer(
+                plan,
+                blackboard,
+                runner,
+                sink,
+                instrumentation,
+                &[],
+                layer,
+                wasm_handles,
+                support_tools,
+            )
+        })
+        .collect();
 
     match results {
         Ok(layer_results) => {
             let mut layer_irs = Vec::with_capacity(layer_results.len());
             let mut all_audits = Vec::new();
-            for (layer_ir, audits) in layer_results {
+            let mut anchored_collections = Vec::new();
+            for (layer_ir, audits, mut collections) in layer_results {
                 all_audits.extend(audits);
+                anchored_collections.append(&mut collections);
                 layer_irs.push(layer_ir);
             }
-            Ok((layer_irs, all_audits))
+            Ok((layer_irs, all_audits, anchored_collections))
         }
         Err(e) => Err(e),
     }
@@ -721,8 +734,8 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
 /// Execute all stages for a single layer sequentially, collecting runtime
 /// access audits for each user module that produces output.
 ///
-/// Returns both the finalized `LayerCollectionIR` and the `ModuleAccessAudit`
-/// entries for all modules that committed output during this layer's execution.
+/// Returns the finalized `LayerCollectionIR`, access audits, and anchored event
+/// collections committed during this layer's execution.
 fn execute_single_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -740,7 +753,14 @@ fn execute_single_layer(
         ),
     >,
     support_tools: SupportToolSelection,
-) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        LayerCollectionIR,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     instrumentation.on_layer_start(layer.index, layer.z);
     let result = execute_single_layer_inner(
         plan,
@@ -802,7 +822,14 @@ fn execute_single_layer_inner(
         ),
     >,
     support_tools: SupportToolSelection,
-) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        LayerCollectionIR,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     let mut audits = Vec::new();
 
     // Create an isolated LayerArena for this layer
@@ -1108,7 +1135,8 @@ fn execute_single_layer_inner(
             .collect();
         layer_output.travel_moves.extend(mapped);
     }
-    Ok((layer_output, audits))
+    let anchored_collections = arena.take_anchored_event_collections().unwrap_or_default();
+    Ok((layer_output, audits, anchored_collections))
 }
 
 /// Hydrate the per-layer arena's `SliceIR` slot from the prepass-committed
@@ -2557,7 +2585,19 @@ pub fn commit_ordered_event_collections(collections: &mut [slicer_ir::OrderedEve
 }
 
 fn validate_anchored_entity(entity: &slicer_ir::AnchoredEntity) -> Result<(), String> {
-    for point in &entity.path_points {
+    for (index, point) in entity.path_points.iter().enumerate() {
+        if point.width <= 0.0 || !point.width.is_finite() {
+            return Err(format!(
+                "anchored entity point[{index}].width must be finite and positive, got {}",
+                point.width
+            ));
+        }
+        if point.flow_factor <= 0.0 || !point.flow_factor.is_finite() {
+            return Err(format!(
+                "anchored entity point[{index}].flow_factor must be finite and positive, got {}",
+                point.flow_factor
+            ));
+        }
         let Some(z) = point.z.is_finite().then(|| slicer_ir::mm_to_units(point.z)) else {
             return Err(match entity.geometry {
                 slicer_ir::AnchoredGeometryContract::Planar { .. } => {
@@ -2784,8 +2824,17 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
                         0.0
                     },
                     time_s: if collection.runtime_hooks.account_time {
+                        let positions = event
+                            .path_points
+                            .iter()
+                            .map(|point| slicer_ir::Point3 {
+                                x: point.x,
+                                y: point.y,
+                                z: point.z,
+                            })
+                            .collect::<Vec<_>>();
                         slicer_gcode::estimator::estimate_event_time(
-                            &event.path_points,
+                            &positions,
                             feedrate_mm_s,
                             &slicer_gcode::estimator::EstimatorLimits::default(),
                         )
@@ -3520,11 +3569,33 @@ pub(crate) fn apply(
                 .set_support(incoming)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
+        LayerStageCommit::SupportWithAnchoredEvents {
+            support,
+            anchored_events,
+        } => {
+            apply(arena, LayerStageCommit::Support(support), ctx)?;
+            apply(
+                arena,
+                LayerStageCommit::AnchoredEvents(anchored_events),
+                ctx,
+            )?;
+        }
         LayerStageCommit::SupportPostProcess(ir) => {
             let _ = arena.take_support();
             arena
                 .set_support(ir)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+        }
+        LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+            support,
+            anchored_events,
+        } => {
+            apply(arena, LayerStageCommit::SupportPostProcess(support), ctx)?;
+            apply(
+                arena,
+                LayerStageCommit::AnchoredEvents(anchored_events),
+                ctx,
+            )?;
         }
         LayerStageCommit::SlicePostProcess {
             polygon_updates,
@@ -3734,6 +3805,45 @@ pub fn module_invocation_allowed_on_layer(
 
 #[cfg(test)]
 mod tests {
+    fn anchored_entity(width: f32, flow_factor: f32) -> slicer_ir::AnchoredEntity {
+        // Pins every AnchoredEntity field so a future transport widening
+        // fails here instead of silently defaulting (E=0 class).
+        // exhaustive: every field pinned intentionally.
+        slicer_ir::AnchoredEntity {
+            local_id: 1,
+            anchor_global_layer_index: 0,
+            geometry: slicer_ir::AnchoredGeometryContract::Planar { z: 2000 },
+            input_capabilities: Vec::new(),
+            output_capabilities: Vec::new(),
+            provenance: slicer_ir::AnchoredEntityProvenance {
+                requesting_feature: String::new(),
+                source_plan_entry: String::new(),
+            },
+            path_points: vec![slicer_ir::Point3WithWidth { // exhaustive: fixture pins every field
+                // exhaustive: fixture pins every field
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width,
+                flow_factor,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }],
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
+        }
+    }
+
+    #[test]
+    fn validate_anchored_entity_rejects_non_positive_width_and_flow() {
+        assert!(super::validate_anchored_entity(&anchored_entity(0.0, 1.0))
+            .unwrap_err()
+            .contains("width must be finite and positive"));
+        assert!(super::validate_anchored_entity(&anchored_entity(0.4, 0.0))
+            .unwrap_err()
+            .contains("flow_factor must be finite and positive"));
+    }
+
     #[test]
     fn support_tool_selection_assigns_entities() {
         fn path(role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {

@@ -317,15 +317,132 @@ fn contact_area_planning() {
         }
     }
     assert!(
-        output
-            .entries()
+        output.entries().iter().any(|e| e
+            .roles
             .iter()
-            .any(|e| e.roles.iter().any(|r| r.role == SupportPlanRole::SupportBody)),
+            .any(|r| r.role == SupportPlanRole::SupportBody)),
         "a multi-layer column must carry body geometry below its interface band"
     );
     assert!(
         output.entries().len() >= 2,
         "contact area must derive body/interface roles across layers"
+    );
+}
+
+#[test]
+fn disabled_independent_height_copies_object_layer_print_z_exactly() {
+    // Packet 239c AC-3 + AC-2: the enabled/disabled off-grid matrix at module
+    // level, run through the planner's native run_support_geometry path.
+    //
+    // Disabled (AC-3, canonical `PrintObjectSupportMaterial::
+    // bottom_contact_layer` disabled path calling `sync_gap_with_object_layer`):
+    // every emitted `SupportPlanEntry.anchor_z` equals
+    // `mm_to_units(layer_plan.layers[entry.anchor_layer_index].z)` with
+    // INTEGER equality — no tolerance window.
+    //
+    // Enabled (AC-2, canonical `generate_support_layers`
+    // (`SupportCommon.cpp`) stepping: `n_layers_extra = ceil((dist - EPSILON)
+    // / max_support_layer_height)`, `step = dist / n_layers_extra`,
+    // `print_z = bottom_z + k * step`): with a pitch of 0.1 mm against a
+    // 0.2 mm object grid and a candidate spanning layers 0..=8, the gap
+    // between adjacent support rows (0.2 mm) demands n = ceil((0.2 - 1e-4) /
+    // 0.1) = 2 rows per gap, so one strictly-between plane (step 0.1 mm)
+    // is inserted under every row the planner emits; at least one such
+    // plane differs from its object layer's Z by more than
+    // `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units).
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "contact".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("contact")],
+        ..Default::default()
+    };
+    let object = overhang_object("contact");
+
+    // Disabled: exact copy. Integer equality on i64 units.
+    let disabled = run_planner_with_config(
+        {
+            let base = planner_config(true);
+            let mut values = base
+                .keys()
+                .into_iter()
+                .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+                .collect::<HashMap<ConfigKey, ConfigValue>>();
+            values.insert(
+                "independent_support_layer_height".into(),
+                ConfigValue::Bool(false),
+            );
+            ConfigView::from_map(values)
+        },
+        object.clone(),
+        analysis.clone(),
+    );
+    assert!(
+        !disabled.entries().is_empty(),
+        "traditional contact must produce plan entries"
+    );
+    for entry in disabled.entries() {
+        let grid_z = layer_plan().layers[entry.anchor_layer_index as usize].z;
+        assert_eq!(
+            entry.anchor_z,
+            slicer_ir::mm_to_units(grid_z),
+            "disabled branch must copy the object layer print_z exactly \
+             (integer equality, canonical sync_gap_with_object_layer); \
+             entry at layer {} had anchor_z {}",
+            entry.global_layer_index,
+            entry.anchor_z
+        );
+    }
+
+    // Enabled: at least one off-grid plane, strictly increasing per body.
+    let enabled = run_planner_with_config(
+        {
+            // Note: `independent_support_layer_height` defaults to true, and
+            // the config here sets an explicit finer pitch (0.1 mm).
+            planner_config_with(true, 0.0, 0.1)
+        },
+        object.clone(),
+        analysis.clone(),
+    );
+    let tolerance_units = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    let off_grid: Vec<i64> = enabled
+        .entries()
+        .iter()
+        .filter(|entry| {
+            let grid_z = layer_plan().layers[entry.anchor_layer_index as usize].z;
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(grid_z)) > tolerance_units as u64
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        !off_grid.is_empty(),
+        "enabled branch must produce at least one off-grid anchor_z \
+         (>{tolerance_units} units from its object layer's Z); got {:?}",
+        enabled
+            .entries()
+            .iter()
+            .map(|e| (e.global_layer_index, e.anchor_z))
+            .collect::<Vec<_>>()
+    );
+    // Free-floating planes must be strictly increasing within the object's
+    // emitted sequence ordered by declared plane.
+    let mut planes: Vec<i64> = enabled.entries().iter().map(|e| e.anchor_z).collect();
+    planes.sort_unstable();
+    planes.dedup();
+    let sorted = {
+        let mut sorted = planes.clone();
+        sorted.sort_unstable();
+        sorted == planes
+    };
+    assert!(
+        sorted,
+        "declared planes must be distinct and strictly ordered; got {planes:?}"
     );
 }
 

@@ -603,14 +603,28 @@ pub fn resolve_per_tool_configs(
 /// object's effective layer height.
 ///
 /// Rule: `support_layer_height_mm` of `0.0` means "use the object's
-/// effective layer height" (the historical default). Any non-zero value
-/// must be **at least** the object's effective layer height; the printer
-/// cannot extrude a support layer thinner than the nominal model layer.
+/// effective layer height" (the historical default). When support rows must
+/// stay grid-exact, any non-zero value must be **at least** the object's
+/// effective layer height; the printer cannot extrude a support layer
+/// thinner than the nominal model layer.
 ///
 /// "Effective layer height" is taken to be each per-object resolved
 /// config's `layer_height` field. Variable-layer-height plans may refine
 /// this at runtime (per-region `effective_layer_height` on `ActiveRegion`),
 /// but the input-domain gate here uses the configured per-object value.
+///
+/// Packet 239c: when the module key `independent_support_layer_height` is
+/// true, support rows leave the object grid (canonical `Slicing.cpp` snaps
+/// the support gaps to multiples of the object `layer_height` **only when
+/// the flag is FALSE**, and `bottom_contact_layer` derives free-floating
+/// `print_z` from the support pitch when it is TRUE), so a support pitch
+/// finer than the object layer height is legal and the too-fine rejection
+/// is skipped. The key is declared on both `*-support-planner` manifests
+/// with `default = true` (canonical `PrintConfig.cpp` `init_fff_params`,
+/// `coBool`, default true), so a resolved config carrying module schema
+/// defaults holds it in `extensions`. A bare `ResolvedConfig` without
+/// module-manifest defaults keeps the historical grid-exact invariant —
+/// absent means the declaration surface was never consulted.
 ///
 /// Returns `Ok(())` when every object's setting is compatible, or the
 /// first offending [`ConfigResolutionError::SupportLayerHeightTooFine`]
@@ -624,7 +638,11 @@ pub fn validate_support_layer_heights(
         // layer-Z computation); cast to `f32` for the support-thinness check,
         // which compares display values, not Z-formula inputs.
         let effective_h = cfg.layer_height as f32;
-        if support_h > 0.0 && support_h < effective_h {
+        let independent = match cfg.extensions.get("independent_support_layer_height") {
+            Some(ConfigValue::Bool(b)) => *b,
+            _ => false,
+        };
+        if !independent && support_h > 0.0 && support_h < effective_h {
             return Err(ConfigResolutionError::SupportLayerHeightTooFine {
                 object_id: object_id.clone(),
                 support_layer_height_mm: support_h,

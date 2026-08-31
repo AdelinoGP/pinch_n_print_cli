@@ -586,8 +586,24 @@ pub enum LayerStageCommit {
     InfillPostProcess(crate::InfillIR),
     /// `Layer::Support`: set the arena support slot.
     Support(crate::SupportIR),
+    /// `Layer::Support`: set the support slot, then commit anchored events
+    /// emitted by the same module invocation.
+    SupportWithAnchoredEvents {
+        /// Ordinary support geometry for the anchor's model layer.
+        support: crate::SupportIR,
+        /// Additional physical rows owned by that anchor layer.
+        anchored_events: Vec<crate::OrderedEventCollection>,
+    },
     /// `Layer::SupportPostProcess`: replace the arena support slot.
     SupportPostProcess(crate::SupportIR),
+    /// `Layer::SupportPostProcess`: replace support, then commit anchored events
+    /// emitted by the same module invocation.
+    SupportPostProcessWithAnchoredEvents {
+        /// Post-processed ordinary support geometry.
+        support: crate::SupportIR,
+        /// Additional physical rows owned by that anchor layer.
+        anchored_events: Vec<crate::OrderedEventCollection>,
+    },
     /// `Layer::SlicePostProcess`: mutate the existing arena `SliceIR` in place.
     SlicePostProcess {
         /// Per-region polygon replacements `(region_key, replacement_polygons)`.
@@ -620,7 +636,9 @@ impl LayerStageCommit {
             Self::Infill(_) => "Layer::Infill",
             Self::InfillPostProcess(_) => "Layer::InfillPostProcess",
             Self::Support(_) => "Layer::Support",
+            Self::SupportWithAnchoredEvents { .. } => "Layer::Support",
             Self::SupportPostProcess(_) => "Layer::SupportPostProcess",
+            Self::SupportPostProcessWithAnchoredEvents { .. } => "Layer::SupportPostProcess",
             Self::SlicePostProcess { .. } => "Layer::SlicePostProcess",
             Self::PathOptimization(_) => "Layer::PathOptimization",
             Self::AnchoredEvents(_) => "Layer::AnchoredEvents",

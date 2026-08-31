@@ -52,8 +52,43 @@ fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView
         }],
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
-        anchor_layer_index: 0,
-        anchor_z: 0,
+        anchor_layer_index: layer_index,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(layer_index).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
+/// Packet 239c variant: pins the declared print plane so the entry stays
+/// on-grid with whatever region Z the test renders at.
+fn paint_with_plan_at_anchor_z(
+    family_id: &str,
+    layer_index: u32,
+    anchor_z_mm: f32,
+) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: layer_index as i32,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: layer_index,
+        anchor_z: slicer_ir::mm_to_units(anchor_z_mm),
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -79,7 +114,10 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
         anchor_layer_index: 0,
-        anchor_z: 0,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -294,7 +332,10 @@ fn alternating_angle() {
     let region1 = make_square_region(10.0, 0.5);
 
     let paint = paint_with_plan("traditional");
-    let paint1 = paint_with_plan_at("traditional", 1);
+    // Packet 239c: the layer-1 fixture must declare an anchor_z on-grid with
+    // its own region (0.5 mm = 5000 units), or the entry routes to the
+    // anchored branch and this test observes no paths.
+    let paint1 = paint_with_plan_at_anchor_z("traditional", 1, 0.5);
     let mut output0 = SupportOutputBuilder::new();
     let mut output1 = SupportOutputBuilder::new();
 

@@ -246,6 +246,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
 | `support_style` | string | `"default"` | — | `traditional-support` |
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
@@ -266,6 +267,7 @@ is the authoritative catalog of their defaults and ranges.
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
 | `enable_support` | bool | `true` | — | `tree-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | `tree-support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
 | `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |

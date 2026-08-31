@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use slicer_ir::ResolvedConfig;
+use slicer_ir::{ConfigValue, ResolvedConfig};
 use slicer_scheduler::{validate_support_layer_heights, ConfigResolutionError};
 
 fn cfg(layer_height: f64, support_layer_height_mm: f32) -> ResolvedConfig {
@@ -99,4 +99,18 @@ fn case_5_multi_object_mixed_layer_heights_fails_on_offender() {
         }
         other => panic!("expected SupportLayerHeightTooFine, got {other:?}"),
     }
+}
+
+#[test]
+fn case_6_independent_support_height_allows_finer_pitch() {
+    let mut config = cfg(0.2, 0.1);
+    config.extensions.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
+    let mut map = BTreeMap::new();
+    map.insert("obj-independent".to_string(), config);
+
+    validate_support_layer_heights(&map)
+        .expect("independent support planes permit a pitch finer than object layers");
 }
