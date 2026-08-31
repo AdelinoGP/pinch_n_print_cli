@@ -287,6 +287,27 @@ off-map, after.
   stay (module bool/int/float/enum manifest defaults don't thread into raw
   config; packet-254/255 precedent); explicit values reach the block once via
   `emit_config_kv` dedup (AC-5).
+- [13 — Author packet P06 — Others / Skirt — skirt-brim](issues/13-author-packet-p06-others-skirt-skirt-brim.md)
+  — packet `docs/spec_packets/258-skirt-type-and-draft-shield-keys/` authored
+  (`draft`), preflight **PASS**. All 5 keys verified true zero-occurrence gaps.
+  **Three wired** (decision points re-derived in code): `draft_shield` →
+  skirt layer span extends to the full layer set (`Print::has_infinite_skirt`
+  semantics), `single_loop_draft_shield` → innermost loop only on
+  `global_layer_index > 0` (`GCode::generate_skirt`'s `!first_layer`), and
+  `skirt_start_angle` → corner-nearest ring rotation of the first-layer
+  first-emitted loop, with the start point's reachability to final G-code
+  verified at authoring (ticket 100's lesson) — default −135° selects the
+  existing corner, so default output is byte-identical. **Two
+  declared-with-gap:** `skirt_type` (needs per-object skirt grouping;
+  default `combined` matches today) and `min_skirt_length` (needs a
+  per-filament e_per_mm model — Tier-D fog; default 0 = disabled). Two
+  recorded divergences (packet-257 class): the port emits skirt loops
+  innermost-first (canonical exports outermost-first), so canonical's
+  rotated-start condition lands on the outermost wall there vs the innermost
+  here; corner-nearest selection instead of mid-edge seating. No deviation
+  rows; no `ORCA_CONFIG_PADDING` twins (AC-6 pins honest absence). Preflight
+  corrected the Doc-Impact grep against a disk probe (the generated doc has
+  no per-module headings — key-presence verification, 257's corrected form).
 
 ## Not yet specified
 
