@@ -91,7 +91,7 @@ impl LayerModule for RectilinearInfill {
             _ => 0.2,
         };
 
-        let base_angle = match config.get("infill_angle") {
+        let base_angle = match config.get("infill_direction") {
             Some(ConfigValue::Float(a)) => *a as f32,
             _ => 0.0,
         };

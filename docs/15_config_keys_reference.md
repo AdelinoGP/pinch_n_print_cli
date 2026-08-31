@@ -137,8 +137,8 @@ is the authoritative catalog of their defaults and ranges.
 | `fuzzy_skin_point_distance` | float | `0.3` | [0.01, 5.0] | `fuzzy-skin` |
 | `fuzzy_skin_thickness` | float | `0.2` | [0.0, 2.0] | `fuzzy-skin` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `gyroid-infill` |
+| `infill_direction` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
@@ -201,8 +201,8 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_speed` | float | `25.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `dont_filter_internal_bridges` | bool | `false` | — | `rectilinear-infill` |
 | `enable_extra_bridge_layer` | bool | `false` | — | `rectilinear-infill` |
-| `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
+| `infill_direction` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | `rectilinear-infill` |

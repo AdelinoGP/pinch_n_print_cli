@@ -30,7 +30,7 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
-        .float("infill_angle", angle)
+        .float("infill_direction", angle)
         .float("infill_speed", speed)
         .float("line_width", line_width)
         .build()
@@ -398,8 +398,8 @@ fn square_10mm_z_0p2_emits_raw_waves() {
 /// (rotate-polygon-FIRST invariant: both are centered near (0,0) for a centered
 /// square polygon, within align_to_grid tolerance).
 ///
-/// The polygon is rotated by `-(infill_angle + CORRECTION_ANGLE_DEG)` before
-/// wave generation, so different infill angles produce different rotated-frame
+/// The polygon is rotated by `-(infill_direction + CORRECTION_ANGLE_DEG)` before
+/// wave generation, so different infill directions produce different rotated-frame
 /// Test 13: 45° rotated output, after inverse rotation, has approximately the same
 /// world-space bbox as the 0° output.
 ///

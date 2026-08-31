@@ -195,8 +195,8 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     if overlay.infill_density != d.infill_density {
         r.infill_density = overlay.infill_density;
     }
-    if overlay.infill_angle != d.infill_angle {
-        r.infill_angle = overlay.infill_angle;
+    if overlay.infill_direction != d.infill_direction {
+        r.infill_direction = overlay.infill_direction;
     }
     if overlay.infill_speed != d.infill_speed {
         r.infill_speed = overlay.infill_speed;

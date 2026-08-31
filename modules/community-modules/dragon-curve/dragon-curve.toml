@@ -53,12 +53,12 @@ max     = 1.0
 display = "Infill Density"
 group   = "Infill"
 
-[config.schema.infill_angle]
+[config.schema.infill_direction]
 type    = "float"
 default = 45.0
 min     = 0.0
 max     = 360.0
-display = "Infill Angle"
+display = "Infill Direction"
 group   = "Infill"
 
 [config.schema.infill_speed]

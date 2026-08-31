@@ -114,8 +114,8 @@ impl ResolvedConfig {
             ConfigValue::Float(f64::from(self.infill_overlap)),
         );
         m.insert(
-            "infill_angle".into(),
-            ConfigValue::Float(f64::from(self.infill_angle)),
+            "infill_direction".into(),
+            ConfigValue::Float(f64::from(self.infill_direction)),
         );
         m.insert(
             "infill_speed".into(),
@@ -1328,8 +1328,8 @@ declare_resolved_config! {
     plain                        infill_type: InfillType = InfillType::Grid;
     /// Infill density (0.0 to 1.0).
     cli "infill_density"         infill_density: f32 = 0.2 => extract_float;
-    /// Infill angle in degrees.
-    cli "infill_angle"           infill_angle: f32 = 45.0 => extract_float;
+    /// Infill direction in degrees.
+    cli "infill_direction"     infill_direction: f32 = 45.0 => extract_float;
     /// Infill speed in mm/s.
     cli "infill_speed"           infill_speed: f32 = 50.0 => extract_float;
     /// Solid infill speed in mm/s.
@@ -1529,7 +1529,7 @@ impl PartialEq for ResolvedConfig {
             && self.infill_type == other.infill_type
             && self.infill_density.to_bits() == other.infill_density.to_bits()
             && self.infill_overlap.to_bits() == other.infill_overlap.to_bits()
-            && self.infill_angle.to_bits() == other.infill_angle.to_bits()
+            && self.infill_direction.to_bits() == other.infill_direction.to_bits()
             && self.infill_speed.to_bits() == other.infill_speed.to_bits()
             && self.solid_infill_speed.to_bits() == other.solid_infill_speed.to_bits()
             && self.top_shell_layers == other.top_shell_layers
@@ -1638,7 +1638,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.infill_type.hash(state);
         self.infill_density.to_bits().hash(state);
         self.infill_overlap.to_bits().hash(state);
-        self.infill_angle.to_bits().hash(state);
+        self.infill_direction.to_bits().hash(state);
         self.infill_speed.to_bits().hash(state);
         self.solid_infill_speed.to_bits().hash(state);
         self.top_shell_layers.hash(state);

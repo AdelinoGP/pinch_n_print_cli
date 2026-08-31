@@ -111,7 +111,7 @@ impl LayerModule for GyroidInfill {
             _ => 0.2,
         };
 
-        let base_angle = match config.get("infill_angle") {
+        let base_angle = match config.get("infill_direction") {
             Some(ConfigValue::Float(a)) => *a as f32,
             _ => 0.0,
         };
@@ -311,7 +311,7 @@ impl GyroidInfill {
         let cy = (bb_w_min_y + bb_w_max_y) / 2.0;
 
         // Compute rotation angle (base + correction)
-        let infill_angle_rad = ((self.base_angle as f64) + CORRECTION_ANGLE_DEG).to_radians();
+        let infill_direction_rad = ((self.base_angle as f64) + CORRECTION_ANGLE_DEG).to_radians();
 
         // Scale factor: converts from normalized gyroid units to mm
         let scale_factor = spacing_mm;
@@ -331,7 +331,7 @@ impl GyroidInfill {
         // in the rotated frame. Using the bbox center as the pivot (not the
         // origin) ensures the back-rotation around the same center is an exact
         // inverse for off-center polygons.
-        let rotated_expoly = rotate_expolygon(expoly, -infill_angle_rad, cx, cy);
+        let rotated_expoly = rotate_expolygon(expoly, -infill_direction_rad, cx, cy);
 
         // Compute bbox of the rotated polygon in mm
         let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = {
@@ -432,8 +432,8 @@ impl GyroidInfill {
 
         // Convert wave polylines from gyroid units to mm in the rotated frame,
         // then rotate back to world space around the world bbox center.
-        let cos_a = infill_angle_rad.cos();
-        let sin_a = infill_angle_rad.sin();
+        let cos_a = infill_direction_rad.cos();
+        let sin_a = infill_direction_rad.sin();
 
         let mut result = Vec::new();
 

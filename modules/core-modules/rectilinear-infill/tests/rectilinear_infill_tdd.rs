@@ -16,7 +16,7 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 
 #[rustfmt::skip]
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
-    ConfigViewBuilder::new().float("infill_density", density).float("infill_angle", angle).float("infill_speed", speed).float("line_width", line_width).build()
+    ConfigViewBuilder::new().float("infill_density", density).float("infill_direction", angle).float("infill_speed", speed).float("line_width", line_width).build()
 }
 
 // Post-host-partition fixture: `sparse_infill_area` carries the square so

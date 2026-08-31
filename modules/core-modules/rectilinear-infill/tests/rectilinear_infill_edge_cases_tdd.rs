@@ -18,7 +18,7 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 fn config(density: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
-        .float("infill_angle", 0.0)
+        .float("infill_direction", 0.0)
         .float("infill_speed", 50.0)
         .float("line_width", 0.4)
         .build()

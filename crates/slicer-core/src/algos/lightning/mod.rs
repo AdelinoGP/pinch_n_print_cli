@@ -99,7 +99,7 @@ pub fn generate_lightning_trees(
                 mm_to_units(line_width_mm),
                 1,
                 mm_to_units(config.layer_height as f32),
-                config.infill_angle as f64,
+                config.infill_direction as f64,
                 5.0,
                 0.0,
             );

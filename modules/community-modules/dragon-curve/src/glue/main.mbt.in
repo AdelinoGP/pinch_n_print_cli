@@ -139,7 +139,7 @@ pub fn run(
   let module_line_width = cfg_float(config, "line_width", default_line_width)
   let speed = cfg_float(config, "infill_speed", default_speed)
   let module_depth = cfg_int(config, "tiling_depth", default_tiling_depth)
-  let angle_deg = cfg_float(config, "infill_angle", default_angle)
+  let angle_deg = cfg_float(config, "infill_direction", default_angle)
   let color_map = cfg_color_map(config)
 
   // Zero density means "no sparse infill", not "divide by zero". Fall through

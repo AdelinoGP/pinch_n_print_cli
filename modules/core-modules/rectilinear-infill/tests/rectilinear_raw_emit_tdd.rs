@@ -109,7 +109,7 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
-        .float("infill_angle", angle)
+        .float("infill_direction", angle)
         .float("infill_speed", speed)
         .float("line_width", line_width)
         .build()
@@ -124,7 +124,7 @@ fn make_config_with_shift(
 ) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
-        .float("infill_angle", angle)
+        .float("infill_direction", angle)
         .float("infill_speed", speed)
         .float("line_width", line_width)
         .float("infill_shift_step", shift_mm)
@@ -524,7 +524,7 @@ fn solid_spacing_adjusted_for_solid_role() {
     // 1.2x cap, so the scan uses 23 evenly spaced lines.
     let config = ConfigViewBuilder::new()
         .float("infill_density", 0.18)
-        .float("infill_angle", 0.0)
+        .float("infill_direction", 0.0)
         .float("infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("top_surface_line_width", 0.42)
@@ -611,7 +611,7 @@ fn solid_spacing_adjusted_for_solid_role() {
 fn solid_surfaces_use_full_density_and_role_width() {
     let config = ConfigViewBuilder::new()
         .float("infill_density", 0.2)
-        .float("infill_angle", 0.0)
+        .float("infill_direction", 0.0)
         .float("infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("initial_layer_line_width", 0.7)

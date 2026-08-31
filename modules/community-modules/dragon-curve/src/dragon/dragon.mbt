@@ -603,7 +603,7 @@ pub fn tile_dragon_curve(
 /// approximately angle-independent (`rotation_preserves_coverage` bounds it
 /// both ways). It is approximate for the same reason the unrotated placement
 /// is - see `tile_dragon_curve`, which explains why this is not an exact plane
-/// tiling. `infill_angle` is a real control, not a decorative key: successive
+/// tiling. `infill_direction` is a real control, not a decorative key: successive
 /// prints can cross-hatch by rotating the dragon.
 fn place_dragons(
   region : Region,
