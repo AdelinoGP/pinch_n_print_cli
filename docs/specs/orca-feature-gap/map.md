@@ -254,7 +254,7 @@ off-map, after.
   `slicer-sdk --doc` red. Gates green; guests rebuilt fresh.
 - [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md) is
   still open (filed by ticket 10's authoring); the rename workstream's
-  remaining members are 103–107, all unblocked.
+  remaining members are 105–107, all unblocked (105 gates 107).
 - [11 — Author packet P04 — Printer / Machine / Print volume — wipe-tower](issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md)
   — packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
   (`draft`), preflight **PASS**. Grounding found `bed_exclude_area` is a true
@@ -313,6 +313,19 @@ off-map, after.
   without aliases, aligned defaults to 0.2 / 0.3 by user ruling, regenerated
   config docs with no new deviation rows, and left the next fuzzy-skin packet
   authoring ticket unblocked.
+- [104 — Rename support/layer-planner keys to Orca names](issues/104-rename-support-layer-planner-keys.md)
+  — `support_top_z_distance_mm` → `support_top_z_distance` (traditional +
+  tree manifests, guests, host `SupportGeometryIR` field, prepass) and
+  `first_layer_height` → `initial_layer_print_height` (layer-planner-default
+  manifest + guest, host `ResolvedConfig` cli field + `to_config_map`,
+  `region_mapping` overlay, emitter, stats, 13 fixture JSONs). The support
+  rename reconnected two plumbing-disconnected spellings: the Orca name
+  already existed host-side, and the module-view filter had kept it from
+  reaching the planners — one explicit value now feeds both prepass and
+  planner. Deviation triage (user ruling): manifest `first_layer_height`
+  default 0.3 → **0.2** (canonical + host + live behaviour were already 0.2;
+  doc-only change). Deviation count stays 27. Unblocks the 13 packet tickets
+  gated on 104 (P11–P13, P29–P31, P68–P70, P72, P81–P83).
 
 ## Not yet specified
 
