@@ -1,7 +1,7 @@
 # 103 — Rename fuzzy-skin keys to Orca names
 
 Type: task
-Status: open
+Status: resolved
 Assignee: wayfinder session (ses_faa7d4541ffeVQyqB0Ub3XdfOD) — claimed 2026-08-30
 Blocked by: —
 Map: ../map.md
@@ -29,3 +29,34 @@ Obligations:
 - Ledger facts re-derived from disk at edit time, never frozen.
 
 Resolved when: the two renames are merged, the tree is green on the gates above, and the 03 rows are updated.
+
+## Resolution (2026-08-30)
+
+Committed as `1be6a5af`.
+
+- Renamed `thickness` to `fuzzy_skin_thickness` and `point_distance` to
+  `fuzzy_skin_point_distance` across the fuzzy-skin manifest, module fields and
+  config reads, native/wasm parity fixtures, module tests, and the SDK worked
+  example. No aliases remain. Whole-tree audit found no residual live config-key
+  occurrences; the remaining bare `thickness` JSON fields belong to the
+  unrelated Arachne beading model.
+- Aligned defaults to canonical OrcaSlicer by user ruling:
+  `fuzzy_skin_thickness` 0.3 → 0.2 and `fuzzy_skin_point_distance` 0.5 → 0.3.
+  This also reconciles the latter's pre-existing `FuzzySkinModule::from_config`
+  fallback (`modules/core-modules/fuzzy-skin/src/lib.rs`) of 0.8 with both the
+  manifest and canonical default. The
+  `empty_config_uses_canonical_fuzzy_skin_defaults` regression test
+  (`modules/core-modules/fuzzy-skin/tests/fuzzy_skin_tdd.rs`) pins empty-config
+  output to explicit 0.2/0.3 output.
+- Regenerated `docs/15_config_keys_reference.md`; the deviation table returned
+  to its prior baseline, so no intended-deviation sign-off was needed. Updated the two
+  adjudication rows in `03-asset-scoped-gap.md` and the fuzzy-skin worked example
+  in `docs/05_module_sdk.md`.
+- Rebuilt all guest artifacts; `cargo xtask build-guests --check` returned exit
+  0. Validation passed: fuzzy-skin tests, both filtered runtime fuzzy-skin parity
+  contract tests, `cargo xtask gen-config-docs --check`, `cargo xtask
+  check-literals`, `cargo check --workspace --all-targets`, and `cargo clippy
+  --workspace --all-targets -- -D warnings`.
+- Per the user's explicit closure ruling, the prohibited-by-default full
+  workspace test suite was not run; focused tests plus workspace all-target
+  check/clippy are the acceptance evidence for this ticket.

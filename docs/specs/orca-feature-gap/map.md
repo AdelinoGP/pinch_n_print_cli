@@ -308,6 +308,11 @@ off-map, after.
   rows; no `ORCA_CONFIG_PADDING` twins (AC-6 pins honest absence). Preflight
   corrected the Doc-Impact grep against a disk probe (the generated doc has
   no per-module headings — key-presence verification, 257's corrected form).
+- [103 — Rename fuzzy-skin keys to Orca names](issues/103-rename-fuzzy-skin-keys.md)
+  — adopted canonical `fuzzy_skin_thickness` / `fuzzy_skin_point_distance`
+  without aliases, aligned defaults to 0.2 / 0.3 by user ruling, regenerated
+  config docs with no new deviation rows, and left the next fuzzy-skin packet
+  authoring ticket unblocked.
 
 ## Not yet specified
 
