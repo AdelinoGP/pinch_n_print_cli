@@ -326,6 +326,30 @@ off-map, after.
   default 0.3 → **0.2** (canonical + host + live behaviour were already 0.2;
   doc-only change). Deviation count stays 27. Unblocks the 13 packet tickets
   gated on 104 (P11–P13, P29–P31, P68–P70, P72, P81–P83).
+- [14 — Author packet P07 — Others / Fuzzy Skin — fuzzy-skin](issues/14-author-packet-p07-others-fuzzy-skin-fuzzy-skin.md)
+  — packet `docs/spec_packets/259-fuzzy-skin-keys/` authored (`draft`),
+  preflight **PASS**. Canonical read corrected the snapshot: `fuzzy_skin` is
+  an **enum** (`none/external/hole/all/allwalls/disabled_fuzzy`, default
+  `disabled_fuzzy`), not a bool — the master loop-selection switch
+  (`should_fuzzify`'s `fuzzify_contours`/`fuzzify_holes`). **Two wired**:
+  `fuzzy_skin` → the module's loop-selection gate (`external`/`all` → outer
+  contour, `allwalls` → every loop, `none` → the per-vertex flag path,
+  `hole` → inert) and `fuzzy_skin_first_layer` → the layer-0 pass-through
+  gate. **Five declared-with-gap**: `fuzzy_skin_mode` (Arachne
+  extrusion-line-only width semantics — the port is a `fuzzy_polyline`
+  Polygon-path port), `fuzzy_skin_noise_type`/`octaves`/`persistence`/`scale`
+  (libnoise coherent modules; the port's xorshift RNG is the `UniformNoise`
+  (classic) analogue, so defaults are behaviorally faithful). Recorded
+  divergence: the IR has no `LoopType::Hole` (hole boundaries are
+  `LoopType::Outer` at `perimeter_index 0`), so `hole` is inert and `all`
+  degrades to `external`. **Padding correction**: the preflight sweep found
+  `fuzzy_skin`/`fuzzy_skin_mode` already in `ORCA_CONFIG_PADDING`
+  (`crates/slicer-gcode/src/serialize.rs`); the `fuzzy_skin` value `"none"`
+  contradicted the canonical default and is corrected to `"disabled_fuzzy"`
+  (no entries gained/lost). Behavior changes (canonical-alignment, test
+  fallout pre-baked): default `disabled_fuzzy` is inert (apply_to_all alone
+  no longer fuzzes) and layer 0 passes through at default. No deviation rows;
+  no human sign-off consumed.
 
 ## Not yet specified
 
@@ -369,6 +393,15 @@ off-map, after.
   Revisit once the queue reaches Tier D. Graduating with it: 2 fog-blocked
   Tier A keys (`filament_density`, `filament_diameter` — declare-in-manifest
   work whose manifest home depends on the model).
+- **Hole-loop identification in the wall IR.** Surfaced by ticket 14's
+  authoring: canonical `fuzzy_skin = "hole"` / `"all"` (contour+hole) cannot
+  be wired because `LoopType` has no `Hole` variant and classic-perimeters
+  emits hole boundaries as `LoopType::Outer` at `perimeter_index 0` —
+  indistinguishable from the contour. Packet 259 records `hole` as inert and
+  `all` as degrading to `external`. Whether the IR gains a `LoopType::Hole`
+  variant (or hole metadata on `WallLoop`) — and which consumers beyond
+  fuzzy-skin would use it — is queue-sized IR work, not a queue packet;
+  fog until a packet or IR effort picks it up.
 
 ## Out of scope
 
