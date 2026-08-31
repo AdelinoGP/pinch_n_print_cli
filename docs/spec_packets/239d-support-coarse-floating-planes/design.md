@@ -1,0 +1,365 @@
+# Design: 239d-support-coarse-floating-planes
+
+## Controlling Code Paths
+
+- **Primary code path (Z authority).** `SupportPlanner::plan_for_object`
+  (`modules/core-modules/tree-support-planner/src/lib.rs`) and its traditional twin
+  (`modules/core-modules/traditional-support-planner/src/lib.rs`). The 239c derivation lives
+  in `packet239c_intermediate_planes` (tree `lib.rs` ~3757-3783, traditional `lib.rs`
+  ~684-710) and its callers (tree ~3649-3705, traditional ~597-650). The tree caller builds
+  `support_rows_by_object` (object_id → `anchor_layer_index` → surviving entries, filter
+  `decline_reason.is_none() && skeleton.is_some()`, tree `lib.rs` ~3622-3633) and brackets
+  consecutive layer keys; the traditional caller tracks `previous_supported_layer`
+  (traditional `lib.rs` ~597-650). `support_pitch_mm` comes from the `support_layer_height_mm`
+  read (tree `lib.rs` ~1641-1645, traditional `lib.rs` ~108-112) with the 0.0 sentinel
+  falling back to the object's effective layer height (tree `lib.rs` ~3597-3616, traditional
+  `lib.rs` ~599-601; the `[FWD]` option (b) comments at tree `lib.rs` ~3600-3608 and
+  traditional `lib.rs` ~602-606).
+- **Primary code path (decimation).** `build_emit_schedule`
+  (`crates/slicer-core/src/algos/support_geometry.rs` ~51-84) decimates the host-side
+  `SupportGeometryIR` by `support_layer_height_mm`; it is consumed only inside
+  `execute_support_geometry` (same file ~92-127), which the host prepass
+  (`commit_support_geometry_builtin`, `support_geometry_producer.rs` ~37-52) calls — there is
+  no direct `build_emit_schedule` call in the producer file. Both planners receive
+  `SupportGeometryView` as `_support_geometry` (tree `plan_for_object`, `lib.rs` ~1851;
+  traditional `run_support_geometry_with_analysis`, `lib.rs` ~174) and ignore it on the
+  meshed-object planner path: the tree planner's only read is the mesh-less legacy contact
+  fallback — a genuinely mesh-less object with no contacts (gated at tree `lib.rs`
+  ~2169-2172, read at ~2173) — and the traditional planner never reads it. The traditional
+  planner's own decimation is `support_step =
+  round(support_layer_height_mm / model_layer_height).max(1)` (traditional `lib.rs`
+  ~363-366) applied at the entry-emission gate (traditional `lib.rs` ~511).
+- **Primary code path (emission).** Unchanged from 239c: `TreeSupport::run_support` /
+  `TraditionalSupport::run_support` emit at the plan-declared `anchor_z` via
+  `PaintRegionLayerView::support_plan_entries_for`; off-grid rows travel the anchored path
+  (DEV-159..163 seam completion). No transport changes are expected.
+- **Neighbouring tests/fixtures.**
+  `crates/slicer-runtime/tests/integration/support_family_closure.rs` (real-slice driver
+  `run_slice_for_family` / `run_slice_for_family_with_extra` → `slicer_runtime::run::run_slice`,
+  tracked fixture `SupportTest.stl`, tracked config `orca-matched-config.json`; helpers
+  `distinct_z_sequence` ~225, `z_followed_by_support_block` ~238, the 239c baseline const
+  `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z` ~261, `assert_no_test_reads_orca_gcode` ~1179;
+  the 239c tests at ~284, ~317, ~368, ~1314);
+  `modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs` (the `layer_plan()`
+  fixture helper ~167, the 239c test `enabled_independent_height_produces_free_floating_anchor_z`
+  ~927);
+  `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` (the
+  239c test `disabled_independent_height_copies_object_layer_print_z_exactly` ~333);
+  `crates/slicer-gcode/tests/gcode_emit_tdd.rs` (the 239c verdict test
+  `offgrid_pass_height_delta_matches_recorded_verdict` ~1883);
+  `crates/slicer-gcode/tests/gcode_relative_extrusion_tdd.rs` (`extract_e_values` ~50 — the
+  E-parsing precedent, not importable across crates).
+- **OrcaSlicer comparison:** see `requirements.md` §OrcaSlicer Reference Obligations; do not
+  repeat delegation rules.
+
+## Architecture Constraints
+
+<!-- snippet: coord-system -->
+- Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
+
+<!-- snippet: wasm-staleness -->
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
+
+- **`AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` = 10 units = 1e-3 mm** is the
+  single on-grid/off-grid discriminator used by both the planner (deciding whether a derived
+  plane is off-grid) and the renderer (deciding whether to take the anchored route). Do not
+  introduce a second epsilon.
+- **Config keys are snake_case in Rust, always.** `config.get("support_layer_height_mm")`,
+  never `"support-layer-height-mm"`. Manifest section headers are already snake_case.
+- **No schema/version constant moves.** `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`
+  (`crates/slicer-ir/src/slice_ir.rs`) is not bumped; no `SupportPlanIR` version moves; no
+  field is added to `SupportPlanEntry` — the coarse stack is expressed entirely through
+  `anchor_z` values. No version literal is frozen here on purpose: re-derive it from the
+  constant at the moment you need it.
+- **239c's locked invariants carry over.** `anchor_z` is the declared support print plane and
+  the only Z authority a support renderer may consult; the disabled branch is bit-for-bit
+  the pre-change behaviour; the on-grid/off-grid discriminator is
+  `COORDINATE_TOLERANCE_UNITS`; the `support_layer_height_mm == 0.0` sentinel means "object
+  pitch" (239c [FWD] option b). This packet extends the enabled branch only.
+
+## Code Change Surface
+
+**Selected approach — the coarse stack brackets the demanded interface/contact planes.**
+
+The 239c derivation brackets consecutive support rows (dense, object-grid). The coarse
+direction must bracket the **demanded planes** — the layers whose entries carry
+`TopInterface`/`BaseInterface`/`BottomInterface` roles, which sit at support-region
+boundaries and span many object layers (mirroring canonical's sorted `extremes`). Between
+consecutive demanded planes the stack is generated at pitch spacing by the canonical rule,
+and the body rows between the brackets are replaced by the stack planes. This is a
+planner-side derivation change only; the renderer/row path is untouched.
+
+Exact functions, tests, and fixtures:
+
+1. **Tree planner** (`modules/core-modules/tree-support-planner/src/lib.rs`): in the 239c
+   caller (~3649-3705), when `support_pitch_mm >=` the object gap (equivalently: the
+   per-row `n_layers_extra` would be 1), bracket the demanded planes instead of consecutive
+   support rows. Demanded planes = the layers with entries carrying interface roles
+   (`TopInterface`/`BaseInterface`/`BottomInterface`); a region without interface entries
+   falls back to the first/last demanded layers of each contiguous run of demanded layers.
+   Between consecutive demanded planes, generate the stack:
+   `n = ceil((dist - EPSILON) / pitch)`, `step = dist / n`, planes at
+   `below_z + k * step` for `k = 1..n` with the last aligned to `above_z` (the 239c helper
+   returns `1..n` strictly between; the coarse direction additionally emits the aligned last
+   plane, which dedups against the upper bracket). Apply the canonical grouping/midpoint
+   rule (`generate_support_layers`: planes within `EPSILON` collapse to the midpoint
+   `zavg = 0.5 * (first + last)`, group height = minimum). The body entries between the
+   brackets are replaced by the stack planes (cloned with body roles and the nearest
+   demanded row's skeleton — see `[FWD]` Q2). The sentinel (pitch 0.0 → object pitch) is
+   preserved: with pitch == object pitch the stack planes land on the grid and dedup against
+   the demanded rows (AC-N3 pins this).
+2. **Traditional planner** (`modules/core-modules/traditional-support-planner/src/lib.rs`):
+   the same derivation at the 239c caller (~597-650), plus the `support_step` neutralization:
+   when pitch >= gap, `support_step` is set to 1 (the floating stack replaces the
+   every-Nth-layer grid subset; the decimation gate at ~511 then passes every layer and the
+   stack provides the coarse rows). `support_step` stays as-is for the finer direction
+   (where it is already 1).
+3. **Tests.** `tree_family_tdd.rs`: `coarse_pitch_produces_free_floating_anchor_z` (AC-2)
+   and `zero_pitch_sentinel_stays_object_grid` (AC-N3), extending the `layer_plan()` fixture
+   pattern (~167) with a multi-layer demand and pitch 0.3. `traditional_family_tdd.rs`:
+   `coarse_pitch_produces_free_floating_anchor_z` (AC-3). `support_family_closure.rs`:
+   `coarse_support_pitch_emits_free_floating_extruding_rows` (AC-1) and
+   `disabled_coarse_pitch_reproduces_baseline_z_sequence` (AC-N1) as `pub fn` checks plus
+   bare `#[test]` wrappers in `integration/main.rs` (the wrapper convention), and a new
+   E-assertion helper (parse the `;TYPE:Support` block after an off-grid `;Z:` row, extract
+   G1 `E` tokens, assert at least one `> 0`; the `extract_e_values` precedent is in a
+   different crate's test binary and cannot be imported). `gcode_emit_tdd.rs`:
+   `coarse_pass_height_delta_matches_recorded_verdict` (AC-4), mirroring the 239c verdict
+   test (~1883) with the Step 5 measured constants.
+4. **Docs.** `docs/07_implementation_status.md` (Step 1 and Step 5 measurement records under
+   `TASK-523`/`TASK-527`; `TASK-523`..`TASK-530` registration at Step 8),
+   `docs/specs/support-independent-layer-z-split-plan.md` (queue row 4),
+   `docs/specs/support-parity-gap-register.md` (new coarse-direction row),
+   `tmp/239d-human-validation.md` (the gate document).
+
+**Rejected alternatives.**
+
+- *Coarse rows from the decimated subset (`build_emit_schedule` / `support_step`).* Rejected:
+  the host schedule never reaches the meshed-object planner path (both planners ignore
+  `SupportGeometryView` there — the tree's only read is the mesh-less legacy contact
+  fallback at tree `lib.rs` ~2173; measured: support on 246/299 rows despite it), and
+  `support_step` decimates on-grid — neither can produce free-floating rows. The floating
+  stack is the source of coarse rows; the decimation mechanisms are reconciled as above.
+- *Exact-pitch spacing from the region bottom (`below_z + k * pitch`).* Rejected: the last
+  row can land arbitrarily close to the upper bracket and the interface layers; canonical
+  `dist/n` adapts the step to the span and aligns the last row. User decision 2026-08-31:
+  canonical `dist/n`.
+- *Bracket the run boundaries only (first/last demanded layers of each contiguous run),
+  regardless of interface entries.* Rejected: ignores the interface structure canonical
+  uses; the interface entries are the closer analog of canonical's `extremes`. Kept as the
+  fallback for interface-less regions. User decision 2026-08-31: interface entries as
+  skeleton.
+- *Remove `support_step` entirely.* Rejected: the neutralization (set to 1 when pitch >=
+  gap) is sufficient and avoids the blast radius of deleting a mechanism the traditional
+  planner's tests pin. User decision 2026-08-31: floating stack replaces decimation.
+- *Transport a `support_layer_height` field on `SupportPlanEntry`.* Rejected (as in 239c):
+  it is a WIT-crossing prepass type; the stack is expressed through `anchor_z` deltas.
+
+## Files in Scope (read + edit)
+
+Two primary files, justified by the inherent symmetry across the two support families; no
+step edits more than three files.
+
+- `modules/core-modules/tree-support-planner/src/lib.rs` - role: tree Z authority; expected
+  change: the coarse-direction bracket selection + stack generation in the 239c caller.
+  **Very large file — ranged reads only.**
+- `modules/core-modules/traditional-support-planner/src/lib.rs` - role: traditional Z
+  authority; expected change: the same derivation + the `support_step` neutralization.
+  **Very large file — ranged reads only.**
+
+Test and doc files edited by their owning steps: `tree_family_tdd.rs`,
+`traditional_family_tdd.rs`, `support_family_closure.rs`, `integration/main.rs`,
+`gcode_emit_tdd.rs`, `docs/07_implementation_status.md`,
+`docs/specs/support-independent-layer-z-split-plan.md`,
+`docs/specs/support-parity-gap-register.md`, `tmp/239d-human-validation.md`.
+
+## Read-Only Context
+
+Include ranges for files over 300 lines.
+
+- `docs/spec_packets/239c-support-layer-height-producer/packet.spec.md` - whole file -
+  purpose: the ACs this packet extends, the test-naming convention, the gate structure.
+- `docs/spec_packets/239c-support-layer-height-producer/design.md` - whole file - purpose:
+  the derivation rules, the `[FWD]` sentinel decision, the locked invariants.
+- `docs/specs/support-independent-layer-z-split-plan.md` - whole file (short) - purpose: the
+  canonical block and the packet queue.
+- `docs/DEVIATION_LOG.md` - rows `DEV-159`..`DEV-163` only - purpose: the seam completion
+  239d inherits (the E=0 defect class, the aggregation/view/commit seams, the identity
+  resolution).
+- `docs/specs/support-parity-gap-register.md` - rows `G-02` and the new coarse row only -
+  purpose: the gap 239c closed and the gap this packet closes.
+- `crates/slicer-core/src/algos/support_geometry.rs` - `build_emit_schedule` and
+  `execute_support_geometry` only (~51-127) - purpose: the read-only decimation surface.
+- `crates/slicer-runtime/src/builtins/support_geometry_producer.rs` - the prepass call site
+  only (~47-52) - purpose: confirming the schedule never reaches the meshed-object planner
+  path (the prepass calls `execute_support_geometry`, never `build_emit_schedule` directly).
+- `crates/slicer-ir/src/slice_ir.rs` - the `SupportPlanEntry` definition only - purpose:
+  `anchor_z`/`anchor_layer_index` semantics (no new fields).
+- `crates/slicer-runtime/tests/integration/support_family_closure.rs` - the helper block
+  (`support_test_path`, `matched_config_path`, `matched_config_for`, `run_slice_for_family`,
+  `run_slice_for_family_with_extra`, `distinct_z_sequence`, `z_followed_by_support_block`,
+  `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z`, `assert_no_test_reads_orca_gcode`) and the 239c
+  tests only - purpose: the real-slice driver AC-1/AC-N1 reuse and the wrapper convention.
+- `modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs` - the `layer_plan()`
+  fixture helper and the 239c independent-height test only - purpose: the AC-2/AC-N3 fixture
+  pattern.
+- `crates/slicer-gcode/tests/gcode_emit_tdd.rs` - the 239c verdict test only (~1883-1960) -
+  purpose: the AC-4 pattern.
+
+## Out-of-Bounds Files
+
+- `OrcaSlicerDocumented/...` - delegate; never load.
+- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
+- `crates/slicer-core/src/algos/support_geometry.rs` and
+  `crates/slicer-runtime/src/builtins/support_geometry_producer.rs` - read-only pre-239c
+  surface; never edited here.
+- The renderers (`modules/core-modules/tree-support/src/lib.rs`,
+  `modules/core-modules/traditional-support/src/lib.rs`), the host seams
+  (`crates/slicer-runtime/src/layer_executor.rs`, `crates/slicer-runtime/src/pipeline.rs`),
+  the WIT/transport (`crates/slicer-schema/wit/**`, `crates/slicer-wasm-host/src/**`,
+  `crates/slicer-sdk/src/layer_collection_builder.rs`) - 239a/239b/239c-owned; never edited
+  here. If a renderer edit is genuinely needed, that is a scope change to raise, not a local
+  fallback.
+- `docs/spec_packets/239c-support-layer-height-producer/implementation-plan.md` and
+  `requirements.md` - consume the `packet.spec.md` and `design.md` contracts only.
+- `docs/15_config_keys_reference.md` - generated by `cargo xtask gen-config-docs`; not
+  regenerated by this packet (no new keys).
+- Unrelated crates - delegate symbol lookups; do not browse.
+
+## Expected Sub-Agent Dispatches
+
+- Question: confirm the non-synchronized branch of `raft_and_intermediate_support_layers`
+  brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive
+  ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`,
+  `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last aligned to `extr2z`,
+  and that the synchronized branch snaps to object layers; scope:
+  `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp`; return: `SUMMARY`
+  (<= 200 words); purpose: Steps 2-3.
+- Question: every site in `modules/core-modules/tree-support-planner/src/lib.rs` and
+  `modules/core-modules/traditional-support-planner/src/lib.rs` that assigns `anchor_z`,
+  reads `support_layer_height_mm`, or applies `support_step`; scope: those two files; return:
+  `LOCATIONS` (<= 20 entries); purpose: Steps 2-3, so neither large file is full-read.
+- Question: the interface-role entry structure in the tree planner's emit pass — which
+  layers carry `TopInterface`/`BaseInterface`/`BottomInterface` roles and how the roles are
+  decided per node (`support_interface_top_layers`, `support_interface_bottom_layers`,
+  `num_top_base_interface_layers`); scope: `modules/core-modules/tree-support-planner/src/lib.rs`
+  (~3060-3480); return: `SUMMARY` (<= 200 words); purpose: Step 2 bracket selection.
+- Question: the three measurement numbers for a minimal coarse off-grid case through
+  `DefaultGCodeEmitter::emit_gcode` — applied height term, declared plane delta, resulting E
+  — for a 0.3-pitch row; scope: `crates/slicer-gcode/`; return: `FACT` (three numbers plus
+  the verdict word); purpose: Step 5. **Highest-risk dispatch.**
+- Question: every test in the workspace that hard-asserts the traditional planner's
+  `support_step` decimation behaviour (row counts or layer multiples); scope: `crates/`,
+  `modules/`; return: `LOCATIONS` (file + test fn, <= 15 entries); purpose: Step 3 blast
+  radius.
+- Question: the exact family names and config-edit helper used by the 239c real-slice tests
+  (`run_slice_for_family_with_extra` call sites) so AC-1 can cover both families; scope:
+  `crates/slicer-runtime/tests/integration/support_family_closure.rs`; return: `FACT`
+  (<= 5 lines); purpose: Step 4.
+
+## Data and Contract Notes
+
+- **IR/manifest contracts.** No IR shape changes; no manifest changes. `SupportPlanEntry`
+  keeps its 13 fields; the coarse stack is expressed through `anchor_z` values and the
+  existing `anchor_layer_index` (the nearest object layer). The keys
+  (`independent_support_layer_height`, `support_layer_height_mm`) are already declared on
+  both planner manifests with byte-identical `type`/`default` (the
+  `ConfigBoundsIndex::from_modules` intersection requires it).
+- **WIT boundary.** None crossed. The anchored transport is 239b's; the host seam is 239a's;
+  the renderer emission is 239c's. Editing any of them is out of bounds.
+- **Determinism/scheduler constraints.** The coarse derivation must be a pure function of
+  the entries plus config, never of iteration order or hash-map traversal. The stack planes
+  must be strictly increasing per object (AC-2 asserts it). The synthetic
+  `global_layer_index` scheme (tree `i32::MIN + ordinal`, deduped per plane via
+  `intermediate_plane_indices`) is inherited from 239c and must not introduce a second
+  ordering authority.
+- **Decimation facts (measured, not assumed).** `build_emit_schedule` gates only the
+  host-side `SupportGeometryIR`; both planners ignore `SupportGeometryView` on the
+  meshed-object planner path (the tree's only read is the mesh-less legacy contact fallback,
+  tree `lib.rs` ~2169-2173; the traditional parameter, `lib.rs` ~174, is never read). The
+  traditional `support_step` decimation is on-grid. Neither can produce free-floating rows;
+  the floating stack is the coarse-row mechanism.
+
+## Locked Assumptions and Invariants
+
+- **Locked:** `anchor_z` is the declared support print plane, in canonical units, and is the
+  only Z authority a support renderer may consult (239c).
+- **Locked:** the disabled branch is bit-for-bit the pre-change behaviour. AC-N1 is the
+  falsifier; it compares against a baseline captured **before** any planner edit (Step 1).
+- **Locked:** the `support_layer_height_mm == 0.0` sentinel means "object pitch" (239c [FWD]
+  option b). AC-N3 is the falsifier.
+- **Locked:** the finer direction (pitch < gap) is unchanged. AC-N2 (the 239c AC-1 test) is
+  the falsifier.
+- **Locked:** the coarse stack follows the canonical `dist/n` stepping between consecutively
+  demanded interface/contact planes, with the canonical grouping/midpoint rule applied
+  (user decision 2026-08-31).
+- **Locked:** the on-grid/off-grid discriminator is
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units = 1e-3 mm), in both
+  planner and renderer (239c).
+- **Locked by measurement, not by assumption:** whether `DefaultGCodeEmitter::emit_gcode`
+  mis-scales a coarse 0.3-pitch off-grid pass. Nothing in this packet may state a flow figure
+  or a verdict that the Step 5 record does not contain.
+
+## Risks and Tradeoffs
+
+- **The bracket selection is the design's crux.** The tree planner's interface roles are
+  per-node/per-layer (Roof/Floor/Base counters seeded at contact creation), not per
+  contiguous run; the demanded planes are the layers whose entries carry interface roles,
+  which sit at region boundaries. The fallback for interface-less regions (first/last
+  demanded layers of each contiguous run) must be specified precisely or the stack can
+  silently stay grid-bound for those regions. `[FWD]` Q1.
+- **The body-row replacement touches the skeleton.** The stack planes between the brackets
+  replace the demanded body rows; their roles and skeleton must come from a defined source
+  (the nearest demanded row below the plane, or the lower bracket with roles adjusted to
+  body). A wrong choice produces interface geometry at body planes or missing geometry.
+  `[FWD]` Q2.
+- **The `support_step` neutralization has a blast radius.** The traditional planner's tests
+  pin the decimation behaviour; the Step 3 dispatch inventories them before editing. Widening
+  a tolerance to make a change pass is gaming the gate and is forbidden.
+- **The human gate cannot close today.** Both reference files are verified absent
+  (`REFS-ABSENT-GATE-OPEN`), and only a human can produce them (with a support-extruder
+  nozzle whose max layer height yields the 0.3 mm pitch — canonical has no
+  `support_layer_height_mm` key). The packet reaches "all steps complete, sign-off pending"
+  and stops there; that is the designed outcome, not a failure.
+- **Guest staleness.** Every step here edits guest-feeding paths, so essentially every
+  failure in this packet is a stale-guest suspect until `cargo xtask build-guests --check`
+  returns exit `0`.
+- **The E=0 defect class is a test assertion, not a gate finding.** AC-1 asserts extrusion
+  presence on every off-grid support row; the 239c artifact regression ("it renders
+  nothing") was caught only by human-gate inspection, and this packet must not repeat that.
+
+## Context Cost Estimate
+
+- Aggregate: `M`
+- Largest step: `M` (Steps 2, 3, 4, 7, 8)
+- Highest-risk dispatch and required return format: the Step 5 flow measurement over
+  `crates/slicer-gcode/` — return `FACT` only (three numbers plus the verdict word). A
+  dispatch that returns emitter source instead of numbers has failed and must be re-issued;
+  the falsifiability of AC-4 rests on that one return.
+
+## Open Questions
+
+- **[FWD] Q1 — exact bracket selection.** The demanded planes are the layers whose entries
+  carry interface roles (`TopInterface`/`BaseInterface`/`BottomInterface`). Two details are
+  implementer decisions at Step 2, recorded in the step's exit condition: (a) whether the
+  bracketing is per-object (the 239c `support_rows_by_object` structure) or per-region (the
+  entries' `region_id`), and (b) the exact fallback for a contiguous run of demanded layers
+  with no interface entries (first/last demanded layers of the run). Canonical brackets the
+  sorted `extremes` per support island; the per-region reading is the closer analog, but the
+  239c structure is per-object. Either choice must keep AC-1/AC-2 falsifiable (at least one
+  off-grid `anchor_z` on the fixture).
+- **[FWD] Q2 — clone source for the stack planes.** The body rows between the brackets are
+  replaced by the stack planes. The implementer decides at Step 2 whether each stack plane
+  clones the nearest demanded row below the plane (roles + skeleton) or the lower bracket
+  with roles adjusted to `SupportBody`. The choice must not produce interface roles or
+  interface geometry at body planes, and must keep the tree planner's per-plane
+  intermediate identities (the `BTreeMap<i64, i32>` scheme from DEV-163) semantically live.
+- **[FWD] Q3 — `support_step` neutralization form.** The implementer decides at Step 3
+  whether the neutralization sets `support_step = 1` when pitch >= gap or bypasses the
+  decimation gate directly. Both must keep the finer direction's behaviour (where
+  `support_step` is already 1) bit-identical.
+- **[FWD] Q4 — human-gate reference nozzle.** The human producing
+  `tmp/p239d-orca-ref-*-coarse.gcode` must choose a support-extruder nozzle whose
+  `max_layer_height_from_nozzle` yields the 0.3 mm pitch. The implementer records the
+  recommended nozzle diameter in the gate document at Step 7; the gate stays
+  `REFS-ABSENT-GATE-OPEN` until a human produces the references.

@@ -1,0 +1,182 @@
+# Requirements: 239d-support-coarse-floating-planes
+
+## Packet Metadata
+
+- Grouped task IDs: `TASK-523`..`TASK-530` (next free range above the `TASK-522` high-water
+  mark at authoring time — re-derive before registering)
+- Backlog source: `docs/07_implementation_status.md`
+- Packet status: `draft`
+- Aggregate context cost: `M`
+
+## Problem Statement
+
+Packet 239c (implemented) made support Z independent of the object grid, but only in the
+FINER direction. Measured 2026-08-31 on
+`crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl` with the tracked
+config, flag true:
+
+- `support_layer_height_mm = 0.1` over `layer_height` 0.2 → 273 distinct `;Z:`, 123
+  extruding off-grid rows (finer direction works).
+- `support_layer_height_mm = 0.3` over `layer_height` 0.2 → 150 distinct `;Z:`, **0**
+  off-grid rows (coarse direction degenerates to the object grid).
+- `support_layer_height_mm = 0.3` over `layer_height` 0.1 → 299 distinct `;Z:`, 0 off-grid
+  rows, support on 246/299 rows (the grid decimation did NOT cut support to ~every 3rd row).
+
+Root cause: the 239c intermediate-plane derivation (`packet239c_intermediate_planes` in both
+planners) brackets consecutive support rows, which sit at object-grid spacing; when the
+support pitch >= the object gap, `n_layers_extra == 1` and the stack stays grid-bound.
+Canonical OrcaSlicer does not degenerate: `raft_and_intermediate_support_layers`
+(`Support/SupportMaterial.cpp`) brackets the sorted `extremes` — the top/bottom contact
+layers, which span many object layers — and fills between consecutive ones at
+`step = dist / n_layers_extra ≈ pitch`, free-floating relative to the object grid. That is
+the user-visible speed purpose of the toggle ("supports are waste material; print them
+coarser"). 239c delivered free-floating planes; 239d must deliver free-floating STACKS in
+the coarse direction.
+
+The decimation question is answered by measurement: `build_emit_schedule`
+(`crates/slicer-core/src/algos/support_geometry.rs`) gates the host-side `SupportGeometryIR`
+only, and both planners ignore `SupportGeometryView` on the meshed-object planner path (the
+tree's sole read is the mesh-less legacy contact fallback at tree `lib.rs` ~2173 — a
+genuinely mesh-less object with no contacts; the traditional planner's `_support_geometry`
+parameter, `lib.rs` ~174, is never read) — so the host decimation never reaches the
+meshed-object planner path (support on 246/299 rows despite it). Only the traditional
+planner decimates, via `support_step = round(pitch / gap)`, which is on-grid. The coarse
+rows must therefore come from a new floating stack, not from either decimation mechanism.
+
+## In Scope
+
+- **Planner derivation (both planners).** When the support pitch >= the object gap, generate
+  the support stack at pitch spacing between consecutively demanded interface/contact planes
+  (the entries carrying `TopInterface`/`BaseInterface`/`BottomInterface` roles — PnP's analog
+  of canonical's `extremes`), following the canonical stepping
+  (`n_layers_extra = ceil((dist - EPSILON) / pitch)`, `step = dist / n_layers_extra`, planes
+  at `below_z + k * step`, last aligned to the upper bracket) plus the canonical
+  grouping/midpoint rule (`generate_support_layers`: group within `EPSILON`, Z = midpoint,
+  height = group minimum). Regions without interface entries fall back to the first/last
+  demanded layers of each contiguous run. The body rows between the brackets are replaced by
+  the pitch-spaced stack.
+- **Decimation reconciliation.** The floating stack is the source of coarse rows. The
+  traditional `support_step` decimation is neutralized when pitch >= gap (the stack replaces
+  it; `support_step` stays for the finer direction where it is already 1).
+  `build_emit_schedule` stays read-only (out of scope; documented as ineffective for the
+  planner path).
+- **Extrusion-presence ACs.** AC-1 asserts every off-grid support row carries at least one
+  G1 move with `E > 0` — the DEV-161 defect class (off-grid rows whose moves carry no E) is
+  a FAIL, not a human-gate-only finding.
+- **Measure-first coarse `height_delta` verdict.** A TASK-519-pattern measurement of the
+  height term `DefaultGCodeEmitter::emit_gcode` applies to a coarse 0.3-pitch off-grid pass
+  (applied height, declared plane delta, resulting E), recorded under `TASK-527`, with a
+  verdict AC (AC-4) asserting the recorded branch.
+- **Blocking human validation gate.** Visual-debug bundle + inspection checklist, signed
+  before `status: implemented` (see `packet.spec.md` §Human Validation Gate).
+
+## Out of Scope
+
+- The renderer/row path: `TreeSupport::run_support` / `TraditionalSupport::run_support` emit
+  at the plan-declared `anchor_z` already (239c); the anchored transport is complete
+  (DEV-159..163). No transport changes are expected; if a renderer edit is needed, it is a
+  scope change.
+- `build_emit_schedule` and `execute_support_geometry`
+  (`crates/slicer-core/src/algos/support_geometry.rs`,
+  `crates/slicer-runtime/src/builtins/support_geometry_producer.rs`) — read-only pre-239c
+  surface; the host decimation is not the coarse-row mechanism.
+- The finer direction (pitch < gap): the 239c derivation is unchanged (AC-N2 pins it).
+- The `support_layer_height_mm == 0.0` sentinel: stays "object pitch" (239c [FWD] option b,
+  recorded in both planner `lib.rs` files; AC-N3 pins it).
+- 239c's closed Step 2/4 semantics (the enabled/disabled derivation rules and the renderer
+  emission): do not reopen; if the coarse direction needs a planner change beyond the
+  derivation site, `design.md` states the blast radius explicitly.
+- WIT, IR schemas, manifests, host config keys: none change.
+
+## Authoritative Docs
+
+- `docs/spec_packets/239c-support-layer-height-producer/packet.spec.md` - 385 lines; direct
+  ranged read of the ACs, the test-naming convention, and the gate structure.
+- `docs/spec_packets/239c-support-layer-height-producer/design.md` - 392 lines; direct
+  ranged read of §Code Change Surface, §Locked Assumptions, §Open Questions (the `[FWD]`
+  sentinel decision).
+- `docs/specs/support-independent-layer-z-split-plan.md` - 175 lines; direct read of the
+  canonical block and the packet queue.
+- `docs/DEVIATION_LOG.md` - rows `DEV-159`..`DEV-163` only; direct range read.
+- `docs/specs/support-parity-gap-register.md` - rows `G-02` and the new coarse row only;
+  direct range read. Never full-read (the file is long).
+
+<!-- snippet: orca-delegation -->
+## OrcaSlicer Reference Obligations
+
+All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDocumented/` into the implementer's own context. Dispatch contract: return `LOCATIONS` (file:line + 1-line context, ≤ 20 entries) or `SUMMARY` (≤ 200 words, no code unless asked). Code snippets in returns are capped at 30 lines.
+
+Files to inspect for this packet:
+
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the AC-2/AC-3 stepping rule and the bracket-selection ground truth.
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`: the grouping predicate (`print_z <= first.print_z + EPSILON`), the midpoint Z rule (`zavg = 0.5 * (first + last)`), and the group-height rule (minimum). This is the grouping/midpoint step the coarse stack applies after stepping.
+- `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` — `max_suport_layer_height = max_layer_height` (nozzle-derived via `max_layer_height_from_nozzle`, clamped >= object layer height). Confirms canonical has no `support_layer_height_mm` key; PnP's key is the pitch knob this packet uses.
+- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — the parallel support-layer generation loop (`n_layers_extra = ceil(dist / max_layer_height)`, `step = dist / n_layers_extra`, `print_z = z1 + step`): the tree-family analog of the same stepping.
+
+<!-- snippet: parity-evidence -->
+## Parity Evidence Standard
+
+Every key this packet implements carries evidence per the map's ticket 02 standard:
+
+- **Canonical read + described behaviour.** For each key, cite the canonical consumer (file + function, never line numbers) and describe its behaviour in `requirements.md`. Reads of `OrcaSlicerDocumented/` are delegated per the orca-delegation snippet.
+- **Invariants, not goldens.** Behaviour is pinned with invariant/property tests (counts preserved, mappings hold, emitted values equal expected). Golden G-code comparison is not part of the standard — the checkout is not built and cannot be run.
+- **Ported Orca tests are acceptable evidence.** When `OrcaSlicerDocumented/tests/fff_print/` covers the behaviour, port its assertions into PnP's suite with the standard porting header (`docs/ORCASLICER_ATTRIBUTION.md`).
+- **Plumbing keys** (a threshold feeding an existing decision point): the default resolves to the canonical value AND a test proves the value reaches the consumer. No behavioural test required.
+- **Unverifiable behaviour:** surface the key and the reason to the human first; only with their sign-off file a `docs/DEVIATION_LOG.md` row (single source of truth, CI-checked by `cargo xtask check-deviations`) and proceed with documented scope. Never defer the key or block the packet on unverifiability alone, and never file a row without the human having been asked.
+
+## Acceptance Summary
+
+Reference, never copy, criteria from `packet.spec.md`.
+
+- Positive: `AC-1` (real-slice coarse proof: off-grid rows, strict superset, every off-grid
+  support row extrudes), `AC-2` (tree planner free-floating `anchor_z` + canonical stepping),
+  `AC-3` (traditional planner same + `support_step` neutralized), `AC-4` (measure-first
+  coarse `height_delta` verdict), `AC-5` (guest freshness gate).
+- Negative: `AC-N1` (disabled reproduces the pre-change Z sequence exactly), `AC-N2` (finer
+  direction unregressed — the 239c AC-1 test stays green), `AC-N3` (sentinel 0.0 stays
+  object pitch).
+- Cross-packet impact: `242-support-family-orca-closure` consumes the coarse-direction
+  behavior; the 239c AC-1/AC-N1/AC-N2 tests must stay green (AC-N2 pins AC-1 explicitly).
+
+## Verification Commands
+
+This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate commands.
+
+| Command | Purpose | Return format hint |
+| --- | --- | --- |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- coarse_support_pitch_emits_free_floating_extruding_rows --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-1: real slice, coarse off-grid extruding rows | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2: tree planner coarse derivation | FACT pass/fail |
+| `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-3: traditional planner coarse derivation + `support_step` neutralized | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-gcode --test gcode_emit_tdd -- coarse_pass_height_delta_matches_recorded_verdict --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-4: measure-first coarse verdict | FACT pass/fail |
+| `cargo xtask build-guests --check && echo FRESH` | AC-5: guest freshness before every slice-level evidence run | FACT exit code |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- disabled_coarse_pitch_reproduces_baseline_z_sequence --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N1: disabled reproduces baseline | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- independent_support_layer_height_emits_support_row_off_object_grid --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N2: finer direction unregressed (239c AC-1) | FACT pass/fail |
+| `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N3: sentinel 0.0 stays object pitch | FACT pass/fail |
+| `cargo check --workspace --all-targets` | compile gate | FACT pass/fail |
+| `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
+| `cargo xtask check-literals` | struct-literal churn gate | FACT pass/fail |
+| `cargo xtask test --summary --workspace --no-fail-fast` | closure ceremony only (per Test Discipline) | FACT pass/fail |
+
+## Step Completion Expectations
+
+- The AC-N1 baseline (the disabled `;Z:` sequence with `support_layer_height_mm = 0.3`) is
+  captured in Step 1, before any planner edit, and hard-coded in the AC-N1 test (the 239c
+  `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z` pattern) in Step 4.
+- The AC-4 verdict is recorded under `TASK-527` in Step 5 before the verdict test is
+  authored in Step 6.
+- Ledger facts (task high-water in `docs/07`, next free `DEV-###`, next free `G-` row) are
+  re-derived at Step 8, never quoted from this packet.
+- The human gate's `REFS-PRESENT` precondition is verified at Step 7; the packet may reach
+  "all steps complete, sign-off pending" and stop there.
+
+## Context Discipline Notes
+
+- Both planner `lib.rs` files are very large — ranged reads only, per the ranges in
+  `design.md` §Read-Only Context and `implementation-plan.md` steps.
+- `OrcaSlicerDocumented/` reads are delegated per the orca-delegation snippet; never load.
+- The `docs/07_implementation_status.md` registration is a worker dispatch, never a full
+  backlog read.
+- The AC-1 E-assertion helper parses G1 `E` tokens; the existing precedent is
+  `extract_e_values` (`crates/slicer-gcode/tests/gcode_relative_extrusion_tdd.rs`), which is
+  in a different crate's test binary and cannot be imported — the helper is authored in
+  `support_family_closure.rs`.
