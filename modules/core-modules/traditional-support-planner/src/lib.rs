@@ -61,7 +61,8 @@ pub struct SupportPlanner {
     /// Base fill pattern recorded on every body entry.
     support_base_pattern: String,
     /// Distance in mm from column tops to add intermediate model layers.
-    support_top_z_distance_mm: f32,
+    /// Orca key `support_top_z_distance`.
+    support_top_z_distance: f32,
     /// Support layer height in mm (0.0 = use model layer height).
     support_layer_height_mm: f32,
     /// XY clearance in mm held between support and the object during base-layer
@@ -94,7 +95,7 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::String(s)) => s.clone(),
             _ => DEFAULT_BASE_PATTERN.to_string(),
         };
-        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
+        let support_top_z_distance = match config.get("support_top_z_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             Some(ConfigValue::Int(v)) => *v as f32,
             _ => DEFAULT_TOP_Z_DISTANCE_MM,
@@ -123,7 +124,7 @@ impl PrepassModule for SupportPlanner {
             support_interface_top_layers,
             support_interface_bottom_layers,
             support_base_pattern,
-            support_top_z_distance_mm,
+            support_top_z_distance,
             support_layer_height_mm,
             support_object_xy_distance,
             line_width_mm,
@@ -279,7 +280,7 @@ impl SupportPlanner {
         // The candidate's layer is the first layer that *contains* the
         // overhang, so the overhanging surface sits at the bottom of that
         // layer — i.e. at the top of the layer below it. Support must stop
-        // `support_top_z_distance_mm` below that plane.
+        // `support_top_z_distance` below that plane.
         //
         // The gap is measured by walking actual layer Z rather than dividing by
         // `effective_layer_height`: that field is derived per global layer from
@@ -287,7 +288,7 @@ impl SupportPlanner {
         // the guest view. Dividing by it yielded an offset of zero here (so
         // support fused to the model) and tens of layers in the tree planner.
         let overhang_plane_z = layer_plan.layers[contact_layer.saturating_sub(1) as usize].z;
-        let target_top_z = overhang_plane_z - self.support_top_z_distance_mm;
+        let target_top_z = overhang_plane_z - self.support_top_z_distance;
         let mut emit_top_layer = contact_layer.saturating_sub(1);
         while emit_top_layer > 0 && layer_plan.layers[emit_top_layer as usize].z > target_top_z {
             emit_top_layer -= 1;

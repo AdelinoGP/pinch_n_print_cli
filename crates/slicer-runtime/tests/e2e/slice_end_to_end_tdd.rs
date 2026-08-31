@@ -702,7 +702,7 @@ fn slice_mvp_content_is_deterministic() {
 ///
 /// Previously, the planner could reach the live path without any per-object
 /// height in its bound config and fall back to a single
-/// `z = first_layer_height` proposal. The canonical live path now seeds
+/// `z = initial_layer_print_height` proposal. The canonical live path now seeds
 /// `object_height:<id>` from cached `ObjectMesh.world_z_extent` before the
 /// ConfigView is bound, so the wedge is planned to its real 40 mm
 /// world-space height. At a 0.2 mm layer height, the emitter must produce

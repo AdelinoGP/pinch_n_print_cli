@@ -8,13 +8,17 @@ use slicer_sdk::prelude::*;
 use slicer_sdk::test_prelude::*;
 
 /// Helper: build a ConfigView with the given parameters.
-fn make_config(layer_height: f64, first_layer_height: f64, objects: &[(&str, f64)]) -> ConfigView {
+fn make_config(
+    layer_height: f64,
+    initial_layer_print_height: f64,
+    objects: &[(&str, f64)],
+) -> ConfigView {
     objects
         .iter()
         .fold(
             ConfigViewBuilder::new()
                 .float("layer_height", layer_height)
-                .float("first_layer_height", first_layer_height),
+                .float("initial_layer_print_height", initial_layer_print_height),
             |b, (id, h)| b.float(format!("object_height:{}", id), *h),
         )
         .build()
@@ -23,7 +27,7 @@ fn make_config(layer_height: f64, first_layer_height: f64, objects: &[(&str, f64
 /// Helper: build config with per-object layer height overrides.
 fn make_lh_config(
     default_layer_height: f64,
-    first_layer_height: f64,
+    initial_layer_print_height: f64,
     objects: &[(&str, f64, f64)],
 ) -> ConfigView {
     objects
@@ -31,7 +35,7 @@ fn make_lh_config(
         .fold(
             ConfigViewBuilder::new()
                 .float("layer_height", default_layer_height)
-                .float("first_layer_height", first_layer_height),
+                .float("initial_layer_print_height", initial_layer_print_height),
             |b, (id, h, lh)| {
                 b.float(format!("object_height:{}", id), *h)
                     .float(format!("layer_height:{}", id), *lh)
@@ -72,7 +76,7 @@ fn test_single_object_uniform_layers() {
         );
     }
 
-    // First layer at first_layer_height
+    // First layer at initial_layer_print_height
     assert!(
         (layers[0].z - 0.2).abs() < 1e-4,
         "first layer z={}, expected 0.2",
@@ -91,7 +95,7 @@ fn test_single_object_uniform_layers() {
 // =============================================================================
 
 #[test]
-fn test_first_layer_height_respected() {
+fn test_initial_layer_print_height_respected() {
     // first_layer=0.3, rest=0.2 → layer 0 z=0.3, layer 1 z=0.5, ...
     let config = make_config(0.2, 0.3, &[("obj-1", 2.0)]);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
@@ -105,7 +109,7 @@ fn test_first_layer_height_respected() {
 
     let layers = output.layers();
 
-    // First layer Z = first_layer_height = 0.3
+    // First layer Z = initial_layer_print_height = 0.3
     assert!(
         (layers[0].z - 0.3).abs() < 1e-4,
         "first layer z={}, expected 0.3",

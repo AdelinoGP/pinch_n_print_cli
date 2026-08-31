@@ -382,14 +382,14 @@ fn prepass_seam_planning_requires_layer_plan_slot() {
 
 fn layer_planner_config(
     layer_height: f64,
-    first_layer_height: f64,
+    initial_layer_print_height: f64,
     object_heights: &[(&str, f64)],
 ) -> ConfigView {
     let mut m = HashMap::new();
     m.insert("layer_height".to_string(), ConfigValue::Float(layer_height));
     m.insert(
-        "first_layer_height".to_string(),
-        ConfigValue::Float(first_layer_height),
+        "initial_layer_print_height".to_string(),
+        ConfigValue::Float(initial_layer_print_height),
     );
     for (id, h) in object_heights {
         m.insert(format!("object_height:{}", id), ConfigValue::Float(*h));
@@ -450,10 +450,10 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
         ir.global_layers.len()
     );
 
-    // Strictly ascending Z, first layer at first_layer_height.
+    // Strictly ascending Z, first layer at initial_layer_print_height.
     assert!(
         (ir.global_layers[0].z - 0.2).abs() < 1e-4,
-        "first harvested layer z must equal first_layer_height=0.2, got {}",
+        "first harvested layer z must equal initial_layer_print_height=0.2, got {}",
         ir.global_layers[0].z
     );
     for i in 1..ir.global_layers.len() {

@@ -209,7 +209,7 @@ fn tree_support_plan_succeeds_without_layer_planning_stage() {
     blackboard
         .commit_support_geometry(Arc::new(SupportGeometryIR {
             support_layer_height_mm: 0.2,
-            support_top_z_distance_mm: 0.1,
+            support_top_z_distance: 0.1,
             ..Default::default()
         }))
         .expect("pre-seeding SupportGeometryIR must succeed");

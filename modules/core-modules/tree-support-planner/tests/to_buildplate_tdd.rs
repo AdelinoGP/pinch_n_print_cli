@@ -622,7 +622,7 @@ fn overhang_plate_at_origin() -> MeshObjectView {
 
 /// Build a mesh of `cols × rows` downward-facing overhang triangles laid
 /// out on a `tile × tile` mm grid, anchored at the origin so bmin[2] = 0.0
-/// and the rel_z gate (`rel_z >= first_layer_height * 0.5`) passes for
+/// and the rel_z gate (`rel_z >= initial_layer_print_height * 0.5`) passes for
 /// centroid z=1.8. All centroids sit at z=1.8, so they all funnel into
 /// layer 8 (`z = 0.2 * 9 = 1.8`). Each tile contributes two CW-from-above
 /// triangles so the normal z-component is negative (matching the

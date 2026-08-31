@@ -133,7 +133,7 @@ fn annulus_true_hole_produces_inner_perimeters() {
     write_binary_stl(&mesh_path, &annulus_frame_mesh());
     write_config_json(
         &config_path,
-        &serde_json::json!({ "layer_height": 0.2, "first_layer_height": 0.2 }),
+        &serde_json::json!({ "layer_height": 0.2, "initial_layer_print_height": 0.2 }),
     );
     let perimeters = run_pipeline_capturing_perimeters(
         &mesh_path,
@@ -182,7 +182,7 @@ fn arachne_outer_wall_boundary_type_survives_wasm_boundary() {
         &config_path,
         &serde_json::json!({
             "layer_height": 0.2,
-            "first_layer_height": 0.2,
+            "initial_layer_print_height": 0.2,
             "wall_generator": "arachne"
         }),
     );

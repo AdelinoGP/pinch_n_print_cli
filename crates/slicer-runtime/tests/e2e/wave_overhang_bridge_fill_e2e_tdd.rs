@@ -74,7 +74,7 @@ fn scratch_dir() -> PathBuf {
 fn write_config(path: &Path) {
     let body = serde_json::json!({
         "layer_height": 0.2,
-        "first_layer_height": 0.2,
+        "initial_layer_print_height": 0.2,
         "nozzle_diameter": 0.4,
         "wall_loops": 3,
         "filament_diameter": FILAMENT_DIAMETER_MM,
@@ -110,8 +110,11 @@ fn capture_infill_manifest(config: &Path) -> Value {
         "resolution_scale": 1,
         "frame": "model"
     });
-    std::fs::write(&request, serde_json::to_vec(&body).expect("serialize request"))
-        .expect("write visual-debug request");
+    std::fs::write(
+        &request,
+        serde_json::to_vec(&body).expect("serialize request"),
+    )
+    .expect("write visual-debug request");
     let proc = Command::new(pnp_cli_bin())
         .args(["visual-debug", "--request"])
         .arg(&request)

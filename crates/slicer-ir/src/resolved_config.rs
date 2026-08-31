@@ -72,8 +72,8 @@ impl ResolvedConfig {
             ConfigValue::Float(f64::from(self.line_width)),
         );
         m.insert(
-            "first_layer_height".into(),
-            ConfigValue::Float(self.first_layer_height),
+            "initial_layer_print_height".into(),
+            ConfigValue::Float(self.initial_layer_print_height),
         );
         m.insert(
             "initial_layer_line_width".into(),
@@ -538,7 +538,7 @@ pub fn extract_float_or_percent(
 /// Extract an `f64` from a `Float` or `Int` `ConfigValue`.
 ///
 /// Used by config fields whose value feeds the layer-Z formula
-/// (`layer_height`, `first_layer_height`). These must round-trip through
+/// (`layer_height`, `initial_layer_print_height`). These must round-trip through
 /// the WIT boundary as `ConfigValue::Float(f64)` *without* an intermediate
 /// `f32` narrowing: the f32 bit pattern of `0.2` is `0.20000000298...`,
 /// which — when multiplied by `n` in f64 — drifts onto an adjacent f32 at
@@ -1286,7 +1286,7 @@ declare_resolved_config! {
     // Geometry
     /// Layer height in millimeters.
     ///
-    /// Stored as `f64` (not `f32`) so the layer-Z formula `first_layer_height
+    /// Stored as `f64` (not `f32`) so the layer-Z formula `initial_layer_print_height
     /// + n * layer_height` computes in untainted `f64` — matching OrcaSlicer's
     /// `coordf_t` (`double`) `print_z += height` loop in
     /// `Slicing.cpp:859`. The f32 bit pattern of `0.2` is
@@ -1300,7 +1300,7 @@ declare_resolved_config! {
     /// First layer height in millimeters. `f64` for the same reason as
     /// `layer_height` — feeds the layer-Z formula and must not be re-tainted
     /// by an `f32` round-trip. See `layer_height` and `extract_f64`.
-    cli "first_layer_height"     first_layer_height: f64 = 0.2 => extract_f64;
+    cli "initial_layer_print_height"     initial_layer_print_height: f64 = 0.2 => extract_f64;
     /// First layer line width in millimeters.
     cli "initial_layer_line_width" initial_layer_line_width: f32 = 0.0 => extract_float;
     /// Filament diameter in millimeters. Used by the G-code emitter to convert
@@ -1516,7 +1516,8 @@ impl PartialEq for ResolvedConfig {
         // f32/f64 fields compared via to_bits() so that Eq and Hash are consistent.
         self.layer_height.to_bits() == other.layer_height.to_bits()
             && self.line_width.to_bits() == other.line_width.to_bits()
-            && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
+            && self.initial_layer_print_height.to_bits()
+                == other.initial_layer_print_height.to_bits()
             && self.initial_layer_line_width.to_bits() == other.initial_layer_line_width.to_bits()
             && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
             && self.wall_loops == other.wall_loops
@@ -1624,7 +1625,7 @@ impl std::hash::Hash for ResolvedConfig {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.layer_height.to_bits().hash(state);
         self.line_width.to_bits().hash(state);
-        self.first_layer_height.to_bits().hash(state);
+        self.initial_layer_print_height.to_bits().hash(state);
         self.initial_layer_line_width.to_bits().hash(state);
         self.filament_diameter.to_bits().hash(state);
         self.wall_loops.hash(state);

@@ -240,7 +240,7 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
            via plane-triangle intersection at support layer boundaries. Support
            layer height is controlled by `support_layer_height_mm`
            (default 0 = model layer height). Near model contact zones
-           (`support_top_z_distance_mm`), adds intermediate layers at model
+           (`support_top_z_distance`), adds intermediate layers at model
            resolution so the top distance is honored precisely. Runs after
            `execute_prepass` so `LayerPlanIR` is always committed first.
            Phase 2 — when a `support-planner` guest is loaded, the host invokes

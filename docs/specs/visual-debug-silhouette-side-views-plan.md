@@ -82,7 +82,7 @@ symbol, per repo convention; a reviewer should re-resolve each symbol.
    carried-forward plan said rectangles span `[z, z + height]`. Two errors:
    - `GlobalLayer.z` is the layer **top**, not bottom: the layer planner
      (`modules/core-modules/layer-planner-default/src/lib.rs`) generates the
-     first layer at `z = first_layer_height`, and its test
+     first layer at `z = initial_layer_print_height`, and its test
      (`modules/core-modules/layer-planner-default/tests/layer_planning_tdd.rs`)
      pins `effective_layer_height == z − catchup_z_bottom` with
      `catchup_z_bottom < z`.

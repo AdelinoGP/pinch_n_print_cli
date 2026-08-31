@@ -239,7 +239,7 @@ fn support_geometry_succeeds_with_empty_slice_ir() {
 #[test]
 fn support_geometry_populates_intermediate_layer_entries_from_slice_ir() {
     // The intermediate-layer entries (global_support_layer_index = u32::MAX)
-    // are added within `support_top_z_distance_mm` of column tops. Before A2
+    // are added within `support_top_z_distance` of column tops. Before A2
     // these were registered with empty polygons. After A2 each intermediate
     // entry must carry the polygons pulled from SliceIR at the layer's Z.
     let object_id = "obj-intermediate";

@@ -1486,7 +1486,7 @@ pub struct SupportGeometryIR {
     /// 0.0 = use model layer height (config schema enforces min > 0).
     pub support_layer_height_mm: f32,
     /// Distance in mm from column tops to add intermediate model layers.
-    pub support_top_z_distance_mm: f32,
+    pub support_top_z_distance: f32,
     /// Per-(layer, object, region) coarse outline polygons.
     pub entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
 }
@@ -1496,7 +1496,7 @@ impl Default for SupportGeometryIR {
         Self {
             schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
             support_layer_height_mm: 0.0,
-            support_top_z_distance_mm: 0.0,
+            support_top_z_distance: 0.0,
             entries: HashMap::new(),
         }
     }

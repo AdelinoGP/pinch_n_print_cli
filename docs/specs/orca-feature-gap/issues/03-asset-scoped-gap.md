@@ -71,9 +71,9 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact — **renamed in ticket 100**; default deviation surfaced: Pinch `10.0` vs Orca `45.0` (see 100) |
 | `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact — **renamed in ticket 100**; the rename also makes Orca 3MF `enable_prime_tower` a *declared* key, so it now reaches the typed extractor instead of `extensions` |
 | `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact — **renamed in ticket 100**; defaults match Orca (60.0), no deviation |
-| `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) |
+| `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) — **renamed in ticket 104** |
 | `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) — **renamed in ticket 102**; default aligned 0.8 → **0.0** to match Orca's "0 = no threshold effect" (user ruling in-ticket) |
-| `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact |
+| `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact — **renamed in ticket 104**; manifest default aligned 0.3 → **0.2** to match Orca (user ruling in-ticket; host `ResolvedConfig` was already 0.2) |
 | `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact |
 | `raft_layers` | `support_raft_layers` + `base_raft_layers` + `interface_raft_layers` | `support-planner` | **split** — one Orca key became three |
 | `ironing_type` | `ironing_enabled` | `top-surface-ironing` | **narrowed** — Orca enum → Pinch bool |

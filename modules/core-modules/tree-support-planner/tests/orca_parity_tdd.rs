@@ -1179,7 +1179,7 @@ fn planner_output_is_deterministic_across_runs() {
 ///
 /// The plate underside sits at z = 1.8mm on a 0.2mm stack — layer 8. Canonical
 /// `generate_contact_points` places a contact one layer below the overhang
-/// (layer 7), and the tree default `support_top_z_distance_mm` of 0.2mm drops
+/// (layer 7), and the tree default `support_top_z_distance` of 0.2mm drops
 /// it one further (layer 6) — the values `top_z_distance_lowers_the_tree_contact_layer`
 /// pins. Each column then descends to the build plate at layer 0, so support
 /// must occupy at least **7** layers and produce at least **4 x 7 = 28**
@@ -1634,9 +1634,9 @@ fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisV
     }
 }
 
-// ── RC-11: `support_top_z_distance_mm` must hold the tree top gap ──────────
+// ── RC-11: `support_top_z_distance` must hold the tree top gap ──────────
 //
-// The tree planner declared `support_top_z_distance_mm` in its manifest and
+// The tree planner declared `support_top_z_distance` in its manifest and
 // read it nowhere, so its top interface printed flush against the overhang
 // with zero gap while `traditional-support-planner` honoured the key. This
 // test pins the asymmetry closed.
@@ -1647,7 +1647,7 @@ fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisV
 // objects, the other takes the first match), and a previous attempt to divide
 // by it opened a 35-layer gap.
 
-/// Plan the fixture at a given `support_top_z_distance_mm` and return the
+/// Plan the fixture at a given `support_top_z_distance` and return the
 /// highest model-layer index carrying planned support geometry.
 fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
     let config = make_planner_config(&[
@@ -1662,7 +1662,7 @@ fn top_support_layer_for_gap(gap_mm: f64) -> i32 {
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
-        ("support_top_z_distance_mm", ConfigValue::Float(gap_mm)),
+        ("support_top_z_distance", ConfigValue::Float(gap_mm)),
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -1705,7 +1705,7 @@ fn top_z_distance_lowers_the_tree_contact_layer() {
     let flush_top = top_support_layer_for_gap(0.0);
     assert_eq!(
         flush_top, 7,
-        "with support_top_z_distance_mm = 0.0 the tree column must top out \
+        "with support_top_z_distance = 0.0 the tree column must top out \
          exactly one layer below the overhang layer 8; got layer {flush_top}"
     );
 
@@ -1713,7 +1713,7 @@ fn top_z_distance_lowers_the_tree_contact_layer() {
     let gapped_top = top_support_layer_for_gap(0.2);
     assert!(
         gapped_top < flush_top,
-        "RC-11: with support_top_z_distance_mm = 0.2 the topmost tree support \
+        "RC-11: with support_top_z_distance = 0.2 the topmost tree support \
          layer must sit at least one 0.2mm layer below the flush contact layer \
          {flush_top}; got layer {gapped_top} (the key is declared in \
          tree-support-planner.toml but read nowhere)"
@@ -1747,7 +1747,7 @@ fn top_z_distance_defaults_to_traditional_two_tenths() {
         ("tree_support_branch_distance", ConfigValue::Float(1.0)),
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
-        // support_top_z_distance_mm deliberately absent.
+        // support_top_z_distance deliberately absent.
     ]);
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
@@ -1780,7 +1780,7 @@ fn top_z_distance_defaults_to_traditional_two_tenths() {
     assert_eq!(
         default_top,
         top_support_layer_for_gap(0.2),
-        "RC-11: the tree default for support_top_z_distance_mm must equal \
+        "RC-11: the tree default for support_top_z_distance must equal \
          traditional's DEFAULT_TOP_Z_DISTANCE_MM (0.2mm); got top layer \
          {default_top}"
     );

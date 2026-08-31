@@ -443,7 +443,7 @@ fn legacy_slice_structural_invariants() {
     assert_eq!(
         layer_changes, EXPECTED_LAYERS,
         "INV-3.1: expected {EXPECTED_LAYERS} layers (20mm box / 0.2mm default layer \
-         height); got {layer_changes}. If first_layer_height/layer_height defaults \
+         height); got {layer_changes}. If initial_layer_print_height/layer_height defaults \
          changed intentionally, update EXPECTED_LAYERS."
     );
 

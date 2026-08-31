@@ -99,7 +99,7 @@ pub fn execute_support_geometry(
         .flat_map(|layer| &layer.active_regions)
         .next()
         .map(|region| &region.resolved_config);
-    let (support_layer_height_mm, support_top_z_distance_mm) = resolved_config
+    let (support_layer_height_mm, support_top_z_distance) = resolved_config
         .map(|config| {
             (
                 config.support_layer_height_mm,
@@ -146,16 +146,11 @@ pub fn execute_support_geometry(
         }
     }
 
-    add_intermediate_model_layers(
-        &mut entries,
-        layer_plan,
-        slice_vec,
-        support_top_z_distance_mm,
-    );
+    add_intermediate_model_layers(&mut entries, layer_plan, slice_vec, support_top_z_distance);
 
     Ok(SupportGeometryIR {
         support_layer_height_mm,
-        support_top_z_distance_mm,
+        support_top_z_distance,
         entries,
         ..Default::default()
     })

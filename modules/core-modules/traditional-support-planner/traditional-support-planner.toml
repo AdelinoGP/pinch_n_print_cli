@@ -55,7 +55,7 @@ max     = 10.0
 display = "Support/Object XY Distance"
 group   = "Support"
 
-[config.schema.support_top_z_distance_mm]
+[config.schema.support_top_z_distance]
 type    = "float"
 default = 0.2
 min     = 0.0

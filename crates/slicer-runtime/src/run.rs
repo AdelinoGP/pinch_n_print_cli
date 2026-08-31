@@ -440,7 +440,7 @@ fn run_pipeline_fork(
 ///
 /// Derived in [`run_slice`] from `slicer_gcode::estimate_print` over the
 /// final postpass `GCodeIR` plus the resolved config
-/// (`filament_density`, `first_layer_height`).
+/// (`filament_density`, `initial_layer_print_height`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SliceStatsInputs {
     /// Estimated print time in whole seconds.
@@ -452,7 +452,7 @@ pub struct SliceStatsInputs {
     pub gcode_filament_length_mm: f64,
     /// Number of emitted layers (`GCodeIR.metadata.layer_count`).
     pub layer_count: u32,
-    /// First layer height in mm (`ResolvedConfig.first_layer_height`).
+    /// First layer height in mm (`ResolvedConfig.initial_layer_print_height`).
     pub first_layer_height_mm: f32,
     /// Extruded volume per extruder index, in mm³.
     pub extruded_volume_mm3: std::collections::BTreeMap<u32, f64>,
@@ -920,7 +920,7 @@ pub fn run_slice_with_collector(
         .map(|(&tool, cfg)| (tool, cfg.filament_diameter))
         .collect();
     let stats_filament_density = default_resolved_config.filament_density.clone();
-    let stats_first_layer_height_mm = default_resolved_config.first_layer_height as f32;
+    let stats_first_layer_height_mm = default_resolved_config.initial_layer_print_height as f32;
 
     let pipeline_config = PipelineConfig {
         cancel_flag: opts.cancel_flag.clone(),

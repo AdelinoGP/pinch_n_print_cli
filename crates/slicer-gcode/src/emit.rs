@@ -309,8 +309,8 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         // Track the last non-zero height delta (for first-layer fallback). The
         // seed matters: the first layer's volumetric E is
         // width × height × length, and the hardcoded 0.2 mm over-extruded the
-        // first layer ~2× whenever first_layer_height was 0.1 mm.
-        let mut last_height_delta: f32 = self.resolved_config.first_layer_height as f32;
+        // first layer ~2× whenever initial_layer_print_height was 0.1 mm.
+        let mut last_height_delta: f32 = self.resolved_config.initial_layer_print_height as f32;
         // Previous role for ;TYPE: emission
         let mut prev_role: Option<ExtrusionRole> = None;
 

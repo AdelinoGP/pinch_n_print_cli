@@ -640,7 +640,7 @@ fn layer_plan_for_translated_mesh(tz: f64) -> LayerPlanIR {
 fn default_resolved(layer_height: f32) -> ResolvedConfig {
     ResolvedConfig {
         layer_height: layer_height as f64,
-        first_layer_height: layer_height as f64,
+        initial_layer_print_height: layer_height as f64,
         ..ResolvedConfig::default()
     }
 }

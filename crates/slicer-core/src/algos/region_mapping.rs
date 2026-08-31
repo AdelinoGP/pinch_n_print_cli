@@ -168,8 +168,8 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     if overlay.line_width != d.line_width {
         r.line_width = overlay.line_width;
     }
-    if overlay.first_layer_height != d.first_layer_height {
-        r.first_layer_height = overlay.first_layer_height;
+    if overlay.initial_layer_print_height != d.initial_layer_print_height {
+        r.initial_layer_print_height = overlay.initial_layer_print_height;
     }
     if overlay.initial_layer_line_width != d.initial_layer_line_width {
         r.initial_layer_line_width = overlay.initial_layer_line_width;

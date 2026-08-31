@@ -55,7 +55,7 @@ Canonical hash method (normative):
 - Time budget: full slice <= 10 seconds on 50-layer benchy reference fixture. **Reproducible evidence
   exists** (2026-07-03, downgraded scope): `cargo bench -p slicer-runtime --bench gate_evidence`
   times a real `pnp_cli slice` subprocess run against `resources/regression_wedge.stl` +
-  `resources/test_config/gate_evidence_50l.json` (a `layer_height`/`first_layer_height` override that
+  `resources/test_config/gate_evidence_50l.json` (a `layer_height`/`initial_layer_print_height` override that
   coerces the 40mm-tall fixture to exactly 50 layers, verified empirically via `;LAYER_CHANGE` count —
   not the normatively-named `benchy_50l_0p2_single_tool` fixture below, which still doesn't exist).
   The bench measures and reports rather than hard-failing, matching this repo's other benches

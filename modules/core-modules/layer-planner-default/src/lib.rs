@@ -15,10 +15,10 @@
 //!
 //! # Algorithm (MVP — uniform layers)
 //!
-//! 1. Read `layer_height` and `first_layer_height` from config
+//! 1. Read `layer_height` and `initial_layer_print_height` from config
 //! 2. For each object: read height from config key `"object_height:<object_id>"`
 //!    when supplied, otherwise query `host::object_bounds`
-//! 3. Generate layer sequence: first_layer_height, then layer_height increments
+//! 3. Generate layer sequence: initial_layer_print_height, then layer_height increments
 //! 4. For multi-object with different layer heights: compute LCM sync interval
 //! 5. Generate catch-up layers for objects that skip intermediate global layers
 //! 6. Push each layer proposal to output
@@ -27,7 +27,7 @@ use slicer_sdk::prelude::*;
 
 /// Default layer planner that produces uniform layer heights.
 ///
-/// Reads `layer_height`, `first_layer_height`, and per-object height keys
+/// Reads `layer_height`, `initial_layer_print_height`, and per-object height keys
 /// from the config view. For multi-object prints with different layer heights,
 /// it synchronizes via LCM intervals and inserts catch-up layers.
 pub struct DefaultLayerPlanner {
@@ -41,7 +41,7 @@ pub struct DefaultLayerPlanner {
     /// `resolved_config.rs` for the full rationale.
     layer_height: f64,
     /// First layer height in mm. `f64` for the same reason as `layer_height`.
-    first_layer_height: f64,
+    initial_layer_print_height: f64,
 }
 
 #[slicer_module]
@@ -55,8 +55,8 @@ impl PrepassModule for DefaultLayerPlanner {
             })
             .unwrap_or(0.2);
 
-        let first_layer_height = config
-            .get("first_layer_height")
+        let initial_layer_print_height = config
+            .get("initial_layer_print_height")
             .and_then(|v| match v {
                 ConfigValue::Float(f) => Some(*f),
                 _ => None,
@@ -65,7 +65,7 @@ impl PrepassModule for DefaultLayerPlanner {
 
         Ok(Self {
             layer_height,
-            first_layer_height,
+            initial_layer_print_height,
         })
     }
 
@@ -86,8 +86,11 @@ impl PrepassModule for DefaultLayerPlanner {
             return Err(ModuleError::fatal(2, "layer_height must be positive"));
         }
 
-        if self.first_layer_height <= 0.0 {
-            return Err(ModuleError::fatal(3, "first_layer_height must be positive"));
+        if self.initial_layer_print_height <= 0.0 {
+            return Err(ModuleError::fatal(
+                3,
+                "initial_layer_print_height must be positive",
+            ));
         }
 
         // Build per-object plans
@@ -111,7 +114,7 @@ impl PrepassModule for DefaultLayerPlanner {
                 object_id: obj_id.clone(),
                 height,
                 layer_height: lh,
-                first_layer_height: self.first_layer_height,
+                initial_layer_print_height: self.initial_layer_print_height,
             });
         }
 
@@ -120,7 +123,7 @@ impl PrepassModule for DefaultLayerPlanner {
         }
 
         // Merge layer sequences
-        let merged = merge_layer_sequences(&plans, self.first_layer_height);
+        let merged = merge_layer_sequences(&plans, self.initial_layer_print_height);
 
         // Push proposals to output
         for layer in merged {
@@ -176,7 +179,7 @@ struct ObjectPlan {
     /// Layer height for this object in mm. `f64` — feeds the Z formula.
     layer_height: f64,
     /// First layer height in mm. `f64` — feeds the Z formula.
-    first_layer_height: f64,
+    initial_layer_print_height: f64,
 }
 
 /// A merged global layer with per-object participation info.
@@ -191,9 +194,9 @@ struct MergedLayer {
 /// Generate uniform Z-plane sequence for a single object.
 ///
 /// Z values are computed in `f64` using the direct formula
-/// `first_layer_height + n * layer_height` and then converted to `f32` at
+/// `initial_layer_print_height + n * layer_height` and then converted to `f32` at
 /// the return boundary. `ObjectPlan` fields are `f64` (sourced from
-/// `ResolvedConfig`'s `f64` `layer_height`/`first_layer_height`), so the
+/// `ResolvedConfig`'s `f64` `layer_height`/`initial_layer_print_height`), so the
 /// formula runs in untainted `f64` — the `f32` bit pattern of `0.2` is
 /// `0.20000000298...`, which (if narrowed to `f32` and re-widened) would
 /// drift `93 * 0.20000000298... = 18.80000028...` onto the adjacent `f32`
@@ -207,7 +210,7 @@ struct MergedLayer {
 /// `slice_facet`'s `slice_z` parameter, `TriangleMeshSlicer.cpp:158`).
 fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
     let mut layers = Vec::new();
-    let first = plan.first_layer_height;
+    let first = plan.initial_layer_print_height;
     let step = plan.layer_height;
     let height = plan.height;
     let mut n: u32 = 0;
@@ -226,7 +229,10 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
 ///
 /// For objects with different layer heights, this inserts sync layers at LCM intervals
 /// and catch-up layers where needed.
-fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f64) -> Vec<MergedLayer> {
+fn merge_layer_sequences(
+    plans: &[ObjectPlan],
+    _initial_layer_print_height: f64,
+) -> Vec<MergedLayer> {
     if plans.is_empty() {
         return Vec::new();
     }
@@ -250,7 +256,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
 
     let first = &plans[0];
     let mut layers = Vec::new();
-    let first_z_f64 = first.first_layer_height;
+    let first_z_f64 = first.initial_layer_print_height;
     let lh_f64 = first.layer_height;
 
     let mut n: u32 = 0;
@@ -265,7 +271,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
             .filter(|p| z_f64 <= p.height + 1e-6)
             .map(|p| {
                 let effective_lh = if layers.is_empty() {
-                    p.first_layer_height
+                    p.initial_layer_print_height
                 } else {
                     p.layer_height
                 };
@@ -320,7 +326,7 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
             if is_native {
                 // Regular layer for this object
                 let effective_lh = if (last_z[i] - 0.0).abs() < 1e-6 {
-                    plan.first_layer_height
+                    plan.initial_layer_print_height
                 } else {
                     plan.layer_height
                 };
@@ -366,6 +372,6 @@ mod tests {
         let config = ConfigView::from_map(HashMap::new());
         let planner = DefaultLayerPlanner::from_config(&config).unwrap();
         assert!((planner.layer_height - 0.2).abs() < 1e-6);
-        assert!((planner.first_layer_height - 0.2).abs() < 1e-6);
+        assert!((planner.initial_layer_print_height - 0.2).abs() < 1e-6);
     }
 }

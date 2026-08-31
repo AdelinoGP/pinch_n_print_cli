@@ -176,7 +176,7 @@ pub struct SupportPlanner {
     /// overhang plane that demanded it. Packet 224 RC-11: this key was
     /// declared in the manifest but read nowhere, so tree support printed its
     /// top interface fused to the model.
-    support_top_z_distance_mm: f32,
+    support_top_z_distance: f32,
     /// Canonical `TreeSupportData::m_xy_distance` — the horizontal clearance
     /// every collision volume is inflated by. Defect F-16: the planner used to
     /// inflate avoidance by `tree_support_branch_distance / 2`, which is
@@ -1613,7 +1613,7 @@ impl PrepassModule for SupportPlanner {
             _ => false,
         };
         // Packet 224 RC-11: honour the top-Z gap the manifest already declared.
-        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
+        let support_top_z_distance = match config.get("support_top_z_distance") {
             Some(ConfigValue::Float(d)) => *d as f32,
             Some(ConfigValue::Int(d)) => *d as f32,
             _ => DEFAULT_TOP_Z_DISTANCE_MM,
@@ -1654,7 +1654,7 @@ impl PrepassModule for SupportPlanner {
             num_top_base_interface_layers,
             support_interface_bottom_layers,
             support_on_build_plate_only,
-            support_top_z_distance_mm,
+            support_top_z_distance,
             support_object_xy_distance,
             max_bridge_length_mm,
         })
@@ -1852,8 +1852,8 @@ impl SupportPlanner {
             .map(|layer| layer.effective_layer_height)
             .fold(f32::INFINITY, f32::min);
         let nominal_layer_height = layer_plan.layers[0].effective_layer_height;
-        let z_distance_top = if self.support_top_z_distance_mm > f32::EPSILON {
-            self.support_top_z_distance_mm.max(min_layer_height)
+        let z_distance_top = if self.support_top_z_distance > f32::EPSILON {
+            self.support_top_z_distance.max(min_layer_height)
         } else {
             0.0
         };
@@ -5846,7 +5846,7 @@ mod tests {
             num_top_base_interface_layers: 0,
             support_interface_bottom_layers: -1,
             support_on_build_plate_only: false,
-            support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
+            support_top_z_distance: DEFAULT_TOP_Z_DISTANCE_MM,
             support_object_xy_distance: DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
             max_bridge_length_mm: DEFAULT_MAX_BRIDGE_LENGTH_MM,
         }
@@ -6050,7 +6050,7 @@ mod tests {
         // `DEFAULT_TOP_Z_DISTANCE_MM`; RC-11's own coverage lives in
         // `tests/orca_parity_tdd.rs::top_z_distance_lowers_the_tree_contact_layer`.
         let planner = SupportPlanner {
-            support_top_z_distance_mm: 0.0,
+            support_top_z_distance: 0.0,
             ..default_planner()
         };
         let lp = default_layer_plan(10, 0.0, 0.2);

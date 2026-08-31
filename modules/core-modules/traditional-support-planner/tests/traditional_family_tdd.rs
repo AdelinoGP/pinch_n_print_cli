@@ -134,7 +134,7 @@ fn planner_config_with(
         ConfigValue::String("rectilinear".into()),
     );
     values.insert(
-        "support_top_z_distance_mm".into(),
+        "support_top_z_distance".into(),
         ConfigValue::Float(top_distance_mm.into()),
     );
     values.insert(
@@ -317,10 +317,10 @@ fn contact_area_planning() {
         }
     }
     assert!(
-        output
-            .entries()
+        output.entries().iter().any(|e| e
+            .roles
             .iter()
-            .any(|e| e.roles.iter().any(|r| r.role == SupportPlanRole::SupportBody)),
+            .any(|r| r.role == SupportPlanRole::SupportBody)),
         "a multi-layer column must carry body geometry below its interface band"
     );
     assert!(

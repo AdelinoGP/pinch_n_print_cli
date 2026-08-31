@@ -150,7 +150,7 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_overlap` | float | `0.45` | [0.0, 1.0] | `infill-linker` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | `infill-linker` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
-| `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
+| `initial_layer_print_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
@@ -255,7 +255,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `traditional-support-planner` |
 | `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
 | `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
-| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
+| `support_top_z_distance` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
 | `enable_support` | bool | `false` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | `tree-support` |
@@ -282,7 +282,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
 | `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | `tree-support-planner` |
-| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `tree-support-planner` |
+| `support_top_z_distance` | float | `0.2` | [0.0, 5.0] | `tree-support-planner` |
 | `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `tree-support-planner` |
 | `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `tree-support-planner` |
 | `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `tree-support-planner` |

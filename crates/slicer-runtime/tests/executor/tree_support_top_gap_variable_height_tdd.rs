@@ -157,7 +157,7 @@ fn planner_config() -> ConfigView {
         ),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         (
-            "support_top_z_distance_mm".to_string(),
+            "support_top_z_distance".to_string(),
             ConfigValue::Float(TOP_GAP_MM as f64),
         ),
     ]))

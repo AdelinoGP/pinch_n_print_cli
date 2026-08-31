@@ -390,7 +390,7 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
             patch: 0,
         },
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
     let global_layers: Vec<_> = (0..3)

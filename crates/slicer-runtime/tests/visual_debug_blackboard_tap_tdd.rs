@@ -189,7 +189,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
     let geometry = SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
     let plan = SupportPlanIR {
@@ -476,8 +476,8 @@ fn blackboard_tap_capture_contracts() {
             support_geometry.support_layer_height_mm
         );
         assert_eq!(
-            geometry.support_top_z_distance_mm,
-            support_geometry.support_top_z_distance_mm
+            geometry.support_top_z_distance,
+            support_geometry.support_top_z_distance
         );
         assert_eq!(plan.entries, support_plan.entries);
         let branch_point = plan.entries[0].skeleton.as_ref().unwrap().points[0];

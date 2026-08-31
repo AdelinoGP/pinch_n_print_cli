@@ -191,7 +191,7 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         .join("calicat_internal_bridge_matched_config.json");
     std::fs::write(
         &config,
-        br#"{"layer_height":0.2,"first_layer_height":0.25,"nozzle_diameter":0.5,"line_width":0.525,"bridge_flow":0.95,"internal_bridge_flow":0.95,"infill_density":0.25,"sparse_infill_density":25.0,"top_shell_layers":3,"bottom_shell_layers":3,"enable_support":true,"dont_filter_internal_bridges":false,"thick_bridges":false,"thick_internal_bridges":false}"#,
+        br#"{"layer_height":0.2,"initial_layer_print_height":0.25,"nozzle_diameter":0.5,"line_width":0.525,"bridge_flow":0.95,"internal_bridge_flow":0.95,"infill_density":0.25,"sparse_infill_density":25.0,"top_shell_layers":3,"bottom_shell_layers":3,"enable_support":true,"dont_filter_internal_bridges":false,"thick_bridges":false,"thick_internal_bridges":false}"#,
     )
     .expect("write matched-oracle config");
     let _ = std::fs::remove_file(&out_a);

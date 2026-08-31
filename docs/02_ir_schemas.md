@@ -460,7 +460,7 @@ fields bind to — including host-only keys and namespaced module keys — see
 Field-shape rules that the macro invocation does not state, and that a reader
 must know:
 
-- **`layer_height` and `first_layer_height` are `f64`, deliberately — not
+- **`layer_height` and `initial_layer_print_height` are `f64`, deliberately — not
   `f32`.** They feed the layer-Z formula (`z = n * layer_height`). An `f32`
   round-trip re-taints the value and drifts onto an adjacent float at roughly
   every 10th layer, which misses STL vertices stored as `f32(mm_value)` and
@@ -917,7 +917,7 @@ region)` outline polygons independent of organic branch planning.
 `crates/slicer-ir/src/slice_ir.rs`. The IR carries support layer-height
 settings and coarse outline polygons keyed by support-layer index, object ID,
 and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
-The `support_top_z_distance_mm` and `support_layer_height_mm` fields carry
+The `support_top_z_distance` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.
 

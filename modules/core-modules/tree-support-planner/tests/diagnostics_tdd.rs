@@ -576,7 +576,7 @@ fn offset_fixture_translate(object_id: &str, n: usize, dx: f32, dy: f32) -> Mesh
 /// downward (z < 0), matching OrcaSlicer's `detect_overhangs` threshold.
 fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
     // Anchor vertex at the origin so bmin[2] = 0.0 and the rel_z gate
-    // (`rel_z >= first_layer_height * 0.5`) passes for centroid z=1.8.
+    // (`rel_z >= initial_layer_print_height * 0.5`) passes for centroid z=1.8.
     let mut vertices: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0]];
     let mut triangles: Vec<[u32; 3]> = Vec::with_capacity(n);
     let side = ((n as f64).sqrt().ceil() as usize).max(1);

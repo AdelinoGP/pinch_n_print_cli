@@ -37,6 +37,6 @@ fn support_geometry_ir_carries_resolved_distances() {
     let ir = execute_support_geometry(&make_plan(), &Vec::<SliceIR>::new())
         .expect("support geometry should execute");
 
-    assert_eq!(ir.support_top_z_distance_mm, 0.4);
+    assert_eq!(ir.support_top_z_distance, 0.4);
     assert_eq!(ir.support_layer_height_mm, 0.4);
 }
