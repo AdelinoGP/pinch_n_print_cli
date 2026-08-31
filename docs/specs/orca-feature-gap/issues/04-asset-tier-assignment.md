@@ -109,7 +109,7 @@ ticket 99's two fan-scale reclassifications).
 | Quality / Line width | B | support-planner | `support_line_width` in Flow.cpp / TreeSupport.cpp (support flow) |
 | Quality / Overhangs | B | slice-prepass | canonical `PrintObjectSlice.cpp::apply_conical_overhang` |
 | Quality / Bridging | B (split) | pattern keys (2) → infill modules; bridge-over-infill (3) → slicing stage; bridge-angle + flow (2) → perimeters/emitter; perimeter (1) → classic/arachne | canonical `Fill.cpp::Layer::make_fills`, `PrintObject.cpp::bridge_over_infill`, `GCode::_extrude`, `PerimeterGenerator::process_no_bridge`, `LayerRegion.cpp` |
-| Quality / Precision | C/B | new modules: elefant-foot (2), polyhole (3), contour-compensation (2); `enable_arc_fitting` → emitter; `precise_z_height` → layer-planner | canonical `PrintObject::slice` transforms; arc fitting is G2/G3 emission; z-height is layer-z generation |
+| Quality / Precision | C/B | new modules: elefant-foot (2), polyhole (3), contour-compensation (2); `enable_arc_fitting` → emitter; `precise_z_height` → layer-planner; `resolution` → emitter/generation-time (re-adjudicated in ticket 105) | canonical `PrintObject::slice` transforms; arc fitting is G2/G3 emission; z-height is layer-z generation |
 | Others / Fuzzy Skin | A | fuzzy-skin | canonical `Feature/FuzzySkin/FuzzySkin.cpp::apply_fuzzy_skin` |
 | Others / Brim, Skirt | A | skirt-brim | canonical `Brim.cpp::make_brim`, `Print.cpp::_make_skirt`, `GCode.cpp::generate_skirt` |
 | Cooling / Notes | A/B | part-cooling (17) + tool-ordering (1) + layer-planner (1) | canonical CoolingBuffer.cpp / GCode.cpp emission-time cooling; `max_layer_height` in ToolOrdering.cpp; `min_layer_height` in Slicing.cpp |
@@ -517,6 +517,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `hole_to_polyhole_threshold` | C | new polyhole module |
 | `hole_to_polyhole_twisted` | C | new polyhole module |
 | `precise_z_height` | B | layer-planner (Slicing.cpp generate_object_layers) |
+| `resolution` | B | crates/slicer-gcode / generation-time simplify — re-adjudicated in ticket 105 (canonical `PerimeterGenerator.cpp` `ex.simplify_p`, `Brim.cpp`, `Fill.cpp`, `GCodeWriter.cpp` arc density; the host's emit-time per-role `gcode_resolution` is not the same decision point) |
 | `xy_contour_compensation` | C | new contour-compensation module |
 | `xy_hole_compensation` | C | new contour-compensation module |
 

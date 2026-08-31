@@ -1,6 +1,6 @@
 # Asset — Scoped gap list after triage (ticket 03)
 
-Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 25 keys that are already implemented under a Pinch name. **414 keys remain** — this is the set the packet queue must cover.
+Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 24 keys that are already implemented under a Pinch name. **415 keys remain** — this is the set the packet queue must cover (ticket 105 re-adjudicated `resolution` from the rename pool into this gap set: the host's emit-time per-role `gcode_resolution` does not implement canonical's generation-time global simplification).
 
 ## Ruled out of scope (42)
 
@@ -49,7 +49,7 @@ Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 25
 | `wrapping_detection_layers` | Bambu-proprietary hardware |
 | `wrapping_exclude_area` | Bambu-proprietary hardware |
 
-## Already implemented under a Pinch name (25)
+## Already implemented under a Pinch name (24)
 
 These were counted as gaps by exact-name matching in ticket 01. Each is a **false gap**.
 
@@ -61,7 +61,6 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `fan_max_speed` | `fan_speed_max` | `part-cooling` | exact (word order) — **renamed in ticket 99**; scale deviation: Orca 0–100 % vs Pinch raw 0–255 → reclassified as gap work (P01) |
 | `fan_min_speed` | `fan_speed_min` | `part-cooling` | exact (word order) — **renamed in ticket 99**; same scale deviation + declared-but-never-read → reclassified as gap work (P01) |
 | `enable_overhang_bridge_fan` | `enable_overhang_fan` | `part-cooling` | exact — **renamed in ticket 99** |
-| `resolution` | `gcode_resolution` | `[host]` | exact |
 | `retraction_length` | `retract_length` | `path-optimization-default` | exact — **renamed in ticket 101**; default 0.8 matches Orca |
 | `retraction_speed` | `retract_speed` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 25.0 → **30.0** (user ruling in-ticket) |
 | `z_hop` | `travel_z_hop` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 0.0 → **0.4** and range `[0, 5]` adopted (user ruling in-ticket) |
@@ -74,7 +73,7 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) — **renamed in ticket 104** |
 | `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) — **renamed in ticket 102**; default aligned 0.8 → **0.0** to match Orca's "0 = no threshold effect" (user ruling in-ticket) |
 | `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact — **renamed in ticket 104**; manifest default aligned 0.3 → **0.2** to match Orca (user ruling in-ticket; host `ResolvedConfig` was already 0.2) |
-| `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact |
+| `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact — **renamed in ticket 105** |
 | `raft_layers` | `support_raft_layers` + `base_raft_layers` + `interface_raft_layers` | `support-planner` | **split** — one Orca key became three |
 | `ironing_type` | `ironing_enabled` | `top-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
 | `support_ironing` | `ironing_enabled` | `support-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
@@ -92,7 +91,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | `path_optimization_emit_layer_markers` | debug/diagnostic output |
 | `filament_change_extrusion_role_gcode`, `process_change_extrusion_role_gcode` | Pinch-only; Orca has only `change_extrusion_role_gcode` (separately declared, and live) |
 | `flat_bridge_closing_join` | flat-bridge enclosure join style; Orca has no key |
-| `min_segment_length`, `infill_resolution`, `support_resolution`, `perimeter_arc_tolerance` | Pinch splits path simplification per-domain; Orca has one global `resolution` (already mapped above) |
+| `min_segment_length`, `infill_resolution`, `support_resolution`, `perimeter_arc_tolerance` | Pinch splits path simplification per-domain; Orca's global `resolution` is **re-adjudicated in ticket 105** as a separate gap (generation-time global simplification is a missing decision point; the host's emit-time per-role keys do not implement it) |
 | `narrow_loop_length_threshold_mm`, `smaller_perimeter_line_width` | Orca's small-perimeter handling is speed-only (`small_perimeter_speed`), not width |
 | `thin_wall_speed`, `bottom_surface_speed` | finer per-role speed split than Orca exposes |
 | `bridge_line_width` | Orca derives bridge width from `bridge_flow` rather than a width key |
@@ -109,7 +108,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | `apply_to_all` | fuzzy-skin scope flag; overlaps Orca's `fuzzy_skin` enum rather than renaming a key |
 | `infill_density`, `infill_speed`, `infill_overlap` | **not renames — duplicates.** `sparse_infill_density`, `sparse_infill_speed` and `infill_wall_overlap` are *also* declared live under their Orca names |
 
-## In-scope gap by section (414)
+## In-scope gap by section (415)
 
 | count | Section / subsection |
 |---:|---|
@@ -126,7 +125,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | 10 | Strength / Infill pattern-specific |
 | 10 | Multimaterial / Multimaterial advanced |
 | 9 | Support / Tree supports |
-| 9 | Quality / Precision |
+| 10 | Quality / Precision |
 | 9 | Quality / Bridging |
 | 9 | Printer / Machine / Motion limits |
 | 9 | Others / Special mode |
@@ -553,6 +552,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 - `hole_to_polyhole_threshold`
 - `hole_to_polyhole_twisted`
 - `precise_z_height`
+- `resolution`
 - `xy_contour_compensation`
 - `xy_hole_compensation`
 

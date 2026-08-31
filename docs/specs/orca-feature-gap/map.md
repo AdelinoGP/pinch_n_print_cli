@@ -24,11 +24,15 @@ off-map, after.
   that column** — use ticket 01's asset, or re-derive.
 - **Pinch 'n Print renamed Orca's keys — now being standardised away.**
   Ticket 07's ruling: **standardise to Orca's names**, not document. The rename
-  workstream is tickets **99–107** (26 keys: 22 exact rows + 3 duplicate
-  collapses + `ironing_spacing_mm`); ticket 108 (filed by ticket 10's
-  authoring) adjudicates a possible 27th — `wipe_tower_speed` →
-  `wipe_tower_max_purge_speed` — before any rename work may treat it as
-  settled. It **gates the queue by owner** — each
+  workstream is tickets **99–107** (25 keys after ticket 105's re-adjudication:
+  21 exact rows + 3 duplicate collapses + `ironing_spacing_mm` — `resolution`
+  was re-judged a **gap**, not a rename: canonical applies it as a
+  generation-time *global* simplify, the host's `gcode_resolution` is emit-time
+  and per-role, so the two are different decision points; the key now rides
+  queue packet P51 and `gcode_resolution` stays PnP-specific); ticket 108
+  (filed by ticket 10's authoring) adjudicates a possible 26th —
+  `wipe_tower_speed` → `wipe_tower_max_purge_speed` — before any rename work
+  may treat it as settled. It **gates the queue by owner** — each
   packet ticket is blocked by the rename tickets that touch *its* owner (wired
   in ticket 100 after the original wiring was found to gate nothing: 09–98 were
   blocked only by the already-resolved 06). 20 packets touch no renamed owner
@@ -47,9 +51,11 @@ off-map, after.
   (`num_of` returned `None` for `toml::Value::Boolean`), so any pre-100 claim
   that a boolean default "matches Orca" was never actually checked. Re-verify
   rather than trust those.
-- **The scoped target is 407 queue keys** (03's 414 minus 04's 11 rulings plus
+- **The scoped target is 407 queue keys** (03's 415 minus 04's 11 rulings plus
   07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
-  12's dead-in-canonical `brim_ears` ruling: **406**; per-key tier table in
+  12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
+  ticket 105's re-adjudication of `resolution` out of the rename pool into the
+  gap set; per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
@@ -350,6 +356,28 @@ off-map, after.
   fallout pre-baked): default `disabled_fuzzy` is inert (apply_to_all alone
   no longer fuzzes) and layer 0 passes through at default. No deviation rows;
   no human sign-off consumed.
+- [105 — Rename host and infill-angle keys to Orca names](issues/105-rename-host-infill-angle-keys.md)
+  — **one rename merged, one adjudication corrected** (both on this ticket).
+  `infill_angle` → `infill_direction` verified exact against canonical
+  (`Fill/Fill.cpp` `calculate_infill_rotation_angle`) and renamed across
+  gyroid-infill + rectilinear-infill, host `ResolvedConfig` field/key,
+  `region_mapping` overlay + lightning consumers, tests, and the dragon-curve
+  community example (mirrors rectilinear's spellings by design) — defaults
+  byte-identical 45.0, zero deviation rows, zero sign-off consumed. **The
+  `gcode_resolution` → `resolution` row was re-adjudicated (human challenge,
+  verified against canonical): a gap, not a rename** — canonical `resolution`
+  is a generation-time **global** simplify (`PerimeterGenerator.cpp`
+  `ex.simplify_p`, `Brim.cpp`, `Fill.cpp`, `Layer.cpp`, `PrintObjectSlice.cpp`,
+  `Print.cpp`, `TreeSupport`) plus emit-side arc density (`GCodeWriter.cpp`);
+  the host's `gcode_resolution` is emit-time and per-role
+  (`tolerance_for_role`), so "exact" claimed parity the host doesn't implement
+  (ironing-class finding). Records: 03 reclassified (rename pool 25 → 24;
+  gap set 414 → **415**), tier **B** in 04, packet **P51** gains `resolution`
+  in 05 — queue target **406 → 407**; `gcode_resolution` stays PnP-specific,
+  unrenamed, deviation table stays 27 rows. Gates: gen-config-docs/check-literals/
+  check/clippy clean; slicer-ir 20 binaries, slicer-core host-algos 599 tests,
+  modules + slicer-gcode green, runtime e2e 136/136; all 44 guests rebuilt
+  (slicer-ir sits in every guest's dependency closure).
 
 ## Not yet specified
 

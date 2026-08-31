@@ -287,9 +287,9 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `internal_bridge_flow`
 
-### P51 — Quality / Precision — emitter (1 keys, Tier B)
+### P51 — Quality / Precision — emitter (2 keys, Tier B)
 
-`enable_arc_fitting`
+`enable_arc_fitting`, `resolution` (the latter re-adjudicated from the rename pool in ticket 105 — canonical's generation-time global simplification is a missing decision point; packet grounding decides whether it lands emit-side or in a generation stage)
 
 ### P52 — Quality / Seam (1/2) — emitter (8 keys, Tier B)
 
