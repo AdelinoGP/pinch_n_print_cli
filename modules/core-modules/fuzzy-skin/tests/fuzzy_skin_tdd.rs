@@ -301,6 +301,31 @@ fn from_config_defaults() {
     assert!(module.is_ok());
 }
 
+#[test]
+fn empty_config_uses_canonical_fuzzy_skin_defaults() {
+    let wall = outer_wall(0.3, &[true, true, true, true]);
+    let regions = vec![region_with_walls(vec![wall])];
+    let default = default_config();
+    let canonical = ConfigViewBuilder::new()
+        .float("fuzzy_skin_thickness", 0.2)
+        .float("fuzzy_skin_point_distance", 0.3)
+        .build();
+
+    let mut default_output = PerimeterOutputBuilder::new();
+    FuzzySkinModule::from_config(&default)
+        .unwrap()
+        .run_wall_postprocess(0, &regions, &mut default_output, &default)
+        .unwrap();
+
+    let mut canonical_output = PerimeterOutputBuilder::new();
+    FuzzySkinModule::from_config(&canonical)
+        .unwrap()
+        .run_wall_postprocess(0, &regions, &mut canonical_output, &canonical)
+        .unwrap();
+
+    assert_eq!(default_output.wall_loops(), canonical_output.wall_loops());
+}
+
 // ============================================================================
 // Test 8: from_config with custom config succeeds
 // ============================================================================
@@ -308,8 +333,8 @@ fn from_config_defaults() {
 #[test]
 fn from_config_custom_config() {
     let config = ConfigViewBuilder::new()
-        .float("thickness", 1.0)
-        .float("point_distance", 0.5)
+        .float("fuzzy_skin_thickness", 1.0)
+        .float("fuzzy_skin_point_distance", 0.5)
         .bool("apply_to_all", true)
         .build();
     let module = FuzzySkinModule::from_config(&config);

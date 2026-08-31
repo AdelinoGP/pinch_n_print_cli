@@ -1319,19 +1319,19 @@ incompatible-with = ["*.nonplanar-wall-modulator"]
 
 [config.schema]
 
-  [config.schema.thickness]
+  [config.schema.fuzzy_skin_thickness]
   type    = "float"
-  default = 0.3
-  min     = 0.05
+  default = 0.2
+  min     = 0.0
   max     = 2.0
   display = "Fuzzy Skin Thickness (mm)"
   group   = "Fuzzy Skin"
 
-  [config.schema.point_distance]
+  [config.schema.fuzzy_skin_point_distance]
   type    = "float"
-  default = 0.8
-  min     = 0.1
-  max     = 3.0
+  default = 0.3
+  min     = 0.01
+  max     = 5.0
   display = "Point Distance (mm)"
   group   = "Fuzzy Skin"
 
@@ -1343,7 +1343,7 @@ incompatible-with = ["*.nonplanar-wall-modulator"]
   group   = "Fuzzy Skin"
 
 [config.overridable-per-region]
-keys = ["thickness", "point_distance", "apply_to_all"]
+keys = ["fuzzy_skin_thickness", "fuzzy_skin_point_distance", "apply_to_all"]
 
 [hints]
 layer-parallel-safe = true
@@ -1368,9 +1368,13 @@ impl LayerModule for FuzzySkinModule {
         output: &mut PerimeterOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let thickness     = config.get_float("thickness").unwrap_or(0.3) as f32;
-        let point_dist    = config.get_float("point_distance").unwrap_or(0.8) as f32;
-        let apply_to_all  = config.get_bool("apply_to_all").unwrap_or(false);
+        let fuzzy_skin_thickness = config
+            .get_float("fuzzy_skin_thickness")
+            .unwrap_or(0.2) as f32;
+        let fuzzy_skin_point_distance = config
+            .get_float("fuzzy_skin_point_distance")
+            .unwrap_or(0.3) as f32;
+        let apply_to_all = config.get_bool("apply_to_all").unwrap_or(false);
 
         for region in regions {
             let mut walls = region.wall_loops();
@@ -1389,8 +1393,8 @@ impl LayerModule for FuzzySkinModule {
                     &wall.path,
                     &wall.feature_flags,
                     apply_to_all,
-                    thickness,
-                    point_dist,
+                    fuzzy_skin_thickness,
+                    fuzzy_skin_point_distance,
                 );
                 output.push_wall_loop(fuzzed)
                     .map_err(|e| ModuleError::non_fatal(2, e))?;

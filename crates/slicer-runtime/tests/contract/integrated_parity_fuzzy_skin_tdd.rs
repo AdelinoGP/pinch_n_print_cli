@@ -74,8 +74,14 @@ fn perimeter() -> PerimeterIR {
 #[test]
 fn integrated_parity_fuzzy_skin() {
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
-        ("thickness".into(), slicer_ir::ConfigValue::Float(0.3)),
-        ("point_distance".into(), slicer_ir::ConfigValue::Float(0.5)),
+        (
+            "fuzzy_skin_thickness".into(),
+            slicer_ir::ConfigValue::Float(0.3),
+        ),
+        (
+            "fuzzy_skin_point_distance".into(),
+            slicer_ir::ConfigValue::Float(0.5),
+        ),
         ("apply_to_all".into(), slicer_ir::ConfigValue::Bool(true)),
     ])));
     let bb = Blackboard::new(Arc::new(MeshIR::default()), 1);
@@ -160,8 +166,14 @@ fn native_fuzzy_skin_without_committed_perimeter_does_not_fatal() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
-        ("thickness".into(), slicer_ir::ConfigValue::Float(0.3)),
-        ("point_distance".into(), slicer_ir::ConfigValue::Float(0.5)),
+        (
+            "fuzzy_skin_thickness".into(),
+            slicer_ir::ConfigValue::Float(0.3),
+        ),
+        (
+            "fuzzy_skin_point_distance".into(),
+            slicer_ir::ConfigValue::Float(0.5),
+        ),
         ("apply_to_all".into(), slicer_ir::ConfigValue::Bool(true)),
     ])));
     let native_module = CompiledModuleBuilder::new("com.core.fuzzy-skin")

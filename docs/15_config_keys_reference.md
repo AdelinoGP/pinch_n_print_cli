@@ -134,8 +134,8 @@ is the authoritative catalog of their defaults and ranges.
 | `wall_loops` | int | `2` | [1.0, 10.0] | `classic-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
-| `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
-| `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
+| `fuzzy_skin_point_distance` | float | `0.3` | [0.01, 5.0] | `fuzzy-skin` |
+| `fuzzy_skin_thickness` | float | `0.2` | [0.0, 2.0] | `fuzzy-skin` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `gyroid-infill` |
