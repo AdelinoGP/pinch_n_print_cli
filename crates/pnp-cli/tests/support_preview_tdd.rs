@@ -203,7 +203,7 @@ fn preview_json_schema_and_nonempty_support() {
     )
     .is_ok());
     let doc = read_doc(&output);
-    assert_eq!(doc["schema_version"], "1.1.0");
+    assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["units"], "mm");
     assert!(doc["layer_count"].as_u64().is_some_and(|count| count > 0));
 
@@ -352,7 +352,7 @@ fn support_body_carries_actual_support_structures() {
     )
     .is_ok());
     let doc = read_doc(&output);
-    assert_eq!(doc["schema_version"], "1.1.0");
+    assert_eq!(doc["schema_version"], "1.2.0");
 
     let layers = doc["layers"].as_array().expect("layers must be an array");
     let mut body_polygons = 0usize;
@@ -474,7 +474,9 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
             patch: 0,
         },
         entries: vec![
-            slicer_ir::SupportPlanEntry {
+            // exhaustive: the fixture pins every plan-entry field so the
+            // emitted document shape is fully determined by this literal
+            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
                 global_layer_index: 0,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -493,7 +495,7 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 decline_reason: None,
             },
             // Raft prefix entries carry no geometry and must be skipped.
-            slicer_ir::SupportPlanEntry {
+            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
                 global_layer_index: -1,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -516,7 +518,7 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
     };
 
     let doc = build_preview_doc(&geometry, &plan, &global_layers);
-    assert_eq!(doc.schema_version, "1.1.0");
+    assert_eq!(doc.schema_version, "1.2.0");
     let layer_0 = doc
         .layers
         .iter()
@@ -529,6 +531,144 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
             .iter()
             .all(|layer| layer.layer_index != 1 || layer.support_body.is_empty()),
         "layer 1 has no plan entry and must carry no support_body"
+    );
+    assert!(
+        doc.layers
+            .iter()
+            .all(|layer| layer.support_interface.is_empty()),
+        "a body-only plan must carry no support_interface regions"
+    );
+}
+
+#[test]
+fn interface_role_regions_land_in_support_interface() {
+    let mut entries = HashMap::new();
+    entries.insert(
+        SupportGeometryKey {
+            global_support_layer_index: 0,
+            object_id: "obj-0".to_owned(),
+            region_id: 0,
+        },
+        vec![unit_square()],
+    );
+    let geometry = SupportGeometryIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        support_layer_height_mm: 0.2,
+        support_top_z_distance_mm: 0.1,
+        entries,
+    };
+    let global_layers: Vec<_> = (0..3)
+        .map(|index| GlobalLayer {
+            index,
+            z: 0.2 * (index + 1) as f32,
+            ..GlobalLayer::default()
+        })
+        .collect();
+
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 0.0),
+                Point2::from_mm(x + 1.0, 0.0),
+                Point2::from_mm(x + 1.0, 1.0),
+                Point2::from_mm(x, 1.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let plan = SupportPlanIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries: vec![
+            // exhaustive: the fixture pins every plan-entry field so the
+            // emitted document shape is fully determined by this literal
+            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+                global_layer_index: 0,
+                object_id: "obj-0".to_owned(),
+                region_id: 0,
+                family_id: "tree".to_owned(),
+                demand_ids: Vec::new(),
+                body_ids: Vec::new(),
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                roles: vec![
+                    SupportPlanRoleRegion {
+                        role: SupportPlanRole::SupportBody,
+                        regions: vec![square(5.0)],
+                    },
+                    SupportPlanRoleRegion {
+                        role: SupportPlanRole::TopInterface,
+                        regions: vec![square(6.0)],
+                    },
+                    SupportPlanRoleRegion {
+                        role: SupportPlanRole::BaseInterface,
+                        regions: vec![square(7.0)],
+                    },
+                    SupportPlanRoleRegion {
+                        role: SupportPlanRole::BottomInterface,
+                        regions: vec![square(8.0)],
+                    },
+                ],
+                skeleton: None,
+                capabilities: Vec::new(),
+                provenance: Vec::new(),
+                decline_reason: None,
+            },
+            // Raft prefix entries carry no geometry and must be skipped.
+            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+                global_layer_index: -1,
+                object_id: "obj-0".to_owned(),
+                region_id: 0,
+                family_id: "tree".to_owned(),
+                demand_ids: Vec::new(),
+                body_ids: Vec::new(),
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                roles: vec![SupportPlanRoleRegion {
+                    role: SupportPlanRole::TopInterface,
+                    regions: vec![square(9.0)],
+                }],
+                skeleton: None,
+                capabilities: Vec::new(),
+                provenance: Vec::new(),
+                decline_reason: None,
+            },
+        ],
+        raft_plan: None,
+    };
+
+    let doc = build_preview_doc(&geometry, &plan, &global_layers);
+    assert_eq!(doc.schema_version, "1.2.0");
+    let layer_0 = doc
+        .layers
+        .iter()
+        .find(|layer| layer.layer_index == 0)
+        .expect("layer 0 must exist");
+    assert_eq!(layer_0.support_body.len(), 1, "body regions stay in support_body");
+    assert_eq!(
+        layer_0.support_interface.len(),
+        3,
+        "all three interface roles merge into support_interface"
+    );
+    let mut contours: Vec<_> = layer_0
+        .support_interface
+        .iter()
+        .map(|polygon| polygon.contour[0][0])
+        .collect();
+    contours.sort_by(f64::total_cmp);
+    assert_eq!(contours, vec![6.0, 7.0, 8.0]);
+    assert!(
+        doc.layers
+            .iter()
+            .all(|layer| layer.layer_index != 1 || layer.support_interface.is_empty()),
+        "layer 1 has no plan entry and must carry no support_interface"
     );
 }
 
@@ -638,7 +778,7 @@ fn support_disabled_yields_empty_layers_exit_zero() {
     )
     .is_ok());
     let doc = read_doc(&output);
-    assert_eq!(doc["schema_version"], "1.1.0");
+    assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["layer_count"], 40);
     assert_eq!(doc["layers"].as_array().expect("layers").len(), 0);
     assert_eq!(doc["skipped_intermediate_entries"], 0);
