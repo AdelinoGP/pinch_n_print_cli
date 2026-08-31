@@ -401,6 +401,24 @@ off-map, after.
   `n_contact_loops` absent in-tree). No deviation rows; no CONFIG_BLOCK twins (none of the
   four keys in `SUPPORT_CONFIG_DEFAULTS`/`ORCA_CONFIG_PADDING`); both modules need the
   `toml` dev-dep for the guard tests.
+- [19 — Author packet P12 — Support / Raft — support-planner](issues/19-author-packet-p12-support-raft-support-planner.md)
+  — packet `docs/spec_packets/261-raft-keys/` authored (`draft`), preflight **PASS**.
+  Both keys (`raft_contact_distance` 0.1, `raft_expansion` 1.5) zero-occurrence,
+  re-adjudicated **declared-with-gap**: no raft geometry generator exists in-tree (draft
+  packet 240-support-raft's `com.core.raft-default` is unimplemented; `RaftPlan` carries
+  only layer counts). Canonical consumers pinned: `SlicingParameters::SlicingParameters`
+  (raft Z-gap → `gap_raft_object` → `object_print_z_min`; forced to 0 when
+  `raft_z_gap == 0.0 || zero_topZ_contact`), `SupportMaterial::generate_contact_polygons`
+  (layer_id==0 XY expansion), `TreeSupport3D::generate_raft_contact` /
+  `finalize_raft_contact`, `GCode.cpp` `_print_z` warning; the "ignored for soluble
+  interface" tooltip is **GUI-only** (`ConfigManipulation.cpp`), not a slicing branch.
+  **Owner confirmed, narrowed**: `support-planner` is right, but only `tree-support-planner`
+  has raft surface (raft config cluster + `RaftPlan` emission); `traditional-support-planner`
+  has none — the packet declares in `tree-support-planner.toml` (canonical defaults +
+  bounds, no deviation rows) and pins the traditional omission (AC-N2). No user rulings
+  required. Packet-240 relationship recorded (its AC-5 wire-or-record input), not
+  deferred. No CONFIG_BLOCK twins (`("raft_layers", "0")` in the padding list is the
+  canonical layer-count key, not these two).
 
 ## Not yet specified
 
@@ -474,6 +492,15 @@ off-map, after.
   (packet 260 declares the coBool with-gap, default false). Wiring it is new
   geometry (a loop-filling pass over the interface plan regions) — queue-sized,
   Tier B+; fog until picked up.
+- **Traditional-family raft handling is absent.** Surfaced by ticket 19's
+  authoring: `traditional-support-planner` declares no raft keys and emits no
+  `RaftPlan`, and `traditional-support` has no raft handling — raft is
+  tree-family-only in this port (canonical supports raft for both families).
+  Packet 261 declares the raft keys in `tree-support-planner.toml` and pins
+  the traditional omission (AC-N2). Whether the traditional family gains raft
+  handling — and where the keys would be declared if it does — is a port-state
+  question for the raft geometry work (draft packet 240) and for P13
+  (`raft_first_layer_expansion`); fog until one of them picks it up.
 
 ## Out of scope
 
