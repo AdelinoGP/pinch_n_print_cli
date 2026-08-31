@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use slicer_ir::{
     ConfigValue, ExPolygon, GlobalLayer, Point2, Polygon, SemVer, SupportGeometryIR,
-    SupportGeometryKey,
+    SupportGeometryKey, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
 };
 use tempfile::TempDir;
 
@@ -203,7 +203,7 @@ fn preview_json_schema_and_nonempty_support() {
     )
     .is_ok());
     let doc = read_doc(&output);
-    assert_eq!(doc["schema_version"], "1.0.0");
+    assert_eq!(doc["schema_version"], "1.1.0");
     assert_eq!(doc["units"], "mm");
     assert!(doc["layer_count"].as_u64().is_some_and(|count| count > 0));
 
@@ -216,6 +216,14 @@ fn preview_json_schema_and_nonempty_support() {
                 .is_some_and(|support| !support.is_empty())
         }),
         "at least one layer must contain support"
+    );
+    assert!(
+        layers.iter().any(|layer| {
+            layer["support_body"]
+                .as_array()
+                .is_some_and(|support_body| !support_body.is_empty())
+        }),
+        "at least one layer must contain support_body"
     );
 
     let mut has_nonempty_contour = false;
@@ -330,6 +338,201 @@ fn coordinates_are_mm_not_internal_units() {
 }
 
 #[test]
+fn support_body_carries_actual_support_structures() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("support-preview.json");
+    let config = write_config(&tmp, true);
+
+    assert!(run_support_preview(
+        &fixture_path(),
+        &output,
+        Some(&config),
+        &[module_dir()],
+        true
+    )
+    .is_ok());
+    let doc = read_doc(&output);
+    assert_eq!(doc["schema_version"], "1.1.0");
+
+    let layers = doc["layers"].as_array().expect("layers must be an array");
+    let mut body_polygons = 0usize;
+    let mut body_points = 0usize;
+    for layer in layers {
+        let body = layer["support_body"]
+            .as_array()
+            .expect("support_body must be an array");
+        body_polygons += body.len();
+        for polygon in body {
+            body_points += polygon["contour"]
+                .as_array()
+                .expect("contour must be an array")
+                .len();
+        }
+    }
+    assert!(
+        body_polygons > 0,
+        "the plan must produce support_body polygons"
+    );
+    assert!(
+        body_points > 0,
+        "support_body polygons must have contour points"
+    );
+
+    // The support body is the actual support structure, not the model's own
+    // cross-sections: for the bridge fixture the body spans the gap between
+    // the two enforcer blocks, so its x-extent must be strictly inside the
+    // model's x-extent on the same layer.
+    let layer_with_body = layers
+        .iter()
+        .find(|layer| {
+            layer["support_body"]
+                .as_array()
+                .is_some_and(|body| !body.is_empty())
+        })
+        .expect("a layer with support_body must exist");
+    let model_xs: Vec<f64> = layer_with_body["support"]
+        .as_array()
+        .expect("support")
+        .iter()
+        .flat_map(|polygon| {
+            polygon["contour"]
+                .as_array()
+                .expect("contour")
+                .iter()
+                .map(|point| point[0].as_f64().expect("x"))
+        })
+        .collect();
+    let body_xs: Vec<f64> = layer_with_body["support_body"]
+        .as_array()
+        .expect("support_body")
+        .iter()
+        .flat_map(|polygon| {
+            polygon["contour"]
+                .as_array()
+                .expect("contour")
+                .iter()
+                .map(|point| point[0].as_f64().expect("x"))
+        })
+        .collect();
+    let model_min = model_xs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let model_max = model_xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let body_min = body_xs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let body_max = body_xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        body_min > model_min && body_max < model_max,
+        "support_body x-extent [{body_min}, {body_max}] must lie strictly inside \
+         the model cross-section x-extent [{model_min}, {model_max}]"
+    );
+}
+
+#[test]
+fn build_preview_doc_merges_plan_body_regions_per_layer() {
+    let mut entries = HashMap::new();
+    for layer_index in 0..2 {
+        entries.insert(
+            SupportGeometryKey {
+                global_support_layer_index: layer_index,
+                object_id: format!("obj-{layer_index}"),
+                region_id: 0,
+            },
+            vec![unit_square()],
+        );
+    }
+    let geometry = SupportGeometryIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        support_layer_height_mm: 0.2,
+        support_top_z_distance_mm: 0.1,
+        entries,
+    };
+    let global_layers: Vec<_> = (0..3)
+        .map(|index| GlobalLayer {
+            index,
+            z: 0.2 * (index + 1) as f32,
+            ..GlobalLayer::default()
+        })
+        .collect();
+
+    let body = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 0.0),
+                Point2::from_mm(x + 1.0, 0.0),
+                Point2::from_mm(x + 1.0, 1.0),
+                Point2::from_mm(x, 1.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let plan = SupportPlanIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries: vec![
+            slicer_ir::SupportPlanEntry {
+                global_layer_index: 0,
+                object_id: "obj-0".to_owned(),
+                region_id: 0,
+                family_id: "tree".to_owned(),
+                demand_ids: Vec::new(),
+                body_ids: Vec::new(),
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                roles: vec![SupportPlanRoleRegion {
+                    role: SupportPlanRole::SupportBody,
+                    regions: vec![body(5.0)],
+                }],
+                skeleton: None,
+                capabilities: Vec::new(),
+                provenance: Vec::new(),
+                decline_reason: None,
+            },
+            // Raft prefix entries carry no geometry and must be skipped.
+            slicer_ir::SupportPlanEntry {
+                global_layer_index: -1,
+                object_id: "obj-0".to_owned(),
+                region_id: 0,
+                family_id: "tree".to_owned(),
+                demand_ids: Vec::new(),
+                body_ids: Vec::new(),
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                roles: vec![SupportPlanRoleRegion {
+                    role: SupportPlanRole::SupportBody,
+                    regions: vec![body(9.0)],
+                }],
+                skeleton: None,
+                capabilities: Vec::new(),
+                provenance: Vec::new(),
+                decline_reason: None,
+            },
+        ],
+        raft_plan: None,
+    };
+
+    let doc = build_preview_doc(&geometry, &plan, &global_layers);
+    assert_eq!(doc.schema_version, "1.1.0");
+    let layer_0 = doc
+        .layers
+        .iter()
+        .find(|layer| layer.layer_index == 0)
+        .expect("layer 0 must exist");
+    assert_eq!(layer_0.support_body.len(), 1);
+    assert_eq!(layer_0.support_body[0].contour[0], [5.0, 0.0]);
+    assert!(
+        doc.layers
+            .iter()
+            .all(|layer| layer.layer_index != 1 || layer.support_body.is_empty()),
+        "layer 1 has no plan entry and must carry no support_body"
+    );
+}
+
+#[test]
 fn no_gcode_side_effects_exit_zero() {
     let tmp = TempDir::new().expect("tempdir");
     let output = tmp.path().join("support-preview.json");
@@ -401,7 +604,7 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
         })
         .collect();
 
-    let doc = build_preview_doc(&geometry, &global_layers);
+    let doc = build_preview_doc(&geometry, &SupportPlanIR::default(), &global_layers);
     assert_eq!(doc.skipped_intermediate_entries, 2);
     assert_eq!(doc.layer_count, 3);
     assert_eq!(doc.layers.len(), 3);
@@ -411,6 +614,12 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
             .map(|layer| layer.layer_index)
             .collect::<Vec<_>>(),
         vec![0, 1, 2]
+    );
+    assert!(
+        doc.layers
+            .iter()
+            .all(|layer| layer.support_body.is_empty()),
+        "an empty plan must yield no support_body regions"
     );
 }
 
@@ -429,7 +638,7 @@ fn support_disabled_yields_empty_layers_exit_zero() {
     )
     .is_ok());
     let doc = read_doc(&output);
-    assert_eq!(doc["schema_version"], "1.0.0");
+    assert_eq!(doc["schema_version"], "1.1.0");
     assert_eq!(doc["layer_count"], 40);
     assert_eq!(doc["layers"].as_array().expect("layers").len(), 0);
     assert_eq!(doc["skipped_intermediate_entries"], 0);

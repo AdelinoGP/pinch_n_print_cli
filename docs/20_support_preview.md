@@ -17,8 +17,14 @@ requested output path and never emits G-code.
 
 ## Schema Version
 
-The document has `schema_version: "1.0.0"`. This is the document contract
+The document has `schema_version: "1.1.0"`. This is the document contract
 version, not an IR version. Additive fields bump the minor version.
+
+1.1.0 adds `layers[].support_body` — the actual support structures from the
+committed `SupportPlanIR` (`SupportBody` role regions), which the fork renders
+as the overlay. The 1.0.0 `support` field is retained unchanged: it carries
+the model's own cross-sections at support layers (coarse outlines of where
+supports attach), which is not the support geometry itself.
 
 ## Coordinate Units
 
@@ -48,7 +54,8 @@ Each element of `layers` has this shape:
 | --- | --- | --- |
 | `layer_index` | u32 | Model-layer index from `plan.global_layers`, not a support-only layer index. |
 | `z_mm` | f64 | The model layer Z coordinate in millimeters. |
-| `support` | array of polygon objects | Coarse support outline geometry for this model layer. |
+| `support` | array of polygon objects | Coarse support outline geometry for this model layer (the model's own cross-sections at support layers; where supports attach, not the supports themselves). |
+| `support_body` | array of polygon objects | Actual support structures for this model layer (schema 1.1.0): the `SupportPlanIR` `SupportBody` role regions — the tree/traditional support cross-sections. Always present in 1.1.0 documents, possibly empty. Raft prefix entries carry no geometry and are excluded. |
 
 Each element of `support` has this shape:
 
@@ -76,6 +83,17 @@ A complete example document is:
             [1.0, -8.9012],
             [1.0, 0.5],
             [123.4567, 0.5]
+          ],
+          "holes": []
+        }
+      ],
+      "support_body": [
+        {
+          "contour": [
+            [2.0, 0.5],
+            [3.0, 0.5],
+            [3.0, 1.5],
+            [2.0, 1.5]
           ],
           "holes": []
         }
