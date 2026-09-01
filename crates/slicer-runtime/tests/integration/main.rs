@@ -175,6 +175,16 @@ fn independent_support_layer_height_emits_support_row_off_object_grid() {
 }
 
 #[test]
+fn coarse_support_pitch_emits_free_floating_extruding_rows() {
+    support_family_closure::coarse_support_pitch_emits_free_floating_extruding_rows().unwrap();
+}
+
+#[test]
+fn disabled_coarse_pitch_reproduces_baseline_z_sequence() {
+    support_family_closure::disabled_coarse_pitch_reproduces_baseline_z_sequence().unwrap();
+}
+
+#[test]
 fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence() {
     support_family_closure::disabled_independent_support_layer_height_reproduces_baseline_z_sequence()
         .unwrap();

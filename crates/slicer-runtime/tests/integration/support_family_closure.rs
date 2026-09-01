@@ -258,7 +258,7 @@ fn z_followed_by_support_block(gcode: &str, z_line: &str) -> bool {
 /// for `independent_support_layer_height` (the key is declared but unread at
 /// that commit). Step 2's falsifier: a disabled run must reproduce this
 /// sequence exactly.
-const DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z: &[&str] = &[
+const P239D_DISABLED_COARSE_PITCH_BASELINE_Z: &[&str] = &[
     ";Z:0.2", ";Z:0.4", ";Z:0.6", ";Z:0.8", ";Z:1", ";Z:1.2", ";Z:1.4", ";Z:1.6", ";Z:1.8", ";Z:2",
     ";Z:2.2", ";Z:2.4", ";Z:2.6", ";Z:2.8", ";Z:3", ";Z:3.2", ";Z:3.4", ";Z:3.6", ";Z:3.8", ";Z:4",
     ";Z:4.2", ";Z:4.4", ";Z:4.6", ";Z:4.8", ";Z:5", ";Z:5.2", ";Z:5.4", ";Z:5.6", ";Z:5.8", ";Z:6",
@@ -288,7 +288,7 @@ pub fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence(
         &[("independent_support_layer_height", ConfigValue::Bool(false))],
     )?;
     let actual = distinct_z_sequence(&gcode);
-    let expected: Vec<String> = DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z
+    let expected: Vec<String> = P239D_DISABLED_COARSE_PITCH_BASELINE_Z
         .iter()
         .map(|z| (*z).to_string())
         .collect();
@@ -304,6 +304,166 @@ pub fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence(
             expected.len(),
             actual.len()
         ));
+    }
+    Ok(())
+}
+
+/// Extract the positive and non-positive extrusion values from the support
+/// block immediately following `z_line`. The block ends at the next layer or
+/// type marker, so a later support block cannot satisfy this row's assertion.
+fn support_block_e_values_after_z(gcode: &str, z_line: &str) -> Vec<f64> {
+    let mut after_z = false;
+    let mut in_support = false;
+    let mut values = Vec::new();
+    for line in gcode.lines().map(str::trim) {
+        if line.starts_with(";LAYER_CHANGE") {
+            if after_z {
+                break;
+            }
+            continue;
+        }
+        if line == z_line {
+            after_z = true;
+            continue;
+        }
+        if !after_z {
+            continue;
+        }
+        if line.starts_with(";TYPE:") {
+            if line == ";TYPE:Support" {
+                in_support = true;
+                continue;
+            }
+            if in_support {
+                break;
+            }
+            continue;
+        }
+        if !in_support || !line.starts_with("G1") {
+            continue;
+        }
+        for token in line.split_whitespace() {
+            if let Some(value) = token.strip_prefix('E').and_then(|v| v.parse::<f64>().ok()) {
+                values.push(value);
+            }
+        }
+    }
+    values
+}
+
+/// AC-1 (packet 239d): coarse independent support pitch adds free-floating
+/// support rows, and every such row extrudes material.
+pub fn coarse_support_pitch_emits_free_floating_extruding_rows() -> Result<(), String> {
+    let mut failures = Vec::new();
+    for (family, support_type) in FAMILIES {
+        let result = (|| -> Result<(usize, usize, usize), String> {
+            let enabled = run_slice_for_family_with_extra(
+                support_type,
+                &[
+                    ("independent_support_layer_height", ConfigValue::Bool(true)),
+                    ("support_layer_height_mm", ConfigValue::Float(0.3)),
+                ],
+            )?;
+            let disabled = run_slice_for_family_with_extra(
+                support_type,
+                &[
+                    ("independent_support_layer_height", ConfigValue::Bool(false)),
+                    ("support_layer_height_mm", ConfigValue::Float(0.3)),
+                ],
+            )?;
+            let enabled_z = distinct_z_sequence(&enabled);
+            let disabled_z = distinct_z_sequence(&disabled);
+            let missing: Vec<&String> = disabled_z
+                .iter()
+                .filter(|z| !enabled_z.contains(z))
+                .collect();
+            if !missing.is_empty() {
+                return Err(format!("missing disabled Z rows: {missing:?}"));
+            }
+            let enabled_only: Vec<&String> = enabled_z
+                .iter()
+                .filter(|z| !disabled_z.contains(z))
+                .collect();
+            if enabled_only.is_empty() {
+                return Err(format!(
+                    "enabled run is not a strict superset of its disabled run (enabled distinct Z={}, off-grid=0, extruding support rows=0)",
+                    enabled_z.len()
+                ));
+            }
+            let mut qualifying_rows = 0;
+            let mut failures = Vec::new();
+            for z_line in &enabled_only {
+                if !z_followed_by_support_block(&enabled, z_line) {
+                    continue;
+                }
+                qualifying_rows += 1;
+                let e_values = support_block_e_values_after_z(&enabled, z_line);
+                if !e_values.iter().any(|value| *value > 0.0) {
+                    failures.push(format!("{z_line} has no G1 E > 0; E values: {e_values:?}"));
+                }
+            }
+            if !failures.is_empty() {
+                return Err(failures.join("; "));
+            }
+            if qualifying_rows == 0 {
+                return Err("no enabled-only Z row was followed by a support block".into());
+            }
+            Ok((enabled_z.len(), enabled_only.len(), qualifying_rows))
+        })();
+        match result {
+            Ok((enabled_z, off_grid, extruding)) => {
+                eprintln!(
+                    "{family} coarse evidence: enabled distinct Z={enabled_z}, off-grid={off_grid}, extruding support rows={extruding}"
+                );
+            }
+            Err(error) => {
+                failures.push(format!("{family}: {error}"));
+            }
+        }
+    }
+    if !failures.is_empty() {
+        return Err(format!(
+            "coarse pitch family failures: {}",
+            failures.join(" | ")
+        ));
+    }
+    Ok(())
+}
+
+/// AC-N1 (packet 239d): disabling independent support height preserves the
+/// recorded object-layer sequence even when a coarse pitch is configured.
+pub fn disabled_coarse_pitch_reproduces_baseline_z_sequence() -> Result<(), String> {
+    let gcode = run_slice_for_family_with_extra(
+        "normal(auto)",
+        &[
+            ("independent_support_layer_height", ConfigValue::Bool(false)),
+            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+        ],
+    )?;
+    let actual = distinct_z_sequence(&gcode);
+    let expected: Vec<String> = P239D_DISABLED_COARSE_PITCH_BASELINE_Z
+        .iter()
+        .map(|z| (*z).to_string())
+        .collect();
+    if actual != expected {
+        return Err(format!(
+            "disabled coarse run must reproduce the recorded baseline; expected {} entries, got {}",
+            expected.len(),
+            actual.len()
+        ));
+    }
+    for z_line in actual {
+        let z_mm = z_line
+            .strip_prefix(";Z:")
+            .ok_or_else(|| format!("invalid Z line {z_line:?}"))?
+            .parse::<f64>()
+            .map_err(|error| format!("invalid Z line {z_line:?}: {error}"))?;
+        let grid_distance = (z_mm / 0.2 - (z_mm / 0.2).round()).abs() * 0.2;
+        if grid_distance > 1e-3 {
+            return Err(format!(
+                "disabled coarse run synthesized off-grid row {z_line}"
+            ));
+        }
     }
     Ok(())
 }

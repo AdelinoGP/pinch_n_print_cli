@@ -3614,6 +3614,11 @@ impl SupportPlanner {
                 .map(|layer| layer.effective_layer_height as f64)
                 .unwrap_or(0.0)
         };
+        let coarse_support_pitch = self.support_layer_height_mm > 0.0
+            && layer_plan
+                .layers
+                .first()
+                .is_some_and(|layer| support_pitch_mm >= layer.effective_layer_height as f64);
         if self.independent_support_layer_height && support_pitch_mm > 0.0 {
             // Support-bearing rows, ascending by global layer index. A row
             // prints iff it survived with real geometry (the same predicate
@@ -3646,60 +3651,211 @@ impl SupportPlanner {
             };
             let mut interpolated: Vec<SupportPlanEntry> = Vec::new();
             let mut intermediate_plane_indices = std::collections::BTreeMap::<i64, i32>::new();
-            for (_, support_rows_by_layer) in support_rows_by_object {
-                let mut previous_layer: Option<&u32> = None;
-                for layer in support_rows_by_layer.keys() {
-                    if let Some(prev) = previous_layer {
-                        if let (Some(below_z), Some(above_z)) =
-                            (z_of_global(*prev), z_of_global(*layer))
-                        {
-                            for plane in
-                                packet239c_intermediate_planes(below_z, above_z, support_pitch_mm)
+            if coarse_support_pitch {
+                // Coarse support brackets the interface/contact planes, not every
+                // object row. This is per object because one tree body can span
+                // multiple regions and must retain one deterministic Z sequence.
+                for support_rows_by_layer in support_rows_by_object.values() {
+                    let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
+                    let mut demanded: Vec<(u32, Vec<SupportPlanEntry>)> = Vec::new();
+                    for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
+                        if let (Some(first), Some(last)) = (run.first(), run.last()) {
+                            demanded.push((
+                                *first,
+                                support_rows_by_layer[first]
+                                    .iter()
+                                    .map(|entry| (*entry).clone())
+                                    .collect(),
+                            ));
+                            if last != first {
+                                demanded.push((
+                                    *last,
+                                    support_rows_by_layer[last]
+                                        .iter()
+                                        .map(|entry| (*entry).clone())
+                                        .collect(),
+                                ));
+                            }
+                        }
+                    }
+                    if demanded.len() < 2 {
+                        let keys: Vec<u32> = support_rows_by_layer.keys().copied().collect();
+                        if keys.len() >= 2 {
+                            demanded = vec![
+                                (
+                                    keys[0],
+                                    support_rows_by_layer[&keys[0]]
+                                        .iter()
+                                        .map(|entry| (*entry).clone())
+                                        .collect(),
+                                ),
+                                (
+                                    *keys.last().unwrap(),
+                                    support_rows_by_layer[keys.last().unwrap()]
+                                        .iter()
+                                        .map(|entry| (*entry).clone())
+                                        .collect(),
+                                ),
+                            ];
+                        }
+                    }
+                    for pair in demanded.windows(2) {
+                        let (below_layer, below_rows) = (&pair[0].0, &pair[0].1);
+                        let (above_layer, _) = (&pair[1].0, &pair[1].1);
+                        let (Some(below_z), Some(above_z)) =
+                            (z_of_global(*below_layer), z_of_global(*above_layer))
+                        else {
+                            continue;
+                        };
+                        for plane in packet239d_coarse_planes(below_z, above_z, support_pitch_mm) {
+                            if plane == slicer_ir::mm_to_units(above_z)
+                                || plane == slicer_ir::mm_to_units(below_z)
+                                || support_rows_by_layer.keys().any(|layer| {
+                                    z_of_global(*layer)
+                                        .is_some_and(|z| slicer_ir::mm_to_units(z) == plane)
+                                })
                             {
-                                if let Some(lower_entries) = support_rows_by_layer.get(prev) {
-                                    for lower_entry in lower_entries {
-                                        let mut clone = (*lower_entry).clone();
-                                        // Seed from the lower bracket, matching the
-                                        // traditional planner's bottom-up support-layer
-                                        // projection: intermediate rows clone the lower
-                                        // bracket entry. Upper-row geometry may already
-                                        // enter model occupancy at an intermediate
-                                        // exact-Z plane.
-                                        // Reuse one planner-local identity per physical
-                                        // plane. Object and region remain separate parts
-                                        // of entry identity and host-side union/dedup.
-                                        let plane_ordinal =
-                                            i32::try_from(intermediate_plane_indices.len())
-                                                .map_err(|_| {
+                                continue;
+                            }
+                            let plane_ordinal = i32::try_from(intermediate_plane_indices.len())
+                                .map_err(|_| {
+                                    ModuleError::fatal(
+                                        1,
+                                        "too many intermediate tree-support planes",
+                                    )
+                                })?;
+                            let next_index =
+                                i32::MIN.checked_add(plane_ordinal).ok_or_else(|| {
+                                    ModuleError::fatal(
+                                        1,
+                                        "too many intermediate tree-support planes",
+                                    )
+                                })?;
+                            let global_layer_index = *intermediate_plane_indices
+                                .entry(plane)
+                                .or_insert(next_index);
+                            let anchor_layer_index = layer_plan
+                                .layers
+                                .iter()
+                                .enumerate()
+                                .rev()
+                                .find(|(_, layer)| slicer_ir::mm_to_units(layer.z) <= plane)
+                                .map(|(index, _)| u32::try_from(index))
+                                .transpose()
+                                .map_err(|_| ModuleError::fatal(1, "layer index exceeds u32"))?
+                                .unwrap_or(*below_layer);
+                            for lower_entry in below_rows {
+                                let mut clone = lower_entry.clone();
+                                clone.global_layer_index = global_layer_index;
+                                clone.anchor_layer_index = anchor_layer_index;
+                                clone.anchor_z = plane;
+                                clone.roles = clone
+                                    .roles
+                                    .into_iter()
+                                    .map(|role| slicer_ir::SupportPlanRoleRegion {
+                                        role: slicer_ir::SupportPlanRole::SupportBody,
+                                        regions: role.regions,
+                                    })
+                                    .collect();
+                                interpolated.push(clone);
+                            }
+                        }
+                    }
+                }
+                let bracket_ranges: Vec<(String, u32, u32)> = support_rows_by_object
+                    .iter()
+                    .flat_map(|(object_id, rows)| {
+                        let demanded_layers: Vec<u32> = rows.keys().copied().collect();
+                        let mut demanded = Vec::new();
+                        for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
+                            if let (Some(first), Some(last)) = (run.first(), run.last()) {
+                                demanded.push(*first);
+                                if last != first {
+                                    demanded.push(*last);
+                                }
+                            }
+                        }
+                        if demanded.len() < 2 {
+                            let keys: Vec<u32> = rows.keys().copied().collect();
+                            if keys.len() >= 2 {
+                                demanded = vec![keys[0], *keys.last().unwrap()];
+                            }
+                        }
+                        demanded
+                            .windows(2)
+                            .map(|pair| (object_id.clone(), pair[0], pair[1]))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                entries_in_order.retain(|entry| {
+                    !bracket_ranges.iter().any(|(object_id, below, above)| {
+                        entry.object_id == *object_id
+                            && entry.anchor_layer_index > *below
+                            && entry.anchor_layer_index < *above
+                            && entry
+                                .roles
+                                .iter()
+                                .all(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+                    })
+                });
+            } else {
+                for (_, support_rows_by_layer) in support_rows_by_object {
+                    let mut previous_layer: Option<&u32> = None;
+                    for layer in support_rows_by_layer.keys() {
+                        if let Some(prev) = previous_layer {
+                            if let (Some(below_z), Some(above_z)) =
+                                (z_of_global(*prev), z_of_global(*layer))
+                            {
+                                for plane in packet239c_intermediate_planes(
+                                    below_z,
+                                    above_z,
+                                    support_pitch_mm,
+                                ) {
+                                    if let Some(lower_entries) = support_rows_by_layer.get(prev) {
+                                        for lower_entry in lower_entries {
+                                            let mut clone = (*lower_entry).clone();
+                                            // Seed from the lower bracket, matching the
+                                            // traditional planner's bottom-up support-layer
+                                            // projection: intermediate rows clone the lower
+                                            // bracket entry. Upper-row geometry may already
+                                            // enter model occupancy at an intermediate
+                                            // exact-Z plane.
+                                            // Reuse one planner-local identity per physical
+                                            // plane. Object and region remain separate parts
+                                            // of entry identity and host-side union/dedup.
+                                            let plane_ordinal =
+                                                i32::try_from(intermediate_plane_indices.len())
+                                                    .map_err(|_| {
+                                                        ModuleError::fatal(
+                                                        1,
+                                                        "too many intermediate tree-support planes",
+                                                    )
+                                                    })?;
+                                            let next_index = i32::MIN
+                                                .checked_add(plane_ordinal)
+                                                .ok_or_else(|| {
                                                     ModuleError::fatal(
                                                         1,
                                                         "too many intermediate tree-support planes",
                                                     )
                                                 })?;
-                                        let next_index = i32::MIN
-                                            .checked_add(plane_ordinal)
-                                            .ok_or_else(|| {
-                                                ModuleError::fatal(
-                                                    1,
-                                                    "too many intermediate tree-support planes",
-                                                )
-                                            })?;
-                                        clone.global_layer_index = *intermediate_plane_indices
-                                            .entry(plane)
-                                            .or_insert(next_index);
-                                        clone.anchor_layer_index = *prev;
-                                        // The declared support print plane: off-grid by
-                                        // construction (the filter in
-                                        // `packet239c_intermediate_planes` guarantees
-                                        // strictly between the brackets).
-                                        clone.anchor_z = plane;
-                                        interpolated.push(clone);
+                                            clone.global_layer_index = *intermediate_plane_indices
+                                                .entry(plane)
+                                                .or_insert(next_index);
+                                            clone.anchor_layer_index = *prev;
+                                            // The declared support print plane: off-grid by
+                                            // construction (the filter in
+                                            // `packet239c_intermediate_planes` guarantees
+                                            // strictly between the brackets).
+                                            clone.anchor_z = plane;
+                                            interpolated.push(clone);
+                                        }
                                     }
                                 }
                             }
                         }
+                        previous_layer = Some(layer);
                     }
-                    previous_layer = Some(layer);
                 }
             }
             entries_in_order.extend(interpolated);
@@ -3782,6 +3938,30 @@ fn packet239c_intermediate_planes(below_z_mm: f32, above_z_mm: f32, pitch_mm: f6
     (1..n)
         .map(|k| slicer_ir::mm_to_units((below_z_mm as f64 + k as f64 * step) as f32))
         .filter(|plane| *plane > below_units && *plane < above_units)
+        .collect()
+}
+
+/// Packet 239d coarse stack: include the aligned upper bracket so callers can
+/// deduplicate it against the demanded interface row.
+fn packet239d_coarse_planes(below_z_mm: f32, above_z_mm: f32, pitch_mm: f64) -> Vec<i64> {
+    const EPSILON_MM: f64 = 1e-4;
+    let below_units = slicer_ir::mm_to_units(below_z_mm);
+    let above_units = slicer_ir::mm_to_units(above_z_mm);
+    if pitch_mm <= 0.0 || above_units <= below_units {
+        return Vec::new();
+    }
+    let dist = (above_z_mm - below_z_mm) as f64;
+    let n = (((dist - EPSILON_MM) / pitch_mm).ceil() as i64).max(1);
+    let step = dist / n as f64;
+    (1..=n)
+        .map(|k| {
+            if k == n {
+                above_units
+            } else {
+                slicer_ir::mm_to_units((below_z_mm as f64 + k as f64 * step) as f32)
+            }
+        })
+        .filter(|plane| *plane > below_units && *plane <= above_units)
         .collect()
 }
 

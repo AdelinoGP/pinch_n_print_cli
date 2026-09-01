@@ -447,6 +447,75 @@ fn disabled_independent_height_copies_object_layer_print_z_exactly() {
 }
 
 #[test]
+fn coarse_pitch_produces_free_floating_anchor_z() {
+    let object = overhang_object("coarse-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "coarse-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "coarse-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment("coarse-traditional")],
+        ..Default::default()
+    };
+    let output = run_planner_with_config(planner_config_with(true, 0.0, 0.3), object, analysis);
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    let off_grid = output.entries().iter().any(|entry| {
+        let grid_z = layer_plan().layers[entry.anchor_layer_index as usize].z;
+        entry.anchor_z.abs_diff(slicer_ir::mm_to_units(grid_z)) > tolerance as u64
+    });
+    assert!(
+        off_grid,
+        "coarse support must emit a free-floating anchor plane"
+    );
+    // The emitted support run spans layers 2..7 because the candidate's
+    // overhang layer is not itself a support row. Canonical dist/n stepping
+    // therefore brackets 0.6..1.6 mm: n=4, step=0.25 mm, with the upper
+    // bracket deduplicated.
+    let expected_planes = [
+        (slicer_ir::mm_to_units(0.85), 3),
+        (slicer_ir::mm_to_units(1.1), 4),
+        (slicer_ir::mm_to_units(1.35), 5),
+    ];
+    let stack: Vec<_> = output
+        .entries()
+        .iter()
+        .filter_map(|entry| {
+            expected_planes
+                .iter()
+                .find(|(plane, _)| entry.anchor_z == *plane)
+                .map(|(_, layer)| (entry.anchor_z, entry.anchor_layer_index, *layer))
+        })
+        .collect();
+    assert_eq!(
+        stack.len(),
+        expected_planes.len(),
+        "coarse body rows must use the canonical pitch-spaced stack: {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|entry| (entry.anchor_layer_index, entry.anchor_z))
+            .collect::<Vec<_>>()
+    );
+    for (anchor_z, anchor_layer_index, expected_layer) in stack {
+        assert_eq!(
+            anchor_layer_index, expected_layer,
+            "wrong nearest object layer for {anchor_z}"
+        );
+    }
+}
+
+#[test]
 fn base_interface_obstacle() {
     let object = overhang_object("base");
     let analysis = SupportAnalysisView {
@@ -821,22 +890,17 @@ fn support_layer_height_controls_body_spacing() {
         .entries()
         .iter()
         .filter(|entry| entry.decline_reason.is_none())
-        .map(|entry| entry.global_layer_index)
+        .map(|entry| entry.anchor_layer_index)
         .collect();
     layers.sort_unstable_by(|a, b| b.cmp(a));
-    // Shifted down one layer from the previous `[8, 7, 5, 2, 0]`: layer 8 is
-    // the layer that *contains* the overhang, so support may not print there
-    // even at a zero top gap. Layer 0 is the termination layer, which now
-    // always prints — it used to be dropped whenever it failed the
-    // support-layer-height modulo, leaving the column stopping short of the
-    // plate.
-    // G-18 (238c, design.md §Plan Corrections item 4): with a positive
-    // configured bottom count the traditional top band widens by one layer,
-    // so top=2/bottom=1 here yields interface layers 7/6/5 instead of 7/6.
+    // Coarse mode replaces body rows between the support-run extrema (0 and 7)
+    // with the pitch stack. The 0.6 mm pitch over the 1.4 mm bracket produces
+    // interior planes near z=0.667 and 1.133 mm, anchored to layers 2 and 4.
+    // The preserved interface rows are 7/6/5 and the termination row is 0.
     assert_eq!(
         layers,
-        vec![7, 6, 5, 4, 1, 0],
-        "support body layers use every third model layer, interfaces retain their G-18-widened bands, and the termination layer always prints"
+        vec![7, 6, 5, 4, 2, 0],
+        "coarse support replaces body rows with pitch-spaced floating anchors"
     );
 }
 

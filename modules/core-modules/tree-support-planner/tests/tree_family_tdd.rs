@@ -1037,6 +1037,109 @@ fn enabled_independent_height_produces_free_floating_anchor_z() {
     );
 }
 
+fn run_multi_layer_demand(pitch_mm: f64) -> SupportGeometryOutput {
+    let demand_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 81,
+                object_id: "coarse".into(),
+                region_id: "0".into(),
+                global_layer_index: 3,
+                z_units: slicer_ir::mm_to_units(0.8),
+                geometry: vec![demand_region.clone()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 82,
+                object_id: "coarse".into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![demand_region],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(pitch_mm))],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[overhang("coarse", 0.0, 0.0, 4.0)],
+            &layer_plan(),
+            &regions("coarse"),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
+#[test]
+fn coarse_pitch_produces_free_floating_anchor_z() {
+    let output = run_multi_layer_demand(0.3);
+    assert!(
+        !output.entries().is_empty(),
+        "tree demand must produce entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    assert!(
+        output.entries().iter().any(|entry| {
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(
+                layer_plan().layers[entry.anchor_layer_index.min(9) as usize].z,
+            )) > tolerance as u64
+        }),
+        "coarse pitch must produce an off-grid anchor_z"
+    );
+    let mut planes: Vec<i64> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    planes.sort_unstable();
+    assert!(
+        planes.windows(2).all(|pair| pair[0] < pair[1]),
+        "coarse support planes must be strictly increasing: {planes:?}"
+    );
+}
+
+#[test]
+fn zero_pitch_sentinel_stays_object_grid() {
+    let output = run_multi_layer_demand(0.0);
+    assert!(
+        !output.entries().is_empty(),
+        "tree demand must produce entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    assert!(
+        output.entries().iter().all(|entry| {
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(
+                layer_plan().layers[entry.anchor_layer_index.min(9) as usize].z,
+            )) <= tolerance as u64
+        }),
+        "zero pitch sentinel must keep every anchor on the object grid"
+    );
+}
+
 #[test]
 fn intermediate_planes_generated_per_support_body_not_per_layer() {
     let object = overhang("two-regions", 0.0, 0.0, 4.0);
