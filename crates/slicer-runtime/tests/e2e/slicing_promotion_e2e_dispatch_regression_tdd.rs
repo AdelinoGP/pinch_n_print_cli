@@ -43,7 +43,7 @@ fn shared_staircase_paths() -> (&'static Path, &'static Path) {
             &cfg,
             "{\n  \
                 \"ironing_enabled\": true,\n  \
-                \"ironing_spacing_mm\": 0.2,\n  \
+                \"ironing_spacing\": 0.2,\n  \
                 \"ironing_speed\": 15.0,\n  \
                 \"ironing_flow\": 0.15,\n  \
                 \"top_shell_layers\": 2,\n  \
@@ -172,7 +172,7 @@ fn config_path(tmp: &tempfile::TempDir) -> PathBuf {
         // actually fires on the staircase top surfaces.
         "{\n  \
             \"ironing_enabled\": true,\n  \
-            \"ironing_spacing_mm\": 0.2,\n  \
+            \"ironing_spacing\": 0.2,\n  \
             \"ironing_speed\": 15.0,\n  \
             \"ironing_flow\": 0.15,\n  \
             \"top_shell_layers\": 2,\n  \

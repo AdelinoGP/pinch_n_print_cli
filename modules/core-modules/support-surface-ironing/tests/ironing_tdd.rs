@@ -54,8 +54,8 @@ fn from_config_defaults() {
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.ironing_speed() - 15.0).abs() < 0.001);
-    assert!((module.ironing_flow_rate() - 0.1).abs() < 0.001);
-    assert!((module.ironing_spacing() - 0.1).abs() < 0.001);
+    assert!((module.support_ironing_flow() - 0.1).abs() < 0.001);
+    assert!((module.support_ironing_spacing() - 0.1).abs() < 0.001);
 }
 
 #[test]
@@ -63,15 +63,15 @@ fn from_config_custom() {
     let config = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow_rate", ConfigValue::Float(0.2)),
-        ("ironing_spacing", ConfigValue::Float(0.15)),
+        ("support_ironing_flow", ConfigValue::Float(0.2)),
+        ("support_ironing_spacing", ConfigValue::Float(0.15)),
         ("line_width", ConfigValue::Float(0.5)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(module.enabled());
     assert!((module.ironing_speed() - 20.0).abs() < 0.001);
-    assert!((module.ironing_flow_rate() - 0.2).abs() < 0.001);
-    assert!((module.ironing_spacing() - 0.15).abs() < 0.001);
+    assert!((module.support_ironing_flow() - 0.2).abs() < 0.001);
+    assert!((module.support_ironing_spacing() - 0.15).abs() < 0.001);
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
 
@@ -153,7 +153,7 @@ fn paths_at_correct_z() {
 fn flow_rate_applied() {
     let config = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_flow_rate", ConfigValue::Float(0.15)),
+        ("support_ironing_flow", ConfigValue::Float(0.15)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
@@ -178,7 +178,7 @@ fn spacing_affects_density() {
     // Narrow spacing => more paths
     let config_narrow = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_spacing", ConfigValue::Float(0.1)),
+        ("support_ironing_spacing", ConfigValue::Float(0.1)),
     ]);
     let module_narrow = SupportSurfaceIroning::from_config(&config_narrow).unwrap();
     let region_narrow = region_with_square_at_z(1.0);
@@ -190,7 +190,7 @@ fn spacing_affects_density() {
     // Wide spacing => fewer paths
     let config_wide = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_spacing", ConfigValue::Float(0.4)),
+        ("support_ironing_spacing", ConfigValue::Float(0.4)),
     ]);
     let module_wide = SupportSurfaceIroning::from_config(&config_wide).unwrap();
     let region_wide = region_with_square_at_z(1.0);
@@ -239,7 +239,7 @@ fn rectilinear_pattern() {
     // means all points in a path have the same Y).
     let config = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_spacing", ConfigValue::Float(0.5)),
+        ("support_ironing_spacing", ConfigValue::Float(0.5)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);

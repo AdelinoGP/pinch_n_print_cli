@@ -53,7 +53,7 @@ pub struct TopSurfaceIroning {
     enabled: bool,
     ironing_speed: f64,
     ironing_flow: f64,
-    ironing_spacing_mm: f64,
+    ironing_spacing: f64,
     ironing_pattern: String,
 }
 
@@ -74,8 +74,8 @@ impl TopSurfaceIroning {
     }
 
     /// Ironing line spacing in mm.
-    pub fn ironing_spacing_mm(&self) -> f64 {
-        self.ironing_spacing_mm
+    pub fn ironing_spacing(&self) -> f64 {
+        self.ironing_spacing
     }
 
     /// Ironing pattern name.
@@ -266,7 +266,7 @@ impl LayerModule for TopSurfaceIroning {
             ));
         }
 
-        let ironing_spacing_mm = match config.get("ironing_spacing_mm") {
+        let ironing_spacing = match config.get("ironing_spacing") {
             Some(ConfigValue::Float(s)) => *s,
             Some(ConfigValue::Int(s)) => *s as f64,
             _ => 0.1,
@@ -293,7 +293,7 @@ impl LayerModule for TopSurfaceIroning {
             enabled,
             ironing_speed,
             ironing_flow,
-            ironing_spacing_mm,
+            ironing_spacing,
             ironing_pattern,
         })
     }
@@ -343,7 +343,7 @@ impl LayerModule for TopSurfaceIroning {
                     poly,
                     &bb,
                     z,
-                    self.ironing_spacing_mm,
+                    self.ironing_spacing,
                     flow_factor,
                     speed_factor,
                 );

@@ -28,7 +28,10 @@ fn region_with_polygon(polygon: ExPolygon, z: f32) -> SliceRegionView {
 fn run(polygon: ExPolygon, spacing: f32) -> Vec<slicer_ir::ExtrusionPath3D> {
     let config = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_spacing", ConfigValue::Float(spacing as f64)),
+        (
+            "support_ironing_spacing",
+            ConfigValue::Float(spacing as f64),
+        ),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_polygon(polygon, 1.0);

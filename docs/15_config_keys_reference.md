@@ -227,14 +227,14 @@ is the authoritative catalog of their defaults and ranges.
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
 | `ironing_enabled` | bool | `false` | — | `support-surface-ironing` |
-| `ironing_flow_rate` | float | `100.0` | [1.0, 200.0] | `support-surface-ironing` |
-| `ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
+| `support_ironing_flow` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
+| `support_ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
 | `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | `top-surface-ironing` |
-| `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
+| `ironing_spacing` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
 | `enable_support` | bool | `false` | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |

@@ -35,8 +35,8 @@ const BASE_SPEED: f32 = 50.0;
 pub struct SupportSurfaceIroning {
     enabled: bool,
     ironing_speed: f32,
-    ironing_flow_rate: f32,
-    ironing_spacing: f32,
+    support_ironing_flow: f32,
+    support_ironing_spacing: f32,
     line_width: f32,
 }
 
@@ -51,14 +51,14 @@ impl SupportSurfaceIroning {
         self.ironing_speed
     }
 
-    /// Ironing flow rate multiplier.
-    pub fn ironing_flow_rate(&self) -> f32 {
-        self.ironing_flow_rate
+    /// Ironing flow multiplier (canonical `support_ironing_flow`, 10% default).
+    pub fn support_ironing_flow(&self) -> f32 {
+        self.support_ironing_flow
     }
 
     /// Ironing line spacing in mm.
-    pub fn ironing_spacing(&self) -> f32 {
-        self.ironing_spacing
+    pub fn support_ironing_spacing(&self) -> f32 {
+        self.support_ironing_spacing
     }
 
     /// Extrusion line width in mm.
@@ -73,7 +73,7 @@ impl SupportSurfaceIroning {
         z: f32,
         speed_factor: f32,
     ) -> Vec<ExtrusionPath3D> {
-        let line_spacing = slicer_ir::mm_to_units(self.ironing_spacing);
+        let line_spacing = slicer_ir::mm_to_units(self.support_ironing_spacing);
 
         // Collect all edges (contour + holes)
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
@@ -136,7 +136,7 @@ impl SupportSurfaceIroning {
                     y: slicer_ir::units_to_mm(scan_y),
                     z,
                     width: self.line_width,
-                    flow_factor: self.ironing_flow_rate,
+                    flow_factor: self.support_ironing_flow,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
@@ -146,7 +146,7 @@ impl SupportSurfaceIroning {
                     y: slicer_ir::units_to_mm(scan_y),
                     z,
                     width: self.line_width,
-                    flow_factor: self.ironing_flow_rate,
+                    flow_factor: self.support_ironing_flow,
                     overhang_quartile: None,
                     dist_to_top_mm: 0.0,
                     overhang_distance_mm: None,
@@ -184,12 +184,12 @@ impl LayerModule for SupportSurfaceIroning {
             _ => 15.0,
         };
 
-        let ironing_flow_rate = match config.get("ironing_flow_rate") {
+        let support_ironing_flow = match config.get("support_ironing_flow") {
             Some(ConfigValue::Float(f)) => *f as f32,
             _ => 0.1,
         };
 
-        let ironing_spacing = match config.get("ironing_spacing") {
+        let support_ironing_spacing = match config.get("support_ironing_spacing") {
             Some(ConfigValue::Float(s)) => *s as f32,
             _ => 0.1,
         };
@@ -202,8 +202,8 @@ impl LayerModule for SupportSurfaceIroning {
         Ok(Self {
             enabled,
             ironing_speed,
-            ironing_flow_rate,
-            ironing_spacing,
+            support_ironing_flow,
+            support_ironing_spacing,
             line_width,
         })
     }
@@ -271,8 +271,8 @@ mod tests {
         let module = SupportSurfaceIroning::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.ironing_speed - 15.0).abs() < 0.001);
-        assert!((module.ironing_flow_rate - 0.1).abs() < 0.001);
-        assert!((module.ironing_spacing - 0.1).abs() < 0.001);
+        assert!((module.support_ironing_flow - 0.1).abs() < 0.001);
+        assert!((module.support_ironing_spacing - 0.1).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
     }
 }
