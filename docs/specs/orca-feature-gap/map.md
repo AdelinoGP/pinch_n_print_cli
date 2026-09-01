@@ -536,6 +536,35 @@ off-map, after.
   graduated to Not yet specified (gyroid solid-density path; extra-internal-solid-fill
   machinery).
 
+- [20 — Author packet P13 — Support / Support — support-planner](issues/20-author-packet-p13-support-support-support-planner.md)
+  — packet `docs/spec_packets/265-support-support-keys/` authored (`draft`), preflight
+  **PASS** (S0–S8 + AC + Doc-Impact green). Re-derivation split the 12 Tier-A keys into
+  four states: **six already wired + canonical-faithful** (`support_object_xy_distance`
+  0.35/[0,10] in both planner manifests + both clearance reads; `support_threshold_angle`
+  30.0 host-typed + traditional-side declaration + alias, tree-side asymmetry recorded;
+  `support_style` — tree-side 7-value enum with the **traditional-side string → enum type
+  correction**; `support_type` — the family selector, functional via raw config but
+  manifest-less, **now declared as the canonical 4-value enum in both planners** (global
+  path enum-enforced; per-object tolerant fallback recorded); `support_expansion` 0.0
+  wired; `support_threshold_overlap` 50% percent wired) — pinned, not changed; **one wired
+  by the packet**: `enforce_support_layers` — decision point existed (`force_support =
+  layer_id < enforce` branch; slicer-core arms already pinned the geometry) but
+  `resolve_contact_params` hardcoded `0`; now reads the typed CLI field (default 0 →
+  identity; tree-family `-0.15 × extrusion_width` nuance recorded); **five re-adjudicated
+  declared-with-gap**: `raft_first_layer_expansion` (zero-occurrence; canonical default
+  **2.0**, not the 3.0 of the older BBS comment — fresh read; tree planner only, AC-N2
+  pins the traditional absence) + `support_bottom_z_distance` /
+  `support_critical_regions_only` / `support_object_first_layer_gap` /
+  `support_remove_small_overhang` (host-declared canonical defaults, zero read sites).
+  Declare homes: 9 tables `tree-support-planner.toml`, 8 `traditional-support-planner.toml`
+  (raft cluster, P12 precedent); owner correction recorded (decision points span host
+  analysis + scheduler + planners); guards net-new ×3 + non-perturbation harness ×1
+  (avoiding 253/260/261's planned filenames); integration arms in existing binaries.
+  Deviation block stays 26 (all defaults canonical, re-measured); zero CONFIG_BLOCK twins;
+  zero user rulings. No new fog graduated (traditional-raft fog's P13 reference now
+  resolves to the declaration; the traditional-raft-handling question stays open).
+  Unblocks nothing downstream; **P14 (ticket 21) is the next unblocked queue head**.
+
 ## Not yet specified
 
 - **The prepass seam plan never covers painted-variant regions.** Surfaced
