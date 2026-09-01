@@ -49,8 +49,14 @@ rows must therefore come from a new floating stack, not from either decimation m
 
 ## In Scope
 
-- **Planner derivation (both planners).** When the support pitch >= the object gap for a
-  bracket pair, generate the support stack at pitch spacing between the brackets of each
+- **Planner derivation (both planners).** For each consecutive demanded bracket pair where
+  the binding coarse predicate holds (configured nonzero pitch >= `local_support_gap`, the
+  maximum positive anchor-Z difference between consecutive surviving support-bearing rows
+  of that same `(object_id, region_id)` contiguous run covered by the bracket; these rows
+  are already available to both planner callers, compared in exact canonical units with
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if needed —
+  no new epsilon), generate the support stack at pitch
+  spacing between the brackets of each
   `(object_id, region_id)` contiguous run of demanded rows, following the
   **family-specific** canonical stepping — traditional:
   `n_layers_extra = ceil((dist - EPSILON) / pitch)`, `step = dist / n_layers_extra`, planes
@@ -84,11 +90,15 @@ rows must therefore come from a new floating stack, not from either decimation m
   same key is dropped, so the per-object entry map never carries two rows with one identity),
   and each synthesized plane's `anchor_layer_index` is the true-nearest object layer by
   absolute Z distance with the lower index winning ties. Coarse-vs-finer selection is
-  bracket-local: it is decided per bracket pair, never from the first/contact layer height
-  alone, so an adaptive local gap keeps the 239c finer derivation.
+  bracket-local: it is decided per bracket pair by the binding predicate above (coarse iff
+  configured nonzero pitch >= `local_support_gap`; pitch 0.2 over covered surviving-row
+  gaps 0.3 stays finer even
+  if the first/base layer gap is 0.2), never from the first/contact layer height
+  alone.
 - **Decimation reconciliation.** The floating stack is the source of coarse rows. The
-  traditional `support_step` decimation is neutralized when pitch >= gap for a bracket pair
-  (binding form: set `support_step = 1` only for genuinely coarse local brackets; no global
+  traditional `support_step` decimation is neutralized for bracket pairs satisfying the
+  binding coarse predicate (configured nonzero pitch >= `local_support_gap`)
+  (binding form: set `support_step = 1` exactly for those coarse brackets; no global
   gate bypass; the stack replaces it; `support_step` stays for the finer direction where it
   is already 1).
   `build_emit_schedule` stays read-only (out of scope; documented as ineffective for the
@@ -174,8 +184,9 @@ Reference, never copy, criteria from `packet.spec.md`.
 - Negative: `AC-N1` (disabled reproduces the pre-change Z sequence exactly), `AC-N2` (finer
   direction unregressed — the 239c AC-1 test stays green), `AC-N3` (sentinel 0.0 stays
   object pitch), `AC-N4` (**NET-NEW Step-2 test planned by this packet**, registered in the
-  existing `tree_family_tdd` target; adaptive finer-direction local gap stays finer —
-  bracket-local coarse/finer selection).
+  existing `tree_family_tdd` target; adaptive finer-direction local gap (a bracket pair
+  whose `local_support_gap` exceeds the configured pitch) stays finer —
+  bracket-local coarse/finer selection by the binding predicate).
 - Cross-packet impact: `242-support-family-orca-closure` consumes the coarse-direction
   behavior; the 239c AC-1/AC-N1/AC-N2 tests must stay green (AC-N2 pins AC-1 explicitly).
 

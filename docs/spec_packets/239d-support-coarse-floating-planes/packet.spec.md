@@ -35,9 +35,13 @@ the finer direction unregressed.
 ## Scope Boundaries
 
 Planner-side derivation only. In scope: the coarse-direction stack derivation in both
-planners (the `packet239c_intermediate_planes` callers), the traditional `support_step`
-neutralization per the binding Q3 decision (set 1 per genuinely coarse local bracket pair
-only), the real-slice and planner-level tests including the
+planners (the `packet239c_intermediate_planes` callers) selected per bracket pair by the
+binding coarse predicate (configured nonzero pitch >= `local_support_gap`, the maximum
+positive anchor-Z difference between consecutive surviving support-bearing rows of that
+same `(object_id, region_id)` contiguous run covered by the bracket; otherwise the 239c
+finer derivation is retained for that bracket), the traditional `support_step`
+neutralization per the binding Q3 decision (set 1 exactly for bracket pairs satisfying
+that predicate), the real-slice and planner-level tests including the
 extrusion-presence assertions (the DEV-161 guardrail), the measure-first coarse-direction
 `height_delta` verdict (TASK-519 pattern), and the blocking human validation gate. Out of
 scope and owned elsewhere: the renderer/row path (unchanged; the tree renderer traverses
@@ -90,7 +94,8 @@ State ACs only here; `requirements.md` references their IDs.
   `plan_layer_heights` (`TreeSupport.cpp`): `n_layers_extra = ceil(dist / pitch)`,
   `step = dist / n_layers_extra`, planes at `below_z + k * step` with **no** EPSILON bias and
   the last plane aligned to the upper bracket. The test asserts the **exact expected
-  bracket planes** (computed from the fixture's bracket span by that formula), each entry's
+  bracket planes** (computed from the fixture's bracket-to-bracket Z distance — the
+  `dist` in that formula — by that formula), each entry's
   role is `SupportBody` (no interface role survives on a synthesized stack plane), and every
   synthesized plane's `anchor_layer_index` is the layer whose Z is nearest by absolute
   distance with the lower index winning ties. |
@@ -183,12 +188,20 @@ guard on each command is what would catch it.
   (`modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs`); the command below
   is post-implementation runnable — until Step 2 authors it, the command's non-zero
   matched-count guard correctly reports FAIL. No pre-existing test is claimed. **Given** a
-  `LayerPlanView` with an `(object_id, region_id)` contiguous run whose bracket span is
-  finer than the configured pitch (an adaptive local gap) while the global pitch >= the
-  object's base layer pitch, **when** the tree planner runs, **then** that run keeps the
+  `LayerPlanView` with an `(object_id, region_id)` contiguous run whose bracket pair's
+  `local_support_gap` (the maximum positive anchor-Z difference between consecutive
+  surviving support-bearing rows of that same run covered by the bracket; these rows are
+  already available to both planner callers) exceeds the configured pitch (an adaptive
+  local gap) while the
+  global pitch >= the
+  object's base layer pitch, **when** the tree planner runs, **then** that bracket keeps the
   239c finer derivation (its rows stay at the finer spacing; no pitch-spaced coarse stack is
-  synthesized for it) — coarse-vs-finer selection is bracket-local and never decided from
-  the first/contact layer height alone. |
+  synthesized for it) — the binding predicate (coarse iff configured nonzero pitch >=
+  `local_support_gap`, in exact canonical units with
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if needed,
+  no new epsilon) is evaluated per bracket pair and never decided from
+  the first/contact layer height alone; concretely, configured pitch 0.2 over covered
+  surviving-row gaps 0.3 stays finer even if the object's first/base layer gap is 0.2. |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification

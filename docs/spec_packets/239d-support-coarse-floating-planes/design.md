@@ -112,15 +112,24 @@ design contract now, not implementer choices:
   preserved. No interface role
   or interface geometry may appear at a body plane.
 - **Q3 — `support_step` neutralization form (binding).** The neutralization **sets
-  `support_step = 1`** when pitch >= gap, **only** for the genuinely coarse local brackets —
-  i.e. the condition is evaluated per bracket pair (pitch >= that bracket span's derived
-  step ratio), not globally. The finer direction (where `support_step` is already 1) is
-  bit-identical, and no global bypass of the decimation gate is added.
+  `support_step = 1`** exactly for bracket pairs satisfying the binding coarse predicate —
+  configured nonzero pitch >= `local_support_gap`, the maximum positive anchor-Z
+  difference between consecutive surviving support-bearing rows of that same
+  `(object_id, region_id)` contiguous run covered by the bracket — i.e. the condition is
+  evaluated per bracket pair by the same `local_support_gap` predicate as the
+  coarse/finer selection, not globally. The finer direction (where `support_step` is
+  already 1) is bit-identical, and no global bypass of the decimation gate is added.
 
 1. **Tree planner** (`modules/core-modules/tree-support-planner/src/lib.rs`): in the 239c
-   caller (~3649-3705), when `support_pitch_mm >=` the object gap (equivalently: the
-   per-row `n_layers_extra` would be 1), bracket the demanded planes instead of consecutive
-   support rows, using the Q1 bracket rule above. Between consecutive bracket planes of a
+   caller (~3649-3705), for each consecutive demanded bracket pair where the binding coarse
+   predicate holds — configured nonzero pitch >= `local_support_gap`, the maximum positive
+   anchor-Z difference between consecutive surviving support-bearing rows of that same
+   `(object_id, region_id)` contiguous run covered by the bracket (these rows are already
+   available to both planner callers), compared in exact canonical units with
+   `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if one is
+   needed (no new epsilon) — bracket the demanded planes instead of consecutive support
+   rows, using the Q1 bracket rule above; where the predicate fails (pitch <
+   `local_support_gap`), the bracket keeps the existing 239c finer derivation. Between consecutive bracket planes of a
    `(object_id, region_id)` contiguous run, generate the stack by the **tree-family**
    canonical rule of `plan_layer_heights` (`TreeSupport.cpp`): `n = ceil(dist / pitch)`
    (main-body spacing; **no** EPSILON bias), `step = dist / n`, planes at
@@ -142,8 +151,10 @@ design contract now, not implementer choices:
    key is the duplicate-key rule's stable
    `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`), per
    Q2. The sentinel
-   (pitch 0.0 → object pitch) is preserved: with pitch == object pitch the stack planes
-   land on the grid and dedup against the demanded rows (AC-N3 pins this).
+   (`support_layer_height_mm == 0.0` → object pitch) is separate and takes priority: it
+   bypasses the coarse path entirely and preserves the existing 239c object-grid behavior —
+   no coarse stack is synthesized, and no resolved pitch is ever claimed to equal the
+   varying `local_support_gap` values (AC-N3 pins this).
 2. **Traditional planner** (`modules/core-modules/traditional-support-planner/src/lib.rs`):
    the same derivation at the 239c caller (~597-650) using the **traditional-family**
    canonical rule of `raft_and_intermediate_support_layers`
@@ -151,8 +162,9 @@ design contract now, not implementer choices:
    `step = dist / n`, planes at `below_z + k * step`, last aligned to `above_z` — **with**
    the EPSILON bias, unlike the tree rule. Apply the same `generate_support_layers`
    grouping/midpoint rule (group within `EPSILON`, midpoint; no group-height representation
-   — same inapplicability as above). Plus the `support_step` neutralization per Q3: when
-   pitch >= gap for a bracket pair, `support_step` is set to 1 (the floating stack replaces
+   — same inapplicability as above). Plus the `support_step` neutralization per Q3: for each
+   bracket pair satisfying the binding coarse predicate (configured nonzero pitch >=
+   `local_support_gap`), `support_step` is set to 1 (the floating stack replaces
    the every-Nth-layer grid subset; the decimation gate at ~511 then passes every layer and
    the stack provides the coarse rows). `support_step` stays as-is for the finer direction
    (where it is already 1).
@@ -179,7 +191,10 @@ design contract now, not implementer choices:
    anchoring with the lower-index tie break. Plus a **finer-direction adaptive regression**
    `adaptive_local_gap_stays_finer` (**NET-NEW test planned by this packet**, registered in
    the existing `tree_family_tdd` target; post-implementation runnable — it does not exist
-   before Step 2 authors it): a run whose bracket span is finer than the pitch keeps
+   before Step 2 authors it): a run whose bracket-pair `local_support_gap` (the maximum
+   positive anchor-Z difference between consecutive surviving support-bearing rows of the
+   same `(object_id, region_id)` contiguous run covered by the bracket) exceeds
+   the configured pitch keeps
    the 239c derivation (coarse/finer selection is bracket-local, never decided from the
    first/contact layer height alone). `traditional_family_tdd.rs`:
    `coarse_pitch_produces_free_floating_anchor_z` (AC-3) with the same assertion strength
@@ -220,8 +235,9 @@ design contract now, not implementer choices:
   the first/last support-bearing rows are the fallback only for runs with fewer than two
   interface rows. User decision 2026-08-31 (interface entries as skeleton); refined
   2026-09-01 (two-row threshold + per-`(object_id, region_id)` run partition).
-- *Remove `support_step` entirely.* Rejected: the neutralization (set to 1 when pitch >=
-  gap) is sufficient and avoids the blast radius of deleting a mechanism the traditional
+- *Remove `support_step` entirely.* Rejected: the neutralization (set to 1 exactly for
+  bracket pairs where pitch >= `local_support_gap`) is sufficient and avoids the blast
+  radius of deleting a mechanism the traditional
   planner's tests pin. User decision 2026-08-31: floating stack replaces decimation.
 - *Transport a `support_layer_height` field on `SupportPlanEntry`.* Rejected (as in 239c):
   it is a WIT-crossing prepass type; the stack is expressed through `anchor_z` deltas.
@@ -375,13 +391,24 @@ Include ranges for files over 300 lines.
   falsifier; it compares against a baseline captured **before** any planner edit (Step 1).
 - **Locked:** the `support_layer_height_mm == 0.0` sentinel means "object pitch" (239c [FWD]
   option b). AC-N3 is the falsifier.
-- **Locked:** the finer direction (pitch < gap) is unchanged. AC-N2 (the 239c AC-1 test) is
+- **Locked:** the finer direction (configured nonzero pitch < `local_support_gap`) is
+  unchanged. AC-N2 (the 239c AC-1 test) is
   the falsifier.
-- **Locked (coarse/finer selection is bracket-local).** The coarse-vs-finer decision is
-  made **per bracket pair** of each `(object_id, region_id)` contiguous run. It is never
+- **Locked (coarse/finer selection is bracket-local, with one binding predicate).** For
+  each consecutive demanded bracket pair, `local_support_gap` is the maximum positive
+  anchor-Z difference between consecutive surviving support-bearing rows of that same
+  `(object_id, region_id)` contiguous run covered by the bracket (rows already available
+  to both planner callers). The bracket takes the coarse path iff the configured nonzero
+  pitch >= `local_support_gap`, compared in exact canonical units with
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only
+  tolerance if one is needed (no new epsilon); otherwise the bracket retains the 239c
+  finer derivation. The decision is made **per bracket pair**. It is never
   decided from the first or contact layer height alone: two runs of the same object can
-  resolve differently (one coarse, one finer) when their bracket spans differ, and an
-  adaptive local gap (a run whose span is finer than the configured pitch) keeps the 239c
+  resolve differently (one coarse, one finer) when their covered surviving-row gaps differ,
+  and a bracket pair whose `local_support_gap` exceeds the configured pitch (e.g. pitch 0.2
+  over covered surviving-row gaps of 0.3, even when the object's first/base layer gap is
+  0.2) keeps the
+  239c
   finer behaviour even when the global pitch >= the object's base layer pitch.
 - **Locked:** the coarse stack follows the canonical `dist/n` stepping between consecutively
   demanded interface/contact planes, with the canonical grouping/midpoint rule applied
@@ -404,6 +431,15 @@ Include ranges for files over 300 lines.
   `ceil((dist - EPSILON) / pitch)` with the EPSILON bias; the tree stack uses
   `plan_layer_heights` (`TreeSupport.cpp`) `ceil(dist / pitch)` without it. One shared
   formula for both families is a spec defect, not a simplification.
+- **Locked (binding coarse/finer predicate):** for each consecutive demanded bracket
+  pair, `local_support_gap` = the maximum positive anchor-Z difference between consecutive
+  surviving support-bearing rows of that same `(object_id, region_id)` contiguous run
+  covered by the bracket; coarse path iff configured nonzero pitch >= `local_support_gap`
+  (exact canonical units, `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the
+  only tolerance if needed — no new epsilon); otherwise the 239c finer derivation is
+  retained for that bracket. AC-N4 pins the concrete case: configured pitch 0.2 over
+  covered surviving-row gaps 0.3 stays finer even when the object's first/base layer gap is
+  0.2.
 - **Locked (ordering):** entries are nondecreasing in `anchor_z` per object in original
   output order; distinct planes strictly increasing; identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)` unique.
@@ -469,6 +505,19 @@ Include ranges for files over 300 lines.
   `(object_id, region_id)` and contiguous run. Interface-role rows
   (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket the run when at least two
   exist; otherwise the run's first and last support-bearing rows bracket it.
+- **Decision D1a (binding coarse/finer predicate).** For each consecutive demanded bracket
+  pair, `local_support_gap` is the maximum positive anchor-Z difference between
+  consecutive surviving support-bearing rows of that same `(object_id, region_id)`
+  contiguous run covered by the bracket; these rows are already available to both planner
+  callers. Take the coarse path iff the configured nonzero pitch >=
+  `local_support_gap` (exact canonical units,
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if needed —
+  no new epsilon), otherwise retain the existing 239c
+  finer derivation for that bracket. AC-N4's concrete semantics: configured pitch 0.2 over
+  covered surviving-row gaps 0.3 stays finer even if the object's first/base layer gap is
+  0.2. The `support_layer_height_mm == 0.0` sentinel is separate: it bypasses the coarse
+  path entirely and preserves the existing 239c object-grid behavior; never claim a
+  resolved pitch equals the varying `local_support_gap` values.
 - **Decision D2 (stack-plane clone source, resolves Q2).** Clone the lower bracket's
   geometry; rewrite the roles to `SupportBody`; capture the source `global_layer_index`
   into the local duplicate key and clone-source provenance decision only, and assign the
@@ -476,7 +525,8 @@ Include ranges for files over 300 lines.
   map (`BTreeMap<i64, i32>`); preserve other provenance fields.
   Never produce interface roles/geometry at body planes.
 - **Decision D3 (`support_step` neutralization, resolves Q3).** Set `support_step = 1`
-  only for genuinely coarse local brackets (per bracket pair where pitch >= gap); no
+  exactly for bracket pairs satisfying the binding coarse predicate (configured nonzero
+  pitch >= `local_support_gap`, per D1a's predicate); no
   global bypass of the decimation gate; the finer direction stays bit-identical.
 - **Decision D4 (grouping).** Reproduce `generate_support_layers`
   (`Support/SupportCommon.cpp`) EPSILON candidate grouping + midpoint. Do **not**

@@ -61,8 +61,13 @@
 
 - Task IDs: `TASK-524`
 - Objective: In `SupportPlanner::plan_for_object`
-  (`modules/core-modules/tree-support-planner/src/lib.rs`), when
-  `support_pitch_mm >=` the object gap, bracket the demanded planes per the **binding Q1
+  (`modules/core-modules/tree-support-planner/src/lib.rs`), for each consecutive demanded
+  bracket pair where the binding coarse predicate holds (configured nonzero pitch >=
+  `local_support_gap`, the maximum positive anchor-Z difference between consecutive
+  surviving support-bearing rows of that same `(object_id, region_id)` contiguous run
+  covered by the bracket; these rows are already available to both planner callers; where
+  the predicate fails, the bracket keeps the existing 239c
+  finer derivation), bracket the demanded planes per the **binding Q1
   decision**: partition by `(object_id, region_id)` and contiguous run; interface-role rows
   (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket when at least two exist,
   otherwise the run's first/last support-bearing rows. Generate the stack between brackets
@@ -82,7 +87,8 @@
   identity key `(source global_layer_index, object_id, region_id, ordered body_ids,
   anchor_z)` deduplicated, and
   `anchor_layer_index` = true-nearest layer by absolute Z distance with lower-index tie
-  break. The finer direction (pitch < gap, decided per bracket pair, never from the
+  break. The finer direction (bracket pairs where the binding predicate fails — configured
+  nonzero pitch < `local_support_gap`, decided per bracket pair, never from the
   first/contact layer height alone) and the 0.0 sentinel are unchanged.
 - Precondition: Step 1 complete; the 239c tree tests are green.
 - Postcondition: the coarse direction emits free-floating `anchor_z` values; the finer
@@ -116,10 +122,11 @@
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- enabled_independent_height_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (finer direction unregressed)
-  - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (finer-direction adaptive local gap regression; bracket-local coarse/finer selection; NET-NEW test authored by this step and registered in the existing `tree_family_tdd` target — post-implementation runnable)
+  - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (finer-direction adaptive local gap regression: pitch 0.2 over covered surviving-row gaps 0.3 stays finer even when the first/base layer gap is 0.2; bracket-local coarse/finer selection by the binding predicate; NET-NEW test authored by this step and registered in the existing `tree_family_tdd` target — post-implementation runnable)
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
 - Exit condition: AC-2 and AC-N3 pass; the 239c finer-direction test still passes; the
-  finer-direction adaptive regression `adaptive_local_gap_stays_finer` passes; the Q1/Q2
+  finer-direction adaptive regression `adaptive_local_gap_stays_finer` (pitch 0.2 over
+  covered gaps 0.3 stays finer) passes; the Q1/Q2
   decisions are implemented as bound (see `design.md` §Recorded Decisions D1/D2).
 
 ### Step 3: Traditional planner coarse derivation and `support_step` neutralization
@@ -132,8 +139,8 @@
   EPSILON bias, unlike the tree rule), same step/plane/alignment shape, and the same
   `generate_support_layers` grouping/midpoint application (no group-height
   representation). Neutralize `support_step` per the **binding Q3 decision**: set
-  `support_step = 1` when pitch >= gap for a bracket pair — only for genuinely coarse
-  local brackets, no global bypass of the gate at ~511. Entries nondecreasing in
+  `support_step = 1` exactly for bracket pairs satisfying the binding coarse predicate
+  (configured nonzero pitch >= `local_support_gap`) — no global bypass of the gate at ~511. Entries nondecreasing in
   `anchor_z` per object, distinct planes strictly increasing, identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`
   deduplicated, true-nearest `anchor_layer_index`
