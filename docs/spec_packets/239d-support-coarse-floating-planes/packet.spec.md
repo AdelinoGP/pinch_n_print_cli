@@ -21,20 +21,28 @@ context_cost_estimate: M
 
 Deliver free-floating support **stacks** in the coarse direction: when the support pitch
 (`support_layer_height_mm`) is >= the object layer pitch, both support planners generate the
-support stack at pitch spacing between consecutively demanded interface/contact planes
-(canonical `raft_and_intermediate_support_layers` stepping plus the `generate_support_layers`
-grouping/midpoint rule), replacing the 239c grid-bound degeneration — so a real 0.3-pitch
-slice of `SupportTest.stl` emits off-grid support rows that each extrude, with the disabled
-flag reproducing the baseline exactly and the finer direction unregressed.
+support stack at pitch spacing between the brackets of each `(object_id, region_id)`
+contiguous run — the **traditional** family following `raft_and_intermediate_support_layers`
+(`Support/SupportMaterial.cpp`) stepping (`ceil((dist - EPSILON) / pitch)`, `step = dist / n`,
+last plane aligned to the upper bracket) and the **tree** family following
+`plan_layer_heights` (`TreeSupport.cpp`) stepping (`ceil(dist / pitch)` for main-body
+spacing, **no** EPSILON bias, `step = dist / n`) — plus the `generate_support_layers`
+(`Support/SupportCommon.cpp`) EPSILON candidate-grouping/midpoint rule, replacing the 239c
+grid-bound degeneration — so a real 0.3-pitch slice of `SupportTest.stl` emits off-grid
+support rows that each extrude, with the disabled flag reproducing the baseline exactly and
+the finer direction unregressed.
 
 ## Scope Boundaries
 
 Planner-side derivation only. In scope: the coarse-direction stack derivation in both
 planners (the `packet239c_intermediate_planes` callers), the traditional `support_step`
-neutralization when pitch >= gap, the real-slice and planner-level tests including the
+neutralization per the binding Q3 decision (set 1 per genuinely coarse local bracket pair
+only), the real-slice and planner-level tests including the
 extrusion-presence assertions (the DEV-161 guardrail), the measure-first coarse-direction
 `height_delta` verdict (TASK-519 pattern), and the blocking human validation gate. Out of
-scope and owned elsewhere: the renderer/row path (unchanged; the DEV-159..163 seam
+scope and owned elsewhere: the renderer/row path (unchanged; the tree renderer traverses
+`paint.support_plan()` and the traditional renderer consumes `support_plan_entries_for`,
+both obeying `anchor_z` — the DEV-159..163 seam
 completion is inherited), the host `build_emit_schedule` decimation
 (`crates/slicer-core/src/algos/support_geometry.rs` — read-only pre-239c surface), the finer
 direction (unchanged), the `support_layer_height_mm == 0.0` sentinel (unchanged, 239c [FWD]
@@ -48,8 +56,10 @@ option b), and 239c's closed Step 2/4 semantics — do not reopen them.
   decision (option b: `support_layer_height_mm == 0.0` → object pitch) recorded in both
   planner `lib.rs` files, and the real-slice test infrastructure this packet's ACs reuse.
 - Unblocks: `242-support-family-orca-closure`.
-- Activation blockers: none. The four `[FWD]` questions in `design.md` §Open Questions are
-  implementer-resolvable and none blocks activation.
+- Activation blockers: none. The former `[FWD]` questions Q1-Q3 are recorded as **binding
+  decisions** in `design.md` §Recorded Decisions (no longer open); the only remaining open
+  question (`[FWD]` Q4) is human-reference only, blocks no code, and does not block
+  activation.
 
 ## Acceptance Criteria
 
@@ -73,20 +83,33 @@ State ACs only here; `requirements.md` references their IDs.
   (`modules/core-modules/tree-support-planner/src/lib.rs`) runs with the key enabled,
   **then** at least one emitted `SupportPlanEntry.anchor_z` differs from
   `mm_to_units(layer_plan.layers[entry.anchor_layer_index].z)` by more than
-  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units = 1e-3 mm), every
-  `anchor_z` is strictly increasing within an object, and the stack between consecutively
-  demanded interface/contact planes follows the canonical stepping of
-  `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`):
-  `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`,
-  `step = dist / n_layers_extra`, planes at `below_z + k * step` with the last aligned to the
-  upper bracket. |
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units = 1e-3 mm), the sequence
+  of entries is nondecreasing in `anchor_z` within each object in the planner's original
+  output order, the distinct `anchor_z` planes are strictly increasing, and the stack
+  between two consecutive bracket planes follows the **tree-family** canonical stepping of
+  `plan_layer_heights` (`TreeSupport.cpp`): `n_layers_extra = ceil(dist / pitch)`,
+  `step = dist / n_layers_extra`, planes at `below_z + k * step` with **no** EPSILON bias and
+  the last plane aligned to the upper bracket. The test asserts the **exact expected
+  bracket planes** (computed from the fixture's bracket span by that formula), each entry's
+  role is `SupportBody` (no interface role survives on a synthesized stack plane), and every
+  synthesized plane's `anchor_layer_index` is the layer whose Z is nearest by absolute
+  distance with the lower index winning ties. |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-3 (traditional planner: same, with `support_step` neutralized).** **Given** the same
   inputs, **when** the traditional planner runs, **then** at least one emitted
   `SupportPlanEntry.anchor_z` is off-grid by more than `COORDINATE_TOLERANCE_UNITS`, and the
   `support_step` decimation (`modules/core-modules/traditional-support-planner/src/lib.rs`)
   is neutralized for the coarse direction — support rows come from the pitch-spaced stack,
-  not the every-Nth-layer grid subset. |
+  not the every-Nth-layer grid subset. The stack follows the **traditional-family** canonical
+  stepping of `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`):
+  `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`, `step = dist /
+  n_layers_extra`, planes at `below_z + k * step` with the last aligned to the upper
+  bracket. The test asserts the **exact expected bracket planes** from that formula in the
+  planner's original output order, that entries are nondecreasing in `anchor_z` within each
+  object with strictly increasing distinct planes, that every synthesized stack-plane entry
+  carries the `SupportBody` role (the lower bracket's other fields cloned, roles rewritten —
+  the Q2 decision), and that each synthesized plane's `anchor_layer_index` is the
+  true-nearest layer by absolute Z distance (lower index on ties). |
   `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4 (measure-first coarse `height_delta` verdict).** **Given** the Step 5 measurement
   recorded under `TASK-527` in `docs/07_implementation_status.md` — the height term
@@ -96,9 +119,10 @@ State ACs only here; `requirements.md` references their IDs.
   branch and names it in its own assertion message: `MISSCALE_FIXED` (applied height term
   differed from the declared plane delta by more than `1e-6` absolute) asserts
   `e == distance * point.width * declared_plane_delta * point.flow_factor / filament_area`
-  within `1e-6`; `CONSISTENT` asserts the current per-row formula equal within `1e-6` on the
-  measured constants and asserts no emitter behaviour changed. The verdict must already be
-  recorded before the test is authored. |
+  within `1e-6`; `CONSISTENT` asserts the current per-row formula equal within `1e-6` **on
+  the recorded applied-height constants** (the height term the emitter actually applied,
+  not a re-derivation) and the declared plane delta as measured, and asserts no emitter
+  behaviour changed. The verdict must already be recorded before the test is authored. |
   `mkdir -p target && cargo test -p slicer-gcode --test gcode_emit_tdd -- coarse_pass_height_delta_matches_recorded_verdict --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-5 (guest artifacts fresh before any slice-level evidence).** **Given** this packet
   edits `modules/core-modules/*/src/**`, **when** any slice-level evidence run is produced
@@ -137,7 +161,9 @@ guard on each command is what would catch it.
   `independent_support_layer_height = false` with `support_layer_height_mm = 0.3` on the
   same fixture and config, **when** a real slice runs, **then** the emitted sequence of
   distinct `;Z:` values is element-wise identical in length and value to the recorded
-  pre-239d baseline captured before Step 2, and **zero** synthesized off-grid rows exist. |
+  pre-239d baseline captured before Step 2 (the `P239D_DISABLED_COARSE_PITCH_BASELINE_Z`
+  const in `crates/slicer-runtime/tests/integration/support_family_closure.rs`), and **zero**
+  synthesized off-grid rows exist. |
   `mkdir -p target && cargo test -p slicer-runtime --test integration -- disabled_coarse_pitch_reproduces_baseline_z_sequence --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-N2 (finer direction unregressed).** **Given** the 239c AC-1 inputs
   (`support_layer_height_mm = 0.1` over `layer_height` 0.2, flag enabled), **when** the 239c
@@ -152,6 +178,18 @@ guard on each command is what would catch it.
   `COORDINATE_TOLERANCE_UNITS` — the 239c [FWD] option (b) decision ("object pitch → no
   off-grid planes") is preserved by the coarse derivation. |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-N4 (finer-direction adaptive local gap, bracket-local selection).** **NET-NEW
+  Step-2 test planned by this packet**, registered in the existing `tree_family_tdd` target
+  (`modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs`); the command below
+  is post-implementation runnable — until Step 2 authors it, the command's non-zero
+  matched-count guard correctly reports FAIL. No pre-existing test is claimed. **Given** a
+  `LayerPlanView` with an `(object_id, region_id)` contiguous run whose bracket span is
+  finer than the configured pitch (an adaptive local gap) while the global pitch >= the
+  object's base layer pitch, **when** the tree planner runs, **then** that run keeps the
+  239c finer derivation (its rows stay at the finer spacing; no pitch-spaced coarse stack is
+  synthesized for it) — coarse-vs-finer selection is bracket-local and never decided from
+  the first/contact layer height alone. |
+  `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification
 
@@ -256,7 +294,9 @@ must never be encoded as a test.
 - **No IR schema version bump.** `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`
   (`crates/slicer-ir/src/slice_ir.rs`) **is not bumped by this packet** and must not be
   disturbed; whatever value the live constant and `docs/02_ir_schemas.md` carry at activation
-  is the value it keeps. No field is added to `SupportPlanEntry`: the existing
+  is the value it keeps. No field is added to `SupportPlanEntry` (live shape: body membership
+  is the `body_ids: Vec<String>` field; there is no entry `id` field — duplicate prevention
+  keys on live fields only, see `design.md` §Code Change Surface): the existing
   `anchor_z: i64` remains the declared support print plane, and the coarse stack is expressed
   entirely through `anchor_z` values. That decision is what keeps this packet clear of a WIT
   and struct-literal blast radius.
@@ -272,10 +312,15 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch (flag enabled) brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the AC-2/AC-3 stepping rule and the bracket-selection ground truth.
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`: the grouping predicate (`print_z <= first.print_z + EPSILON`), the midpoint Z rule (`zavg = 0.5 * (first + last)`), and the group-height rule (minimum). This is the grouping/midpoint step the coarse stack applies after stepping.
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch (flag enabled) brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the **AC-3 (traditional-family)** stepping rule and the bracket-selection ground truth; the AC-2 (tree-family) rule is `plan_layer_heights` (`TreeSupport.cpp`) with no EPSILON bias.
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`: the grouping predicate (`print_z <= first.print_z + EPSILON`), the midpoint Z rule (`zavg = 0.5 * (first + last)`), and the group-height rule (minimum). PnP reproduces the grouping predicate and midpoint only; the group-height rule is representation-inapplicable (`SupportPlanEntry` has no height field; effective row height derives from adjacent `anchor_z`). This is the grouping/midpoint step the coarse stack applies after stepping.
 - `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` — `max_suport_layer_height = max_layer_height` (nozzle-derived via `max_layer_height_from_nozzle`, clamped >= object layer height). Confirms canonical has no `support_layer_height_mm` key; PnP's key is the pitch knob this packet uses.
-- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — the parallel support-layer generation loop (`n_layers_extra = ceil(dist / max_layer_height)`, `step = dist / n_layers_extra`, `print_z = z1 + step`): the tree-family analog of the same stepping.
+- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — the parallel support-layer
+  generation loop in `plan_layer_heights` (`n_layers_extra = ceil(dist / max_layer_height)`,
+  `step = dist / n_layers_extra`, `print_z = z1 + step`): the tree-family stepping —
+  **no** EPSILON bias, unlike `raft_and_intermediate_support_layers`. This is the AC-2
+  stepping rule; the AC-3 stepping rule comes from `raft_and_intermediate_support_layers`
+  with its EPSILON bias. One shared formula for both families would be wrong.
 
 Citation policy (E7): canonical behaviour is cited by file + function only, never line number,
 and only what a delegated dispatch actually returned. The paragraphs above record what the

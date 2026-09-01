@@ -16,9 +16,11 @@
   (a) the decimation reconciliation — the tree planner's layer loop has no `support_step`,
   the host `build_emit_schedule` never reaches the meshed-object planner path (both planners
   ignore `SupportGeometryView` there; the tree's only read is the mesh-less legacy contact
-  fallback at tree `lib.rs` ~2173), and the traditional `support_step` decimates on-grid; (b) the
-  coarse-direction baseline — `support_layer_height_mm = 0.3` over `layer_height` 0.2 emits
-  0 off-grid rows, and over 0.1 emits support on 246/299 rows; (c) the AC-N1 baseline — the
+  fallback inside `SupportPlanner::plan_for_object` in the tree planner's `lib.rs`), and the
+  traditional `support_step` decimates on-grid; (b) the coarse-direction baseline —
+  `support_layer_height_mm = 0.3` over `layer_height` 0.2 emits 0 off-grid rows, and over
+  0.1 emits support on 85/299 rows normal(auto) (tree(auto) exploratory run: 248 support
+  rows); (c) the AC-N1 baseline — the
   disabled `;Z:` sequence with `support_layer_height_mm = 0.3` (flag false), captured before
   any planner edit.
 - Precondition: `cargo xtask build-guests --check` exits `0`; the 239c suite is green
@@ -51,21 +53,35 @@
   - `rg -q 'TASK-523' docs/07_implementation_status.md` - FACT pass/fail
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
 - Exit condition: the `TASK-523` record exists with the decimation root cause, the coarse
-  baseline numbers, and the disabled baseline sequence; the baseline is captured before any
-  planner edit.
+  baseline numbers (family-labeled per the live record: normal(auto) 85/299 support rows
+  over 0.1; tree(auto) exploratory run 248), and the disabled baseline sequence; the
+  baseline is captured before any planner edit.
 
 ### Step 2: Tree planner coarse derivation
 
 - Task IDs: `TASK-524`
 - Objective: In `SupportPlanner::plan_for_object`
   (`modules/core-modules/tree-support-planner/src/lib.rs`), when
-  `support_pitch_mm >=` the object gap, bracket the demanded planes (the layers whose
-  entries carry `TopInterface`/`BaseInterface`/`BottomInterface` roles; fallback: first/last
-  demanded layers of each contiguous run — `[FWD]` Q1) and generate the stack between them
-  at pitch spacing (`n = ceil((dist - EPSILON) / pitch)`, `step = dist / n`, planes at
-  `below_z + k * step`, last aligned to `above_z`), replacing the body rows between the
-  brackets (`[FWD]` Q2 decides the clone source). Apply the canonical grouping/midpoint rule.
-  The finer direction (pitch < gap) and the 0.0 sentinel are unchanged.
+  `support_pitch_mm >=` the object gap, bracket the demanded planes per the **binding Q1
+  decision**: partition by `(object_id, region_id)` and contiguous run; interface-role rows
+  (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket when at least two exist,
+  otherwise the run's first/last support-bearing rows. Generate the stack between brackets
+  by the **tree-family** rule of `plan_layer_heights` (`TreeSupport.cpp`):
+  `n = ceil(dist / pitch)` (**no** EPSILON bias), `step = dist / n`, planes at
+  `below_z + k * step`, last aligned to `above_z`. Apply the canonical grouping of
+  `generate_support_layers` (`SupportCommon.cpp`) — group candidate print-Z within
+  `EPSILON`, take the midpoint; the group **minimum-height** rule is
+  representation-inapplicable (`SupportPlanEntry` has no height field; effective row height
+  derives from adjacent `anchor_z`) and is not reproduced. Replace the body rows between
+  the brackets per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
+  roles to `SupportBody`, preserve the cloned source entry's `global_layer_index` and
+  provenance. Entries nondecreasing in
+  `anchor_z` per object in original output order, distinct planes strictly increasing,
+  identity key `(source global_layer_index, object_id, region_id, ordered body_ids,
+  anchor_z)` deduplicated, and
+  `anchor_layer_index` = true-nearest layer by absolute Z distance with lower-index tie
+  break. The finer direction (pitch < gap, decided per bracket pair, never from the
+  first/contact layer height alone) and the 0.0 sentinel are unchanged.
 - Precondition: Step 1 complete; the 239c tree tests are green.
 - Postcondition: the coarse direction emits free-floating `anchor_z` values; the finer
   direction and the sentinel are bit-identical; AC-2 and AC-N3 tests pass.
@@ -81,7 +97,8 @@
   - `crates/slicer-core/src/algos/support_geometry.rs` (read-only)
   - `OrcaSlicerDocumented/...` (delegate)
 - Blast-radius discipline: not applicable (no struct field or schema constant changes). The
-  `SupportPlanEntry` literal in the test file uses the existing 13-field shape; if a new
+  `SupportPlanEntry` literal in the test file uses the live `SupportPlanEntry` field shape
+  (body membership via `body_ids: Vec<String>`; no entry `id` field); if a new
   literal is added it must use `..` rest or an `// exhaustive:` waiver per
   `docs/21_data_defaults_and_fixtures.md`.
 - Expected sub-agent dispatches:
@@ -97,17 +114,28 @@
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- enabled_independent_height_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (finer direction unregressed)
+  - `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (finer-direction adaptive local gap regression; bracket-local coarse/finer selection; NET-NEW test authored by this step and registered in the existing `tree_family_tdd` target — post-implementation runnable)
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
 - Exit condition: AC-2 and AC-N3 pass; the 239c finer-direction test still passes; the
-  `[FWD]` Q1/Q2 decisions are recorded in the step's exit condition.
+  finer-direction adaptive regression `adaptive_local_gap_stays_finer` passes; the Q1/Q2
+  decisions are implemented as bound (see `design.md` §Recorded Decisions D1/D2).
 
 ### Step 3: Traditional planner coarse derivation and `support_step` neutralization
 
 - Task IDs: `TASK-525`
 - Objective: Apply the same coarse derivation at the traditional planner's 239c caller
-  (`modules/core-modules/traditional-support-planner/src/lib.rs` ~597-650), and neutralize
-  `support_step` when pitch >= gap (`[FWD]` Q3 decides the form: set to 1 or bypass the
-  gate at ~511). The finer direction and the sentinel are unchanged.
+  (`modules/core-modules/traditional-support-planner/src/lib.rs` ~597-650) using the
+  **traditional-family** rule of `raft_and_intermediate_support_layers`
+  (`Support/SupportMaterial.cpp`): `n = ceil((dist - EPSILON) / pitch)` (**with** the
+  EPSILON bias, unlike the tree rule), same step/plane/alignment shape, and the same
+  `generate_support_layers` grouping/midpoint application (no group-height
+  representation). Neutralize `support_step` per the **binding Q3 decision**: set
+  `support_step = 1` when pitch >= gap for a bracket pair — only for genuinely coarse
+  local brackets, no global bypass of the gate at ~511. Entries nondecreasing in
+  `anchor_z` per object, distinct planes strictly increasing, identity key
+  `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`
+  deduplicated, true-nearest `anchor_layer_index`
+  with lower-index tie break. The finer direction and the sentinel are unchanged.
 - Precondition: Step 2 complete; the 239c traditional tests are green.
 - Postcondition: the coarse direction emits free-floating `anchor_z` values with
   `support_step` neutralized; AC-3 passes; the finer direction is bit-identical.
@@ -142,8 +170,9 @@
   - `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- disabled_independent_height_copies_object_layer_print_z_exactly --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (disabled branch unregressed)
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
-- Exit condition: AC-3 passes; the 239c disabled test still passes; the `[FWD]` Q3 decision
-  is recorded in the step's exit condition.
+- Exit condition: AC-3 passes; the 239c disabled test still passes; the Q3 decision
+  (`support_step = 1` per coarse bracket pair, no global bypass) is implemented as bound
+  (see `design.md` §Recorded Decisions D3).
 
 ### Step 4: Real-slice integration tests
 
@@ -154,8 +183,9 @@
   `#[test]` wrappers in `integration/main.rs` (the wrapper convention), plus the E-assertion
   helper (parse the `;TYPE:Support` block after an off-grid `;Z:` row, extract G1 `E` tokens,
   assert at least one `> 0`). AC-1 covers both families (the family names from the 239c
-  `run_slice_for_family_with_extra` call sites). AC-N1 hard-codes the Step 1 baseline
-  (the 239c `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z` pattern).
+  `run_slice_for_family_with_extra` call sites). AC-N1 hard-codes the Step 1 baseline in the
+  new `P239D_DISABLED_COARSE_PITCH_BASELINE_Z` const (following the 239c
+  `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z` pattern).
 - Precondition: Steps 2-3 complete; the Step 1 baseline sequence is available.
 - Postcondition: AC-1 and AC-N1 pass; the E-assertion helper is in place.
 - Files allowed to read, with ranges when over 300 lines:
@@ -185,7 +215,9 @@
   - `mkdir -p target && cargo test -p slicer-runtime --test integration -- disabled_coarse_pitch_reproduces_baseline_z_sequence --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
 - Exit condition: AC-1 and AC-N1 pass; the wrapper convention is followed (bare names in
-  `main.rs`); the E-assertion helper asserts `E > 0` on every off-grid support row.
+  `main.rs`); the E-assertion helper asserts `E > 0` on every off-grid support row; AC-1
+  also checks the enabled run's distinct support `;Z:` sequence is a strict superset of the
+  disabled baseline in original output order.
 
 ### Step 5: Measure-first coarse `height_delta`
 
@@ -231,8 +263,10 @@
 - Objective: Author `coarse_pass_height_delta_matches_recorded_verdict` in
   `crates/slicer-gcode/tests/gcode_emit_tdd.rs`, mirroring the 239c verdict test (~1883):
   it asserts exactly the Step 5 recorded branch and names it in its own assertion message.
-  On `CONSISTENT`: assert the current per-row formula equal within `1e-6` on the measured
-  constants and assert no emitter behaviour changed. On `MISSCALE_FIXED`: assert
+  On `CONSISTENT`: assert the current per-row formula equal within `1e-6` **on the recorded
+  applied-height constants** (the height term actually applied, as recorded under
+  `TASK-527`) and the recorded declared plane delta, and assert no emitter behaviour
+  changed. On `MISSCALE_FIXED`: assert
   `e == distance * point.width * declared_plane_delta * point.flow_factor / filament_area`
   within `1e-6` — and in that branch only, Step 6 owns the emitter edit and its full
   test-fallout inventory in the same step.
