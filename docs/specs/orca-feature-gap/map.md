@@ -460,6 +460,30 @@ off-map, after.
   dragon-curve example renamed + wasm rebuilt; all gates green incl. full e2e
   136/136 and 44 guests rebuilt twice.
 
+- [15 — Author packet P08 — Strength / Infill — infill modules](issues/15-author-packet-p08-strength-infill-infill-modules.md)
+  — packet `docs/spec_packets/262-infill-pattern-keys/` authored (`draft`), preflight
+  **PASS**. **Four keys wired (default-path identity), three declared-with-gap.**
+  `solid_infill_direction` → the solid-role angle read in rectilinear + gyroid (sparse
+  keeps `infill_direction`; 45 = 45); `sparse_infill_rotate_template` /
+  `solid_infill_rotate_template` → per-layer angle from a comma-separated list cycled by
+  layer index (canonical `calculate_infill_rotation_angle` list form; the metalanguage
+  is declared-with-gap — falls back to base angle with a logged warn); `fill_multiline`
+  → sparse-only multiline in rectilinear (canonical `multiline_fill` offset lists; base
+  spacing × N, N copies at line-width offsets; gyroid/lightning with-gap — curve
+  offsetting is Tier B+). **Pattern keys re-adjudicated with-gap**: the port's pattern
+  IS module identity (3 of 26 canonical patterns; host selects via `*_fill_holder`) —
+  `sparse_infill_pattern` (26 values, default crosshatch) and
+  `internal_solid_infill_pattern` (8 top-fill values, default monotonic) declared
+  with-gap, with two recorded behavior divergences at defaults (port rectilinear vs
+  canonical crosshatch/monotonic). `gap_fill_target` with-gap: gates canonical's
+  **fill-side** gap fill (`_create_gap_fill`), which the port lacks — its gap fill is
+  the perimeter-side `process_classic` mechanism, which canonical's key does not gate
+  either. 17 manifest tables (rectilinear 7, gyroid 7, lightning 3 — solid-key omission
+  pinned AC-N2). **Padding correction**: `("sparse_infill_pattern", "grid")` →
+  `"crosshatch"` (ticket-14 precedent). No deviation rows (block stays 26); no user
+  rulings; ADR-0027 conformance stated. Unblocks P09/P10 (tickets 16/17) — same owner,
+  different keys.
+
 ## Not yet specified
 
 - **The prepass seam plan never covers painted-variant regions.** Surfaced
