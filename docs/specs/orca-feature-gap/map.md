@@ -484,6 +484,58 @@ off-map, after.
   rulings; ADR-0027 conformance stated. Unblocks P09/P10 (tickets 16/17) — same owner,
   different keys.
 
+- [16 — Author packet P09 — Strength / Infill pattern-specific — infill modules](issues/16-author-packet-p09-strength-infill-pattern-specific-infill-modules.md)
+  — packet `docs/spec_packets/263-infill-pattern-specific-keys/` authored (`draft`),
+  preflight **PASS**. **All 10 keys re-adjudicated declared-with-gap — a pure-declaration
+  packet (zero module-source reads, zero behavior change at any value).** Canonical
+  grounding pinned every decision point: six keys (`infill_lock_depth`, both densities,
+  both widths, `skin_infill_depth`) are consumed only by `FillLockedZag::fill_surface_locked_zag`,
+  `lateral_lattice_angle_1`/`2` only by `FillLateralLattice::fill_surface`,
+  `infill_overhang_angle` only by `FillLateralHoneycomb::fill_surface` — all unshipped
+  patterns — and `symmetric_infill_y_axis`, the one key with a live in-port decision point
+  (the rectilinear scan-line generator), is canonical-activated only when the sparse pattern
+  is zigzag/crosszag/lockedzag (`Fill.cpp` `Layer::make_fills` gate, verified verbatim;
+  never `ipRectilinear`): wiring it would implement behavior canonical never activates for
+  the port's patterns; the zigzag-family re-open condition rides the key's disposition. The
+  10 tables land in `rectilinear-infill.toml` (canonical defaults/bounds; percent forms per
+  107, width forms per the in-tree convention, bool for the symmetric key); guard is the
+  net-new `infill_pattern_specific_config_schema_tdd.rs`, distinct from 262's guard (no file
+  collision; shared-manifest append churn recorded as queue-order merge churn; `toml`
+  dev-dep add-if-absent). Zero deviation rows (5 parseable float defaults match; `25%`/`100%`
+  never enter the numeric comparison map; bool matches under the ticket-100 comparison —
+  block stays at 26, re-measured); zero CONFIG_BLOCK padding twins (honest absence pinned by
+  AC-4). No user rulings. **P10 (ticket 17) is now the unblocked queue head.**
+
+- [17 — Author packet P10 — Strength / Top/bottom shells — infill modules](issues/17-author-packet-p10-strength-top-bottom-shells-infill-modules.md)
+  — packet `docs/spec_packets/264-top-bottom-surface-keys/` authored (`draft`), preflight
+  **PASS** (S0–S8 all green). **Two keys wired, two declared-with-gap.** Canonical
+  grounding verified all four keys exist on `PrintRegionConfig` and re-derived the
+  dispositions: **`top_surface_density` / `bottom_surface_density` (coPercent 100; top min
+  0, bottom min 10) wired** into the rectilinear top/bottom solid spacing decision points
+  (`solid_spacing = line_width / SOLID_DENSITY`, `SOLID_DENSITY = 1.0` — canonical
+  `FillLine.cpp` `FillLine::_fill_surface_single`'s `line_spacing = flow.spacing() /
+  density` shape), exposed-surface-only (canonical `group_fills` gives `stInternalSolid` a
+  fixed `100.f`), with the canonical `density <= 0` skip wired as a `density > 0` gate on
+  the top block (bottom gate provably inert under min 10) — defaults 100 → fraction 1.0 →
+  byte-identical (AC-2), non-default values change spacing (AC-3). **`top_surface_pattern`
+  / `bottom_surface_pattern` (coEnum, 8 values; defaults `monotonicline` / `monotonic`)
+  declared-with-gap** — filler selection is module identity (packet 262's finding, unchanged
+  for the surface roles); canonical's other pattern reads (extra-internal-solid-fill branch,
+  `GCode.cpp` `_needSAFC`/`retract`) and the density keys' surface-expansion gates
+  (`detect_surfaces_type`, `top_fill_replaces_inner_walls`) recorded, not wired. **One
+  padding correction**: `("top_surface_pattern", "monotonic")` → `"monotonicline"` in
+  `ORCA_CONFIG_PADDING` (ticket-14/262 precedent; the bottom twin already matches). The 4
+  tables land in `rectilinear-infill.toml` only; gyroid's ADR-0027 opt-in solid path rides
+  the sparse density (recorded divergence, not wired — wiring would change gyroid solid at
+  defaults) and lightning is sparse-only; both omissions pinned (AC-N2). Guard is the
+  net-new `top_bottom_surface_config_schema_tdd.rs` (distinct from 262/263's guards; `toml`
+  dev-dep add-if-absent; shared-manifest append churn with 262/263 recorded as queue-order
+  merge churn). Zero deviation rows (enum defaults never enter the numeric comparison map;
+  `100%` fails `parse::<f64>` — block stays at 26, re-measured). No user rulings. Unblocks
+  nothing downstream; **P13 (ticket 20) is the next unblocked queue head**. Two fog items
+  graduated to Not yet specified (gyroid solid-density path; extra-internal-solid-fill
+  machinery).
+
 ## Not yet specified
 
 - **The prepass seam plan never covers painted-variant regions.** Surfaced
@@ -561,6 +613,24 @@ off-map, after.
   handling — and where the keys would be declared if it does — is a port-state
   question for the raft geometry work (draft packet 240) and for P13
   (`raft_first_layer_expansion`); fog until one of them picks it up.
+- **Gyroid solid-fill density semantics.** Surfaced by ticket 17's authoring:
+  gyroid's ADR-0027 opt-in solid emission (top/bottom roles when the user
+  sets `*_fill_holder = "gyroid-infill"`) rides the module's single
+  `self.density` read from `sparse_infill_density` — a pre-existing divergence
+  (gyroid solid at sparse density, e.g. 20% at defaults). Packet 264 declares
+  the P10 density keys in `rectilinear-infill.toml` only and pins the gyroid
+  omission (AC-N2). Whether gyroid's solid roles should consume
+  `top_surface_density` / `bottom_surface_density` (per-role density in
+  `emit_polys`) — and whether that changes the ADR-0027 opt-in contract — is a
+  port-state question for a future gyroid-solid packet; fog until picked up.
+- **Extra-internal-solid-fill machinery (`infill_only_where_needed`).** Surfaced
+  by ticket 17's authoring: canonical `group_fills` produces an extra internal
+  solid fill when internal voids exist and no `stInternalSolid` fill absorbed
+  them, reading `top_surface_pattern` (monotonic/monotonicline → that pattern,
+  else rectilinear) at fixed density 100. The port has no such pass (no
+  `infill_only_where_needed` / `infill_every_layers` machinery). Whether the
+  port gains the pass — and where — is queue-sized; fog until a packet picks it
+  up.
 
 ## Out of scope
 
