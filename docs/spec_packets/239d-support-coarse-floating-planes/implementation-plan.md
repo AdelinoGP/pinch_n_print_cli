@@ -68,21 +68,28 @@
   covered by the bracket; these rows are already available to both planner callers; where
   the predicate fails, the bracket keeps the existing 239c
   finer derivation), bracket the demanded planes per the **binding Q1
-  decision**: partition by `(object_id, region_id)` and contiguous run; interface-role rows
-  (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket when at least two exist,
-  otherwise the run's first/last support-bearing rows. Generate the stack between brackets
+  decision**: partition by `(object_id, region_id)` and contiguous run; with count(interface-role
+  planes (`TopInterface`/`BaseInterface`/`BottomInterface`)) >= 2 the bracket set is the
+  sorted/deduplicated interface planes (endpoints not added); with count < 2 that set is
+  supplemented with the run's first
+  and last surviving support-bearing rows, then sorted/deduplicated by `anchor_z` —
+  a run with exactly one genuine interface plane keeps it as a bracket (never demoted to
+  body). Generate the stack between brackets
   by the **tree-family** rule of `plan_layer_heights` (`TreeSupport.cpp`):
   `n = ceil(dist / pitch)` (**no** EPSILON bias), `step = dist / n`, planes at
   `below_z + k * step`, last aligned to `above_z`. Apply the canonical grouping of
   `generate_support_layers` (`SupportCommon.cpp`) — group candidate print-Z within
   `EPSILON`, take the midpoint; the group **minimum-height** rule is
   representation-inapplicable (`SupportPlanEntry` has no height field; effective row height
-  derives from adjacent `anchor_z`) and is not reproduced. Replace the body rows between
-  the brackets per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
+  derives from adjacent `anchor_z`) and is not reproduced. Replace only the **non-interface
+  rows strictly inside each bracket pair** (genuine interface bracket entries always
+  remain) with the stack planes per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
   roles to `SupportBody`, capture the source `global_layer_index` into the local duplicate
   key and clone-source provenance decision only, and assign the emitted entry's final
   `global_layer_index` from the per-plane DEV-163 synthetic identity map
-  (`BTreeMap<i64, i32>`); preserve other provenance fields. Entries nondecreasing in
+  (`BTreeMap<i64, i32>`); preserve other provenance fields. The stable dedup applies to
+  **synthesized candidates only** — surviving real entries are never deduplicated by
+  emitted `global_layer_index`. Entries nondecreasing in
   `anchor_z` per object in original output order, distinct planes strictly increasing,
   identity key `(source global_layer_index, object_id, region_id, ordered body_ids,
   anchor_z)` deduplicated, and
@@ -140,7 +147,10 @@
   `generate_support_layers` grouping/midpoint application (no group-height
   representation). Neutralize `support_step` per the **binding Q3 decision**: set
   `support_step = 1` exactly for bracket pairs satisfying the binding coarse predicate
-  (configured nonzero pitch >= `local_support_gap`) — no global bypass of the gate at ~511. Entries nondecreasing in
+  (configured nonzero pitch >= `local_support_gap`) — no global bypass of the gate at ~511.
+  Bracket selection, body replacement (only non-interface rows strictly inside each
+  bracket pair; genuine interface bracket entries survive), and the synthesized-candidates-only
+  dedup follow the same Q1/Q2 rules as Step 2. Entries nondecreasing in
   `anchor_z` per object, distinct planes strictly increasing, identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`
   deduplicated, true-nearest `anchor_layer_index`

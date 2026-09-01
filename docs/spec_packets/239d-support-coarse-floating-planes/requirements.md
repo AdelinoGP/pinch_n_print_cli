@@ -64,9 +64,13 @@ rows must therefore come from a new floating stack, not from either decimation m
   `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`) — its EPSILON bias
   is part of the rule; tree: `n_layers_extra = ceil(dist / pitch)`, same step/plane shape,
   **no** EPSILON bias, per `plan_layer_heights` (`TreeSupport.cpp`). One shared formula for
-  both families is a spec defect, not a simplification. Bracket selection is binding: the
-  run's interface-role rows (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket when
-  at least two exist, otherwise the run's first/last support-bearing rows. Synthesized
+  both families is a spec defect, not a simplification. Bracket selection is binding: let I
+  be the run's interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`).
+  With count(I) >= 2 the bracket set is the sorted/deduplicated I (endpoints not added);
+  with count(I) < 2 (zero or one interface plane) that set is supplemented with the run's
+  first and last surviving support-bearing rows, then sorted/deduped by `anchor_z` — so a
+  run with exactly one genuine interface plane keeps it as a bracket (never demoted to
+  body). Synthesized
   stack planes **clone the lower bracket's geometry and rewrite roles to `SupportBody`**:
   the source `global_layer_index` is captured into the local duplicate key and clone-source
   provenance decision only, the emitted entry's final `global_layer_index` is assigned from
@@ -78,8 +82,9 @@ rows must therefore come from a new floating stack, not from either decimation m
   `EPSILON`, take the midpoint. Canonical's group **minimum-height** rule is explicitly
   **not** reproduced: `SupportPlanEntry` has no height field, and a row's effective height
   derives from the `anchor_z` of its adjacent rows, so a per-entry group height has no
-  representation in PnP — a recorded inapplicability, not an omission. The body rows
-  between the brackets are replaced by the pitch-spaced stack. Entries per object are
+  representation in PnP — a recorded inapplicability, not an omission. Only the
+  **non-interface rows strictly inside each bracket pair** are replaced by the pitch-spaced
+  stack; genuine interface bracket entries always remain. Entries per object are
   nondecreasing in `anchor_z` in original output order, distinct planes strictly increasing,
   and duplicate synthesized candidates are prevented at insertion by the stable identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, synthesized anchor_z)`
@@ -87,8 +92,10 @@ rows must therefore come from a new floating stack, not from either decimation m
   `object_id`/`region_id`, and ordered `body_ids: Vec<String>`) plus the synthesized plane's
   `anchor_z`; no entry `id` field exists to key on, and because the key spans the full source
   identity it cannot collide two legitimately distinct geometries (a second entry with the
-  same key is dropped, so the per-object entry map never carries two rows with one identity),
-  and each synthesized plane's `anchor_layer_index` is the true-nearest object layer by
+  same key is dropped, so the per-object entry map never carries two rows with one
+  identity). **The dedup applies to synthesized candidates only: surviving real entries are
+  never deduplicated by emitted `global_layer_index`.** Also, each synthesized plane's
+  `anchor_layer_index` is the true-nearest object layer by
   absolute Z distance with the lower index winning ties. Coarse-vs-finer selection is
   bracket-local: it is decided per bracket pair by the binding predicate above (coarse iff
   configured nonzero pitch >= `local_support_gap`; pitch 0.2 over covered surviving-row

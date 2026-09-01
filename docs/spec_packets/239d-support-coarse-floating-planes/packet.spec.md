@@ -96,9 +96,15 @@ State ACs only here; `requirements.md` references their IDs.
   the last plane aligned to the upper bracket. The test asserts the **exact expected
   bracket planes** (computed from the fixture's bracket-to-bracket Z distance — the
   `dist` in that formula — by that formula), each entry's
-  role is `SupportBody` (no interface role survives on a synthesized stack plane), and every
+  role is `SupportBody` **on synthesized stack planes only** (genuine interface bracket
+  entries survive with their interface roles; body replacement removes only non-interface
+  rows strictly inside each bracket pair), and every
   synthesized plane's `anchor_layer_index` is the layer whose Z is nearest by absolute
-  distance with the lower index winning ties. |
+  distance with the lower index winning ties. **Where the fixture naturally expresses a
+  run with exactly one genuine interface plane, the test also asserts that plane remains a
+  bracket (not demoted to body), per the Q1 count-conditional rule: with >= 2 interface
+  planes the bracket set is the sorted/deduplicated interface planes alone (endpoints not
+  added); with fewer than two, endpoints are supplemented.** |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-3 (traditional planner: same, with `support_step` neutralized).** **Given** the same
   inputs, **when** the traditional planner runs, **then** at least one emitted
@@ -111,9 +117,16 @@ State ACs only here; `requirements.md` references their IDs.
   n_layers_extra`, planes at `below_z + k * step` with the last aligned to the upper
   bracket. The test asserts the **exact expected bracket planes** from that formula in the
   planner's original output order, that entries are nondecreasing in `anchor_z` within each
-  object with strictly increasing distinct planes, that every synthesized stack-plane entry
+  object with strictly increasing distinct planes, that every **synthesized** stack-plane
+  entry
   carries the `SupportBody` role (the lower bracket's other fields cloned, roles rewritten —
-  the Q2 decision), and that each synthesized plane's `anchor_layer_index` is the
+  the Q2 decision), that genuine interface bracket entries survive with their interface
+  roles (body replacement removes only non-interface rows strictly inside each bracket
+  pair; a lone genuine interface plane stays a bracket per the Q1 count-conditional rule
+  (>= 2 interface planes: interface planes alone, endpoints not added; < 2: endpoints
+  supplemented) —
+  asserted where the fixture naturally expresses the one-interface case), and that each
+  synthesized plane's `anchor_layer_index` is the
   true-nearest layer by absolute Z distance (lower index on ties). |
   `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4 (measure-first coarse `height_delta` verdict).** **Given** the Step 5 measurement
