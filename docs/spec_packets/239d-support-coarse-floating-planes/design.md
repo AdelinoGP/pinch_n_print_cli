@@ -104,10 +104,12 @@ design contract now, not implementer choices:
   brackets. Within a run the brackets are its lowest and highest plane by `anchor_z`.
 - **Q2 — clone source for synthesized stack planes (binding).** Each synthesized stack
   plane **clones the lower bracket's geometry** (its skeleton and other entry fields) and
-  **rewrites the roles to `SupportBody`**. The cloned source entry's `global_layer_index`
-  and provenance fields are preserved (the cloned entry keeps those values so the per-plane
-  intermediate identities —
-  the `BTreeMap<i64, i32>` scheme from DEV-163 — stay semantically live). No interface role
+  **rewrites the roles to `SupportBody`**. The source `global_layer_index` is captured only
+  as part of the local duplicate key and clone-source provenance decision (the
+  duplicate-key rule below); the **emitted** entry's final `global_layer_index` is assigned
+  from the existing per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`), so all
+  entries at one synthesized plane share that plane identity. Other provenance fields are
+  preserved. No interface role
   or interface geometry may appear at a body plane.
 - **Q3 — `support_step` neutralization form (binding).** The neutralization **sets
   `support_step = 1`** when pitch >= gap, **only** for the genuinely coarse local brackets —
@@ -132,10 +134,12 @@ design contract now, not implementer choices:
    derives from the `anchor_z` of its adjacent rows, so a per-entry "group height" has no
    representation here — this is a recorded deviation-by-inapplicability, not an omission.
    The body entries between the brackets are replaced by the stack planes (each cloned from
-   the lower bracket with roles rewritten to `SupportBody`, preserving the cloned source
-   entry's `global_layer_index` and provenance fields, so the per-plane intermediate
-   identities — the `BTreeMap<i64, i32>` scheme from DEV-163 — stay semantically live; the
-   insertion-time identity key is the duplicate-key rule's stable
+   the lower bracket with roles rewritten to `SupportBody`: the source `global_layer_index`
+   is captured into the local duplicate key and clone-source provenance decision only, the
+   emitted entry's final `global_layer_index` comes from the per-plane DEV-163 synthetic
+   identity map (`BTreeMap<i64, i32>`) so all entries at one synthesized plane share that
+   plane identity, and other provenance fields are preserved; the insertion-time identity
+   key is the duplicate-key rule's stable
    `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`), per
    Q2. The sentinel
    (pitch 0.0 → object pitch) is preserved: with pitch == object pitch the stack planes
@@ -161,7 +165,11 @@ design contract now, not implementer choices:
    per-object entry map never carries two rows with one identity. There is no entry `id`
    field on `SupportPlanEntry` to key on, and the key deliberately spans the full source
    identity (global layer origin + object + region + full body membership) so it cannot
-   collapse two legitimately distinct geometries.
+   collapse two legitimately distinct geometries. The captured source `global_layer_index`
+   lives only in this local key and the clone-source provenance decision; the emitted
+   entry's final `global_layer_index` is assigned from the per-plane DEV-163 synthetic
+   identity map (`BTreeMap<i64, i32>`), so all entries at one synthesized plane share that
+   plane identity.
 3. **Tests.** `tree_family_tdd.rs`: `coarse_pitch_produces_free_floating_anchor_z` (AC-2)
    and `zero_pitch_sentinel_stays_object_grid` (AC-N3), extending the `layer_plan()` fixture
    pattern (~167) with a multi-layer demand and pitch 0.3, asserting the exact expected
@@ -384,7 +392,11 @@ Include ranges for files over 300 lines.
 - **Locked (Q1-Q3, binding):** bracket selection is per `(object_id, region_id)` contiguous
   run with interface-role rows as brackets when >= 2 exist (else first/last support-bearing
   rows); stack planes clone the lower bracket with roles rewritten to `SupportBody`,
-  preserving the cloned source entry's `global_layer_index`/provenance;
+  capturing the source `global_layer_index` into the local duplicate key and
+  clone-source provenance decision only, assigning the emitted entry's final
+  `global_layer_index` from the per-plane DEV-163 synthetic identity map
+  (`BTreeMap<i64, i32>` — one plane identity shared by all entries at a synthesized plane),
+  and preserving other provenance fields;
   `support_step` neutralization sets 1 per coarse bracket
   pair only. See §Code Change Surface.
 - **Locked (family-specific stepping):** the traditional stack uses
@@ -412,8 +424,10 @@ Include ranges for files over 300 lines.
   first/last support-bearing rows. The fallback is now specified, so the stack can no
   longer silently stay grid-bound for interface-less regions.
 - **The body-row replacement touches the skeleton.** The Q2 binding decision resolves the
-  source: clone the lower bracket, rewrite roles to `SupportBody`, preserve the cloned
-  source entry's `global_layer_index`/provenance.
+  source: clone the lower bracket, rewrite roles to `SupportBody`, capture the source
+  `global_layer_index` into the local duplicate key/clone-source provenance decision, and
+  assign the emitted final `global_layer_index` from the per-plane DEV-163 synthetic
+  identity map.
   A wrong implementation would produce interface geometry at body planes; AC-2/AC-3 now
   assert the role rewrite directly.
 - **The `support_step` neutralization has a blast radius.** The traditional planner's tests
@@ -456,8 +470,10 @@ Include ranges for files over 300 lines.
   (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket the run when at least two
   exist; otherwise the run's first and last support-bearing rows bracket it.
 - **Decision D2 (stack-plane clone source, resolves Q2).** Clone the lower bracket's
-  geometry; rewrite the roles to `SupportBody`; preserve the cloned source entry's
-  `global_layer_index` and provenance fields.
+  geometry; rewrite the roles to `SupportBody`; capture the source `global_layer_index`
+  into the local duplicate key and clone-source provenance decision only, and assign the
+  emitted entry's final `global_layer_index` from the per-plane DEV-163 synthetic identity
+  map (`BTreeMap<i64, i32>`); preserve other provenance fields.
   Never produce interface roles/geometry at body planes.
 - **Decision D3 (`support_step` neutralization, resolves Q3).** Set `support_step = 1`
   only for genuinely coarse local brackets (per bracket pair where pitch >= gap); no

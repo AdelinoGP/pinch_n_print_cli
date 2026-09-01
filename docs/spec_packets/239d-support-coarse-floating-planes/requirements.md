@@ -61,8 +61,12 @@ rows must therefore come from a new floating stack, not from either decimation m
   both families is a spec defect, not a simplification. Bracket selection is binding: the
   run's interface-role rows (`TopInterface`/`BaseInterface`/`BottomInterface`) bracket when
   at least two exist, otherwise the run's first/last support-bearing rows. Synthesized
-  stack planes **clone the lower bracket's geometry and rewrite roles to `SupportBody`**,
-  preserving the cloned source entry's `global_layer_index` and provenance fields. After
+  stack planes **clone the lower bracket's geometry and rewrite roles to `SupportBody`**:
+  the source `global_layer_index` is captured into the local duplicate key and clone-source
+  provenance decision only, the emitted entry's final `global_layer_index` is assigned from
+  the per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`) so all entries at one
+  synthesized plane share that plane identity, and other provenance fields are preserved.
+  After
   stepping, apply the canonical grouping rule of
   `generate_support_layers` (`Support/SupportCommon.cpp`): group candidate print-Z within
   `EPSILON`, take the midpoint. Canonical's group **minimum-height** rule is explicitly

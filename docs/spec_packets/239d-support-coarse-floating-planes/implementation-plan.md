@@ -74,8 +74,10 @@
   representation-inapplicable (`SupportPlanEntry` has no height field; effective row height
   derives from adjacent `anchor_z`) and is not reproduced. Replace the body rows between
   the brackets per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
-  roles to `SupportBody`, preserve the cloned source entry's `global_layer_index` and
-  provenance. Entries nondecreasing in
+  roles to `SupportBody`, capture the source `global_layer_index` into the local duplicate
+  key and clone-source provenance decision only, and assign the emitted entry's final
+  `global_layer_index` from the per-plane DEV-163 synthetic identity map
+  (`BTreeMap<i64, i32>`); preserve other provenance fields. Entries nondecreasing in
   `anchor_z` per object in original output order, distinct planes strictly increasing,
   identity key `(source global_layer_index, object_id, region_id, ordered body_ids,
   anchor_z)` deduplicated, and
