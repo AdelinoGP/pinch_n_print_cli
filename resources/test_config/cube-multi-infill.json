@@ -3,6 +3,6 @@
   "top_fill_holder": "rectilinear-infill",
   "bottom_fill_holder": "rectilinear-infill",
   "bridge_fill_holder": "rectilinear-infill",
-  "infill_density": 0.2,
+  "sparse_infill_density": 20.0,
   "wall_loops": 2
 }

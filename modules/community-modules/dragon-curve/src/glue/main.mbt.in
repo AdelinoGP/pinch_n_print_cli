@@ -20,13 +20,13 @@ let base_speed : Double = 50.0
 // Defaults below mirror `dragon-curve.toml`'s `[config.schema]`. They are the
 // values used when the host does not supply a key at all.
 ///|
-let default_density : Double = 0.2
+let default_density : Double = 20.0
 
 ///|
 let default_line_width : Double = 0.45
 
 ///|
-let default_speed : Double = 60.0
+let default_speed : Double = 100.0
 
 ///|
 let default_tiling_depth : Int = 10
@@ -135,9 +135,12 @@ pub fn run(
   ignore(layer_index)
 
   // Module-global config. Per-region overrides are resolved per region below.
-  let density = cfg_float(config, "infill_density", default_density)
+  // `sparse_infill_density` is the canonical percent key (20 = 20%), so the
+  // fraction is recovered by dividing by 100 — mirroring the core Rust
+  // modules' percent-aware reads (wayfinder ticket 107).
+  let density = cfg_float(config, "sparse_infill_density", default_density) / 100.0
   let module_line_width = cfg_float(config, "line_width", default_line_width)
-  let speed = cfg_float(config, "infill_speed", default_speed)
+  let speed = cfg_float(config, "sparse_infill_speed", default_speed)
   let module_depth = cfg_int(config, "tiling_depth", default_tiling_depth)
   let angle_deg = cfg_float(config, "infill_direction", default_angle)
   let color_map = cfg_color_map(config)
@@ -172,11 +175,12 @@ pub fn run(
       continue
     }
 
-    // Per-region overrides, mirroring what `resolve_float` does for the core
-    // Rust modules: the region's own config view wins when it carries the key.
+    // Per-region overrides, mirroring what `resolve_percent_float` does for the
+    // core Rust modules: the region's own config view wins when it carries the
+    // key; the density value is canonical percent and is divided by 100.
     let region_config = region.config()
-    let region_density = match region_config.get_float("infill_density") {
-      Some(v) => v
+    let region_density = match region_config.get_float("sparse_infill_density") {
+      Some(v) => v / 100.0
       None => density
     }
     let region_line_width = match region_config.get_float("line_width") {

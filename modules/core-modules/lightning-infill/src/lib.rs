@@ -29,10 +29,12 @@ const BASE_SPEED: f32 = 50.0;
 
 /// Lightning sparse infill sampler.
 pub struct LightningInfill {
-    /// Infill density (0.0 to 1.0).
+    /// Infill density (fraction 0.0 to 1.0; read from the canonical percent
+    /// key `sparse_infill_density` and divided by 100).
     density: f32,
-    /// Infill print speed in mm/s.
-    infill_speed: f32,
+    /// Sparse infill speed in mm/s — the speed-factor base (OrcaSlicer:
+    /// sparse_infill_speed).
+    sparse_infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
 }
@@ -52,12 +54,16 @@ impl LightningInfill {
 #[slicer_module]
 impl LayerModule for LightningInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.get("infill_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
+        // Canonical `sparse_infill_density` is coPercent (default 20 = 20%);
+        // resolve the literal percent against base 100 and divide by 100 to
+        // recover the density fraction. (Wayfinder ticket 107 standardised
+        // the key to Orca's name and percent representation.)
+        let density = config
+            .get_abs_value("sparse_infill_density", 100.0)
+            .map(|d| d as f32 / 100.0)
+            .unwrap_or(0.2);
 
-        let infill_speed = match config.get("infill_speed") {
+        let sparse_infill_speed = match config.get("sparse_infill_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => BASE_SPEED,
@@ -87,7 +93,7 @@ impl LayerModule for LightningInfill {
 
         Ok(Self {
             density,
-            infill_speed,
+            sparse_infill_speed,
             line_width,
         })
     }
@@ -100,7 +106,7 @@ impl LayerModule for LightningInfill {
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let speed_factor = self.infill_speed / BASE_SPEED;
+        let speed_factor = self.sparse_infill_speed / BASE_SPEED;
 
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());

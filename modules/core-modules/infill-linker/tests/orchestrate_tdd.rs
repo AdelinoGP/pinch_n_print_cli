@@ -119,7 +119,9 @@ fn contour_stub_lengths(path: &ExtrusionPath3D, input_endpoints: &[(f32, f32)]) 
 fn config(line_width: f64, density: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("line_width", line_width)
-        .float("infill_density", density)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
         .build()
 }
 
@@ -131,7 +133,8 @@ fn config_with_anchor(
 ) -> ConfigView {
     ConfigViewBuilder::new()
         .float("line_width", line_width)
-        .float("infill_density", density)
+        // Canonical-percent key (wayfinder ticket 107).
+        .float("sparse_infill_density", density * 100.0)
         .float("infill_anchor", anchor_length)
         .float("infill_anchor_max", anchor_max)
         .build()
@@ -541,7 +544,7 @@ fn absent_anchor_keys_fall_back_to_four_hundred_percent_of_flow_spacing() {
     assert!((anchor_length - 1.4283185).abs() < 1e-4);
     assert_eq!(
         sparse_anchor_lengths, dense_anchor_lengths,
-        "infill_density alone must not change the fallback anchor length"
+        "sparse_infill_density alone must not change the fallback anchor length"
     );
 }
 

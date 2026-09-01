@@ -118,8 +118,8 @@ fn integrated_parity_infill_linker() {
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
         (
-            "infill_density".to_string(),
-            slicer_ir::ConfigValue::Float(0.2),
+            "sparse_infill_density".to_string(),
+            slicer_ir::ConfigValue::Float(20.0),
         ),
     ])));
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);

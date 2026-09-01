@@ -178,7 +178,7 @@ spacing in `modules/core-modules/rectilinear-infill/src/lib.rs`); core function 
 divergent. Spec should canonicalize the core signature rather than keep the shim.
 
 ### F6 — MEDIUM — Bridge feedrate coupled to sparse speed (NEW, fixed in stash)
-At HEAD every role shares `speed_factor = infill_speed / BASE_SPEED(50)`
+At HEAD every role shares `speed_factor = sparse_infill_speed / BASE_SPEED(50)`
 (`modules/core-modules/rectilinear-infill/src/lib.rs`), so emitted bridge feedrate =
 `bridge_speed × infill_speed/50`. Canonical assigns `role_speed = bridge_speed`
 directly (`Fill.cpp`). Stash: **fixed** (per-class factor ≡ 1.0). Related open

@@ -933,29 +933,39 @@ impl ConfigView {
     ///   `is_percent` is `true`; when `false`, `value` is already absolute
     ///   and is returned unchanged regardless of `base`.
     /// * `Float(f)` is already absolute and is returned unchanged.
+    /// * `String(s)` with a trailing `%` (the form 3MF metadata preserves for
+    ///   percent keys such as `sparse_infill_density`) is parsed and resolves
+    ///   like `Percent`; other strings yield `None`. Wayfinder ticket 107 made
+    ///   percent strings resolvable so canonical-percent keys (e.g.
+    ///   `sparse_infill_density`) reach the infill modules from Orca-authored
+    ///   3MF sidecars.
     /// * Any other variant, or a missing key, yields `None`.
     #[must_use]
     pub fn get_abs_value(&self, key: &str, base: f64) -> Option<f64> {
-        match self.fields.get(key)? {
-            ConfigValue::Percent(p) => {
-                if base > 0.0 {
-                    Some(p / 100.0 * base)
-                } else {
-                    None
-                }
+        let percent = |p: f64| {
+            if base > 0.0 {
+                Some(p / 100.0 * base)
+            } else {
+                None
             }
+        };
+        match self.fields.get(key)? {
+            ConfigValue::Percent(p) => percent(*p),
             ConfigValue::FloatOrPercent { value, is_percent } => {
                 if *is_percent {
-                    if base > 0.0 {
-                        Some(value / 100.0 * base)
-                    } else {
-                        None
-                    }
+                    percent(*value)
                 } else {
                     Some(*value)
                 }
             }
             ConfigValue::Float(f) => Some(*f),
+            ConfigValue::String(s) => {
+                if let Some(num) = s.strip_suffix('%') {
+                    num.trim().parse::<f64>().ok().and_then(percent)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

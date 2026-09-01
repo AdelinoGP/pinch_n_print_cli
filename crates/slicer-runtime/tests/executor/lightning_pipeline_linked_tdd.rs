@@ -168,9 +168,12 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
         .expect("instance pool must build"),
     );
     let config = slicer_ir::ConfigView::from_map(HashMap::from([
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
-        ("infill_speed".to_string(), ConfigValue::Float(50.0)),
+        ("sparse_infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
     ]));
     let module = CompiledModuleBuilder::new(loaded.id().to_string())

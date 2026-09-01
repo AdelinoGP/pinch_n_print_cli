@@ -5,8 +5,8 @@
 //! (region_id=0, empty variant_chain, density=0.2 everywhere), so per-region
 //! gating had nothing distinct to gate on. Instead of relying on that fixture,
 //! this test constructs the AC-N1 scenario in-process — a shared-ceiling object
-//! whose two side-by-side halves carry DISTINCT resolved `infill_density`
-//! (dense >= 0.999 beside sparse) — then drives the host prepass
+//! whose two side-by-side halves carry DISTINCT resolved `sparse_infill_density`
+//! (dense = 100% beside sparse) — then drives the host prepass
 //! (`commit_shell_classification_builtin`, the same stage `pnp_cli visual-debug`
 //! exercises) and asserts the frozen bar:
 //!
@@ -27,8 +27,8 @@ use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-const DENSE_DENSITY: f32 = 1.0; // resolved >= 0.999 → fully dense supporter
-const SPARSE_DENSITY: f32 = 0.25; // sparse half
+const DENSE_DENSITY: f32 = 100.0; // resolved >= 99.9 (percent) → fully dense supporter
+const SPARSE_DENSITY: f32 = 25.0; // sparse half (percent)
 
 fn square(x0: f32, y0: f32, x1: f32, y1: f32) -> slicer_ir::ExPolygon {
     use slicer_ir::{Point2, Polygon};
@@ -58,7 +58,7 @@ fn region(object_id: &str, region_id: u64, footprint: slicer_ir::ExPolygon) -> S
 
 fn region_config(density: f32) -> ResolvedConfig {
     ResolvedConfig {
-        infill_density: density,
+        sparse_infill_density: density,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
         ..Default::default()
@@ -116,7 +116,7 @@ fn mixed_density_internal_bridge_rejection_e2e_tdd() {
         mesh: slicer_ir::IndexedTriangleSet::default(),
         config_delta: slicer_ir::ConfigDelta {
             fields: HashMap::from([(
-                "infill_density".into(),
+                "sparse_infill_density".into(),
                 ConfigValue::Float(f64::from(SPARSE_DENSITY)),
             )]),
         },
@@ -136,8 +136,8 @@ fn mixed_density_internal_bridge_rejection_e2e_tdd() {
     // The stamp helper routes density through `extensions`; the prepass
     // (`gate_internal_bridge_sites::density_for`) reads the struct field, so
     // pin the resolved struct field explicitly for the fixture.
-    base_cfg.infill_density = DENSE_DENSITY;
-    sub_cfg.infill_density = SPARSE_DENSITY;
+    base_cfg.sparse_infill_density = DENSE_DENSITY;
+    sub_cfg.sparse_infill_density = SPARSE_DENSITY;
     base_cfg.top_shell_layers = 2;
     base_cfg.bottom_shell_layers = 0;
     sub_cfg.top_shell_layers = 2;
@@ -191,7 +191,7 @@ fn mixed_density_internal_bridge_rejection_e2e_tdd() {
     let sparse_bridges = sparse_region.internal_bridge_areas.len();
     println!(
         "AC-N1 fixture: regions=[dense(0) density={} bridges={} | sparse({sub_id}) density={} bridges={sparse_bridges}]",
-        base_cfg.infill_density, dense_bridges, sub_cfg.infill_density,
+        base_cfg.sparse_infill_density, dense_bridges, sub_cfg.sparse_infill_density,
     );
 
     // Frozen bar: ZERO qualification above the dense half; preserved above the

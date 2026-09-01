@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 const EMIT_VIEW_WITNESS: &str = "emit_view_witness";
-const INFILL_DENSITY: &str = "infill_density";
+const INFILL_DENSITY: &str = "sparse_infill_density";
 const EXTRUDER: &str = "extruder";
 
 fn echo_bundle(config: ConfigView) -> TestModuleBundle {
@@ -142,7 +142,7 @@ fn run_echo(
 
 #[test]
 fn per_region_config_two_densities() {
-    let densities = [(0, 0.15), (1, 0.40)];
+    let densities = [(0, 15.0), (1, 40.0)];
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
         .with_slice(ir_builders::slice_ir::with_ids(&[("obj-0", 0), ("obj-0", 1)]).build())
         .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0), ("obj-0", 1)]).build())
@@ -151,16 +151,16 @@ fn per_region_config_two_densities() {
         .commit_region_map(Arc::new(region_map(&densities)))
         .expect("commit per-region config map");
 
-    let actual = run_echo(&mut fx, witness_config(0.15, 15));
-    assert_eq!(actual, vec![(0, 0.15), (1, 0.40)]);
+    let actual = run_echo(&mut fx, witness_config(15.0, 15));
+    assert_eq!(actual, vec![(0, 15.0), (1, 40.0)]);
 }
 
 #[test]
 fn per_region_config_single_region_unchanged() {
-    let module_config = witness_config(0.15, 15);
+    let module_config = witness_config(15.0, 15);
     let module_density = module_config
         .get_float(INFILL_DENSITY)
-        .expect("module ConfigView must expose infill_density");
+        .expect("module ConfigView must expose sparse_infill_density");
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
         .with_slice(ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build())
         .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)]).build())

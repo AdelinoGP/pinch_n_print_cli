@@ -5243,7 +5243,7 @@ mod tests {
             HostExecutionContextBuilder::new("com.test.percent-roundtrip", 0.0, 0.2).build();
         let mut fields = HashMap::new();
         fields.insert(
-            "infill_density".to_string(),
+            "sparse_infill_density".to_string(),
             ConfigValueStorage::Percent(25.0),
         );
         let resource = ctx
@@ -5252,7 +5252,7 @@ mod tests {
             .expect("push config-view resource");
 
         let value = ctx
-            .get(resource, "infill_density".to_string())
+            .get(resource, "sparse_infill_density".to_string())
             .expect("get call succeeds")
             .expect("value present for known key");
         match value {

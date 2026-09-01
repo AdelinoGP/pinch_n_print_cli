@@ -80,7 +80,7 @@ fn l_shape() -> ExPolygon {
 
 fn min_density_config() -> ConfigView {
     let mut map = std::collections::HashMap::new();
-    map.insert("infill_density".into(), ConfigValue::Float(0.5));
+    map.insert("sparse_infill_density".into(), ConfigValue::Float(50.0));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
     ConfigView::from_map(map)
 }

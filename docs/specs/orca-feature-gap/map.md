@@ -24,13 +24,17 @@ off-map, after.
   that column** — use ticket 01's asset, or re-derive.
 - **Pinch 'n Print renamed Orca's keys — now being standardised away.**
   Ticket 07's ruling: **standardise to Orca's names**, not document. The rename
-  workstream is tickets **99–107** (25 keys after ticket 105's re-adjudication:
-  21 exact rows + 3 duplicate collapses + `ironing_spacing_mm` — `resolution`
+  workstream is tickets **99–107** (24 keys after ticket 105's re-adjudication
+  and ticket 107's closure: 21 exact rows + 2 duplicate collapses —
+  `infill_density` → `sparse_infill_density` and `infill_speed` →
+  `sparse_infill_speed`; `infill_overlap` was re-adjudicated a PnP-specific
+  decision point, not a duplicate, and stays — + `ironing_spacing_mm` —
+  `resolution`
   was re-judged a **gap**, not a rename: canonical applies it as a
   generation-time *global* simplify, the host's `gcode_resolution` is emit-time
   and per-role, so the two are different decision points; the key now rides
   queue packet P51 and `gcode_resolution` stays PnP-specific); ticket 108
-  (filed by ticket 10's authoring) adjudicates a possible 26th —
+  (filed by ticket 10's authoring) adjudicates a possible 25th —
   `wipe_tower_speed` → `wipe_tower_max_purge_speed` — before any rename work
   may treat it as settled. It **gates the queue by owner** — each
   packet ticket is blocked by the rename tickets that touch *its* owner (wired
@@ -434,6 +438,27 @@ off-map, after.
   required. Packet-240 relationship recorded (its AC-5 wire-or-record input), not
   deferred. No CONFIG_BLOCK twins (`("raft_layers", "0")` in the padding list is the
   canonical layer-count key, not these two).
+- [107 — Collapse infill duplicate spellings to Orca names](issues/107-collapse-infill-duplicate-spellings.md)
+  — **two collapses merged, one pair re-adjudicated (user rulings).**
+  `infill_density` → `sparse_infill_density` **canonical-percent everywhere**
+  (20.0 [0,100] in all five manifests; modules divide by 100; `ResolvedConfig`
+  field/key renamed with a new `extract_percent_float` input adapter so Orca
+  3MF percent strings resolve — ticket-100 precedent; `get_abs_value` now
+  resolves percent strings; new `resolve_percent_float` SDK helper; loader
+  part-metadata preserves percent strings; the M3 fixture's 15%/40% overrides
+  finally reach the modules). `infill_speed` → `sparse_infill_speed` with
+  manifests aligned to canonical 100 (user ruling; live factor stays 1.0 =
+  canonical 100 mm/s); host `FeedrateConfig.sparse_infill_speed` untouched;
+  deviation table 27 → **26** (measured). **`infill_overlap` re-adjudicated
+  NOT a duplicate** — canonical `infill_wall_overlap` (coPercent 15,
+  `PerimeterGenerator.cpp` `inset -= infill_peri_overlap`) is already ported
+  in classic-perimeters; the linker's 0.45 fraction-of-spacing post-pass is a
+  PnP-invented second mechanism; kept live, 03's row updated, collapse count
+  3 → 2, rename pool 25 → 24. Also: the persistent `slicer-sdk --doc` red
+  (13 `order_lock` doctests) repaired in-ticket (fog cleared); one latent
+  prepass bug fixed (0.999 → 99.9 at the `BridgeDepthLayer` thresholds);
+  dragon-curve example renamed + wasm rebuilt; all gates green incl. full e2e
+  136/136 and 44 guests rebuilt twice.
 
 ## Not yet specified
 
@@ -456,10 +481,6 @@ off-map, after.
   reports `degraded: false` / `non_fatal_error_count: 0`. Observability
   gap only (docs/09 §Required Events); pair it with the seam-plan fix
   above when that packets.
-- **The persistent `slicer-sdk --doc` red.** 13 doctest failures missing
-  `ExtrusionPath3D.order_lock` (packet 25398ebf added the field without
-  updating `test_support` doc examples). Unchanged at HEAD through
-  tickets 99–102; a narrow-crate repair, not queue work.
 
 - **Object-footprint validation against `bed_exclude_area`.** Surfaced by
   ticket 11: canonical `Print::validate` intersects each model volume's 2D

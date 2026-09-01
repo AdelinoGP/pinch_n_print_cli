@@ -28,20 +28,20 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.infill_density]
+[config.schema.sparse_infill_density]
 type    = "float"
-default = 0.2
+default = 20.0
 min     = 0.0
-max     = 1.0
-display = "Infill Density"
+max     = 100.0
+display = "Sparse Infill Density"
 group   = "Infill"
 
-[config.schema.infill_speed]
+[config.schema.sparse_infill_speed]
 type    = "float"
-default = 60.0
+default = 100.0
 min     = 1.0
 max     = 300.0
-display = "Infill Speed"
+display = "Sparse Infill Speed"
 group   = "Infill"
 
 [config.schema.line_width]

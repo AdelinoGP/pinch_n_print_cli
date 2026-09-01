@@ -58,8 +58,8 @@ fn integrated_parity_rectilinear_infill() {
     ];
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (
-            "infill_density".to_string(),
-            slicer_ir::ConfigValue::Float(0.2),
+            "sparse_infill_density".to_string(),
+            slicer_ir::ConfigValue::Float(20.0),
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
     ])));

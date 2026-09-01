@@ -86,20 +86,14 @@ pub struct RectilinearInfill {
 #[slicer_module]
 impl LayerModule for RectilinearInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.get("infill_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
+        let density = config
+            .get_abs_value("sparse_infill_density", 100.0)
+            .map(|d| d as f32 / 100.0)
+            .unwrap_or(0.2);
 
         let base_angle = match config.get("infill_direction") {
             Some(ConfigValue::Float(a)) => *a as f32,
             _ => 0.0,
-        };
-
-        let infill_speed = match config.get("infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 60.0,
         };
 
         let speed_value = |key: &str, default: f32| match config.get(key) {
@@ -164,7 +158,7 @@ impl LayerModule for RectilinearInfill {
 
         let top_surface_speed = speed_value("top_surface_speed", 60.0);
         let internal_solid_infill_speed = speed_value("internal_solid_infill_speed", 60.0);
-        let sparse_infill_speed = speed_value("sparse_infill_speed", infill_speed);
+        let sparse_infill_speed = speed_value("sparse_infill_speed", 100.0);
         let dont_filter_internal_bridges = config
             .get_bool("dont_filter_internal_bridges")
             .unwrap_or(false);
@@ -246,7 +240,7 @@ impl LayerModule for RectilinearInfill {
         // `bottom_solid_fill`, `bridge_areas`) with precedence
         // bridge > bottom > top > sparse. Each role emits over its own
         // polygon — zero polygon math, zero per-region role-pick. Per-region
-        // `infill_density` / `line_width` overrides (packet 131 / TASK-256)
+        // `sparse_infill_density` / `line_width` overrides (packet 131 / TASK-256)
         // are read through `slicer_sdk::config_resolution` and forwarded to
         // each `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
@@ -258,10 +252,12 @@ impl LayerModule for RectilinearInfill {
 
             // Per-region config resolution (packet 131 / TASK-256):
             // fall back to module-global defaults when the per-region view
-            // is absent or the key is not declared.
-            let region_density = slicer_sdk::config_resolution::resolve_float(
+            // is absent or the key is not declared. The density key is the
+            // canonical percent `sparse_infill_density`; `resolve_percent_float`
+            // returns the fraction.
+            let region_density = slicer_sdk::config_resolution::resolve_percent_float(
                 region,
-                "infill_density",
+                "sparse_infill_density",
                 self.density,
             );
             let region_line_width =

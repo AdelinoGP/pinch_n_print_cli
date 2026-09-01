@@ -392,7 +392,7 @@ min         = 0.0
 max         = 100.0
 unit        = "%"
 display     = "Sparse infill density"
-description = "OrcaSlicer coPercent key sparse_infill_density, default 20%. No existing registration found elsewhere in modules/core-modules/*/*.toml (grepped); represented here as a plain percent float. Consumed by run_perimeters: part of the D3 odd-layer max_bead_count gate (alternate_extra_wall applies only when sparse_infill_density > 0)."
+description = "OrcaSlicer coPercent key sparse_infill_density, default 20%. Registered here as a plain percent float for the D3 odd-layer max_bead_count gate (alternate_extra_wall applies only when sparse_infill_density > 0); the infill modules (gyroid/rectilinear/lightning) declare the same canonical-percent key and divide by 100 (wayfinder ticket 107)."
 group       = "Infill"
 
 [config.schema.only_one_wall_top]

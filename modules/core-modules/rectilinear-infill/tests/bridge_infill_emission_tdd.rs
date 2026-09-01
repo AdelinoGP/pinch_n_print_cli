@@ -173,7 +173,7 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
 #[test]
 fn bridge_fill_uses_bridge_width_and_full_density() {
     let config = ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
+        .float("sparse_infill_density", 20.0)
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.8)
         .float("bridge_flow", 0.7)
@@ -220,7 +220,7 @@ fn bridge_fill_uses_bridge_width_and_full_density() {
         bridge_paths
             .iter()
             .all(|path| (path.speed_factor - 1.0).abs() < 1e-5),
-        "bridge fill must use bridge_speed rather than infill_speed"
+        "bridge fill must use bridge_speed rather than sparse_infill_speed"
     );
     assert!(
         bridge_paths

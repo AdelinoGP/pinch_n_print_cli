@@ -106,8 +106,8 @@ impl ResolvedConfig {
             ConfigValue::String(format!("{:?}", self.infill_type)),
         );
         m.insert(
-            "infill_density".into(),
-            ConfigValue::Float(f64::from(self.infill_density)),
+            "sparse_infill_density".into(),
+            ConfigValue::Float(f64::from(self.sparse_infill_density)),
         );
         m.insert(
             "infill_overlap".into(),
@@ -118,8 +118,8 @@ impl ResolvedConfig {
             ConfigValue::Float(f64::from(self.infill_direction)),
         );
         m.insert(
-            "infill_speed".into(),
-            ConfigValue::Float(f64::from(self.infill_speed)),
+            "sparse_infill_speed".into(),
+            ConfigValue::Float(f64::from(self.sparse_infill_speed)),
         );
         m.insert(
             "solid_infill_speed".into(),
@@ -530,6 +530,45 @@ pub fn extract_float_or_percent(
         other => Err(ConfigResolutionError::TypeMismatch {
             key: key.to_string(),
             expected: "FloatOrPercent",
+            actual: variant_name(other),
+        }),
+    }
+}
+
+/// Extract a canonical-percent float from a `Float`, `Int`, or percent-form
+/// `String` (`"15%"`).
+///
+/// Used by `sparse_infill_density` (wayfinder ticket 107): the key is
+/// canonical-percent everywhere, and Orca-authored 3MF metadata preserves the
+/// percent form as a raw string (`"15%"`), which the loader stores as
+/// `ConfigValue::String`. The typed field must accept that form (ticket-100
+/// input-adapter precedent) and store the literal percent (15.0); the infill
+/// modules divide by 100 at the read site. A non-percent string is rejected.
+#[doc(hidden)]
+pub fn extract_percent_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+    match value {
+        ConfigValue::Float(f) => Ok(*f as f32),
+        ConfigValue::Int(i) => Ok(*i as f32),
+        ConfigValue::String(s) => {
+            if let Some(num) = s.strip_suffix('%') {
+                num.trim()
+                    .parse::<f32>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float (percent string)",
+                        actual: variant_name(value),
+                    })
+            } else {
+                Err(ConfigResolutionError::TypeMismatch {
+                    key: key.to_string(),
+                    expected: "Float (percent string)",
+                    actual: variant_name(value),
+                })
+            }
+        }
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Float (percent string)",
             actual: variant_name(other),
         }),
     }
@@ -1326,12 +1365,17 @@ declare_resolved_config! {
     // Infill
     /// Infill type. Not CLI-bound today.
     plain                        infill_type: InfillType = InfillType::Grid;
-    /// Infill density (0.0 to 1.0).
-    cli "infill_density"         infill_density: f32 = 0.2 => extract_float;
+    /// Sparse infill density in percent (0–100; OrcaSlicer: sparse_infill_density,
+    /// coPercent default 20). The infill modules divide by 100 to recover the
+    /// density fraction.
+    cli "sparse_infill_density"  sparse_infill_density: f32 = 20.0 => extract_percent_float;
     /// Infill direction in degrees.
     cli "infill_direction"     infill_direction: f32 = 45.0 => extract_float;
-    /// Infill speed in mm/s.
-    cli "infill_speed"           infill_speed: f32 = 50.0 => extract_float;
+    /// Sparse infill speed in mm/s — the speed-factor base the infill modules
+    /// normalise against BASE_SPEED (50). The *emitted* sparse feedrate is the
+    /// host FeedrateConfig::sparse_infill_speed decision (OrcaSlicer:
+    /// sparse_infill_speed); this field only scales the IR speed_factor.
+    cli "sparse_infill_speed"    sparse_infill_speed: f32 = 50.0 => extract_float;
     /// Solid infill speed in mm/s.
     cli "solid_infill_speed"     solid_infill_speed: f32 = 50.0 => extract_float;
     /// Number of top shell layers.
@@ -1527,10 +1571,10 @@ impl PartialEq for ResolvedConfig {
             && self.arachne_min_feature_size.map(|f| f.to_bits())
                 == other.arachne_min_feature_size.map(|f| f.to_bits())
             && self.infill_type == other.infill_type
-            && self.infill_density.to_bits() == other.infill_density.to_bits()
+            && self.sparse_infill_density.to_bits() == other.sparse_infill_density.to_bits()
             && self.infill_overlap.to_bits() == other.infill_overlap.to_bits()
             && self.infill_direction.to_bits() == other.infill_direction.to_bits()
-            && self.infill_speed.to_bits() == other.infill_speed.to_bits()
+            && self.sparse_infill_speed.to_bits() == other.sparse_infill_speed.to_bits()
             && self.solid_infill_speed.to_bits() == other.solid_infill_speed.to_bits()
             && self.top_shell_layers == other.top_shell_layers
             && self.bottom_shell_layers == other.bottom_shell_layers
@@ -1636,10 +1680,10 @@ impl std::hash::Hash for ResolvedConfig {
             .map(|f| f.to_bits())
             .hash(state);
         self.infill_type.hash(state);
-        self.infill_density.to_bits().hash(state);
+        self.sparse_infill_density.to_bits().hash(state);
         self.infill_overlap.to_bits().hash(state);
         self.infill_direction.to_bits().hash(state);
-        self.infill_speed.to_bits().hash(state);
+        self.sparse_infill_speed.to_bits().hash(state);
         self.solid_infill_speed.to_bits().hash(state);
         self.top_shell_layers.hash(state);
         self.bottom_shell_layers.hash(state);
@@ -1849,6 +1893,51 @@ mod machine_limit_config_tests {
 #[cfg(test)]
 mod orca_point_string_tests {
     use super::*;
+
+    /// Regression (wayfinder ticket 107): `sparse_infill_density` is
+    /// canonical-percent everywhere, and Orca-authored 3MF metadata preserves
+    /// the percent form as a raw string (`"15%"`). Before the
+    /// `extract_percent_float` adapter, resolving an object config carrying
+    /// the percent string failed with
+    /// `config key 'sparse_infill_density': expected Float value, got String`
+    /// (the M3 modifier fixture's base object).
+    #[test]
+    fn sparse_infill_density_accepts_percent_string() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "sparse_infill_density",
+            &ConfigValue::String("15%".to_string()),
+        )
+        .expect("Orca's percent-string form must be accepted");
+        assert_eq!(
+            cfg.sparse_infill_density, 15.0,
+            "the literal percent must be stored (modules divide by 100 at the read site)"
+        );
+    }
+
+    /// The numeric percent form this port writes itself must keep resolving
+    /// unchanged — the adapter widens the input, it does not replace it.
+    #[test]
+    fn sparse_infill_density_accepts_numeric_percent() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key("sparse_infill_density", &ConfigValue::Float(20.0))
+            .expect("numeric percent must be accepted");
+        assert_eq!(cfg.sparse_infill_density, 20.0);
+    }
+
+    /// A non-percent string is not a density and must stay a hard error.
+    #[test]
+    fn sparse_infill_density_rejects_plain_string() {
+        let mut cfg = ResolvedConfig::default();
+        assert!(
+            cfg.apply_cli_key(
+                "sparse_infill_density",
+                &ConfigValue::String("fast".to_string())
+            )
+            .is_err(),
+            "a non-percent string must not be silently accepted"
+        );
+    }
 
     /// Regression (ticket 100): renaming `bed_shape` to Orca's
     /// `printable_area` adopted a key whose upstream serialisation is a list of

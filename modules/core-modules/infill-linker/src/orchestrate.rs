@@ -179,7 +179,16 @@ pub fn orchestrate_infill(
         let line_width = config_float(view.config(), "line_width")
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(default_line_width);
-        let density = config_float(view.config(), "infill_density")
+        // Canonical percent key, read as a fraction: `sparse_infill_density`
+        // is coPercent (20 = 20%), so resolve the literal percent and divide
+        // by 100. The key is deliberately NOT declared in this module's
+        // manifest (DEV-114: declaring it would honour a user-set density
+        // where today it is pinned at the fallback, moving sparse_spacing_mm
+        // on every non-default-density slice — deferred to the tree-wide unit
+        // reconciliation); the read is re-pointed so the semantics are
+        // canonical the day a packet declares it.
+        let density = config_float(view.config(), "sparse_infill_density")
+            .map(|d| d / 100.0)
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(0.2);
         let layer_height = config_float(view.config(), "layer_height")

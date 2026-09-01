@@ -1,13 +1,13 @@
 //! Packet 132 (AC-4) — modifier region split config binding contract.
 //!
 //! Proves that 131 (`per_region_config`) and 132 (`modifier-region-split`)
-//! compose: a modifier's `infill_density` delta is bound to the minted
+//! compose: a modifier's `sparse_infill_density` delta is bound to the minted
 //! sub-region `RegionKey` (via `stamp_modifier_sub_region_configs`), not
-//! stamped object-wide. The packet-131 echo guest then reads `infill_density`
-//! per region through the committed `RegionMapIR`:
+//! stamped object-wide. The packet-131 echo guest then reads
+//! `sparse_infill_density` per region through the committed `RegionMapIR`:
 //!
-//! * the base region must report `infill_density = 0.15`
-//! * the modifier sub-region must report `infill_density = 0.40`
+//! * the base region must report `sparse_infill_density = 15` (percent)
+//! * the modifier sub-region must report `sparse_infill_density = 40`
 
 #![allow(missing_docs)]
 
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 const EMIT_VIEW_WITNESS: &str = "emit_view_witness";
-const INFILL_DENSITY: &str = "infill_density";
+const INFILL_DENSITY: &str = "sparse_infill_density";
 const EXTRUDER: &str = "extruder";
 
 // ── Packet-131 echo guest plumbing (mirrors per_region_config_tdd) ────────────
@@ -213,11 +213,14 @@ fn build_region_map(base: &ResolvedConfig, sub: &ResolvedConfig, sub_id: u64) ->
     for (region_id, cfg) in [(0u64, base), (sub_id, sub)] {
         let density = match cfg.extensions.get(INFILL_DENSITY) {
             Some(ConfigValue::Float(d)) => *d,
-            other => panic!("AC-4: region {region_id} must carry infill_density, got {other:?}"),
+            other => {
+                panic!("AC-4: region {region_id} must carry sparse_infill_density, got {other:?}")
+            }
         };
         let mut resolved = cfg.clone();
-        // Proxy `infill_density` into `extruder` so the packet-131 echo guest's
-        // view-witness header (x = tool_index) encodes the density for decoding.
+        // Proxy `sparse_infill_density` (percent) into `extruder` so the
+        // packet-131 echo guest's view-witness header (x = tool_index) encodes
+        // the density for decoding (the echo decodes x / 100.0).
         resolved
             .extensions
             .insert(EXTRUDER.into(), ConfigValue::Int((density * 100.0) as i64));
@@ -263,14 +266,14 @@ fn modifier_split_subregion_density() {
     let mut base_config = ResolvedConfig::default();
     base_config
         .extensions
-        .insert(INFILL_DENSITY.into(), ConfigValue::Float(0.15));
+        .insert(INFILL_DENSITY.into(), ConfigValue::Float(15.0));
 
     // exhaustive: ModifierVolume fixture specifies every field for modifier split coverage
     let modifier_volume = slicer_ir::ModifierVolume {
         id: "mod-0".into(),
         mesh: slicer_ir::IndexedTriangleSet::default(),
         config_delta: slicer_ir::ConfigDelta {
-            fields: HashMap::from([(INFILL_DENSITY.into(), ConfigValue::Float(0.40))]),
+            fields: HashMap::from([(INFILL_DENSITY.into(), ConfigValue::Float(40.0))]),
         },
         priority: 0,
         applies_to: slicer_ir::ModifierScope::AllFeatures,
@@ -305,18 +308,18 @@ fn modifier_split_subregion_density() {
         .commit_region_map(Arc::new(region_map))
         .expect("commit per-region config map");
 
-    let mut actual = run_echo(&mut fx, witness_config(0.15, 15));
+    let mut actual = run_echo(&mut fx, witness_config(15.0, 15));
     actual.sort_by_key(|(id, _)| *id);
 
     assert_eq!(actual.len(), 2, "AC-4: exactly two regions must be echoed");
     assert_eq!(
         actual[0],
-        (0, 0.15),
-        "AC-4: base region must keep infill_density = 0.15"
+        (0, 15.0),
+        "AC-4: base region must keep sparse_infill_density = 15"
     );
     assert_eq!(
         actual[1],
-        (sub_id, 0.40),
-        "AC-4: sub-region must receive modifier infill_density = 0.40"
+        (sub_id, 40.0),
+        "AC-4: sub-region must receive modifier sparse_infill_density = 40"
     );
 }

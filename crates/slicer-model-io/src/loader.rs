@@ -717,11 +717,20 @@ fn resolve_object(
                     }
                     if let Some(density_str) = part.metadata.get("sparse_infill_density") {
                         match parse_density_value(density_str) {
-                            Some(v) => {
-                                config_fields.insert(
-                                    "sparse_infill_density".to_string(),
-                                    ConfigValue::Float(v),
-                                );
+                            Some(_validated) => {
+                                // Wayfinder ticket 107: `sparse_infill_density`
+                                // is canonical-percent everywhere. Percent
+                                // forms stay raw strings ("40%") so the
+                                // modules' percent-aware reads resolve them to
+                                // fractions; plain floats are stored as floats
+                                // and are likewise read as percent
+                                // (Float(0.4) = 0.4%).
+                                let value = if density_str.contains('%') {
+                                    ConfigValue::String(density_str.clone())
+                                } else {
+                                    ConfigValue::Float(density_str.parse::<f64>().unwrap_or(0.0))
+                                };
+                                config_fields.insert("sparse_infill_density".to_string(), value);
                             }
                             None => {
                                 log::warn!(

@@ -164,7 +164,7 @@ fn internal_bridge_qualification_writes_gated_areas() {
         .collect::<Vec<_>>();
     let mut region_map = RegionMapIR::default();
     let resolved = slicer_ir::ResolvedConfig {
-        infill_density: 0.2,
+        sparse_infill_density: 20.0,
         top_shell_layers: 3,
         bottom_shell_layers: 0,
         ..Default::default()

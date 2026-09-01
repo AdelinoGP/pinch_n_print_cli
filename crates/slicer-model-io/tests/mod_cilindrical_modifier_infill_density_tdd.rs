@@ -2,10 +2,12 @@
 //! `sparse_infill_density` overrides, and the loader plumbs them into the IR.
 //!
 //! This is the M3 fixture's contract: a base cube (object id=3) with infill
-//! density 15% plus a centered cylinder modifier (part id=2) with density 0.40.
-//! The two-density delta must reach both `ObjectMesh.config.data` (base) and
-//! `ModifierVolume.config_delta.fields` (modifier) so that the per-region config
-//! delivery (packet 131) can resolve the two regions to their distinct densities.
+//! density 15% plus a centered cylinder modifier (part id=2) with density 40%.
+//! Both ride as percent strings (the canonical 3MF form — wayfinder ticket 107
+//! standardised the key to percent-everywhere). The two-density delta must reach
+//! both `ObjectMesh.config.data` (base) and `ModifierVolume.config_delta.fields`
+//! (modifier) so that the per-region config delivery (packet 131) can resolve
+//! the two regions to their distinct densities.
 
 use slicer_ir::ConfigValue;
 use slicer_model_io::loader::load_model;
@@ -59,15 +61,15 @@ fn cube_cilindrical_modifier_loads_object_and_modifier_with_density_overrides() 
             )
         });
     match modifier_density {
-        ConfigValue::Float(v) => {
+        ConfigValue::String(v) => {
             assert!(
-                (v - 0.40).abs() < 1e-9,
-                "modifier sparse_infill_density should be 0.40, got {}",
+                v == "40%",
+                "modifier sparse_infill_density should be \"40%\" (canonical percent string), got {}",
                 v
             );
         }
         other => panic!(
-            "modifier sparse_infill_density should be ConfigValue::Float(0.40), got {:?}",
+            "modifier sparse_infill_density should be ConfigValue::String(\"40%\"), got {:?}",
             other
         ),
     }

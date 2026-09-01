@@ -45,12 +45,12 @@ max-ir-schema     = "5.0.0"
 [config.schema]
 # The four mirrored keys copy `rectilinear-infill.toml`'s exact snake_case
 # spellings so a user swapping sparse-fill holders keeps the same config vocabulary.
-[config.schema.infill_density]
+[config.schema.sparse_infill_density]
 type    = "float"
-default = 0.2
+default = 20.0
 min     = 0.0
-max     = 1.0
-display = "Infill Density"
+max     = 100.0
+display = "Sparse Infill Density"
 group   = "Infill"
 
 [config.schema.infill_direction]
@@ -61,12 +61,12 @@ max     = 360.0
 display = "Infill Direction"
 group   = "Infill"
 
-[config.schema.infill_speed]
+[config.schema.sparse_infill_speed]
 type    = "float"
-default = 60.0
+default = 100.0
 min     = 1.0
 max     = 300.0
-display = "Infill Speed"
+display = "Sparse Infill Speed"
 group   = "Infill"
 
 [config.schema.line_width]
@@ -135,7 +135,7 @@ display = "Filament Density"
 group   = "Filament"
 
 [config.overridable-per-region]
-keys = ["infill_density", "line_width", "tiling_depth"]
+keys = ["sparse_infill_density", "line_width", "tiling_depth"]
 
 [config.overridable-per-layer]
 keys = []

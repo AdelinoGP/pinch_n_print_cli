@@ -594,8 +594,10 @@ fn gate_internal_bridge_sites(
             region_id: region.region_id,
             variant_chain: region.variant_chain.clone(),
         };
+        // `sparse_infill_density` is the canonical percent key (default 20 =
+        // 20%); the fully-dense threshold below is expressed in percent.
         if let Some(plan) = region_map.entries.get(&exact) {
-            return region_map.config_for_raw(plan.config).infill_density;
+            return region_map.config_for_raw(plan.config).sparse_infill_density;
         }
         crate::layer_executor::config_for_region_smallest_chain(
             region_map,
@@ -603,7 +605,7 @@ fn gate_internal_bridge_sites(
             &region.object_id,
             region.region_id,
         )
-        .map(|config| region_map.config_for_raw(config).infill_density)
+        .map(|config| region_map.config_for_raw(config).sparse_infill_density)
         .unwrap_or(0.0)
     };
     // Lower-layer solid support is pooled across regions. Dense regions are
@@ -615,7 +617,7 @@ fn gate_internal_bridge_sites(
                 .entry((region.object_id.clone(), slice.global_layer_index))
                 .or_default();
             let density = density_for(region, slice.global_layer_index);
-            if density >= 0.999 {
+            if density >= 99.9 {
                 entry.extend(region.infill_areas.iter().cloned());
             } else {
                 entry.extend(region.top_solid_fill.iter().cloned());
@@ -793,12 +795,12 @@ fn gate_internal_bridge_sites(
                         not_sparse.extend(lower.bridge_areas.iter().cloned());
                         Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
                             print_z: slices[lower_idx].z,
-                            sparse_infill: if density < 0.999 {
+                            sparse_infill: if density < 99.9 {
                                 lower.infill_areas.clone()
                             } else {
                                 Vec::new()
                             },
-                            not_sparse_infill: if density >= 0.999 {
+                            not_sparse_infill: if density >= 99.9 {
                                 let mut dense = lower.infill_areas.clone();
                                 dense.extend(not_sparse);
                                 dense

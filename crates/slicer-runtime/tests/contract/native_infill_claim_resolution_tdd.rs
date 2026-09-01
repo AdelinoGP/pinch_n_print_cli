@@ -43,7 +43,7 @@ fn square() -> ExPolygon {
 fn config() -> Arc<ConfigView> {
     Arc::new(ConfigView::from_map(
         [
-            ("infill_density".into(), ConfigValue::Float(0.5)),
+            ("sparse_infill_density".into(), ConfigValue::Float(50.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
         ]
         .into_iter()

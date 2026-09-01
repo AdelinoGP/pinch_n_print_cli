@@ -95,7 +95,7 @@ pub fn generate_lightning_trees(
             );
             let mut generator = Generator::new(
                 outlines,
-                config.infill_density as f64,
+                config.sparse_infill_density as f64 / 100.0,
                 mm_to_units(line_width_mm),
                 1,
                 mm_to_units(config.layer_height as f32),

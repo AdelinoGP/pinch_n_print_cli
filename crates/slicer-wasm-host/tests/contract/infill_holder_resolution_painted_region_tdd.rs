@@ -112,7 +112,7 @@ fn build_slice_ir() -> SliceIR {
 
 fn build_module_config() -> Arc<ConfigView> {
     let mut map = HashMap::new();
-    map.insert("infill_density".into(), ConfigValue::Float(0.2));
+    map.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
     Arc::new(ConfigView::from_map(map))
 }

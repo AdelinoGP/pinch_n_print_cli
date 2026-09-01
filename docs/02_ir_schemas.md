@@ -246,12 +246,12 @@ the previously resolved value remains unchanged (no implicit reset).
 
 Worked example (deterministic):
 
-- Global `infill_density = 0.20`
-- Object config `infill_density = 0.25`
-- Modifier A (`priority=20`) sets `infill_density = 0.30`
-- Modifier B (`priority=10`) sets `infill_density = 0.15`
+- Global `sparse_infill_density = 20` (percent)
+- Object config `sparse_infill_density = 25`
+- Modifier A (`priority=20`) sets `sparse_infill_density = 30`
+- Modifier B (`priority=10`) sets `sparse_infill_density = 15`
 - Effective result: B (priority 10) applies first, then A (priority 20)
-  wins: `infill_density = 0.30`.
+  wins: `sparse_infill_density = 30`.
 
 For equal modifier priorities, the resolver's stable input order breaks the
 tie; equal priorities are not themselves an error.

@@ -152,7 +152,10 @@ fn linker_bundle() -> TestModuleBundle {
     let config = slicer_ir::ConfigView::from_map(HashMap::from([
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
     ]));
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(config))

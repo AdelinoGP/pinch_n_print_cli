@@ -106,7 +106,8 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | `gcode_xy_decimals` | coordinate formatting; no reference counterpart |
 | `bed_temperature_initial_layer_single` | Pinch collapses Orca's per-plate-type bed-temp family into one key |
 | `apply_to_all` | fuzzy-skin scope flag; overlaps Orca's `fuzzy_skin` enum rather than renaming a key |
-| `infill_density`, `infill_speed`, `infill_overlap` | **not renames — duplicates.** `sparse_infill_density`, `sparse_infill_speed` and `infill_wall_overlap` are *also* declared live under their Orca names |
+| `infill_density`, `infill_speed` | **not renames — duplicates, collapsed by ticket 107.** `sparse_infill_density` and `sparse_infill_speed` are *also* declared live under their Orca names; the Pinch spellings were deleted everywhere and the surviving keys standardised to canonical percent (density) / canonical defaults (speed). |
+| `infill_overlap` | **re-adjudicated by ticket 107 — NOT a duplicate.** Canonical `infill_wall_overlap` (coPercent 15, consumed only in `PerimeterGenerator.cpp` as `inset -= infill_peri_overlap`) is already ported in classic-perimeters; the linker's `infill_overlap` (0.45, fraction-of-spacing, infill-side post-pass boundary offset) is a PnP-invented second mechanism with no canonical counterpart (canonical has no infill-side overlap parameter). Kept live as a PnP-specific decision point; the 07 pool's duplicate-collapse count drops 3 → 2. |
 
 ## In-scope gap by section (415)
 

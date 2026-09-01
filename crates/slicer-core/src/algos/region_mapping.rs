@@ -192,14 +192,14 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     if overlay.infill_type != d.infill_type {
         r.infill_type = overlay.infill_type;
     }
-    if overlay.infill_density != d.infill_density {
-        r.infill_density = overlay.infill_density;
+    if overlay.sparse_infill_density != d.sparse_infill_density {
+        r.sparse_infill_density = overlay.sparse_infill_density;
     }
     if overlay.infill_direction != d.infill_direction {
         r.infill_direction = overlay.infill_direction;
     }
-    if overlay.infill_speed != d.infill_speed {
-        r.infill_speed = overlay.infill_speed;
+    if overlay.sparse_infill_speed != d.sparse_infill_speed {
+        r.sparse_infill_speed = overlay.sparse_infill_speed;
     }
     if overlay.solid_infill_speed != d.solid_infill_speed {
         r.solid_infill_speed = overlay.solid_infill_speed;
@@ -322,10 +322,10 @@ fn stamp_modifier_config_deltas(
 /// keeps the base region's config untouched while merging every modifier
 /// delta onto a *separate* config keyed by the minted sub-region id.
 ///
-/// Concretely, given a base `infill_density = 0.15` and a modifier volume
-/// carrying `infill_density = 0.40`:
-/// * `map[base_region_id]`  → `base_config` (0.15, unchanged)
-/// * `map[sub_region_id]`   → `base_config` + merged modifier deltas (0.40)
+/// Concretely, given a base `sparse_infill_density = 15` (percent) and a
+/// modifier volume carrying `sparse_infill_density = 40`:
+/// * `map[base_region_id]`  → `base_config` (15, unchanged)
+/// * `map[sub_region_id]`   → `base_config` + merged modifier deltas (40)
 ///
 /// The same skip rules as [`stamp_modifier_config_deltas`] apply: modifier
 /// volumes whose subtype is `support_enforcer` / `support_blocker` are

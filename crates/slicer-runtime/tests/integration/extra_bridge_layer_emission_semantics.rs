@@ -41,7 +41,7 @@ fn run(extra: Option<bool>) -> Vec<SliceIR> {
         .collect::<Vec<_>>();
     let mut region_map = RegionMapIR::default();
     let mut resolved = ResolvedConfig {
-        infill_density: 0.2,
+        sparse_infill_density: 20.0,
         top_shell_layers: 3,
         bottom_shell_layers: 0,
         ..Default::default()

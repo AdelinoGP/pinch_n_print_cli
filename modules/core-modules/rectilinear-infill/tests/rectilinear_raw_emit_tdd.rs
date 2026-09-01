@@ -108,9 +108,10 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("infill_density", density)
+        // Canonical-percent key (wayfinder ticket 107).
+        .float("sparse_infill_density", density * 100.0)
         .float("infill_direction", angle)
-        .float("infill_speed", speed)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .build()
 }
@@ -123,9 +124,10 @@ fn make_config_with_shift(
     shift_mm: f64,
 ) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("infill_density", density)
+        // Canonical-percent key (wayfinder ticket 107).
+        .float("sparse_infill_density", density * 100.0)
         .float("infill_direction", angle)
-        .float("infill_speed", speed)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .float("infill_shift_step", shift_mm)
         .build()
@@ -523,9 +525,9 @@ fn solid_spacing_adjusted_for_solid_role() {
     // spacing=round(10/23)=0.4348mm. The adjusted spacing is within the
     // 1.2x cap, so the scan uses 23 evenly spaced lines.
     let config = ConfigViewBuilder::new()
-        .float("infill_density", 0.18)
+        .float("sparse_infill_density", 18.0)
         .float("infill_direction", 0.0)
-        .float("infill_speed", 50.0)
+        .float("sparse_infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("top_surface_line_width", 0.42)
         .build();
@@ -610,9 +612,9 @@ fn solid_spacing_adjusted_for_solid_role() {
 #[test]
 fn solid_surfaces_use_full_density_and_role_width() {
     let config = ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
+        .float("sparse_infill_density", 20.0)
         .float("infill_direction", 0.0)
-        .float("infill_speed", 50.0)
+        .float("sparse_infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("initial_layer_line_width", 0.7)
         .float("top_surface_line_width", 0.5)

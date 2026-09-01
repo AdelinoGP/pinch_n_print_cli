@@ -43,8 +43,10 @@ fn paint_view_with_segments(segments: Vec<[Point2; 2]>) -> PaintRegionLayerView 
 
 fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("infill_density", density)
-        .float("infill_speed", speed)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .build()
 }
