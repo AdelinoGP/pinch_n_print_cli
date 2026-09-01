@@ -1,36 +1,51 @@
 # Design: infill-pattern-specific-keys
 
+## Tier Derivation
+
+**Tier C.** The map's rubric puts a packet that *builds* a decision point at B or C; this packet builds three new geometry modules (new crates, new fill algorithms, new guest artifacts) rather than wiring existing decision points, so it sits at the top of that range. The previous revision's Tier A rating was a consequence of the prohibited declaration-only disposition and is void.
+
+## Approach
+
+OrcaSlicer expresses "which sparse infill pattern" as an enum on one region config, and every pattern-specific key is a field on the same `PrintObjectConfig`, gated at fill time by `Layer::make_fills` checking `params.pattern`. This port expresses the same choice as **module identity**: a fill pattern is a module holding `claim:sparse-fill`, selected per print by `ResolvedConfig.sparse_fill_holder` and per region by `module_overrides` (`docs/01_system_architecture.md` §Claim System, `docs/04_host_scheduler.md` §Claim Resolution).
+
+The packet therefore ships one module per canonical pattern class:
+
+| New module | Claim | Canonical class | Keys owned |
+| --- | --- | --- | --- |
+| `lateral-lattice-infill` | `claim:sparse-fill` | `FillLateralLattice` | `lateral_lattice_angle_1`, `lateral_lattice_angle_2` |
+| `lateral-honeycomb-infill` | `claim:sparse-fill` | `FillLateralHoneycomb` | `infill_overhang_angle` |
+| `locked-zag-infill` | `claim:sparse-fill` | `FillLockedZag` | `infill_lock_depth`, `skin_infill_depth`, `skin_infill_density`, `skeleton_infill_density`, `skin_infill_line_width`, `skeleton_infill_line_width`, `symmetric_infill_y_axis` |
+
+Each module declares **only** the keys its own algorithm reads. Ownership *is* the gate: a key that applies to one pattern is unreachable from any other fill module, so canonical's runtime `params.pattern` check has no port equivalent to write.
+
 ## Controlling Code Paths
 
-- Primary code path: the manifest-declaration pipeline only — `[config.schema]` tables in
-  `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` parsed by
-  `crates/slicer-scheduler/src/manifest.rs` (`ConfigFieldEntry`, bounds index via
-  `ConfigBoundsIndex::from_modules` in `crates/slicer-scheduler/src/config_resolution.rs`),
-  rendered into `docs/15_config_keys_reference.md` by `cargo xtask gen-config-docs`
-  (`render_deviations` numeric-only comparison in `xtask/src/gen_config_docs.rs`), and
-  surfaced in the G-code CONFIG_BLOCK only via explicit raw-config values
-  (`crates/slicer-gcode/src/serialize.rs` `serialize_config_block` + `emit_config_kv`
-  dedup; `ORCA_CONFIG_PADDING` carries none of the 10 keys — zero occurrences in `crates/`
-  at authoring, so the default-state arm asserts honest absence).
-- Consumed by NO module code: all four infill modules' sources are read-free pins for the
-  10 keys (AC-2's no-reads grep over
-  `rectilinear-infill/src`, `gyroid-infill/src`, `lightning-infill/src`,
-  `infill-linker/src`). The only consumer-relevant code paths are canonical's, which this
-  packet does not port.
-- Neighboring tests/fixtures:
-  `modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs` (the
-  `make_config` + `RectilinearInfill::from_config` + `run_infill` + `InfillOutputBuilder`
-  harness the AC-2 arm extends); guard-pattern source
-  `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` (TOML-direct
-  parse); bool-table form source `modules/core-modules/wipe-tower/wipe-tower.toml`
-  (`enable_prime_tower`); integration arms:
-  `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` (real
-  `rectilinear-infill.toml` via `load_module_from_paths` + `ConfigBoundsIndex::from_modules`
-  + `resolve_global_config` — the `rejects_value_below_min` arm is the pattern) and
-  `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`
-  (proven CONFIG_BLOCK driver at packet 258/259/260/261/262 authoring time:
-  `run_pipeline_with_raw_config` + `region_between`).
-- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+- `slicer_sdk::traits::LayerModule::run_infill(&self, layer_index, regions, paint, output, config)` — the entry point each new module implements, exactly as `RectilinearInfill` and `LightningInfill` do. `#[slicer_module]` (`slicer_sdk::slicer_module`) emits the component export; the `wit-guest/` cdylib wrapper re-exports the type so the export survives into the `.wasm`.
+- `slicer_sdk::views::SliceRegionView` — supplies `sparse_infill_area()` (the host-partitioned sparse polygon), `z()` (needed by both lateral patterns' z-proportional geometry), `object_id()` (for the `symmetric_infill_y_axis` mirror axis), and `effective_layer_height()`.
+- `slicer_sdk::builders::InfillOutputBuilder::{begin_region, push_sparse_path}` — the only emission surface these modules need; they push no solid, bridge, or ironing path.
+- `slicer_sdk::host::{clip_polygons, offset_polygons}` — the Clipper equivalents of canonical's `intersection_pl` / `offset_ex` / `diff_ex`; `slicer_sdk::host::object_bounds` supplies the mirror axis for `symmetric_infill_y_axis`.
+- `crates/slicer-ir/src/resolved_config.rs` — `sparse_fill_holder` (existing `String` field, CLI key `sparse_fill_holder`, default `"rectilinear-infill"`). Selecting a new module is a config value, not a code change.
+- `crates/slicer-integrated-modules/src/lib.rs` — `manifest_const!` and `integrated_registry!` entries plus their `#[cfg(not(feature = …))]` arms.
+- `xtask/src/build_guests.rs` — discovers core guests by walking `modules/core-modules/`; no per-module registration list to edit. `guest_input_paths` charges the module's `*.toml`, so a manifest edit alone makes the guest stale.
+- `xtask/src/dist.rs` — derives `integrated-<name>` feature names per module and errors when a passthrough feature is missing from `crates/pnp-cli/Cargo.toml`.
+
+## What Carries the New Data
+
+Nothing new. The three mechanisms already exist:
+
+1. **Manifest + SDK config** — the 10 keys ride each module's `[config.schema]` and arrive as `ConfigView` in `run_infill`. No host plumbing.
+2. **Existing holder resolution** — `sparse_fill_holder` / `module_overrides` select the module. No new `ResolvedConfig` field.
+3. **`ExtrusionPath3D` with `Point3WithWidth`** — locked-zag's two extrusion widths ride per-vertex widths on separate paths in one `InfillIR` region. No IR schema bump.
+
+There is no `[BLOCK]` in this packet: no new WIT interface, no IR schema bump, no new host `ResolvedConfig` field.
+
+## Recorded Divergences (port improves on or intentionally differs from canonical)
+
+- **DIV-1 — pattern gating is structural, not runtime.** Canonical sets `symmetric_infill_y_axis` on `FillParams` only when `params.pattern ∈ {ipZigZag, ipCrossZag, ipLockedZag}` inside `Layer::make_fills`, i.e. the key is globally declared and conditionally ignored. Here the key exists only in `locked-zag-infill.toml`, so no other pattern can read it and no conditional exists to get wrong. Rationale: config robustness (`docs/00_project_overview.md`) — a key that silently does nothing under some other setting is a user-facing trap. AC-N1 pins the ownership. Consequence recorded for future readers: shipping zigzag/crosszag later means adding the key to those manifests, not adding a check.
+- **DIV-2 — width keys are millimetres with `0.0 = inherit`.** Canonical `skin_infill_line_width` / `skeleton_infill_line_width` are `coFloatOrPercent` defaulting to `100%`, resolved against nozzle diameter by `Flow::new_from_config_width`. This port already expresses fill widths as `line_width` floats where `0.0` means "inherit the region line width" (`gyroid-infill.toml`, `rectilinear-infill.toml`), and the host owns flow. Adopting the percent form here would introduce a second width convention in the same stage. Rationale: one convention per stage.
+- **DIV-3 — density keys are percent numbers.** `coPercent` becomes `float` in percent units per the ticket-107 in-tree convention (`sparse_infill_density = 25.0` means 25 %).
+- **DIV-4 — dual flow becomes per-vertex width.** Canonical emits two `ExtrusionEntityCollection`s built from two `Flow`s and splits polylines between them in `generate_for_different_flow`. The port's `ExtrusionPath3D` already carries per-vertex width, so skin and skeleton paths are emitted into the same region with their own widths and no collection split. Rationale: the port's IR is strictly more expressive here; adding a flow-partition concept would be reproducing canonical's coupling.
+- **DIV-5 — multiline is not ported.** Canonical's `fill_surface_by_multilines` applies `multiline_fill` and `remove_overlapped`. This packet emits the single-line case only; `fill_multiline` is packet 262a's key and is not declared on these modules. Recorded so a reviewer does not read the omission as an oversight.
 
 ## Architecture Constraints
 
@@ -38,163 +53,97 @@
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
-- snake_case config key strings only (repo convention): all 10 keys are snake_case by
-  construction (canonical spellings, no aliases).
-- The declared-with-gap keys are declared in the manifest but **never read** in any module
-  source — declaring them must not perturb behavior (AC-2 pins byte-identity for explicit
-  values vs absent and the no-reads grep pins the sources).
-- No unit conversion is performed by this packet: the manifest defaults are declared in
-  canonical units (mm for the depth/lock keys, degrees for the angle keys, percent numbers
-  for the density keys per the ticket-107 convention, unitless 0.0-fallback for the width
-  keys per the in-tree width convention) and nothing downstream consumes them yet.
-- ADR-0027 `gyroid-multi-role-fill-holder` conformance: this packet does not change the
-  default `*_fill_holder` config (Decision #2 — defaults stay `"rectilinear-infill"`), does
-  not point solid roles at gyroid (Future-Reviewer note), and does not remove
-  top/bottom/bridge emission from gyroid-infill (Future-Reviewer note). The 10 keys are
-  declared in `rectilinear-infill.toml` only; nothing is wired to the holder resolution.
-  No amendment deviation is required. ADR-0030 (modifier splits) and ADR-0061
-  (bridge-orientation tie-break) are not touched.
+- Every canonical `scale_()`/`unscale()` in the three fill classes is a unit boundary: `dx = tan(angle) · z` is computed in mm and converted once; `skin_infill_depth` and `infill_lock_depth` are mm offsets converted before `offset_polygons`.
+- snake_case config key strings only; all 10 keys are canonical snake_case with no aliases.
+- Claim discipline: each new module holds `claim:sparse-fill` and nothing else (AC-1, AC-N3). Holding the solid/bridge claims as well would make the module compete with `rectilinear-infill` for roles it does not implement.
+- ADR-0027 (`gyroid-multi-role-fill-holder`): unaffected — default `*_fill_holder` values stay `"rectilinear-infill"`, gyroid keeps its four claims, and no default is repointed. No amendment deviation required.
+- ADR-0056 (integrated-modules native dispatch): each new module must appear in the integrated registry and carry a `pnp-cli` passthrough feature, or `cargo xtask dist --edition integrated` fails.
 
 ## Code Change Surface
 
-- Selected approach: declare the 10 tables in `rectilinear-infill.toml` (AC-1); add the
-  net-new guard test + `toml` dev-dep; add the inertness, bounds, and CONFIG_BLOCK arms;
-  regenerate the docs and rebuild the guests. Zero module-source edits; zero padding twins.
-- Exact functions, traits, manifests, tests, and fixtures:
-  `rectilinear-infill.toml` `[config.schema]` (10 tables, AC-1);
-  `infill_pattern_specific_config_schema_tdd.rs` (net-new guard, AC-1/N1/N2);
-  `rectilinear-infill/Cargo.toml` (`toml = "0.8"` dev-dep, add-if-absent);
-  `rectilinear_raw_emit_tdd.rs` (AC-2 arm); `config_bounds_enforcement_tdd.rs` (AC-3 arms);
-  `gcode_header_thumbnail_config_blocks_tdd.rs` (AC-4 arms); `docs/15_config_keys_reference.md`
-  (generated, Step 5).
-- Rejected alternatives and reasons:
-  - *Wiring `symmetric_infill_y_axis` into the rectilinear scan-line generator* (mirror the
-    region polygon about a computed axis before scanning, mirror the emitted lines back) —
-    rejected: canonical activates the flag only when the region's sparse pattern is
-    `ipZigZag`/`ipCrossZag`/`ipLockedZag` (`Fill.cpp` `Layer::make_fills`, verified
-    verbatim); the port ships none of those, and plain `ipRectilinear` never activates it.
-    Wiring would implement behavior canonical never activates for this port's patterns, and
-    the only in-module axis source (region bbox) diverges from canonical's
-    `extended_object_bounding_box()` center. A zigzag-family packet re-opens the key.
-  - *Declaring the 10 keys in `gyroid-infill.toml` / `lightning-infill.toml` too* — rejected:
-    no canonical consumer exists outside `FillRectilinear` subclasses; declaring them there
-    would fabricate decision points. The omission is pinned (AC-N2) so a future pattern
-    packet must consciously update it.
-  - *Wiring the density keys to the existing sparse-density read*
-    (`sparse_infill_density` in `rectilinear-infill/src/lib.rs`) — rejected: canonical
-    consumes them only inside `FillLockedZag::fill_surface_locked_zag` (skin/skeleton region
-    split), which has no in-port analogue; subsuming them into the sparse density would
-    change behavior canonical does not specify outside the locked-zag pattern.
-  - *Adding `ORCA_CONFIG_PADDING` twins for the 10 keys* — rejected: packet
-    254/255/257/258/259/260/261/262 precedent says module-manifest defaults do not thread
-    into raw config; the block must carry nothing at defaults (AC-4 pins the honest absence).
-  - *Porting the locked-zag/lateral-lattice/lateral-honeycomb pattern classes' geometry* —
-    rejected: new geometry (Tier B+), the queue's cheapest-first ordering keeps this packet
-    declaration-only; the consuming pattern packet re-opens the keys.
+**New files (per module `M` in {`lateral-lattice-infill`, `lateral-honeycomb-infill`, `locked-zag-infill`}):**
+
+- `modules/core-modules/M/Cargo.toml` — modelled on `modules/core-modules/gyroid-infill/Cargo.toml` (deps `slicer-sdk`, `slicer-schema`, `slicer-ir`, `slicer-core`; dev-dep `slicer-sdk` with `features = ["test"]`; wasm32-only `wit-bindgen`).
+- `modules/core-modules/M/src/lib.rs` — the `LayerModule` impl.
+- `modules/core-modules/M/M.toml` — module manifest (`[module]`, `[stage] Layer::Infill`, `[ir-access]`, `[claims] holds = ["claim:sparse-fill"]`, `[compatibility]`, `[config.schema]`).
+- `modules/core-modules/M/wit-guest/{Cargo.toml,src/lib.rs}` — cdylib wrapper with its own `[workspace]` sentinel, modelled on `modules/core-modules/gyroid-infill/wit-guest/`.
+- `modules/core-modules/M/tests/<m>_tdd.rs` — behaviour tests.
+- `modules/core-modules/locked-zag-infill/tests/infill_pattern_specific_config_schema_tdd.rs` — the shared manifest guard (parses all three new manifests plus the three existing fill manifests for AC-N1); needs a `toml` dev-dependency on that crate.
+
+**Edited files:**
+
+- `Cargo.toml` (root) — three `[workspace] members` entries.
+- `crates/slicer-integrated-modules/Cargo.toml` — three optional path deps + three features.
+- `crates/slicer-integrated-modules/src/lib.rs` — three `manifest_const!` entries, three `integrated_registry!` rows, and the corresponding `#[cfg(not(feature = …))]` arms.
+- `crates/pnp-cli/Cargo.toml` — three `integrated-<name>` passthrough features.
+- `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` — module-count assertion +3 and its comment.
+- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — AC-14 arms.
+- `crates/slicer-runtime/tests/contract/native_infill_claim_resolution_tdd.rs` — AC-2 / AC-N3 arms.
+- `docs/15_config_keys_reference.md` — regenerated only (`cargo xtask gen-config-docs`).
+- Three new `modules/core-modules/M/M.wasm` guest artifacts (produced by `cargo xtask build-guests`, committed like the existing guests).
+
+**Blast radius owned by this packet:** the module-count assertion above is the only hard-coded count that moves. No new struct field and no public schema/version constant is introduced, so there is no struct-literal or constant-assertion fallout. `crates/slicer-runtime/Cargo.toml` gains a dev-dependency on a new module crate only if an integration test drives it natively — the AC-2/AC-N3 arms are written against the existing manifest/claim machinery and do not require one; if a worker finds otherwise, adding the dev-dependency is in scope for that step.
 
 ## Files in Scope (read + edit)
 
-- `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` — role: owner manifest (default fill holder); expected change: 10 tables added (AC-1).
-- `modules/core-modules/rectilinear-infill/tests/infill_pattern_specific_config_schema_tdd.rs` — role: net-new guard test (AC-1/N1/N2); expected change: created.
-- `modules/core-modules/rectilinear-infill/Cargo.toml` — role: dev-deps; expected change: +`toml = "0.8"` (add-if-absent; packet 262 may have added it — verify, don't assume).
-- `modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs` — role: module suite; expected change: AC-2 arm.
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — role: scheduler arm; expected change: +AC-3 tests.
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — role: CONFIG_BLOCK arm; expected change: +AC-4 tests (net-new — no padding edits anywhere).
-- `docs/15_config_keys_reference.md` — role: generated; expected change: regenerated via `cargo xtask gen-config-docs` (AC-5).
+- The three new `modules/core-modules/M/**` trees (created by this packet).
+- `Cargo.toml`, `crates/slicer-integrated-modules/Cargo.toml`, `crates/slicer-integrated-modules/src/lib.rs`, `crates/pnp-cli/Cargo.toml`.
+- `crates/slicer-scheduler/tests/integration/{manifest_ingestion_tdd.rs,config_bounds_enforcement_tdd.rs}`.
+- `crates/slicer-runtime/tests/contract/native_infill_claim_resolution_tdd.rs`.
 
 ## Read-Only Context
 
-- `modules/core-modules/wipe-tower/wipe-tower.toml` lines `66-73` — purpose: the in-tree `bool` manifest form (`[config.schema.enable_prime_tower]`).
-- `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` lines `93-104` — purpose: the in-tree width-table form (`internal_solid_infill_line_width`) and the float-percent form (`sparse_infill_density` at the file head).
-- `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` — full — purpose: guard-test pattern source.
-- `crates/slicer-gcode/src/serialize.rs` lines `490-560` (`ORCA_CONFIG_PADDING` + `emit_config_kv` dedup) — purpose: AC-4's honest-absence context (no edits).
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — full (~460 lines) — purpose: AC-3 arm pattern (real-manifest load + `OutOfRange`/`TypeMismatch` assertions).
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — lines `1-120` (setup) + grep for an existing CONFIG_BLOCK assertion to mirror — purpose: AC-4 arm form.
+- `modules/core-modules/gyroid-infill/**` and `modules/core-modules/lightning-infill/**` — the shape to copy (crate layout, manifest, guest wrapper, sparse-only claim set, test harness via `slicer_sdk::test_prelude`).
+- `modules/core-modules/rectilinear-infill/src/lib.rs` — the scan-line emission and per-role partition contract.
+- `crates/slicer-sdk/src/{views.rs,builders.rs,host.rs}` — the API surface used.
+- `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionPath3D`, `Point3WithWidth`, `InfillRegion`.
 
 ## Out-of-Bounds Files
 
-- `OrcaSlicerDocumented/...` - delegate; never load (sibling path `..\pinch_n_print_cli\OrcaSlicerDocumented`).
-- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
-- `modules/core-modules/rectilinear-infill/src/lib.rs`, `modules/core-modules/gyroid-infill/src/lib.rs`, `modules/core-modules/lightning-infill/src/lib.rs`, `modules/core-modules/infill-linker/src/*` — all module sources are read-free pins for the 10 keys; never open them for reads (AC-2's grep is the evidence).
-- `modules/core-modules/gyroid-infill/gyroid-infill.toml` and `modules/core-modules/lightning-infill/lightning-infill.toml` — omission pins (AC-N2); never edit.
-- `crates/slicer-gcode/src/serialize.rs` — read-only; zero padding edits (AC-4 pins honest absence).
-- `docs/spec_packets/253* … 262*` — other packets' directories are read-only context; only the named reference files above may be consulted.
-- Unrelated crates - delegate symbol lookups; do not browse.
+- `modules/core-modules/{rectilinear,gyroid,lightning}-infill/**` — read-only; **no edits** (their behaviour and manifests must not change; AC-N1 depends on that).
+- `crates/slicer-gcode/src/serialize.rs` — `ORCA_CONFIG_PADDING` must not be touched (AC-N2).
+- `crates/slicer-schema/wit/**`, `crates/slicer-ir/src/slice_ir.rs` schema constants, `crates/slicer-ir/src/resolved_config.rs` — no WIT, IR-schema, or `ResolvedConfig` change is permitted; a worker who believes one is needed must stop and raise it as a `[BLOCK]` rather than making it.
+- `docs/specs/orca-feature-gap/**` — the map and tickets are not edited by this packet.
+- Any other packet directory under `docs/spec_packets/`.
 
 ## Expected Sub-Agent Dispatches
 
-- Question: does `config_bounds_enforcement_tdd.rs` drive the real `rectilinear-infill.toml` manifest through the bounds index for float/bool keys, and which existing test arms to mirror for the AC-3 cases (five float `OutOfRange`, one bool `TypeMismatch`, one valid bool)?; scope: `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` + `crates/slicer-scheduler/src/config_resolution.rs`; return: `FACT`; purpose: Step 3.
-- Question: does the runtime CONFIG_BLOCK driver emit an explicit non-padding module key (e.g. `skin_infill_density = 30.0`) exactly once via the raw-config sorted dump (packet-257 AC-5 precedent), and does the defaults run carry zero lines for all 10 keys (no padding twins)?; scope: `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` + `crates/slicer-gcode/src/serialize.rs`; return: `FACT`; purpose: Step 4.
-- Question: does `cargo xtask gen-config-docs --check` pass after regeneration, do the 10 keys appear in the module-key table under the `rectilinear-infill` owner column, and does the deviations block still count 26 data rows?; scope: `docs/15_config_keys_reference.md` + xtask; return: `FACT`; purpose: Step 5.
+- `SUMMARY` — canonical `FillLateralLattice::fill_surface` exact shift/angle arithmetic and odd-layer reversal (once, at Step 2).
+- `SUMMARY` — canonical `FillLateralHoneycomb::fill_surface` period split, `horizontal_position` interpolation, density rescale, and stagger (once, at Step 3).
+- `SUMMARY` — canonical `FillLockedZag::fill_surface_locked_zag` + `fill_surface_extrusion` region algebra and flow split (once, at Step 4).
+- `SUMMARY` — canonical `Layer::make_fills` mirror axis and `MultiPoint::symmetric_y` arithmetic (once, at Step 5).
+- `FACT` — each `cargo test` / `cargo check` / `cargo clippy` / `cargo xtask` run: pass/fail plus failing test names only.
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: the float/bool tables use the in-tree forms (`wipe-tower.toml`
-  `enable_prime_tower` for bool; `rectilinear-infill.toml` `sparse_infill_density` for
-  float percent; the `description` field is parsed by `crates/slicer-scheduler/src/manifest.rs`);
-  bounds enforcement is host-side generic via `ConfigBoundsIndex::from_modules` — numeric
-  min/max in `ConfigResolutionError::OutOfRange`, non-numeric value in `TypeMismatch`
-  (`resolve_global_config`, `crates/slicer-scheduler/src/config_resolution.rs`), verified
-  for packet 259/260/261/262's keys.
-- WIT boundary: none touched — no WIT/world changes; the 10 keys ride the existing
-  `ConfigView` string/int/float/bool plumbing, and none is read by any module.
-- Determinism/scheduler constraints: the keys are declared-but-unread, so no module
-  computation changes; AC-2's byte-identity comparison relies on the module suite's
-  existing determinism (same inputs → same paths).
-- Deviation gate: `render_deviations` in `xtask/src/gen_config_docs.rs` parses the
-  canonical Default column with `parse::<f64>` — `25%`/`100%` fail and never enter the
-  map (ticket 106's finding); the five parseable floats compare equal; the bool `false`
-  matches canonical `0` under the ticket-100 bool comparison. Block stays at 26 rows.
+- The new modules consume the host-partitioned `sparse_infill_area()` only; they must not re-derive infill areas from `polygons()` (the four canonical fill polygons are pairwise disjoint and the host owns the partition).
+- `symmetric_infill_y_axis` needs the *object* bounding box, not the region bbox: canonical uses `extended_object_bounding_box().center().x()`. The port reads `slicer_sdk::host::object_bounds(region.object_id())` and takes the x centre. When `object_bounds` returns `HostUnavailable`, the module logs a warn and emits the unmirrored fill — a mirror is a print-quality preference, never a correctness gate.
+- Density → spacing conversion follows the existing fill modules' convention so `sparse_infill_density` behaves identically across pattern modules.
+- Speed: paths are emitted with `speed_factor = 1.0`; the host resolves the feedrate from the role, as `rectilinear-infill` documents.
 
 ## Locked Assumptions and Invariants
 
-- Default-path identity: with the 10 keys absent or explicit-canonical-default, the
-  rectilinear module emits byte-identical `InfillIR` (AC-2).
-- None of the 10 keys is read in any module source (AC-2's no-reads grep over all four
-  infill module src dirs).
-- `gyroid-infill.toml` and `lightning-infill.toml` do not declare any of the 10 keys (AC-N2).
-- `crates/slicer-gcode/src/serialize.rs` and `ORCA_CONFIG_PADDING` are untouched — no twins
-  added (AC-4), so at defaults the CONFIG_BLOCK carries nothing for these keys.
-- No WIT/IR schema changes; no deviation-table additions — the block stays at 26 data
-  rows (AC-5, re-measured at implementation time per the ledger-fact rule; 26 measured at
-  263 authoring, 2026-09-01).
-- No struct fields or schema constants are added anywhere; no module binaries change
-  (only the rectilinear guest rebuilds, driven by its manifest fingerprint).
+1. `ResolvedConfig.sparse_fill_holder` accepts any module id string and is the only selector needed — verified in `crates/slicer-ir/src/resolved_config.rs` and by `lightning-infill`'s sparse-only precedent.
+2. A module may hold `claim:sparse-fill` alone — verified: `lightning-infill.toml` declares exactly that.
+3. `xtask build-guests` discovers core guests by directory walk under `modules/core-modules/`, so no guest list edit is required — verified in `xtask/src/build_guests.rs`.
+4. `ExtrusionPath3D` carries per-vertex width via `Point3WithWidth`, so two extrusion widths need no IR change — verified in `crates/slicer-ir/src/slice_ir.rs`.
+5. The only hard-coded module count in the test suite is the assertion in `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`. If a worker finds a second, it joins that step's edit list.
+6. The three new patterns are sparse-only; solid, bridge, and ironing roles remain with their existing holders.
 
 ## Risks and Tradeoffs
 
-- The keys are honest-but-inert today: a user setting any of the 10 sees no behavior change
-  until a locked-zag/lateral-*/zigzag-family pattern packet lands. This is the queue's
-  declared-with-gap contract (packet 259/260/261/262 precedent), pinned by AC-2 (byte
-  identity) and AC-4 (CONFIG_BLOCK) so the inertness is tested, not assumed.
-- `symmetric_infill_y_axis` is the one key with a live in-port decision point (the
-  rectilinear scan-line generator) that this packet deliberately does not wire, because
-  canonical pattern-gates it off for every port-shipped pattern. A future zigzag-family
-  packet must re-open it — the disposition description records the canonical gate and axis
-  provenance so that packet has the evidence.
-- Merge churn with packet 262 on `rectilinear-infill.toml` (both append `[config.schema]`
-  tables) and on `rectilinear-infill/Cargo.toml` (the `toml` dev-dep): 262 implements
-  first per queue order; both edits are appends, and the dev-dep is add-if-absent. The
-  guard binaries are distinct (`infill_config_schema_tdd` vs
-  `infill_pattern_specific_config_schema_tdd`) — no file collision.
-- The guest rebuild after Step 1 is mandatory before Step 4's integration arm dispatches
-  the real rectilinear guest — a stale guest surfaces as unrelated failures
-  (wasm-staleness snippet).
+- **Locked-zag is the least self-contained of the three** (canonical recurses into its own `FillRectilinear::fill_surface` base for the zig-zag path and depends on `offset_ex`/`diff_ex`/`intersection_ex`). Mitigation: the port implements the zig-zag base inside the module rather than depending on `rectilinear-infill` (modules cannot call each other), and Step 4 is split from Steps 2–3 so a failure there does not block the two lateral modules.
+- **Honeycomb's AC-5 is a statistical assertion** (band-count ratio within 10 %). It is falsifiable and stable for a fixed fixture, but a worker who finds the ratio sensitive to the fixture size must widen the z sweep rather than loosen the tolerance.
+- **Three guests to rebuild** lengthens the guest build; `cargo xtask build-guests --check` must be run and must return exit 0 before closure.
+- **Adding three modules changes the DAG breadth.** They are inert unless selected by `sparse_fill_holder`, and AC-2 pins that default prints are unaffected.
 
 ## Context Cost Estimate
 
-- Aggregate: `S`
-- Largest step: `S` (Step 1 — manifest + guard + dev-dep, the file with the most edit surface)
-- Highest-risk dispatch and required return format: the CONFIG_BLOCK driver question —
-  `FACT` (a wrong assumption about how explicit non-padding keys reach the block would make
-  AC-4 unbuildable; packet-257 AC-5 already proved the mechanism, the dispatch re-confirms
-  it against the current binary).
+Aggregate **L** (roll-up of the per-step S/M costs in `implementation-plan.md`). No single step is rated L; the packet is decomposed so each module is its own step.
 
 ## Open Questions
 
-- No `[BLOCK]` questions. All canonical evidence was verified by delegated read
-  (declarations, consumer functions, the `symmetric_infill_y_axis` activation gate) and all
-  in-tree symbols by authoring-time survey (2026-09-01).
-- `[FWD]` Whether the CONFIG_BLOCK driver's raw-config injection for explicit non-padding
-  keys needs a new injection path or rides packet 258/259/260/261's per-test config
-  injection — no contract changes either way; the Step-4 dispatch settles it.
+- `[FWD]` Should the three new patterns also be reachable through a future `sparse_infill_pattern` value→holder mapping (packet 262b's scope)? This packet deliberately does not add such a mapping; when 262b lands it, the three module ids become the natural targets for `lockedzag`, `lateral_lattice`, and `lateral_honeycomb`. Recorded so the two packets do not both invent one.
+- `[FWD]` Canonical's `LockRegionParam` supports per-painted-region skin/skeleton density and flow. This packet resolves both from the region's own config. A future painting packet can extend it through `SliceRegionView` metadata without changing the manifest keys.
+
+No `[BLOCK]` items.

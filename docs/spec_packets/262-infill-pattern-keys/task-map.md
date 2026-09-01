@@ -1,7 +1,0 @@
-# Task Map: infill-pattern-keys
-
-Use this crosswalk when a packet spans more than one task ID, reopens prior work, or supersedes an earlier packet. **This packet emits the template's own skip clause:** it is a single-coherent-slice packet with `task_ids: []` (queue precedent — packets 234a, 253, 254, 255, 256, 257, 258, 259, 260, 261), so the `docs/07` crosswalk is N-A. Implementation is recorded against wayfinder ticket 15 (`docs/specs/orca-feature-gap/issues/15-author-packet-p08-strength-infill-infill-modules.md`).
-
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| — (queue packet, `task_ids: []`) | Steps 1–7 | `docs/15_config_keys_reference.md` (generated) | `modules/core-modules/{rectilinear-infill,gyroid-infill,lightning-infill}/*.toml` + `rectilinear-infill/{Cargo.toml,tests/*,src/lib.rs}` + `gyroid-infill/{tests/*,src/lib.rs}` + `crates/slicer-gcode/src/serialize.rs` (one padding value) + scheduler/runtime integration arms | `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (7 `def()`s), `Fill/Fill.cpp` (`Layer::make_fills`, `group_fills`, `calculate_infill_rotation_angle`), `Fill/FillBase.cpp` (`multiline_fill`, `Fill::_create_gap_fill`, `Fill::new_from_type`), `Fill/FillRectilinear.cpp` (`fill_surface_by_multilines`), `PrintObject.cpp` (`combine_infill`) | S/M | Queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap"; no TASK rows; re-derive the crosswalk question at completion time per the ledger-fact rule |
