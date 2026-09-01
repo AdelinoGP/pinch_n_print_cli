@@ -378,6 +378,21 @@ off-map, after.
   check/clippy clean; slicer-ir 20 binaries, slicer-core host-algos 599 tests,
   modules + slicer-gcode green, runtime e2e 136/136; all 44 guests rebuilt
   (slicer-ir sits in every guest's dependency closure).
+- [106 — Rename ironing keys to Orca names](issues/106-rename-ironing-keys.md)
+  — three renames merged, order respected so the two `ironing_spacing` spellings
+  never crossed wires: `ironing_flow_rate` → `support_ironing_flow` and
+  `ironing_spacing` → `support_ironing_spacing` (support-surface-ironing),
+  `ironing_spacing_mm` → `ironing_spacing` (top-surface-ironing; manifest, module
+  read sites, tests, benchy fixture + e2e embedded copies). **The rename surfaced
+  a value-format deviation (user ruling — align):** canonical `support_ironing_flow`
+  is coPercent default **10%** (`ConfigDef.cpp`), the port's 100.0 was consumed
+  as a raw `flow_factor` multiplier (`emit.rs` — "1.0 normally; e.g. ~0.1 for
+  ironing") → 100× nominal flow at defaults; the deviation gate is blind to it
+  (`orca_defaults` parses the Default column with `parse::<f64>`, so `"10%"` never
+  enters the comparison map). Aligned default → **0.10**, range [0.01, 1.0]
+  (mirrors `ironing_flow`); parity-test config value updated to match. Deviation
+  table stays 27 rows. All 44 guests rebuilt (the two ironing guests were the only
+  stale ones). **Unblocks P14/P15 (tickets 21, 22).**
 - [18 — Author packet P11 — Support / Interface — support-planner](issues/18-author-packet-p11-support-interface-support-planner.md)
   — packet `docs/spec_packets/260-support-interface-keys/` authored (`draft`), preflight
   **PASS**. Grounding re-derived the tier picture: the tier-table owner `support-planner`

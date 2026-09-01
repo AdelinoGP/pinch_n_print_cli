@@ -77,8 +77,8 @@ These were counted as gaps by exact-name matching in ticket 01. Each is a **fals
 | `raft_layers` | `support_raft_layers` + `base_raft_layers` + `interface_raft_layers` | `support-planner` | **split** — one Orca key became three |
 | `ironing_type` | `ironing_enabled` | `top-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
 | `support_ironing` | `ironing_enabled` | `support-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
-| `support_ironing_flow` | `ironing_flow_rate` | `support-surface-ironing` | exact |
-| `support_ironing_spacing` | `ironing_spacing` | `support-surface-ironing` | exact |
+| `support_ironing_flow` | `ironing_flow_rate` | `support-surface-ironing` | exact — **renamed in ticket 106**; manifest default aligned 100.0 → **0.10** to match Orca's 10% coPercent (user ruling in-ticket: `flow_factor` is a raw multiplier, canonical is percent-of-flow; range mirrored to [0.01, 1.0]) |
+| `support_ironing_spacing` | `ironing_spacing` | `support-surface-ironing` | exact — **renamed in ticket 106** |
 
 ## Judged Pinch-specific — no OrcaSlicer counterpart (37)
 
@@ -759,7 +759,7 @@ document**. Consequences for this asset:
   Pinch's three keys are a strict superset. Documented divergence, no rename.
 - **One rename 03's table missed:** `ironing_spacing_mm` →
   `ironing_spacing` (top-surface-ironing) — the "four spellings, one concept"
-  line from 07's original question.
+  line from 07's original question. **Renamed in ticket 106.**
 - **Mechanical rename scope = 26 keys**: the 22 exact/word-order/unit-suffix
   rows of the 25-table + the 3 duplicate collapses (the `infill_*` duplicates
   row above) + `ironing_spacing_mm`. Executed by workstream tickets 99–107;
