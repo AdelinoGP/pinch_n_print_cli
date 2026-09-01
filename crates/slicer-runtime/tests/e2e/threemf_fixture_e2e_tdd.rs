@@ -1498,6 +1498,63 @@ fn synthetic_triangle_mesh() -> IndexedTriangleSet {
     }
 }
 
+/// A 1 mm-tall cube (x 0..10, y 0..10, z 0..1) used for SYNTHETIC MODIFIER
+/// meshes. The flat `synthetic_triangle_mesh` has no z-extent, so it cannot
+/// stand in for a modifier: ticket 18 mints a modified object's sub-region
+/// entries from the modifier mesh's slice at the layer Z, and a flat z=0
+/// triangle slices empty at the plan's z=0.1 — the modifier would then be
+/// invisible to the region map (and to Tier-2's `stage_modifier_footprints`).
+fn synthetic_modifier_mesh() -> IndexedTriangleSet {
+    IndexedTriangleSet {
+        vertices: vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 1.0,
+            },
+        ],
+        indices: vec![
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
+            7, 3, 1, 2, 6, 1, 6, 5,
+        ],
+    }
+}
+
 fn synthetic_identity4() -> [f64; 16] {
     [
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -1513,7 +1570,7 @@ fn synthetic_modifier_volume(
     // exhaustive: ModifierVolume explicit test fixture preserves boundary data
     ModifierVolume {
         id: id.into(),
-        mesh: synthetic_triangle_mesh(),
+        mesh: synthetic_modifier_mesh(),
         config_delta: ConfigDelta { fields },
         priority,
         applies_to: ModifierScope::AllFeatures,
@@ -1882,10 +1939,11 @@ fn subtype_only_modifier_stamps_no_extensions() {
 // Two overlapping modifier volumes on the same synthetic ObjectMesh:
 //   - Modifier A: priority=0, extruder=Int(0)
 //   - Modifier B: priority=1, extruder=Int(1)
-// `stamp_modifier_config_deltas` sorts by priority ascending and applies via
-// `overlay_resolved` (last-writer-wins). Modifier B has higher priority and
-// writes last, so the resulting RegionPlan.config.extensions["extruder"]
-// must be Int(1).
+// Ticket 18 per-region semantics: the deltas ride the MINTED SUB-REGION entry
+// (both modifiers share one id — identical cross-section geometry — and are
+// merged priority-ascending via `stamp_modifier_sub_region_configs`), so the
+// sub-region's extensions["extruder"] must be Int(1) while the base region
+// keeps the pure base config.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
@@ -1915,15 +1973,53 @@ fn conflicting_extruder_modifier_priority_wins() {
         "region map must contain at least one RegionPlan entry"
     );
 
-    for key in region_map.entries.keys() {
-        let cfg = region_map.config_for(key);
-        assert_eq!(
-            cfg.extensions.get("extruder"),
-            Some(&ConfigValue::Int(1)),
-            "AC-N2: RegionPlan at {key:?} must carry extruder=Int(1) (modifier B wins \
-             because its higher priority writes last via overlay_resolved). \
-             Found extensions={:?}",
-            cfg.extensions
-        );
-    }
+    // Ticket 18 per-region semantics: the base region keeps the pure base
+    // config (no modifier-derived keys at all), and the modifiers' deltas ride
+    // the minted sub-region entry. Both modifiers have IDENTICAL cross-section
+    // geometry, so they hash to the SAME sub-region id and are merged there via
+    // `stamp_modifier_sub_region_configs` (priority-ascending, last-writer-wins):
+    // modifier B writes last, so the sub-region's extruder must be Int(1).
+    let base_key = slicer_ir::RegionKey {
+        global_layer_index: 0,
+        object_id: "synthetic-obj".into(),
+        region_id: 0,
+        variant_chain: Vec::new(),
+    };
+    let sub_id = {
+        // Mint the sub-region id exactly as the kernel and the Tier-2 split do:
+        // FNV-1a over object id + the modifier mesh's slice at the plan's Z
+        // (z = 0.1 for the synthetic single-region plan).
+        let polygons = slicer_core::slice_mesh_ex(&synthetic_modifier_mesh(), &[0.1])
+            .into_iter()
+            .next()
+            .expect("synthetic modifier cube must slice at z=0.1");
+        slicer_ir::modifier_sub_region_id(0, "synthetic-obj", &polygons)
+    };
+
+    // The base region keeps the pure base config (ticket 18): no extruder key.
+    let base_cfg = region_map.config_for(&base_key);
+    assert_eq!(
+        base_cfg.extensions.get("extruder"),
+        None,
+        "ticket 18: base region must keep the pure base config (no modifier \
+         extruder); got extensions={:?}",
+        base_cfg.extensions
+    );
+
+    // The single merged sub-region carries the higher-priority value.
+    let sub_key = slicer_ir::RegionKey {
+        global_layer_index: 0,
+        object_id: "synthetic-obj".into(),
+        region_id: sub_id,
+        variant_chain: Vec::new(),
+    };
+    let sub_cfg = region_map.config_for(&sub_key);
+    assert_eq!(
+        sub_cfg.extensions.get("extruder"),
+        Some(&ConfigValue::Int(1)),
+        "AC-N2: the minted sub-region must carry extruder=Int(1) (modifier B wins \
+         because its higher priority writes last via overlay_resolved). \
+         Found extensions={:?}",
+        sub_cfg.extensions
+    );
 }

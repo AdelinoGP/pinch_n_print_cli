@@ -588,11 +588,14 @@ fn config_schema_json_matches_documented_shape() {
     // Per docs/01_system_architecture.md, the response shape is:
     // {"schema_version": "1.0.0",
     //  "schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}]}
+    // The version literal tracks `CONFIG_SCHEMA_WIRE_VERSION` (1.2.0 since the
+    // SchemaBridgeMap ticket 10 host-metadata bump; the shape itself is
+    // unchanged from the 1.0.0 documentation).
     let json = build_config_schema_json(&[]);
     assert_eq!(
         json["schema_version"].as_str(),
-        Some("1.0.0"),
-        "top-level schema_version must equal the wire-format constant '1.0.0'"
+        Some("1.2.0"),
+        "top-level schema_version must equal the wire-format constant '1.2.0'"
     );
     assert!(
         json.get("schema").is_some(),

@@ -20,9 +20,10 @@
 //! invocations. See docs/04_host_scheduler.md §"RegionMapIR Compilation"
 //! and IR 5 in docs/02_ir_schemas.md.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use slicer_ir::{
+    is_modifier_namespace_id, modifier_sub_region_id,
     region_split_registry::enumerate_canonical_chains, ConfigValue, LayerPlanIR, ModifierVolume,
     ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey, RegionMapIR,
     RegionPlan, ResolvedConfig, StageId,
@@ -152,6 +153,49 @@ impl std::fmt::Display for RegionMappingError {
 }
 
 impl std::error::Error for RegionMappingError {}
+
+/// Build the `CapExceeded` error for a map that would exceed `cap` at
+/// `next_entry_count` entries, naming the top contributing objects.
+///
+/// Shared by the per-insert guards around the variant-chain expansion and the
+/// ticket-18 modifier sub-region minting (both run after the whole-plan
+/// precheck, which stays where it is; a per-insert check can still trip when
+/// cross-product or sub-region expansion pushes past the precheck's count).
+fn cap_exceeded(
+    entries: &HashMap<RegionKey, RegionPlan>,
+    cap: usize,
+    next_entry_count: usize,
+) -> RegionMappingError {
+    let mut sorted: Vec<(String, usize)> = entries
+        .keys()
+        .fold(HashMap::<String, usize>::new(), |mut acc, k| {
+            *acc.entry(k.object_id.clone()).or_insert(0) += 1;
+            acc
+        })
+        .into_iter()
+        .collect();
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
+    let layer_count = entries
+        .keys()
+        .map(|k| k.global_layer_index)
+        .collect::<HashSet<_>>()
+        .len();
+    let top_contributors: Vec<TopContributor> = sorted
+        .into_iter()
+        .take(5)
+        .map(|(object_id, region_count)| TopContributor {
+            object_id,
+            region_count,
+            layer_count,
+        })
+        .collect();
+    RegionMappingError::CapExceeded {
+        entry_count: next_entry_count,
+        cap,
+        top_contributors,
+        remediation: "reduce region granularity, raise cap, or split job".to_string(),
+    }
+}
 
 /// Apply a paint-semantic `ResolvedConfig` on top of a base `ResolvedConfig`.
 ///
@@ -669,21 +713,124 @@ pub fn execute_region_mapping_inner(
                 None => region.resolved_config.clone(),
             };
 
-            // Stamp modifier-volume config_delta keys into the base config
-            // (Packet 68). Ordering: per-object base → modifier_delta →
-            // paint_overrides. We compute the modifier-stamped base first so
-            // paint overlays (which run last per chain) can still override
-            // stamped values, matching global → per-object → modifier → paint
-            // precedence.
-            let modifier_stamped_base =
+            // Ticket 18 — bind each modifier's config delta to its minted
+            // sub-region (packet 132's geometric counterpart). The Tier-2
+            // split (`slicer_runtime::region_partition::split_modifier_footprints`)
+            // mints a `SlicedRegion` per stampable modifier footprint; its id is
+            // a pure function of `(base_region_id, object_id, footprint polygons)`
+            // (FNV-1a in `slicer_ir::modifier_sub_region_id`), and the footprint
+            // polygons are this modifier mesh's cross-section at the layer Z via
+            // `crate::slice_mesh_ex` — the exact inputs
+            // `slicer_runtime::layer_executor::stage_modifier_footprints` staged.
+            // Re-deriving both here (same slice, same hash) reproduces the
+            // Tier-2 ids byte-for-byte, so this entry's `RegionKey` matches the
+            // arena region the pipeline will mint.
+            //
+            // Re-derivation is the only viable binding: region mapping runs in
+            // prepass BEFORE `PrePass::Slice` and long before `Layer::Perimeters`
+            // mints the sub-regions in the per-layer arena, so a binding carried
+            // on the staged footprint cannot reach this kernel.
+            //
+            // Only the OWNING modifier's delta is stamped onto the base for its
+            // entry (per-modifier group, priority-ascending last-writer-wins via
+            // `stamp_modifier_sub_region_configs`); the region's own base
+            // (empty-chain) entry keeps the pure base config (see the chain
+            // fold below). Modifiers whose cross-sections hash to the same
+            // sub-region id (identical geometry) share one entry and merge
+            // their deltas. Support subtypes are skipped exactly as both
+            // stamping functions and the staging site skip them, and empty
+            // meshes have no cross-section.
+            //
+            // An entry may be minted for a layer where the Tier-2 split mints no
+            // geometry (footprint non-empty but disjoint from the base region's
+            // polygons) — an orphan RegionKey is harmless: no `SlicedRegion` ever
+            // materialises it, so no consumer iterates its config.
+            if !is_modifier_namespace_id(region.region_id) {
+                if let Some(obj) = objects.iter().find(|o| o.id == region.object_id) {
+                    let mut subs: BTreeMap<u64, Vec<&ModifierVolume>> = BTreeMap::new();
+                    for mv in &obj.modifier_volumes {
+                        // Same skip rules as `stamp_modifier_config_deltas` /
+                        // `stamp_modifier_sub_region_configs` and
+                        // `stage_modifier_footprints`.
+                        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
+                            if s == "support_enforcer" || s == "support_blocker" {
+                                continue;
+                            }
+                        }
+                        if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
+                            continue;
+                        }
+                        let polygons = crate::slice_mesh_ex(&mv.mesh, &[layer.z])
+                            .into_iter()
+                            .next()
+                            .unwrap_or_default();
+                        if polygons.is_empty() {
+                            continue;
+                        }
+                        let sub_id = modifier_sub_region_id(region.region_id, &obj.id, &polygons);
+                        subs.entry(sub_id).or_default().push(mv);
+                    }
+                    for (sub_id, mvs) in subs {
+                        if region_map_out.entries.len() >= cap {
+                            return Err(cap_exceeded(
+                                &region_map_out.entries,
+                                cap,
+                                region_map_out.entries.len() + 1,
+                            ));
+                        }
+                        let sub_config = stamp_modifier_sub_region_configs(
+                            base_config.clone(),
+                            region.region_id,
+                            sub_id,
+                            // Clone the (usually single-element) group: the
+                            // stamping helper takes `&[ModifierVolume]`, and
+                            // the mint rarely overlaps two modifiers with
+                            // identical cross-sections.
+                            &mvs.into_iter().cloned().collect::<Vec<ModifierVolume>>(),
+                        )
+                        .remove(&sub_id)
+                        .expect("stamp_modifier_sub_region_configs always emits the sub-region entry");
+                        let key = RegionKey {
+                            global_layer_index: layer.index,
+                            object_id: region.object_id.clone(),
+                            region_id: sub_id,
+                            variant_chain: Vec::new(),
+                        };
+                        let config = region_map_out.intern_config(sub_config);
+                        if region_map_out
+                            .entries
+                            .insert(
+                                key.clone(),
+                                RegionPlan {
+                                    config,
+                                    stage_modules: stage_modules.clone(),
+                                    paint_overrides: BTreeMap::new(),
+                                },
+                            )
+                            .is_some()
+                        {
+                            return Err(RegionMappingError::DuplicateRegionKey { key });
+                        }
+                    }
+                }
+            }
+
+            // Modifier-config stamping base (Packet 68). `Some` carries the
+            // object-wide modifier-stamped config for painted variant chains:
+            // a painted region is physically separate from the modifier
+            // footprints, so the legacy per-object approximation stays there
+            // (ticket 18 keeps it "until the sub-region path is proven" for the
+            // non-empty chains). `None` means the object has no modifier
+            // volumes, so every chain starts from the pure base config.
+            let modifier_stamped_base: Option<ResolvedConfig> =
                 if let Some(obj) = objects.iter().find(|o| o.id == region.object_id) {
                     if obj.modifier_volumes.is_empty() {
-                        base_config
+                        None
                     } else {
-                        stamp_modifier_config_deltas(base_config, &obj.modifier_volumes)
+                        Some(stamp_modifier_config_deltas(base_config.clone(), &obj.modifier_volumes))
                     }
                 } else {
-                    base_config
+                    None
                 };
 
             // Enumerate canonical chains for this object. Objects absent from
@@ -700,7 +847,19 @@ pub fn execute_region_mapping_inner(
             // (Reused per region, but rebuilt once outside the hot inner loop
             // would require restructuring; the map is tiny so cloning is fine.)
             for chain in chains {
-                let mut effective = modifier_stamped_base.clone();
+                // Ticket 18 amendment: the region's own base entry (empty
+                // `variant_chain`) of a modified object starts from the PURE
+                // base config — the modifiers' deltas live on the minted
+                // sub-region entries above, so stamping them here would leak
+                // e.g. a modifier `support_type` (or `infill_density`,
+                // `extruder`, …) onto geometry outside its own footprint.
+                // Painted chains keep the object-wide stamping arm, and
+                // objects without modifier volumes are pure everywhere.
+                let mut effective = match (&modifier_stamped_base, chain.is_empty()) {
+                    (Some(stamped), false) => stamped.clone(),
+                    (Some(_), true) => base_config.clone(),
+                    (None, _) => base_config.clone(),
+                };
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
                 // The chain's painted material tool (if any). Captured here so the
                 // per-tool config can be overlaid LAST (highest precedence), after
@@ -756,38 +915,11 @@ pub fn execute_region_mapping_inner(
                 // entry count past `cap` even when the unexpanded precheck
                 // above passed. Reuse the precheck's top-contributor shape.
                 if region_map_out.entries.len() >= cap {
-                    let mut sorted: Vec<(String, usize)> = region_map_out
-                        .entries
-                        .keys()
-                        .fold(HashMap::<String, usize>::new(), |mut acc, k| {
-                            *acc.entry(k.object_id.clone()).or_insert(0) += 1;
-                            acc
-                        })
-                        .into_iter()
-                        .collect();
-                    sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
-                    let layer_count = region_map_out
-                        .entries
-                        .keys()
-                        .map(|k| k.global_layer_index)
-                        .collect::<std::collections::HashSet<_>>()
-                        .len();
-                    let top_contributors: Vec<TopContributor> = sorted
-                        .into_iter()
-                        .take(5)
-                        .map(|(object_id, region_count)| TopContributor {
-                            object_id,
-                            region_count,
-                            layer_count,
-                        })
-                        .collect();
-                    return Err(RegionMappingError::CapExceeded {
-                        entry_count: region_map_out.entries.len() + 1,
+                    return Err(cap_exceeded(
+                        &region_map_out.entries,
                         cap,
-                        top_contributors,
-                        remediation: "reduce region granularity, raise cap, or split job"
-                            .to_string(),
-                    });
+                        region_map_out.entries.len() + 1,
+                    ));
                 }
 
                 if region_map_out

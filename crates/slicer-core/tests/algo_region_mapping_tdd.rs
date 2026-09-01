@@ -7,8 +7,9 @@ use slicer_core::algos::region_mapping::{
     RegionMappingPlanProjection, DEFAULT_REGION_MAP_CAP,
 };
 use slicer_ir::{
-    ActiveRegion, FacetPaintData, GlobalLayer, LayerPlanIR, ObjectMesh, PaintLayer, PaintSemantic,
-    PaintValue, RegionKey, RegionMapIR, ResolvedConfig, SemVer,
+    ConfigValue, ActiveRegion, FacetPaintData, GlobalLayer, IndexedTriangleSet, LayerPlanIR,
+    ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3, RegionKey, RegionMapIR,
+    ResolvedConfig, SemVer,
 };
 use slicer_scheduler::manifest::RegionSplitValueType;
 use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
@@ -105,6 +106,172 @@ fn painted_object(object_id: &str, paints: &[(&str, Vec<PaintValue>)]) -> Object
         obj.paint_data = Some(FacetPaintData { layers });
     }
     obj
+}
+
+/// A 1 mm-tall axis-aligned cube spanning `x0..x1` in X, `0..10` in Y and
+/// `0..1` in Z (mid-plane slice at z = 0.5 is a non-empty square). Both the
+/// kernel mint under test and the Tier-2 geometry split slice modifier meshes
+/// with `slicer_core::slice_mesh_ex`, so a fixture mesh must be a solid, not
+/// the flat triangle used for object meshes elsewhere.
+fn modifier_cube_mesh(x0: f32, x1: f32) -> IndexedTriangleSet {
+    let y1 = 10.0f32;
+    let z1 = 1.0f32;
+    let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+    IndexedTriangleSet {
+        vertices: vec![
+            v(x0, 0.0, 0.0),
+            v(x1, 0.0, 0.0),
+            v(x1, y1, 0.0),
+            v(x0, y1, 0.0),
+            v(x0, 0.0, z1),
+            v(x1, 0.0, z1),
+            v(x1, y1, z1),
+            v(x0, y1, z1),
+        ],
+        indices: vec![
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
+            7, 3, 1, 2, 6, 1, 6, 5,
+        ],
+    }
+}
+
+/// Build a parameter-modifier volume with a single `config_delta` field.
+fn modifier_volume(
+    id: &str,
+    x0: f32,
+    x1: f32,
+    key: &str,
+    value: &str,
+) -> slicer_ir::ModifierVolume {
+    // exhaustive: ModifierVolume has no Default impl; every field is a fixture input
+    slicer_ir::ModifierVolume {
+        id: id.to_string(),
+        mesh: modifier_cube_mesh(x0, x1),
+        config_delta: slicer_ir::ConfigDelta {
+            fields: std::collections::HashMap::from([(
+                key.to_string(),
+                ConfigValue::String(value.to_string()),
+            )]),
+        },
+        priority: 0,
+        applies_to: slicer_ir::ModifierScope::AllFeatures,
+        // exhaustive: ModifierVolume fixture preserves every field explicitly
+    }
+}
+
+/// Ticket 18 test (1): two modifiers with DISTINCT `support_type` deltas on one
+/// object. The base region keeps the global family (pure base config); each
+/// minted sub-region carries only its own modifier's delta, keyed by the same
+/// deterministic `(base_region_id, object_id, footprint polygons)` hash the
+/// Tier-2 geometry split uses — the region-map entries must match the arena
+/// `SlicedRegion`s the pipeline will mint.
+#[test]
+fn modifier_sub_regions_carry_only_their_own_delta() {
+    let mut plan = LayerPlanIR {
+        schema_version: sv(1, 0, 0),
+        global_layers: Vec::new(),
+        object_participation: Default::default(),
+    };
+    plan.global_layers.push(GlobalLayer {
+        index: 0,
+        z: 0.5,
+        active_regions: vec![ActiveRegion {
+            object_id: "obj_a".to_string(),
+            region_id: 0,
+            resolved_config: ResolvedConfig::default(),
+            effective_layer_height: 0.2,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+            ..Default::default()
+        }],
+        has_nonplanar: false,
+        ..Default::default()
+    });
+
+    // Two side-by-side parameter modifiers: tree(auto) at x 0..10 and
+    // normal(auto) at x 10..20 — distinct footprints, distinct deltas.
+    let mv_a = modifier_volume("mod-a", 0.0, 10.0, "support_type", "tree(auto)");
+    let mv_b = modifier_volume("mod-b", 10.0, 20.0, "support_type", "normal(auto)");
+    let objects = vec![ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![mv_a.clone(), mv_b.clone()],
+        ..Default::default()
+    }];
+
+    let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &stage_invocations,
+    };
+    let region_map = execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &no_paint_configs(),
+        &empty_aggregated(),
+        &objects,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+
+    // Base entry + one minted entry per distinct footprint.
+    let keys: Vec<&RegionKey> = region_map
+        .entries
+        .keys()
+        .filter(|k| k.object_id == "obj_a")
+        .collect();
+    assert_eq!(
+        keys.len(),
+        3,
+        "expected base + 2 minted sub-region entries, got {keys:?}"
+    );
+
+    // Base region keeps the global family: the pure base config carries no
+    // `support_type` extension from either modifier.
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: Vec::new(),
+    };
+    let base_cfg = region_map.config_for(&base_key);
+    assert!(
+        !base_cfg.extensions.contains_key("support_type"),
+        "base region must keep the global family; got extensions={:?}",
+        base_cfg.extensions
+    );
+
+    // The minted ids must be exactly the Tier-2 ids (same slice + hash) and
+    // live in the modifier namespace.
+    let slice_at = |mv: &slicer_ir::ModifierVolume| {
+        slicer_core::slice_mesh_ex(&mv.mesh, &[0.5])
+            .into_iter()
+            .next()
+            .expect("modifier cube must slice at z=0.5")
+    };
+    let expected_a = slicer_ir::modifier_sub_region_id(0, "obj_a", &slice_at(&mv_a));
+    let expected_b = slicer_ir::modifier_sub_region_id(0, "obj_a", &slice_at(&mv_b));
+    assert_ne!(
+        expected_a, expected_b,
+        "distinct footprints must mint distinct sub-region ids"
+    );
+    for (sub_id, expected_type) in [(expected_a, "tree(auto)"), (expected_b, "normal(auto)")] {
+        assert!(
+            slicer_ir::is_modifier_namespace_id(sub_id),
+            "minted id {sub_id} must be in the modifier namespace"
+        );
+        let key = RegionKey {
+            global_layer_index: 0,
+            object_id: "obj_a".to_string(),
+            region_id: sub_id,
+            variant_chain: Vec::new(),
+        };
+        let cfg = region_map.config_for(&key);
+        assert_eq!(
+            cfg.extensions.get("support_type"),
+            Some(&ConfigValue::String(expected_type.to_string())),
+            "sub-region {sub_id} must carry only its own modifier's support_type; got extensions={:?}",
+            cfg.extensions
+        );
+    }
 }
 
 /// Build an `aggregated_region_split` BTreeMap declaring the given semantics

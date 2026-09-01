@@ -14,7 +14,10 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
+use slicer_ir::{
+    GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId,
+    is_modifier_namespace_id as ir_is_modifier_namespace_id,
+};
 use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
@@ -2164,20 +2167,14 @@ pub fn perimeter_region_index(
         .collect()
 }
 
-/// Modifier `region_id` namespace stride (packet 132), matching
-/// `slicer_runtime::region_partition::MODIFIER_VARIANT_REGION_ID_STRIDE`.
-const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
-
-/// ADR-0030: identifies ids in the modifier namespace.
-///
-/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
-/// with `hash != 0` (see `slicer_runtime::region_partition`). This predicate is
-/// disjoint from paint's namespace (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`)
-/// and from base regions (`id == 0`, or a small base id that owns its own walls
-/// via `has_own_perimeter_entry`). The `!is_multiple_of` term enforces
-/// `hash != 0`; `id != 0` excludes the base region itself.
+/// Modifier sub-region id inversion (packet 132): ids are
+/// `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash` with `hash != 0` (see
+/// `slicer_ir::modifier_sub_region_id`). The same `slicer-ir` predicate and
+/// stride serve the region-map kernel (`slicer-core::algos::region_mapping`)
+/// and the Tier-2 mint (`slicer-runtime::region_partition`) — one source so
+/// every namespace judgement in the pipeline agrees.
 pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
-    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+    ir_is_modifier_namespace_id(id)
 }
 
 /// ADR-0028 §Amendment wall-source predicate.
@@ -2203,7 +2200,7 @@ pub fn wall_source_region_id(
     // Modifier sub-region (packet 132): empty variant_chain, id in the modifier
     // namespace (`base * STRIDE + hash`, `hash != 0`), no own PerimeterIR entry.
     if region.variant_chain.is_empty() && is_modifier_namespace_id(region.region_id) {
-        return Some(region.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE);
+        return Some(region.region_id / slicer_ir::MODIFIER_VARIANT_REGION_ID_STRIDE);
     }
     // Paint-variant arm (ADR-0028 §Amendment): non-empty variant_chain, no own
     // perimeter entry → shares the base region's walls.

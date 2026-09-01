@@ -1780,6 +1780,69 @@ pub struct ExPolygon {
 /// runtime crate.
 pub const MODIFIER_FOOTPRINT_REGION_ID: RegionId = RegionId::MAX;
 
+/// Modifier `region_id` namespace stride (packet 132): a minted modifier
+/// sub-region id is `base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// (`hash != 0`), so integer division by the stride inverts to the base id.
+/// The next prime above paint's stride (`PAINT_VARIANT_REGION_ID_STRIDE =
+/// 1_000_000`), keeping the two variant namespaces disjoint.
+///
+/// Lives here because both minting sites need it: the Tier-2 geometry split
+/// (`slicer-runtime::region_partition::split_modifier_footprints`) and the
+/// region-map kernel (`slicer-core::algos::region_mapping`, ticket 18), which
+/// re-derives the same ids in prepass so RegionMapIR entries match the arena
+/// `SlicedRegion`s byte-for-byte. `slicer-wasm-host` reads it for the
+/// `is_modifier_namespace_id` predicate; it must never be restated per-crate.
+pub const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+
+/// Derive the stable modifier sub-region id (`base_region_id * STRIDE + hash`,
+/// `hash != 0`) from the base region id and the modifier footprint geometry.
+///
+/// FNV-1a over the `object_id` bytes + footprint contour points makes the id
+/// stable for a given modifier cross-section at a layer and distinct across
+/// modifiers within the same base. The footprint polygons MUST be the same
+/// slice output both sites use — `slicer_core::slice_mesh_ex` on the modifier
+/// mesh at the layer Z, taking the first polygon batch — or the ids diverge
+/// and the RegionMapIR entry stops matching the minted geometry.
+pub fn modifier_sub_region_id(
+    base_region_id: u64,
+    object_id: &str,
+    footprint_geo: &[ExPolygon],
+) -> u64 {
+    // FNV-1a over object_id bytes + footprint contour points.
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut mix = |b: u8| {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    };
+    for b in object_id.as_bytes() {
+        mix(*b);
+    }
+    for ep in footprint_geo {
+        for p in &ep.contour.points {
+            for byte in (p.x as u64).to_le_bytes() {
+                mix(byte);
+            }
+            for byte in (p.y as u64).to_le_bytes() {
+                mix(byte);
+            }
+        }
+    }
+    let hash = (h % (MODIFIER_VARIANT_REGION_ID_STRIDE - 1)) + 1;
+    base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash
+}
+
+/// ADR-0030: identifies ids in the modifier namespace.
+///
+/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// with `hash != 0`. This predicate is disjoint from paint's namespace
+/// (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`) and from base regions
+/// (`id == 0`, or a small base id that owns its own walls via
+/// `has_own_perimeter_entry`). The `!is_multiple_of` term enforces `hash != 0`;
+/// `id != 0` excludes the base region itself.
+pub fn is_modifier_namespace_id(id: u64) -> bool {
+    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+}
+
 /// Sliced region
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SlicedRegion {

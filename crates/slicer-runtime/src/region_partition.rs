@@ -66,13 +66,14 @@ use crate::LayerArena;
 ///
 /// Re-exported from `slicer-ir`, which owns it so that `slicer-wasm-host`'s
 /// `push_slice_regions` can filter footprints out of guest views without
-/// depending on this crate.
-pub use slicer_ir::MODIFIER_FOOTPRINT_REGION_ID;
-
-/// Modifier `region_id` namespace stride (next prime above paint's 1_000_000).
-/// A minted modifier sub-region id is `base_region_id * STRIDE + hash`
-/// (`hash != 0`), so integer division by `STRIDE` inverts to the base id.
-pub const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+/// depending on this crate. The modifier `region_id` namespace stride and the
+/// `modifier_sub_region_id` hash live next to it — the Tier-2 mint here and the
+/// region-map kernel (`slicer-core::algos::region_mapping`, ticket 18) MUST
+/// derive sub-region ids through the same `slicer-ir` function or the ids
+/// diverge.
+pub use slicer_ir::{
+    MODIFIER_FOOTPRINT_REGION_ID, MODIFIER_VARIANT_REGION_ID_STRIDE, modifier_sub_region_id,
+};
 
 /// Reconcile the four canonical fill polygons on every `SliceIR` region
 /// against the just-committed `PerimeterIR.infill_areas`. See module docs
@@ -243,38 +244,6 @@ pub fn sync_perimeter_infill_areas_into_slice(
         .map_err(|source| LayerStageError::ArenaCommit { source })?;
 
     Ok(())
-}
-
-/// Derive a stable modifier sub-region id (`base_region_id * STRIDE + hash`,
-/// `hash != 0`) from the base region id and the modifier footprint geometry.
-/// Hashing the footprint polygon points keeps the id stable for a given
-/// modifier cross-section and distinct across modifiers within the same base.
-fn modifier_sub_region_id(
-    base_region_id: u64,
-    object_id: &str,
-    footprint_geo: &[slicer_ir::ExPolygon],
-) -> u64 {
-    // FNV-1a over object_id bytes + footprint contour points.
-    let mut h: u64 = 0xcbf29ce484222325;
-    let mut mix = |b: u8| {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    };
-    for b in object_id.as_bytes() {
-        mix(*b);
-    }
-    for ep in footprint_geo {
-        for p in &ep.contour.points {
-            for byte in (p.x as u64).to_le_bytes() {
-                mix(byte);
-            }
-            for byte in (p.y as u64).to_le_bytes() {
-                mix(byte);
-            }
-        }
-    }
-    let hash = (h % (MODIFIER_VARIANT_REGION_ID_STRIDE - 1)) + 1;
-    base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash
 }
 
 // INVARIANT: modifier footprint regions MUST appear AFTER their corresponding
