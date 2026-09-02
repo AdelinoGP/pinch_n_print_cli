@@ -393,6 +393,13 @@ off-map, after.
 - [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md) is
   still open (filed by ticket 10's authoring); the rename workstream's
   remaining members are 105–107, all unblocked (105 gates 107).
+  **Bookkeeping discrepancy, noted by ticket 22 (2026-09-02):** the grilling's
+  Q6(a) ruling says it *closes* ticket 108 (rename, adopt canonical's cap
+  semantic), but the ticket file's `Status:` is still `open`, so 108 still sits
+  on the frontier and a session could claim already-decided work. Reconcile
+  before working it — either record Q6(a) as its resolution and close it, or
+  state why the ruling did not settle it. Re-derive the status from the ticket
+  file, never from this line.
 - [11 — Author packet P04 — Printer / Machine / Print volume — wipe-tower](issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md)
   — ⚠ **Correction required (Authoring rules):** wires only the wipe-tower corner check; canonical's feature is object-footprint validation (`Print::validate`), recorded here as a gap — implement it at the port's validation seam. Packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
   (`draft`), preflight **PASS**. Grounding found `bed_exclude_area` is a true
@@ -701,6 +708,38 @@ off-map, after.
   gate and leaves support-surface-ironing for P15. Exact canonical relative-angle
   parity is recorded as fog because the current region view has no solid-infill
   direction metadata; the packet specifies a deterministic layer-index fallback.
+- [22 — Author packet P15 — Support / Support ironing — support-surface-ironing](issues/22-author-packet-p15-support-support-ironing-support-surface-ironing.md)
+  — packet `docs/spec_packets/267-support-ironing-gate/` authored (`draft`),
+  preflight **PASS**. **P15 covers one key, not two.** `support_ironing`
+  (canonical `coBool` false, `SupportParameters`' ctor →
+  `generate_support_toolpaths`' `support_params.ironing && !top_contact_layer.empty()`
+  gate) is **wired**: it replaces the PnP `ironing_enabled` bool that both
+  ironing modules declare independently, per Q10(b). That bool is a
+  two-way reachability bug, not just a name — an Orca config setting
+  `support_ironing = 1` cannot enable support ironing at all, and a user
+  enabling top-surface ironing silently gets support ironing too. Default
+  `false` = current default = absent-key behaviour, so the default path is
+  byte-identical; the change is at `true`, and reachability through the real
+  host path is pinned by the support integrated-parity contract test.
+  `support_ironing_pattern` is **returned to the queue as unimplemented**:
+  a `coEnum` over `InfillPattern` feeding
+  `Fill::new_from_type(support_params.ironing_pattern)` — holder-only under
+  rule 4 / Q3(a), and this port has no support-ironing claim, no holder key,
+  and no concentric filler (Tier C, not the Tier A it was tiered at). Records
+  updated in 04 and 05; missing feature named. Two pre-existing divergences
+  recorded, neither created here: **the port irons a different subject than
+  canonical** (canonical irons the support top *contact* layer; this module
+  gets only `&[SliceRegionView]` at `Layer::SupportPostProcess` and scan-fills
+  every region polygon) and canonical's `top_interfaces` precondition is
+  unexpressible — the first is graduated to the fog below. Preflight caught one
+  fictional symbol and it was fixed in place: the packet cited `FEEDRATE_KEYS`,
+  which **does not exist in this tree** — the table is `SPEED_KEYS`
+  (`crates/slicer-ir/src/feedrate.rs`). That fiction is inherited from this
+  map's own key-correction-inventory Q11(a) row, which still carries it; treat
+  other symbol names in that document as unverified until greped. Q11(a)'s
+  `ironing_speed` → `support_ironing_speed` rename was flagged, not folded in,
+  and is filed as ticket 109. No user rulings, no deviation rows, no
+  `ORCA_CONFIG_PADDING` edit.
 - [Key correction inventory — grilling rulings](issues/key-correction-inventory.md)
   — 26 rulings over the 140 in-scope rows of the 212-row key audit, in that
   file's `## Decisions — 2026-09-01` section. Five are map-level and are folded
@@ -821,6 +860,27 @@ off-map, after.
   port gains the pass — and where — is queue-sized; fog until a packet picks it
   up.
 
+- **Support ironing irons the wrong subject.** Surfaced by ticket 22's
+  authoring: canonical irons the support **top contact (interface) layer**'s
+  polygons — `generate_support_toolpaths` captures
+  `top_contact_layer.polygons_to_extrude()` inside the `top_interfaces` arm and
+  fills them at `erIroning`. The port's `support-surface-ironing` module runs at
+  `Layer::SupportPostProcess`, and `LayerModule::run_support_postprocess`
+  (`crates/slicer-sdk/src/traits.rs`) hands it only `&[SliceRegionView]` — there
+  is no support-interface geometry at that seam to select — so it scan-fills
+  every slice-region polygon it receives and pushes the result as support paths.
+  Packet 267 records this (`DIV-267-A`/`DIV-267-B`) rather than changing it: it
+  moves the gate's *key*, not the gate's *subject*, and rewriting the subject
+  would change output for everyone already using the feature under a packet
+  whose claim is default-path identity. Closing it means carrying support
+  contact/interface polygons across the WIT boundary to a `SupportPostProcess`
+  module — an IR field plus a WIT accessor, so queue-sized geometry/contract
+  work. Note this makes P15 a **key-parity** packet only; nobody should read the
+  queue's `support_ironing` coverage as geometry parity. Fog until a packet
+  picks it up; the neighbouring support-interface work
+  (packet `260b-support-interface-fill-claim-holders`) is the natural host, and
+  the returned-to-queue `support_ironing_pattern` claim seam should be scoped
+  with it.
 - **Exact canonical relative ironing-angle parity.** The P14 packet's top module
    has no solid-infill direction or rotation-template metadata in `SliceRegionView`,
    so it uses a deterministic zero-degree base plus a layer-index turn. Whether the

@@ -137,13 +137,21 @@ consumer via `reduce_fan_stop_start_freq`. P01 becomes a mixed A/B packet.)
 (narrowed)" to a genuine gap — widens the shared `ironing_enabled` bool to
 Orca's 4-mode enum.)
 
-### P15 — Support / Support ironing — support-surface-ironing (2 keys, Tier A)
+### P15 — Support / Support ironing — support-surface-ironing (1 key, Tier A)
 
-`support_ironing_pattern`, `support_ironing`
+`support_ironing`
 
 (Amended by ticket 07: `support_ironing` reclassified from "already
 implemented (narrowed)" to a genuine gap — an independent bool so support
 ironing no longer rides the shared `ironing_enabled`.)
+
+(Amended by ticket 22, at authoring: **`support_ironing_pattern` is removed
+from this packet and returned to the queue as unimplemented.** It is an
+algorithm-selecting enum over `InfillPattern`, so Authoring rule 4 / grilling
+Q3(a) make it holder-only — never a declared input key — and this port has no
+support-ironing claim seam and no concentric filler. P15 is a 1-key packet;
+see [267-support-ironing-gate](../../../spec_packets/267-support-ironing-gate/requirements.md)
+§"Returned to Queue".)
 
 ### P16 — Quality / Wall generator — Arachne — arachne-perimeters (1 keys, Tier A)
 
