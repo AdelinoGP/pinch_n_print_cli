@@ -763,6 +763,27 @@ off-map, after.
   cap semantic, closing ticket 108 (**Q6**). Eight in-scope key groups were left
   unruled and are listed in that section, as are four factual corrections to the
   audit itself.
+  **Its eight "follow-up ticket needed: yes" rulings were never filed** — they
+  sat as table rows inside an already-resolved ticket, on nobody's frontier.
+  Filed 2026-09-02 (ticket 22's session) as **109–116**: 109 Q11(a)
+  `support_ironing_speed` + `SPEED_KEYS` membership; 110 Q3(b) unmatched
+  `*_fill_holder` must fail validation; 111 Q4(a)/(b) fan scale → percent and
+  `overhang_fan_speed` absolute; 112 Q5 derive the CONFIG_BLOCK padding from the
+  resolved config; 113 Q6(b) `FeedrateConfig` range validation; 114 Q11(b)
+  `sparse_infill_speed` resolved default + `speed_factor` base; 115 Q13 retire
+  `support_sharp_tails`; 116 Q15(a) document the `_mm` marker convention.
+  **Verifying them against the tree corrected three of the inventory's own
+  rationales**, so read that document's symbol claims as unverified until
+  greped: (a) `resolve_held_claims`
+  (`crates/slicer-scheduler/src/validation.rs`) does **not** "yield empty for
+  every module" — it returns non-empty when the configured holder matches; the
+  real gap is that nothing detects a holder naming a module no manifest matches;
+  (b) Q11(b)'s "touches 3 infill modules" is not three of a kind —
+  `rectilinear-infill` has **no** `BASE_SPEED` (gyroid and lightning do), so a
+  two-module re-base would silently miss it; (c) the feedrate table is
+  `SPEED_KEYS`, never `FEEDRATE_KEYS`. Ticket 110 is the load-bearing one: Q3(a)
+  makes `*_fill_holder` the *only* selection channel for ten enums, and it
+  currently has no safety net.
 
 ## Not yet specified
 
