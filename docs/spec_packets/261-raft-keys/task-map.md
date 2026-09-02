@@ -1,7 +1,0 @@
-# Task Map: raft-keys
-
-Use this crosswalk when a packet spans more than one task ID, reopens prior work, or supersedes an earlier packet. **This packet emits the template's own skip clause:** it is a single-coherent-slice packet with `task_ids: []` (queue precedent — packets 234a, 253, 254, 255, 256, 257, 258, 259, 260), so the `docs/07` crosswalk is N-A. Implementation is recorded against wayfinder ticket 19 (`docs/specs/orca-feature-gap/issues/19-author-packet-p12-support-raft-support-planner.md`).
-
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| — (queue packet, `task_ids: []`) | Steps 1–4 | `docs/15_config_keys_reference.md` (generated) | `modules/core-modules/tree-support-planner/{tree-support-planner.toml,Cargo.toml,tests/*}` + scheduler/runtime integration arms | `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (two `def()`s), `Slicing.cpp` (`SlicingParameters::SlicingParameters`), `Support/SupportMaterial.cpp` (`generate_contact_polygons`), `Support/TreeSupport3D.cpp` (`generate_raft_contact`, `finalize_raft_contact`), `GCode.cpp` (`_print_z`), `PrintObject.cpp` (`invalidate_state_by_config_options`) | S/M | Queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap"; no TASK rows; re-derive the crosswalk question at completion time per the ledger-fact rule |

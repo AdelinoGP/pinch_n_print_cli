@@ -85,6 +85,24 @@ packet) and its scope mapping is recorded below rather than re-litigated.
 - Emission of raft entries as signed negative global-layer prefix layers that
   sort before model layer 0, through ordinary ordered-entity output (never
   anchored events).
+- **Absorbed from the deleted packet 261-raft-keys (2026-09-01).** The
+  OrcaSlicer feature-gap queue routed `raft_contact_distance` and
+  `raft_expansion` to their own packet, which declared both with-gap because
+  no raft generator existed. Under the map's Authoring rule 1 that
+  disposition is prohibited, and this packet already builds the generator the
+  keys need — so 261 was deleted and its two keys belong here. What 240 was
+  missing was behaviour evidence at a non-default value (rule 6b): AC-5
+  asserted declaration and defaults only. **AC-7** (raft Z gap) and **AC-8**
+  (footprint XY expansion) supply it. Canonical decision points carried
+  forward from 261's dispatched reads (2026-08-31): the raft Z gap in
+  `SlicingParameters::SlicingParameters` (`gap_raft_object` →
+  `object_print_z_min`, forced to 0 when `raft_z_gap == 0.0` or the contact
+  is zero-`topZ`); the `layer_id == 0` XY expansion in
+  `SupportMaterial::generate_contact_polygons`; `TreeSupport3D::generate_raft_contact`
+  / `finalize_raft_contact`; and the `GCode.cpp` `_print_z` warning. The
+  "ignored for soluble interface" rule canonical applies to
+  `raft_contact_distance` is a wire-or-record decision for this packet, not a
+  separate key.
 - Config keys `raft_contact_distance` / `raft_expansion` /
   `raft_first_layer_expansion` declared in `com.core.raft-default`'s manifest;
   wire-or-record decisions for the existing dead raft keys in the four support
@@ -164,7 +182,11 @@ Reference, never copy, criteria from `packet.spec.md`.
   + determinism + WIT accessor + schema bump), `AC-3` (module manifest +
   freshness + claim dispatch), `AC-4` (negative-prefix ordering, expansions
   honored, zero anchored entities), `AC-5` (keys declared/wired + four-module
-  wire-or-record), `AC-6` (DEV-124 verify-record).
+  wire-or-record), `AC-6` (DEV-124 verify-record), `AC-7`
+  (`raft_contact_distance` moves the raft/object Z gap at a non-default
+  value, forced to zero at 0.0), `AC-8` (`raft_expansion` grows the raft
+  footprint at a non-default value, un-expanded at 0.0). AC-7 and AC-8 are
+  the absorbed packet-261 keys' behaviour evidence — see §In Scope.
 - Negative: `AC-N1` (double-holder `ClaimConflict`), `AC-N2` (out-of-band
   negative index rejected), `AC-N3` (undeclared-key manifest lint).
 - Cross-packet impact: consumes 236's G-21 validator update and ADR-0059

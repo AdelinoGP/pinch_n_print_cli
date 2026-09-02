@@ -103,6 +103,28 @@ AGG rasterizer (241) are excluded.
   residual) is written into this packet's requirements. |
   `cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
+- **AC-7. Given** a raft-configured slice (`support_raft_layers > 0`),
+  **when** `raft_contact_distance = 0.5` is set (a non-default value;
+  canonical default is 0.1), **then** the Z gap between the topmost raft
+  layer and the first model layer is strictly greater than the gap produced
+  at `raft_contact_distance = 0.1`, and at `raft_contact_distance = 0.0` the
+  gap is forced to zero — reproducing canonical
+  `SlicingParameters::SlicingParameters`, where the raft Z gap feeds
+  `gap_raft_object` / `object_print_z_min` and is forced to 0 when
+  `raft_z_gap == 0.0` or the contact is zero-`topZ`. This is the key's
+  behaviour-changing decision point; declaring it in the manifest (AC-5) is
+  not sufficient evidence under the feature-gap map's Authoring rule 1. |
+  `cargo test -p slicer-runtime --test contract -- raft_contact_distance_moves_object_z --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-8. Given** the same raft-configured slice, **when**
+  `raft_expansion = 3.0` is set (a non-default value; canonical default is
+  1.5), **then** the synthesized raft footprint's bounding box is strictly
+  larger in X and Y than the footprint produced at `raft_expansion = 1.5`,
+  and at `raft_expansion = 0.0` the footprint equals the un-expanded contact
+  polygons — reproducing the `layer_id == 0` XY expansion in canonical
+  `SupportMaterial::generate_contact_polygons` and
+  `TreeSupport3D::generate_raft_contact` / `finalize_raft_contact`. |
+  `cargo test -p slicer-runtime --test contract -- raft_expansion_grows_footprint --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+
 Every AC names exact fields, paths, counts, errors, variants, or output
 fragments and ends with its own runnable command. Repeat shared commands; never
 write "see AC-N". Commands that dump more than 200 successful output lines must
