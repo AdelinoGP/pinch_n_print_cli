@@ -691,7 +691,39 @@ off-map, after.
   Deviation block stays 26 (all defaults canonical, re-measured); zero CONFIG_BLOCK twins;
   zero user rulings. No new fog graduated (traditional-raft fog's P13 reference now
   resolves to the declaration; the traditional-raft-handling question stays open).
-   Unblocks nothing downstream; **P14 (ticket 21) is the next unblocked queue head**.
+   Unblocks nothing downstream; **P14 was the next unblocked queue head and is resolved below**.
+
+- [21 — Author packet P14 — Quality / Ironing — top-surface-ironing](issues/21-author-packet-p14-quality-ironing-top-surface-ironing.md)
+  — ⚠ **Review under Authoring rules:** modes and inset are real; the relative-angle fallback substitutes a layer-index turn for canonical's solid-infill-direction base — carry the direction through `SliceRegionView` (rule 4) or record it as a divergence with rationale, not fog. Packet `docs/spec_packets/266-top-surface-ironing-keys/` authored as `draft`,
+  preflight **PASS** (S0-S8, AC-command, and Doc Impact checks). Canonical
+  grounding corrected the ticket's both-manifest premise: all four P14 keys are
+  consumed only by top-surface ironing, so the packet replaces the top module's
+  gate and leaves support-surface-ironing for P15. Exact canonical relative-angle
+  parity is recorded as fog because the current region view has no solid-infill
+  direction metadata; the packet specifies a deterministic layer-index fallback.
+- [Key correction inventory — grilling rulings](issues/key-correction-inventory.md)
+  — 26 rulings over the 140 in-scope rows of the 212-row key audit, in that
+  file's `## Decisions — 2026-09-01` section. Five are map-level and are folded
+  into the rules above: **Q3** holder-only (rule 4) removes ten
+  algorithm-selecting enums from the declared-key set permanently and reshapes
+  packets 262/264; **Q8** supplies rule 4's missing trigger test (cross-module
+  selection, not in-module mode branching) and confirms rules 1–6 bind packet
+  tickets, not merged tree code; **Q5** corrects rule 2's premise — the padding
+  table is load-bearing, not cosmetic, because canonical *throws* below 80
+  CONFIG_BLOCK pairs — and rules it derived rather than hardcoded; **Q14(c)**
+  narrows the ticket-04/12 `brim_ears` precedent rule 3 cites, returning the
+  ears feature to scope via `brim_type`; and the **dead-manifest-defaults**
+  hazard (Q11) invalidates every manifest-verified default-alignment claim in
+  tickets 99–107 and packets 253–266 for plain-typed keys.
+  Key-level rulings of note: part-cooling converts to percent 0–100, fixing a
+  live Orca-3MF ingestion bug (**Q4**); `slowdown_for_curled_perimeters` reverts
+  to `false` — ticket 100 aligned it backwards (**Q9**); skirt/brim defaults
+  align to 1 / 2 / 0 and `skirt_brim_enabled` retires (**Q14**); `apply_to_all`
+  and `ironing_enabled` retire into `fuzzy_skin` / `ironing_type` +
+  `support_ironing` (**Q10**); `wipe_tower_speed` renames and adopts canonical's
+  cap semantic, closing ticket 108 (**Q6**). Eight in-scope key groups were left
+  unruled and are listed in that section, as are four factual corrections to the
+  audit itself.
 
 ## Not yet specified
 
@@ -788,6 +820,12 @@ off-map, after.
   `infill_only_where_needed` / `infill_every_layers` machinery). Whether the
   port gains the pass — and where — is queue-sized; fog until a packet picks it
   up.
+
+- **Exact canonical relative ironing-angle parity.** The P14 packet's top module
+   has no solid-infill direction or rotation-template metadata in `SliceRegionView`,
+   so it uses a deterministic zero-degree base plus a layer-index turn. Whether the
+   IR gains the canonical base direction, and which other ironing consumers use it,
+   is future IR/geometry work; fog until a packet picks it up.
 
 ## Out of scope
 

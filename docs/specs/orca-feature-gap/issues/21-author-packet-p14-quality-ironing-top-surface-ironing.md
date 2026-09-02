@@ -1,8 +1,8 @@
 # 21 — Author packet P14 — Quality / Ironing — top-surface-ironing
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_fa2794d60ffeFFIfIk8lq5qwHJ) — claimed 2026-09-01
 Blocked by: 06, 106
 Map: ../map.md
 
@@ -28,3 +28,5 @@ Authoring obligations:
 Resolved when the packet is authored, preflighted, and its directory linked here.
 
 ## Answer
+
+Resolved 2026-09-01 — packet `docs/spec_packets/266-top-surface-ironing-keys/` authored as `draft`; preflight **PASS** (S0-S8, AC-command, and Doc Impact checks; 0 blockers, 0 highs). Canonical grounding corrected the ticket's both-manifest premise: `ironing_angle`, `ironing_angle_fixed`, `ironing_inset`, and `ironing_type` are consumed only by canonical top-surface ironing (`Layer::make_ironing`), while PnP's top and support `ironing_enabled` entries are independent module declarations with separately filtered `ConfigView`s. The packet therefore replaces the top module's gate and adds the four top-owned keys only; it leaves `support-surface-ironing` unchanged for [22 - Author packet P15 - Support / Support ironing - support-surface-ironing](./22-author-packet-p15-support-support-ironing-support-surface-ironing.md). Exact canonical relative-angle parity remains map fog because the current PnP region view has no solid-infill direction metadata; the packet specifies and tests a deterministic layer-index fallback.
