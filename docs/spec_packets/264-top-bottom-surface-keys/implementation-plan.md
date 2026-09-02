@@ -2,238 +2,166 @@
 
 ## Execution Rules
 
-- Work one atomic step at a time; map every step to grouped task IDs.
-- Use TDD, then implementation, then the narrowest falsifying validation.
-- Every field below is a context-budget contract and must be filled independently; never write "see Step 1".
+- Steps are ordered. Do not start a step before its predecessor's exit condition is met.
+- `design.md` § Code Change Surface is the authoritative files-in-scope list; § Out-of-Bounds Files must not be edited or loaded.
+- Every OrcaSlicer read is a delegated dispatch. Every cargo/xtask run is delegated with a `FACT pass/fail` return.
+- Every test invocation tees to `target/test-output.log` and is inspected by reading that file, never by re-running.
+- Ledger facts (module counts, deviation row counts) are re-derived from disk at the moment of use, never copied from this document.
+- **FORWARD-DEP gate.** Packet **262b is `draft` as of this packet's authoring** and must reach `status: implemented` before Step 1 begins — re-derive its status from `docs/spec_packets/262b-infill-pattern-holder-mapping/packet.spec.md` at that moment rather than trusting this line. It creates `monotonic-infill` and the pattern→holder derivation this packet extends; every reference in this plan to `monotonic-infill` or to "262b's derivation helper" is a forward dependency, not a shipped symbol.
 
 ## Steps
 
-### Step 1: Declare the 4 keys in `rectilinear-infill.toml` + guard test + `toml` dev-dep
+### Step 1: Learn 262b's derivation shape and scaffold the six crates
 
-- Task IDs: none (queue packet — wayfinder ticket 17)
-- Objective: `rectilinear-infill.toml` `[config.schema]` gains the 4 tables with canonical
-  type/default/bounds/values, the canonical-title `display`, `group = "Infill"`, and a
-  `description` field per table recording the disposition (AC-1); the net-new guard test
-  pins the 4 tables and the AC-N2 gyroid/lightning omission; the module's Cargo.toml
-  gains the `toml` dev-dep (add-if-absent — verify first; packets 262/263 may have added
-  it).
-- Precondition: none (manifests are the first edit; the guard is TDD-red before the tables exist).
-- Postcondition: `cargo test -p rectilinear-infill --test top_bottom_surface_config_schema_tdd`
-  passes; the 4 tables are parseable by `crates/slicer-scheduler/src/manifest.rs`.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` - full (~210 lines; the append point and the `sparse_infill_density` float-percent form to mirror)
-  - `modules/core-modules/seam-planner-default/seam-planner-default.toml` - the `[config.schema.seam_position]` table (the `enum` + `values` form)
-  - `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` - full (guard pattern)
-  - `modules/core-modules/rectilinear-infill/Cargo.toml` - full (dev-dep state)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml`
-  - `modules/core-modules/rectilinear-infill/tests/top_bottom_surface_config_schema_tdd.rs` (net-new)
-  - `modules/core-modules/rectilinear-infill/Cargo.toml`
-- Files explicitly out of bounds:
-  - `modules/core-modules/rectilinear-infill/src/lib.rs` (Step 2 — the wire lands after the declarations)
-  - `modules/core-modules/gyroid-infill/gyroid-infill.toml` and `modules/core-modules/lightning-infill/lightning-infill.toml` (omission pins — never edit)
-  - `OrcaSlicerDocumented/...` - delegate; never load
-- Blast-radius discipline: no struct fields or schema constants are added in this step —
-  manifest tables only; the guard test is the only new compile surface.
-- Expected sub-agent dispatches:
-  - Question: none — the manifest forms are grounded in the read list.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/03_wit_and_manifest.md` - lines `780-810` (the `[config.schema]` example with `enum`/`values`/`description`) and `1530-1545` (the type table)
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - delegate; never load (declarations already captured in `requirements.md` §Per-Key Canonical Evidence)
-- Verification:
-  - `cargo test -p rectilinear-infill --test top_bottom_surface_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-- Exit condition: the guard passes with the 4 rectilinear tables pinned exactly (AC-1) and
-  the gyroid/lightning omissions pinned (AC-N2).
+- **Task IDs:** — (queue packet)
+- **Objective:** create the six module crates as compiling no-op `LayerModule`s at `Layer::Infill` holding `claim:top-fill` + `claim:bottom-fill`, and register them in all four registration surfaces.
+- **Preconditions:** 262b landed; `modules/core-modules/monotonic-infill/` exists.
+- **Allowed reads:** an existing single-claim filler crate (`modules/core-modules/lightning-infill/**`) as the crate-shape template; `docs/adr/0056-integrated-modules-native-dispatch.md`.
+- **Edits (≤ 3 logical units):** the six new crate trees; root `Cargo.toml`; `crates/slicer-integrated-modules/{Cargo.toml,src/lib.rs}` + `crates/pnp-cli/Cargo.toml`.
+- **Out of bounds:** everything in `design.md` § Out-of-Bounds Files.
+- **Dispatches:** `FACT` ≤ 5 lines — the name of 262b's pattern→holder derivation helper in `crates/slicer-scheduler/src/config_resolution.rs`. `FACT pass/fail` — `cargo check --workspace --all-targets`.
+- **Cost:** M
+- **Authorities:** ADR-0056; `docs/03_wit_and_manifest.md` manifest schema.
+- **Verification:** `cargo check --workspace --all-targets`, delegated, `FACT pass/fail`.
+- **Exit / falsifying condition:** the workspace compiles with six new members and `cargo xtask dist --edition integrated` does not complain about a missing passthrough feature. If any crate cannot be registered without editing a file outside the change surface, stop and report.
 
-### Step 2: Module wire + identity/reachability/skip arms
+### Step 2: Manifest ingestion — claims, stage, and the module count
 
-- Task IDs: none (queue packet — wayfinder ticket 17)
-- Objective: `rectilinear-infill/src/lib.rs` gains the density wire — 2 new
-  `RectilinearInfill` fields (`top_surface_density`, `bottom_surface_density`, percent/100
-  fractions read in `from_config` via `config.get_abs_value(key, 100.0).map(|d| d as f32
-  / 100.0).unwrap_or(1.0)`, the `sparse_infill_density` read pattern); the top solid
-  block's spacing switches from `SOLID_DENSITY` to the per-region density
-  (`match region.top_shell_index() { Some(0) => self.top_surface_density, _ =>
-  SOLID_DENSITY }`) with a `density > 0` gate (canonical `density <= 0` skip); the bottom
-  solid block mirrors it with `bottom_surface_density` (gate provably inert under min 10).
-  `top_bottom_fill_tdd.rs` gains the AC-2 arm (explicit canonical defaults vs absent →
-  byte-identical paths), the AC-3 arm (density 50 → top/bottom solid path count
-  approximately halves), and the AC-N3 arm (density 0 → zero `TopSolidInfill` paths for
-  the exposed region; an internal-solid region with top_shell_index ≥ 1 still emits).
-- Precondition: Step 1 complete (the keys are declared, so `ConfigView` carries them).
-- Postcondition: `cargo test -p rectilinear-infill --test top_bottom_fill_tdd` passes
-  with the three arms green, and the pattern keys' no-reads compound command exits 0 (no
-  matches).
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/rectilinear-infill/src/lib.rs` - the struct (lines `40-90`), `from_config` (lines `87-160`), and the top/bottom solid blocks (lines `310-380`)
-  - `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs` - full (~390 lines; the `make_test_region` harness + `has_path_with_role` helpers)
-  - `modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs` - lines `17-22` (the `ConfigViewBuilder` config form)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/rectilinear-infill/src/lib.rs`
-  - `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs`
-- Files explicitly out of bounds:
-  - `modules/core-modules/gyroid-infill/src/lib.rs`, `modules/core-modules/lightning-infill/src/lib.rs`, `modules/core-modules/infill-linker/src/*` (read-free pins for the 4 keys)
-  - `OrcaSlicerDocumented/...` - delegate; never load
-- Blast-radius discipline: the `RectilinearInfill` struct gains 2 fields — zero
-  struct-literal sites exist (all 39 construction sites in the tree use
-  `RectilinearInfill::from_config`, verified by grep at authoring), so no test/non-test
-  literal fallout; the struct-literal churn gate (docs/21) is not engaged (no test
-  literals of the watched struct).
-- Expected sub-agent dispatches:
-  - Question: none — the harness, config form, and block shapes are visible in the read ranges.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/03_wit_and_manifest.md` - lines `780-810` (how `ConfigView` carries declared keys)
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` - delegate; never load (`group_fills` per-surface-type assignments already captured in `requirements.md` §Per-Key Canonical Evidence)
-- Verification:
-  - `cargo test -p rectilinear-infill --test top_bottom_fill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-  - `rg -n 'top_surface_pattern|bottom_surface_pattern' modules/core-modules/rectilinear-infill/src modules/core-modules/gyroid-infill/src modules/core-modules/lightning-infill/src modules/core-modules/infill-linker/src; [ "$?" = "1" ]; echo "exit=$?"` - FACT exit code (must be 0)
-- Exit condition: the three arms green and the no-reads grep exits 0.
+- **Objective:** make the six manifests load cleanly and move the module-count assertion.
+- **Preconditions:** Step 1 exit met.
+- **Allowed reads:** `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`.
+- **Edits:** `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`; the six manifests if a field is missing.
+- **Dispatches:** `FACT` ≤ 5 lines — the currently asserted module count, re-derived from disk **now** (262b and 263 also move it).
+- **Cost:** S
+- **Verification:** `cargo test -p slicer-scheduler --test scheduler_integration manifest_ingestion 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-10 green — six more modules, each with `Layer::Infill` and both fill claims, zero `Error` diagnostics. A claim-conflict `Error` at load falsifies `design.md` invariant 4 and must stop the packet.
 
-### Step 3: Scheduler bounds/type arms
+### Step 3: `monotonicline-infill`
 
-- Task IDs: none (queue packet — wayfinder ticket 17)
-- Objective: `config_bounds_enforcement_tdd.rs` gains the AC-4 arms: `top_surface_density = 101`
-  and `-1` and `bottom_surface_density = 5` and `101` → each rejected with `OutOfRange`;
-  `top_surface_pattern = "bogus"` and `bottom_surface_pattern = "bogus"` → each rejected
-  with `TypeMismatch` ("unsupported enum value"); `top_surface_density = 0` and
-  `bottom_surface_density = 10` resolve — all resolved against the real
-  `rectilinear-infill.toml` via `load_module_from_paths` + `ConfigBoundsIndex::from_modules` +
-  `resolve_global_config`.
-- Precondition: Step 1 complete (the manifest declares the keys with bounds).
-- Postcondition: `cargo test -p slicer-scheduler --test integration
-  config_bounds_enforcement_tdd` passes with the AC-4 arms green.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` - full (~460 lines; the `rejects_value_below_min` arm is the pattern)
-  - `crates/slicer-scheduler/src/config_resolution.rs` - grep for `OutOfRange` / `TypeMismatch` / `unsupported enum value`
-- Files allowed to edit (at most 3):
-  - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`
-- Files explicitly out of bounds:
-  - `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` (Step 4)
-  - `OrcaSlicerDocumented/...` - delegate; never load
-- Blast-radius discipline: no struct fields or schema constants are touched — test arms only.
-- Expected sub-agent dispatches:
-  - Question: does the bounds harness already cover float min/max and enum `TypeMismatch`
-    arms (precedent from packet 259/260/261/262/263's keys), and can AC-4's six arms mirror
-    them directly?; scope: `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`; return: `FACT`; purpose: the arm shapes.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/03_wit_and_manifest.md` - lines `1570-1590` (the bounds index contract)
-- OrcaSlicer refs:
-  - none (bounds are canonical-declared, already captured)
-- Verification:
-  - `cargo test -p slicer-scheduler --test integration config_bounds_enforcement_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-- Exit condition: the AC-4 arms green.
+- **Objective:** port canonical `FillMonotonicLines` — monotonic sweep ordering with no contour connectors.
+- **Preconditions:** Step 2 exit met.
+- **Allowed reads:** own crate; `crates/slicer-sdk/src/views.rs` accessors.
+- **Edits:** `modules/core-modules/monotonicline-infill/src/lib.rs`, its manifest, `tests/monotonicline_infill_tdd.rs`.
+- **Dispatches:** `SUMMARY` ≤ 200 words + ≤ 3 snippets ≤ 30 lines — `FillMonotonicLines::fill_surface`, `fill_surface_by_lines`' monotonic branch, `connect_segment_intersections_by_contours`.
+- **Cost:** M
+- **Verification:** `cargo test -p monotonicline-infill --test monotonicline_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-6's monotonic-order and zero-connector assertions pass. If the emitted lines are not in monotonic sweep order, the port of the ordering branch is wrong — fix it here, do not weaken the assertion.
 
-### Step 4: Padding correction + guest rebuild + CONFIG_BLOCK arm
+### Step 4: `alignedrectilinear-infill`
 
-- Task IDs: none (queue packet — wayfinder ticket 17)
-- Objective: `crates/slicer-gcode/src/serialize.rs`'s `ORCA_CONFIG_PADDING` entry
-  `("top_surface_pattern", "monotonic")` is corrected to `("top_surface_pattern",
-  "monotonicline")` (canonical default — ticket-14/262 precedent); the rectilinear guest
-  is rebuilt against the enlarged manifest and wired module (`cargo xtask build-guests`);
-  the AC-5 arms land in `gcode_header_thumbnail_config_blocks_tdd.rs` (defaults: the block
-  carries `; top_surface_pattern = monotonicline` and `; bottom_surface_pattern =
-  monotonic` and zero `top_surface_density` / `bottom_surface_density` lines; explicit
-  raw-config `top_surface_density = 50.0` → `; top_surface_density = 50` exactly once;
-  explicit `top_surface_pattern = "concentric"` → `; top_surface_pattern = concentric`
-  exactly once, padding twin suppressed by the `emit_config_kv` dedup).
-- Precondition: Steps 1-3 complete (manifest final; module wire landed).
-- Postcondition: `cargo xtask build-guests --check` returns exit 0; `cargo test -p
-  slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd` passes
-  with the AC-5 arms green.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-gcode/src/serialize.rs` - lines `455-470` (the padding loop + `emit_config_kv` dedup — read-only context; the only edit is the value at line 505)
-  - `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` - lines `1-120` (setup) + grep for an existing CONFIG_BLOCK assertion to mirror
-- Files allowed to edit (at most 3):
-  - `crates/slicer-gcode/src/serialize.rs` (the single padding value)
-  - `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`
-- Files explicitly out of bounds:
-  - `crates/slicer-gcode/src/serialize.rs` beyond the single padding value (no twins added or removed; AC-5 pins honest absence for the density keys)
-  - `modules/core-modules/*/src` (all module sources — Step 2 is done)
-  - `OrcaSlicerDocumented/...` - delegate; never load
-- Blast-radius discipline: no struct fields or schema constants are touched — one padding
-  value + test arms; the guest rebuild is fingerprint-mandatory, not a code change.
-- Expected sub-agent dispatches:
-  - Question: does the runtime CONFIG_BLOCK driver thread an explicit raw-config float
-    into `serialize_config_block` for a key with NO padding twin, and does an explicit
-    enum value suppress its padding twin via the `emit_config_kv` dedup (packet-257 AC-5
-    and packet-262 AC-7 precedent)?; scope:
-    `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`
-    + `crates/slicer-gcode/src/serialize.rs`; return: `FACT`; purpose: the AC-5 arms.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` - delegated SUMMARY (§CONFIG_BLOCK contract)
-- OrcaSlicer refs:
-  - none
-- Verification:
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit code (must be 0)
-  - `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-- Exit condition: guests fresh (exit 0) and the AC-5 arms green.
+- **Objective:** port canonical `FillAlignedRectilinear` — rectilinear with the per-layer angle pinned to 0.
+- **Preconditions:** Step 3 exit met.
+- **Allowed reads:** own crate; `modules/core-modules/rectilinear-infill/src/lib.rs` scan-line helpers as the reference implementation.
+- **Edits:** the crate's `src/lib.rs`, manifest, `tests/alignedrectilinear_infill_tdd.rs`.
+- **Dispatches:** `SUMMARY` ≤ 200 words — `FillAlignedRectilinear` and how it differs from `FillRectilinear::fill_surface`.
+- **Cost:** S
+- **Verification:** `cargo test -p alignedrectilinear-infill --test alignedrectilinear_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-7 green — first-line angle identical across three consecutive layer indices, and demonstrably different for `rectilinear-infill` on the same fixture. If the rectilinear comparison arm does not alternate, the fixture does not exercise per-layer angle and the AC is vacuous — fix the fixture.
 
-### Step 5: Docs regeneration + closure gates
+### Step 5: `concentric-infill`
 
-- Task IDs: none (queue packet — wayfinder ticket 17)
-- Objective: `cargo xtask gen-config-docs` regenerates `docs/15_config_keys_reference.md`
-  (4 new module-key rows under the `rectilinear-infill` owner column; deviation block
-  unchanged at 26 — re-measured at implementation time per the ledger-fact rule; 26
-  measured at 264 authoring); the workspace gates pass.
-- Precondition: Steps 1-4 complete (manifest final).
-- Postcondition: `cargo xtask gen-config-docs --check` passes; the AC-6 probe passes;
-  `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets --
-  -D warnings` pass; `cargo xtask build-guests --check` returns exit 0.
-- Files allowed to read, with ranges when over 300 lines:
-  - `docs/15_config_keys_reference.md` - never load in full; verify via `--check` and the AC-6 `rg`/`sed` probe
-- Files allowed to edit (at most 3):
-  - `docs/15_config_keys_reference.md` (generated — via `cargo xtask gen-config-docs`, never hand-written)
-- Files explicitly out of bounds:
-  - `docs/ORCA_CONFIG_REFERENCE.md` (ticket 07 ruling — untouched)
-  - `OrcaSlicerDocumented/...` - delegate; never load
-- Blast-radius discipline: none (generated doc + gates).
-- Expected sub-agent dispatches:
-  - Question: does `cargo xtask gen-config-docs --check` pass after regeneration, do the
-    4 keys appear in the module-key table under the `rectilinear-infill` owner column, and
-    does the deviations block still count 26 data rows?; scope: `docs/15_config_keys_reference.md`
-    + xtask; return: `FACT`; purpose: AC-6.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/15_config_keys_reference.md` - generated; delegated reads only
-- OrcaSlicer refs:
-  - none
-- Verification:
-  - `cargo xtask gen-config-docs --check && for k in top_surface_density bottom_surface_density top_surface_pattern bottom_surface_pattern; do rg -q "$k" docs/15_config_keys_reference.md || exit 9; done && [ "$(sed -n '/BEGIN GENERATED: orca-deviations/,/END GENERATED: orca-deviations/p' docs/15_config_keys_reference.md | grep -c "^| \`")" = "26" ]; echo "exit=$?"` - FACT exit code
-  - `cargo check --workspace --all-targets` - FACT pass/fail
-  - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit code (must be 0)
-- Exit condition: all four gates green.
+- **Objective:** port canonical `FillConcentric::_fill_surface_single` — nested closed loops by successive inward offset.
+- **Preconditions:** Step 4 exit met.
+- **Allowed reads:** own crate; the SDK offset helper used elsewhere in `modules/core-modules/`.
+- **Edits:** the crate's `src/lib.rs`, manifest, `tests/concentric_infill_tdd.rs`.
+- **Dispatches:** `SUMMARY` ≤ 200 words + ≤ 1 snippet ≤ 30 lines — `FillConcentric::_fill_surface_single`.
+- **Cost:** M
+- **Verification:** `cargo test -p concentric-infill --test concentric_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-8 green on the annulus fixture — all paths closed, strictly nested, loop count equal to the number of non-empty successive offsets. An open path or a straight scan line falsifies the port.
+
+### Step 6: the three `FillPlanePath` fillers
+
+- **Objective:** port `FillHilbertCurve`, `FillArchimedeanChords`, `FillOctagramSpiral`, each emitting one continuous clipped curve.
+- **Preconditions:** Step 5 exit met.
+- **Allowed reads:** the three own crates.
+- **Edits:** `hilbert-curve-infill`, `archimedean-chords-infill`, `octagram-spiral-infill` — `src/lib.rs`, manifest, and test file each.
+- **Dispatches:** `SUMMARY` ≤ 200 words + ≤ 3 snippets ≤ 30 lines — the three point generators and `FillPlanePath::fill_surface`'s `dont_connect() || density > 0.5` short-circuit.
+- **Cost:** M
+- **Authorities:** `docs/08_coordinate_system.md` — the curves are generated in mm and converted once at the boundary.
+- **Verification:** `cargo test -p hilbert-curve-infill --test hilbert_curve_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`, then the same form for `archimedean-chords-infill` and `octagram-spiral-infill`.
+- **Exit / falsifying condition:** AC-9 green for all three — one continuous polyline each, contained in the region, and the three structural discriminators (lattice membership, monotonic radius, octagram turn-angle set) each hold for exactly their own curve. If any filler emits more than one polyline for a solid region, the `dont_connect` short-circuit was not ported.
+
+### Step 7: `monotonic-infill` gains `claim:bottom-fill`
+
+- **Objective:** give canonical's `bottom_surface_pattern` default (`monotonic`) a holder.
+- **Preconditions:** Step 6 exit met.
+- **Allowed reads:** `modules/core-modules/monotonic-infill/src/lib.rs`.
+- **Edits:** `modules/core-modules/monotonic-infill/monotonic-infill.toml` (append `"claim:bottom-fill"` to `holds`); `modules/core-modules/monotonic-infill/src/lib.rs` (the `BottomSolidInfill` emission arm).
+- **Out of bounds:** `docs/spec_packets/262b-infill-pattern-holder-mapping/**` — never edit another packet's directory.
+- **Cost:** S
+- **Verification:** `cargo test -p monotonic-infill --test monotonic_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` and the AC-10 command.
+- **Exit / falsifying condition:** `monotonic-infill` emits `BottomSolidInfill` when it holds `claim:bottom-fill` and nothing when it does not; 262b's own tests stay green.
+
+### Step 8: the pattern→holder derivation, global and per-object
+
+- **Objective:** make both pattern keys resolve to holders on both resolution paths, rejecting unknown values.
+- **Preconditions:** Step 7 exit met — all eight target modules exist, so no mapping entry points at a missing module.
+- **Allowed reads:** `crates/slicer-scheduler/src/config_resolution.rs` — `resolve_global_config`, `apply_overlay`, and 262b's derivation helper.
+- **Edits:** `crates/slicer-scheduler/src/config_resolution.rs`; net-new `crates/slicer-scheduler/tests/integration/top_bottom_pattern_holder_tdd.rs` + its `mod` line in `tests/integration/main.rs`.
+- **Cost:** M
+- **Authorities:** `docs/04_host_scheduler.md` § Claim Resolution.
+- **Verification:** `cargo test -p slicer-scheduler --test scheduler_integration top_bottom_pattern_holder 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-1, AC-2, AC-3, AC-N3 all green. A derivation that satisfies AC-1/AC-2 but not AC-3 means it was added only to `resolve_global_config` — not done.
+
+### Step 9: the density wire in `rectilinear-infill`
+
+- **Objective:** replace the hardcoded `SOLID_DENSITY` with the two resolved fractions and add canonical's top-surface zero skip.
+- **Preconditions:** Step 8 exit met.
+- **Allowed reads:** `modules/core-modules/rectilinear-infill/src/lib.rs` — `LayerModule::from_config`, `run_infill`, `solid_fill_role`, `adjust_solid_spacing`.
+- **Edits:** that `src/lib.rs`; `rectilinear-infill.toml` (two `[config.schema]` tables); `rectilinear-infill/Cargo.toml` (`toml = "0.8"` dev-dep, add-if-absent); `tests/top_bottom_fill_tdd.rs`.
+- **Blast radius owned by this step:** adding two fields to `RectilinearInfill` puts every test-code literal of that struct under the struct-literal churn gate — each needs a `..` rest or an `// exhaustive: <reason>` waiver. Fix them here; `cargo xtask check-literals` must pass before the step closes.
+- **Cost:** M
+- **Authorities:** `docs/21_data_defaults_and_fixtures.md`; `docs/08_coordinate_system.md`.
+- **Verification:** `cargo test -p rectilinear-infill --test top_bottom_fill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`, then `cargo xtask check-literals`, then the AC-N1 command.
+- **Exit / falsifying condition:** AC-4 and AC-5 green **and** AC-N1 still byte-identical. If the default path shifts by even one path, the percent→fraction normalization is wrong — fix it here; never re-baseline AC-N1.
+
+### Step 10: schema guard and bounds enforcement
+
+- **Objective:** pin the two density tables and their canonical bounds, and pin that no manifest declares either pattern key.
+- **Preconditions:** Step 9 exit met.
+- **Edits:** net-new `modules/core-modules/rectilinear-infill/tests/top_bottom_surface_config_schema_tdd.rs`; `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`.
+- **Cost:** S
+- **Verification:** `cargo test -p rectilinear-infill --test top_bottom_surface_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` and `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Exit / falsifying condition:** AC-12, AC-13, AC-N5 green. `bottom_surface_density = 5` **must** be rejected; if it resolves, the min of 10 was not carried from canonical.
+
+### Step 11: claim resolution, docs, guests, closure gates
+
+- **Objective:** prove end-to-end holder selection, land the hand-maintained docs, regenerate the generated one, and refresh the guests.
+- **Preconditions:** Step 10 exit met.
+- **Edits:** `crates/slicer-runtime/tests/contract/` (`native_infill_claim_resolution` arms); `docs/04_host_scheduler.md` § Claim Resolution; `docs/03_wit_and_manifest.md` § Known claim IDs; `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs`; the eight guest `.wasm` artifacts.
+- **Cost:** M
+- **Verification:** `cargo test -p slicer-runtime --test contract native_infill_claim_resolution 2>&1 | tee target/test-output.log | grep -E "^test result"`; the AC-14 and AC-15 commands; `cargo xtask build-guests --check; echo "exit=$?"` (exit 0 required — never grep for `STALE:`); `git diff --unified=0 -- crates/slicer-gcode/src/serialize.rs | grep -cE "^[+-][^+-]"` must print `0`.
+- **Exit / falsifying condition:** AC-11, AC-14, AC-15, AC-N2, AC-N4 green and `build-guests --check` exits 0.
 
 ## Per-Step Budget Roll-Up
 
-| Step | Context Cost | Notes |
+| Step | Cost | Primary surface |
 | --- | --- | --- |
-| Step 1 | S | manifest + guard + dev-dep |
-| Step 2 | S | module wire + three test arms + no-reads grep |
-| Step 3 | S | scheduler arms |
-| Step 4 | S | padding correction + guest rebuild + CONFIG_BLOCK arm |
-| Step 5 | S | docs + gates |
+| 1 | M | six new crates + four registration surfaces |
+| 2 | S | manifest ingestion + module count |
+| 3 | M | `monotonicline-infill` |
+| 4 | S | `alignedrectilinear-infill` |
+| 5 | M | `concentric-infill` |
+| 6 | M | three `FillPlanePath` crates |
+| 7 | S | `monotonic-infill` bottom claim |
+| 8 | M | pattern→holder derivation |
+| 9 | M | density wire + literal blast radius |
+| 10 | S | schema guard + bounds |
+| 11 | M | claims, docs, guests, gates |
 
-Aggregate `S` — no step is L; no split required.
+Aggregate: **L**. No single step is L, so no split is required before activation.
 
 ## Packet Completion Gate
 
-- All steps and exits complete.
-- Every pipe-suffixed AC command returns PASS.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read (re-derive the crosswalk question at completion time — queue precedent at 234a/253/254/255/256/257/258/259/260/261/262/263: no TASK row; implementation is recorded against wayfinder ticket 17).
-- Reconcile reopened/superseded status transitions.
-- `packet.spec.md` is ready for `status: implemented`.
+All of the following, each delegated with a `FACT pass/fail` return:
+
+1. `cargo check --workspace --all-targets`
+2. `cargo clippy --workspace --all-targets -- -D warnings`
+3. `cargo xtask check-literals`
+4. `cargo xtask build-guests --check; echo "exit=$?"` — exit 0
+5. Every AC command in `requirements.md` § Verification Matrix, green
+6. The two map gates re-checked by the closing agent: (a) the disposition table lists zero declaration-only keys; (b) every key has at least one AC asserting a behaviour change at a non-default value
 
 ## Acceptance Ceremony
 
-- Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Record remaining packet-local risk.
-- Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
-
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+`cargo test --workspace` is **not** required by this packet's ACs and must not be run as an AC command. If the closing agent judges the whole-suite run necessary because eight guests and a shared config-resolution path changed, it runs `cargo xtask test --summary --workspace` (never bare `cargo test --workspace`) and is dispatched to a sub-agent returning `FACT pass/fail` only — after every narrower command above has already passed.

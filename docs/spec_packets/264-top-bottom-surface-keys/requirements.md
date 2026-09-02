@@ -2,156 +2,175 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: none — queue packet (wayfinder precedent: packets 234a, 253–263 carry `task_ids: []`); implementation is recorded against wayfinder ticket 17.
-- Backlog source: `docs/specs/orca-feature-gap/issues/17-author-packet-p10-strength-top-bottom-shells-infill-modules.md` (wayfinder map "Close the OrcaSlicer FFF feature gap", packet P10).
-- Packet status: `draft`
-- Aggregate context cost: `S`
+- **Packet directory:** `docs/spec_packets/264-top-bottom-surface-keys/`
+- **Slug:** `top-bottom-surface-keys`
+- **Status:** `draft`
+- **Task IDs:** none (queue packet — `task_ids: []`, precedent packets 234a, 253–263)
+- **Backlog source:** wayfinder ticket 17 (`docs/specs/orca-feature-gap/issues/17-author-packet-p10-strength-top-bottom-shells-infill-modules.md`), map `docs/specs/orca-feature-gap/map.md` packet P10
+- **Tier:** **C** — re-derived. The prior revision was Tier A on the "declare + wire the cheap keys" reading. Under map Authoring rule 1 a packet that *builds* a decision point is B or C; this packet builds six new fill modules plus a host-side selection derivation, which is above the Tier B ceiling of a single-module diff. See `design.md` § Tier Derivation.
+- **Re-authoring note:** this directory is overwritten in place (number and slug retained) with explicit user approval, under map Authoring rules 1–6.
 
 ## Problem Statement
 
-Packet P10 (Strength / Top/bottom shells — owner `infill modules`) is the next uncovered
-slice of the OrcaSlicer FFF feature-gap queue (`05-asset-packet-list.md` §P10 — 4 keys,
-Tier A). Authoring-time grounding against canonical (delegated reads, 2026-09-01) and the
-tree (measured 2026-09-01) confirms the tier table's owner and re-adjudicates the tier
-per key:
+OrcaSlicer lets a user choose *how* top and bottom solid surfaces are filled (`top_surface_pattern`, `bottom_surface_pattern`, eight filler algorithms each) and *how densely* (`top_surface_density`, `bottom_surface_density`). Pinch 'n Print today does neither: solid spacing is hardcoded (`const SOLID_DENSITY: f32 = 1.0` in `modules/core-modules/rectilinear-infill/src/lib.rs`, used twice inside `RectilinearInfill::run_infill`), and the two pattern keys are read nowhere — a survey of the tree found `top_surface_density` and `bottom_surface_density` present only in documentation and gap inventories, never in Rust or TOML source.
 
-- **The two density keys are wired (Tier A plumbing).** `top_surface_density` and
-  `bottom_surface_density` (canonical coPercent, default 100, on `PrintRegionConfig`) feed
-  the solid-surface fill spacing in canonical `Fill.cpp` `group_fills` (per-surface-type
-  `params.density` assignment) → `FillLine.cpp` `FillLine::_fill_surface_single`
-  (`line_spacing = flow.spacing() / density`). The port's rectilinear-infill module has
-  exactly the same decision point: the top/bottom solid blocks in
-  `modules/core-modules/rectilinear-infill/src/lib.rs` compute
-  `solid_spacing = line_width / SOLID_DENSITY` with `SOLID_DENSITY = 1.0` (the canonical
-  default's fraction). The wire replaces the constant with the key's percent/100 fraction
-  at the exposed surface (top_shell_index 0) and keeps 1.0 for internal solid
-  (top_shell_index ≥ 1) — canonical `group_fills` gives `stInternalSolid` a **fixed**
-  `100.f`, not a key. Canonical's `density <= 0` skip (top branch only) is wired as a
-  `density > 0` gate on the top block; `bottom_surface_density`'s canonical min 10 makes
-  the bottom gate provably inert. At canonical defaults (100 → fraction 1.0) the emitted
-  paths are byte-identical to today (AC-2); non-default values change the solid spacing
-  (AC-3) — the value reaches the consumer.
-- **The two pattern keys are re-adjudicated declared-with-gap.** `top_surface_pattern`
-  (canonical default `ipMonotonicLine`) and `bottom_surface_pattern` (canonical default
-  `ipMonotonic`) select the filler class in canonical (`group_fills` → `FillBase.cpp`
-  `Fill::new_from_type`); in this port the pattern IS the module identity —
-  `rectilinear-infill`, `gyroid-infill`, `lightning-infill` each implement exactly one
-  pattern family, and the host selects the module per region via the `*_fill_holder` CLI
-  keys (`crates/slicer-ir/src/resolved_config.rs`, default `"rectilinear-infill"`). This
-  is packet 262's `internal_solid_infill_pattern` finding, unchanged for the surface
-  roles. Canonical's other pattern reads are recorded, not wired: the extra-internal-solid
-  fill branch (`group_fills`, `top_surface_pattern` monotonic/monotonicline → that
-  pattern else rectilinear, density fixed 100 — the port has no
-  `infill_only_where_needed`-style extra-solid pass), `GCode.cpp` `_needSAFC` and
-  `retract` (SAFC applicability and the hilbertcurve retraction exclusion — the port has
-  neither SAFC nor the hilbertcurve pattern).
-- **One CONFIG_BLOCK padding correction.** `ORCA_CONFIG_PADDING` in
-  `crates/slicer-gcode/src/serialize.rs` carries `("top_surface_pattern", "monotonic")`;
-  the canonical default is `monotonicline` (verified in `PrintConfig.cpp` — `ipMonotonicLine`).
-  The padding twin is corrected to `"monotonicline"` (ticket 14's `fuzzy_skin` and packet
-  262's `sparse_infill_pattern` padding-correction precedent). `("bottom_surface_pattern",
-  "monotonic")` already matches canonical and stays.
-- **No recorded behavior divergence at defaults.** Every declared default equals canonical
-  (the two percents `100%`; the two enums `monotonicline`/`monotonic`). The wired keys are
-  default-path identity (AC-2); the declared-with-gap keys are unread. The deviation gate
-  (`render_deviations` in `xtask/src/gen_config_docs.rs`, numeric-only comparison) gains
-  no rows: `100%` fails `parse::<f64>` (ticket 106's finding) and never enters the map;
-  the enum defaults are strings and never enter it either.
-- **The gyroid opt-in solid path is recorded, not wired.** ADR-0027 lets a user set
-  `top_fill_holder`/`bottom_fill_holder` = `"gyroid-infill"`; gyroid's solid emission
-  (`modules/core-modules/gyroid-infill/src/lib.rs` `emit_polys` over `top_solid_fill()` /
-  `bottom_solid_fill()`) rides the module's single `self.density` read from
-  `sparse_infill_density` — a pre-existing divergence (gyroid solid at sparse density).
-  Wiring the P10 density keys into gyroid would change that opt-in behavior at defaults
-  (sparse 0.2 → solid 1.0), which is a behavior change this packet does not make; the
-  keys are declared in `rectilinear-infill.toml` only and the omission is pinned (AC-N2)
-  so a future gyroid-solid-density packet must consciously update.
+The prior revision of this packet wired the two density keys and declared the two pattern keys "with-gap", on the reasoning that pattern selection is module identity in this port. That reasoning is now inverted by map Authoring rule 4: module identity *is* the claim-holder mechanism, so an Orca enum whose values are different algorithms is exactly a set of `claim:*` holders selected through `top_fill_holder` / `bottom_fill_holder`. Declaring the keys without building the holders covers nothing.
 
-No user rulings were required: every wired key is default-path identity with the value
-reaching the consumer, every declared-with-gap key is declared with canonical
-defaults/bounds, and the padding correction aligns a cosmetic CONFIG_BLOCK line to
-canonical.
+This packet therefore makes all four keys drive behaviour: two density divisors inside the existing solid-fill decision points, and two host-side selection keys resolving onto eight real filler modules.
+
+## Key Disposition Table
+
+Classification per the map's Authoring rules: **(a)** live behaviour-changing decision point already in tree; **(b)** decision point this packet builds; **(c)** returned to queue (no decision point, not built here); **(d)** dead-in-canonical.
+
+| Key | Class | Owner | Decision point this packet builds | Non-default AC |
+| --- | --- | --- | --- | --- |
+| `top_surface_density` | **(b)** | `rectilinear-infill` (manifest key) | exposed-top solid line spacing divisor, replacing the hardcoded `SOLID_DENSITY`, plus canonical's `density <= 0` emit-nothing skip | AC-4, AC-5 |
+| `bottom_surface_density` | **(b)** | `rectilinear-infill` (manifest key) | exposed-bottom solid line spacing divisor (no zero skip — canonical min is 10) | AC-4 |
+| `top_surface_pattern` | **(b)** | host (`resolve_global_config`) | value→`top_fill_holder` mapping over eight `claim:top-fill` holder modules, six of them built by this packet | AC-1, AC-3, AC-N3 |
+| `bottom_surface_pattern` | **(b)** | host (`resolve_global_config`) | value→`bottom_fill_holder` mapping over the same eight modules, all of which this packet gives `claim:bottom-fill` | AC-2, AC-N3 |
+
+Counts: **(a) 0 · (b) 4 · (c) 0 · (d) 0.** Zero declaration-only keys (map preflight gate (a)); every key carries at least one AC asserting a behaviour change at a non-default value (map preflight gate (b)).
+
+## Returned to Queue — unimplemented
+
+**None.** All four ticket-17 keys are implemented by this packet.
+
+Two *behaviours* adjacent to these keys are deliberately not built here and are recorded in § Out of Scope rather than as returned keys, because they are not keys in ticket 17's list: canonical's top-surface **expansion** pass (which reads `top_surface_density > 0` in `PerimeterGenerator.cpp` `top_fill_replaces_inner_walls` and `PrintObject.cpp` `detect_surfaces_type` — the port has no such pass), and canonical's bridge/void-extension **fallback** that reads `top_surface_pattern` to pick a bridge filler (the port routes bridges through `bridge_fill_holder` instead; see `design.md` DIV-2).
+
+## Ruled Dead-in-Canonical
+
+**None.** Every one of the four keys has at least one read site inside OrcaSlicer's slicing pipeline under `src/libslic3r/`, not merely in `ConfigManipulation.cpp`, GUI tooltips, preset plumbing, or an `IGNORE`/legacy-alias set:
+
+- `top_surface_pattern` — `Fill/Fill.cpp` `group_fills` (top branch, bridge fallback, void-extension path); also `GCode.cpp` `_needSAFC` and `GCode::retract`.
+- `bottom_surface_pattern` — `Fill/Fill.cpp` `group_fills` (bottom branch); also `GCode.cpp` `_needSAFC` / `retract`.
+- `top_surface_density` — `Fill/Fill.cpp` `group_fills` (top branch, including the `continue` when density <= 0); `PerimeterGenerator.cpp` `top_fill_replaces_inner_walls`; `PrintObject.cpp` `detect_surfaces_type`.
+- `bottom_surface_density` — `Fill/Fill.cpp` `group_fills` (bottom branch). This is its *only* slicing read site; its other libslic3r mentions are `PrintObject::invalidate_state_by_config_options` (a key-name list, not a value read) and `Preset.cpp`'s key list. One live read site is sufficient — the key is not dead.
 
 ## In Scope
 
-- 4 `[config.schema]` tables in `rectilinear-infill.toml` (AC-1), each with canonical
-  type/default/bounds/values, the canonical-title `display`, `group = "Infill"`, and a
-  `description` field recording the disposition (wired consumer or decision-point gap).
-- The density wire in `modules/core-modules/rectilinear-infill/src/lib.rs`: 2 new
-  `RectilinearInfill` struct fields (`top_surface_density`, `bottom_surface_density`,
-  percent/100 fractions read in `from_config` via `get_abs_value` — the
-  `sparse_infill_density` read pattern), the top/bottom solid blocks' spacing switched
-  from the `SOLID_DENSITY` constant to the per-region density (key fraction at
-  top_shell_index 0, `SOLID_DENSITY` at ≥ 1), and the `density > 0` gate on the top block
-  (canonical `density <= 0` skip; the bottom gate is provably inert under min 10).
-- Manifest guard test file `modules/core-modules/rectilinear-infill/tests/
-  top_bottom_surface_config_schema_tdd.rs` (net-new, distinct binary from packet 262's
-  `infill_config_schema_tdd` and 263's `infill_pattern_specific_config_schema_tdd` so the
-  three packets' net-new files never collide; mirrors the part-cooling guard pattern
-  `cooling_config_schema_tdd.rs` and packet 263's guard form); pins the 4 tables and the
-  AC-N2 gyroid/lightning omission; requires the `toml = "0.8"` dev-dependency in
-  `rectilinear-infill/Cargo.toml` (add-if-absent — absent at 264 authoring; may already
-  exist when 262/263's steps land, since they implement first per queue order).
-- Identity/reachability/skip arms in the existing module suite
-  `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs` (AC-2:
-  explicit-canonical-defaults vs absent → byte-identical paths; AC-3: density 50 → path
-  count approximately halves; AC-N3: density 0 → zero `TopSolidInfill` paths for the
-  exposed region while an internal-solid region still emits).
-- Bounds/type rejection arms in the existing scheduler integration binary
-  `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` (AC-4).
-- The `ORCA_CONFIG_PADDING` value correction `("top_surface_pattern", "monotonic")` →
-  `("top_surface_pattern", "monotonicline")` in `crates/slicer-gcode/src/serialize.rs`
-  (AC-5) — the packet's only edit to that file.
-- CONFIG_BLOCK arms in the existing runtime integration binary
-  `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`
-  (AC-5: corrected/unchanged pattern twins at defaults, zero density lines at defaults,
-  explicit values appear once).
-- Regeneration of `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs`
-  (AC-6) and a guest rebuild (`cargo xtask build-guests` — `rectilinear-infill.toml` and
-  `rectilinear-infill/src/lib.rs` are guest-fingerprint inputs).
+1. **`monotonicline-infill`** — new core module crate (`Cargo.toml`, `src/lib.rs`, `monotonicline-infill.toml`, `wit-guest/`, `tests/monotonicline_infill_tdd.rs`), `LayerModule` at `Layer::Infill`, holds `claim:top-fill` and `claim:bottom-fill`. Ports canonical `FillMonotonicLines::fill_surface`: monotonic sweep ordering with `anchor_length_max = 0`, i.e. discrete unconnected lines.
+2. **`alignedrectilinear-infill`** — same crate shape (`tests/alignedrectilinear_infill_tdd.rs`). Ports canonical `FillAlignedRectilinear`: the rectilinear scan-line generator with the per-layer angle pinned to 0 so the fill direction is identical on every layer.
+3. **`concentric-infill`** — same crate shape (`tests/concentric_infill_tdd.rs`). Ports canonical `FillConcentric::_fill_surface_single`: successive inward offsets emitted as nested closed loops.
+4. **`hilbert-curve-infill`**, **`archimedean-chords-infill`**, **`octagram-spiral-infill`** — three `FillPlanePath`-family crates (`tests/hilbert_curve_infill_tdd.rs`, `tests/archimedean_chords_infill_tdd.rs`, `tests/octagram_spiral_infill_tdd.rs`). Each generates its space-filling curve over the region bounding box, clips to the region, and emits one continuous polyline (canonical `FillPlanePath::fill_surface` never contour-connects a solid plane-path fill).
+5. **`monotonic-infill` extension** — append `claim:bottom-fill` to the `holds` list in `modules/core-modules/monotonic-infill/monotonic-infill.toml` (created by packet 262b) and add the `BottomSolidInfill` emission arm to its `run_infill`, so canonical's `bottom_surface_pattern` default (`ipMonotonic`) has a holder.
+6. **Host-side pattern→holder derivation** — extend the derivation packet 262b adds to `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`) with `top_surface_pattern` → `top_fill_holder` and `bottom_surface_pattern` → `bottom_fill_holder`, and apply the same derivation on the per-object overlay path (`apply_overlay`, consumed by `resolve_per_object_configs`). Explicit holder keys win; absent keys leave the `"rectilinear-infill"` default; unknown values are rejected by name.
+7. **Density wire** — two new fields on `RectilinearInfill` populated in `RectilinearInfill`'s `LayerModule::from_config` impl, replacing both uses of `SOLID_DENSITY` in `RectilinearInfill::run_infill` with the per-role resolved fraction, and gating the exposed-top block on `density > 0`. Internal solid (`solid_fill_role`'s `Some(n >= 1)` arm) keeps full density, matching canonical's fixed `100.f` for `stInternalSolid`.
+8. **Manifest ownership of the two density keys** on `rectilinear-infill.toml` with canonical types/defaults/bounds and a `description` naming the canonical consumer; the two *pattern* keys are declared in no manifest at all, because they are host-side selection keys (the `wall_generator` precedent in `docs/04_host_scheduler.md`).
+9. **Registration**: workspace members in the root `Cargo.toml`; `crates/slicer-integrated-modules/Cargo.toml` optional deps + features; `crates/slicer-integrated-modules/src/lib.rs` `manifest_const!` + `integrated_registry!` entries and their `#[cfg(not(feature = …))]` arms; `crates/pnp-cli/Cargo.toml` `integrated-<name>` passthrough features (required by `xtask/src/dist.rs`'s per-module passthrough check).
+10. **Docs**: the pattern→holder subsection in `docs/04_host_scheduler.md` § Claim Resolution; the six new owners noted on the `claim:top-fill` / `claim:bottom-fill` rows in `docs/03_wit_and_manifest.md` § Known claim IDs; regeneration of `docs/15_config_keys_reference.md`.
 
 ## Out of Scope
 
-- **Pattern dispatch** — canonical's `top_surface_pattern` / `bottom_surface_pattern`
-  select the filler class (`FillBase.cpp` `Fill::new_from_type`); the port's pattern is
-  module identity selected by the host `*_fill_holder` resolution (packet 262's finding,
-  unchanged here). A pattern→module mapping is host-side config-resolution work, not an
-  infill-module decision point; the keys are declared-with-gap and the divergence (port
-  solid fill = rectilinear scan-line generator vs canonical `ipMonotonicLine` /
-  `ipMonotonic` filler classes) is recorded.
-- **The gyroid opt-in solid path** — ADR-0027's multi-role gyroid emission rides the
-  sparse density; wiring the P10 density keys there would change that opt-in behavior at
-  defaults. Recorded divergence; a future gyroid-solid-density packet re-opens it
-  (AC-N2 pins the omission).
-- **Canonical's surface-expansion density gates** — `PrintObject.cpp`
-  `detect_surfaces_type` and `PerimeterGenerator.cpp` `top_fill_replaces_inner_walls`
-  gate top-surface expansion geometry on `density > 0`; the port has no top-surface
-  expansion pass. Recorded in the density keys' dispositions, not wired.
-- **The extra-internal-solid-fill branch** — canonical `group_fills` reads
-  `top_surface_pattern` to pick monotonic vs rectilinear for an extra internal solid fill
-  when internal voids exist (`infill_only_where_needed` machinery); the port has no such
-  pass. Recorded in `top_surface_pattern`'s disposition.
-- **Emission-time pattern reads** — `GCode.cpp` `_needSAFC` (SAFC applicability) and
-  `retract` (hilbertcurve exclusion); the port has neither SAFC nor the hilbertcurve
-  pattern. Recorded, not wired.
-- **Module-source reads of the two pattern keys** — the packet adds zero reads for them;
-  the pattern keys are declared-with-gap (AC-2's byte-identity arm covers the unread
-  contract).
-- **`docs/ORCA_CONFIG_REFERENCE.md` hand-maintained column** — untouched (ticket 07
-  ruling; the queue never reads it).
-- **Tier-table row updates** (`04-asset-tier-assignment.md`) — ride ticket 17's closure
-  (ticket 12/13/14/15/16/18/19 precedent), not this packet's files.
+- **Canonical's top-surface expansion pass.** `PerimeterGenerator.cpp` `top_fill_replaces_inner_walls` (called from `process_classic` and `process_arachne`) and `PrintObject.cpp` `detect_surfaces_type` both gate top-surface *expansion* geometry on `top_surface_density > 0`. The port has no top-surface expansion pass at all, so there is no decision point to gate. Recorded in the key's disposition; a future expansion packet re-opens it.
+- **The bridge fallback and void-extension coupling.** Canonical `group_fills` reads `top_surface_pattern` when choosing a filler for bridges above layer 0 and for the synthesized `stInternalSolid` void extension. The port keeps bridge selection on `bridge_fill_holder` and internal solid on packet 262b's `internal_solid_infill_pattern` → `top_fill_holder` mapping. Recorded as `design.md` DIV-2 (a deliberate decoupling, not a gap).
+- **The `GCode.cpp` pattern reads.** `_needSAFC` (small-area flow compensation enabled only for the rectilinear/monotonic family) and `GCode::retract` (retraction suppressed for `ipHilbertCurve`) read both pattern keys at emission time. The port has neither behaviour; wiring emission-time pattern reads would require the emitter to know the fill holder, which is not a seam this packet opens.
+- **The gyroid opt-in solid path.** ADR-0027's multi-role gyroid emission rides the sparse density; extending the two density keys there would change opt-in behaviour at defaults. AC-N5 pins the omission.
+- **`ORCA_CONFIG_PADDING`.** Not touched, per map Authoring rule 2 and AC-N2. Both density keys will appear in the CONFIG_BLOCK as a side effect of being live; neither pattern key gains or loses a padding twin in this packet.
+- **`internal_solid_infill_pattern` and `sparse_infill_pattern`.** Packet 262b owns those two keys and the first pattern→holder derivation. This packet extends that mechanism; it does not re-specify it.
 
 ## Authoritative Docs
 
-- `docs/15_config_keys_reference.md` — generated (~1000 lines); delegated reads only.
-  Regenerated by this packet (AC-6); never hand-edited.
-- `docs/03_wit_and_manifest.md` — manifest schema shape; delegated SUMMARY if a worker
-  needs the `[config.schema]` contract (the `enum` + `values` form is grounded in-tree:
-  `seam-planner-default.toml` `[config.schema.seam_position]`; the `description` field is
-  parsed by `crates/slicer-scheduler/src/manifest.rs`).
-- `docs/adr/0027-gyroid-multi-role-fill-holder.md` — the gyroid opt-in solid path this
-  packet records, not wires (read-only context).
+- `docs/01_system_architecture.md` § Claim System — the normative claim concept and the Allowed Claim Transition Matrix.
+- `docs/04_host_scheduler.md` § Claim Resolution — the authoritative runtime claim-resolution reference; gains this packet's pattern→holder subsection. Its `wall_generator` subsection is the precedent for a host-side selection key that lives in no module manifest.
+- `docs/03_wit_and_manifest.md` § Known claim IDs — the `claim:top-fill` / `claim:bottom-fill` rows and the `[config.schema]` type-table contract.
+- `docs/adr/0027-gyroid-multi-role-fill-holder.md` — the gyroid solid-emission divergence.
+- `docs/adr/0056-integrated-modules-native-dispatch.md` — registration contract for a new core module.
+- `docs/08_coordinate_system.md` — 1 unit = 100 nm; every filler in this packet is geometry.
+- `docs/15_config_keys_reference.md` — generated by `cargo xtask gen-config-docs`; never hand-edited.
+
+## Parity Evidence Standard
+
+A key counts as covered only when a non-default value changes emitted geometry or emitted G-code, proven by a named test. Default-path identity (AC-N1) is recorded as an additional guard and is never the sole evidence for any key. Canonical evidence is cited by file + function name only, never by line number; in-tree evidence is cited by crate-qualified path + symbol name.
+
+## Per-Key Canonical Evidence
+
+Canonical facts below were established by delegated reads of the sibling `OrcaSlicerDocumented` checkout during authoring; workers re-dispatch rather than re-derive from memory if they dispute any of them.
+
+- **`top_surface_pattern`** — `PrintConfig.cpp` `PrintConfigDef::init_fff_params`: coEnum over `InfillPattern`, default `ipMonotonicLine`, with exactly eight values in this order: `monotonic`, `monotonicline`, `rectilinear`, `alignedrectilinear`, `concentric`, `hilbertcurve`, `archimedeanchords`, `octagramspiral`. Read in `Fill/Fill.cpp` `group_fills` (top branch sets `params.pattern` from it), and twice more in the same function for the bridge fallback and the void-extension fill.
+- **`bottom_surface_pattern`** — same file/function; the value list is copied verbatim from the top key's (`enum_values` assignment), default `ipMonotonic`. Read in `group_fills`' bottom branch.
+- **`top_surface_density`** — coPercent, default 100, min 0, max 100. Read in `group_fills`' top branch, which sets `params.density` from it and `continue`s (emitting nothing for that surface) when the value is <= 0. `Layer::make_fills` then normalizes with `params.density = 0.01 * surface_fill.params.density` before the filler runs.
+- **`bottom_surface_density`** — coPercent, default 100, min **10**, max 100. Read in `group_fills`' bottom branch, which has no zero check — the min of 10 makes zero unreachable, so the port must not copy the top branch's skip onto the bottom block.
+- **Pattern → filler class** — `Fill/FillBase.cpp` `Fill::new_from_type` switches `InfillPattern` onto `FillMonotonic`, `FillMonotonicLines`, `FillRectilinear`, `FillAlignedRectilinear`, `FillConcentric`, `FillHilbertCurve`, `FillArchimedeanChords`, `FillOctagramSpiral`. This switch is the thing this packet reimplements as a value→module map.
+- **`FillMonotonic` vs `FillMonotonicLines`** — both derive from `FillRectilinear`, both set `monotonic = true` and are `no_sort()`, so both run `fill_surface_by_lines`' monotonic branch (`generate_montonous_regions` / `connect_monotonic_regions` / `chain_monotonic_regions`). The sole difference is that `FillMonotonicLines::fill_surface` also sets `anchor_length_max = 0.0f`, which makes `FillParams::dont_connect()` true, so `connect_segment_intersections_by_contours` demotes every otherwise-valid contour link to `TooLong`. Observable: monotonic emits long polylines joined by perimeter-following U-turns; monotonicline emits discrete unconnected lines in the same monotonic order.
+- **`FillAlignedRectilinear`** — identical to `FillRectilinear` except `_layer_angle` is pinned to 0, so the fill direction does not alternate per layer.
+- **`FillPlanePath` family** — `FillPlanePath::fill_surface` short-circuits contour connection whenever `dont_connect() || density > 0.5`; solid fills are always above that density, so hilbert / archimedean / octagram solid fills are single continuous curves.
+- **Internal solid** — `group_fills` gives `stInternalSolid` `internal_solid_infill_pattern` at a fixed `100.f`. Neither of this packet's density keys may reach internal solid.
+
+## In-Tree Grounding (verified at authoring, 2026-09-01)
+
+- `top_fill_holder`, `bottom_fill_holder`, `bridge_fill_holder`, `sparse_fill_holder` are declared in the `declare_resolved_config!` block in `crates/slicer-ir/src/resolved_config.rs` — all `String`, all `cli`-bound, all defaulting to `"rectilinear-infill"`. **No new `ResolvedConfig` field is needed.**
+- `resolve_global_config` and `apply_overlay` live in `crates/slicer-scheduler/src/config_resolution.rs`; the former dispatches values through `ResolvedConfig::apply_cli_key`, the latter builds per-object overlays consumed by `resolve_per_object_configs`.
+- Runtime holder matching is `FillHolders`, `FillHolders::holder_for`, `module_id_matches_holder`, and `resolve_held_claims` in `crates/slicer-scheduler/src/validation.rs`; the four fill claim strings are `FILL_CLAIM_IDS` in the same file.
+- `claim:top-fill` and `claim:bottom-fill` already exist in `docs/03_wit_and_manifest.md` § Known claim IDs. Today only `rectilinear-infill` and `gyroid-infill` declare them. **No new claim ID is needed.**
+- `SliceRegionView` (`crates/slicer-sdk/src/views.rs`) distinguishes surfaces by depth, not by an enum: `top_shell_index()` / `bottom_shell_index()` return `Some(0)` for an exposed surface, `Some(n >= 1)` for internal solid, `None` outside the shell; `top_solid_fill()`, `bottom_solid_fill()`, `internal_solid_fill()` give the polygons; `should_emit(role)` and `held_claims()` gate emission. `should_emit` maps `TopSolidInfill` → `claim:top-fill` and `BottomSolidInfill` → `claim:bottom-fill`, and returns `false` for every role when `held_claims` is empty.
+- `SOLID_DENSITY: f32 = 1.0` is a private const in `modules/core-modules/rectilinear-infill/src/lib.rs`, used exactly twice in `RectilinearInfill::run_infill` as `solid_spacing = mm_to_units(solid_line_width / SOLID_DENSITY)` for the top and bottom blocks; `solid_fill_role(shell_index, exposed)` performs the exposed-vs-internal role split; `adjust_solid_spacing` normalizes spacing.
+- Neither `top_surface_density` nor `bottom_surface_density` is read anywhere in Rust, TOML, or MoonBit source today — their only occurrences are in docs and gap inventories.
+- The scheduler's integration test **target name is `scheduler_integration`** (`[[test]] name = "scheduler_integration", path = "tests/integration/main.rs"` in `crates/slicer-scheduler/Cargo.toml`). The prior revision of this packet used `--test integration`, which names no target; every AC command here uses the real name.
+- Existing `rectilinear-infill` test binaries: `bridge_infill_emission_tdd`, `rectilinear_infill_edge_cases_tdd`, `rectilinear_infill_tdd`, `rectilinear_raw_emit_tdd`, `slicer_module_binding_tdd`, `top_bottom_fill_tdd`. AC-4/AC-5 extend `top_bottom_fill_tdd`; AC-12/AC-N5 land in the net-new `top_bottom_surface_config_schema_tdd`.
+
+## Acceptance Summary
+
+Authoritative Given/When/Then text lives in `packet.spec.md`. IDs only here.
+
+| AC | Subject | Key(s) covered |
+| --- | --- | --- |
+| AC-1 | `top_surface_pattern` → `top_fill_holder`, all 8 values + precedence + rejection | `top_surface_pattern` |
+| AC-2 | `bottom_surface_pattern` → `bottom_fill_holder`, all 8 values + independence | `bottom_surface_pattern` |
+| AC-3 | per-object overlay carries the derivation | both pattern keys |
+| AC-4 | density 50 halves the solid line count (top and bottom) | both density keys |
+| AC-5 | `top_surface_density = 0` emits nothing on exposed top; internal solid unaffected | `top_surface_density` |
+| AC-6 | `monotonicline-infill` vs `monotonic-infill`: connector count 0 vs > 0 | `top_surface_pattern` |
+| AC-7 | `alignedrectilinear-infill` does not alternate per layer | `top_surface_pattern` |
+| AC-8 | `concentric-infill` emits nested closed loops | `top_surface_pattern` |
+| AC-9 | the three plane-path fillers emit one continuous distinguishable curve each | `top_surface_pattern` |
+| AC-10 | manifest ingestion: six new modules, claims, zero Error diagnostics | both pattern keys |
+| AC-11 | claim resolution picks the selected holder and only it | both pattern keys |
+| AC-12 | manifest schema for the two density keys; pattern keys in no manifest | both density keys |
+| AC-13 | bounds enforcement incl. bottom min 10 | both density keys |
+| AC-14 | generated config-keys doc; deviation row count unchanged | both density keys |
+| AC-15 | `docs/04_host_scheduler.md` documents the mapping | both pattern keys |
+| AC-N1 | default path byte-identical (additional guard only) | all four |
+| AC-N2 | zero `ORCA_CONFIG_PADDING` diff lines | — |
+| AC-N3 | unknown/misspelled pattern values rejected, never degraded | both pattern keys |
+| AC-N4 | the six new modules emit nothing for sparse/bridge roles | both pattern keys |
+| AC-N5 | gyroid/lightning declare neither density key | both density keys |
+
+## Verification Matrix
+
+| AC | Command |
+| --- | --- |
+| AC-1, AC-2, AC-3, AC-N3 | `cargo test -p slicer-scheduler --test scheduler_integration top_bottom_pattern_holder 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-4, AC-5 | `cargo test -p rectilinear-infill --test top_bottom_fill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-6 | `cargo test -p monotonicline-infill --test monotonicline_infill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-7 | `cargo test -p alignedrectilinear-infill --test alignedrectilinear_infill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-8 | `cargo test -p concentric-infill --test concentric_infill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-9 | `cargo test -p hilbert-curve-infill --test hilbert_curve_infill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` plus `cargo test -p archimedean-chords-infill --test archimedean_chords_infill_tdd` and `cargo test -p octagram-spiral-infill --test octagram_spiral_infill_tdd` |
+| AC-10 | `cargo test -p slicer-scheduler --test scheduler_integration manifest_ingestion 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-11, AC-N4 | `cargo test -p slicer-runtime --test contract native_infill_claim_resolution 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-12, AC-N5 | `cargo test -p rectilinear-infill --test top_bottom_surface_config_schema_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-13 | `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-14 | `cargo xtask gen-config-docs --check && [ "$(rg -c '^\| \`top_surface_density\`' docs/15_config_keys_reference.md)" = "1" ] && [ "$(rg -c '^\| \`bottom_surface_density\`' docs/15_config_keys_reference.md)" = "1" ]; echo "exit=$?"` |
+| AC-15 | `rg -q 'top_surface_pattern' docs/04_host_scheduler.md && rg -q 'bottom_surface_pattern' docs/04_host_scheduler.md && rg -q 'octagram-spiral-infill' docs/04_host_scheduler.md; echo "exit=$?"` |
+| AC-N1 | `cargo test -p slicer-runtime --test e2e slice_end_to_end 2>&1 \| tee target/test-output.log \| grep -E "^test result"` |
+| AC-N2 | `git diff --unified=0 -- crates/slicer-gcode/src/serialize.rs \| grep -cE "^[+-][^+-]"` (expect `0`) |
+| Gates | `cargo check --workspace --all-targets`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo xtask check-literals`; `cargo xtask build-guests --check; echo "exit=$?"` |
+
+## Step Completion Expectations
+
+Cross-step expectations only; per-step contracts live in `implementation-plan.md`.
+
+- The six new crates must be registered in all four registration surfaces (root `Cargo.toml`, integrated-modules `Cargo.toml`, integrated-modules `src/lib.rs`, `pnp-cli` `Cargo.toml`) in the *same* step that creates them, or `cargo check --workspace --all-targets` and `xtask dist`'s passthrough check will fail out of band.
+- The module-count assertion in `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` must be moved in the same step that lands the six manifests. Re-derive its pre-packet value from disk at that moment; never carry a number forward from this document.
+- The pattern→holder derivation must land in both `resolve_global_config` and `apply_overlay`. A derivation in only the global path passes AC-1 and AC-2 while silently failing AC-3.
+- Removing `SOLID_DENSITY` changes no default output only if the resolved default fraction is exactly 1.0. Land the density wire and its default-identity check together, and keep AC-N1 green from that step onward.
+- `cargo xtask build-guests --check` must return exit 0 before closure: eight guests are affected (six new, plus `rectilinear-infill` and `monotonic-infill`).
+
+## Context Discipline Notes
+
+- Never load `OrcaSlicerDocumented/` directly; every canonical read is a delegated dispatch returning `SUMMARY` or `LOCATIONS`.
+- `crates/slicer-ir/src/resolved_config.rs` is long and macro-dense — read only the `declare_resolved_config!` rows for the four `*_fill_holder` fields; do not load the file.
+- `docs/15_config_keys_reference.md` is generated. Never open it to author; verify it with the AC-14 command.
+- The six new fillers are independent geometry ports. Implement and verify them one crate at a time; do not hold more than one canonical filler algorithm in context at once.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -160,152 +179,12 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — canonical declarations of the 4 keys (all on `PrintRegionConfig`): `top_surface_pattern` coEnum default `ipMonotonicLine` with the 8-value `InfillPattern` list; `top_surface_density` coPercent default 100 min 0 max 100; `bottom_surface_pattern` coEnum (same 8 values) default `ipMonotonic`; `bottom_surface_density` coPercent default 100 min 10 max 100. Authoring-time evidence already captured in §Per-Key Canonical Evidence (dispatched canonical reads, 2026-09-01) and not re-read unless a worker disputes it.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` — `group_fills` (per-surface-type assignment: `stTop` → `top_surface_pattern` + `top_surface_density` with the `density <= 0` skip; `stBottom` → `bottom_surface_pattern` + `bottom_surface_density`; `stInternalSolid` → `internal_solid_infill_pattern` + fixed `100.f`; the extra-internal-solid-fill branch reading `top_surface_pattern`), `Layer::make_fills` (the `0.01 * density` percent normalization).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLine.cpp` — `FillLine::_fill_surface_single` (the spacing formula this packet's wire mirrors: `line_spacing = flow.spacing() / density`).
-- `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` — `top_fill_replaces_inner_walls` (the `density > 0` gate this packet records, not wires).
-- `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `detect_surfaces_type` (the `density > 0` top-surface-expansion gate this packet records, not wires), `invalidate_state_by_config_options` (slice-step invalidation mapping).
-- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` — `_needSAFC`, `retract` (emission-time pattern reads this packet records, not wires).
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — `PrintConfigDef::init_fff_params`: the four key declarations, their coEnum/coPercent types, defaults, and the shared eight-value `InfillPattern` list.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` — `group_fills` (top branch and its `density <= 0` skip, bottom branch, `stInternalSolid`'s fixed density, the bridge fallback and void-extension reads of `top_surface_pattern`) and `Layer::make_fills` (`Fill::new_from_type`, the `0.01 * density` normalization, `link_max_length`).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp` — `Fill::new_from_type`: the `InfillPattern` → filler-class switch this packet reimplements as a value→module map.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillRectilinear.cpp` — `FillMonotonic::fill_surface`, `FillMonotonicLines::fill_surface`, `connect_segment_intersections_by_contours`, `fill_surface_by_lines`' monotonic branch, `FillAlignedRectilinear`.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillConcentric.cpp` — `FillConcentric::_fill_surface_single`.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillPlanePath.cpp` — `FillPlanePath::fill_surface` and the `FillHilbertCurve` / `FillArchimedeanChords` / `FillOctagramSpiral` point generators.
+- `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` — `top_fill_replaces_inner_walls`; `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `detect_surfaces_type` (both recorded, not wired).
 
 Note: in this clone the checkout is the sibling `..\pinch_n_print_cli\OrcaSlicerDocumented` (pinned by wayfinder ticket 08's ledger note) — workers must resolve `OrcaSlicerDocumented/` against that absolute sibling path.
-
-<!-- snippet: parity-evidence -->
-## Parity Evidence Standard
-
-Every key this packet implements carries evidence per the map's ticket 02 standard:
-
-- **Canonical read + described behaviour.** For each key, cite the canonical consumer (file + function, never line numbers) and describe its behaviour in `requirements.md`. Reads of `OrcaSlicerDocumented/` are delegated per the orca-delegation snippet.
-- **Invariants, not goldens.** Behaviour is pinned with invariant/property tests (counts preserved, mappings hold, emitted values equal expected). Golden G-code comparison is not part of the standard — the checkout is not built and cannot be run.
-- **Ported Orca tests are acceptable evidence.** When `OrcaSlicerDocumented/tests/fff_print/` covers the behaviour, port its assertions into PnP's suite with the standard porting header (`docs/ORCASLICER_ATTRIBUTION.md`).
-- **Plumbing keys** (a threshold feeding an existing decision point): the default resolves to the canonical value AND a test proves the value reaches the consumer. No behavioural test required.
-- **Unverifiable behaviour:** surface the key and the reason to the human first; only with their sign-off file a `docs/DEVIATION_LOG.md` row (single source of truth, CI-checked by `cargo xtask check-deviations`) and proceed with documented scope. Never defer the key or block the packet on unverifiability alone, and never file a row without the human having been asked.
-
-## Per-Key Canonical Evidence
-
-Canonical evidence per ticket 02's standard (delegated canonical reads, 2026-09-01; in-tree
-grounding from the authoring survey). Type/default/bounds columns record the manifest
-contract AC-1 pins. Canonical declares all 4 keys on `PrintRegionConfig`
-(`PrintConfig.cpp` `PrintConfigDef::PrintConfigDef`); the port declares them
-scalar-global in the owner manifest per the queue's established pattern (packet
-254/255/257/258/259/260/261/262/263 precedent — the per-filament/per-object model is the
-Tier-D fog's question, not this packet's). Authoring-time tree facts (measured
-2026-09-01): the two density keys have zero occurrences in `crates/` and `modules/`; the
-two pattern keys occur only as `ORCA_CONFIG_PADDING` twins in
-`crates/slicer-gcode/src/serialize.rs` (`("top_surface_pattern", "monotonic")`,
-`("bottom_surface_pattern", "monotonic")`); `ORCA_CONFIG_PADDING` carries neither density
-key; the deviations block of `docs/15_config_keys_reference.md` holds 26 data rows.
-
-| Key | Canonical type | Canonical default | Bounds | Manifest declaration | Canonical decision point (file + function) | Disposition |
-| --- | --- | --- | --- | --- | --- | --- |
-| `top_surface_density` | coPercent | `100` | min 0, max 100 | float, default 100.0, min 0.0, max 100.0 (canonical-percent convention, ticket 107: modules divide by 100 when consuming) | `Fill.cpp` `group_fills` (stTop → `params.density = top_surface_density`, skip when `density <= 0`); `FillLine.cpp` `FillLine::_fill_surface_single` (`line_spacing = flow.spacing() / density`); `PrintObject.cpp` `detect_surfaces_type` + `PerimeterGenerator.cpp` `top_fill_replaces_inner_walls` (density > 0 surface-expansion gates — no in-port pass, recorded) | **Wired** — rectilinear top block, exposed surface (top_shell_index 0) spacing `line_width / (percent/100)`, `density > 0` gate; internal solid (index ≥ 1) keeps `SOLID_DENSITY` 1.0 (canonical fixed `100.f`) |
-| `bottom_surface_density` | coPercent | `100` | min 10, max 100 | float, default 100.0, min 10.0, max 100.0 | `Fill.cpp` `group_fills` (stBottom → `params.density = bottom_surface_density`; no ≤0 skip — min 10 makes it unreachable); `FillLine.cpp` `FillLine::_fill_surface_single` (same spacing formula) | **Wired** — rectilinear bottom block, exposed surface (bottom_shell_index 0) spacing `line_width / (percent/100)`; internal solid keeps 1.0; the `density > 0` gate is provably inert under min 10 |
-| `top_surface_pattern` | coEnum (8 `InfillPattern` values) | `monotonicline` (`ipMonotonicLine`) | — | enum, 8 canonical values, default `"monotonicline"` | `Fill.cpp` `group_fills` (stTop → `params.pattern = top_surface_pattern` → `FillBase.cpp` `Fill::new_from_type` filler selection; extra-internal-solid-fill branch: monotonic/monotonicline → that pattern else rectilinear, density fixed 100 — no in-port pass, recorded); `GCode.cpp` `_needSAFC` / `retract` (emission-time reads — no in-port analogue, recorded) | **Declared-with-gap** — filler selection is module identity (packet 262's finding); padding twin corrected `"monotonic"` → `"monotonicline"` |
-| `bottom_surface_pattern` | coEnum (8 `InfillPattern` values) | `monotonic` (`ipMonotonic`) | — | enum, 8 canonical values, default `"monotonic"` | `Fill.cpp` `group_fills` (stBottom → `params.pattern = bottom_surface_pattern` → `Fill::new_from_type` filler selection); `GCode.cpp` `_needSAFC` / `retract` (emission-time reads — no in-port analogue, recorded) | **Declared-with-gap** — filler selection is module identity; padding twin `"monotonic"` matches canonical and stays |
-
-### Declaration notes (port-specific decisions the canonical reads forced)
-
-- **The 4 tables land only in `rectilinear-infill.toml`, and the two pattern keys are
-  never read in any module source.** The density wire's decision point lives in
-  `rectilinear-infill` (the default `top_fill_holder`/`bottom_fill_holder`); gyroid's
-  opt-in solid path (ADR-0027) rides the sparse density — a pre-existing divergence this
-  packet records, not fixes — so the keys are not declared there (AC-N2 pins the
-  omission). Lightning holds only `claim:sparse-fill` and has no solid-fill surface
-  (AC-N2). A future gyroid-solid-density packet consumes the declarations and must update
-  the guard's omission pins.
-- **The density wire is exposed-surface-only.** Canonical `group_fills` gives
-  `stInternalSolid` a fixed `100.f` (verified verbatim: `params.density = 100.f` in the
-  `surface.is_solid_infill()` branch), so the port's deeper shell layers
-  (top_shell_index/bottom_shell_index ≥ 1) keep `SOLID_DENSITY` 1.0 and only the exposed
-  surface (index 0) reads the key. This mirrors the existing width split
-  (`resolve_role_width` picks `top_surface_line_width` vs `internal_solid_infill_line_width`
-  by the same index).
-- **The `density <= 0` skip is top-only in canonical** (the `stTop` branch's
-  `if (params.density <= 0.0f) continue;`; `bottom_surface_density` min 10 makes it
-  unreachable for bottom). The wire gates the top block on `density > 0` (live behavior,
-  AC-N3) and the bottom block identically (provably inert — AC-4's min-10 arm pins the
-  bound that makes it so).
-- **Percent keys use the ticket-107 convention** (canonical-percent numbers with canonical
-  bounds: `100.0`/`[0, 100]` and `[10, 100]` — the modules divide by 100 when consuming,
-  the `sparse_infill_density` read pattern in `from_config`).
-- **Deviation gate: zero new rows, block stays at 26.** The two enum defaults
-  (`monotonicline`, `monotonic`) are strings and never enter the numeric comparison map;
-  the two percent defaults (`100%`) fail `parse::<f64>` (ticket 106's finding) and never
-  enter it either. AC-6's probe re-measures the block at implementation time (ledger fact
-  — 26 measured at 264 authoring, 2026-09-01).
-- **CONFIG_BLOCK: one corrected twin, one unchanged twin, two honest absences.** The
-  pattern keys' padding twins exist and emit at defaults — `top_surface_pattern` is
-  corrected to the canonical `monotonicline` (ticket-14/262 precedent), `bottom_surface_pattern`
-  stays `monotonic`; the density keys have no twins, so at defaults the block carries
-  nothing for them (AC-5 pins all four states). An explicit value reaches the block once
-  through the raw-config sorted dump (`serialize_config_block` + `emit_config_kv` dedup,
-  packet-257 AC-5 form), suppressing its padding twin.
-- **Tier A/B status:** AC-2/AC-3 are the wired keys' Tier A plumbing contract
-  (default-matches + reaches-the-consumer); AC-4/AC-5/AC-6 are the declaration/bounds/
-  block/docs arms; AC-N1/N2 are the guard arms; AC-N3 is the skip's negative case. The 04
-  tier rows stand (`Tier A`, owner `infill modules`) — the re-adjudication changes
-  dispositions, not the tier/owner columns.
-
-## Acceptance Summary
-
-Reference, never copy, criteria from `packet.spec.md`.
-
-- Positive: `AC-1` (manifest exactness — 4 tables, one manifest), `AC-2` (default-path
-  identity), `AC-3` (wire reachability — density 50 halves the solid path count), `AC-4`
-  (bounds/type rejection), `AC-5` (CONFIG_BLOCK: corrected/unchanged pattern twins at
-  defaults, zero density lines, explicit values appear once), `AC-6` (generated docs: 4
-  keys present, deviation block unchanged at 26).
-- Negative: `AC-N1` (schema guard fails naming the drifted key), `AC-N2` (gyroid +
-  lightning omission of all 4 keys pinned), `AC-N3` (top_surface_density = 0 → zero
-  `TopSolidInfill` paths for the exposed region; internal solid still emits).
-- Cross-packet impact: packets 262 (P08) and 263 (P09) touch the same
-  `rectilinear-infill.toml` and add the `toml` dev-dep to the same Cargo.toml — merge
-  churn only (all append; 262/263 implement first per queue order; P10's guard binary is
-  distinct so no file collision; the dev-dep is add-if-absent). P10's `src/lib.rs` wire
-  touches the same module 262's angle wire touches — different decision points (solid
-  spacing vs solid angle), no overlap. Post-packet doc-15 state: 4 new module-key rows
-  (owner `rectilinear-infill`); deviation block unchanged (26 rows).
-
-## Verification Commands
-
-This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate commands.
-
-| Command | Purpose | Return format hint |
-| --- | --- | --- |
-| `cargo test -p rectilinear-infill --test top_bottom_surface_config_schema_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1/N1/N2 manifest guard | FACT pass/fail; SNIPPETS ≤20 lines on failure |
-| `cargo test -p rectilinear-infill --test top_bottom_fill_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-2 identity / AC-3 reachability / AC-N3 skip arms | FACT pass/fail |
-| `rg -n 'top_surface_pattern\|bottom_surface_pattern' modules/core-modules/rectilinear-infill/src modules/core-modules/gyroid-infill/src modules/core-modules/lightning-infill/src modules/core-modules/infill-linker/src; [ "$?" = "1" ]; echo "exit=$?"` | pattern keys' no-reads pin (expect exit 0 = no matches) | FACT exit code |
-| `cargo test -p slicer-scheduler --test integration config_bounds_enforcement_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-4 bounds/type rejection | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-5 CONFIG_BLOCK emission | FACT pass/fail |
-| `cargo xtask gen-config-docs --check && for k in top_surface_density bottom_surface_density top_surface_pattern bottom_surface_pattern; do rg -q "$k" docs/15_config_keys_reference.md \|\| exit 9; done && [ "$(sed -n '/BEGIN GENERATED: orca-deviations/,/END GENERATED: orca-deviations/p' docs/15_config_keys_reference.md \| grep -c "^| \`")" = "26" ]; echo "exit=$?"` | AC-6 generated docs + deviation-block count | FACT exit code |
-| `cargo xtask build-guests --check; echo "exit=$?"` | guest freshness (manifest + module src edit) | FACT exit code |
-| `cargo check --workspace --all-targets` | workspace compile gate | FACT pass/fail |
-| `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
-
-Commands must have small, parseable output suitable for delegation.
-
-## Step Completion Expectations
-
-Only cross-step invariants: the manifest tables and guard test (Step 1) land before the
-module wire and its arms (Step 2) and the bounds/CONFIG_BLOCK arms that consume them
-(Steps 3-4); the padding correction (Step 4) lands with the CONFIG_BLOCK arm that pins
-it; the guest rebuild (Step 4) runs before the integration arm that dispatches the real
-rectilinear guest; Step 5's regeneration runs after the manifest is final. The module
-unit suites (Steps 1-2) run native and do not need the guest. None beyond that.
-
-## Context Discipline Notes
-
-- `docs/15_config_keys_reference.md` is generated and ~1000 lines — never load it; verify
-  via `--check` and targeted `rg`/`sed` (AC-6).
-- `rectilinear-infill.toml` is a bounded full read (~210 lines); the guard pattern source
-  `cooling_config_schema_tdd.rs` is a bounded full read; `top_bottom_fill_tdd.rs` (~390
-  lines) and `config_bounds_enforcement_tdd.rs` (~460 lines) are bounded full reads;
-  `gcode_header_thumbnail_config_blocks_tdd.rs` (~1040 lines) is ranged reads.
-- `rectilinear-infill/src/lib.rs` is in scope for the wire (Step 2) — the top/bottom
-  solid blocks and `from_config`; the rest of the file is read-only context.
-- `modules/core-modules/{gyroid-infill,lightning-infill,infill-linker}/src` are read-free
-  pins for the 4 keys — never open them for reads (the no-reads grep is the evidence).
-- `crates/slicer-gcode/src/serialize.rs` is read-only except the single padding value
-  correction (Step 4) — the padding mechanism is proven by the authoring grep, not by
-  re-reading the table.
-- Do not read the perimeters modules' sources — out of scope (packet 262's gap-fill
-  context, not surface).

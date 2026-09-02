@@ -1,234 +1,157 @@
 # Design: top-bottom-surface-keys
 
+## Tier Derivation
+
+**Tier C.** Map Authoring rule 1 requires a packet that builds a decision point to be re-tiered B or C. This packet builds two: a host-side selection derivation (two keys onto two existing `ResolvedConfig` holder fields) and six new `Layer::Infill` filler modules, plus a density wire inside an existing module. The Tier B shape in this queue is a single-module diff; six new crates with independent geometry ports is above that ceiling, so the tier is C. The prior revision was Tier A on a "declare + wire two cheap keys" reading that Authoring rule 1 no longer permits. Ticket 17's tier table needs the same correction (listed in the session handoff; this packet does not edit the map).
+
+## Approach
+
+Two independent mechanisms, one per key pair.
+
+**Pattern keys → claim holders.** OrcaSlicer resolves `top_surface_pattern` inside `Fill::new_from_type`, a switch from an enum value to a C++ filler class. This port already has the equivalent mechanism and it is better: a claim held by a module, selected per region through a config key. `claim:top-fill` and `claim:bottom-fill` exist; `top_fill_holder` and `bottom_fill_holder` exist as `ResolvedConfig` fields with the default `"rectilinear-infill"`; `FillHolders::holder_for` already resolves a claim to a module at runtime and `SliceRegionView::should_emit` already gates emission on the module holding the claim for that region. So the whole of canonical's switch reduces to a **string→string derivation** in config resolution: read `top_surface_pattern`, write `top_fill_holder`. No new field, no new claim, no new WIT, no IR change.
+
+The derivation is the same shape packet 262b introduces for `sparse_infill_pattern` / `internal_solid_infill_pattern`. This packet extends 262b's helper with two more key→field pairs rather than adding a parallel one, and additionally applies it on the per-object overlay path so a per-object pattern is not dropped.
+
+What the derivation cannot do is invent fillers. Canonical offers eight values per key; the tree has one (`rectilinear-infill`) plus 262b's `monotonic-infill`. Under Authoring rule 1 the remaining six must be built or the values must be rejected; the user ruling for this packet is to build all eight, so six new module crates ship here.
+
+**Density keys → spacing divisors.** `rectilinear-infill` computes `solid_spacing = mm_to_units(solid_line_width / SOLID_DENSITY)` twice inside `RectilinearInfill::run_infill`, once for the top block and once for the bottom, with `SOLID_DENSITY` a hardcoded `1.0`. That constant *is* the decision point canonical parameterises: `group_fills` sets `params.density` from the surface's density key and `Layer::make_fills` normalizes it with `0.01 * density`. Replacing the constant with two resolved per-role fractions makes both keys live with a diff confined to `LayerModule::from_config` and `run_infill`. Canonical's `density <= 0` top-surface skip becomes a `> 0` gate on the exposed-top block only; the bottom block gets no gate because canonical's min of 10 makes zero unreachable there, and internal solid keeps a fixed 1.0 because canonical hardcodes `100.f` for `stInternalSolid`.
+
 ## Controlling Code Paths
 
-- Primary code path: the manifest-declaration pipeline (`[config.schema]` tables in
-  `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` parsed by
-  `crates/slicer-scheduler/src/manifest.rs` (`ConfigFieldEntry`, bounds index via
-  `ConfigBoundsIndex::from_modules` in `crates/slicer-scheduler/src/config_resolution.rs`),
-  rendered into `docs/15_config_keys_reference.md` by `cargo xtask gen-config-docs`
-  (`render_deviations` numeric-only comparison in `xtask/src/gen_config_docs.rs`)) plus
-  the module wire: `RectilinearInfill::from_config` reads the two density keys via
-  `config.get_abs_value` (the `sparse_infill_density` read pattern, percent/100
-  fraction), and `run_infill`'s top/bottom solid blocks consume the fractions at
-  `solid_spacing = line_width / density` (exposed surface, index 0) with the `density >
-  0` gate, keeping `SOLID_DENSITY` 1.0 for internal solid (index ≥ 1).
-- Consumed by NO module code: the two pattern keys — all four infill modules' sources are
-  read-free pins for them (the no-reads grep over `rectilinear-infill/src`,
-  `gyroid-infill/src`, `lightning-infill/src`, `infill-linker/src`). The only
-  consumer-relevant code paths are canonical's, which this packet does not port.
-- Neighboring tests/fixtures:
-  `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs` (the
-  `make_test_region` + `RectilinearInfill::from_config` + `run_infill` +
-  `InfillOutputBuilder` harness the AC-2/AC-3/AC-N3 arms extend; the
-  `ConfigViewBuilder` config form from `rectilinear_infill_tdd.rs`'s `make_config`);
-  guard-pattern source `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs`
-  (TOML-direct parse); enum-table form source `modules/core-modules/seam-planner-default/
-  seam-planner-default.toml` (`[config.schema.seam_position]`); integration arms:
-  `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` (real
-  `rectilinear-infill.toml` via `load_module_from_paths` + `ConfigBoundsIndex::from_modules`
-  + `resolve_global_config` — the `rejects_value_below_min` arm is the pattern) and
-  `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`
-  (proven CONFIG_BLOCK driver at packet 258/259/260/261/262/263 authoring time:
-  `run_pipeline_with_raw_config` + `region_between`).
-- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+- `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`) — iterates the raw source, enforces manifest bounds via `ConfigBoundsIndex::check`, dispatches into `ResolvedConfig::apply_cli_key`, then threads schema defaults. The pattern→holder derivation runs after that loop, so an explicit `top_fill_holder` already applied by `apply_cli_key` can be detected and left alone.
+- `apply_overlay` (same file) — builds a per-object `ResolvedConfig` from the global base plus `object_config:<id>:<key>` entries, called by `resolve_per_object_configs`. The derivation runs here too.
+- `ResolvedConfig::apply_cli_key` and the `declare_resolved_config!` block (`crates/slicer-ir/src/resolved_config.rs`) — where `top_fill_holder` / `bottom_fill_holder` are declared, `String`, default `"rectilinear-infill"`. Read-only for this packet.
+- `FillHolders`, `FillHolders::holder_for`, `module_id_matches_holder`, `resolve_held_claims`, `FILL_CLAIM_IDS` (`crates/slicer-scheduler/src/validation.rs`) — the runtime side that turns the resolved holder string into the `held_claims` a module sees. Read-only for this packet; the derivation feeds it.
+- `SliceRegionView::should_emit`, `held_claims`, `top_shell_index`, `bottom_shell_index`, `top_solid_fill`, `bottom_solid_fill`, `internal_solid_fill` (`crates/slicer-sdk/src/views.rs`) — the per-region contract every new filler implements against. Read-only.
+- `RectilinearInfill`'s `LayerModule::from_config` impl, `RectilinearInfill::run_infill`, `solid_fill_role`, `adjust_solid_spacing`, `SOLID_DENSITY` (`modules/core-modules/rectilinear-infill/src/lib.rs`) — the density decision points.
+- `crates/slicer-core/src/algos/region_mapping.rs` — already copies `top_fill_holder` / `bottom_fill_holder` from a region overlay when they differ from the default, so per-region holder selection works once the derivation writes the fields. Read-only; no edit needed.
+
+## What Carries the New Data
+
+Nothing new carries anything. This is the point of the design:
+
+- The pattern *choice* travels as the existing `top_fill_holder` / `bottom_fill_holder` strings on `ResolvedConfig`, through the existing region-overlay path in `region_mapping.rs`, into the existing `held_claims` list on `SliceRegionView`.
+- The density *values* travel as ordinary module config keys declared on `rectilinear-infill.toml` and read in `LayerModule::from_config`, exactly like every other key that module owns.
+- The surface *kind* a density applies to is already distinguishable: `top_shell_index() == Some(0)` is exposed top, `Some(n >= 1)` is internal solid, and `bottom_shell_index()` mirrors it.
+
+No prepass IR change, no new `SliceRegionView` metadata, no new `PostPass` claim, no manifest-schema extension, no SDK change.
+
+## Recorded Divergences (port improves on or intentionally differs from canonical)
+
+- **DIV-1 — pattern selection is extensible; canonical's is closed.** Canonical's `Fill::new_from_type` is a `switch` over a fixed enum: a new filler requires editing libslic3r. Here the eight values map onto module ids, so a community module that holds `claim:top-fill` can be selected by setting `top_fill_holder` directly, with no host change. The eight canonical *names* are a convenience mapping layered on top of a more general mechanism. Rationale: `docs/00_project_overview.md`'s community-extensibility goal, and map Authoring rule 4.
+- **DIV-2 — bridge and void-extension fills are decoupled from `top_surface_pattern`.** Canonical `group_fills` reads `top_surface_pattern` when picking a filler for bridges above layer 0 (choosing `ipMonotonic` if the top pattern is either monotonic variant, else `ipRectilinear`) and again for the synthesized `stInternalSolid` void extension. That is coupling, not intent: a user changing their top-surface look silently changes bridge geometry. The port keeps bridges on `bridge_fill_holder` and internal solid on 262b's `internal_solid_infill_pattern` mapping, so the three are independently selectable. Recorded as an intentional divergence, not a gap.
+- **DIV-3 — per-object pattern override.** Canonical's pattern keys are `PrintRegionConfig` members and are per-region already, but the port additionally resolves them on the per-object overlay path (AC-3), so `object_config:<id>:top_surface_pattern` works without a region split. Strictly additive.
+- **DIV-4 — `adjust_solid_spacing` already diverges.** The existing D-209-ADJUST-SOLID-SPACING-DIVERGENCE recorded in `modules/core-modules/rectilinear-infill/src/lib.rs` (bare `width` instead of `width - EPSILON`, rounding instead of truncation, unmodified `distance` on the over-cap branch) is pre-existing and unchanged by this packet. Making the density a variable widens the range of inputs that reach it; the divergence stays recorded, and the packet does not "fix" it, because doing so would change default output and break AC-N1.
+- **DIV-5 — no emission-time pattern coupling.** Canonical's `GCode::_needSAFC` and `GCode::retract` change flow compensation and retraction based on which top/bottom pattern is selected. The port's emitter does not know the fill holder and this packet does not give it that knowledge. Recorded; a future packet that wants SAFC would introduce the seam deliberately rather than inheriting canonical's reach-through.
 
 ## Architecture Constraints
 
+<!-- snippet: coord-system -->
+- Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
+
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
-- snake_case config key strings only (repo convention): all 4 keys are snake_case by
-  construction (canonical spellings, no aliases).
-- The declared-with-gap pattern keys are declared in the manifest but **never read** in
-  any module source — declaring them must not perturb behavior (AC-2 pins byte-identity
-  for explicit values vs absent and the no-reads grep pins the sources).
-- The wired density keys are default-path identity: at canonical defaults (100 → fraction
-  1.0) the emitted paths are byte-identical to the pre-packet `SOLID_DENSITY` constant
-  (AC-2); only non-default values change the solid spacing (AC-3).
-- No unit conversion is performed by this packet: the manifest defaults are declared in
-  canonical units (percent numbers for the density keys per the ticket-107 convention,
-  enum strings for the pattern keys) and the wire divides by 100 at the read site, the
-  `sparse_infill_density` pattern.
-- ADR-0027 `gyroid-multi-role-fill-holder` conformance: this packet does not change the
-  default `*_fill_holder` config (Decision #2 — defaults stay `"rectilinear-infill"`),
-  does not remove top/bottom/bridge emission from gyroid-infill (Future-Reviewer note),
-  and does not wire the P10 keys into gyroid's opt-in solid path (its solid emission
-  rides the sparse density — a pre-existing divergence this packet records, not fixes).
-  No amendment deviation is required. ADR-0030 (modifier splits) and ADR-0061
-  (bridge-orientation tie-break) are not touched.
+
+- **Claim uniqueness.** `docs/04_host_scheduler.md` § Claim Resolution: validation fails if a claim has more than one effective holder. Eight modules will declare `claim:top-fill`, so all but one must be disabled for any given region. This is exactly what the `*_fill_holder` mechanism does (`resolve_held_claims` filters a manifest's `holds` by the configured holder) — the same arrangement `rectilinear-infill` and `gyroid-infill` already live under. The six new modules must not be `incompatible-with` one another; that would turn a normal selection into a load-time conflict.
+- **Struct-literal churn gate.** Adding two fields to `RectilinearInfill` puts it over the five-named-field watchlist threshold if it is not already. Every test-code literal of that type needs a `..` rest or an `// exhaustive: <reason>` waiver; `cargo xtask check-literals` enforces it. The step that adds the fields owns that blast radius (`docs/21_data_defaults_and_fixtures.md`).
+- **Module-count ledger fact.** `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` asserts a module count. Re-derive it from disk at the moment of editing; packets 262b and 263 also move it, so any number written here would be stale before it is read.
+- **ADR-0056** governs registration of a new core module: workspace member, integrated-modules optional dep + feature + `manifest_const!` + `integrated_registry!` entry and its `#[cfg(not(feature = …))]` arm, and a `pnp-cli` passthrough feature.
 
 ## Code Change Surface
 
-- Selected approach: declare the 4 tables in `rectilinear-infill.toml` (AC-1); wire the
-  two density keys into the top/bottom solid blocks (2 struct fields + `from_config`
-  reads + the spacing/gate change); add the net-new guard test + `toml` dev-dep; add the
-  identity/reachability/skip, bounds, and CONFIG_BLOCK arms; correct the
-  `top_surface_pattern` padding twin; regenerate the docs and rebuild the guests. Zero
-  module-source reads of the pattern keys; zero padding twins added.
-- Exact functions, traits, manifests, tests, and fixtures:
-  `rectilinear-infill.toml` `[config.schema]` (4 tables, AC-1);
-  `rectilinear-infill/src/lib.rs` (`RectilinearInfill` struct +2 fields,
-  `LayerModule::from_config` +2 reads, `run_infill` top/bottom solid blocks — the
-  `solid_spacing` computation and the `density > 0` gate);
-  `top_bottom_surface_config_schema_tdd.rs` (net-new guard, AC-1/N1/N2);
-  `rectilinear-infill/Cargo.toml` (`toml = "0.8"` dev-dep, add-if-absent);
-  `top_bottom_fill_tdd.rs` (AC-2/AC-3/AC-N3 arms);
-  `config_bounds_enforcement_tdd.rs` (AC-4 arms);
-  `crates/slicer-gcode/src/serialize.rs` (the single `ORCA_CONFIG_PADDING` value
-  correction `("top_surface_pattern", "monotonic")` → `("top_surface_pattern",
-  "monotonicline")`);
-  `gcode_header_thumbnail_config_blocks_tdd.rs` (AC-5 arms);
-  `docs/15_config_keys_reference.md` (generated, Step 5).
-- Rejected alternatives and reasons:
-  - *Wiring the density keys into gyroid's opt-in solid path* — rejected: gyroid's solid
-    emission (`emit_polys` over `top_solid_fill()`/`bottom_solid_fill()`) rides the
-    module's single `self.density` read from `sparse_infill_density` (ADR-0027 opt-in);
-    wiring the P10 keys there would change that opt-in behavior at defaults (sparse 0.2 →
-    solid 1.0), a behavior change this packet does not make. Recorded divergence; a
-    future gyroid-solid-density packet re-opens it (AC-N2 pins the omission).
-  - *Applying the density to internal solid too (whole top/bottom block)* — rejected:
-    canonical `group_fills` gives `stInternalSolid` a fixed `100.f` (verified verbatim),
-    so the wire keeps `SOLID_DENSITY` 1.0 for top_shell_index/bottom_shell_index ≥ 1 and
-    reads the key only at index 0 — mirroring the existing `resolve_role_width` split.
-  - *Wiring the pattern keys to a pattern→module mapping* — rejected: canonical's
-    `top_surface_pattern`/`bottom_surface_pattern` select the filler class
-    (`FillBase.cpp` `Fill::new_from_type`); the port's pattern is module identity
-    selected by the host `*_fill_holder` resolution (packet 262's finding). A
-    pattern→module mapping is host-side config-resolution work, not an infill-module
-    decision point.
-  - *Removing the `top_surface_pattern` padding twin instead of correcting it* —
-    rejected: ticket 14's `fuzzy_skin` and packet 262's `sparse_infill_pattern`
-    precedent correct the value to the canonical default; the twin's purpose (Orca-
-    typical CONFIG_BLOCK lines) is preserved.
-  - *Adding `ORCA_CONFIG_PADDING` twins for the density keys* — rejected: packet
-    254/255/257/258/259/260/261/262/263 precedent says module-manifest defaults do not
-    thread into raw config; the block must carry nothing for them at defaults (AC-5
-    pins the honest absence).
+**New (six crates, identical shape):**
+
+- `modules/core-modules/monotonicline-infill/{Cargo.toml,src/lib.rs,monotonicline-infill.toml,wit-guest/**,tests/monotonicline_infill_tdd.rs}`
+- `modules/core-modules/alignedrectilinear-infill/{…,tests/alignedrectilinear_infill_tdd.rs}`
+- `modules/core-modules/concentric-infill/{…,tests/concentric_infill_tdd.rs}`
+- `modules/core-modules/hilbert-curve-infill/{…,tests/hilbert_curve_infill_tdd.rs}`
+- `modules/core-modules/archimedean-chords-infill/{…,tests/archimedean_chords_infill_tdd.rs}`
+- `modules/core-modules/octagram-spiral-infill/{…,tests/octagram_spiral_infill_tdd.rs}`
+
+Each `src/lib.rs` implements `LayerModule` at `Layer::Infill`, reads `top_solid_fill()` / `bottom_solid_fill()` from `SliceRegionView`, gates on `should_emit(TopSolidInfill)` / `should_emit(BottomSolidInfill)`, and emits its curve. Each manifest declares `holds = ["claim:top-fill", "claim:bottom-fill"]` and re-declares only the shared base keys it reads (`line_width`, `infill_direction`, and the two density keys it consumes for spacing).
+
+**Edited:**
+
+- `crates/slicer-scheduler/src/config_resolution.rs` — extend 262b's pattern→holder derivation with the two new key→field pairs; call it from `apply_overlay` as well as `resolve_global_config`.
+- `modules/core-modules/rectilinear-infill/src/lib.rs` — two new fields on `RectilinearInfill`, populated in its `LayerModule::from_config` impl; both `SOLID_DENSITY` uses in `run_infill` replaced by the per-role fraction; a `> 0` gate on the exposed-top block. Delete the now-unused `SOLID_DENSITY` const.
+- `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` — two `[config.schema]` tables.
+- `modules/core-modules/rectilinear-infill/Cargo.toml` — `toml = "0.8"` dev-dependency (add-if-absent; 262a/263 may have landed it first).
+- `modules/core-modules/monotonic-infill/monotonic-infill.toml` — append `"claim:bottom-fill"` to `holds`. **Created by packet 262b**; this packet must not create it.
+- `modules/core-modules/monotonic-infill/src/lib.rs` — add the `BottomSolidInfill` emission arm.
+- `Cargo.toml` (root) — six workspace members.
+- `crates/slicer-integrated-modules/Cargo.toml`, `crates/slicer-integrated-modules/src/lib.rs` — six optional deps, features, `manifest_const!` and `integrated_registry!` entries plus their `#[cfg(not(feature = …))]` arms.
+- `crates/pnp-cli/Cargo.toml` — six `integrated-<name>` passthrough features.
+- `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` — module count moved by six; new-manifest assertions (AC-10).
+- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — AC-13 arms.
+- `crates/slicer-scheduler/tests/integration/` — net-new `top_bottom_pattern_holder_tdd.rs` plus its `mod` line in `main.rs` (AC-1/2/3, AC-N3).
+- `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs` — AC-4, AC-5 arms.
+- `modules/core-modules/rectilinear-infill/tests/top_bottom_surface_config_schema_tdd.rs` — net-new (AC-12, AC-N5).
+- `crates/slicer-runtime/tests/contract/` — `native_infill_claim_resolution` arms for AC-11 / AC-N4.
+- `docs/04_host_scheduler.md`, `docs/03_wit_and_manifest.md` — hand-maintained doc edits.
+- `docs/15_config_keys_reference.md` — regenerated, never hand-edited.
+- Guest `.wasm` artifacts for the eight affected modules.
 
 ## Files in Scope (read + edit)
 
-- `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` — role: owner manifest (default fill holder); expected change: 4 tables added (AC-1).
-- `modules/core-modules/rectilinear-infill/src/lib.rs` — role: the density wire; expected change: +2 struct fields, +2 `from_config` reads, top/bottom solid blocks' spacing + gate (AC-2/AC-3/AC-N3).
-- `modules/core-modules/rectilinear-infill/tests/top_bottom_surface_config_schema_tdd.rs` — role: net-new guard test (AC-1/N1/N2); expected change: created.
-- `modules/core-modules/rectilinear-infill/Cargo.toml` — role: dev-deps; expected change: +`toml = "0.8"` (add-if-absent; packets 262/263 may have added it — verify, don't assume).
-- `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs` — role: module suite; expected change: AC-2/AC-3/AC-N3 arms.
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — role: scheduler arm; expected change: +AC-4 tests.
-- `crates/slicer-gcode/src/serialize.rs` — role: padding correction; expected change: one `ORCA_CONFIG_PADDING` value (`top_surface_pattern` → `"monotonicline"`).
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — role: CONFIG_BLOCK arm; expected change: +AC-5 tests (net-new — no padding edits beyond the one correction).
-- `docs/15_config_keys_reference.md` — role: generated; expected change: regenerated via `cargo xtask gen-config-docs` (AC-6).
+The change surface above is the authoritative list. No file outside it may be edited.
 
 ## Read-Only Context
 
-- `modules/core-modules/seam-planner-default/seam-planner-default.toml` — purpose: the in-tree `enum` manifest form (`[config.schema.seam_position]` with `values`).
-- `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` lines `38-44` — purpose: the in-tree float-percent form (`sparse_infill_density`) the two density tables mirror.
-- `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` — full — purpose: guard-test pattern source.
-- `modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs` — purpose: the `make_config` helper's `ConfigViewBuilder` config form the AC-2/AC-3/AC-N3 arms use.
-- `crates/slicer-gcode/src/serialize.rs` lines `455-470` (`serialize_config_block`'s padding loop + `emit_config_kv` dedup) — purpose: AC-5's twin/dedup context (the only edit is the padding value at line 505).
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — full (~460 lines) — purpose: AC-4 arm pattern (real-manifest load + `OutOfRange`/`TypeMismatch` assertions).
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — lines `1-120` (setup) + grep for an existing CONFIG_BLOCK assertion to mirror — purpose: AC-5 arm form.
+- `crates/slicer-ir/src/resolved_config.rs` — the four `*_fill_holder` rows of `declare_resolved_config!` only. Do not load the file.
+- `crates/slicer-scheduler/src/validation.rs` — `FILL_CLAIM_IDS`, `FillHolders::holder_for`, `resolve_held_claims`.
+- `crates/slicer-sdk/src/views.rs` — `SliceRegionView` accessors named in § Controlling Code Paths.
+- `crates/slicer-core/src/algos/region_mapping.rs` — the holder-overlay block, to confirm no edit is needed.
+- `docs/04_host_scheduler.md` § Claim Resolution (the `wall_generator` subsection is the shape to imitate), `docs/03_wit_and_manifest.md` § Known claim IDs.
+- `docs/spec_packets/262b-infill-pattern-holder-mapping/design.md` — via a SUMMARY dispatch only, to learn the derivation helper's final name. Never edit anything under that directory.
 
 ## Out-of-Bounds Files
 
-- `OrcaSlicerDocumented/...` - delegate; never load (sibling path `..\pinch_n_print_cli\OrcaSlicerDocumented`).
-- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
-- `modules/core-modules/gyroid-infill/src/lib.rs`, `modules/core-modules/lightning-infill/src/lib.rs`, `modules/core-modules/infill-linker/src/*` — read-free pins for the 4 keys; never open them for reads (the no-reads grep is the evidence).
-- `modules/core-modules/gyroid-infill/gyroid-infill.toml` and `modules/core-modules/lightning-infill/lightning-infill.toml` — omission pins (AC-N2); never edit.
-- `crates/slicer-gcode/src/serialize.rs` — read-only except the single padding value correction (Step 4); no other edits.
-- `docs/spec_packets/253* … 263*` — other packets' directories are read-only context; only the named reference files above may be consulted.
-- Unrelated crates - delegate symbol lookups; do not browse.
+- `crates/slicer-gcode/src/serialize.rs` — `ORCA_CONFIG_PADDING`. Zero diff lines (AC-N2, map Authoring rule 2).
+- `crates/slicer-schema/wit/**` — no WIT change.
+- `crates/slicer-ir/src/slice_ir.rs` — no IR schema change.
+- `crates/slicer-ir/src/resolved_config.rs` — no new field; read-only.
+- `modules/core-modules/gyroid-infill/**`, `modules/core-modules/lightning-infill/**` — untouched (AC-N5 pins the omission).
+- Every other packet directory under `docs/spec_packets/`.
+- `docs/specs/orca-feature-gap/map.md` and `docs/specs/orca-feature-gap/issues/**` — read-only; required updates are reported, not applied.
+- `docs/15_config_keys_reference.md` — generated; regenerate, never hand-edit.
 
 ## Expected Sub-Agent Dispatches
 
-- Question: does `config_bounds_enforcement_tdd.rs` drive the real `rectilinear-infill.toml` manifest through the bounds index for float and enum keys, and which existing test arms to mirror for the AC-4 cases (four float `OutOfRange`, two enum `TypeMismatch`, two valid)?; scope: `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` + `crates/slicer-scheduler/src/config_resolution.rs`; return: `FACT`; purpose: Step 3.
-- Question: does the runtime CONFIG_BLOCK driver emit a corrected padding twin (`top_surface_pattern = monotonicline`) at defaults, zero lines for the two density keys, and an explicit non-padding float (`top_surface_density = 50.0`) exactly once via the raw-config sorted dump (packet-257 AC-5 precedent), with an explicit enum value suppressing its padding twin?; scope: `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` + `crates/slicer-gcode/src/serialize.rs`; return: `FACT`; purpose: Step 4.
-- Question: does `cargo xtask gen-config-docs --check` pass after regeneration, do the 4 keys appear in the module-key table under the `rectilinear-infill` owner column, and does the deviations block still count 26 data rows?; scope: `docs/15_config_keys_reference.md` + xtask; return: `FACT`; purpose: Step 5.
+- **Canonical filler algorithms**, one dispatch per crate, `SUMMARY` ≤ 200 words + at most 3 snippets ≤ 30 lines: `FillMonotonicLines::fill_surface` + `connect_segment_intersections_by_contours`; `FillAlignedRectilinear`; `FillConcentric::_fill_surface_single`; `FillHilbertCurve` / `FillArchimedeanChords` / `FillOctagramSpiral` point generators + `FillPlanePath::fill_surface`.
+- **262b's derivation helper name** — `FACT` ≤ 5 lines, from `docs/spec_packets/262b-infill-pattern-holder-mapping/design.md`.
+- **Module-count ledger fact** — `FACT` ≤ 5 lines: the current asserted count in `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`, re-derived at the moment of editing.
+- **Cargo runs** — every `cargo check` / `clippy` / `test` / `xtask` invocation is delegated with a `FACT pass/fail` return.
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: the float/enum tables use the in-tree forms
-  (`rectilinear-infill.toml` `sparse_infill_density` for float percent;
-  `seam-planner-default.toml` `seam_position` for enum; the `description` field is parsed
-  by `crates/slicer-scheduler/src/manifest.rs`); bounds enforcement is host-side generic
-  via `ConfigBoundsIndex::from_modules` — numeric min/max in
-  `ConfigResolutionError::OutOfRange`, non-numeric value in `TypeMismatch`, unknown enum
-  value in `TypeMismatch` with "unsupported enum value" (`resolve_global_config`,
-  `crates/slicer-scheduler/src/config_resolution.rs`), verified for packet 259/260/261/
-  262/263's keys.
-- WIT boundary: none touched — no WIT/world changes; the 4 keys ride the existing
-  `ConfigView` string/int/float/bool plumbing, and the two pattern keys are read by no
-  module.
-- Determinism/scheduler constraints: the density wire changes module computation only at
-  non-default values; AC-2's byte-identity comparison relies on the module suite's
-  existing determinism (same inputs → same paths).
-- Deviation gate: `render_deviations` in `xtask/src/gen_config_docs.rs` parses the
-  canonical Default column with `parse::<f64>` — `100%` fails and never enters the map
-  (ticket 106's finding); the enum defaults are strings and never enter it either. Block
-  stays at 26 rows.
+- Manifest `[config.schema]` types are `bool` / `int` / `float` / `string` / `enum` (with `values`). Canonical's coPercent has no manifest equivalent, so both density keys are declared `float` with min/max in percent units (0–100 top, 10–100 bottom) and divided by 100 in `from_config` — the same normalization canonical does in `Layer::make_fills`.
+- The two pattern keys are declared in **no** manifest. They are host-side selection keys, like `wall_generator`. Their legal-value list therefore lives in the derivation code and in `docs/04_host_scheduler.md`, and their rejection path is the derivation's own error, not `ConfigBoundsIndex`.
+- All config key strings are snake_case (`CLAUDE.md` § Config Key Naming Convention). Module ids in holder values are the short crate names (`module_id_matches_holder` accepts short-name or full-id forms).
 
 ## Locked Assumptions and Invariants
 
-- Default-path identity: with the 4 keys absent or explicit-canonical-default, the
-  rectilinear module emits byte-identical `InfillIR` (AC-2).
-- The density wire is exposed-surface-only: top_shell_index/bottom_shell_index 0 reads
-  the key fraction, ≥ 1 keeps `SOLID_DENSITY` 1.0 (canonical `group_fills`' fixed
-  `100.f` for `stInternalSolid`).
-- The `density > 0` gate on the top block is live (canonical `density <= 0` skip); the
-  bottom gate is provably inert under the canonical min 10 (AC-4 pins the bound).
-- Neither pattern key is read in any module source (the no-reads grep over all four
-  infill module src dirs).
-- `gyroid-infill.toml` and `lightning-infill.toml` do not declare any of the 4 keys
-  (AC-N2).
-- `crates/slicer-gcode/src/serialize.rs` gains exactly one edit: the
-  `top_surface_pattern` padding value correction (AC-5) — no twins added or removed.
-- No WIT/IR schema changes; no deviation-table additions — the block stays at 26 data
-  rows (AC-6, re-measured at implementation time per the ledger-fact rule; 26 measured at
-  264 authoring, 2026-09-01).
-- No schema/version constants are bumped; the `RectilinearInfill` struct gains 2 fields
-  with zero struct-literal sites (all 39 construction sites in the tree use
-  `RectilinearInfill::from_config`, verified by grep at authoring).
+0. **Forward dependencies (not shipped symbols).** `modules/core-modules/monotonic-infill/**` and 262b's pattern→holder derivation helper do **not** exist in the tree today; packet 262b (`status: draft`) creates them. Every reference to either in this packet is a FORWARD-DEP whose name and shape are reconciled against 262b's own spec (it plans `monotonic-infill` holding `claim:top-fill`, and a derivation writing `sparse_fill_holder` / `top_fill_holder`). If 262b's plan changes, reconcile both specs before either activates.
+1. `top_fill_holder` and `bottom_fill_holder` exist on `ResolvedConfig` with default `"rectilinear-infill"` — verified at authoring. If a worker finds otherwise, stop: the packet's no-new-field claim is falsified and it must be re-scoped.
+2. `claim:top-fill` and `claim:bottom-fill` exist and `SliceRegionView::should_emit` maps `TopSolidInfill` / `BottomSolidInfill` onto them — verified at authoring.
+3. Default resolution must leave both holders at `"rectilinear-infill"` and both densities at fraction 1.0, so AC-N1 stays byte-identical from the first step that touches spacing onward.
+4. Exactly one module holds each fill claim for a given region after `resolve_held_claims`; adding seven more candidate holders must not produce a startup claim conflict.
+5. `bottom_surface_density` can never be 0 (canonical min 10). The bottom block must not carry the top block's zero-skip.
+6. Internal solid never sees either density key; it stays at fraction 1.0.
 
 ## Risks and Tradeoffs
 
-- The pattern keys are honest-but-inert today: a user setting either sees no behavior
-  change until a pattern→module mapping packet lands. This is the queue's
-  declared-with-gap contract (packet 259/260/261/262/263 precedent), pinned by AC-2
-  (byte identity) and the no-reads grep.
-- The density wire changes behavior at non-default values (spacing scales with
-  `1/density`), which is the point of the Tier A plumbing — but a user setting
-  `top_surface_density = 0` now suppresses top fill entirely (canonical behavior,
-  AC-N3), which is a visible change from today's always-solid top. The canonical skip is
-  verified verbatim; the AC-N3 arm pins it so the behavior is tested, not assumed.
-- The gyroid opt-in solid path (ADR-0027) does not consume the P10 keys — a user with
-  `top_fill_holder = "gyroid-infill"` setting `top_surface_density` sees no change in
-  gyroid solid output (it rides the sparse density). Recorded divergence; AC-N2 pins the
-  omission so a future gyroid-solid-density packet must consciously update.
-- Merge churn with packets 262/263 on `rectilinear-infill.toml` (all append
-  `[config.schema]` tables) and on `rectilinear-infill/Cargo.toml` (the `toml` dev-dep):
-  262/263 implement first per queue order; all edits are appends, and the dev-dep is
-  add-if-absent. The guard binaries are distinct (`infill_config_schema_tdd`,
-  `infill_pattern_specific_config_schema_tdd`, `top_bottom_surface_config_schema_tdd`) —
-  no file collision.
-- The guest rebuild after Steps 1-2 is mandatory before Step 4's integration arm
-  dispatches the real rectilinear guest — a stale guest surfaces as unrelated failures
-  (wasm-staleness snippet).
+- **Size.** Six new geometry crates in one packet is the largest slice in this queue. Mitigation: the crates are independent and the implementation plan gives each its own step with its own exit condition; a stalled filler blocks only its own step. Recorded as accepted at the user's explicit direction (the "all 8 values" ruling); the narrower alternative was shipping `monotonicline` only and returning five values to the queue.
+- **Plane-path fillers have no in-tree precedent.** Hilbert, Archimedean, and octagram curves are a family this tree has never carried. Their ACs assert structural properties (lattice membership, monotonic radius, turn-angle set) rather than golden geometry, so they remain falsifiable without a canonical golden file the port cannot produce.
+- **262b coupling.** Two edits land in files 262b creates. If 262b's shape shifts, this packet's Steps 1 and 8 adapt; the mitigation is the SUMMARY dispatch for its helper name rather than a frozen assumption.
+- **Removing `SOLID_DENSITY`.** A wrong normalization silently changes every solid fill. AC-N1 is the guard and must be run in the same step.
 
 ## Context Cost Estimate
 
-- Aggregate: `S`
-- Largest step: `S` (Step 2 — the module wire + three test arms, the file with the most edit surface)
-- Highest-risk dispatch and required return format: the CONFIG_BLOCK driver question —
-  `FACT` (a wrong assumption about how corrected padding twins and explicit non-padding
-  keys reach the block would make AC-5 unbuildable; packet-257 AC-5 and packet-262 AC-7
-  already proved the mechanism, the dispatch re-confirms it against the current binary).
+**L aggregate.** No single step exceeds M: each filler crate is one step reading one canonical function; the derivation is one step in one host file; the density wire is one step in one module file.
 
 ## Open Questions
 
-- No `[BLOCK]` questions. All canonical evidence was verified by delegated read
-  (declarations, `group_fills` per-surface-type assignments, the `stInternalSolid` fixed
-  `100.f`, the `FillLine::_fill_surface_single` spacing formula, the `density <= 0` skip,
-  the enum value list, the min/max bounds) and all in-tree symbols by authoring-time
-  survey (2026-09-01).
-- `[FWD]` Whether the AC-2/AC-3/AC-N3 arms' region fixture needs a new
-  `top_shell_index(Some(1))` variant in `top_bottom_fill_tdd.rs` (the existing
-  `make_test_region` only sets `Some(0)`/`None`) — no contract changes either way; the
-  Step-2 read of the harness settles it.
+None blocking. No `[BLOCK]`: the packet needs no new WIT interface, no IR schema bump, and no new host `ResolvedConfig` field — all three were checked against the tree at authoring and the required carriers already exist.
+
+- `[FWD]` Canonical's `link_max_length = 3 * spacing` above 80% density (set in `Layer::make_fills`) shapes how far a monotonic connector may run. The port has no `link_max_length` concept. `monotonic-infill` (262b) will need one eventually for parity; this packet's AC-6 asserts only the presence/absence of connectors, which is the real difference between the two monotonic classes, and leaves the length cap forward.
+- `[FWD]` Canonical's top-surface expansion pass and the `top_surface_density > 0` gates that ride it (`top_fill_replaces_inner_walls`, `detect_surfaces_type`) are a separate feature. When a packet builds it, `top_surface_density` gains a second decision point.
