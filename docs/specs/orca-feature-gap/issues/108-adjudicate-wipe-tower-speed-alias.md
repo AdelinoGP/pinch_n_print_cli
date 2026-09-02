@@ -1,8 +1,8 @@
 # 108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_f9c3c79edffeAN1HxxYcZyFazz) — claimed 2026-09-02
 Blocked by: —
 Map: ../map.md
 
@@ -19,3 +19,33 @@ Adjudicate per the ticket 07 standardise-to-Orca-names ruling: **rename** `wipe_
 Authoring-session evidence to re-derive at resolution time (ledger facts): packet 255 `requirements.md` §Per-key parity evidence row for `wipe_tower_max_purge_speed`; `docs/15_config_keys_reference.md` host-key row. Bounds note: Orca's min 10 has no host-side carrier — `FeedrateConfig` fields are unbounded floats; the adjudication must decide whether the rename also adds bounds enforcement or stays default-parity-only like other host keys.
 
 ## Answer
+
+Resolved 2026-09-02. The human Q6(a) ruling is implemented:
+
+- Renamed `FeedrateConfig::wipe_tower_speed` to
+  `wipe_tower_max_purge_speed` and updated the `SPEED_KEYS` registration,
+  raw-config lookup, host-key mirror, generated config reference, and lock
+  tests. This is a host key, so no core-module manifest table is involved.
+- `DefaultGCodeEmitter::resolve_feedrate` now uses
+  `min(wipe_tower_max_purge_speed, sparse_infill_speed)` for the
+  `ExtrusionRole::WipeTower` base feedrate, preserving the existing speed-factor
+  and mm/min conversion after the cap. This is the port's single-role form of
+  canonical `WipeTower2::toolchange_Wipe` / `finish_layer` purge-grid capping.
+- The canonical minimum of 10 mm/s is deferred to ticket 113's feedrate range
+  validation; this ticket does not add one-key-only validation to the otherwise
+  unbounded `FeedrateConfig`.
+- The old `wipe_tower_speed` spelling is intentionally not accepted. The
+  renamed key remains in `SPEED_KEYS`, so it is the only host spelling exposed
+  to config loading and the host schema.
+
+Verification:
+
+- `cargo test -p slicer-ir --test feedrate_default_tdd`
+- `cargo test -p slicer-ir --test feedrate_from_raw_config_tdd`
+- `cargo test -p slicer-gcode --test gcode_feedrate_emission_tdd`
+- `cargo test -p slicer-runtime --test unit host_keys_doc_lock_tdd`
+- `cargo xtask build-guests --check` (clean after rebuilding 44 stale guests)
+- `cargo check --workspace --all-targets`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo xtask check-literals`
+- `cargo xtask gen-config-docs --check`

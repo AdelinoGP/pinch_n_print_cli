@@ -134,7 +134,7 @@ Sorted by owner, then key. Column notes:
 | `retract_length` (wipe-tower-owned) | `wipe-tower.toml`, `ResolvedConfig` | 100 / 101 | 3 — `wipe-tower/src/lib.rs::WipeTower::from_config`, `::retract_length`, `slicer-gcode/src/emit.rs` retract emission | canonical counterpart is `retract_length_toolchange`, not `retract_length` | 2.0 / n-a | in-module | OK | no-change | Deliberately not renamed: this is toolchange purge retraction. Ticket 101 ruled it out of the rename by owner. Its canonical twin `retract_length_toolchange` is unported and rides P36/P43. |
 | `wipe_tower_x` | `wipe-tower.toml` + padding | 100 `e1da8b36` | 2 — `wipe-tower/src/lib.rs::WipeTower::from_config`, `::tower_x` | `WipeTower.cpp::WipeTower`, `PrintExtents.cpp::get_wipe_tower_extrusions_extents` | 15 / coFloats 15. | in-module | OK | no-change | — |
 | `wipe_tower_y` | `wipe-tower.toml` + padding | 100 `e1da8b36` | 2 — `wipe-tower/src/lib.rs::WipeTower::from_config`, `::tower_y` | `WipeTower.cpp::WipeTower`, `GCode.cpp::process_layer` | 220 / coFloats 220. | in-module | OK | no-change | — |
-| `wipe_tower_speed` | `FeedrateConfig` (`slicer-ir/src/feedrate.rs`), `FEEDRATE_KEYS` | 108 (pending) | 2 — `slicer-gcode/src/emit.rs::feedrate_for_role`, `slicer-ir/src/feedrate.rs::FEEDRATE_KEYS` | canonical `wipe_tower_max_purge_speed` — `WipeTower.cpp::WipeTower`, `WipeTower2.cpp::toolchange_Wipe` | 90.0 / coFloat 90. | host field | OK | no-change | Live, defaults match. Ticket 108 has not ruled on whether it renames to `wipe_tower_max_purge_speed`; packet 255 excluded it pending that. Canonical carries a min-10 bound; `FeedrateConfig` fields are unbounded floats. See Q6. |
+| `wipe_tower_max_purge_speed` | `FeedrateConfig` (`slicer-ir/src/feedrate.rs`), `SPEED_KEYS` | 108 | 2 — `slicer-gcode/src/emit.rs::resolve_feedrate`, `slicer-ir/src/feedrate.rs::SPEED_KEYS` | canonical `wipe_tower_max_purge_speed` — `WipeTower.cpp::WipeTower`, `WipeTower2.cpp::toolchange_Wipe` | 90.0 / coFloat 90. | host field | OK | implemented | Renamed and live. `resolve_feedrate` caps wipe-tower paths at `min(max_purge_speed, sparse_infill_speed)`; canonical min-10 validation is deferred to ticket 113. |
 | `wipe_tower_no_sparse_layers` | `ORCA_CONFIG_PADDING` only | 255 | 0 — none | `WipeTower.cpp::WipeTower`, `GCode.cpp::WipeTowerIntegration::tool_change` | padding 0 / coBool false | none | PADDING-ONLY | shed-to-queue | Packet 255 records it as "declared + emitted; gap: no opposite behaviour" — a rule-2 padding twin counted as coverage. |
 | `wipe_tower_rotation_angle` | `ORCA_CONFIG_PADDING` only | 255 | 0 — none | `WipeTower.cpp::WipeTower`, `Print.cpp::first_layer_wipe_tower_corners` | padding 0 / coFloat 0. | none | PADDING-ONLY | shed-to-queue | Same. Port tower is axis-aligned only. |
 | `prime_tower_brim_width` | `ORCA_CONFIG_PADDING` only | 254 | 0 — none | `WipeTower.cpp::WipeTower`, `Print.cpp::wipe_tower_data` | padding 3 / coFloat 3. | none | PADDING-ONLY | shed-to-queue | Same. |
@@ -460,11 +460,11 @@ a deliverable, which leaves the existing wrong values unowned.
 
 **Q6 — `wipe_tower_speed`: rename, and does it adopt canonical's bound?**
 Covers: `wipe_tower_speed` / `wipe_tower_max_purge_speed`.
-Ticket 108 is still open. Defaults match at 90.0 and the key is genuinely live in
-`slicer-gcode/src/emit.rs::feedrate_for_role`. Canonical declares a minimum of 10; `FeedrateConfig`
-fields are unbounded floats.
-**Decision:** rename, and if so does `FeedrateConfig` grow range validation (affecting every feedrate
-key) or is the bound dropped as a recorded divergence?
+Ticket 108 resolved 2026-09-02: rename to `wipe_tower_max_purge_speed` and cap
+the `ExtrusionRole::WipeTower` feedrate at `sparse_infill_speed`, matching the
+purge-grid form of canonical `WipeTower2::toolchange_Wipe` / `finish_layer`.
+Defaults remain 90.0. Canonical declares a minimum of 10; `FeedrateConfig`
+fields are unbounded floats, so range validation is deferred to ticket 113.
 
 **Q7 — Per-filament keys declared as scalar globals.**
 Covers: `filament_tower_interface_pre_extrusion_dist`, `..._pre_extrusion_length`, `..._print_temp`,
@@ -685,7 +685,7 @@ correction is stated.
 | `brim_ears_max_angle`, `brim_ears_detection_length` | Q14(c) | return to scope, queued | shed-to-queue | Live in `Brim.cpp::make_brim_ears_auto`, reached via `btBrimEars`, not the retired bool. Selected by a brim claim holder per Q3. | no |
 | `apply_to_all` | Q10(a) | retire into `fuzzy_skin` | shed-to-queue | Canonical's scope enum (`disabled_fuzzy`/`external`/`hole`/`all`/`allwalls`) subsumes it; rule 5 forbids two gates. Not an algorithm enum, so Q3 does not apply. | no |
 | `ironing_enabled` | Q10(b) | retire into `ironing_type` + `support_ironing` | shed-to-queue | `ironing_type = no ironing` is already the off state; the two modules stop sharing one gate. | no |
-| `wipe_tower_speed` | Q6(a) | rename to `wipe_tower_max_purge_speed`, adopt cap semantic | implement | Canonical computes `min(max_purge_speed, infill_speed)`; port returns it as the feedrate outright. Closes ticket 108. | no |
+| `wipe_tower_max_purge_speed` | Q6(a) | rename from `wipe_tower_speed`, adopt cap semantic | implemented | `SPEED_KEYS` (`crates/slicer-ir/src/feedrate.rs`) exposes the canonical name; `DefaultGCodeEmitter::resolve_feedrate` uses `min(max_purge_speed, sparse_infill_speed)` for wipe-tower paths. Ticket 108 resolved; canonical min-10 validation rides ticket 113. | no |
 | `FeedrateConfig` (all feedrate fields) | Q6(b) | add range validation | implement | Canonical declares `min = 10` here; the struct has no bounds machinery at all. | **yes** — canonical min/max per field **not derived this session** |
 | `narrow_loop_length_threshold_mm`, `support_branch_merge_distance_mm`, `support_layer_height_mm`, `wave_overhang_anchor_depth_mm` | Q15(a) | `_mm` is a deliberate marker — document it | no-change | Suffix signals a PnP-invented dimensional key with no canonical counterpart; renamed keys had counterparts. | **yes** — document the convention |
 | `support_overhang_angle` | Q15(b) | delete key, alias, and both tests | rule-out-of-scope | Removes a manifest declaration nothing reads. **Deliberate back-compat break** — old profiles fall into `extensions` silently. | no |

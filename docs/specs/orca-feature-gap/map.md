@@ -41,8 +41,8 @@ off-map, after.
   and per-role, so the two are different decision points; the key now rides
   queue packet P51 and `gcode_resolution` stays PnP-specific); ticket 108
   (filed by ticket 10's authoring) adjudicates a possible 25th —
-  `wipe_tower_speed` → `wipe_tower_max_purge_speed` — before any rename work
-  may treat it as settled. It **gates the queue by owner** — each
+  `wipe_tower_speed` → `wipe_tower_max_purge_speed` — resolved by ticket 108
+  with the canonical purge-speed cap. It **gates the queue by owner** — each
   packet ticket is blocked by the rename tickets that touch *its* owner (wired
   in ticket 100 after the original wiring was found to gate nothing: 09–98 were
   blocked only by the already-resolved 06). 20 packets touch no renamed owner
@@ -390,16 +390,11 @@ off-map, after.
   degraded fallbacks on any aligned painted slice — non-fatal today), the
   degraded warn not surfacing in slice degraded stats, and the persistent
   `slicer-sdk --doc` red. Gates green; guests rebuilt fresh.
-- [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md) is
-  still open (filed by ticket 10's authoring); the rename workstream's
-  remaining members are 105–107, all unblocked (105 gates 107).
-  **Bookkeeping discrepancy, noted by ticket 22 (2026-09-02):** the grilling's
-  Q6(a) ruling says it *closes* ticket 108 (rename, adopt canonical's cap
-  semantic), but the ticket file's `Status:` is still `open`, so 108 still sits
-  on the frontier and a session could claim already-decided work. Reconcile
-  before working it — either record Q6(a) as its resolution and close it, or
-  state why the ruling did not settle it. Re-derive the status from the ticket
-  file, never from this line.
+- [108 — Adjudicate `wipe_tower_speed` → `wipe_tower_max_purge_speed`](issues/108-adjudicate-wipe-tower-speed-alias.md)
+  — Q6(a) was implemented: the host key uses the canonical name and
+  `DefaultGCodeEmitter::resolve_feedrate` caps wipe-tower paths at the lower of
+  the configured maximum and `sparse_infill_speed`; canonical min-10 validation
+  is deferred to ticket 113.
 - [11 — Author packet P04 — Printer / Machine / Print volume — wipe-tower](issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md)
   — ⚠ **Correction required (Authoring rules):** wires only the wipe-tower corner check; canonical's feature is object-footprint validation (`Print::validate`), recorded here as a gap — implement it at the port's validation seam. Packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
   (`draft`), preflight **PASS**. Grounding found `bed_exclude_area` is a true
@@ -709,12 +704,13 @@ off-map, after.
   parity is recorded as fog because the current region view has no solid-infill
   direction metadata; the packet specifies a deterministic layer-index fallback.
 - [22 — Author packet P15 — Support / Support ironing — support-surface-ironing](issues/22-author-packet-p15-support-support-ironing-support-surface-ironing.md)
-  — packet `docs/spec_packets/267-support-ironing-gate/` authored (`draft`),
-  preflight **PASS**. **P15 covers one key, not two.** `support_ironing`
+  — the generated packet was discarded and its single atomic change was
+  implemented directly in session. **P15 covers one key, not two.** `support_ironing`
   (canonical `coBool` false, `SupportParameters`' ctor →
   `generate_support_toolpaths`' `support_params.ironing && !top_contact_layer.empty()`
-  gate) is **wired**: it replaces the PnP `ironing_enabled` bool that both
-  ironing modules declare independently, per Q10(b). That bool is a
+  gate) is **wired** by the support manifest and
+  `SupportSurfaceIroning::from_config`: it replaces the PnP `ironing_enabled`
+  bool that both ironing modules declare independently, per Q10(b). That bool is a
   two-way reachability bug, not just a name — an Orca config setting
   `support_ironing = 1` cannot enable support ironing at all, and a user
   enabling top-surface ironing silently gets support ironing too. Default
@@ -731,12 +727,7 @@ off-map, after.
   canonical** (canonical irons the support top *contact* layer; this module
   gets only `&[SliceRegionView]` at `Layer::SupportPostProcess` and scan-fills
   every region polygon) and canonical's `top_interfaces` precondition is
-  unexpressible — the first is graduated to the fog below. Preflight caught one
-  fictional symbol and it was fixed in place: the packet cited `FEEDRATE_KEYS`,
-  which **does not exist in this tree** — the table is `SPEED_KEYS`
-  (`crates/slicer-ir/src/feedrate.rs`). That fiction is inherited from this
-  map's own key-correction-inventory Q11(a) row, which still carries it; treat
-  other symbol names in that document as unverified until greped. Q11(a)'s
+  unexpressible — the first is graduated to the fog below. Q11(a)'s
   `ironing_speed` → `support_ironing_speed` rename was flagged, not folded in,
   and is filed as ticket 109. No user rulings, no deviation rows, no
   `ORCA_CONFIG_PADDING` edit.

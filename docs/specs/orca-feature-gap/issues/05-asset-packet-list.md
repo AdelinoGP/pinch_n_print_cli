@@ -149,9 +149,10 @@ ironing no longer rides the shared `ironing_enabled`.)
 from this packet and returned to the queue as unimplemented.** It is an
 algorithm-selecting enum over `InfillPattern`, so Authoring rule 4 / grilling
 Q3(a) make it holder-only — never a declared input key — and this port has no
-support-ironing claim seam and no concentric filler. P15 is a 1-key packet;
-see [267-support-ironing-gate](../../../spec_packets/267-support-ironing-gate/requirements.md)
-§"Returned to Queue".)
+support-ironing claim seam and no concentric filler. P15 is a 1-key change;
+the single-key implementation was applied directly under ticket 22. The
+holder seam remains a separate follow-up with packet
+`260b-support-interface-fill-claim-holders`.)
 
 ### P16 — Quality / Wall generator — Arachne — arachne-perimeters (1 keys, Tier A)
 

@@ -225,9 +225,9 @@ is the authoritative catalog of their defaults and ranges.
 | `skirt_distance` | float | `3.0` | [0.0, 20.0] | `skirt-brim` |
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
-| `ironing_enabled` | bool | `false` | — | `support-surface-ironing` |
 | `ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
+| `support_ironing` | bool | `false` | — | `support-surface-ironing` |
 | `support_ironing_flow` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `support_ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
@@ -386,7 +386,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `feedrate.rs::FeedrateConfig` |
 | `wipe_speed` | float | `96.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `wipe_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `wipe_tower_max_purge_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |

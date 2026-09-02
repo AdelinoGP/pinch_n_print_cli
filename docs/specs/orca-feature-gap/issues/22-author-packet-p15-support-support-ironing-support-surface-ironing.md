@@ -24,13 +24,14 @@ Authoring obligations:
 - Packet number + status: derive from disk at authoring time per ticket 06's rule — ledger facts (next free number, `status: draft` vs `active`) are never frozen.
 - Verify each key's decision point exists (04's mechanical proxy, refined at authoring time) — re-derive from code, don't trust the tier table. Work: declare in the owner's manifest + wire.
 
-Resolved when the packet is authored, preflighted, and its directory linked here.
+Resolved when the authoring decision is recorded and the single atomic change is
+implemented directly; no retained packet is required.
 
 ## Answer
 
-Packet [`docs/spec_packets/267-support-ironing-gate/`](../../../spec_packets/267-support-ironing-gate/packet.spec.md)
-authored as `draft`; preflight **PASS** (S0–S8, AC-command runnability, Doc
-Impact — one High found and fixed in place, below).
+The generated draft packet was intentionally discarded. Its authoring analysis
+is retained below, and the single atomic change was implemented directly in
+session.
 
 **P15 covers one key, not two.** The two scoped keys were re-derived against
 canonical and against this tree, and they land in different places.
@@ -40,15 +41,15 @@ canonical and against this tree, and they land in different places.
 (`Support/SupportParameters.hpp`) and consumed by `generate_support_toolpaths`
 (`Support/SupportCommon.cpp`), where `support_params.ironing &&
 !top_contact_layer.empty()` captures the polygons a later block fills at
-`ExtrusionRole::erIroning`. Zero occurrences in this tree. The port has the
-behaviour but not the key: `SupportSurfaceIroning::from_config`
+`ExtrusionRole::erIroning`. At authoring, this key had zero occurrences in the
+tree. The port had the behaviour but not the key: `SupportSurfaceIroning::from_config`
 (`modules/core-modules/support-surface-ironing/src/lib.rs`) gates on a
 PnP-invented `ironing_enabled` bool that `top-surface-ironing` **also**
 declares, independently. That is not only a naming gap — it is a reachability
 bug in both directions: an Orca configuration setting `support_ironing = 1`
 cannot enable support ironing at all, and a user setting `ironing_enabled` to
-reach *top-surface* ironing silently enables support ironing too. The packet
-makes `support_ironing` the module's sole gate (grilling ruling **Q10(b)**;
+reach *top-surface* ironing silently enables support ironing too. The direct
+implementation makes `support_ironing` the module's sole gate (grilling ruling **Q10(b)**;
 Authoring rule 5 forbids the two-gates-one-decision alternative). Default
 `false` equals the current default and the current absent-key behaviour, so the
 **default path is byte-identical**; the behaviour change is at `true`, pinned by
@@ -70,7 +71,7 @@ in [`05-asset-packet-list.md`](./05-asset-packet-list.md) now carry the
 returned-to-queue ruling and name the missing feature.
 
 **Tier A confirmed** for `support_ironing` — the decision point already exists
-(`run_support_postprocess`'s `if !self.enabled` early return); the packet plumbs
+(`run_support_postprocess`'s `if !self.support_ironing` early return); the direct implementation plumbs
 a canonical key into it. Rule 4 does not fire on it: a bool that turns one
 implemented behaviour on and off is in-module branching, not cross-module
 algorithm selection (the Q8 trigger test).
@@ -106,3 +107,13 @@ smuggled into a packet whose acceptance is about a different key.
 No user rulings were required; no deviation rows filed; `ORCA_CONFIG_PADDING`
 untouched in both directions (Authoring rule 2 — and re-derived: neither key is
 in that table).
+
+## Direct implementation
+
+The support manifest now declares `support_ironing` with the canonical false
+default, and `SupportSurfaceIroning::from_config` reads it as the sole gate.
+The module tests cover true, false, absent, and legacy `ironing_enabled` input;
+the support integrated-parity contract uses the canonical key; and the module
+owns a direct TOML schema guard. The generated config reference was refreshed,
+the guest artifact was rebuilt and freshness-checked, and the focused module
+and parity tests pass.
