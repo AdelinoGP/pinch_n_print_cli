@@ -20,16 +20,19 @@ the phase plan; the architecture decision is ADR-0030.
 See `docs/07_implementation_status.md` TASK-256/TASK-257/TASK-261. Delivered refinements
 recorded below:
 
-- **Sub-region identity** (M1 delivery): sub-regions carry an **empty `variant_chain`**
-  and are identified by their modifier-namespace `region_id` alone
-  (`base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(object_id,
-  modifier_index, priority)`); the `wall_source_region_id` predicate inverts by
-  `sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE`. See `docs/02_ir_schemas.md`
-  IR 5 §"Sub-region `region_id` namespace".
-- **Prepass-cached slicing** (M1 delivery): modifier meshes are sliced once per layer
-  during prepass (`slice_modifier_volumes`, extended to material/config-delta subtypes);
-  the cached cross-sections are consumed at partition-time splitting, keeping
-  `region_partition.rs` mesh-free.
+- **Sub-region identity** (M1 delivery): an unpainted parent produces a child with
+  an empty `variant_chain`; a painted parent produces a child retaining the
+  parent's chain and using the painted parent ID in the modifier-namespace
+  payload. The shared `modifier_sub_region_id` helper carries a high-bit
+  namespace marker over the `base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE +
+  hash` payload, where the hash is derived from the object ID and sliced
+  modifier footprint. The `wall_source_region_id` predicate masks the namespace
+  bit before recovering the parent ID. See `docs/02_ir_schemas.md` IR 5
+  §"Sub-region `region_id` namespace".
+- **Prepass materialization** (M1 delivery): modifier meshes are sliced during
+  `split_modifier_sub_regions_for_prepass`; the same shared splitter is reused
+  by the Tier-2 footprint fallback, so both paths use identical geometry and
+  priority semantics.
 - **Overlap precedence** (M1 delivery): for overlapping non-support modifier volumes,
   priority is applied first and document order breaks ties — the first winning modifier
   owns the footprint; later modifiers intersect only the remaining base area.

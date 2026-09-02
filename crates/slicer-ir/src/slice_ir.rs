@@ -1780,11 +1780,13 @@ pub struct ExPolygon {
 /// runtime crate.
 pub const MODIFIER_FOOTPRINT_REGION_ID: RegionId = RegionId::MAX;
 
-/// Modifier `region_id` namespace stride (packet 132): a minted modifier
-/// sub-region id is `base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
-/// (`hash != 0`), so integer division by the stride inverts to the base id.
+/// Modifier `region_id` payload stride (packet 132): beneath the namespace bit,
+/// a minted modifier sub-region stores
+/// `base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash` (`hash != 0`).
 /// The next prime above paint's stride (`PAINT_VARIANT_REGION_ID_STRIDE =
-/// 1_000_000`), keeping the two variant namespaces disjoint.
+/// 1_000_000`) keeps payloads stable while the high bit makes namespace
+/// membership unambiguous for every ordinary region id. `MAX` remains reserved
+/// for the raw modifier-footprint staging marker and is not a sub-region id.
 ///
 /// Lives here because both minting sites need it: the Tier-2 geometry split
 /// (`slicer-runtime::region_partition::split_modifier_footprints`) and the
@@ -1793,22 +1795,24 @@ pub const MODIFIER_FOOTPRINT_REGION_ID: RegionId = RegionId::MAX;
 /// `SlicedRegion`s byte-for-byte. `slicer-wasm-host` reads it for the
 /// `is_modifier_namespace_id` predicate; it must never be restated per-crate.
 pub const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+const MODIFIER_VARIANT_REGION_ID_FLAG: u64 = 1 << 63;
 
-/// Derive the stable modifier sub-region id (`base_region_id * STRIDE + hash`,
-/// `hash != 0`) from the base region id and the modifier footprint geometry.
+/// Derive the stable modifier sub-region id from the parent region id and the
+/// modifier footprint geometry. The returned id carries the high-bit namespace
+/// marker over a `parent_region_id * STRIDE + hash` payload with `hash != 0`.
 ///
-/// FNV-1a over the `object_id` bytes + footprint contour points makes the id
-/// stable for a given modifier cross-section at a layer and distinct across
-/// modifiers within the same base. The footprint polygons MUST be the same
-/// slice output both sites use — `slicer_core::slice_mesh_ex` on the modifier
-/// mesh at the layer Z, taking the first polygon batch — or the ids diverge
-/// and the RegionMapIR entry stops matching the minted geometry.
+/// FNV-1a over the `object_id` bytes + footprint contour and hole points makes
+/// the id stable for a given modifier cross-section at a layer and distinct
+/// across modifiers within the same parent. The footprint polygons MUST be the
+/// same slice output both sites use — `slicer_core::slice_mesh_ex` on the
+/// modifier mesh at the layer Z, taking the first polygon batch — or the ids
+/// diverge and the RegionMapIR entry stops matching the minted geometry.
 pub fn modifier_sub_region_id(
-    base_region_id: u64,
+    parent_region_id: u64,
     object_id: &str,
     footprint_geo: &[ExPolygon],
 ) -> u64 {
-    // FNV-1a over object_id bytes + footprint contour points.
+    // FNV-1a over object_id bytes + footprint contour and hole points.
     let mut h: u64 = 0xcbf29ce484222325;
     let mut mix = |b: u8| {
         h ^= b as u64;
@@ -1826,21 +1830,56 @@ pub fn modifier_sub_region_id(
                 mix(byte);
             }
         }
+        for hole in &ep.holes {
+            // Keep hole boundaries distinct from the enclosing contour and
+            // from each other without changing ids for hole-free footprints.
+            mix(0xff);
+            for p in &hole.points {
+                for byte in (p.x as u64).to_le_bytes() {
+                    mix(byte);
+                }
+                for byte in (p.y as u64).to_le_bytes() {
+                    mix(byte);
+                }
+            }
+        }
     }
     let hash = (h % (MODIFIER_VARIANT_REGION_ID_STRIDE - 1)) + 1;
-    base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash
+    assert!(
+        modifier_sub_region_id_fits(parent_region_id),
+        "modifier sub-region id payload exceeds its namespace or reserved sentinel"
+    );
+    let payload = parent_region_id
+        .checked_mul(MODIFIER_VARIANT_REGION_ID_STRIDE)
+        .and_then(|base| base.checked_add(hash))
+        .expect("modifier sub-region id payload overflow");
+    debug_assert!(payload < MODIFIER_VARIANT_REGION_ID_FLAG - 1);
+    MODIFIER_VARIANT_REGION_ID_FLAG | payload
+}
+
+/// Return whether `parent_region_id` can safely be used by
+/// [`modifier_sub_region_id`] for every possible footprint hash.
+pub fn modifier_sub_region_id_fits(parent_region_id: u64) -> bool {
+    parent_region_id
+        .checked_mul(MODIFIER_VARIANT_REGION_ID_STRIDE)
+        .and_then(|payload| payload.checked_add(MODIFIER_VARIANT_REGION_ID_STRIDE - 1))
+        .is_some_and(|payload| payload < MODIFIER_VARIANT_REGION_ID_FLAG - 1)
 }
 
 /// ADR-0030: identifies ids in the modifier namespace.
 ///
-/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
-/// with `hash != 0`. This predicate is disjoint from paint's namespace
-/// (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`) and from base regions
-/// (`id == 0`, or a small base id that owns its own walls via
-/// `has_own_perimeter_entry`). The `!is_multiple_of` term enforces `hash != 0`;
-/// `id != 0` excludes the base region itself.
+/// Modifier sub-region ids carry a dedicated high-bit namespace marker. This
+/// is disjoint from base and paint region ids regardless of their numeric
+/// value; the payload retains the stride/hash shape for deterministic inversion.
+/// The all-bits-set value is excluded because it is the raw footprint marker.
 pub fn is_modifier_namespace_id(id: u64) -> bool {
-    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+    id != MODIFIER_FOOTPRINT_REGION_ID && id & MODIFIER_VARIANT_REGION_ID_FLAG != 0
+}
+
+/// Recover the wall-owning parent region id from a modifier sub-region id.
+pub fn modifier_base_region_id(id: u64) -> Option<u64> {
+    is_modifier_namespace_id(id)
+        .then_some((id & !MODIFIER_VARIANT_REGION_ID_FLAG) / MODIFIER_VARIANT_REGION_ID_STRIDE)
 }
 
 /// Sliced region

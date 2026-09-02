@@ -16,13 +16,15 @@
 //! minted sub-region — keyed by the same deterministic id the Tier-2 geometry
 //! split will mint — is assigned "tree".
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectMesh, PaintSemantic,
-    Point2, Point3, Polygon, RegionKey, ResolvedConfig, SemVer, SliceIR, SlicedRegion, Transform3d,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectMesh,
+    PaintSemantic, Point2, Point3, Polygon, RegionKey, ResolvedConfig, SemVer, SliceIR,
+    SlicedRegion, Transform3d,
 };
 use slicer_runtime::{
     builtins::support_analysis_producer::commit_support_analysis_builtin,
@@ -43,24 +45,22 @@ fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
 
 /// A 1 mm-tall cube spanning `x0..x1` in X, `0..10` in Y, `0..1` in Z — its
 /// mid-plane slice at z = 0.5 is a non-empty square.
-fn modifier_cube_mesh(x0: f32, x1: f32) -> IndexedTriangleSet {
-    let y1 = 10.0f32;
-    let z1 = 1.0f32;
+fn modifier_box_mesh(x0: f32, x1: f32, y0: f32, y1: f32, z0: f32, z1: f32) -> IndexedTriangleSet {
     let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
     IndexedTriangleSet {
         vertices: vec![
-            v(x0, 0.0, 0.0),
-            v(x1, 0.0, 0.0),
-            v(x1, y1, 0.0),
-            v(x0, y1, 0.0),
-            v(x0, 0.0, z1),
-            v(x1, 0.0, z1),
+            v(x0, y0, z0),
+            v(x1, y0, z0),
+            v(x1, y1, z0),
+            v(x0, y1, z0),
+            v(x0, y0, z1),
+            v(x1, y0, z1),
             v(x1, y1, z1),
             v(x0, y1, z1),
         ],
         indices: vec![
-            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
-            7, 3, 1, 2, 6, 1, 6, 5,
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7,
+            3, 1, 2, 6, 1, 6, 5,
         ],
     }
 }
@@ -71,7 +71,7 @@ fn tree_support_modifier() -> ModifierVolume {
     // exhaustive: ModifierVolume has no Default impl; every field is a fixture input
     ModifierVolume {
         id: "mod-tree".to_string(),
-        mesh: modifier_cube_mesh(10.0, 20.0),
+        mesh: modifier_box_mesh(10.0, 20.0, 0.0, 10.0, 0.0, 1.0),
         config_delta: ConfigDelta {
             fields: HashMap::from([(
                 "support_type".to_string(),
@@ -82,6 +82,14 @@ fn tree_support_modifier() -> ModifierVolume {
         applies_to: ModifierScope::AllFeatures,
         // exhaustive: ModifierVolume fixture preserves every field explicitly
     }
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("workspace root must resolve")
 }
 
 fn square(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
@@ -196,10 +204,8 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
         .commit_layer_plan(Arc::new(layer_plan()))
         .expect("commit layer plan");
 
-    let resolved_configs: BTreeMap<String, ResolvedConfig> = BTreeMap::from([(
-        OBJECT_ID.to_string(),
-        ResolvedConfig::default(),
-    )]);
+    let resolved_configs: BTreeMap<String, ResolvedConfig> =
+        BTreeMap::from([(OBJECT_ID.to_string(), ResolvedConfig::default())]);
     let default_resolved_config = ResolvedConfig::default();
     let plan = empty_execution_plan();
     let paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
@@ -279,4 +285,160 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
         Some(&"tree".to_string()),
         "minted sub-region must be assigned the tree family from the modifier's support_type"
     );
+}
+
+#[test]
+fn modifier_support_type_routes_planned_support_inside_footprint() {
+    let root = workspace_root();
+    let mut mesh = slicer_model_io::load_model(&root.join("resources/regression_wedge.stl"))
+        .expect("load regression wedge");
+    let object = mesh.objects.first_mut().expect("wedge object");
+    let object_id = object.id.clone();
+    // exhaustive: ModifierVolume has no Default impl; this fixture pins every field.
+    object.modifier_volumes.push(ModifierVolume {
+        id: "cantilever-tree-support".to_string(),
+        mesh: modifier_box_mesh(0.0, 50.4, 49.0, 60.0, 28.5, 31.5),
+        config_delta: ConfigDelta {
+            fields: HashMap::from([(
+                "support_type".to_string(),
+                ConfigValue::String("tree(auto)".to_string()),
+            )]),
+        },
+        priority: 0,
+        applies_to: ModifierScope::AllFeatures,
+    });
+
+    let config = HashMap::from([("enable_support".to_string(), ConfigValue::Bool(true))]);
+    let ctx = slicer_runtime::run::prepare_prepass_context(
+        Arc::new(mesh),
+        config,
+        &[root.join("modules/core-modules")],
+        true,
+        false,
+    )
+    .expect("modifier support prepass must succeed");
+
+    let analysis = ctx
+        .blackboard
+        .support_analysis()
+        .expect("support analysis must be committed");
+    let tree_region_ids: BTreeSet<_> = analysis
+        .family_assignments
+        .iter()
+        .filter_map(|((assignment_object, region_id), family)| {
+            (assignment_object == &object_id && family == "tree").then_some(*region_id)
+        })
+        .collect();
+    assert!(
+        !tree_region_ids.is_empty(),
+        "modifier must mint at least one tree-family sub-region"
+    );
+    let layer_plan = ctx
+        .blackboard
+        .layer_plan()
+        .expect("layer plan must be committed");
+    assert!(
+        layer_plan.global_layers.iter().any(|layer| {
+            layer.active_regions.iter().any(|active| {
+                active.object_id == object_id && tree_region_ids.contains(&active.region_id)
+            })
+        }),
+        "committed layer plan must surface the modifier sub-region"
+    );
+    let slices = ctx
+        .blackboard
+        .slice_ir()
+        .expect("prepass slice must be committed");
+    assert!(
+        slices.iter().any(|slice| {
+            slice.regions.iter().any(|region| {
+                region.object_id == object_id
+                    && tree_region_ids.contains(&region.region_id)
+                    && !region.polygons.is_empty()
+            })
+        }),
+        "blackboard slice must contain modifier sub-region geometry"
+    );
+    for layer in &layer_plan.global_layers {
+        for active in layer
+            .active_regions
+            .iter()
+            .filter(|active| slicer_ir::is_modifier_namespace_id(active.region_id))
+        {
+            assert!(
+                slices.iter().any(|slice| {
+                    slice.global_layer_index == layer.index
+                        && slice.regions.iter().any(|region| {
+                            region.object_id == active.object_id
+                                && region.region_id == active.region_id
+                                && !region.polygons.is_empty()
+                        })
+                }),
+                "active modifier region must have materialized geometry"
+            );
+        }
+    }
+    assert!(
+        analysis.candidates.iter().any(|candidate| {
+            candidate.source.object_id == object_id
+                && tree_region_ids.contains(&candidate.source.region_id)
+        }),
+        "support analysis must attribute a cantilever candidate to the modifier's tree-family \
+         sub-region; candidates={:?}, assignments={:?}",
+        analysis.candidates,
+        analysis.family_assignments
+    );
+    let base_candidate_region_ids: BTreeSet<_> = analysis
+        .candidates
+        .iter()
+        .filter_map(|candidate| {
+            (candidate.source.object_id == object_id
+                && !tree_region_ids.contains(&candidate.source.region_id))
+            .then_some(candidate.source.region_id)
+        })
+        .collect();
+    assert!(
+        !base_candidate_region_ids.is_empty(),
+        "the fixture must retain a traditional-family candidate outside the modifier footprint"
+    );
+    assert!(
+        base_candidate_region_ids.iter().all(|region_id| {
+            plan_for_region(&ctx, &object_id, *region_id)
+                .is_some_and(|entry| entry.family_id == "traditional")
+        }),
+        "base candidates must remain on the traditional planner; candidates={:?}, plan={:?}",
+        analysis.candidates,
+        ctx.blackboard.support_plan()
+    );
+
+    let plan = ctx
+        .blackboard
+        .support_plan()
+        .expect("support plan must be committed");
+    assert!(
+        plan.entries.iter().any(|entry| {
+            entry.object_id == object_id
+                && tree_region_ids.contains(&entry.region_id)
+                && entry.family_id == "tree"
+                && (entry.roles.iter().any(|role| !role.regions.is_empty())
+                    || entry
+                        .skeleton
+                        .as_ref()
+                        .is_some_and(|skeleton| !skeleton.points.is_empty()))
+        }),
+        "tree planner must emit structural support for the modifier sub-region; entries={:?}",
+        plan.entries
+    );
+}
+
+fn plan_for_region<'a>(
+    ctx: &'a slicer_runtime::run::PrepassContext,
+    object_id: &str,
+    region_id: u64,
+) -> Option<&'a slicer_ir::SupportPlanEntry> {
+    ctx.blackboard.support_plan()?.entries.iter().find(|entry| {
+        entry.object_id == object_id
+            && entry.region_id == region_id
+            && entry.family_id == "traditional"
+    })
 }

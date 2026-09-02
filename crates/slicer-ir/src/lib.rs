@@ -185,10 +185,12 @@ pub use slice_ir::{
 pub use slice_ir::{
     // ExtrusionLine -> ExtrusionPath3D conversion helper
     extrusion_line_to_extrusion_path3d,
+    is_modifier_namespace_id,
     // Helper functions for Point2 coordinate conversion
     mm_to_units,
-    is_modifier_namespace_id,
+    modifier_base_region_id,
     modifier_sub_region_id,
+    modifier_sub_region_id_fits,
     units_to_mm,
     // Variable-width centerline helper
     variable_width,

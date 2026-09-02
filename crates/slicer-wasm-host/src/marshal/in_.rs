@@ -650,7 +650,14 @@ pub(crate) fn harvest_layer_plan_ir_from(
                         region_prop.object_id, region_prop.region_id
                     )
                 })?;
-
+            if region_id == slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+                || slicer_ir::is_modifier_namespace_id(region_id)
+            {
+                return Err(format!(
+                    "layer-plan-output: region '{}'/'{}' uses a host-reserved modifier region-id",
+                    region_prop.object_id, region_prop.region_id
+                ));
+            }
             active_regions.push(ActiveRegion {
                 object_id: region_prop.object_id.clone(),
                 region_id,
@@ -975,7 +982,9 @@ pub(crate) fn harvest_support_plan_ir_from(
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::harvest_support_plan_ir_from;
+    use super::{harvest_layer_plan_ir_from, harvest_support_plan_ir_from};
+    use crate::host::prepass_layer_planning::LayerProposal;
+    use crate::host::prepass_layer_planning::slicer::prepass_layer_planning::layer_planning_types::RegionLayerProposal;
     use crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::{
         SupportPlanEntry, SupportPlanRole, SupportPlanRoleRegion,
     };
@@ -1012,6 +1021,41 @@ mod tests {
             native_roles[0].role,
             slicer_ir::SupportPlanRole::BaseInterface
         );
+    }
+
+    #[test]
+    fn layer_plan_rejects_host_reserved_modifier_region_ids() {
+        let proposal = LayerProposal {
+            z: 0.2,
+            active_regions: vec![RegionLayerProposal {
+                object_id: "object-a".into(),
+                region_id: (1_u64 << 63).to_string(),
+                effective_layer_height: 0.2,
+                is_catchup: false,
+                catchup_z_bottom: 0.0,
+            }],
+        };
+
+        let error = harvest_layer_plan_ir_from(vec![proposal])
+            .expect_err("modifier namespace ids must not be module-authored base regions");
+        assert!(error.contains("host-reserved modifier region-id"));
+    }
+
+    #[test]
+    fn layer_plan_accepts_ordinary_ids_that_need_no_modifier_children() {
+        let proposal = LayerProposal {
+            z: 0.2,
+            active_regions: vec![RegionLayerProposal {
+                object_id: "object-a".into(),
+                region_id: ((1_u64 << 63) - 1).to_string(),
+                effective_layer_height: 0.2,
+                is_catchup: false,
+                catchup_z_bottom: 0.0,
+            }],
+        };
+
+        harvest_layer_plan_ir_from(vec![proposal])
+            .expect("an ordinary module-authored id is valid without modifier children");
     }
 }
 

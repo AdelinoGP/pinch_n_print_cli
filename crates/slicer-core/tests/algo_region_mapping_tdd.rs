@@ -7,9 +7,9 @@ use slicer_core::algos::region_mapping::{
     RegionMappingPlanProjection, DEFAULT_REGION_MAP_CAP,
 };
 use slicer_ir::{
-    ConfigValue, ActiveRegion, FacetPaintData, GlobalLayer, IndexedTriangleSet, LayerPlanIR,
-    ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3, RegionKey, RegionMapIR,
-    ResolvedConfig, SemVer,
+    is_modifier_namespace_id, ActiveRegion, ConfigValue, FacetPaintData, GlobalLayer,
+    IndexedTriangleSet, LayerPlanIR, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3,
+    RegionKey, RegionMapIR, ResolvedConfig, SemVer,
 };
 use slicer_scheduler::manifest::RegionSplitValueType;
 use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
@@ -129,8 +129,8 @@ fn modifier_cube_mesh(x0: f32, x1: f32) -> IndexedTriangleSet {
             v(x0, y1, z1),
         ],
         indices: vec![
-            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
-            7, 3, 1, 2, 6, 1, 6, 5,
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7,
+            3, 1, 2, 6, 1, 6, 5,
         ],
     }
 }
@@ -274,6 +274,222 @@ fn modifier_sub_regions_carry_only_their_own_delta() {
     }
 }
 
+/// Identical footprints collapse to one modifier sub-region id. The first
+/// modifier in document order must own that geometry when priorities tie, so
+/// config precedence and geometry ownership select the same modifier.
+#[test]
+fn identical_modifier_footprints_first_equal_priority_wins() {
+    let plan = LayerPlanIR {
+        schema_version: sv(1, 0, 0),
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.5,
+            active_regions: vec![ActiveRegion {
+                object_id: "obj_a".to_string(),
+                region_id: 0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let first = modifier_volume("first", 0.0, 10.0, "support_type", "tree(auto)");
+    let second = modifier_volume("second", 0.0, 10.0, "support_type", "normal(auto)");
+    let objects = vec![ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![
+            slicer_ir::ModifierVolume {
+                priority: 7,
+                ..first
+            },
+            slicer_ir::ModifierVolume {
+                priority: 7,
+                ..second
+            },
+        ],
+        ..Default::default()
+    }];
+    let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &stage_invocations,
+    };
+
+    let region_map = execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &no_paint_configs(),
+        &empty_aggregated(),
+        &objects,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+    let footprint = slicer_core::slice_mesh_ex(&objects[0].modifier_volumes[0].mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("modifier cube must slice at z=0.5");
+    let sub_id = slicer_ir::modifier_sub_region_id(0, "obj_a", &footprint);
+    let key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: sub_id,
+        variant_chain: Vec::new(),
+    };
+    assert_eq!(
+        region_map.config_for(&key).extensions.get("support_type"),
+        Some(&ConfigValue::String("tree(auto)".to_string()))
+    );
+}
+
+#[test]
+fn modifier_parent_bound_only_applies_to_effective_parameter_footprints() {
+    let no_modifiers = ObjectMesh {
+        id: "obj_a".to_string(),
+        ..Default::default()
+    };
+    assert!(map_single_region_with_object(no_modifiers, 0.5).is_ok());
+
+    let mut support_only = modifier_volume("support-only", 0.0, 10.0, "support_type", "tree(auto)");
+    support_only.config_delta.fields.insert(
+        "subtype".to_string(),
+        ConfigValue::String("support_enforcer".to_string()),
+    );
+    let support_object = ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![support_only],
+        ..Default::default()
+    };
+    assert!(map_single_region_with_object(support_object, 0.5).is_ok());
+
+    let mut empty_mesh = modifier_volume("empty", 0.0, 10.0, "support_type", "tree(auto)");
+    empty_mesh.mesh = IndexedTriangleSet::default();
+    let empty_object = ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![empty_mesh],
+        ..Default::default()
+    };
+    assert!(map_single_region_with_object(empty_object, 0.5).is_ok());
+
+    let out_of_layer = ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![modifier_volume(
+            "out-of-layer",
+            0.0,
+            10.0,
+            "support_type",
+            "tree(auto)",
+        )],
+        ..Default::default()
+    };
+    assert!(map_single_region_with_object(out_of_layer, 2.0).is_ok());
+
+    let intersecting = ObjectMesh {
+        id: "obj_a".to_string(),
+        modifier_volumes: vec![modifier_volume(
+            "parameter",
+            0.0,
+            10.0,
+            "support_type",
+            "tree(auto)",
+        )],
+        ..Default::default()
+    };
+    assert!(matches!(
+        map_single_region_with_object(intersecting, 0.5),
+        Err(RegionMappingError::ModifierParentRegionIdOutOfRange { .. })
+    ));
+}
+
+/// Modifier and paint partitions must compose rather than applying the
+/// modifier delta to the whole painted variant. The composed key is rooted in
+/// the painted parent so the prepass splitter can materialize the matching
+/// wall-less child later.
+#[test]
+fn painted_modifier_entries_are_spatially_composed() {
+    let mut plan = single_region_plan("obj_a");
+    plan.global_layers[0].z = 0.5;
+    let mut object = painted_object("obj_a", &[("material", vec![PaintValue::ToolIndex(1)])]);
+    object.modifier_volumes = vec![modifier_volume(
+        "modifier",
+        0.0,
+        10.0,
+        "support_type",
+        "tree(auto)",
+    )];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &[],
+    };
+
+    let region_map = execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &no_paint_configs(),
+        &aggregated(&["material"]),
+        &[object],
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+    let paint_chain = vec![("material".to_string(), PaintValue::ToolIndex(1))];
+    let painted_key = region_map
+        .entries
+        .keys()
+        .find(|key| key.variant_chain == paint_chain && !is_modifier_namespace_id(key.region_id))
+        .expect("painted parent entry must exist");
+    assert!(
+        !region_map
+            .config_for(painted_key)
+            .extensions
+            .contains_key("support_type"),
+        "modifier support_type must not leak across the painted parent"
+    );
+
+    let composed = region_map
+        .entries
+        .keys()
+        .filter(|key| key.variant_chain == paint_chain && is_modifier_namespace_id(key.region_id))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        composed.len(),
+        1,
+        "painted modifier coverage needs one composed RegionMap entry"
+    );
+    assert_eq!(
+        region_map
+            .config_for(composed[0])
+            .extensions
+            .get("support_type"),
+        Some(&ConfigValue::String("tree(auto)".to_string()))
+    );
+}
+
+#[test]
+fn painted_variant_ids_stay_outside_modifier_namespace() {
+    let chain = vec![
+        ("material".to_string(), PaintValue::ToolIndex(1)),
+        ("fuzzy_skin".to_string(), PaintValue::Flag(true)),
+    ];
+    let id = slicer_core::algos::paint_segmentation::paint_variant_region_id(0, &chain);
+
+    assert!(!is_modifier_namespace_id(id));
+    assert!(slicer_ir::modifier_sub_region_id_fits(id));
+}
+
+#[test]
+fn painted_variant_id_at_modifier_parent_limit_never_becomes_sentinel() {
+    let modifier_stride = slicer_ir::MODIFIER_VARIANT_REGION_ID_STRIDE;
+    let max_parent = ((1u64 << 63) - 2 - (modifier_stride - 1)) / modifier_stride;
+    let chain = vec![("material".to_string(), PaintValue::ToolIndex(1))];
+
+    assert!(slicer_ir::modifier_sub_region_id_fits(max_parent));
+    let id = slicer_core::algos::paint_segmentation::paint_variant_region_id(max_parent, &chain);
+
+    assert_ne!(id, slicer_ir::MODIFIER_FOOTPRINT_REGION_ID);
+    assert!(!is_modifier_namespace_id(id));
+    assert_eq!(
+        id / slicer_core::algos::paint_segmentation::PAINT_VARIANT_REGION_ID_STRIDE,
+        max_parent
+    );
+}
+
 /// Build an `aggregated_region_split` BTreeMap declaring the given semantics
 /// with a default-ish entry (priority 100, ToolIndex value-type).
 fn aggregated(semantics: &[&str]) -> BTreeMap<String, AggregatedRegionSplitEntry> {
@@ -315,6 +531,32 @@ fn single_region_plan(object_id: &str) -> LayerPlanIR {
         ..Default::default()
     });
     plan
+}
+
+fn unencodable_modifier_parent_id() -> u64 {
+    let stride = slicer_ir::MODIFIER_VARIANT_REGION_ID_STRIDE;
+    let max_parent = ((1_u64 << 63) - 2 - (stride - 1)) / stride;
+    max_parent + 1
+}
+
+fn map_single_region_with_object(
+    object: ObjectMesh,
+    layer_z: f32,
+) -> Result<RegionMapIR, RegionMappingError> {
+    let mut plan = single_region_plan(&object.id);
+    plan.global_layers[0].z = layer_z;
+    plan.global_layers[0].active_regions[0].region_id = unencodable_modifier_parent_id();
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &[],
+    };
+    execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &no_paint_configs(),
+        &empty_aggregated(),
+        &[object],
+        DEFAULT_REGION_MAP_CAP,
+    )
 }
 
 // ---- existing tests ---------------------------------------------------------

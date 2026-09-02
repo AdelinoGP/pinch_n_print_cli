@@ -49,6 +49,40 @@ pub fn canonical_effective_layer_height(plan: &slicer_ir::LayerPlanIR, global_in
         .unwrap_or(0.2)
 }
 
+/// Reconstruct the wall-owning base geometry presented to perimeter modules.
+///
+/// The blackboard slice partitions modifier footprints into wall-less sibling
+/// regions for prepass consumers. Perimeter generators must still see one
+/// unsplit outline on the base region and no modifier sibling, preserving
+/// ADR-0030's "modifier splits fill, not perimeters" contract.
+pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer_ir::SlicedRegion> {
+    let mut regions: Vec<_> = slice
+        .regions
+        .iter()
+        .filter(|region| {
+            region.region_id != slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+                && !slicer_ir::is_modifier_namespace_id(region.region_id)
+        })
+        .cloned()
+        .collect();
+    for sub_region in slice
+        .regions
+        .iter()
+        .filter(|region| slicer_ir::is_modifier_namespace_id(region.region_id))
+    {
+        let base_region_id = slicer_ir::modifier_base_region_id(sub_region.region_id)
+            .expect("filtered to modifier namespace ids");
+        if let Some(base) = regions.iter_mut().find(|region| {
+            region.object_id == sub_region.object_id
+                && region.region_id == base_region_id
+                && region.variant_chain == sub_region.variant_chain
+        }) {
+            base.polygons = slicer_core::polygon_ops::union(&base.polygons, &sub_region.polygons);
+        }
+    }
+    regions
+}
+
 /// Convert a native SDK support builder through the same host-side join used
 /// for renderer output, preserving origin-based plan identity.
 #[cfg(not(target_arch = "wasm32"))]

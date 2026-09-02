@@ -15,8 +15,8 @@ use std::sync::Arc;
 use wasmtime::component::Resource;
 
 use slicer_ir::{
-    GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId,
-    is_modifier_namespace_id as ir_is_modifier_namespace_id,
+    is_modifier_namespace_id as ir_is_modifier_namespace_id, GCodeCommand, GlobalLayer,
+    LayerCollectionIR, RetractMode, StageId,
 };
 use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
@@ -501,6 +501,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
@@ -663,6 +664,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -743,6 +745,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    true,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -891,6 +894,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
@@ -976,6 +980,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let output = store
@@ -2036,14 +2041,22 @@ fn push_slice_regions(
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     layer: &GlobalLayer,
     module_claims: &[String],
+    perimeter_sources: bool,
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
     let slice_ir = match slice_ir {
         Some(ir) => ir,
         None => return Ok(Vec::new()),
     };
 
-    let mut handles = Vec::with_capacity(slice_ir.regions.len());
-    for region in &slice_ir.regions {
+    let projected;
+    let regions = if perimeter_sources {
+        projected = crate::marshal::perimeter_source_regions(slice_ir);
+        projected.as_slice()
+    } else {
+        slice_ir.regions.as_slice()
+    };
+    let mut handles = Vec::with_capacity(regions.len());
+    for region in regions {
         if !module_receives_slice_region(module_claims, layer, region) {
             continue;
         }
@@ -2167,12 +2180,13 @@ pub fn perimeter_region_index(
         .collect()
 }
 
-/// Modifier sub-region id inversion (packet 132): ids are
-/// `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash` with `hash != 0` (see
-/// `slicer_ir::modifier_sub_region_id`). The same `slicer-ir` predicate and
-/// stride serve the region-map kernel (`slicer-core::algos::region_mapping`)
-/// and the Tier-2 mint (`slicer-runtime::region_partition`) — one source so
-/// every namespace judgement in the pipeline agrees.
+/// Modifier sub-region id inversion (packet 132): ids carry the dedicated
+/// namespace bit over a `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// payload with `hash != 0` (see `slicer_ir::modifier_sub_region_id`). The same
+/// `slicer-ir` predicate and stride serve the region-map kernel
+/// (`slicer-core::algos::region_mapping`) and the Tier-2 mint
+/// (`slicer-runtime::region_partition`) — one source so every namespace
+/// judgement in the pipeline agrees.
 pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
     ir_is_modifier_namespace_id(id)
 }
@@ -2183,10 +2197,9 @@ pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
 ///   * a paint-variant region (non-empty `variant_chain`) WITHOUT its own
 ///     `PerimeterIR` entry — inverts `paint_segmentation::paint_variant_region_id`
 ///     (`base * STRIDE + hash`) by integer division; or
-///   * a modifier sub-region (packet 132): id in the modifier namespace
-///     (`base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`, `hash != 0`) with an
-///     empty `variant_chain` and no own `PerimeterIR` entry — inverts by integer
-///     division to the base id.
+///   * a modifier sub-region (packet 132): id in the modifier namespace with an
+///     empty `variant_chain` and no own `PerimeterIR` entry — masks the namespace
+///     bit and inverts the payload to the base id.
 ///
 /// Returns `None` when the region has its own `PerimeterIR` entry (it owns its
 /// walls) or is a base region.
@@ -2197,10 +2210,10 @@ pub fn wall_source_region_id(
     if has_own_perimeter_entry {
         return None;
     }
-    // Modifier sub-region (packet 132): empty variant_chain, id in the modifier
-    // namespace (`base * STRIDE + hash`, `hash != 0`), no own PerimeterIR entry.
-    if region.variant_chain.is_empty() && is_modifier_namespace_id(region.region_id) {
-        return Some(region.region_id / slicer_ir::MODIFIER_VARIANT_REGION_ID_STRIDE);
+    // Modifier sub-region (packet 132): the namespace id encodes its parent,
+    // whether that parent is BASE or a painted variant.
+    if is_modifier_namespace_id(region.region_id) {
+        return slicer_ir::modifier_base_region_id(region.region_id);
     }
     // Paint-variant arm (ADR-0028 §Amendment): non-empty variant_chain, no own
     // perimeter entry → shares the base region's walls.

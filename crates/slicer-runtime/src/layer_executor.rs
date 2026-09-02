@@ -1015,12 +1015,9 @@ fn hydrate_slice_arena(
             module_id: "host:slice".to_string(),
             message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
         })?;
-    // Packet 132 (follow-up 1): stage a modifier-footprint `SlicedRegion` per
-    // non-support modifier volume whose mesh has a non-empty cross-section at
-    // this layer's Z. `sync_perimeter_infill_areas_into_slice` (invoked at
-    // `Layer::Perimeters`) consumes these footprints and mints the modifier
-    // sub-region. Support subtypes are routed through the support path instead.
-    // No-op for objects without `modifier_volumes` (preserves AC-N1).
+    // Production prepass already materializes modifier sub-regions. Retain the
+    // footprint fallback for focused tests and callers that seed a pre-ticket-19
+    // blackboard slice directly.
     stage_modifier_footprints(&mut slice, blackboard, layer);
     arena
         .set_slice(slice)
@@ -1044,7 +1041,20 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
     let mesh = blackboard.mesh();
     let zs = [layer.z];
     for object in &mesh.objects {
-        for mv in &object.modifier_volumes {
+        if slice.regions.iter().any(|region| {
+            region.object_id == object.id && slicer_ir::is_modifier_namespace_id(region.region_id)
+        }) {
+            continue;
+        }
+        let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
+        modifier_indices.sort_by_key(|&index| {
+            (
+                std::cmp::Reverse(object.modifier_volumes[index].priority),
+                index,
+            )
+        });
+        for modifier_index in modifier_indices {
+            let mv = &object.modifier_volumes[modifier_index];
             // Skip support_* modifiers: those go through the existing support path.
             if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
                 match s.as_str() {

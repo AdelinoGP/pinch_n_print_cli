@@ -236,9 +236,8 @@ Modifier deltas are merged deterministically during planning:
 2. Apply object config.
 3. Apply matching modifiers in priority-ascending order, last writer wins
    (`stamp_modifier_config_deltas` in
-   `crates/slicer-core/src/algos/region_mapping.rs`; a stable sort on
-   `ModifierVolume.priority`). Source order breaks equal-priority ties;
-   there is no separate `load_order` concept.
+   `crates/slicer-core/src/algos/region_mapping.rs`; a stable priority sort
+   with first-loaded tie ownership). There is no separate `load_order` concept.
 4. Apply paint-semantic overlays (`paint_config:`) on top.
 
 For the same key, the last applied value wins. If a later overlay omits a key,
@@ -668,36 +667,41 @@ config via the `stamp_modifier_sub_region_configs` map keyed by `region_id`
 `crates/slicer-core/src/algos/region_mapping.rs`: it overlays the
 modifier volumes' config deltas onto the base `ResolvedConfig`, skipping
 `support_enforcer` / `support_blocker` subtypes, and returns a
-`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region).
+`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region). For a painted
+parent, the modifier delta is overlaid onto that painted chain's resolved
+config; the base and every painted parent remain pure outside their own
+modifier child.
 
-**Sub-region `region_id` namespace.** Sub-region IDs are derived from the base
-region ID with a dedicated coprime stride so they never collide with paint's
-`1_000_000`-stride namespace:
+**Sub-region `region_id` namespace.** Sub-region IDs carry a dedicated high-bit
+namespace marker over a payload derived from the base region ID. This keeps the
+namespace disjoint from both ordinary/base IDs and paint's `1_000_000`-stride
+namespace:
 
 ```
-sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(mi)
+sub_region_id = MODIFIER_VARIANT_REGION_ID_FLAG |
+                (base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash)
 ```
 
 where `MODIFIER_VARIANT_REGION_ID_STRIDE = 1_000_003` (the next prime above
-paint's `1_000_000`, hence coprime — see
-`crates/slicer-runtime/src/region_partition.rs`'s `modifier_hash` symbol).
-`modifier_hash(mi)` is a
-**stable hash of the modifier's identity** — `(object_id, modifier_index,
-priority)` in document order within `object.modifier_volumes` — folded into a
-non-zero value `< stride` (so the low-order band is reserved for
-`base_region_id * stride` itself). The hash is derived from identity, never
-from HashMap iteration or footprint geometry, giving a stable sub-region id
-that round-trips through `RegionMapIR` and dispatch. The sub-region carries an
-**empty `variant_chain`** and is identified by its modifier-namespace
-`region_id` alone; the `wall_source_region_id` predicate inverts
-`sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE` → `Some(base)`. The infill
-linker reads only `wall_source_region_id` + `tool_index` + the four fill
-polygons (packet 132/133). Modifier meshes are sliced once per layer during
-prepass (`slice_modifier_volumes`, extended to material/config-delta
-subtypes), and the cached cross-sections are consumed at partition-time
-splitting. For overlapping non-support modifier volumes, priority is applied
-first and document order breaks ties: the first winning modifier owns the
-footprint, and subsequent modifiers intersect only the remaining base area.
+paint's `1_000_000`, hence coprime) and
+`MODIFIER_VARIANT_REGION_ID_FLAG = 1 << 63`. The shared
+`slicer_ir::modifier_sub_region_id` helper folds a stable hash of the object ID
+and the modifier footprint's sliced contour points into a non-zero value below
+the stride. Both the RegionMap kernel and the Tier-2 partition use that helper,
+so the same layer cross-section produces the same ID; the hash never depends on
+HashMap iteration. `MODIFIER_FOOTPRINT_REGION_ID = u64::MAX` remains reserved
+for raw host staging and is not a sub-region ID. A child rooted in an
+unpainted parent carries an empty `variant_chain`; a child rooted in a painted
+parent retains that parent's `variant_chain` and uses the painted parent ID in
+the namespace payload. This keeps the full `RegionKey` identity while the base
+and painted parents remain pure outside their own child. The
+`modifier_base_region_id` helper masks the namespace bit before inverting the
+payload to the parent ID. The infill linker reads only
+`wall_source_region_id` + `tool_index` + the four fill polygons (packet
+132/133). Modifier meshes are sliced per layer before partition-time splitting.
+For overlapping non-support modifier volumes, priority is applied first and
+document order breaks ties: the first winning modifier owns the footprint, and
+subsequent modifiers intersect only the remaining base area.
 
 `ExPolygon`, `Polygon`, and `Point2` are shared geometry types defined in
 `crates/slicer-ir/src/slice_ir.rs`; polygon contours are counter-clockwise,

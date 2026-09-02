@@ -202,46 +202,42 @@ fn populate_surface_classification_fields(
     view.set_surface_group(surface_group);
 
     let region_bbox = expolygons_bbox(&region.polygons);
-    let overhang_quartile_polygons: Vec<slicer_ir::slice_ir::QuartileBand> =
-        surface_classification
-            .and_then(|sc| {
-                sc.overhang_quartile_polygons
-                    .get(&region.object_id)
-                    .and_then(|by_layer| by_layer.get(&global_layer_index))
-            })
-            .map(|bands| {
-                bands
-                    .iter()
-                    .filter_map(|band| {
-                        let prefiltered: Vec<slicer_ir::ExPolygon> = band
-                            .polygons
-                            .iter()
-                            .filter(|poly| match region_bbox {
-                                Some(rb) => bbox_overlaps(rb, poly),
-                                None => false,
-                            })
-                            .cloned()
-                            .collect();
-                        if prefiltered.is_empty() {
-                            return None;
-                        }
-                        let clipped: Vec<slicer_ir::ExPolygon> =
-                            slicer_core::polygon_ops::intersection_ex(
-                                &prefiltered,
-                                &region.polygons,
-                            );
-                        if clipped.is_empty() {
-                            None
-                        } else {
-                            Some(slicer_ir::slice_ir::QuartileBand {
-                                quartile: band.quartile,
-                                polygons: clipped,
-                            })
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    let overhang_quartile_polygons: Vec<slicer_ir::slice_ir::QuartileBand> = surface_classification
+        .and_then(|sc| {
+            sc.overhang_quartile_polygons
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
+        .map(|bands| {
+            bands
+                .iter()
+                .filter_map(|band| {
+                    let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                        .polygons
+                        .iter()
+                        .filter(|poly| match region_bbox {
+                            Some(rb) => bbox_overlaps(rb, poly),
+                            None => false,
+                        })
+                        .cloned()
+                        .collect();
+                    if prefiltered.is_empty() {
+                        return None;
+                    }
+                    let clipped: Vec<slicer_ir::ExPolygon> =
+                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons);
+                    if clipped.is_empty() {
+                        None
+                    } else {
+                        Some(slicer_ir::slice_ir::QuartileBand {
+                            quartile: band.quartile,
+                            polygons: clipped,
+                        })
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let overhang_areas: Vec<slicer_ir::ExPolygon> = overhang_quartile_polygons
         .iter()
         .flat_map(|band| band.polygons.clone())
@@ -272,8 +268,14 @@ pub fn build_native_layer_request(
     let regions = input
         .slice
         .map(|slice| {
-            slice
-                .regions
+            let projected;
+            let regions = if stage_export == "Layer::Perimeters" {
+                projected = super::perimeter_source_regions(slice);
+                projected.as_slice()
+            } else {
+                slice.regions.as_slice()
+            };
+            regions
                 .iter()
                 .map(|region| {
                     let mut view = SliceRegionView::from_ir(

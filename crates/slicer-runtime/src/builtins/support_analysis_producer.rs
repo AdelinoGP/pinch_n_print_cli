@@ -12,8 +12,8 @@ use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex,
 use slicer_ir::mm_to_units;
 use slicer_ir::resolved_config::ResolvedFloatOrPercent;
 use slicer_ir::slice_ir::{
-    ExPolygon, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
-    SupportCandidateSource, SupportGeometryKey, SupportType,
+    ExPolygon, Point2, Polygon, SupportAnalysisIR, SupportCandidate, SupportCandidateSource,
+    SupportGeometryKey, SupportType,
 };
 use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
 use slicer_scheduler::execution_plan::{
@@ -570,15 +570,13 @@ fn region_config<'a>(
     region_id: u64,
 ) -> Option<&'a ResolvedConfig> {
     let map = region_map?;
-    let key = RegionKey {
+    crate::layer_executor::config_for_region_smallest_chain(
+        map,
         global_layer_index,
-        object_id: object_id.to_string(),
+        &object_id.to_string(),
         region_id,
-        variant_chain: Vec::new(),
-    };
-    map.entries
-        .get(&key)
-        .map(|plan| map.config_for_raw(plan.config))
+    )
+    .map(|config| map.config_for_raw(config))
 }
 
 /// Resolves the config half of [`SupportContactParams`] once per slice.
@@ -738,8 +736,8 @@ fn rectangle_from_bounds((min_x, max_x, min_y, max_y): (i64, i64, i64, i64)) -> 
 mod tests {
     use super::*;
     use slicer_ir::{
-        ConfigValue, GlobalLayer, LayerPlanIR, MeshIR, RegionMapIR, RegionPlan, ResolvedConfig,
-        SliceIR, SlicedRegion,
+        ConfigValue, GlobalLayer, LayerPlanIR, MeshIR, RegionKey, RegionMapIR, RegionPlan,
+        ResolvedConfig, SliceIR, SlicedRegion,
     };
 
     /// Axis-aligned square in **millimetres**.

@@ -22,6 +22,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn modifier_region_namespace_is_disjoint_from_regular_ids() {
+        let sub_id = modifier_sub_region_id(7, "object", &[]);
+
+        assert!(is_modifier_namespace_id(sub_id));
+        assert_eq!(modifier_base_region_id(sub_id), Some(7));
+        for ordinary_id in [0, 1, 7, MODIFIER_VARIANT_REGION_ID_STRIDE, 1_000_000] {
+            assert!(!is_modifier_namespace_id(ordinary_id));
+            assert_eq!(modifier_base_region_id(ordinary_id), None);
+        }
+        assert!(!is_modifier_namespace_id(MODIFIER_FOOTPRINT_REGION_ID));
+        assert_eq!(modifier_base_region_id(MODIFIER_FOOTPRINT_REGION_ID), None);
+    }
+
+    #[test]
+    fn modifier_region_namespace_hash_includes_footprint_holes() {
+        let contour = Polygon {
+            points: vec![
+                Point2 { x: 0, y: 0 },
+                Point2 { x: 10_000, y: 0 },
+                Point2 {
+                    x: 10_000,
+                    y: 10_000,
+                },
+                Point2 { x: 0, y: 10_000 },
+            ],
+        };
+        let hole = Polygon {
+            points: vec![
+                Point2 { x: 2_000, y: 2_000 },
+                Point2 { x: 8_000, y: 2_000 },
+                Point2 { x: 8_000, y: 8_000 },
+                Point2 { x: 2_000, y: 8_000 },
+            ],
+        };
+        let solid = vec![ExPolygon {
+            contour: contour.clone(),
+            holes: Vec::new(),
+        }];
+        let holed = vec![ExPolygon {
+            contour,
+            holes: vec![hole],
+        }];
+
+        assert_ne!(
+            modifier_sub_region_id(0, "object", &solid),
+            modifier_sub_region_id(0, "object", &holed),
+            "modifier footprints with different holes must not share an id"
+        );
+    }
+
     // Helper macro to test serde round-trip
     macro_rules! test_serde_roundtrip {
         ($value:expr) => {

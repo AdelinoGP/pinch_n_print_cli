@@ -12,7 +12,7 @@
 //! (`perimeter.infill_areas`) is partitioned by strict precedence
 //! `bridge > bottom > top > sparse`, mirroring OrcaSlicer
 //! `PrintObject::prepare_infill` (see `OrcaSlicerDocumented/src/libslic3r/
-//! PrintObject.cpp:1541-1892` and `:3928-4132`):
+//! canonical `PrintObject` fill preparation):
 //!
 //! ```text
 //! bridge_final = bridge_areas      ∩ perimeter.infill_areas
@@ -57,7 +57,7 @@
 //! `tests/executor/` for the regression.
 
 use slicer_core::polygon_ops::{difference, intersection, union};
-use slicer_ir::{LayerStageError, SlicedRegion, StageId};
+use slicer_ir::{ConfigValue, LayerStageError, MeshIR, StageId};
 
 use crate::LayerArena;
 
@@ -72,8 +72,170 @@ use crate::LayerArena;
 /// derive sub-region ids through the same `slicer-ir` function or the ids
 /// diverge.
 pub use slicer_ir::{
-    MODIFIER_FOOTPRINT_REGION_ID, MODIFIER_VARIANT_REGION_ID_STRIDE, modifier_sub_region_id,
+    modifier_sub_region_id, MODIFIER_FOOTPRINT_REGION_ID, MODIFIER_VARIANT_REGION_ID_STRIDE,
 };
+
+/// Split every matching parent region by the supplied modifier footprints.
+///
+/// Footprints are supplied in descending priority order; the parent is reduced
+/// after each split, so later footprints receive only the remaining geometry.
+/// Keeping this operation shared makes the prepass materialization and the
+/// Tier-2 fallback produce the same `SlicedRegion` fields.
+fn split_regions_by_modifier_footprints(
+    slice: &mut slicer_ir::SliceIR,
+    footprints: impl IntoIterator<Item = (String, Vec<slicer_ir::ExPolygon>)>,
+) -> Result<(), String> {
+    // Work on a copy so overflow and identity failures cannot leave a partially
+    // partitioned SliceIR behind.
+    let mut working = slice.clone();
+    let mut minted = Vec::new();
+    let mut minted_identities: Vec<(
+        String,
+        slicer_ir::RegionId,
+        Vec<(String, slicer_ir::PaintValue)>,
+    )> = working
+        .regions
+        .iter()
+        .map(|region| {
+            (
+                region.object_id.clone(),
+                region.region_id,
+                region.variant_chain.clone(),
+            )
+        })
+        .collect();
+    for (object_id, footprint) in footprints {
+        if footprint.is_empty() {
+            continue;
+        }
+
+        let parent_indices: Vec<usize> = working
+            .regions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, region)| {
+                (region.object_id == object_id
+                    && region.region_id != MODIFIER_FOOTPRINT_REGION_ID
+                    && !slicer_ir::is_modifier_namespace_id(region.region_id))
+                .then_some(index)
+            })
+            .collect();
+
+        for base_index in parent_indices {
+            let sub_polygons = intersection(&working.regions[base_index].polygons, &footprint);
+            if sub_polygons.is_empty() {
+                continue;
+            }
+
+            let base_region_id = working.regions[base_index].region_id;
+            if !slicer_ir::modifier_sub_region_id_fits(base_region_id) {
+                return Err(format!(
+                    "modifier sub-region parent id cannot be encoded for object_id='{}', \
+                     parent_region_id='{}', variant_chain={:?}",
+                    object_id, base_region_id, working.regions[base_index].variant_chain
+                ));
+            }
+
+            // Paint segmentation rebuilds regions from their polygons and can
+            // leave the pre-perimeter `infill_areas` field empty. Restore the
+            // standard prepass default before splitting so the child carries
+            // the same raw fill domain as the unsplit path.
+            if working.regions[base_index].infill_areas.is_empty() {
+                working.regions[base_index].infill_areas =
+                    working.regions[base_index].polygons.clone();
+            }
+            let mut sub = working.regions[base_index].clone();
+            sub.region_id = modifier_sub_region_id(base_region_id, &object_id, &footprint);
+            sub.segment_annotations.clear();
+            sub.polygons = sub_polygons;
+
+            macro_rules! split_field {
+                ($field:ident) => {{
+                    sub.$field = intersection(&working.regions[base_index].$field, &footprint);
+                    working.regions[base_index].$field =
+                        difference(&working.regions[base_index].$field, &footprint);
+                }};
+            }
+            split_field!(infill_areas);
+            split_field!(bridge_areas);
+            split_field!(bottom_solid_fill);
+            split_field!(top_solid_fill);
+            split_field!(sparse_infill_area);
+            split_field!(internal_solid_fill);
+            split_field!(internal_bridge_areas);
+            working.regions[base_index].polygons =
+                difference(&working.regions[base_index].polygons, &footprint);
+            let identity = (object_id.clone(), sub.region_id, sub.variant_chain.clone());
+            if minted_identities
+                .iter()
+                .any(|existing| existing == &identity)
+            {
+                return Err(format!(
+                    "modifier sub-region identity collision for object_id='{}', region_id='{}', variant_chain={:?}",
+                    identity.0, identity.1, identity.2
+                ));
+            }
+            minted_identities.push(identity);
+            minted.push(sub);
+        }
+    }
+    working.regions.extend(minted);
+    *slice = working;
+    Ok(())
+}
+
+/// Materialize parameter-modifier sub-regions in the prepass `SliceIR`.
+///
+/// Region mapping has already minted the matching config entries and active
+/// region ids. This pass clips each modifier footprint to the base region,
+/// moves the covered geometry into the matching wall-less sub-region, and
+/// leaves support enforcer/blocker volumes on their dedicated annotation path.
+pub fn split_modifier_sub_regions_for_prepass(
+    slice: &mut slicer_ir::SliceIR,
+    mesh: &MeshIR,
+) -> Result<(), String> {
+    let mut working = slice.clone();
+    // Remove only raw staging footprints. Any already-materialized modifier
+    // child is retained, which makes this helper safe for a slice that has
+    // passed through an earlier partitioning seam.
+    working
+        .regions
+        .retain(|region| region.region_id != MODIFIER_FOOTPRINT_REGION_ID);
+
+    let mut footprints = Vec::new();
+    for object in &mesh.objects {
+        let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
+        modifier_indices.sort_by_key(|&index| {
+            (
+                std::cmp::Reverse(object.modifier_volumes[index].priority),
+                index,
+            )
+        });
+        for modifier_index in modifier_indices {
+            let modifier = &object.modifier_volumes[modifier_index];
+            if matches!(
+                modifier.config_delta.fields.get("subtype"),
+                Some(ConfigValue::String(subtype))
+                    if subtype == "support_enforcer" || subtype == "support_blocker"
+            ) || modifier.mesh.vertices.is_empty()
+                || modifier.mesh.indices.is_empty()
+            {
+                continue;
+            }
+            let footprint = slicer_core::slice_mesh_ex(&modifier.mesh, &[working.z])
+                .into_iter()
+                .next()
+                .unwrap_or_default();
+            if footprint.is_empty() {
+                continue;
+            }
+            footprints.push((object.id.clone(), footprint));
+        }
+    }
+    split_regions_by_modifier_footprints(&mut working, footprints)?;
+    *slice = working;
+    Ok(())
+}
 
 /// Reconcile the four canonical fill polygons on every `SliceIR` region
 /// against the just-committed `PerimeterIR.infill_areas`. See module docs
@@ -132,17 +294,36 @@ pub fn sync_perimeter_infill_areas_into_slice(
     let perim_index = slicer_wasm_host::dispatch::perimeter_region_index(&perimeter);
 
     for slice_region in &mut slice.regions {
-        // A modifier footprint is never handed to a module, so it never has a
-        // perimeter entry. Skip it explicitly rather than let it fall into the
-        // virtual-variant branch below, which would log a warning per footprint
-        // per layer. `split_modifier_footprints` consumes it further down.
+        // Raw footprint staging is consumed after this loop and is never a
+        // printable region or a perimeter donor.
         if slice_region.region_id == MODIFIER_FOOTPRINT_REGION_ID {
             continue;
         }
+        let is_modifier_region = slicer_ir::is_modifier_namespace_id(slice_region.region_id);
+        // Modifier children borrow the perimeter entry of the parent region.
+        // They are intentionally absent from PerimeterIR, but still need the
+        // parent's wall inset to derive their own sparse/solid fill domains.
+        let perimeter_region_id = if is_modifier_region {
+            slicer_ir::modifier_base_region_id(slice_region.region_id)
+                .expect("modifier namespace id must encode a parent region")
+        } else {
+            slice_region.region_id
+        };
         let Some(perim) = perim_index
-            .get(&(&slice_region.object_id, slice_region.region_id))
+            .get(&(&slice_region.object_id, perimeter_region_id))
             .copied()
         else {
+            if is_modifier_region {
+                log::warn!(
+                    "region_partition at layer {layer_index}: no PerimeterIR donor for modifier \
+                     SliceIR region (object_id='{}', region_id='{}', parent_region_id='{}'); \
+                     leaving its prepass fill roles untouched",
+                    slice_region.object_id,
+                    slice_region.region_id,
+                    perimeter_region_id
+                );
+                continue;
+            }
             // No perimeter entry for this slice region — typically a virtual
             // variant region (region_split work, packets 92–95) sharing wall
             // geometry with its base region. Leave the four canonical fill
@@ -161,7 +342,12 @@ pub fn sync_perimeter_infill_areas_into_slice(
             continue;
         };
 
-        let wall_inset = &perim.infill_areas;
+        // Prepass modifier splitting has already removed child geometry from
+        // this parent. Perimeter projection restores the full outline only for
+        // wall generation, so clip the returned wall inset back to the parent
+        // polygon before assigning fill roles. The raw-footprint fallback has
+        // an unsplit parent here and therefore remains unchanged.
+        let wall_inset = intersection(&perim.infill_areas, &slice_region.polygons);
 
         // Precedence: bridge > bottom > top > sparse.
         //
@@ -173,7 +359,7 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // `top_solid_fill` to empty, discarding an exposed top surface that
         // the shell-classification step deliberately marked. Ironing then
         // skips the region (gate at
-        // `modules/core-modules/top-surface-ironing/src/lib.rs:316-327`
+        // top-surface-ironing's non-empty top-fill gate
         // requires non-empty `top_solid_fill`). The fallback preserves
         // the original `top_solid_fill` / `bottom_solid_fill` polygons
         // (minus the bridge / bottom precedence zones) so that
@@ -202,14 +388,21 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // bridge extrusion ran over every wall bead.
         let bridge = if wall_inset.is_empty() {
             slice_region.bridge_areas.clone()
+        } else if is_modifier_region
+            && difference(&slice_region.bridge_areas, &wall_inset).is_empty()
+        {
+            // Preserve a prepass-materialized child role byte-for-byte when
+            // the parent wall inset already contains it. Boolean intersection
+            // can reverse contour winding even when it makes no change.
+            slice_region.bridge_areas.clone()
         } else {
-            intersection(&slice_region.bridge_areas, wall_inset)
+            intersection(&slice_region.bridge_areas, &wall_inset)
         };
         let bottom = if wall_inset.is_empty() {
             Vec::new()
         } else {
             difference(
-                &intersection(&slice_region.bottom_solid_fill, wall_inset),
+                &intersection(&slice_region.bottom_solid_fill, &wall_inset),
                 &bridge,
             )
         };
@@ -218,12 +411,12 @@ pub fn sync_perimeter_infill_areas_into_slice(
             difference(&slice_region.top_solid_fill, &bridge_or_bottom)
         } else {
             difference(
-                &intersection(&slice_region.top_solid_fill, wall_inset),
+                &intersection(&slice_region.top_solid_fill, &wall_inset),
                 &bridge_or_bottom,
             )
         };
         let bridge_or_bottom_or_top = union(&bridge_or_bottom, &top);
-        let sparse = difference(wall_inset, &bridge_or_bottom_or_top);
+        let sparse = difference(&wall_inset, &bridge_or_bottom_or_top);
 
         slice_region.bridge_areas = bridge;
         slice_region.bottom_solid_fill = bottom;
@@ -237,7 +430,11 @@ pub fn sync_perimeter_infill_areas_into_slice(
     // with the base region's four partitioned fill polygons. The base region's
     // polygons are reduced to the difference. Runs AFTER the existing partition
     // so it composes on already-partitioned polygons.
-    split_modifier_footprints(&mut slice);
+    split_modifier_footprints(&mut slice).map_err(|message| LayerStageError::FatalModule {
+        stage_id: stage_id.clone(),
+        module_id: module_id.clone(),
+        message,
+    })?;
 
     arena
         .set_slice(slice)
@@ -245,22 +442,6 @@ pub fn sync_perimeter_infill_areas_into_slice(
 
     Ok(())
 }
-
-// INVARIANT: modifier footprint regions MUST appear AFTER their corresponding
-// base regions in the input `SliceIR.regions` vec. `split_modifier_footprints`
-// resolves each footprint to its base via `out.iter().position(...)`, which only
-// scans regions already emitted into `out` (the base regions appended earlier in
-// this same pass). If a footprint preceded its base, `position()` returns `None`
-// and the footprint is silently consumed without minting a sub-region.
-//
-// Loader-side guarantee: `crates/slicer-model-io/src/loader.rs` (lines 547-628,
-// the `ModifierVolume` shape) loads `ObjectMesh.modifier_volumes` into `MeshIR`
-// AFTER the base mesh, preserving doc-order so modifier footprints are staged
-// after base regions.
-//
-// Runtime call site that maintains the invariant:
-// `crates/slicer-runtime/src/layer_executor.rs::stage_modifier_footprints`
-// appends modifier footprints after the base regions.
 
 /// Packet 132 modifier region split.
 ///
@@ -272,88 +453,22 @@ pub fn sync_perimeter_infill_areas_into_slice(
 /// intersection with the base is empty (degenerate / out-of-layer) mints no
 /// sub-region. The footprint region is always consumed (removed) and the
 /// sub-region carries no own `PerimeterIR` entry — it borrows the base walls.
-fn split_modifier_footprints(slice: &mut slicer_ir::SliceIR) {
-    let has_footprint = slice
+fn split_modifier_footprints(slice: &mut slicer_ir::SliceIR) -> Result<(), String> {
+    let mut working = slice.clone();
+    let footprints: Vec<(String, Vec<slicer_ir::ExPolygon>)> = working
         .regions
         .iter()
-        .any(|r| r.region_id == MODIFIER_FOOTPRINT_REGION_ID);
-    if !has_footprint {
-        return;
+        .filter(|region| region.region_id == MODIFIER_FOOTPRINT_REGION_ID)
+        .map(|region| (region.object_id.clone(), region.polygons.clone()))
+        .collect();
+    if footprints.is_empty() {
+        return Ok(());
     }
 
-    let regions = std::mem::take(&mut slice.regions);
-    let mut out: Vec<SlicedRegion> = Vec::with_capacity(regions.len());
-    let mut minted: Vec<SlicedRegion> = Vec::new();
-
-    for r in regions {
-        if r.region_id == MODIFIER_FOOTPRINT_REGION_ID {
-            let obj = r.object_id.clone();
-            // Locate the matching BASE region: same object_id, not a footprint,
-            // and not a painted variant. `variant_chain.is_empty()` is what
-            // distinguishes BASE from a painted variant region (DEV-130) —
-            // without it this picks the first same-object region in emission
-            // order, which on a paint+modifier stack can be a painted variant,
-            // binding the footprint to the wrong parent and inheriting that
-            // variant's geometry and shell-classification fields.
-            if let Some(bi) = out.iter().position(|x| {
-                x.object_id == obj
-                    && x.region_id != MODIFIER_FOOTPRINT_REGION_ID
-                    && x.variant_chain.is_empty()
-            }) {
-                let base_region_id = out[bi].region_id;
-                let eff = out[bi].effective_layer_height;
-                let fp_geo = r.polygons.clone();
-
-                let sub_bridge = intersection(&out[bi].bridge_areas, &fp_geo);
-                let sub_bottom = intersection(&out[bi].bottom_solid_fill, &fp_geo);
-                let sub_top = intersection(&out[bi].top_solid_fill, &fp_geo);
-                let sub_sparse = intersection(&out[bi].sparse_infill_area, &fp_geo);
-
-                let has_geo = !sub_bridge.is_empty()
-                    || !sub_bottom.is_empty()
-                    || !sub_top.is_empty()
-                    || !sub_sparse.is_empty();
-
-                if has_geo {
-                    out[bi].bridge_areas = difference(&out[bi].bridge_areas, &fp_geo);
-                    out[bi].bottom_solid_fill = difference(&out[bi].bottom_solid_fill, &fp_geo);
-                    out[bi].top_solid_fill = difference(&out[bi].top_solid_fill, &fp_geo);
-                    out[bi].sparse_infill_area = difference(&out[bi].sparse_infill_area, &fp_geo);
-
-                    let sub_polygons = intersection(&out[bi].polygons, &fp_geo);
-                    let sub_id = modifier_sub_region_id(base_region_id, &obj, &r.polygons);
-                    minted.push(SlicedRegion {
-                        object_id: obj.clone(),
-                        region_id: sub_id,
-                        polygons: sub_polygons,
-                        infill_areas: sub_sparse.clone(),
-                        effective_layer_height: eff,
-                        variant_chain: Vec::new(),
-                        bridge_areas: sub_bridge,
-                        bottom_solid_fill: sub_bottom,
-                        top_solid_fill: sub_top,
-                        sparse_infill_area: sub_sparse,
-                        // Inherit the base region's shell-classification fields.
-                        // The sub-region's polygons are subsets of the base's by
-                        // construction (sub_top ⊆ base.top_solid_fill, sub_bridge
-                        // ⊆ base.bridge_areas), so depth/orientation are
-                        // geometrically identical. Precedent: paint segmentation's
-                        // Phase 6/7 fix at
-                        // crates/slicer-core/src/algos/paint_segmentation/mod.rs:920-942.
-                        top_shell_index: out[bi].top_shell_index,
-                        bottom_shell_index: out[bi].bottom_shell_index,
-                        is_bridge: out[bi].is_bridge,
-                        bridge_orientation_deg: out[bi].bridge_orientation_deg,
-                        ..Default::default()
-                    });
-                }
-            }
-            // Footprint region is consumed (removed); never re-pushed.
-        } else {
-            out.push(r);
-        }
-    }
-
-    out.extend(minted);
-    slice.regions = out;
+    working
+        .regions
+        .retain(|region| region.region_id != MODIFIER_FOOTPRINT_REGION_ID);
+    split_regions_by_modifier_footprints(&mut working, footprints)?;
+    *slice = working;
+    Ok(())
 }

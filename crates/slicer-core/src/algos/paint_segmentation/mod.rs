@@ -68,6 +68,19 @@ pub enum PaintSegmentationError {
     /// mirroring canonical `MultiMaterialSegmentation.cpp`'s uncaught
     /// `FlowErrorNegativeSpacing` throw from `layer_color_stat`.
     NegativeSpacing(crate::flow::NegativeSpacingError),
+    /// Two distinct painted variant chains mapped to the same synthesized
+    /// region id. Continuing would collapse their perimeter and dispatch
+    /// identities, so the segmentation is rejected instead.
+    PaintVariantRegionIdCollision {
+        /// Object whose painted chains collided.
+        object_id: String,
+        /// Synthesized id shared by the chains.
+        region_id: u64,
+        /// First chain registered for the id.
+        first_chain: Vec<(String, slicer_ir::PaintValue)>,
+        /// Distinct chain that attempted to reuse the id.
+        second_chain: Vec<(String, slicer_ir::PaintValue)>,
+    },
 }
 
 impl std::fmt::Display for PaintSegmentationError {
@@ -80,6 +93,16 @@ impl std::fmt::Display for PaintSegmentationError {
                 write!(f, "invalid Phase 5 config: {key} = {value}")
             }
             Self::NegativeSpacing(e) => write!(f, "{e}"),
+            Self::PaintVariantRegionIdCollision {
+                object_id,
+                region_id,
+                first_chain,
+                second_chain,
+            } => write!(
+                f,
+                "painted variant region id collision for object '{object_id}' at id {region_id}: \
+                 {first_chain:?} conflicts with {second_chain:?}"
+            ),
         }
     }
 }
@@ -105,8 +128,8 @@ pub const PAINT_VARIANT_REGION_ID_STRIDE: u64 = 1_000_000;
 /// Default nozzle diameter used when a width config carries the auto sentinel.
 const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
 
-/// Deterministic 64-bit content hash of a single `(semantic, value)` chain
-/// entry, used to synthesize a unique `region_id` per painted variant chain in
+/// Deterministic content hash of a single `(semantic, value)` chain
+/// entry, used to synthesize a deterministic `region_id` per painted variant chain in
 /// `execute_paint_segmentation`.
 ///
 /// The scheme is deliberately simple and stable (no `DefaultHasher` — its seed
@@ -114,7 +137,9 @@ const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
 /// the four-color cube fixture lands on tidy 1..=4 hashes (multiplied by the
 /// stride to keep them comfortably above base-region floor). For other
 /// variants it XOR-folds the semantic-name bytes with a value-discriminant
-/// prime and the value payload bits.
+/// prime and the value payload bits. `paint_variant_region_id` bounds the
+/// result to the stride payload so painted ids cannot enter the modifier
+/// namespace.
 fn paint_variant_hash(chain_key: &[(String, slicer_ir::PaintValue)]) -> u64 {
     // BASE chain (no variants) hashes to 0 by definition.
     if chain_key.is_empty() {
@@ -176,16 +201,49 @@ fn paint_variant_hash(chain_key: &[(String, slicer_ir::PaintValue)]) -> u64 {
 /// `base_region_id`. For the BASE chain (`chain_key.is_empty()`) returns
 /// `base_region_id` unchanged so D14 modifier-volume annotation routing and
 /// downstream consumers that key off the source region's id keep working.
-fn paint_variant_region_id(
+pub fn paint_variant_region_id(
     base_region_id: u64,
     chain_key: &[(String, slicer_ir::PaintValue)],
 ) -> u64 {
     if chain_key.is_empty() {
         return base_region_id;
     }
+    // Keep the historical values for the common material fast path (for
+    // example, ToolIndex(1) remains payload 2) while bounding arbitrary hash
+    // values below the paint stride. The region-map/segmentation callers
+    // reject duplicate synthesized ids when distinct chains collide.
+    let hash = ((paint_variant_hash(chain_key) - 1) % (PAINT_VARIANT_REGION_ID_STRIDE - 1)) + 1;
     base_region_id
-        .saturating_mul(PAINT_VARIANT_REGION_ID_STRIDE)
-        .saturating_add(paint_variant_hash(chain_key))
+        .checked_mul(PAINT_VARIANT_REGION_ID_STRIDE)
+        .and_then(|payload| payload.checked_add(hash))
+        .filter(|id| *id < (1u64 << 63) && *id != u64::MAX)
+        .expect("painted variant region id exceeds the non-modifier namespace")
+}
+
+/// Reject a synthesized painted id that is already owned by another chain for
+/// the same object. The bounded hash has a finite payload by design; detecting
+/// a collision here is safer than allowing perimeter bucketing to merge two
+/// distinct painted regions.
+fn register_paint_variant_region_id(
+    seen: &mut std::collections::HashMap<(String, u64), Vec<(String, slicer_ir::PaintValue)>>,
+    object_id: &str,
+    region_id: u64,
+    chain: &[(String, slicer_ir::PaintValue)],
+) -> Result<(), PaintSegmentationError> {
+    let key = (object_id.to_string(), region_id);
+    if let Some(first_chain) = seen.get(&key) {
+        if first_chain != chain {
+            return Err(PaintSegmentationError::PaintVariantRegionIdCollision {
+                object_id: object_id.to_string(),
+                region_id,
+                first_chain: first_chain.clone(),
+                second_chain: chain.to_vec(),
+            });
+        }
+        return Ok(());
+    }
+    seen.insert(key, chain.to_vec());
+    Ok(())
 }
 
 /// Returns `true` if any object in `mesh` has at least one painted facet, stroke,
@@ -557,6 +615,10 @@ pub fn execute_paint_segmentation(
 
     // ---- Working copy --------------------------------------------------------
     let mut working: Vec<slicer_ir::SliceIR> = Vec::from_iter(slice_ir.iter().cloned());
+    let mut seen_variant_ids: std::collections::HashMap<
+        (String, u64),
+        Vec<(String, slicer_ir::PaintValue)>,
+    > = std::collections::HashMap::new();
 
     // ---- Step 10 / AC-13 / D14: slice modifier volumes once for all layers ----
     // Produces per-layer per-semantic polygon lists; routed onto BASE chains only.
@@ -851,6 +913,7 @@ pub fn execute_paint_segmentation(
                     .keys()
                     .filter(|rk| {
                         rk.global_layer_index == global_layer_index
+                            && !slicer_ir::is_modifier_namespace_id(rk.region_id)
                             && rk.variant_chain == base_chain_key
                     })
                     .collect();
@@ -937,7 +1000,9 @@ pub fn execute_paint_segmentation(
                     .entries
                     .keys()
                     .filter(|rk| {
-                        rk.global_layer_index == global_layer_index && rk.variant_chain == chain_key
+                        rk.global_layer_index == global_layer_index
+                            && !slicer_ir::is_modifier_namespace_id(rk.region_id)
+                            && rk.variant_chain == chain_key
                     })
                     .collect();
 
@@ -957,9 +1022,16 @@ pub fn execute_paint_segmentation(
 
                 if matching_keys.is_empty() {
                     if let Some(existing) = working[i].regions.first() {
+                        let region_id = paint_variant_region_id(existing.region_id, &chain_key);
+                        register_paint_variant_region_id(
+                            &mut seen_variant_ids,
+                            &existing.object_id,
+                            region_id,
+                            &chain_key,
+                        )?;
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: existing.object_id.clone(),
-                            region_id: paint_variant_region_id(existing.region_id, &chain_key),
+                            region_id,
                             polygons: polys.clone(),
                             variant_chain: chain_key.clone(),
                             // segment_annotations stays empty (D14): FuzzySkin
@@ -983,9 +1055,16 @@ pub fn execute_paint_segmentation(
                         if own_polys.is_empty() {
                             continue;
                         }
+                        let region_id = paint_variant_region_id(rk.region_id, &chain_key);
+                        register_paint_variant_region_id(
+                            &mut seen_variant_ids,
+                            &rk.object_id,
+                            region_id,
+                            &chain_key,
+                        )?;
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: rk.object_id.clone(),
-                            region_id: paint_variant_region_id(rk.region_id, &chain_key),
+                            region_id,
                             polygons: own_polys,
                             variant_chain: chain_key.clone(),
                             // segment_annotations stays empty (D14): FuzzySkin
