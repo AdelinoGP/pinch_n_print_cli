@@ -498,6 +498,34 @@ fn wipe_speed_resolves_correctly() {
 }
 
 #[test]
+fn wipe_tower_speed_is_capped_by_sparse_infill_speed() {
+    let config = slicer_ir::FeedrateConfig {
+        wipe_tower_max_purge_speed: 120.0,
+        sparse_infill_speed: 80.0,
+        ..Default::default()
+    };
+
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
+    let resolved = emitter
+        .resolve_feedrate(&ExtrusionRole::WipeTower, 1.0)
+        .unwrap();
+
+    assert_eq!(resolved, 80.0 * 60.0);
+
+    let config = slicer_ir::FeedrateConfig {
+        wipe_tower_max_purge_speed: 80.0,
+        sparse_infill_speed: 120.0,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
+    let resolved = emitter
+        .resolve_feedrate(&ExtrusionRole::WipeTower, 1.0)
+        .unwrap();
+
+    assert_eq!(resolved, 80.0 * 60.0);
+}
+
+#[test]
 fn internal_bridge_role_uses_internal_speed_and_label() {
     let config = slicer_ir::FeedrateConfig {
         internal_bridge_speed: 37.5,

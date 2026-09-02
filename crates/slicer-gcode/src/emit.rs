@@ -160,7 +160,12 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::SupportBaseInterface => self.feedrate_config.support_interface_speed,
             ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
             ExtrusionRole::Brim => self.feedrate_config.skirt_speed,
-            ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
+            // Canonical purge paths are capped by both the configured tower
+            // maximum and the sparse-infill speed used for the purge grid.
+            ExtrusionRole::WipeTower => self
+                .feedrate_config
+                .wipe_tower_max_purge_speed
+                .min(self.feedrate_config.sparse_infill_speed),
             ExtrusionRole::PrimeTower => self.feedrate_config.prime_tower_speed,
             ExtrusionRole::Ironing => {
                 if self.feedrate_config.filament_ironing_speed > 0.0 {

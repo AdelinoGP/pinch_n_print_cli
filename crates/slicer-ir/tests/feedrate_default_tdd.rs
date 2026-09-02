@@ -19,7 +19,7 @@ fn feedrate_default_returns_documented_values() {
     assert_eq!(cfg.gap_infill_speed, 30.0);
     assert_eq!(cfg.ironing_speed, 20.0);
     assert_eq!(cfg.skirt_speed, 50.0);
-    assert_eq!(cfg.wipe_tower_speed, 90.0);
+    assert_eq!(cfg.wipe_tower_max_purge_speed, 90.0);
     assert_eq!(cfg.prime_tower_speed, 90.0);
     assert_eq!(cfg.travel_speed, 120.0);
     assert_eq!(cfg.travel_speed_z, 0.0);
@@ -51,7 +51,7 @@ fn feedrate_field_count_is_26() {
     count += cfg.gap_infill_speed.is_finite() as usize;
     count += cfg.ironing_speed.is_finite() as usize;
     count += cfg.skirt_speed.is_finite() as usize;
-    count += cfg.wipe_tower_speed.is_finite() as usize;
+    count += cfg.wipe_tower_max_purge_speed.is_finite() as usize;
     count += cfg.prime_tower_speed.is_finite() as usize;
     count += cfg.travel_speed.is_finite() as usize;
     count += cfg.travel_speed_z.is_finite() as usize;

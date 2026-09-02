@@ -31,7 +31,7 @@ support_interface_speed    = { default = 80.0,  range = "> 0" }
 gap_infill_speed           = { default = 30.0,  range = "> 0" }
 ironing_speed              = { default = 20.0,  range = "> 0" }
 skirt_speed                = { default = 50.0,  range = "> 0" }
-wipe_tower_speed           = { default = 90.0,  range = "> 0" }
+wipe_tower_max_purge_speed = { default = 90.0,  range = "> 0" }
 prime_tower_speed          = { default = 90.0,  range = "> 0" }
 travel_speed               = { default = 120.0, range = "> 0" }
 travel_speed_z             = { default = 0.0,   range = ">= 0", note = "0 = use travel_speed for Z" }

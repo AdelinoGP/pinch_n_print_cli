@@ -27,8 +27,8 @@ pub struct FeedrateConfig {
     pub ironing_speed: f32,
     /// Speed for skirt/brim.
     pub skirt_speed: f32,
-    /// Speed for wipe tower.
-    pub wipe_tower_speed: f32,
+    /// Maximum speed for wipe-tower purging.
+    pub wipe_tower_max_purge_speed: f32,
     /// Speed for prime tower.
     pub prime_tower_speed: f32,
     /// Speed for non-printing travel moves.
@@ -71,7 +71,7 @@ impl Default for FeedrateConfig {
             gap_infill_speed: 30.0,
             ironing_speed: 20.0,
             skirt_speed: 50.0,
-            wipe_tower_speed: 90.0,
+            wipe_tower_max_purge_speed: 90.0,
             prime_tower_speed: 90.0,
             travel_speed: 120.0,
             travel_speed_z: 0.0,
@@ -132,23 +132,33 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
     ("bridge_speed", |fc| &mut fc.bridge_speed),
     ("internal_bridge_speed", |fc| &mut fc.internal_bridge_speed),
     ("support_speed", |fc| &mut fc.support_speed),
-    ("support_interface_speed", |fc| &mut fc.support_interface_speed),
+    ("support_interface_speed", |fc| {
+        &mut fc.support_interface_speed
+    }),
     ("gap_infill_speed", |fc| &mut fc.gap_infill_speed),
     ("ironing_speed", |fc| &mut fc.ironing_speed),
     ("skirt_speed", |fc| &mut fc.skirt_speed),
-    ("wipe_tower_speed", |fc| &mut fc.wipe_tower_speed),
+    ("wipe_tower_max_purge_speed", |fc| {
+        &mut fc.wipe_tower_max_purge_speed
+    }),
     ("prime_tower_speed", |fc| &mut fc.prime_tower_speed),
     ("travel_speed", |fc| &mut fc.travel_speed),
     ("travel_speed_z", |fc| &mut fc.travel_speed_z),
     ("initial_layer_speed", |fc| &mut fc.initial_layer_speed),
-    ("initial_layer_infill_speed", |fc| &mut fc.initial_layer_infill_speed),
-    ("initial_layer_travel_speed", |fc| &mut fc.initial_layer_travel_speed),
+    ("initial_layer_infill_speed", |fc| {
+        &mut fc.initial_layer_infill_speed
+    }),
+    ("initial_layer_travel_speed", |fc| {
+        &mut fc.initial_layer_travel_speed
+    }),
     ("wipe_speed", |fc| &mut fc.wipe_speed),
     ("overhang_1_4_speed", |fc| &mut fc.overhang_1_4_speed),
     ("overhang_2_4_speed", |fc| &mut fc.overhang_2_4_speed),
     ("overhang_3_4_speed", |fc| &mut fc.overhang_3_4_speed),
     ("overhang_4_4_speed", |fc| &mut fc.overhang_4_4_speed),
-    ("filament_ironing_speed", |fc| &mut fc.filament_ironing_speed),
+    ("filament_ironing_speed", |fc| {
+        &mut fc.filament_ironing_speed
+    }),
 ];
 
 impl FeedrateConfig {
