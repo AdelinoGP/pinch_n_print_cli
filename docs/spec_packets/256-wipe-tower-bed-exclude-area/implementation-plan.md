@@ -1,166 +1,114 @@
-# Implementation Plan: 256-wipe-tower-bed-exclude-area
+# Implementation Plan: wipe-tower-bed-exclude-area
 
-## Execution Rules
+Five atomic steps, strictly ordered. Each names its own falsifying exit condition; a step is not done until that condition is checked and false.
 
-- Work one atomic step at a time; map every step to grouped task IDs. This packet carries no `docs/07` task IDs (queue-packet precedent: `task_ids: []`; implementation is recorded against wayfinder ticket 11).
-- Use TDD, then implementation, then the narrowest falsifying validation.
-- Every field below is a context-budget contract and must be filled independently; never write "see Step 2".
+**Ledger-fact discipline:** the core-module count, and whether `254b` has landed, are re-derived from disk inside the step that needs them (`ls -d modules/core-modules/*/ | wc -l`, and the `status:` line of `docs/spec_packets/254b-prime-tower-interface-and-ramming/packet.spec.md`). No number in this plan is authoritative.
 
-## Steps
+---
 
-### Step 1: Declare `bed_exclude_area` in the wipe-tower manifest
+## Step 1 — Create the `print-validator` module
 
-- Task IDs: none (`task_ids: []` queue precedent).
-- Objective: `modules/core-modules/wipe-tower/wipe-tower.toml` `[config.schema]` grows by exactly one entry — `bed_exclude_area`, `type = "float-list"`, no `default`, no `min`/`max`, `display = "Excluded bed area"`, `group = "Printer"`, `advanced = true` — placed directly after `[config.schema.printable_area]`.
-- Precondition: manifest parses; the wipe-tower guest builds; the current key count is re-derived from disk (8 if 254/255 have not landed; plus their keys if they have).
-- Postcondition: manifest parses; the new entry matches AC-1's shape exactly; no other entry changed.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/wipe-tower/wipe-tower.toml` - full (≤ 150 lines)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/wipe-tower.toml`
-- Files explicitly out of bounds:
-  - every other manifest; all `crates/**`; all other `modules/**`
-- Expected sub-agent dispatches:
-  - none (the declaration facts are in `requirements.md` §In Scope / §Verified Grounding)
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/05-asset-packet-list.md` - P04 row (ranged read ~7 lines)
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - `PrintConfigDef` (delegate; never load): the `bed_exclude_area` definition quoted in §Per-key parity evidence
-- Verification:
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit=0 after rebuild if stale (the manifest feeds the guest fingerprint; ticket 101: guests embed config key names)
-- Exit condition: manifest parses, guest `--check` exits 0 after any needed rebuild.
+- **Task IDs:** none (queue packet; recorded against wayfinder ticket 11).
+- **Objective:** a new core module at `PrePass::MeshAnalysis` that parses `bed_exclude_area`, pre-filters objects by `object-bounds`, probes the excluded region with `raycast-z-down`, and returns a **fatal** `ModuleError` on a hit.
+- **Preconditions:** model the crate on `modules/core-modules/layer-planner-default/` (Cargo.toml, `wit-guest/`, `src/`, `tests/`). Confirm from `crates/slicer-sdk/src/traits.rs` that `PrepassModule::run_mesh_analysis` is the method and what `MeshAnalysisOutput` offers — the module calls neither `push_facet_annotation` nor `push_surface_group`.
+- **Postconditions:** AC-2 (module half), AC-4, AC-5, AC-6 and AC-N3 pass. The module is not yet registered anywhere, so no other test changes.
+- **Allowed reads:** `modules/core-modules/layer-planner-default/**`, `crates/slicer-sdk/src/traits.rs`, `crates/slicer-schema/wit/deps/prepass-mesh-analysis/prepass-mesh-analysis.wit`, `crates/slicer-schema/wit/deps/common.wit`, `modules/core-modules/wipe-tower/src/lib.rs` (`point_in_polygon`, `float_list_from_config` as the parsing precedent).
+- **Files allowed to edit (≤3, counting the new crate as one unit):** `modules/core-modules/print-validator/{Cargo.toml, print-validator.toml, wit-guest/**, src/lib.rs}` (the new crate), `modules/core-modules/print-validator/tests/bed_exclusion_tdd.rs`.
+- **Out of bounds:** `crates/slicer-schema/wit/**` (no WIT edit — raise a `[BLOCK]` instead), `crates/slicer-runtime/src/run.rs`, `crates/slicer-core/src/algos/mesh_analysis.rs`.
+- **Dispatches:** `SNIPPETS` ≤ 1 × 30 lines for the `PrepassModule` trait shape.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-1, AC-2, AC-4, AC-5, AC-6; `design.md` § Selected Approach, DIV-1.
+- **Verification:** `cargo test -p print-validator --test bed_exclusion_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Falsifying exit condition:** a degenerate `bed_exclude_area` (single point, or an odd float count) produces an error instead of `Ok(())`, or the rejection is constructed without `fatal` set. Either makes the module actively wrong: the first fails valid prints, the second silently never rejects anything.
 
-### Step 2: Author the module contract test binary (AC-1, AC-2) + the AC-3 ingest arm
+---
 
-- Task IDs: none.
-- Objective: one test binary pinning the declaration shape, the four wiring cases, and the Orca point-string ingest.
-- Precondition: Step 1 landed.
-- Postcondition: `cargo test -p wipe-tower --test wipe_tower_bed_exclude_area_tdd` passes (schema shape per AC-1 + the four AC-2 wiring cases: absence-identity; corner-inside → `Err` naming `bed_exclude_area` and the corner; tower-outside → `Ok`; empty/odd/<6 → no exclusion, no error), and `cargo test -p wipe-tower --test bed_bounds_tdd` passes with the new AC-3 arm: Orca point-string exclusion (`["0x0","20x0","20x20","0x20"]`) + tower corner at (10,10) → rejected, placed next to `orca_point_string_bed_is_parsed_not_silently_defaulted` whose shape it mirrors. The behaviour asserts may be written TDD-red here and go green in Step 3.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs` - full - purpose: `config_from_pairs` helper + point-string fixture shape to reuse; this file GAINS the AC-3 arm
-  - `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` - full - purpose: schema-parse-and-assert shape (that crate's `toml = "0.8"` dev-dep is the pattern)
-  - `docs/spec_packets/256-wipe-tower-bed-exclude-area/packet.spec.md` - AC-1/AC-2/AC-3 text only
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/tests/wipe_tower_bed_exclude_area_tdd.rs` (new)
-  - `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs` (one appended AC-3 test)
-  - `modules/core-modules/wipe-tower/Cargo.toml` (add `toml = "0.8"` to `[dev-dependencies]`)
-- Files explicitly out of bounds:
-  - `modules/core-modules/wipe-tower/src/lib.rs` (no production change in this step); all crates
-- Expected sub-agent dispatches:
-  - none beyond the listed reads; both fixture shapes are verified in-tree
-- Context cost: `S` (test authored here may reference behaviour landed in Step 3 — write the behaviour-facing asserts in this step and expect them red until Step 3, per TDD; the schema-shape asserts go green immediately)
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` - direct read (~80 lines)
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - `PrintConfigDef` (delegate)
-- Verification:
-  - `cargo test -p wipe-tower --test wipe_tower_bed_exclude_area_tdd --test bed_bounds_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail (schema asserts green; behaviour asserts may be red until Step 3; the existing point-string regressions must stay green)
-- Exit condition: the schema-shape asserts pass; the AC-3 arm compiles in `bed_bounds_tdd.rs`; the behaviour asserts compile and fail for the *expected* reason (no wiring yet), or pass if Step 3 already ran.
+## Step 2 — Register the module
 
-### Step 3: Wire the exclusion check into `run_finalization` (AC-2, AC-3) + fallout
+- **Task IDs:** none.
+- **Objective:** the module is a workspace member, is present in the integrated registry and the CLI passthrough features, and the scheduler's core-module discovery count matches the tree.
+- **Preconditions:** Step 1 landed. **Re-derive** the current directory count and the exact assertion in `core_modules_directory_is_discoverable_and_all_load`; check whether `254b` has already incremented it.
+- **Postconditions:** AC-1 passes; `cargo check --workspace --all-targets` is clean; `cargo xtask build-guests --check` returns exit 0 (the new guest is discovered).
+- **Allowed reads:** root `Cargo.toml`, `crates/slicer-integrated-modules/{Cargo.toml, src/lib.rs}`, `crates/pnp-cli/Cargo.toml`, `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`.
+- **Files allowed to edit (≤3):** root `Cargo.toml` + `crates/slicer-integrated-modules/{Cargo.toml, src/lib.rs}` (registration unit), `crates/pnp-cli/Cargo.toml`, `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`.
+- **Out of bounds:** module source (Step 1 owns it), `crates/slicer-runtime/src/**`.
+- **Dispatches:** `LOCATIONS` ≤ 10 — every place a core module must be registered, as the tree stands now. `FACT` — the re-derived count.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-1; `design.md` § Code Change Surface.
+- **Verification:** `cargo test -p slicer-scheduler --test scheduler_integration manifest_ingestion_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` then `cargo xtask build-guests --check; echo "exit=$?"`
+- **Falsifying exit condition:** the count assertion passes against a number copied from this packet rather than re-derived, or `build-guests --check` returns 3 (`wasm-tools` missing) and is read as clean.
 
-- Task IDs: none.
-- Objective: read `bed_exclude_area` in `from_config` into a new `WipeTower` field; after the existing bed-polygon corner loop in `run_finalization`, add the exclusion corner check with the fatal message naming the key; keep everything else identical.
-- Precondition: key declared (Step 1) — otherwise `ConfigView::from_declared` silently hides the read.
-- Postcondition: the module's behaviour matches AC-2's four cases, on the shared live path; the degenerate-value contract (empty/odd/<6 → no exclusion, no error) holds; on-edge counts as inside (shared `point_in_polygon`); the canonical-asymmetry comment (tower rectangle vs object hulls) sits at the check site.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/wipe-tower/src/lib.rs` - lines 30-60, 82-108, 141-208, 470-560 only
-  - `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs` - full (< 300 lines) - purpose: do not break the two ticket-100 regression tests
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/src/lib.rs`
-  - `modules/core-modules/wipe-tower/tests/wipe_tower_bed_exclude_area_tdd.rs` (behaviour asserts from Step 2 go green here)
-- Files explicitly out of bounds:
-  - `crates/**` production (fallout outside the module crate escalates to the coordinator instead of a silent drive-by)
-- Blast-radius discipline:
-  - New struct field `bed_exclude_area: Vec<(f32, f32)>` on `WipeTower` (constructor + `from_config` + any test struct-literal site — grep `WipeTower {` in `modules/core-modules/wipe-tower/` **before editing**; at authoring time the struct is built only via `from_config`, but author the dispatch).
-  - Struct-literal churn gate: any `WipeTower {` literal in new test code must carry a `..` rest or an `// exhaustive: <reason>` waiver (`docs/21_data_defaults_and_fixtures.md`; `cargo xtask check-literals` enforces).
-  - Expected fallout: **none at defaults** (absence-identity). In-tree tests never supply `bed_exclude_area`, so no existing fixture changes.
-- Expected sub-agent dispatches:
-  - Question: does any test pin the absence of extra fatal returns from `run_finalization` or count its error paths? scope: `modules/core-modules/wipe-tower/` + `crates/slicer-runtime/tests/`; return: `LOCATIONS` (≤ 10); purpose: fallout list, run before editing.
-- Context cost: `M`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md` - direct read
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/Print.cpp` - `Print::validate` / `layered_print_cleareance_valid` (the fatal collision-risk semantics mirrored in the message) - delegate; never load
-- Verification:
-  - `cargo test -p wipe-tower 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail across all module binaries (bed_bounds_tdd, finalization_live_tdd, slicer_module_binding_tdd, wipe_tower_tdd, the new binary)
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit=0 (`src/lib.rs` feeds the guest fingerprint)
-- Exit condition: every `wipe-tower` test binary green; guest `--check` exit 0; degenerate-value contract pinned by test.
+---
 
-### Step 4: Non-leakage test (AC-N1)
+## Step 3 — Prove the abort path end to end
 
-- Task IDs: none.
-- Objective: pin that the new declaration leaks no config into non-owner modules.
-- Precondition: Step 1 landed (the declaration is what binds delivery).
-- Postcondition: `cargo test -p slicer-scheduler --test wipe_tower_p04_binding_tdd` passes: a `bed_exclude_area` value present in the resolved source map is absent from a non-wipe-tower module's `ConfigView` and present in the wipe-tower module's own view.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-scheduler/tests/integration/config_resolution_tdd.rs` - the module-config / `LoadedModuleBuilder` fixture tests only - purpose: fixture shape
-- Files allowed to edit (at most 3):
-  - `crates/slicer-scheduler/tests/wipe_tower_p04_binding_tdd.rs` (new; flat file — auto-discoverable test binary)
-- Files explicitly out of bounds:
-  - all production scheduler/IR files (`config_resolution.rs`, `manifest.rs`, `execution_plan.rs`, `slice_ir.rs`, `resolved_config.rs`) — the machinery already behaves as AC-N1 asserts; if it does not, STOP and report (that falsifies a locked assumption; do not patch scheduler code in this packet)
-- Expected sub-agent dispatches:
-  - Question: quote the `LoadedModuleBuilder` + `ConfigFieldEntry` fixture used by a from_declared/hiding test? scope: `crates/slicer-scheduler/tests/integration/`; return: `SNIPPETS` (≤ 30 lines)
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` - direct read; the plumbing-key evidence row in §Per-key parity evidence
-- OrcaSlicer refs:
-  - none (scheduler-side only)
-- Verification:
-  - `cargo test -p slicer-scheduler --test wipe_tower_p04_binding_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-- Exit condition: passes, with the test naming a non-owner module receiving resolved config where `bed_exclude_area` is in the source map and absent from its view.
+- **Task IDs:** none.
+- **Objective:** a slice whose object occupies the excluded region fails with `PipelineError::Prepass` / `PrepassExecutionError::FatalModule`, a slice whose object is clear is unaffected, and a slice with no `bed_exclude_area` is byte-identical to baseline.
+- **Preconditions:** Steps 1–2 landed. The new test file **must** be added to `crates/slicer-runtime/tests/integration/main.rs`'s `mod` list in this same step — an unregistered file compiles to zero tests and reports green.
+- **Postconditions:** AC-2 (abort half), AC-3, AC-N2 pass.
+- **Allowed reads:** `crates/slicer-runtime/tests/integration/main.rs`, one existing slice-driving integration test as a fixture template, `crates/slicer-runtime/src/prepass.rs` (fatal path — ranged read only).
+- **Files allowed to edit (≤3):** `crates/slicer-runtime/tests/integration/bed_exclusion_abort_tdd.rs` (new), `crates/slicer-runtime/tests/integration/main.rs`.
+- **Out of bounds:** `crates/slicer-runtime/src/**` — this packet adds no host logic.
+- **Dispatches:** `FACT` for the test run.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-2, AC-3, AC-N2; `requirements.md` § In-Tree Grounding (fatal propagation).
+- **Verification:** `cargo test -p slicer-runtime --test integration bed_exclusion_abort_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Falsifying exit condition:** the run reports `0 passed; 0 failed` — that is the unregistered-file false green, not a pass. Confirm the test count is non-zero before recording the step done.
 
-### Step 5: Docs regeneration + workspace gates
+---
 
-- Task IDs: none.
-- Objective: `docs/15_config_keys_reference.md` regenerated to list `bed_exclude_area` under owner `wipe-tower`; workspace gates green; AC-4 verified by grep.
-- Precondition: Steps 1-4 complete.
-- Postcondition: gen-config-docs `--check` clean; AC-4's grep passes; the Orca-deviations table gains **no** row for the key (no default → no comparand); check-literals clean.
-- Files allowed to read, with ranges when over 300 lines:
-  - none directly; run the generator and grep
-- Files allowed to edit (at most 3):
-  - `docs/15_config_keys_reference.md` (regenerated, never hand-edited)
-- Files explicitly out of bounds:
-  - `docs/DEVIATION_LOG.md` — no row is expected; filing one requires human sign-off surfaced first (ticket 02 standard)
-- Expected sub-agent dispatches:
-  - cargo/xtask runs and greps delegated per context discipline
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/15_config_keys_reference.md` - regeneration target; grep-verify only
-- OrcaSlicer refs:
-  - none (docs-only step)
-- Verification:
-  - `cargo xtask gen-config-docs --check 2>&1 | tail -3` - FACT pass/fail
-  - `rg -q 'bed_exclude_area' docs/15_config_keys_reference.md && echo AC4-PASS` - FACT AC4-PASS
-  - `cargo xtask check-literals 2>&1 | tail -3` - FACT pass/fail
-  - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
-- Exit condition: all gates green.
+## Step 4 — The wipe-tower half
 
-## Per-Step Budget Roll-Up
+- **Task IDs:** none.
+- **Objective:** `wipe-tower` declares `bed_exclude_area` and rejects a tower footprint corner inside the exclusion polygon at its existing code-3 site.
+- **Preconditions:** re-derive the current `wipe-tower.toml` key set from disk (`254a` / `254b` / `255` may have landed) and `rg -n 'bed_exclude_area' crates modules resources` to confirm no existing fixture is about to start failing.
+- **Postconditions:** AC-7 and AC-N1 pass; with the key absent, tower behaviour is unchanged.
+- **Allowed reads:** `modules/core-modules/wipe-tower/{wipe-tower.toml, src/lib.rs, tests/bed_bounds_tdd.rs}`, `crates/slicer-runtime/tests/contract/config_view_binding_tdd.rs`.
+- **Files allowed to edit (≤3):** `modules/core-modules/wipe-tower/wipe-tower.toml` + `modules/core-modules/wipe-tower/src/lib.rs` (one unit), `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs`, `crates/slicer-runtime/tests/contract/config_view_binding_tdd.rs`.
+- **Out of bounds:** `ORCA_CONFIG_PADDING`, the new module's source.
+- **Dispatches:** `FACT` — `cargo xtask build-guests --check; echo "exit=$?"` at step exit (the wipe-tower manifest and `src/` are guest-fingerprint inputs).
+- **Cost:** `S`.
+- **Authorities:** `packet.spec.md` AC-7, AC-N1; `design.md` DIV-2.
+- **Verification:** `cargo test -p wipe-tower --test bed_bounds_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` then `cargo test -p slicer-runtime --test contract config_view_binding_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Falsifying exit condition:** the tower check fires when `bed_exclude_area` is absent, or a degenerate value makes the tower path fail — the module-side and tower-side degenerate semantics must agree.
 
-| Step | Context Cost | Notes |
-| --- | --- | --- |
-| Step 1 | S | manifest-only |
-| Step 2 | S | new test binary (+ dev-dep) |
-| Step 3 | M | wiring + fallout dispatch |
-| Step 4 | S | one scheduler test binary, one dispatch |
-| Step 5 | S | regen + gates |
+---
 
-Aggregate `M`; no row is `L`. Split before activation if aggregate exceeds `M`.
+## Step 5 — Docs
 
-## Packet Completion Gate
+- **Task IDs:** none.
+- **Objective:** `docs/15_config_keys_reference.md` is regenerated and current; `docs/04_host_scheduler.md` records that `PrePass::MeshAnalysis` now hosts a guest validator beside its host built-in and that a fatal module error there aborts the slice.
+- **Preconditions:** Steps 1–4 landed.
+- **Postconditions:** AC-8 passes and the Doc Impact grep returns exit 0.
+- **Allowed reads:** `docs/04_host_scheduler.md` (ranged — the prepass/stage-order section only).
+- **Files allowed to edit (≤3):** `docs/04_host_scheduler.md`, `docs/15_config_keys_reference.md` (**generated only** — via `cargo xtask gen-config-docs`, never by hand).
+- **Out of bounds:** any code file.
+- **Dispatches:** `FACT` for each command.
+- **Cost:** `S`.
+- **Authorities:** `packet.spec.md` AC-8 and § Doc Impact Statement.
+- **Verification:** `cargo xtask gen-config-docs --check && rg -q 'bed_exclude_area' docs/15_config_keys_reference.md; echo "exit=$?"` then `rg -q 'print-validator' docs/04_host_scheduler.md; echo "exit=$?"`
+- **Falsifying exit condition:** `docs/15` was edited by hand rather than regenerated (`--check` would pass locally and fail in CI after any manifest change).
 
-- All steps and exits complete.
-- Every pipe-suffixed AC command returns PASS.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read — **re-derive the crosswalk question at completion time**, not from this frozen note (ledger-fact rule). The feature-gap queue's packets carry no TASK row (survey precedent at 234a/253/254/255 authoring time); implementation is recorded against wayfinder ticket 11.
-- Reconcile reopened/superseded status transitions: none.
-- `packet.spec.md` is ready for `status: implemented` once the schema test settles the union base (Step 2 re-derives it from disk).
+---
 
-## Acceptance Ceremony
+## Closure Gate
 
-- Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Confirm `cargo xtask build-guests --check` exit 0 with the wipe-tower guest rebuilt; record any still-stale unrelated guest in the ceremony notes as pre-existing (authoring-time baseline: `tree-support-planner-guest`, per ticket 99's note and packets 254/255's ceremony rows).
-- Record remaining packet-local risk: none expected — no CONFIG_BLOCK change at defaults (no schema default); user-supplied values newly appearing in CONFIG_BLOCK are intended round-trip behaviour.
-- Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
-- Record the reduced-semantics gap (object hulls vs tower rectangle) as the packet's standing follow-up note in the completion report — it is not closed by this packet.
+Run in this order, all delegated with `FACT` returns:
+
+1. `cargo check --workspace --all-targets`
+2. `cargo clippy --workspace --all-targets -- -D warnings`
+3. `cargo xtask check-literals 2>&1 | tail -3`
+4. `cargo xtask build-guests --check; echo "exit=$?"` — must be `0`
+5. Every command in `requirements.md` § Verification Matrix
+
+`cargo test --workspace` runs only if this packet's acceptance ceremony demands it, and then only through `cargo xtask test --summary --workspace`, dispatched to a sub-agent returning `FACT pass/fail`.
+
+## Reporting Obligations (not code changes)
+
+The implementer/reviewer reports these upward; this packet edits neither the map nor the tickets.
+
+- The map's ticket-11 entry describes packet 256 as wiring "only the wipe-tower corner check" with the object-footprint check recorded as a gap. That is now the *secondary* half; the entry needs updating to the module-based validator plus DIV-1's sampled-probe divergence.
+- `docs/specs/orca-feature-gap/issues/04-asset-tier-assignment.md` lists `bed_exclude_area` as Tier A with owner "wipe-tower (bed_shape) + crates/slicer-gcode (printable_height)". The owner is now `print-validator` (primary) + `wipe-tower` (secondary), and the tier is C.
+- `docs/specs/orca-feature-gap/issues/key-correction-inventory.md`'s `bed_exclude_area` row (`NOT-YET-BUILT` / "Packet 256 claims WIRED… Verified false") should be updated once this revision lands.
+- The three returned canonical consumers (`get_path_of_change_filament`, `apply_config`, `construct_printable_area_by_printer`) belong in the map's fog list as future decision points, not as key coverage.
+- The `[FWD]` host service for a true per-object footprint polygon (DIV-1) is a WIT-level follow-up worth its own queue entry.

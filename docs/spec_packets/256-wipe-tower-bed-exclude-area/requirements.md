@@ -1,103 +1,152 @@
-# Requirements: 256-wipe-tower-bed-exclude-area
+# Requirements: wipe-tower-bed-exclude-area
 
 ## Packet Metadata
 
-- Grouped task IDs: none — the feature-gap queue's established pattern is `task_ids: []` (packets 234a, 253, 254, 255 precedent); `docs/07_implementation_status.md` holds no TASK row for this queue.
-- Backlog source: `docs/specs/orca-feature-gap/issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md` (wayfinder map "Close the OrcaSlicer FFF feature gap", packet P04).
-- Packet status: `draft`
-- Aggregate context cost: `M`
+- **Packet directory:** `docs/spec_packets/256-wipe-tower-bed-exclude-area/`
+- **Slug:** `wipe-tower-bed-exclude-area`
+- **Status:** `draft`
+- **Task IDs:** none (queue packet — `task_ids: []`, precedent packets 234a, 253–264)
+- **Backlog source:** wayfinder ticket 11 (`docs/specs/orca-feature-gap/issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md`), map `docs/specs/orca-feature-gap/map.md` packet P04
+- **Tier:** **C** — re-derived. The prior revision was Tier A ("owner and decision point both exist; only the declaration and the check are missing"). That was true only for the tower-corner reading of the key. Building canonical's actual feature means a **new granular module at a seam this tree does not use yet**, which is Tier C by ticket 04's rubric. See `design.md` § Tier Derivation.
+- **Re-authoring note:** this directory is overwritten in place (number and slug retained) with explicit user approval, under map Authoring rules 1–6, and in response to the ⚠ correction on the map's ticket-11 entry.
 
 ## Problem Statement
 
-Packet P04 — Printer / Machine / Print volume — wipe-tower is one key, `bed_exclude_area`, that OrcaSlicer reads in `Print.cpp` (validation), `GCode.cpp` (filament-change cutter area), `GCodeProcessor.cpp` (viewer), and `TimelapsePosPicker.cpp` (camera-safe area), and Pinch 'n Print implements nowhere: the key has **zero occurrences in `crates/`, `modules/`, `xtask/`, or `resources/`** (authoring-time grep; it exists only in `docs/ORCA_CONFIG_REFERENCE.md` and the wayfinder gap docs, which mark it `❌ no`).
+OrcaSlicer's `bed_exclude_area` marks a region of the bed the printer cannot use — a filament cutter zone, a purge chute, a clip. `PrintConfig.cpp::get_bed_excluded_area` turns every configured point into **one** polygon, and `Print.cpp::Print::validate` (via `layered_print_cleareance_valid` / `sequential_print_clearance_valid`) intersects each model volume's 2D convex hull with it and **fails the print** with a collision-risk message. It is a validation feature, not a geometry feature.
 
-Canonically:
+Pinch 'n Print has neither the key nor the seam. `bed_exclude_area` has zero occurrences in `crates/`, `modules/`, `xtask/` and `resources/`. More importantly, this port has **no pre-slice geometry validation of any kind**: `slicer_scheduler::validation::validate_startup_dag` validates the module DAG and nothing geometric; the only pre-execution gates `slicer_runtime::run::run_slice_with_collector` applies are `ConfigBoundsIndex::check` and `slicer_scheduler::config_resolution::validate_support_layer_heights`. No error variant for "object outside / inside a forbidden area" exists anywhere.
 
-- `PrintConfig.cpp::PrintConfigDef` defines `bed_exclude_area` as `coPoints`, mode `comAdvanced`, no min/max, default `ConfigOptionPoints{ Vec2d(0, 0) }` — a degenerate single point that excludes nothing.
-- `PrintConfig.cpp::get_bed_excluded_area` builds **one polygon** from *all* configured points (counter-clockwise, no rectangle pairing), so any point count below 3 real vertices geometrically excludes nothing.
-- `Print.cpp::Print::validate` routes to `layered_print_cleareance_valid` (or `sequential_print_clearance_valid` for by-object sequencing), which intersects **each model volume's 2D convex hull** with the exclude polygon and fails **fatally** with `"<object name> is too close to exclusion area, there may be collisions when printing."`. The wipe tower itself is never tested against `bed_exclude_area` in canonical.
+The prior revision of this packet declared the key on the `wipe-tower` manifest and checked the **tower rectangle** against it, recording the object-hull check as a gap. Under map Authoring rule 1 that is defensible (the tower check is a real decision point), but it delivers a different feature from the one canonical attaches to the key, and the map's ticket-11 entry carries a ⚠ correction saying so: *"canonical's feature is object-footprint validation (`Print::validate`) — implement it at the port's validation seam."*
 
-This port's only live bed-validation decision point is the wipe-tower module's own: `run_finalization` validates the 4 corners of the tower rectangle against the `printable_area` bed polygon and fatally rejects a corner outside (added with the tower's bed-bounds work; its test file carries the ticket-100 regression pinning Orca point-string ingestion of `printable_area`). The tier table (ticket 04) places `bed_exclude_area` at exactly this decision point — "wipe-tower (bed_shape)" — which is what makes the packet Tier A plumbing: the owner and decision point both exist; only the declaration and the check are missing.
+This revision builds that seam. It does **not** build it as a host-side special case: a hardcoded geometry check inside `run_slice_with_collector` would satisfy the letter of the correction while contradicting the project's modular-pipeline and community-extensibility goals (`docs/00_project_overview.md`). Pre-slice validation becomes a **module**, at a stage the schema already defines and no core module occupies.
 
-The coherent slice: declare the key in the owning manifest, parse it through the module's existing polygon reader (which already handles both interleaved floats and Orca 3MF point strings — ticket 100's `bed_shape`→`printable_area` value-format adaptation), and extend the corner validation with an exclusion test whose failure mode mirrors canonical's (fatal, collision-risk message).
+## Key Disposition Table
+
+Classification per the map's Authoring rules: **(a)** live behaviour-changing decision point already in tree; **(b)** decision point this packet builds; **(c)** returned to queue; **(d)** dead-in-canonical.
+
+| Key | Class | Owner | Decision point this packet builds | Non-default AC |
+| --- | --- | --- | --- | --- |
+| `bed_exclude_area` | **(b)** | `print-validator` (new module, primary) + `wipe-tower` (secondary) | pre-slice object-vs-exclusion validation at `PrePass::MeshAnalysis`, fatal on collision; plus the wipe-tower footprint's own exclusion test at `PostPass::LayerFinalization` | AC-2, AC-4, AC-5, AC-7 |
+
+Counts: **(a) 0 · (b) 1 · (c) 0 · (d) 0.** Zero declaration-only keys (map preflight gate (a)); the key carries four ACs asserting behaviour changes at non-default values (map preflight gate (b)) — the key has no default at all, so every asserted behaviour is off the default path by construction.
+
+## Returned to Queue — unimplemented
+
+**No keys.** P04 is a one-key packet and that key is implemented here.
+
+Three canonical **consumers** of the same key are deliberately not built, and are recorded here rather than silently dropped. Each needs a decision point this port does not have; none is a key of its own:
+
+| Canonical consumer | Needs (missing feature) |
+| --- | --- |
+| `GCode.cpp::get_path_of_change_filament` | a filament-change travel router that steers around the cutter area. Canonical requires the value to have **exactly 4 points** on this path, disagreeing with `get_bed_excluded_area`'s any-point-count polygon; the port follows the validation consumer, whose semantics this packet ports. |
+| `GCode/GCodeProcessor.cpp::apply_config` | a G-code viewer/analyzer state model. The port's post-process stage has no viewer copy of the bed. |
+| `GCode/TimelapsePosPicker.cpp::construct_printable_area_by_printer` | a timelapse camera-park position picker (subtractive use: printable area minus exclusion). The port has no timelapse feature. |
+
+## Ruled Dead-in-Canonical
+
+**None.** `bed_exclude_area` has live read sites inside OrcaSlicer's slicing pipeline under `src/libslic3r/` — `PrintConfig.cpp::get_bed_excluded_area` and `Print.cpp::Print::validate` (plus the three consumers above). It is not confined to `ConfigManipulation.cpp`, GUI tooltips, preset plumbing, or an `IGNORE` / legacy-alias set.
 
 ## In Scope
 
-1. **Manifest declaration:** `[config.schema.bed_exclude_area]` in `modules/core-modules/wipe-tower/wipe-tower.toml` — `type = "float-list"`, **no `default`** (canonical's default is a degenerate point that excludes nothing; the module's absent-key fallback is the same semantics, and an absent default renders as `—` in doc-15 exactly like the sibling key `printable_area`), no min/max, `display = "Excluded bed area"`, `group = "Printer"`, `advanced = true` (Orca `comAdvanced`; parser field exists, precedent `arachne-perimeters.toml`).
-2. **Module read:** `WipeTower::from_config` parses `bed_exclude_area` via the existing `float_list_from_config` reader (accepts `ConfigValue::List` of floats/ints/**Orca point strings** via `slicer_ir::parse_orca_point_string`), storing the polygon on `WipeTower` as `Vec<(f32, f32)>`, default empty.
-3. **The wiring — one decision point:** `run_finalization`'s corner loop gains a second check: after the existing bed-polygon pass, any tower corner **inside** the `bed_exclude_area` polygon (same `point_in_polygon` even-odd test, on-edge counts as inside) returns `ModuleError::fatal` naming the key and the corner, with message text carrying canonical's collision-risk semantics. A degenerate polygon (< 3 vertices, i.e. including Orca's default single point and any too-short value) skips the check entirely — no exclusion. The port's decision point validates the *tower rectangle*; canonical validates *object hulls*; the tower-rectangle check is the superset-conservative local translation available at this seam (see Out of Scope).
-4. **Recorded reduced-semantics gap:** canonical's object-hull↔exclude intersection and secondary consumers (`GCode.cpp::get_path_of_change_filament` 4-point cutter form, `GCodeProcessor.cpp::apply_config` viewer copy, `TimelapsePosPicker.cpp::construct_printable_area_by_printer` subtractive use) are decision-point gaps recorded per-key below — not silently dropped, not built here.
-5. **Emission-surface reachability for user-set values:** a user/Orca-supplied `bed_exclude_area` rides the existing extensions bucket into the G-code CONFIG_BLOCK (generic transport; no host change). No schema default exists to thread, so no CONFIG_BLOCK line is added at defaults — output stays byte-identical.
+1. **A new core module, `print-validator`**, at `PrePass::MeshAnalysis` — the earliest module-hostable stage, and the only one that precedes layer planning. It declares `bed_exclude_area` and `printable_area`, holds no claim, writes no IR, and commits nothing to the blackboard: it exists to reject a print, not to produce one. It is the intended home for the port's later pre-slice validation checks (`printable_height`, extruder clearance — P18/P19).
+2. **The probe algorithm.** For each object: read `object-bounds` (`slicer:common/host-services`); skip the object when its XY rectangle does not overlap the exclusion polygon's bounding rectangle; otherwise walk a `1.0` mm grid over the intersection of the two rectangles, keep only points strictly inside the exclusion polygon (even-odd test), and `raycast-z-down(object_id, x, y, start_z)` each one with `start_z` above the object's max Z. The first `Some(_)` is a collision → `ModuleError::fatal`, which the prepass executor converts to `PrepassExecutionError::FatalModule` and the pipeline to `PipelineError::Prepass`.
+3. **The wipe-tower half.** `bed_exclude_area` is also declared on `wipe-tower.toml` and tested against the tower footprint inside the existing code-3 bed-bounds site in `run_finalization`. The tower is generated at `PostPass::LayerFinalization`, long after the validator has run, so this is a distinct decision point rather than a duplicate check.
+4. **Registration surface.** Workspace member, integrated-module registry, `pnp-cli` passthrough features, and the core-module discovery count (a shared ledger fact — re-derived from disk, never frozen).
+5. **Degenerate-value semantics.** Absent, empty, single-point (canonical's own default), fewer than 3 vertices, or an odd float count all mean "nothing is excluded" — never a slice failure. Malformed printer config must not be a fatal error when canonical's own default is degenerate.
+6. **Generated docs**, plus one sentence in `docs/04_host_scheduler.md` recording that `PrePass::MeshAnalysis` now hosts a guest validator beside its host built-in.
 
 ## Out of Scope
 
-- **Building the object-hull decision point** — intersecting per-object volume convex hulls with the exclude polygon is Print::validate-level work this tree's orchestration stage does not have; Tier B/C future work (04's rubric). Recorded as the key's gap.
-- **The GCode.cpp 4-point cutter-area interpretation, the viewer copy, and the Timelapse subtractive use** — secondary consumers of the same key; they need their own decision points and are gap-recorded, not imitated (canonical itself disagrees between them: `get_bed_excluded_area` reads one polygon, `Model.cpp` groups 4-point rectangles, `get_path_of_change_filament` requires exactly 4 points — this packet follows the validation consumer).
-- **`printable_height` / `extruder_printable_area` / `extruder_printable_height` / `extruder_clearance_*`** — siblings from the same Print-volume section, queued in later packets (P18/P19 rows of `05-asset-packet-list.md`); not keys of this packet.
-- **Host-crate logic changes** — the module-config plumbing is fully generic (exact-name delivery through `bind_module_config_view` → `ConfigView::from_declared`; loader coercion is key-agnostic), so no `crates/**` production file changes.
-- **Baseline byte-identicality for CONFIG_BLOCK at defaults** — preserved trivially: no default is added, so nothing new is emitted at defaults.
+- **Any WIT change.** The `mesh-analysis` `run` signature (`objects: list<object-id>`, `output`, `config`) is used as-is; `mesh-object-view` (which carries `vertices` / `triangles`) is passed only to `prepass-seam-planning` and `prepass-support-geometry`, and this packet does **not** extend `mesh-analysis` to take it. That constraint is what makes DIV-1 necessary and is the packet's single most consequential design choice.
+- **A new `ResolvedConfig` field.** The key rides the `extensions` overflow bucket, which `ResolvedConfig::to_config_map` merges through unchanged into the module config map.
+- **Canonical's convex-hull footprint** — DIV-1 in `design.md`.
+- **The three returned consumers** above.
+- **`printable_height` / `extruder_printable_area` / `extruder_printable_height` / `extruder_clearance_*`** — same Orca section, later packets (P18/P19). This packet gives them a home; it does not implement them.
+- **`ORCA_CONFIG_PADDING`** — untouched (map Authoring rule 2).
+- **Sequential (by-object) print clearance** — canonical's `sequential_print_clearance_valid` also enforces inter-object clearance under by-object sequencing; the port has no by-object mode.
 
 ## Authoritative Docs
 
-- `docs/specs/orca-feature-gap/issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md` — the packet ticket; direct read.
-- `docs/specs/orca-feature-gap/issues/05-asset-packet-list.md` — P04 row at `### P04 — Printer / Machine / Print volume — wipe-tower`; ranged read ~7 lines.
-- `docs/specs/orca-feature-gap/issues/04-asset-tier-assignment.md` — the `bed_exclude_area` Tier A row; ranged read ~15 lines. Over 300 lines total: delegate beyond these rows.
-- `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` — ~80 lines; direct read.
-- `docs/15_config_keys_reference.md` — large; regeneration + grep verification only, never read in full.
+- `docs/04_host_scheduler.md` — stage order, prepass execution, and the claim-resolution rules the new manifest must satisfy.
+- `docs/03_wit_and_manifest.md` — manifest contract, stage declaration, host-boundary access enforcement.
+- `docs/01_system_architecture.md` § Claim System — the mechanism check in `design.md`.
+- `docs/08_coordinate_system.md` — plain-mm boundary for the polygon and probe grid.
+- `docs/15_config_keys_reference.md` — generated; regeneration plus grep verification only.
+
+## Parity Evidence Standard
+
+Per map ticket 02: canonical function-read plus described behaviour, pinned by invariant tests; ported OrcaSlicer test assertions acceptable with the attribution header; unverifiable behaviour surfaced to the human before any `DEVIATION_LOG.md` row. This packet consumes no human sign-off and files no deviation row. Its two port-level divergences are recorded in `design.md` § Divergences with rationale, per Authoring rule 4.
+
+## Per-Key Canonical Evidence
+
+| Key | Canonical def | Canonical consumers (file + function) | Behaviour in canonical | Disposition here |
+| --- | --- | --- | --- | --- |
+| `bed_exclude_area` | `coPoints`, `comAdvanced`, default `{ Vec2d(0, 0) }` (degenerate single point), no bounds | `PrintConfig.cpp::get_bed_excluded_area` (all points → one CCW polygon); `Print.cpp::Print::validate` → `layered_print_cleareance_valid` / `sequential_print_clearance_valid` (per-volume 2D convex hull ∩ polygon → fatal `"<object> is too close to exclusion area, there may be collisions when printing."`); `GCode.cpp::get_path_of_change_filament`; `GCodeProcessor.cpp::apply_config`; `TimelapsePosPicker.cpp::construct_printable_area_by_printer` | fatal pre-print validation of object footprints against a forbidden bed region; the wipe tower is never tested against it | **BUILT** — `print-validator` at `PrePass::MeshAnalysis` rejects an object occupying the excluded region (sampled probe, DIV-1), and `wipe-tower` additionally rejects a tower footprint inside it (DIV-2). Degenerate values exclude nothing, matching `get_bed_excluded_area`. Three consumers returned to the queue above. |
+
+## In-Tree Grounding (verified at authoring, 2026-09-02)
+
+- **The stage exists and is free.** `PrePass::MeshAnalysis` is a full `StageSpec` in `crates/slicer-schema/src/lib.rs` (`method: "run_mesh_analysis"`, `trait_name: "PrepassModule"`, `wit_dir: "prepass-mesh-analysis"`, `wit_world: "mesh-analysis-module"`, WIT package `slicer:prepass-mesh-analysis@1.0.0`) and appears in `VALID_STAGES`. **No core module declares it** — the stage runs only its host built-in `host:mesh_analysis` (`crates/slicer-runtime/src/prepass.rs`, gated on `bb.surface_classification().is_none()`), and `required_slots("PrePass::MeshAnalysis")` is empty, so a module there needs no prior prepass output.
+- **The WIT contract is sufficient.** `crates/slicer-schema/wit/deps/prepass-mesh-analysis/prepass-mesh-analysis.wit`'s `run` takes `objects: list<object-id>`, a `mesh-analysis-output` resource (`push-facet-annotation` / `push-surface-group` — both optional to call) and a `config-view`; the `mesh-analysis-module` world imports `slicer:common/host-services`, which exposes `object-bounds(object-id) -> bounding-box3`, `raycast-z-down(object-id, x, y, start-z) -> option<f32>` and `surface-normal-at(...)`. Raw triangles are **not** available at this stage: `mesh-object-view` (with `vertices` / `triangles`, `crates/slicer-schema/wit/deps/prepass-types.wit`) is passed only to `prepass-seam-planning` and `prepass-support-geometry`.
+- **The SDK trait is a no-op by default.** `PrepassModule::run_mesh_analysis(&self, objects: &[ObjectId], output: &mut MeshAnalysisOutput, config: &ConfigView) -> Result<(), ModuleError>` (`crates/slicer-sdk/src/traits.rs`) ships a default body returning `Ok(())`; `MeshAnalysisOutput` (`crates/slicer-sdk/src/prepass_builders.rs`) is a two-`Vec` accumulator whose `push_facet_annotation` / `push_surface_group` are both optional — there is no commit or finish method, so a module that produces nothing is a supported shape. Host services reach the guest through `slicer_sdk::host::{object_bounds, raycast_z_down}` and the batched `slicer_sdk::host_batch::raycast_z_down_batch`; `crates/slicer-sdk/src/test_support/mock_host.rs` provides the test double the probe-contract AC counts calls on. Note `object_bounds` returns `Result<BoundingBox3, HostUnavailable>`, not `Option`.
+- **A fatal module error aborts the slice.** `crates/slicer-wasm-host/src/dispatch.rs` converts a `module-error` with `fatal` set into a `DispatchError`; `crates/slicer-runtime/src/prepass.rs` raises `PrepassExecutionError::FatalModule { stage_id, module_id, message }`, which converts into `PipelineError::Prepass`. Non-fatal errors are logged and execution continues — so the validator MUST set `fatal`.
+- **Config transport.** `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`) routes any key without a declared `ResolvedConfig` field into `cfg.extensions`; `ResolvedConfig::to_config_map` (`crates/slicer-ir/src/resolved_config.rs`) merges `extensions` through unchanged; `bind_module_config_view` (`crates/slicer-scheduler/src/execution_plan.rs`) then filters to the module's declared keys. No host change is needed for `bed_exclude_area` to reach either module.
+- **Orca 3MF ingest.** `slicer_ir::parse_orca_point_string` (defined in `crates/slicer-ir/src/resolved_config.rs`, re-exported from `crates/slicer-ir/src/lib.rs`) parses `"250x210"` into `(x, y)` and returns `None` unless exactly two `x`-separated finite floats; `float_list_from_config` in `modules/core-modules/wipe-tower/src/lib.rs` already routes `ConfigValue::List` strings through it. `bed_bounds_tdd.rs::orca_point_string_bed_is_parsed_not_silently_defaulted` pins that path end-to-end for `printable_area`.
+- **The wipe-tower check.** `run_finalization` validates four corners with `point_in_polygon` (even-odd, on-edge counts inside) and returns `ModuleError::fatal(3, "wipe-tower corner (x, y) lies outside bed polygon")`; `parse_printable_area` rejects empty / odd / fewer-than-6 raw values with `ModuleError::fatal(2, …)`. Code 4 is entity insertion. The exclusion rejection extends the code-3 site.
+- **No footprint helper is exposed.** `compute_xy_footprint` (private) and `bottom_surface_footprint` exist in `crates/slicer-core/src/algos/mesh_analysis.rs`, host-side only; nothing equivalent crosses the WIT boundary. There is no 2D convex-hull helper anywhere in `crates/`.
+- **No existing validation error.** No `SchedulerError`, `ConfigResolutionError`, `SliceRunError` or `ModelLoadError` variant covers out-of-bed or excluded-area geometry; the only bed-shape error in the tree is `pnp_cli::visual_debug::VisualDebugError::InvalidBedShape`, which is viewport framing, not printability. This packet adds none either — the module's `ModuleError::fatal` is the whole mechanism.
+- **Claim vocabulary.** `RECOGNIZED_CLAIMS` covers `perimeter-generator`, `support-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`, `slice-postprocessor`, `gcode-postprocessor`, `text-postprocessor`, plus the `claim:*` fill roles. `mesh-analyzer` is recognized but held by no core module. The validator holds **nothing** — see `design.md` § Mechanism Check.
+- **Registration and counting.** `modules/core-modules/` holds 23 directories at authoring; `core_modules_directory_is_discoverable_and_all_load` (`crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs`) asserts that exact count. **Re-derive it from disk at implementation time** — draft packet `254b` also adds a module. The runtime's integration bucket is aggregated by `mod` declarations in `crates/slicer-runtime/tests/integration/main.rs`, so a new file there MUST be registered or it silently compiles to zero tests.
+- **Guest build.** `discover_guests` / `guest_input_paths` (`xtask/src/build_guests.rs`) pick up a core module by its directory shape (`src/`, `Cargo.toml`, depth-1 `*.toml`, `wit-guest/`), so the new module is fingerprinted automatically once it has a `wit-guest/`.
+
+## Acceptance Summary
+
+Reference, never copy, criteria from `packet.spec.md`.
+
+- Positive: `AC-1` (module manifest + count), `AC-2` (fatal rejection), `AC-3` (clear object unaffected), `AC-4` (probe contract), `AC-5` (Orca 3MF form), `AC-6` (degenerate = no exclusion), `AC-7` (wipe-tower half), `AC-8` (docs).
+- Negative: `AC-N1` (no cross-module leakage), `AC-N2` (inert with no key, byte-identical G-code), `AC-N3` (manifest guard).
+- Cross-packet impact: the core-module count is shared with draft `254b`; the `wipe-tower` manifest is shared with `254a` / `254b` / `255`.
+
+## Verification Matrix
+
+This is the authoritative full matrix; `packet.spec.md` § Verification lists the gate commands only.
+
+| Command | Purpose | Return format hint |
+| --- | --- | --- |
+| `cargo test -p slicer-scheduler --test scheduler_integration manifest_ingestion_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1: manifest loads, count incremented | FACT pass/fail |
+| `cargo test -p print-validator --test bed_exclusion_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-2, AC-4, AC-5, AC-6, AC-N3 | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
+| `cargo test -p slicer-runtime --test integration bed_exclusion_abort_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-2 (abort path), AC-3, AC-N2 | FACT pass/fail |
+| `cargo test -p wipe-tower --test bed_bounds_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-7 | FACT pass/fail |
+| `cargo test -p slicer-runtime --test contract config_view_binding_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-N1 | FACT pass/fail |
+| `cargo xtask gen-config-docs --check && rg -q 'bed_exclude_area' docs/15_config_keys_reference.md; echo "exit=$?"` | AC-8 | FACT exit=0 |
+| `rg -q 'print-validator' docs/04_host_scheduler.md; echo "exit=$?"` | Doc Impact | FACT exit=0 |
+| `cargo xtask build-guests --check; echo "exit=$?"` | new guest is discovered and fresh | FACT exit=0 (exit 3 = `wasm-tools` missing, not clean) |
+| `cargo check --workspace --all-targets` | workspace type gate | FACT pass/fail |
+| `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
+| `cargo xtask check-literals 2>&1 \| tail -3` | struct-literal churn gate | FACT pass/fail |
+
+## Step Completion Expectations
+
+- The module crate must exist and be a workspace member before the integrated registry references it; the registry must reference it before the core-module count assertion changes. That ordering is the reason Steps 1–2 are separate.
+- The core-module count is a **ledger fact**: re-derive it (`ls -d modules/core-modules/*/ | wc -l`) in the step that changes the assertion, and reconcile with `254b` if that packet landed first.
+- The new runtime integration test file MUST be added to `crates/slicer-runtime/tests/integration/main.rs`'s `mod` list in the same step that creates it, or the run reports "0 tests" and looks green.
+- The validator must set `fatal` on its `ModuleError`; a non-fatal error is logged and the slice continues, which would make AC-2 silently unenforced.
+- The guest freshness gate runs at the end of the module step and again at the acceptance ceremony.
+- Implementation is recorded against wayfinder ticket 11; `docs/07_implementation_status.md` holds no TASK row for this queue.
+
+## Context Discipline Notes
+
+- `crates/slicer-runtime/src/prepass.rs` and `crates/slicer-ir/src/resolved_config.rs` are long: the facts this packet needs are in § In-Tree Grounding. Range-read only, one hypothesis per read.
+- `docs/15_config_keys_reference.md` and `docs/ORCA_CONFIG_REFERENCE.md`: never read in full.
+- Model an existing prepass module rather than inventing structure: `modules/core-modules/layer-planner-default/` is the closest shape (manifest, `wit-guest/`, `src/`, `tests/`).
+- `OrcaSlicerDocumented/` is the **sibling** checkout `..\pinch_n_print_cli\OrcaSlicerDocumented`; all reads delegated. Re-derive the absolute path on first use.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
 
 All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDocumented/` into the implementer's own context. Dispatch contract: return `LOCATIONS` (file:line + 1-line context, ≤ 20 entries) or `SUMMARY` (≤ 200 words, no code unless asked). Code snippets in returns are capped at 30 lines.
 
-Files to inspect for this packet (the checkout is the **sibling** path `D:\slicerProject\pinch_n_print_cli\OrcaSlicerDocumented` — not `./OrcaSlicerDocumented`):
+Files to inspect for this packet (the checkout is the **sibling** path `..\pinch_n_print_cli\OrcaSlicerDocumented`):
 
-- `src/libslic3r/PrintConfig.cpp` — `PrintConfigDef` (the `bed_exclude_area` definition facts) and `get_bed_excluded_area` (polygon interpretation).
-- `src/libslic3r/Print.cpp` — `Print::validate`, `layered_print_cleareance_valid`, `sequential_print_clearance_valid` (the fatal validation semantics this packet's error mirrors).
-- `src/libslic3r/GCode.cpp` — `get_path_of_change_filament` (4-point cutter-area consumer; gap evidence only).
-- `src/libslic3r/GCode/GCodeProcessor.cpp` — `apply_config`; `src/libslic3r/GCode/TimelapsePosPicker.cpp` — `construct_printable_area_by_printer` (gap evidence only).
-
-## Verified Grounding
-
-All claims below were verified against the tree and the canonical checkout at authoring time (2026-08-30):
-
-- **Manifest state:** `modules/core-modules/wipe-tower/wipe-tower.toml` declares exactly 8 keys today (`enable_prime_tower`, `wipe_tower_x`, `wipe_tower_y`, `prime_tower_width`, `prime_volume`, `line_width`, `printable_area`, `retract_length`); packets 254/255 (P02/P03, same owner) are authored `draft` and **not landed** (`grep -c wipe_tower_extra_flow` → 0). AC-1's union assertion therefore pins only the new key's shape and re-derives the rest of the union from disk at implementation time (FAILS the step only if the *new* key is missing/mistyped).
-- **The key is a true gap:** `bed_exclude_area` has zero occurrences in `crates/`, `modules/`, `xtask/`, `resources/` (grep-verified); only `docs/ORCA_CONFIG_REFERENCE.md` and `docs/specs/orca-feature-gap/issues/*` mention it.
-- **Decision point:** `run_finalization` (`modules/core-modules/wipe-tower/src/lib.rs`) parses the bed via `float_list_from_config(config, "printable_area")` → `parse_printable_area`, then validates the 4 tower-rectangle corners with `point_in_polygon`, returning `ModuleError::fatal(3, "wipe-tower corner (x, y) lies outside bed polygon")` on failure. `process()` (the legacy path) carries no bed-bounds validation — the SDK authoring path is the live one; the wired check therefore lives in `run_finalization` only (see Locked Assumptions).
-- **Polygon reader adapts both serialisations:** `float_list_from_config` accepts `ConfigValue::List` of `Float`/`Int`/**`String`**, where strings go through `slicer_ir::parse_orca_point_string` (`crates/slicer-ir/src/resolved_config.rs`) — the ticket-100 fix. Its doc comment states Orca 3MF plates serialise polygon keys as point-string arrays (`["0x0", "250x0", "250x210", "0x210"]`), and `bed_bounds_tdd.rs::orca_point_string_bed_is_parsed_not_silently_defaulted` pins that form end-to-end for `printable_area`. The module-side reader (not the host `ResolvedConfig` path) is what `ConfigView` consumers hit, so `bed_exclude_area` needs **no host-side change** to ingest Orca 3MF data.
-- **Config delivery is generic and exact-name:** the 3MF loader (`crates/slicer-model-io/src/loader.rs::parse_project_settings_json` → `json_to_config_value` → `coerce_string_to_config_value`) is key-agnostic (the key name feeds only `0/1` bool-schema and `%`-suffix decisions); `bind_module_config_view` (`crates/slicer-scheduler/src/execution_plan.rs`) pre-filters the source map to declared keys; `ConfigView::from_declared` copies values untransformed. Declaring `bed_exclude_area` in the manifest is sufficient for an Orca 3MF value to reach the module.
-- **Manifest parser semantics:** `ConfigFieldEntry` (`crates/slicer-scheduler/src/manifest.rs`) marks `type` required and every other field optional; `default = table.get("default").map(...)` → `None` when absent (valid for non-percent types — the entry simply carries no schema default); `required = true` is not read by the parser (it decorates `printable_area`'s entry today; this packet includes it for readability, matching the sibling key's shape). `advanced = true` is an existing parsed field (`arachne-perimeters.toml` uses it). Bounds machinery is numeric-only, so an unbounded float-list key declares no min/max.
-- **Doc-15 rendering of an absent default:** `printable_area` renders type `float-list`, default `—`, no deviation row (`xtask/src/gen_config_docs.rs::default_num_of` compares booleans/numerics only — a key with no numeric default produces no comparand, so no deviation row can appear). `bed_exclude_area` inherits the same non-row.
-- **Fatal-code convention:** `ModuleError::fatal(code, …)` in this module uses codes 2 (config parse), 3 (bed bounds), 4 (insertion); the new exclusion rejection extends the code-3 site.
-- **Guest-staleness baseline:** the wipe-tower manifest and `src/lib.rs` both feed the guest fingerprint (`cargo xtask build-guests --check` gates both steps); ticket 101 established guests embed config key names, so a manifest rename/addition must rebuild guests before test runs.
-
-<!-- snippet: parity-evidence -->
-## Parity Evidence Standard
-
-Every key this packet implements carries evidence per the map's ticket 02 standard:
-
-- **Canonical read + described behaviour.** For each key, cite the canonical consumer (file + function, never line numbers) and describe its behaviour in `requirements.md`. Reads of `OrcaSlicerDocumented/` are delegated per the orca-delegation snippet.
-- **Invariants, not goldens.** Behaviour is pinned with invariant/property tests (counts preserved, mappings hold, emitted values equal expected). Golden G-code comparison is not part of the standard — the checkout is not built and cannot be run.
-- **Ported Orca tests are acceptable evidence.** When `OrcaSlicerDocumented/tests/fff_print/` covers the behaviour, port its assertions into PnP's suite with the standard porting header (`docs/ORCASLICER_ATTRIBUTION.md`).
-- **Plumbing keys** (a threshold feeding an existing decision point): the default resolves to the canonical value AND a test proves the value reaches the consumer. No behavioural test required.
-- **Unverifiable behaviour:** surface the key and the reason to the human first; only with their sign-off file a `docs/DEVIATION_LOG.md` row (single source of truth, CI-checked by `cargo xtask check-deviations`) and proceed with documented scope. Never defer the key or block the packet on unverifiability alone, and never file a row without the human having been asked.
-
-### Per-key parity evidence (ticket 02 standard)
-
-| Key | Canonical def | Canonical consumer (file + function) | Behaviour in canonical | Disposition here |
-| --- | --- | --- | --- | --- |
-| `bed_exclude_area` | coPoints, default `{ Vec2d(0,0) }` (degenerate), comAdvanced, no bounds | `PrintConfig.cpp::get_bed_excluded_area` (polygon build) → `Print.cpp::Print::validate` via `layered_print_cleareance_valid` / `sequential_print_clearance_valid` (object volume convex hulls) | fatal validation: `<object name> is too close to exclusion area, there may be collisions when printing.`; wipe tower never tested against it | **WIRED** at the port's bed-validation decision point: tower-rectangle corners checked against the exclusion polygon, fatal on hit (message names the key); degenerate polygon excludes nothing; **gap**: object-hull intersection + secondary consumers (GCode.cpp `get_path_of_change_filament` 4-point cutter form; GCodeProcessor.cpp `apply_config` viewer copy; TimelapsePosPicker.cpp `construct_printable_area_by_printer` subtractive use) recorded as future work |
-
-Evidence reads performed at authoring time (delegated, results quoted above): `PrintConfig.cpp` `PrintConfigDef` block + `get_bed_excluded_area`; `Print.cpp` validation pair; the three secondary-consumer reads.
-
-## Verification Commands
-
-Full matrix (AC-level commands live in `packet.spec.md`):
-
-- `cargo check --workspace --all-targets`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p wipe-tower 2>&1 | tee target/test-output.log | grep -E "^test result"`
-- `cargo test -p slicer-scheduler --test wipe_tower_p04_binding_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
-- `cargo xtask gen-config-docs --check 2>&1 | tail -3`
-- `cargo xtask check-literals 2>&1 | tail -3`
-- `cargo xtask build-guests --check; echo "exit=$?"`
+- `src/libslic3r/PrintConfig.cpp` — `PrintConfigDef` (`bed_exclude_area` facts) and `get_bed_excluded_area`.
+- `src/libslic3r/Print.cpp` — `Print::validate`, `layered_print_cleareance_valid`, `sequential_print_clearance_valid`.
+- `src/libslic3r/GCode.cpp` — `get_path_of_change_filament`; `src/libslic3r/GCode/GCodeProcessor.cpp` — `apply_config`; `src/libslic3r/GCode/TimelapsePosPicker.cpp` — `construct_printable_area_by_printer` (returned-consumer evidence only).
