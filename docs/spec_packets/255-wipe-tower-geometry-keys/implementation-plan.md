@@ -1,172 +1,113 @@
-# Implementation Plan: 255-wipe-tower-geometry-keys
+# Implementation Plan: wipe-tower-geometry-keys
 
-## Execution Rules
+Five atomic steps, strictly ordered. Every step names its own falsifying exit condition; a step is not done until that condition is checked and false.
 
-- Work one atomic step at a time; map every step to grouped task IDs. This packet carries no `docs/07` task IDs (queue-packet precedent: `task_ids: []`; implementation is recorded against wayfinder ticket 10).
-- Use TDD, then implementation, then the narrowest falsifying validation.
-- Every field below is a context-budget contract and must be filled independently; never write "see Step 2".
+**Blast-radius discipline:** Step 2 adds seven fields to `WipeTower` (`modules/core-modules/wipe-tower/src/lib.rs`). The struct lives under `modules/`, not `crates/*/src`, so it is **not** on the `cargo xtask check-literals` watchlist, and the tree's only construction sites go through `from_config` (including `wipe_tower_from` in `finalization_live_tdd.rs`). Before adding the fields, re-derive that with `rg -n 'WipeTower \{' modules crates` and bring any literal the search finds into the same step's edit list.
 
-## Steps
+---
 
-### Step 1: Declare the 12 P03 keys in the wipe-tower manifest
+## Step 1 — Declare the seven keys
 
-- Task IDs: none (`task_ids: []` queue precedent).
-- Objective: `modules/core-modules/wipe-tower/wipe-tower.toml` `[config.schema]` grows by 12 entries with Orca-parity defaults/bounds; `wipe_tower_max_purge_speed` is not declared.
-- Precondition: manifest parses; the wipe-tower guest builds; the current key count is re-derived from disk (21 if packet 254 landed, 8 + 254's exact delta otherwise).
-- Postcondition: manifest parses; per-key type/default/bounds match AC-1's list; the three pre-existing `ORCA_CONFIG_PADDING` keys keep their padding entries host-side (no host edit in this step).
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/wipe-tower/wipe-tower.toml` - full (≤ 250 lines)
-  - `modules/core-modules/seam-placer/seam-placer.toml` - lines 24-40 only - purpose: enum `values = [...]` + string default shape to mirror
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/wipe-tower.toml`
-- Files explicitly out of bounds:
-  - every other manifest; all `crates/**` (padding table included); all other `modules/**`
-- Expected sub-agent dispatches:
-  - none (declaration facts are in `requirements.md` §Per-key parity evidence)
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/05-asset-packet-list.md` - P03 row (ranged read ~10 lines)
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - `PrintConfigDef` (delegate; never load): the 12 defaults/bounds quoted in the §Per-key parity evidence table
-- Verification:
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit=0 after rebuild if stale (manifest feeds the guest fingerprint; an only-tree-support-planner-stale result is pre-existing — rebuild and proceed)
-  - interim parse check only; the real gate is Step 2's AC-1 test plus the freshness command above (packet 254's Step-1 pattern)
-- Exit condition: `cargo xtask build-guests` rebuilds the wipe-tower guest without error and `--check` reports exit 0.
+- **Task IDs:** none (queue packet; recorded against wayfinder ticket 10).
+- **Objective:** the manifest declares exactly the seven keys of AC-1 with canonical types, defaults and bounds, and a guard test fails on any drift or on any returned key reappearing.
+- **Preconditions:** re-derive the manifest's current key set from disk (8 today; more if `254a` / `254b` landed). Re-derive whether `modules/core-modules/wipe-tower/tests/wipe_tower_config_schema_tdd.rs` and the `toml` dev-dependency already exist — `254a` authors both, and this step must extend rather than duplicate them.
+- **Postconditions:** AC-1 and AC-N3 pass. No module code reads the new keys yet.
+- **Allowed reads:** `modules/core-modules/wipe-tower/wipe-tower.toml`, `modules/core-modules/path-optimization-default/path-optimization-default.toml` (enum table shape), `docs/03_wit_and_manifest.md` § `[config.schema]`.
+- **Files allowed to edit (≤3):** `modules/core-modules/wipe-tower/wipe-tower.toml`, `modules/core-modules/wipe-tower/Cargo.toml` (dev-dependency only, if absent), `modules/core-modules/wipe-tower/tests/wipe_tower_config_schema_tdd.rs`.
+- **Out of bounds:** `modules/core-modules/wipe-tower/src/lib.rs` (Step 2 owns it), `crates/**`.
+- **Dispatches:** `FACT` — does `254a` appear landed (its `packet.spec.md` status, plus presence of the schema test and `toml` dev-dep)?
+- **Cost:** `S`.
+- **Authorities:** `packet.spec.md` AC-1, AC-N3; `requirements.md` § Per-Key Canonical Evidence.
+- **Verification:** `cargo test -p wipe-tower --test wipe_tower_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Falsifying exit condition:** the guard passes while a key's `min`/`max`/`values`/`default` differs from AC-1's table, or while any of the six returned keys is present. If the guard cannot fail on a deliberate drift, the guard is wrong, not the manifest.
 
-### Step 2: Author the schema contract test (AC-1)
+---
 
-- Task IDs: none.
-- Objective: a per-crate test binary pinning the manifest contract including the union base.
-- Precondition: Step 1 landed.
-- Postcondition: `cargo test -p wipe-tower --test wipe_tower_config_schema_tdd` passes; the test asserts the re-derived key union (8 pre-existing + P02-from-254 if landed + the 12 declared here) with per-key type/default/min/max, percent defaults parsed as `"100%"`, bool defaults as `true/false`, the enum domain `["rectangle", "cone", "rib"]` with default `"rib"`, and `wipe_tower_max_purge_speed` asserted **absent**.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs` - purpose: schema-parse-and-assert shape to mirror (that crate's `toml = "0.8"` dev-dep is the pattern). Re-derive on first use: if the file moved, locate by grep `config.schema` in that tests dir.
-  - `docs/spec_packets/255-wipe-tower-geometry-keys/packet.spec.md` - AC-1 text only
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/tests/wipe_tower_config_schema_tdd.rs` (new, or extended if packet 254 created it first)
-  - `modules/core-modules/wipe-tower/Cargo.toml` (add `toml = "0.8"` to `[dev-dependencies]`, only if 254 has not)
-- Files explicitly out of bounds:
-  - `modules/core-modules/wipe-tower/src/lib.rs` (no production change in this step); all crates
-- Expected sub-agent dispatches:
-  - none beyond the listed reads; the schema-test shape is verified in-tree
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` - direct read (~80 lines), the plumbing-key standard applied here
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - `PrintConfigDef` (delegate)
-- Verification:
-  - `cargo test -p wipe-tower --test wipe_tower_config_schema_tdd --test slicer_module_binding_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail (the sibling binary guards against accidental manifest-shape drift)
-- Exit condition: the new binary passes and the manifest-growth contract is pinned.
+## Step 2 — Build the wall generator
 
-### Step 3: Wire `wipe_tower_extra_flow` into the scan-line flow factor (AC-2) + fallout
+- **Task IDs:** none.
+- **Objective:** `WipeTower` gains the four wall fields (`wall_type`, `cone_angle`, `rib_width`, `extra_rib_length`) plus `fillet_wall`, a `wall_loop(z, layer_depth, tower_top_z)` helper with the three shapes and the fillet pass, and `generate_purge_paths` emits the resulting closed loop ahead of the scan lines.
+- **Preconditions:** Step 1 landed (an undeclared key reads as `None`, silently). `tower_top_z` is available: compute it in `run_finalization` as the maximum `z` over layers whose `tool_changes()` are non-empty, and pass it into `generate_purge_paths`.
+- **Postconditions:** AC-2 … AC-6 pass. Rotation is **not** applied yet (Step 4); flow is untouched (Step 3).
+- **Allowed reads:** `modules/core-modules/wipe-tower/src/lib.rs`, `crates/slicer-ir/src/slice_ir.rs` (`ExtrusionPath3D` / `Point3WithWidth` field lists), `docs/08_coordinate_system.md`.
+- **Files allowed to edit (≤3):** `modules/core-modules/wipe-tower/src/lib.rs`, `modules/core-modules/wipe-tower/tests/wipe_tower_wall_tdd.rs` (new).
+- **Out of bounds:** everything under `crates/`, the padding table, other packets' directories.
+- **Dispatches:** `SUMMARY` ≤ 200 words to the sibling `OrcaSlicerDocumented` if any arc, taper or rounding parameter needs re-checking against `generate_support_cone_wall` / `generate_rib_polygon` / `rounding_polygon`. Never open the checkout directly.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-2 … AC-6; `design.md` § Selected Approach, DIV-1, DIV-2, DIV-5; `requirements.md` § Per-Key Canonical Evidence.
+- **Verification:** `cargo test -p wipe-tower --test wipe_tower_wall_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
+- **Falsifying exit condition:** the rib ring is not a single closed non-self-intersecting ring for `rib_width` at its clamp (`min(layer_depth, tower_width) / 2`), or the cone ring at `cone_angle = 0.0` is not vertex-identical to the rectangle ring. Either means the shape construction is wrong, not the test.
 
-- Task IDs: none.
-- Objective: replace the hardcoded scan-line `flow_factor: 1.0` with `(percent/100)`; read the key in `from_config`; update any flow-pinned tests.
-- Precondition: key declared (Step 1) — otherwise `ConfigView::from_declared` silently hides the read (packet 254 invariant).
-- Postcondition: module generates scan lines with `flow_factor == extra_flow_percent/100` — identity 1.0 with no config entry, 1.5 for `"150%"`, 2.0 for `"200%"` — on **both** `process()` and `run_finalization()` outputs; travel entity stays 0.0 and prime keeps 0.0/1.0 in all cases; the percent-semantics comment sits at the compute site.
-- Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/wipe-tower/src/lib.rs` - lines 30-60, 143-207, 283-425, 540-568 only - purpose: wiring target
-  - `modules/core-modules/wipe-tower/tests/wipe_tower_tdd.rs` - full (≤ 300 lines; grep-count the flow pins first)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/wipe-tower/src/lib.rs`
-  - `modules/core-modules/wipe-tower/tests/wipe_tower_extra_flow_tdd.rs` (new) or `wipe_tower_tdd.rs` (if fallout demands)
-- Files explicitly out of bounds:
-  - `crates/**` (no host-side production change; fallout outside the module crate escalates to the coordinator instead of a silent drive-by)
-- Blast-radius discipline:
-  - New struct field `extra_flow_factor: f32` on `WipeTower` (constructor + `from_config` + any test struct-literal site — grep `WipeTower {` in `modules/core-modules/wipe-tower/` **before editing**; at authoring time the struct is built only via `from_config`, but author the dispatch).
-  - Expected fallout: **none at defaults** (identity factor). The authoring survey found no `flow_factor` pin in module or emitter tests; the Step-3 dispatch re-derives it. If a pin appears outside `crates/slicer-gcode`+module tests, STOP and report (falsifies a locked assumption).
-- Expected sub-agent dispatches:
-  - Question: does any test pin scan-line `flow_factor == 1.0` (or copy the literal into expectations)? scope: `modules/core-modules/wipe-tower/` + `crates/slicer-gcode/tests/`; return: `LOCATIONS` (≤ 10); purpose: fallout list, run before editing.
-- Context cost: `M`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/10-author-packet-p03-multimaterial-prime-tower-wipe-tower.md` - direct read
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower2.cpp` - ctor (`m_extra_flow` init), `toolchange_Wipe` (the flow multiplier this wiring mirrors), `set_toolchange`/`save_on_last_wipe` (delegate; never load)
-- Verification:
-  - `cargo test -p wipe-tower 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail across all module binaries
-  - `cargo xtask build-guests --check; echo "exit=$?"` - FACT exit=0 (src feeds the guest fingerprint)
-- Exit condition: every `wipe-tower` test binary green; flow-factor semantics comment present at the compute site; guest `--check` exit 0.
+---
 
-### Step 4: Scheduler bounds/threading/enum test + runtime leakage arm (AC-3, AC-N1, AC-N2)
+## Step 3 — Wire `wipe_tower_extra_flow` as the effective width
 
-- Task IDs: none.
-- Objective: pin the scheduler-side behavior (bounds acceptance/rejection, percent-default threading for both percent keys, non-threading of non-percent defaults, enum membership) and the cross-module non-leakage of the new keys.
-- Precondition: Steps 1-3 landed.
-- Postcondition: the two test binaries pass; specifically `extensions["wipe_tower_extra_flow"] == Percent(100.0)` and `extensions["wipe_tower_extra_spacing"] == Percent(100.0)` under empty source, `wipe_tower_cone_angle`/`wipe_tower_wall_type` absent from `extensions`, `99%`/`301%` rejected (error names the key), `100%`/`300%` accepted, `"hexagon"` rejected and `"rib"` accepted for `wipe_tower_wall_type`, and a non-wipe-tower module's `ConfigView::from_declared` hides `wipe_tower_extra_flow`.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-scheduler/tests/integration/config_resolution_tdd.rs` - the three percent tests only - purpose: fixture shape
-  - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` - the percent bounds arms only - purpose: rejection-arm shape
-  - `crates/slicer-runtime/tests/integration/` - locate the existing module-config leakage file by grep (`from_declared`), read only that file
-- Files allowed to edit (at most 3):
-  - `crates/slicer-scheduler/tests/wipe_tower_p03_config_bounds_tdd.rs` (new; flat file — auto-discoverable test binary)
-  - `crates/slicer-runtime/tests/integration/<the leakage file found by grep>` (one appended test)
-- Files explicitly out of bounds:
-  - all production scheduler/IR files (`config_resolution.rs`, `manifest.rs`, `resolved_config.rs`, `feedrate.rs`) — the machinery already behaves as AC-3 asserts; if it does not, STOP and report (that falsifies a locked assumption; do not patch scheduler code in this packet)
-- Expected sub-agent dispatches:
-  - Question: locate the registered integration file asserting cross-module config hiding (the `from_declared` leakage pattern)? scope: `crates/slicer-runtime/tests/integration/`; return: `LOCATIONS` (≤ 5)
-  - Question: quote the `LoadedModuleBuilder` + `ConfigFieldEntry` fixture used by `percent_schema_bounds`? scope: `crates/slicer-scheduler/tests/integration/config_resolution_tdd.rs`; return: `SNIPPETS` (≤ 30 lines)
-- Context cost: `M`
-- Authoritative docs:
-  - `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` - direct read; plumbing-key evidence rows in §Per-key parity evidence
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - `PrintConfigDef` (delegate)
-- Verification:
-  - `cargo test -p slicer-scheduler --test wipe_tower_p03_config_bounds_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-  - `cargo test -p slicer-runtime --test integration -- undeclared_p03_wipe_tower_keys_stay_hidden_from_other_modules 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
-- Exit condition: both pass, with the leakage arm naming at least one non-owner module receiving resolved config with `wipe_tower_extra_flow` present in the source map and absent from its view.
+- **Task IDs:** none.
+- **Objective:** `extra_flow` is read as a percent factor and folded into one `effective_width` driving the scan lines' point `width`, the scan-line pitch and the purge cross-section, with `flow_factor` carrying the factor to the emitter.
+- **Preconditions:** Step 2 landed. Re-derive the current pitch and depth expressions from `generate_purge_paths` (they are `line_width` and `purge_volume / cross_section` today; `254a` replaces both) — do not transcribe a formula from the packet without checking the code in front of you.
+- **Postconditions:** AC-9 passes; purge volume is invariant across `"100%"` and `"200%"` for the same fixture.
+- **Allowed reads:** `modules/core-modules/wipe-tower/src/lib.rs`, `modules/core-modules/wipe-tower/tests/wipe_tower_tdd.rs`.
+- **Files allowed to edit (≤3):** `modules/core-modules/wipe-tower/src/lib.rs`, `modules/core-modules/wipe-tower/tests/wipe_tower_tdd.rs`.
+- **Out of bounds:** `crates/slicer-gcode/src/emit.rs` (the E computation is read-only context and needs no change), the padding table.
+- **Dispatches:** `SNIPPETS` ≤ 1 × 30 lines — the current scan-line loop, to re-derive pitch and cross-section.
+- **Cost:** `S`.
+- **Authorities:** `packet.spec.md` AC-9; `design.md` DIV-4.
+- **Falsifying exit condition:** at `"200%"` the scan-line count is unchanged, or the emitted purge volume differs from the `"100%"` case by more than one line's worth. Either means the factor was applied to `flow_factor` alone — the exact defect the prior revision of this packet shipped as a "wiring".
+- **Verification:** `cargo test -p wipe-tower --test wipe_tower_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
 
-### Step 5: Docs regeneration + workspace gates
+---
 
-- Task IDs: none.
-- Objective: `docs/15_config_keys_reference.md` regenerated to list the wipe-tower keys including the 12 new ones; workspace gates green; AC-4 verified by grep.
-- Precondition: Steps 1-4 complete.
-- Postcondition: gen-config-docs `--check` clean; AC-4's greps pass; check-literals clean; no doc prose claims the port's purge flow is a fixed 1.0.
-- Files allowed to read, with ranges when over 300 lines:
-  - none directly; run the generator and grep
-- Files allowed to edit (at most 3):
-  - `docs/15_config_keys_reference.md` (regenerated, never hand-edited)
-  - `docs/01_project_overview.md` (only if its grep finds stale flow prose)
-- Files explicitly out of bounds:
-  - `docs/DEVIATION_LOG.md` — no row is expected; filing one requires human sign-off surfaced first (ticket 02 standard)
-- Expected sub-agent dispatches:
-  - cargo/xtask runs and greps delegated per context discipline
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/15_config_keys_reference.md` - regeneration target; grep-verify only
-- OrcaSlicer refs:
-  - none (docs-only step)
-- Verification:
-  - `cargo xtask gen-config-docs --check 2>&1 | tail -3` - FACT pass/fail
-  - `rg -q 'wipe_tower_wall_type' docs/15_config_keys_reference.md && rg -q 'wipe_tower_extra_flow' docs/15_config_keys_reference.md && echo AC4-PASS` - FACT AC4-PASS
-  - `cargo xtask check-literals 2>&1 | tail -3` - FACT pass/fail
-  - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
-- Exit condition: all gates green.
+## Step 4 — Rotation and the rotated bed check
 
-## Per-Step Budget Roll-Up
+- **Task IDs:** none.
+- **Objective:** every point the module emits passes through `place(p) = origin + R(rotation_angle)·(p − origin)`, and `run_finalization` validates the placed wall ring's vertices against `printable_area` instead of an axis-aligned `tower_width` square.
+- **Preconditions:** Steps 2–3 landed, so the wall ring exists and is the geometry the bed check should consume.
+- **Postconditions:** AC-7, AC-8 and AC-N2 pass; at `rotation_angle = 0.0` every coordinate is bit-identical to the Step-3 output.
+- **Allowed reads:** `modules/core-modules/wipe-tower/src/lib.rs`, `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs`.
+- **Files allowed to edit (≤3):** `modules/core-modules/wipe-tower/src/lib.rs`, `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs`, `modules/core-modules/wipe-tower/tests/finalization_live_tdd.rs`.
+- **Out of bounds:** `crates/**`, `ORCA_CONFIG_PADDING`.
+- **Dispatches:** `FACT` — `cargo xtask build-guests --check; echo "exit=$?"` at step exit (manifest + `src/` are guest-fingerprint inputs). Exit `3` is `wasm-tools` missing, not clean.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-7, AC-8, AC-N2; `design.md` DIV-3.
+- **Falsifying exit condition:** a rotated tower that visibly leaves the bed still returns `Ok`, or the `0.0` case is not bit-identical. The first means the check still reads the old square; the second means the transform is not the identity at zero.
+- **Verification:** `cargo test -p wipe-tower --test bed_bounds_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` then `cargo test -p wipe-tower --test finalization_live_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`
 
-| Step | Context Cost | Notes |
-| --- | --- | --- |
-| Step 1 | S | manifest-only |
-| Step 2 | S | new schema test (+ dev-dep if 254 hasn't landed) |
-| Step 3 | M | wiring + fallout dispatch |
-| Step 4 | M | two test binaries, two dispatches |
-| Step 5 | S | regen + gates |
+---
 
-Aggregate `M`; no row is `L`. Split before activation if aggregate exceeds `M`.
+## Step 5 — Bounds, leakage, and generated docs
 
-## Packet Completion Gate
+- **Task IDs:** none.
+- **Objective:** the scheduler rejects out-of-range and out-of-domain values for the seven keys, the percent default threads into `extensions`, no other module can see the keys, and `docs/15_config_keys_reference.md` is current.
+- **Preconditions:** Steps 1–4 landed. `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` and `crates/slicer-runtime/tests/contract/config_view_binding_tdd.rs` both exist and are registered; the scheduler's binary is `scheduler_integration`.
+- **Postconditions:** AC-10, AC-11 and AC-N1 pass.
+- **Allowed reads:** `crates/slicer-scheduler/src/config_resolution.rs` (`ConfigBoundsIndex` shapes only), the two test files, `crates/slicer-scheduler/tests/integration/config_resolution_tdd.rs` (`LoadedModuleBuilder` fixture shape).
+- **Files allowed to edit (≤3):** `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`, `crates/slicer-runtime/tests/contract/config_view_binding_tdd.rs`, `docs/15_config_keys_reference.md` (**generated only** — via `cargo xtask gen-config-docs`, never by hand).
+- **Out of bounds:** any `crates/**/src/**` production file — this packet changes no host logic.
+- **Dispatches:** `FACT` for each verification command.
+- **Cost:** `M`.
+- **Authorities:** `packet.spec.md` AC-10, AC-11, AC-N1.
+- **Falsifying exit condition:** `wipe_tower_extra_rib_length = -50.0` is *rejected* (canonical declares no `min`; rejecting it is a manifest bug), or `wipe_tower_wall_type = "hexagon"` is accepted.
+- **Verification:** `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`, `cargo test -p slicer-runtime --test contract config_view_binding_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"`, `cargo xtask gen-config-docs --check && rg -q 'wipe_tower_wall_type' docs/15_config_keys_reference.md && rg -q 'wipe_tower_extra_flow' docs/15_config_keys_reference.md && rg -q 'wipe_tower_fillet_wall' docs/15_config_keys_reference.md; echo "exit=$?"`
 
-- All steps and exits complete.
-- Every pipe-suffixed AC command returns PASS.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read — **re-derive the crosswalk question at completion time**, not from this frozen note (ledger-fact rule). The feature-gap queue's packets carry no TASK row (survey precedent at 234a/253/254 authoring time); implementation is recorded against wayfinder ticket 10.
-- Reconcile reopened/superseded status transitions: none.
-- `packet.spec.md` is ready for `status: implemented` once packet 254's schema test settles the union base.
+---
 
-## Acceptance Ceremony
+## Closure Gate
 
-- Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Confirm `cargo xtask build-guests --check` exit 0 with the wipe-tower guest rebuilt; record any still-stale unrelated guest in the ceremony notes as pre-existing (authoring-time baseline: `tree-support-planner-guest`).
-- Record remaining packet-local risk: the +2 CONFIG_BLOCK lines at defaults must be reconciled against any self-captured baseline suite discovered during implementation (updated in the owning step, listed in its blast-radius result).
-- Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
+Run in this order, all delegated with `FACT` returns:
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+1. `cargo check --workspace --all-targets`
+2. `cargo clippy --workspace --all-targets -- -D warnings`
+3. `cargo xtask check-literals 2>&1 | tail -3`
+4. `cargo xtask build-guests --check; echo "exit=$?"` — must be `0`
+5. Every AC command in `requirements.md` § Verification Matrix
+
+`cargo test --workspace` runs only if this packet's acceptance ceremony demands it, and then only through `cargo xtask test --summary --workspace`, dispatched to a sub-agent returning `FACT pass/fail`.
+
+## Reporting Obligations (not code changes)
+
+The implementer/reviewer reports these upward; this packet edits neither the map nor the tickets.
+
+- `docs/specs/orca-feature-gap/issues/key-correction-inventory.md` — the Q3(a) rulings row lists `wipe_tower_wall_type` among the holder-only enums. The human ruled at this packet's authoring that the tower wall needs no holder, which moves the key to the Q8 in-module-branching row. The row needs amending before this packet merges.
+- The same file's rows for the six returned keys should move from "packet 255" to *unimplemented, returned to queue*, each with the missing feature named in `requirements.md` § Returned to Queue.
+- `docs/specs/orca-feature-gap/issues/04-asset-tier-assignment.md` — P03's rows are Tier A; the seven kept keys are Tier B work under this packet.
+- Wayfinder ticket 10's "declare in the owner's manifest + wire" line is superseded by Authoring rules 1–6 for this packet.
