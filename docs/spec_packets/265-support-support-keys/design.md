@@ -1,119 +1,136 @@
 # Design: support-support-keys
 
-## Controlling Code Paths
+## Selected Approach
 
-- Primary code path A (wiring): `resolve_contact_params` in `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` — the `SupportContactParams` literal hardcodes `enforce_support_layers: 0` behind the comment "New bridge / sharp-tail / enforce / layer-index knobs have no production config source yet; neutral values keep the candidate stream unchanged (all stages OFF)". The replacement read is the typed CLI-bound field `config.enforce_support_layers` (`crates/slicer-ir/src/resolved_config.rs`, `u32 = 0`, `extract_int_as_u32`), the same typed-field pattern the function already uses for `support_threshold_angle` (the doc comment at the top of the function warns that `extensions` lookups silently ignore CLI-bound values). Downstream: `SupportContactParams` (`crates/slicer-core/src/algos/overhang_annotation.rs`), whose `force_support = params.layer_id < params.enforce_support_layers` branch forces `lower_layer_offset = 0.0`, and the existing arms `enforce_support_layers_forces_full_contacts_in_leading_layers` / `enforce_support_layers_beyond_model_changes_nothing` in `crates/slicer-core/tests/support_overhang_detection_tdd.rs` already pin the branch geometry.
-- Primary code path B (declarations): `modules/core-modules/tree-support-planner/tree-support-planner.toml` and `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` `[config.schema]` — nine/eight net-new tables (AC-1/AC-2); `modules/core-modules/traditional-support/traditional-support.toml` `[config.schema.support_style]` type correction string → enum (AC-2). Manifest tables parse through `crates/slicer-scheduler/src/manifest.rs` (the `percent` field type with `default = "50%"` string form is packet-150 machinery; `min`/`max` floats) and flow into `ConfigBoundsIndex::from_modules` + `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`; `TypeMismatch` for non-enum-member strings, `OutOfRange` for numeric bounds — percent values checked numerically per `check_scalar`, verified by the existing `rejects_unknown_support_style_value` arm of `config_bounds_enforcement_tdd.rs`).
-- Neighboring tests/fixtures: `modules/core-modules/tree-support-planner/tests/orca_parity_tdd.rs` (the `make_planner_config(entries: &[(&str, ConfigValue)]) -> ConfigView` builder at line ~1481 and the `SupportPlanner` + `run_support_geometry_with_analysis` driving pattern this packet's AC-N1 harness replicates in a new file — the parity file itself is out of scope; packet 261's planned AC-2 arms claimed it); the producer's own `#[cfg(test)] mod tests` (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs:737` — `support_enabled_config()` / `square()` / `global_layers()` fixtures; the `resolve_contact_params_uses_typed_threshold_overlap_percent_and_literal` arm is the AC-3 template); `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` (real-manifest load via `load_module_from_paths`; `rejects_unknown_support_style_value` / `out_of_range_support_threshold_angle_is_rejected` arms are the AC-4 template); `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` (proven CONFIG_BLOCK driver at packets 257–264 authoring); `crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs` (host-key parity pins — unchanged by this packet).
-- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+Five decision points, all built inside owners that already exist. No new module, no new claim, no new seam.
+
+**Two host-side filters in `slicer-core`.** `support_critical_regions_only` and `support_remove_small_overhang` belong in `slicer_core::algos::overhang_annotation`, because that is where the port already computes both of the sets canonical's critical-regions branch keeps: `detect_support_contacts_with_annotations` returns a `SupportContactAnnotations` carrying `cantilever_surfaces`, and the same function already has the sharp-tail branch gated on `SupportContactParams::support_sharp_tails`. Canonical's `TreeSupport::detect_overhangs` clears ordinary overhangs and re-appends cantilevers, with sharp tails appended later and enforcers after that. The port reproduces that exact ordering with the pieces it already has: filter small clusters, restrict to critical regions, and let `support_analysis_producer` union the enforcers afterwards — which it already does, in that position.
+
+**One line of sourcing in `slicer-runtime`.** `enforce_support_layers` needs no new logic at all. `detect_support_contacts`'s `force_support` branch already reads `params.layer_id < params.enforce_support_layers`, and the producer's per-layer `SupportContactParams` literal already sets `layer_id` from the real layer index through a functional-update over `base_params`. The only defect is that `resolve_contact_params` hardcodes `enforce_support_layers: 0` behind a comment asserting the knob has "no production config source yet" — which stopped being true when the host key was declared. Sourcing it from `ResolvedConfig` makes the key live.
+
+**Two geometry overrides in the planners.** `support_object_first_layer_gap` is a *substitution*, not an addition: canonical `TreeSupport::draw_circles` uses it in place of `m_xy_distance` when the object layer index is 0. Both planners already have exactly one clearance quantity each (`traditional-support-planner`'s trim offset, `tree-support-planner`'s `inflate_model_occupancy` argument at its two call sites), so the change is a selection on the layer index at those sites.
+
+`support_bottom_z_distance` is the mirror of a computation that already exists. `traditional-support-planner` computes `target_top_z = overhang_plane_z - self.support_top_z_distance` and then walks actual layer Z downward until it finds the highest layer at or below that plane. The bottom gap is the same walk in the other direction, applied only when the column terminates on a *model* surface — `model_termination_layer` is `Some`. Canonical's `gap_object_support` is likewise an object-support gap; a column standing on the build plate has nothing beneath it to gap against, and the port already distinguishes those two cases deliberately (`None` collapsing to layer 0 carries the comment explaining that the plate carries no bottom interface).
+
+## Rule 4 Trigger Test
+
+Authoring rule 4 routes an Orca enum whose values are different algorithms to `claim:*` holders. The map's own trigger test says the rule fires on **cross-module** algorithm selection and explicitly does not fire on a module branching internally over a mode it implements itself, naming `support_style` among the latter. This packet's keys are three booleans, two floats and an integer — no algorithm selection at all — plus `support_type`, which already rides the existing `support-family:` claim seam described in `docs/04_host_scheduler.md` § Claim Resolution. Rule 4 does not fire here. `support_style` is returned to the queue for a different reason (see `requirements.md`), not refactored.
+
+## Claims Held
+
+- No new claim is introduced.
+- `support_type` continues to resolve through `slicer_scheduler::execution_plan::select_support_family` and the `support-family:` claim prefix matched by `module_claims_match_active_region`. `traditional-support-planner` and `tree-support-planner` keep the claims they hold today; this packet changes what they read, never what they claim.
+
+## Which Existing Mechanism Carries the New Data
+
+| New behaviour | Carrier | Why not something else |
+| --- | --- | --- |
+| `enforce_support_layers`, `critical_regions_only`, `remove_small_overhang` reaching the detector | `SupportContactParams`, the existing host-side params struct built by `resolve_contact_params` and specialised per layer via functional update | These are host-algo inputs, not guest config; the struct is the established carrier and already holds four sibling knobs |
+| `support_bottom_z_distance`, `support_object_first_layer_gap` reaching the planners | module manifests (`[config.schema.*]`) plus `ConfigView::get` in each planner's `from_config`, the same path `support_top_z_distance` and `support_object_xy_distance` already take | Host-side special-casing would violate rule 4's "new decision points go where the architecture puts them"; both keys are per-object geometry settings, which is what a module manifest key is for |
+| Per-region variation of `support_threshold_angle` / `support_type` | `slicer_core::algos::region_mapping` overlay, already live | Nothing to add |
+
+No `SliceRegionView` metadata, no prepass IR field, no `PostPass` claim, and no SDK surface change is required.
+
+## Recorded Divergences
+
+- **DIV-1 — zero bottom gap does not fall back to the top gap.** Canonical's `support_bottom_z_distance == 0 ? support_top_z_distance` rule lives only in `GCode::collect_layers_to_print`, an air-gap sanity check at G-code assembly time. In `Slicing.cpp` a zero value instead sets `gap_object_support = 0` through the zero-gap-interface path. The port has no equivalent of the G-code-side check, so importing the fallback at the geometry seam would invent a coupling canonical does not have there — and would make `0` unable to express "no gap", which is the one thing a user setting it to `0` means. The port treats `0` as zero gap, matching `Slicing.cpp`. Rationale recorded in both planner manifests' `description` fields.
+- **DIV-2 — the bottom gap applies to model-terminated columns only.** Canonical's `gap_object_support` is an object-support gap by name and by construction. The port makes the distinction explicit and testable because it already tracks `model_termination_layer` as an `Option`, where canonical infers it. AC-4 asserts both halves, so the divergence cannot silently become "gap everything".
+- **DIV-3 — the port improves on canonical's cluster exemption ordering.** Canonical exempts a cluster from small-overhang removal when it overlaps a sharp tail or cantilever, but the two features are computed in different passes and the exemption depends on pass ordering. The port computes the sharp-tail and cantilever sets in the same function that runs the filter, so the exemption is a pure predicate over data already in hand rather than an ordering constraint. Behaviourally identical; structurally not fragile.
+
+## Tier Derivation
+
+Ticket 04's rubric: **Tier A** is plumbing into a decision point that already exists; **Tier B** is new logic in an existing owner; **Tier C** is a new module at a new seam.
+
+`enforce_support_layers` alone would be Tier A — the decision point exists and only the sourcing is missing. The other four build decision points that do not exist, all of them inside owners that do: two filter stages in `slicer-core`'s existing detector, and two geometry overrides in two existing planner modules. No module is created and no seam is added, so Tier C does not apply. The packet is **Tier B** (was Tier A). The map's tier table needs the correction; it is listed in § Map and Ticket Updates Required and is not applied from here.
+
+## Code Change Surface
+
+**Editable:**
+
+- `crates/slicer-core/src/algos/overhang_annotation.rs` — two new `SupportContactParams` fields, the `Default` impl, the two new filter stages inside `detect_support_contacts_with_annotations`, and the two in-file struct literals.
+- `crates/slicer-core/Cargo.toml` — one net-new `[[test]]` entry with `required-features = ["host-algos"]`.
+- `crates/slicer-core/tests/support_critical_and_small_overhang_tdd.rs` — net-new (AC-2, AC-3).
+- `crates/slicer-core/tests/support_overhang_detection_tdd.rs` — the eleven existing struct literals, plus the non-default cases for AC-7 and AC-8 if the current cases assert only at defaults.
+- `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` — `resolve_contact_params`'s three newly sourced fields, its stale comment, its three struct literals, and new cases in its `tests` module (AC-1, AC-9).
+- `modules/core-modules/traditional-support-planner/src/lib.rs` — two new struct fields plus their `from_config` reads; the trim-offset selection; the emit-floor walk.
+- `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` — two net-new `[config.schema.*]` tables.
+- `modules/core-modules/traditional-support-planner/Cargo.toml` — one net-new `[[test]]` entry.
+- `modules/core-modules/traditional-support-planner/tests/support_gap_keys_tdd.rs` — net-new (AC-4, AC-5).
+- `modules/core-modules/tree-support-planner/src/lib.rs` — two new struct fields plus their `from_config` reads; the two `inflate_model_occupancy` call sites; the descent-termination floor.
+- `modules/core-modules/tree-support-planner/tree-support-planner.toml` — two net-new `[config.schema.*]` tables.
+- `modules/core-modules/tree-support-planner/Cargo.toml` — one net-new `[[test]]` entry.
+- `modules/core-modules/tree-support-planner/tests/support_gap_keys_tdd.rs` — net-new (AC-6).
+- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — one bounds arm (AC-N1).
+- `docs/15_config_keys_reference.md` — regenerated.
+
+**Read-only context:** `docs/config/host-keys.toml` (confirm the five keys' declared ranges; do not edit — all five are already declared), `crates/slicer-ir/src/resolved_config.rs` (confirm the typed fields exist; do not edit), `crates/slicer-scheduler/src/execution_plan.rs` (`select_support_family`, for AC-11 only).
+
+**Out of bounds — must not be loaded or edited:**
+
+- `crates/slicer-gcode/src/serialize.rs` (AC-N3 asserts it is untouched).
+- `modules/core-modules/traditional-support/**` and `modules/core-modules/tree-support/**` — the renderers. This packet is planner-side and host-side only; `support_style` lives there and is returned to the queue.
+- Every other packet directory under `docs/spec_packets/`, in particular `240-support-raft/`.
+- `docs/specs/orca-feature-gap/map.md` and `docs/specs/orca-feature-gap/issues/**`.
+- `crates/slicer-schema/wit/**` — no WIT change is in scope; touching it means the packet was mis-scoped, stop and report.
+
+## Blast-Radius Discipline
+
+`SupportContactParams` is a `pub` struct with more than five named fields under `crates/*/src`, so it is a **watched type** under the struct-literal churn gate (`docs/21_data_defaults_and_fixtures.md`). Adding two fields breaks every exhaustive literal. Re-derived from disk at authoring time, the literal sites are: **2** in `crates/slicer-core/src/algos/overhang_annotation.rs`, **11** in `crates/slicer-core/tests/support_overhang_detection_tdd.rs`, and **3** in `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`. Re-derive that count at point of use — it is a ledger fact and other packets touch these files.
+
+Rules for the step that adds the fields:
+
+- Production `src/` literals stay exhaustive; test literals must use a `..` rest or carry an `// exhaustive: <reason>` waiver.
+- The producer's per-layer literal already uses `..base_params.clone()` and needs no change.
+- The step's exit condition is `cargo check --workspace --all-targets` **plus** `cargo xtask check-literals`, both green, in the same step. Discovering these sites via a later step's failing check is a defect.
 
 ## Architecture Constraints
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
-- snake_case config key strings only (repo convention): all twelve keys and the existing `config.get` strings are already snake_case by construction here.
-- The nine manifest-declared keys are **never read** in either planner's `src/lib.rs` (with-gap keys) or are read host-side only via typed fields (the wired four) — declaring them must not perturb module behavior (AC-N1). `support_type` IS read by the planners' `canonical_support_family`, so AC-N1 uses the family-consistent value (`"tree(auto)"` for the tree planner run; explicitly setting `"tree(auto)"` equals absence for the tree family).
-- The `percent` field type with a `"<n>%"` string default is the in-tree form for `support_threshold_overlap` (`support_interface_flow` precedent in `traditional-support.toml`; `default` parsed by `manifest.rs`'s percent branch, bounds enforced numerically by `config_resolution.rs::check_scalar`); no `float_or_percent` form is needed because the manifest declares the canonical percent default.
-- No schema/version constants, WIT worlds, or IR variants are touched — this change is manifest tables + one host function field read; no struct-literal blast radius exists (no Rust struct gains a field).
 
-## Code Change Surface
+<!-- snippet: coord-system -->
+- Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 
-- Selected approach: (1) wire `enforce_support_layers` as the only behavioral change — one field read in `resolve_contact_params` plus corrected comment and two unit arms; (2) declare the nine/eight tables in the two planner manifests and upgrade `support_style` in `traditional-support.toml` to the enum; (3) pin everything with three net-new manifest guards, a net-new planner non-perturbation harness, integration arms in two existing binaries, and doc regeneration. Everything else is verification.
-- Exact functions, traits, manifests, tests, and fixtures:
-  - `modules/core-modules/tree-support-planner/tree-support-planner.toml` `[config.schema]` — 9 tables (AC-1), each with `display` + `group = "Support"` and a `description` comment per disposition (with-gap keys name the canonical consumer; wired keys name the read site).
-  - `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` `[config.schema]` — 8 tables (AC-2), no `raft_first_layer_expansion` (AC-N2).
-  - `modules/core-modules/traditional-support/traditional-support.toml` `[config.schema.support_style]` — type string → enum + 7 values (AC-2).
-  - `modules/core-modules/tree-support-planner/tests/support_main_keys_schema_tdd.rs` — net-new guard (AC-1/N1/N2; `toml = "0.8"` dev-dep add-if-absent in `modules/core-modules/tree-support-planner/Cargo.toml`).
-  - `modules/core-modules/traditional-support-planner/tests/support_main_keys_schema_tdd.rs` — net-new guard (AC-2/N2; dev-dep add-if-absent).
-  - `modules/core-modules/traditional-support/tests/support_style_enum_schema_tdd.rs` — net-new guard (AC-2; dev-dep add-if-absent).
-  - `modules/core-modules/tree-support-planner/tests/support_main_keys_nonperturbation_tdd.rs` — net-new planner-run harness (AC-N1) replicating `orca_parity_tdd.rs`'s `make_planner_config` + planner-call pattern locally.
-  - `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` — `resolve_contact_params`: `enforce_support_layers: 0` → `enforce_support_layers: config.enforce_support_layers`, comment correction, plus two unit arms in the existing tests mod (AC-3).
-  - `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — +4 arms (AC-4).
-  - `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — +AC-5 arms.
-  - `docs/15_config_keys_reference.md` — generated; regenerated in Step 5 (AC-6).
-- Rejected alternatives and reasons:
-  - *Declaring the with-gap keys in the support geometry modules (`tree-support.toml` / `traditional-support.toml`) instead of the planners* — rejected: packet 260's owner correction put interface keys in the geometry modules because those modules' `from_config` reads the decision points; the P13 with-gap keys have no decision point anywhere, and the four wired host keys are read by the host, not by the geometry modules. The planner manifests hold the tier table's `support-planner` claim and already carry the family-agnostic `support_object_xy_distance`; the packet declares there and records the owner correction.
-  - *Adding `support_threshold_angle` to `tree-support-planner.toml`* — rejected (recorded instead): the key is already wired and enforced via `traditional-support-planner.toml` + the typed-field read; the tree-side declaration asymmetry is pre-existing state and duplicating the table doubles guard surface with no behavior delta. The packet records the asymmetry in `requirements.md` instead of acting on it.
-  - *Wiring `support_object_first_layer_gap` as a first-layer override of the planners' XY clearance* — rejected: both planners apply `support_object_xy_distance` uniformly; the canonical first-layer override (`gap_xy_first_layer` in `SupportParameters::SupportParameters`, the `obj_layer_nr == 0` branch of `TreeSupport::draw_circles`) is new geometry (Tier B+), correctly a declared-with-gap record, not a silent half-wiring.
-  - *Adding `ORCA_CONFIG_PADDING` / `SUPPORT_CONFIG_DEFAULTS` twins* for the nine declared keys — rejected: packets 254–261 precedent — module-manifest defaults do not thread into raw config; the pre-existing lists already carry `support_type` / `support_style` / `support_expansion` / `support_bottom_z_distance` with canonical values; AC-5 pins the honest absence of the other six at defaults.
-  - *Touching `docs/config/host-keys.toml` or `host_keys_doc_lock_tdd.rs`* — rejected: all eight host defaults already equal canonical (verified at authoring); no default moves.
-  - *Extending packet 261's planned `raft_config_schema_tdd.rs` or 260's planned `support_config_schema_tdd.rs`* — rejected: those files are claimed by their packets' implementation plans; net-new guard filenames avoid all planned-file collisions (263/264 precedent).
+- **Do not divide by `effective_layer_height`.** Register rows G-09 and RC-11 record that the field disagrees across transports (a max on one leg, a first-match on the other) and that dividing by it previously produced a zero offset in the traditional planner and tens of layers in the tree planner. The bottom-Z gap walks actual layer Z, exactly as the live `target_top_z` computation does.
+- **`slicer-core` offsets are millimetres at this seam.** `slicer_core::polygon_ops::offset` scales internally, so canonical's `scale_()` calls are deliberately not ported — the existing `SupportContactParams` doc comment states this and the new filter must honour it. The small-overhang erosion is therefore `-external_perimeter_width_mm`, not a scaled value.
+- **Canonical support offsets use a square join.** `SUPPORT_SURFACES_JOIN` is `OffsetJoinType::Square` for every offset in the contact pipeline; the new erosion uses it.
+- **The `host-algos` feature gate.** `slicer-core`'s support test targets carry `required-features = ["host-algos"]`. The net-new test target must be registered the same way, and every narrow command must pass `--features host-algos`. A bare `cargo test -p slicer-core` compiles zero of these targets and prints a clean `ok`.
 
-## Files in Scope (read + edit)
+## Expected Dispatches
 
-- `modules/core-modules/tree-support-planner/tree-support-planner.toml` — role: owner manifest (planner claim, raft cluster); expected change: 9 tables (AC-1).
-- `modules/core-modules/traditional-support-planner/traditional-support-planner.toml` — role: owner manifest; expected change: 8 tables (AC-2/N2).
-- `modules/core-modules/traditional-support/traditional-support.toml` — role: style consumer manifest; expected change: `support_style` string → enum (AC-2).
-- `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` — role: host wiring + unit arms; expected change: one field read + comment + 2 tests (AC-3).
-- `modules/core-modules/tree-support-planner/tests/support_main_keys_schema_tdd.rs` — role: net-new guard (AC-1/N1); expected change: created.
-- `modules/core-modules/traditional-support-planner/tests/support_main_keys_schema_tdd.rs` — role: net-new guard (AC-2/N2); expected change: created.
-- `modules/core-modules/traditional-support/tests/support_style_enum_schema_tdd.rs` — role: net-new guard (AC-2); expected change: created.
-- `modules/core-modules/tree-support-planner/tests/support_main_keys_nonperturbation_tdd.rs` — role: net-new planner-run harness (AC-N1); expected change: created.
-- `modules/core-modules/{tree-support-planner,traditional-support-planner,traditional-support}/Cargo.toml` — role: dev-deps; expected change: +`toml = "0.8"` each (add-if-absent; verified absent at authoring).
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — role: scheduler arm; expected change: +4 AC-4 tests.
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — role: CONFIG_BLOCK arm; expected change: +AC-5 tests.
-- `docs/15_config_keys_reference.md` — role: generated; expected change: regenerated via `cargo xtask gen-config-docs` (AC-6).
+| Question | Scope | Return format |
+| --- | --- | --- |
+| Confirm the exact erode-and-measure smallness expression and the sharp-tail/cantilever exemption | `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` `top_contact_layers` | `SUMMARY` ≤ 200 words |
+| Confirm the clear-and-re-append ordering in the critical-regions branch | `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` `detect_overhangs` | `SUMMARY` ≤ 200 words |
+| Confirm `gap_xy_first_layer` is a substitution for `m_xy_distance`, not an addition | `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` `draw_circles` | `SUMMARY` ≤ 200 words |
+| Re-derive the `SupportContactParams` literal sites before editing | `crates/**` and `modules/**`, Rust only | `LOCATIONS` ≤ 20 entries |
+| Run each verification command | as listed in `requirements.md` § Verification Matrix | `FACT` pass/fail |
 
-## Read-Only Context
+## Invariants
 
-- `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` — lines `580-670` (`resolve_contact_params` + helpers) and `737-1270` (tests mod, ranged) — purpose: the wiring surface and the AC-3 arm template.
-- `crates/slicer-core/src/algos/overhang_annotation.rs` — lines `168-200` (`SupportContactParams`) and `325-340` (the `force_support` branch) — purpose: the decision point; not edited.
-- `modules/core-modules/tree-support-planner/tree-support-planner.toml` lines `97-127` (raft cluster — the `raft_first_layer_expansion` home) and `160-230` (the `support_object_xy_distance` / `support_style` tables — the declaration-form templates).
-- `modules/core-modules/tree-support-planner/tests/orca_parity_tdd.rs` — `make_planner_config` (~line 1481) and one planner-call fixture test — purpose: harness pattern for `support_main_keys_nonperturbation_tdd.rs`; the parity file itself is read-only.
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — real-manifest load + `rejects_unknown_support_style_value` / `out_of_range_support_threshold_angle_is_rejected` arms — purpose: AC-4 arm templates.
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — setup + one existing CONFIG_BLOCK assertion — purpose: AC-5 arm form.
-- `crates/slicer-scheduler/src/manifest.rs` / `config_resolution.rs` — the `percent` parse and `check_scalar` bounds paths — purpose: the percent-table declaration's legal form; ranged.
+- The default path is unchanged: `critical_regions_only = false` and `remove_small_overhang = true` are the canonical defaults, and `remove_small_overhang`'s default is `true`, so the filter runs by default. AC-N4 guards the aggregate; if it fails, the filter is over-aggressive and the erosion or the `2 * fw` comparison is wrong.
+- Enforcers are unioned **after** both new stages, never filtered by them. Canonical adds enforcers after the clear; a user-painted enforcer must survive `critical_regions_only`.
+- The bottom gap never raises a column's floor above its own emit ceiling; a gap larger than the column's height yields an empty column, not an inverted range.
+- `support_object_first_layer_gap` replaces `support_object_xy_distance` on layer 0; the two are never summed.
 
-## Out-of-Bounds Files
+## Risks
 
-- `OrcaSlicerDocumented/...` - delegate; never load (sibling path `..\pinch_n_print_cli\OrcaSlicerDocumented`).
-- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
-- `crates/slicer-gcode/src/serialize.rs` — read-only (the `ORCA_CONFIG_PADDING` / `SUPPORT_CONFIG_DEFAULTS` tables; AC-5 pins no edits).
-- `docs/spec_packets/240-support-raft/` and packets 253–264 directories — read-only context (the future raft consumer's plan and the guard-filename collision checks); only the named references above may be consulted.
-- `modules/core-modules/tree-support-planner/src/lib.rs` — read-only beyond the `from_config` config-get regions and the `canonical_support_family` / `TreeSupportStyle::from_config` reads already pinned in `requirements.md` (~4000 lines; never browse).
-- `docs/config/host-keys.toml` and `crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs` — read-only context (host defaults already canonical; no edits).
-- `crates/slicer-model-io/src/loader.rs` — read-only context for the per-object `support_type` divergence note, not a change surface.
-- Unrelated crates - delegate symbol lookups; do not browse.
-
-## Expected Sub-Agent Dispatches
-
-- Question: what is the exact planner-call fixture pattern (fixture geometry source, `ConfigView` construction, and `run_support_geometry_with_analysis` + `raft_plan()` assertion style) to replicate in `support_main_keys_nonperturbation_tdd.rs`, and which planner functions does the new file need publicly exported vs. accessible through `slicer_sdk` traits?; scope: `modules/core-modules/tree-support-planner/tests/orca_parity_tdd.rs` + `modules/core-modules/tree-support-planner/src/lib.rs` (entry/export surface only) + `modules/core-modules/tree-support-planner/tests/` fixtures; return: `SNIPPETS` (≤3, ≤30 lines each); purpose: Step 4.
-- Question: does `config_bounds_enforcement_tdd.rs` load the real `tree-support-planner.toml` via `load_module_from_paths` such that newly declared enum/value keys (`support_type`, `raft_first_layer_expansion`, `enforce_support_layers`) will be picked up by `ConfigBoundsIndex::from_modules`, and do existing arms already prove `TypeMismatch` for enum strings and `OutOfRange` for floats (quote the two arms to mirror)?; scope: `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` + `crates/slicer-scheduler/src/config_resolution.rs`; return: `FACT`; purpose: Step 3.
-- Question: does the runtime CONFIG_BLOCK driver thread explicit module-declared keys into `raw_config` for `serialize_config_block`, and do existing tests already assert `; support_type` / `; support_expansion` lines (quote one); does an explicit `raft_first_layer_expansion` value reach the block exactly once via the sorted dump?; scope: `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` + `crates/slicer-gcode/src/serialize.rs` (`serialize_config_block` / `emit_config_kv` only); return: `FACT`; purpose: Step 3.
-- Question: does `cargo xtask gen-config-docs --check` pass after regeneration, do the nine keys appear in the module-key table under the planner owner columns, does the `traditional-support` `support_style` row render as enum with the 7-value list, and does the deviations block still count 26 data rows?; scope: `docs/15_config_keys_reference.md` + xtask; return: `FACT`; purpose: Step 5.
-
-## Data and Contract Notes
-
-- IR/manifest contracts: the nine tables use the in-tree forms — `enum` with `values` (grounded: `tree-support-planner.toml` `[config.schema.support_style]`), `int` with `min`/`max` (grounded: `[config.schema.support_max_branches_per_layer]`), `float` with optional `max` (grounded: `[config.schema.max_bridge_length]` no-max form), `bool` (grounded: `[config.schema.enable_support]`), and `percent` with `default = "<n>%"` (grounded: `traditional-support.toml` `[config.schema.support_interface_flow]`); bounds enforcement is host-side generic via `ConfigBoundsIndex::from_modules` — numeric `OutOfRange`, enum/type `TypeMismatch` (`resolve_global_config`, `crates/slicer-scheduler/src/config_resolution.rs`), verified for packets 259–261's keys.
-- WIT boundary: none touched — no WIT/world changes; the declared keys ride the existing `ConfigView` string/int/float/bool/percent plumbing (packet-150 machinery).
-- Determinism/scheduler constraints: `support_type` already flows to family selection via the raw config (scheduler module-load read) and to both planners' `canonical_support_family` through `ConfigView`; the new manifest declarations add enum validation on the global path (AC-4) — a behavior change only for currently-invalid values: previously-silent garbage (e.g. `"banana"`) becomes a resolution error, which is canonical-faithful strictness (Orca's config parser rejects unknown enum values); family-consistent values behave identically (AC-N1 pins `"tree(auto)"` == absent for the tree planner).
-
-## Locked Assumptions and Invariants
-
-- Default-path identity: with the nine declared keys absent or explicit, the tree planner emits byte-identical `SupportPlanIR` + `RaftPlan` (AC-N1); the same holds for the traditional planner's eight keys by the same unread-ness (pinned by its guard + the shared rationale — the traditional non-perturbation run is not duplicated, the unread-ness is structural: zero `config.get` / `ConfigView` reads for those keys in `traditional-support-planner/src/lib.rs`, verified at authoring).
-- `enforce_support_layers` default 0 keeps `force_support` false on every layer — the wiring is identity at defaults (AC-3's default arm).
-- `traditional-support-planner.toml` does not declare `raft_first_layer_expansion` (AC-N2).
-- `serialize_config_block` and both padding/support-default tables are untouched — no CONFIG_BLOCK twins (AC-5).
-- `docs/config/host-keys.toml` and the 8 host defaults are untouched — no deviation rows; the block stays at 26 data rows (AC-6).
-- No WIT/IR/schema-version changes; no struct gains a field — no struct-literal blast radius.
-- The three edited manifests are guest-fingerprint inputs — `cargo xtask build-guests` must be run and `--check` must return exit 0 before closure.
-
-## Risks and Tradeoffs
-
-- **The with-gap declarations are honest-but-inert today**: users setting `raft_first_layer_expansion`, `support_bottom_z_distance`, `support_critical_regions_only`, `support_object_first_layer_gap` or `support_remove_small_overhang` see no behavior change until future geometry packets implement the decision points. This is the queue's declared-with-gap contract (packets 259/260/261 precedent), pinned by AC-N1 so the inertness is tested, not assumed.
-- **`support_type` strictness on the global path**: currently-invalid global values that silently degraded to the traditional family become hard resolution errors. This is canonical-faithful (Orca rejects unknown enum values) and deliberately scoped: the per-object metadata path keeps its tolerant fallback, recorded as a divergence note — a user with a legacy sidecar spelling will see a clear error, not a silent family switch. Per-object values (3MF object metadata) bypass the global enum gate; the packet records this, it does not extend enforcement to the per-object path (that would change loader behavior beyond Tier A plumbing).
-- **First implementation of the guard pattern**: the TOML-direct-parse guards exist only in packet plans (253/260/261) — Step 1 is the first to build one, and the `toml = "0.8"` dev-dep must be added per module; if the direct-parse form proves awkward, the real-manifest load pattern of `config_bounds_enforcement_tdd.rs` is the fallback (recorded, not assumed).
-- **Same-manifest churn with packet 261**: `raft_first_layer_expansion` lands in the same `tree-support-planner.toml` raft cluster packet 261's plan edits — recorded as queue-order merge churn (packets 263/264 precedent), trivial when both land sequentially.
-- **`support_scale`-class host reads**: `resolve_contact_params` reads `config.enforce_support_layers` typed, mirroring `support_threshold_angle`; the doc-comment rule about not consulting `extensions` for CLI-bound keys must be respected in the edit (a careless `extension_float` fallback would silently ignore configured values — the exact failure the function's own comment documents).
-
-## Context Cost Estimate
-
-- Aggregate: `M`
-- Largest step: `M` (Step 3 — two integration-arm files, each requiring a driver read)
-- Highest-risk dispatch and required return format: the CONFIG_BLOCK driver question (Step 3, `FACT` — a wrong assumption about how explicit keys reach `raw_config` would make AC-5 unbuildable) and the planner-harness replication question (Step 4, `SNIPPETS` — a wrong API assumption would make AC-N1 unbuildable).
+- **The small-overhang filter is the one stage that can silently remove real support.** Its default is `true`, so it is on by default and a wrong threshold degrades every default-path slice. AC-N4 is the tripwire; the erosion must be one extrusion width and the comparison `< 2 * fw` on *either* axis, per the canonical evidence in `requirements.md`.
+- **`tree-support-planner/src/lib.rs` is long.** Ranged reads only, anchored on `inflate_model_occupancy` and the descent-termination site. A full-file read will blow the step's budget.
+- **Same-manifest churn with packet `240-support-raft`** on `tree-support-planner.toml`. Both packets append `[config.schema.*]` tables; whichever lands second rebases its append. No semantic conflict.
 
 ## Open Questions
 
-- `[FWD]` Does `config_bounds_enforcement_tdd.rs`'s real-manifest load cover a newly-declared `support_type` enum for the global-path `TypeMismatch` arm, or does the arm need `load_module_from_paths` to include both planner manifests? Either answer changes no contract here; the Step-3 dispatch settles it.
-- `[FWD]` Does the AC-N1 harness replicate `make_planner_config` exactly (fixtures inline or in a shared `tests/` module), and is `run_support_geometry_with_analysis` publicly reachable? The Step-4 dispatch settles it.
-- No `[BLOCK]` questions.
+- `[FWD]` The tree planner's descent-termination site is the analogue of the traditional planner's `model_termination_layer`, but the tree family reaches the plate through node propagation rather than a single termination index. The implementer must confirm at Step 6 whether the tree planner exposes a per-column model-termination signal; if it does not, AC-4 is satisfied by the traditional planner alone and the tree-side bottom gap is deferred with a named reason rather than faked. This is a forward question, not a blocker: it cannot change the packet's shape, only whether one of two planners carries one of five behaviours.
+
+**No `[BLOCK]` is open.** The packet needs no new WIT interface, no IR schema bump, and no new host `ResolvedConfig` field — all five host keys are already declared in `docs/config/host-keys.toml` and already carried as typed `ResolvedConfig` fields, verified against the tree at authoring time.
+
+## Map and Ticket Updates Required
+
+Listed only; **not applied by this packet** (the map and tickets are out of bounds).
+
+1. **Tier correction.** The map's P13 entry and ticket 04's tier table carry this packet as Tier A. It is **Tier B**.
+2. **Coverage-count correction.** P13 covers **10** keys, not 12. `raft_first_layer_expansion` moves to packet `240-support-raft`'s count; `support_style` moves to the organic-tree-engine row (sibling-plan row 7 / TASK-441), which still needs a packet number derived from disk.
+3. **Register row G-05 closes here.** `docs/specs/support-parity-gap-register.md` routes `support_bottom_z_distance` to `238a-support-pattern-config-keys`. That packet is `implemented` and its `design.md` records a "Bottom-z scope split" deferring the consuming semantics to 238b/238c — both of which are also `implemented` and mention the key nowhere. The row's destination must be re-pointed at this packet.
+4. **Manifest inconsistency to report, not fix.** `traditional-support.toml` declares `support_style` as `type = "string"` while `tree-support-planner.toml` declares the canonical 7-value `enum`. The correction belongs with the organic-tree-engine work.
+5. **A gap this packet does not own.** `bridge_no_support`, `bridge_polygons` and `support_sharp_tails` are still hardcoded neutral in `resolve_contact_params` with the same "no production config source yet" comment that `enforce_support_layers` carried. They are not ticket-20 keys and need a queue home.
