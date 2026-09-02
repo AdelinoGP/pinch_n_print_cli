@@ -740,6 +740,12 @@ off-map, after.
   `ironing_speed` → `support_ironing_speed` rename was flagged, not folded in,
   and is filed as ticket 109. No user rulings, no deviation rows, no
   `ORCA_CONFIG_PADDING` edit.
+- [23 — Author packet P16 — Quality / Wall generator — Arachne — arachne-perimeters](issues/23-author-packet-p16-quality-wall-generator-arachne-arachne-perimeters.md)
+  — user chose direct closure over packet authoring because the production path
+  was already live: `min_feature_size` is a canonical `percent` resolved against
+  `nozzle_diameter` and passed to the widening strategy. Added
+  `percent_min_feature_size_reaches_widening_threshold`, proving a `0.15 mm`
+  strip emits at `25%` and is rejected at `50%` of a `0.4 mm` nozzle.
 - [Key correction inventory — grilling rulings](issues/key-correction-inventory.md)
   — 26 rulings over the 140 in-scope rows of the 212-row key audit, in that
   file's `## Decisions — 2026-09-01` section. Five are map-level and are folded

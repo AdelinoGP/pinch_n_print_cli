@@ -1,8 +1,8 @@
 # 23 — Author packet P16 — Quality / Wall generator — Arachne — arachne-perimeters
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_f9bf4666affeSN3TSEIDgLo5ip) — claimed 2026-09-02
 Blocked by: 06, 107
 Map: ../map.md
 
@@ -21,3 +21,29 @@ Authoring obligations:
 Resolved when the packet is authored, preflighted, and its directory linked here.
 
 ## Answer
+
+Resolved 2026-09-02 by direct implementation instead of creating a packet, per the
+user's ruling that this item was small enough to complete in-session.
+
+The production path was already live and canonical-shaped: the
+`arachne-perimeters` manifest declares `min_feature_size` as `percent` with a
+`25%` default, `arachne_params_from_config` resolves it against
+`nozzle_diameter`, and `to_beading_factory_params` passes the resolved value to
+the widening strategy's `min_input_width`. Added
+`percent_min_feature_size_reaches_widening_threshold` in
+`modules/core-modules/arachne-perimeters/tests/min_feature_size_config_tdd.rs`.
+It proves the real module path emits a `0.15 mm` strip at the canonical `25%`
+threshold and emits no wall when the configured threshold is `50%` of a
+`0.4 mm` nozzle.
+
+Validation passed:
+
+- `cargo test -p arachne-perimeters --test min_feature_size_config_tdd`
+  (`1 passed, 0 failed`), with output captured in `target/test-output.log`.
+- `cargo fmt -p arachne-perimeters -- --check`.
+- `cargo clippy -p arachne-perimeters --all-targets -- -D warnings`.
+- `cargo xtask check-literals`.
+
+No packet directory was created because the key's production behavior was
+already implemented; this change adds the missing non-default regression
+evidence directly.
