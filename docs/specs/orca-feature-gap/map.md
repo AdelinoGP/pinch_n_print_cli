@@ -5,13 +5,19 @@ Label: `wayfinder:map`
 ## Destination
 
 A queue of **fully authored, preflighted spec packets** under `docs/spec_packets/` that
-together cover every FFF (non-SLA) OrcaSlicer config feature Pinch 'n Print is
+together **implement** every FFF (non-SLA) OrcaSlicer *feature* Pinch 'n Print is
 still missing — each packet complete with `packet.spec.md`, `requirements.md`,
 `design.md`, `implementation-plan.md`, and passing `/spec-review --preflight`.
 Packets are ordered **cheapest-first** (smallest diff before new geometry).
 
-The map is done when every in-scope feature is either covered by an authored
-packet or has been consciously ruled out of scope. Implementation (`/swarm`) runs
+The config keys are the *inventory* of the gap, not the deliverable. A key is
+"covered" only when the behaviour OrcaSlicer attaches to it exists in this
+tree and the key drives it. A packet that declares keys in a manifest, pads
+them into the CONFIG_BLOCK, and records the behaviour as a "gap" covers
+nothing — see **Authoring rules** in Notes.
+
+The map is done when every in-scope feature is either implemented-by-packet
+or has been consciously ruled out of scope. Implementation (`/swarm`) runs
 off-map, after.
 
 ## Notes
@@ -55,6 +61,23 @@ off-map, after.
   (`num_of` returned `None` for `toml::Value::Boolean`), so any pre-100 claim
   that a boolean default "matches Orca" was never actually checked. Re-verify
   rather than trust those.
+- **A manifest `default =` is DEAD for any plain-typed key that also exists as
+  a `ResolvedConfig` field — checking the manifest proves nothing.**
+  `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`)
+  seeds from `ResolvedConfig::default()`, and its schema-default back-fill loop
+  iterates `ConfigBoundsIndex::schema_defaults`, which holds **`percent` /
+  `float_or_percent` fields only**. Module config is then built from
+  `ResolvedConfig::to_config_map()`
+  (`crates/slicer-wasm-host/src/marshal/in_.rs`, `marshal/native.rs`), so for a
+  plain float/int/bool key the *macro* default reaches the module and the
+  manifest's value is never consulted. Confirmed instance:
+  `sparse_infill_speed` — three manifests declare `100.0` (aligned to canonical
+  by ticket 107), every module actually receives `ResolvedConfig`'s `50.0`.
+  **Consequence: every "default aligned to canonical" claim in tickets 99–107
+  and packets 253–266 that was verified by reading a manifest is unverified for
+  this class of key.** Not enumerated. Before asserting a default matches, check
+  whether the key has a `ResolvedConfig` field and compare *that*
+  (2026-09-01 grilling, Q11).
 - **The scoped target is 407 queue keys** (03's 415 minus 04's 11 rulings plus
   07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
   12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
@@ -65,6 +88,111 @@ off-map, after.
   packets off those, never off the reference's ❌ column.
 - **Execution override:** this map deliberately carries execution — packet
   *authoring* happens inside the map, not after it. Implementation does not.
+- **Authoring rules — binding on every packet ticket (08–98), supersede
+  anything earlier in this map or in ticket 02/04/05 that reads otherwise.**
+  Adopted after review of packets 253–265 found most of them declaring keys
+  as manifest stubs ("declared-with-gap") to satisfy a parity count: 263 has
+  zero module reads for 10 keys, 261 zero for 2, 254 one live key of 13, 255
+  one of 12, 257 one of 5. That is not what this map is for.
+  1. **No declaration-only keys.** Every key in a packet must, by the end of
+     the packet, drive a behaviour-changing decision point that the packet
+     either builds or proves already live. The dispositions
+     "declared-with-gap", "decision-point gap recorded", "declare + record
+     the consumer", and any AC whose only evidence is default-path identity
+     are **prohibited**. If the decision point does not exist, the packet
+     builds it (and is re-tiered B/C in its ticket) — or the key is **left out
+     of the packet** and returned to the queue as *unimplemented*, with the
+     missing feature named in the tier table. A packet never counts a key it
+     did not make work.
+  2. **CONFIG_BLOCK padding is not parity.** `ORCA_CONFIG_PADDING`
+     (`crates/slicer-gcode/src/serialize.rs`) is **not evidence**; adding or
+     "correcting" a padding twin is never a packet deliverable, an AC, or
+     evidence that a key is covered. Packets emit a key into the CONFIG_BLOCK
+     only as a side effect of the key being live.
+     **The table is load-bearing, not cosmetic — do not delete it.**
+     Canonical `ConfigBase::load_from_gcode_file` (`Config.cpp`) *throws*
+     `Slic3r::RuntimeError` when a CONFIG_BLOCK yields fewer than 80
+     key-value pairs, on the same delimited path this port emits; the
+     `emitted.len() >= 96` break in `serialize.rs` is a deliberate margin
+     over that floor. An earlier wording here called the table "cosmetic",
+     which is false: padding fires only for keys the host config map does
+     *not* emit — which is every module-manifest-owned key — so for those the
+     hardcoded padding value is the only value a viewer or re-slicer sees.
+     Ruling (2026-09-01 grilling, Q5): the table is **derived mechanically
+     from the resolved config** rather than hardcoded, so a twin cannot drift
+     from what the slicer did, while still clearing the 80-pair floor.
+  3. **Dead-in-canonical keys are out of scope, checked per key at
+     authoring.** A key must have a read site inside OrcaSlicer's *slicing
+     pipeline* (`libslic3r/`, not `ConfigManipulation.cpp`, GUI tooltips,
+     preset plumbing, or an `IGNORE`/legacy-alias set). Keys that fail this
+     go to **Out of scope** with the ticket-04/12 `brim_ears` precedent and
+     shrink the queue count; they are never declared "for parity".
+     **The precedent is narrower than it reads.** Ticket 12 ruled the
+     `brim_ears` *bool* dead, and it still is. The ears *feature* is live —
+     `Brim.cpp::make_brim_ears_auto`, reached through `brim_type ==
+     btBrimEars` rather than the retired bool — and `brim_ears_max_angle` /
+     `brim_ears_detection_length` are live with it. Rule out the **key** you
+     verified dead, never the feature it used to reach: check what else
+     reaches the behaviour before shrinking the count (2026-09-01 grilling,
+     Q14(c)).
+  4. **Implement the PnP way, not the Orca way.** The packet's design must
+     satisfy the project goals in `docs/00_project_overview.md` (modular
+     pipeline, community extensibility, config robustness) and use the
+     mechanics this tree already has — in particular:
+     - **Alternative behaviours become modules holding claims**, selected by
+       the existing claim-holder keys and region overrides
+       (`docs/03_wit_and_manifest.md` § Known claim IDs;
+       `docs/01_system_architecture.md` § Claim System). An Orca enum whose
+       values are different algorithms (`sparse_infill_pattern`,
+       `top_surface_pattern`, `support_interface_pattern`,
+       `fuzzy_skin_noise_type`, …) is *not* an enum to declare on one module
+       and mark with-gap — it is a set of `claim:*` holders, one per shipped
+       value, resolved through `*_fill_holder` / `module_overrides`. A packet
+       may ship a subset of values; the unshipped values are unimplemented
+       (rule 1), not declared.
+       **Trigger test (2026-09-01 grilling, Q8):** this rule fires on
+       *cross-module* algorithm selection — where the alternatives are
+       separate implementations that must live in separate modules and be
+       resolved through the claim seam. It does **not** fire on a module
+       branching internally over a mode it implements itself. `seam_position`,
+       `support_style`, `wall_sequence`, `retract_mode` and
+       `wave_overhang_pattern` are the latter and stay as they are; they are
+       not refactor targets, and rules 1–6 bind packet tickets, not
+       already-merged tree code.
+       **Holder-only, always (Q3):** the Orca enum is *never* declared as an
+       input key — not even as a host-side alias mapping its string onto a
+       holder name. Selection is by `*_fill_holder` / `module_overrides`
+       alone. Consequences accepted with the ruling: an Orca 3MF setting
+       `sparse_infill_pattern = gyroid` is silently dropped (the port has no
+       opinion on keys it does not implement, and a "recognised but
+       unimplemented" reject list is itself a form of declaration that
+       drifts); and a holder naming a module no manifest matches must **fail
+       validation** rather than yield a silently hollow part, which today it
+       does — `resolve_held_claims`
+       (`crates/slicer-scheduler/src/validation.rs`) returns empty for every
+       module and no `SchedulerError` variant covers it.
+     - New decision points go where the architecture puts them (prepass IR,
+       `SliceRegionView` metadata, `PostPass` claims, manifests + SDK) — not
+       as host-side special cases or hardcoded module constants.
+     - Where the port's architecture allows a *better* answer than canonical
+       (a cleaner seam, a per-region override Orca lacks, a bug Orca carries),
+       the packet takes it and records it as a **recorded divergence with
+       rationale**, not as a gap. Improving on OrcaSlicer is in scope;
+       reproducing its coupling is not.
+  5. **Ticket 02's plumbing-key exemption is narrowed.** "Default matches +
+     value reaches the consumer" is sufficient evidence *only* when the
+     consumer is a live, behaviour-changing decision point. It is never a
+     licence to add a consumer that does nothing.
+  6. **Preflight adds two gates for this map:** (a) the packet's disposition
+     table lists zero declaration-only keys; (b) every key has at least one AC
+     asserting a behaviour change at a non-default value, verified by test.
+     `/spec-review --preflight` PASS on a packet violating (a) or (b) is not a
+     PASS for this map.
+  7. **Retroactive.** Packets 253–266 were authored before these rules and
+     must be re-authored to them **before any of them merges or activates**;
+     per-packet findings are marked on their Decisions entries below with
+     ⚠. Open packet tickets keep their key lists but their "Work: declare in
+     the owner's manifest + wire" line is read under rules 1–6.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -185,7 +313,7 @@ off-map, after.
   packet tickets were re-wired to gate on the rename tickets touching their
   owner; **P01 (ticket 08) is now the unblocked queue head**.
 - [08 — Author packet P01 — Cooling / Notes — part-cooling](issues/08-author-packet-p01-cooling-notes-part-cooling.md)
-  — packet `docs/spec_packets/253-part-cooling-fan-scale-and-cooling-keys/`
+  — ⚠ **Correction required (Authoring rules):** `dont_slow_down_outer_wall` is declared+emitted with no slowdown stage — build the stage or drop the key; re-verify the 4 header/footer co-declarations are consumed by templates, not padding. Packet `docs/spec_packets/253-part-cooling-fan-scale-and-cooling-keys/`
   authored (`draft`), preflight **PASS**: percent-normalizes the two fan-scale
   keys, ports the canonical fan curve + role-fan/±1/threshold/re-timing
   semantics, co-declares the 4 header/footer keys into `machine-gcode-emit`
@@ -198,7 +326,7 @@ off-map, after.
   `..\pinch_n_print_cli\OrcaSlicerDocumented` in this clone, not in-tree; future
   tickets/packets must pin that path.
 - [09 — Author packet P02 — Multimaterial / Prime tower (1/2) — wipe-tower](issues/09-author-packet-p02-multimaterial-prime-tower-wipe-tower.md)
-  — packet `docs/spec_packets/254-prime-tower-keys-wipe-tower/` authored
+  — ⚠ **Correction required (Authoring rules):** 12 of 13 keys declared-with-gap; the packet must implement the interface / ramming / framework / brim / travel-avoid behaviours or shed those keys as unimplemented. Packet `docs/spec_packets/254-prime-tower-keys-wipe-tower/` authored
   (`draft`), preflight **PASS**. Grounding found **only one of the 13 keys has
   a live decision point** (`prime_tower_infill_gap` → the tower's scan-line
   pitch, hardcoded `y += line_width` today); the packet wires that one
@@ -211,7 +339,7 @@ off-map, after.
   (packet-185 machinery) verified in code, not assumed. No deviation rows; no
   human sign-off consumed.
 - [10 — Author packet P03 — Multimaterial / Prime tower (2/2) — wipe-tower](issues/10-author-packet-p03-multimaterial-prime-tower-wipe-tower.md)
-  — packet `docs/spec_packets/255-wipe-tower-geometry-keys/` authored
+  — ⚠ **Correction required (Authoring rules):** 10 of 12 keys declared-with-gap and the one wired key is identity at defaults; implement the cone/rib/fillet/rotation/wall-type geometry or shed. Packet `docs/spec_packets/255-wipe-tower-geometry-keys/` authored
   (`draft`), preflight **PASS**. Grounding found one live decision point:
   `wipe_tower_extra_flow` wires to the purge scan-lines' hardcoded
   `flow_factor: 1.0` (identity at defaults); 10 keys declared-with-gaps
@@ -266,7 +394,7 @@ off-map, after.
   still open (filed by ticket 10's authoring); the rename workstream's
   remaining members are 105–107, all unblocked (105 gates 107).
 - [11 — Author packet P04 — Printer / Machine / Print volume — wipe-tower](issues/11-author-packet-p04-printer-machine-print-volume-wipe-tower.md)
-  — packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
+  — ⚠ **Correction required (Authoring rules):** wires only the wipe-tower corner check; canonical's feature is object-footprint validation (`Print::validate`), recorded here as a gap — implement it at the port's validation seam. Packet `docs/spec_packets/256-wipe-tower-bed-exclude-area/` authored
   (`draft`), preflight **PASS**. Grounding found `bed_exclude_area` is a true
   zero-occurrence gap whose canonical consumers **disagree on the value's
   geometry** (one polygon in `get_bed_excluded_area`, 4-point rectangles in
@@ -282,7 +410,7 @@ off-map, after.
   semantics) is recorded as a Tier-B/C gap, and the tier row's gcode-side half
   is deferred to the `printable_height` P18/P19 family.
 - [12 — Author packet P05 — Others / Brim — skirt-brim](issues/12-author-packet-p05-others-brim-skirt-brim.md)
-  — packet `docs/spec_packets/257-brim-type-and-brim-keys/` authored
+  — ⚠ **Correction required (Authoring rules):** 4 of 5 keys declared-with-gap (`brim_type` modes beyond `no_brim`, ears, efc outline); implement in `skirt-brim` or shed. Packet `docs/spec_packets/257-brim-type-and-brim-keys/` authored
   (`draft`), preflight **PASS**. Scope ruling (user-confirmed): P05 covers
   **5 keys, not 6** — canonical's `brim_ears` bool is dead (declared in
   `PrintConfig.cpp`, no reads, no typed-struct member; ear physics live in
@@ -298,7 +426,7 @@ off-map, after.
   config; packet-254/255 precedent); explicit values reach the block once via
   `emit_config_kv` dedup (AC-5).
 - [13 — Author packet P06 — Others / Skirt — skirt-brim](issues/13-author-packet-p06-others-skirt-skirt-brim.md)
-  — packet `docs/spec_packets/258-skirt-type-and-draft-shield-keys/` authored
+  — ⚠ **Correction required (Authoring rules):** `skirt_type` (per-object skirt) and `min_skirt_length` declared-with-gap; implement per-object grouping, and either build the e-per-mm input or shed `min_skirt_length` to Tier D. Packet `docs/spec_packets/258-skirt-type-and-draft-shield-keys/` authored
   (`draft`), preflight **PASS**. All 5 keys verified true zero-occurrence gaps.
   **Three wired** (decision points re-derived in code): `draft_shield` →
   skirt layer span extends to the full layer set (`Print::has_infinite_skirt`
@@ -337,7 +465,7 @@ off-map, after.
   doc-only change). Deviation count stays 27. Unblocks the 13 packet tickets
   gated on 104 (P11–P13, P29–P31, P68–P70, P72, P81–P83).
 - [14 — Author packet P07 — Others / Fuzzy Skin — fuzzy-skin](issues/14-author-packet-p07-others-fuzzy-skin-fuzzy-skin.md)
-  — packet `docs/spec_packets/259-fuzzy-skin-keys/` authored (`draft`),
+  — ⚠ **Correction required (Authoring rules):** 5 of 7 keys declared-with-gap (`fuzzy_skin_mode`, noise type/octaves/persistence/scale); noise types are alternative algorithms → module/claim shape per rule 4; the padding edit is not a deliverable. Packet `docs/spec_packets/259-fuzzy-skin-keys/` authored (`draft`),
   preflight **PASS**. Canonical read corrected the snapshot: `fuzzy_skin` is
   an **enum** (`none/external/hole/all/allwalls/disabled_fuzzy`, default
   `disabled_fuzzy`), not a bool — the master loop-selection switch
@@ -398,7 +526,7 @@ off-map, after.
   table stays 27 rows. All 44 guests rebuilt (the two ironing guests were the only
   stale ones). **Unblocks P14/P15 (tickets 21, 22).**
 - [18 — Author packet P11 — Support / Interface — support-planner](issues/18-author-packet-p11-support-interface-support-planner.md)
-  — packet `docs/spec_packets/260-support-interface-keys/` authored (`draft`), preflight
+  — ⚠ **Correction required (Authoring rules):** two keys were already live (no packet work) and two are declared-with-gap (`support_interface_pattern` dispatch, `support_interface_loop_pattern` contact loops); implement the dispatch as claim-held interface fillers and the loop pass, or shed. Packet `docs/spec_packets/260-support-interface-keys/` authored (`draft`), preflight
   **PASS**. Grounding re-derived the tier picture: the tier-table owner `support-planner`
   (a claim held by the two planner modules) is a mis-attribution — the four keys'
   decision points live in `tree-support` + `traditional-support`, and the packet declares
@@ -421,7 +549,7 @@ off-map, after.
   four keys in `SUPPORT_CONFIG_DEFAULTS`/`ORCA_CONFIG_PADDING`); both modules need the
   `toml` dev-dep for the guard tests.
 - [19 — Author packet P12 — Support / Raft — support-planner](issues/19-author-packet-p12-support-raft-support-planner.md)
-  — packet `docs/spec_packets/261-raft-keys/` authored (`draft`), preflight **PASS**.
+  — ⚠ **Correction required (Authoring rules):** both keys declared-with-gap on a raft generator that does not exist; fold into / sequence after packet 240's raft geometry, or return the keys to the queue. Packet `docs/spec_packets/261-raft-keys/` authored (`draft`), preflight **PASS**.
   Both keys (`raft_contact_distance` 0.1, `raft_expansion` 1.5) zero-occurrence,
   re-adjudicated **declared-with-gap**: no raft geometry generator exists in-tree (draft
   packet 240-support-raft's `com.core.raft-default` is unimplemented; `RaftPlan` carries
@@ -461,7 +589,7 @@ off-map, after.
   136/136 and 44 guests rebuilt twice.
 
 - [15 — Author packet P08 — Strength / Infill — infill modules](issues/15-author-packet-p08-strength-infill-infill-modules.md)
-  — packet `docs/spec_packets/262-infill-pattern-keys/` authored (`draft`), preflight
+  — ⚠ **Correction required (Authoring rules):** `sparse_infill_pattern` / `internal_solid_infill_pattern` declared-with-gap as "module identity" — that *is* the claim-holder mechanism; map pattern values to `claim:sparse-fill`/`claim:top-fill` holders (shipping at least the canonical defaults `crosshatch`/`monotonic` as modules), and `gap_fill_target` must gate a real fill-side gap fill or be shed. The padding edit is not a deliverable. Packet `docs/spec_packets/262-infill-pattern-keys/` authored (`draft`), preflight
   **PASS**. **Four keys wired (default-path identity), three declared-with-gap.**
   `solid_infill_direction` → the solid-role angle read in rectilinear + gyroid (sparse
   keeps `infill_direction`; 45 = 45); `sparse_infill_rotate_template` /
@@ -485,7 +613,7 @@ off-map, after.
   different keys.
 
 - [16 — Author packet P09 — Strength / Infill pattern-specific — infill modules](issues/16-author-packet-p09-strength-infill-pattern-specific-infill-modules.md)
-  — packet `docs/spec_packets/263-infill-pattern-specific-keys/` authored (`draft`),
+  — ⚠ **Correction required (Authoring rules):** a pure-declaration packet (10 keys, zero reads). Re-author as the locked-zag / lateral-lattice / lateral-honeycomb pattern modules (claim holders) that consume these keys, or return all 10 to the queue. Packet `docs/spec_packets/263-infill-pattern-specific-keys/` authored (`draft`),
   preflight **PASS**. **All 10 keys re-adjudicated declared-with-gap — a pure-declaration
   packet (zero module-source reads, zero behavior change at any value).** Canonical
   grounding pinned every decision point: six keys (`infill_lock_depth`, both densities,
@@ -507,7 +635,7 @@ off-map, after.
   AC-4). No user rulings. **P10 (ticket 17) is now the unblocked queue head.**
 
 - [17 — Author packet P10 — Strength / Top/bottom shells — infill modules](issues/17-author-packet-p10-strength-top-bottom-shells-infill-modules.md)
-  — packet `docs/spec_packets/264-top-bottom-surface-keys/` authored (`draft`), preflight
+  — ⚠ **Correction required (Authoring rules):** `top_surface_pattern` / `bottom_surface_pattern` declared-with-gap → claim-holder mapping per rule 4 (ship `monotonicline`/`monotonic` fillers); the padding edit is not a deliverable. Density keys stand. Packet `docs/spec_packets/264-top-bottom-surface-keys/` authored (`draft`), preflight
   **PASS** (S0–S8 all green). **Two keys wired, two declared-with-gap.** Canonical
   grounding verified all four keys exist on `PrintRegionConfig` and re-derived the
   dispositions: **`top_surface_density` / `bottom_surface_density` (coPercent 100; top min
@@ -537,7 +665,7 @@ off-map, after.
   machinery).
 
 - [20 — Author packet P13 — Support / Support — support-planner](issues/20-author-packet-p13-support-support-support-planner.md)
-  — packet `docs/spec_packets/265-support-support-keys/` authored (`draft`), preflight
+  — ⚠ **Correction required (Authoring rules):** five keys declared-with-gap (`raft_first_layer_expansion`, `support_bottom_z_distance`, `support_critical_regions_only`, `support_object_first_layer_gap`, `support_remove_small_overhang`) and six were already live; implement the five or shrink to `enforce_support_layers` + the type corrections. Packet `docs/spec_packets/265-support-support-keys/` authored (`draft`), preflight
   **PASS** (S0–S8 + AC + Doc-Impact green). Re-derivation split the 12 Tier-A keys into
   four states: **six already wired + canonical-faithful** (`support_object_xy_distance`
   0.35/[0,10] in both planner manifests + both clearance reads; `support_threshold_angle`
@@ -563,7 +691,7 @@ off-map, after.
   Deviation block stays 26 (all defaults canonical, re-measured); zero CONFIG_BLOCK twins;
   zero user rulings. No new fog graduated (traditional-raft fog's P13 reference now
   resolves to the declaration; the traditional-raft-handling question stays open).
-  Unblocks nothing downstream; **P14 (ticket 21) is the next unblocked queue head**.
+   Unblocks nothing downstream; **P14 (ticket 21) is the next unblocked queue head**.
 
 ## Not yet specified
 
