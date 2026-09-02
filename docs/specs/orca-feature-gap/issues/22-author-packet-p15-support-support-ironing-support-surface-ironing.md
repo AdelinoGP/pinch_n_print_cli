@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Assignee: —
+Assignee: wayfinder session — claimed 2026-09-02
 Blocked by: 06, 106
 Map: ../map.md
 
