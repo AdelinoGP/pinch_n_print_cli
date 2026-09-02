@@ -2,82 +2,62 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: none — queue packet (wayfinder precedent: packets 234a, 253–257 carry `task_ids: []`); implementation is recorded against wayfinder ticket 13.
-- Backlog source: `docs/specs/orca-feature-gap/issues/13-author-packet-p06-others-skirt-skirt-brim.md` (wayfinder map "Close the OrcaSlicer FFF feature gap", packet P06).
-- Packet status: `draft`
-- Aggregate context cost: `M`
+- Packet directory: `docs/spec_packets/258-skirt-type-and-draft-shield-keys/`
+- Backlog source: `docs/specs/orca-feature-gap/issues/13-author-packet-p06-others-skirt-skirt-brim.md` (wayfinder map packet P06)
+- Owner module: `skirt-brim` (`modules/core-modules/skirt-brim/`)
+- Tier: **B** — the packet builds decision points that do not exist in the tree (per-object skirt grouping, extruded-length loop expansion, start-corner rotation, shield span, per-layer loop count). Re-derived at authoring per map Authoring rule 1.
+- Status: `draft`
 
 ## Problem Statement
 
-Packet P06 (Others / Skirt — owner `skirt-brim`) is the next uncovered slice of the
-OrcaSlicer FFF feature-gap queue (`05-asset-packet-list.md` §P06 — 5 keys, Tier A).
-All five keys have **zero occurrences** in `modules/`, `crates/`, `resources/`,
-or `xtask/` (authoring-time tree survey; they exist only in `docs/ORCA_CONFIG_REFERENCE.md`
-rows and the wayfinder gap docs, all marked ❌ no) — there are no near-variant
-spellings of any of them in code. The owner module exists and already implements
-a rect-loop skirt/brim generator reading six of its own schema keys, so declaring
-the new keys lands in a live, shipped module rather than a stub. This is one
-coherent slice: one manifest, one owner, one wiring pass, one generated-docs
-regeneration.
+OrcaSlicer's skirt feature carries five FFF config keys this port does not implement. The port's `SkirtBrim` module emits `skirt_loops` axis-aligned rectangular rings around the combined bounding box of the first `skirt_height` layers, always starting at `(x_min, y_min)`, always the same count on every targeted layer, always one ring set for the whole plate. Every one of the five keys names a decision this module currently does not make.
+
+This packet was previously authored (2026-09-01) with three keys wired and two — `skirt_type` and `min_skirt_length` — declared in the manifest with the behaviour recorded as a "gap". Map Authoring rule 1 now prohibits that disposition: a key is covered only when the behaviour OrcaSlicer attaches to it exists in this tree and the key drives it. This re-authoring builds both remaining decision points, so the packet keeps all five keys and returns none to the queue.
 
 ## In Scope
 
-- Five new `[config.schema]` tables in `modules/core-modules/skirt-brim/skirt-brim.toml`:
-  `skirt_type`, `min_skirt_length`, `skirt_start_angle`, `draft_shield`,
-  `single_loop_draft_shield`, each with canonical defaults/bounds and
-  `group = "Skirt/Brim"` (AC-1).
-- Manifest guard test file `modules/core-modules/skirt-brim/tests/skirt_config_schema_tdd.rs`
-  (net-new), mirroring the part-cooling guard pattern (`cooling_config_schema_tdd.rs`);
-  requires the `toml = "0.8"` dev-dependency add-if-absent in
-  `modules/core-modules/skirt-brim/Cargo.toml`.
-- Three live decision-point wirings in `modules/core-modules/skirt-brim/src/lib.rs`
-  (`SkirtBrim::from_config` + `run_finalization` + `generate_skirt_entities`/
-  `make_rect_loop`): `draft_shield` layer span, `single_loop_draft_shield`
-  per-layer loop count, `skirt_start_angle` first-layer first-loop start corner
-  (AC-2/3/4). Both the live `run_finalization` path and the test-only `process()`
-  arm receive the same gates (packet 257's dual-path precedent).
-- Bounds/enum rejection arms in the existing scheduler integration binary
-  `config_bounds_enforcement_tdd` and a CONFIG_BLOCK reachability arm in the
-  existing runtime integration binary `gcode_header_thumbnail_config_blocks_tdd`
-  (AC-5/6).
-- Regeneration of `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs` (AC-7).
+1. **`draft_shield` (span gate).** `"enabled"` extends the skirt layer span from `min(skirt_height, layer_count)` to the entire layer set, mirroring canonical `Print::has_infinite_skirt` (`dsEnabled && skirt_loops > 0`). Brim generation stays layer-0-only.
+2. **`single_loop_draft_shield` (per-layer loop count).** `true` emits exactly the innermost ring on every layer above the first, mirroring canonical `GCode::generate_skirt`'s `start_idx = loops.second - 1` on non-first layers. The first layer always keeps the full set.
+3. **`skirt_start_angle` (start corner).** The first-layer innermost ring's start vertex becomes the rect corner nearest `bbox_center + r·(cos θ, sin θ)` with `r` the half-diagonal of that ring's own rect — the port's rect-loop analogue of canonical `Skirt::find_start_point`. Applies only where canonical applies it: `first_layer && i == loops.first`.
+4. **`skirt_type` (grouping).** `"perobject"` partitions the layer's entities by `region_key.object_id`, computes one bbox per object, merges any two whose envelopes (bbox grown by `grouping_offset = skirt_distance + skirt_loops * line_width`) intersect — canonical `Print::_make_skirt`'s union-find fixed point — and emits `skirt_loops` rings around each surviving group. `"combined"` unites every object into one group, which is exactly today's behaviour.
+5. **`min_skirt_length` (loop expansion).** After the base `skirt_loops` rings, keep appending rings **outward** (one `line_width` per step) while the accumulated extruded filament length is below the configured value. Extruded length per ring is `perimeter_mm · e_per_mm`, with `e_per_mm` derived module-side from the rounded-rectangle `mm3_per_mm` over `line_width`/`layer_height` divided by the filament cross-section from `filament_diameter`. Bounded by `MAX_MIN_LENGTH_LOOPS`.
+6. **Host plumbing for (5).** `ResolvedConfig::filament_diameter` already exists but is not exported by `ResolvedConfig::to_config_map`, so no module can see it. Export it as `ConfigValue::Float`, and correct `serialize.rs`'s synthetic-`filament_diameter` branch so the CONFIG_BLOCK array is built from that resolved scalar instead of a hardcoded `1.75` — see §Recorded Divergences D-258-4.
+7. **Bounds/enum enforcement, CONFIG_BLOCK reachability, generated docs** for the five keys.
 
 ## Out of Scope
 
-- **Per-object skirt grouping (`skirt_type = "perobject"`)** — canonical decision
-  point is `Print::_make_skirt`'s per-object group building (with
-  `m_has_shared_per_object_skirt` and the ByObject-sequence throw in
-  `Print::process`); the port has no per-object skirt grouping at all and none
-  is built here. Declared-with-gap, pinned in AC-N1 as non-perturbing.
-- **Extruded-length-limited loop expansion (`min_skirt_length > 0`)** — canonical
-  decision point in `Print::_make_skirt` accumulates per-extruder filament
-  length (`unscale(loop.length()) * extruders_e_per_mm`) and appends loops until
-  the minimum; the port has no per-filament e_per_mm model at module level (the
-  Tier-D per-filament fog owns that model question — map Notes). Declared-with-gap.
-- **Contour-offset skirt geometry** — the port's rect loops around a global
-  bounding box stay (packet 257's recorded divergence, unchanged in this packet);
-  no `Skirt.cpp`-style contour offsetting is introduced, and canonical's
-  outermost-first exported loop ordering is recorded as a divergence note, not
-  reordered here.
-- **`_make_skirt`-adjacent canonical semantics** deliberately not borrowed:
-  `Print::object_skirt_offset`/`object_skirt_position` (per-object skirt
-  placement — no per-object skirt exists here), the ByObject sequencing error
-  in `Print::process`, and `handle_legacy` for `draft_shield = "limited"`
-  (a pre-OrcaSlicer spelling with no in-tree value path).
-- **`docs/ORCA_CONFIG_REFERENCE.md` hand-maintained column** — untouched (ticket
-  07 ruling; the queue never reads it).
-- **Tier-table row updates** (`04-asset-tier-assignment.md`) — ride ticket 13's
-  closure (ticket 12 precedent), not this packet's files.
+- **Convex-hull skirt geometry.** Canonical offsets a per-instance convex hull of `lslices` outer contours plus `support_fills`; the port emits axis-aligned rect loops around a bbox. That difference predates this packet and is not introduced by it (D-258-1).
+- **Per-extruder extruded-length rotation.** Canonical's `append_skirt_loops_for_hull` maintains `extruded_length[extruder_idx]` and advances the extruder once the target is met. The port uses a single accumulator (D-258-3).
+- **`PrintSequence::ByObject` shared-per-object-skirt error.** Canonical sets `m_has_shared_per_object_skirt` when a per-object group ends with more than one instance and `Print::process` raises a `SlicingError` under by-object sequencing. The port has no by-object print sequence, so there is nothing to guard.
+- **Wipe-tower obstacle inclusion.** Canonical adds `first_layer_wipe_tower_corners` as a non-emitting grouping item. The port's wipe tower is a separate module whose geometry is not visible to `skirt-brim` at `PostPass::LayerFinalization` grouping time; see §Returned to Queue.
+- **`Print::object_skirt_offset` / per-instance brim-area contribution to the hull.**
+- **Seam-style start-point re-seating of already-emitted paths** (that is `seam-placer`'s surface).
+- **Any edit to `ORCA_CONFIG_PADDING` or a CONFIG_BLOCK padding twin** (map Authoring rule 2). No AC, step, or deliverable in this packet touches either.
+- **New WIT interface, IR schema bump, or new `ResolvedConfig` field.** None is required: item 6 exports an existing field through an existing map, it does not add one.
+
+## Returned to Queue — unimplemented, needs a feature this packet does not build
+
+None. All five keys in ticket 13's list are implemented by this packet.
+
+One *sub-behaviour* is returned rather than a key: **wipe-tower-as-grouping-obstacle** for `skirt_type = "perobject"`. Canonical includes the wipe tower's first-layer corners as a non-emitting `SkirtBrimGroupItem` so a per-object group that touches the tower merges with it. The port cannot see wipe-tower geometry from `skirt-brim`'s `LayerCollectionView` unless the tower's entities carry a stable `region_key.object_id` at `PostPass::LayerFinalization` — unverified at authoring. Needs: a wipe-tower object-identity contract. It does not gate `skirt_type`'s decision point, which is exercised and asserted over real object groups (AC-5).
+
+## Ruled Dead-in-canonical
+
+None. All five keys have live read sites inside `src/libslic3r/` in the slicing pipeline, confirmed by delegated canonical read at authoring:
+
+- `skirt_type` — `Print::_make_skirt`, `Print::process`, `Print::object_skirt_offset`, `GCode::generate_object_skirt_group`, `GCode::process_layer`.
+- `min_skirt_length` — exactly one live read: the `append_skirt_loops_for_hull` lambda inside `Print::_make_skirt`. (Its other occurrences are a commented-out block in `Skirt::skirt_loops_per_extruder_all_printing`, a commented-out `Print::min_skirt_length` static in `Print.hpp`, `invalidate_state_by_config_options`, and `Preset.cpp` — none of which would qualify on their own. The one live read does.)
+- `skirt_start_angle` — `GCode::generate_skirt`, `GCode::generate_object_skirt_group`, `Skirt::find_start_point`.
+- `draft_shield` — `Print::has_infinite_skirt`, `Print::object_skirt_offset`.
+- `single_loop_draft_shield` — `GCode::generate_skirt`.
 
 ## Authoritative Docs
 
-- `docs/15_config_keys_reference.md` — generated (~1000 lines); delegated reads
-  only. Regenerated by this packet (AC-7); never hand-edited.
-- `docs/02_ir_schemas.md` §CONFIG_BLOCK contract — delegated SUMMARY; governs
-  the padding-touching prohibition in AC-6.
-- `docs/03_wit_and_manifest.md` — manifest schema shape; delegated SUMMARY if a
-  worker needs the `[config.schema]` contract; the enum `values` field form is
-  grounded in-tree (`seam-planner-default.toml`, `tree-support-planner.toml`).
+- `docs/03_wit_and_manifest.md` §Host-Boundary Access Enforcement (Normative) — the rule that a module sees only its declared keys, and that the source map is `ResolvedConfig::to_config_map`. Governs item 6.
+- `docs/02_ir_schemas.md` §CONFIG_BLOCK viewer-key contract — the `filament_diameter` array-length filament-count inference and the ≥80-pair floor. Governs AC-8.
+- `docs/01_system_architecture.md` §Claim System — consulted at authoring to confirm map Authoring rule 4's claim-holder trigger does **not** fire here (see `design.md` §Claims).
+- `docs/00_project_overview.md` — modular pipeline / config robustness goals; all five decision points land inside the owning module, none as a host special case.
+- `docs/15_config_keys_reference.md` — generated by `cargo xtask gen-config-docs`; never hand-edited.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -86,127 +66,80 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — canonical declarations of the five keys (types, defaults, min/max, enum order, mode); authoring-time evidence already captured in §Per-Key Canonical Evidence and not re-read unless a worker disputes it.
-- `OrcaSlicerDocumented/src/libslic3r/Print.cpp` — `Print::has_infinite_skirt`, `Print::_make_skirt`, `Print::object_skirt_offset` (recorded-gap context for the declared-with-gap dispositions and the outermost-first divergence note).
-- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` — `GCode::generate_skirt`, `Skirt::find_start_point` (the angle-to-corner mapping this port's wiring mirrors).
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — canonical declarations of the five keys (coType, default, min/max, enum value order).
+- `OrcaSlicerDocumented/src/libslic3r/Print.cpp` — `Print::_make_skirt`, `Print::has_infinite_skirt`, `Print::skirt_flow`, `Print::object_skirt_offset`.
+- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` — `GCode::generate_skirt`, `GCode::generate_object_skirt_group`, `GCode::process_layer`, and the inline `Skirt` namespace (`find_start_point`, `skirt_loops_per_extruder_all_printing`). There is no `Skirt.cpp` in this checkout.
 
 Note: in this clone the checkout is the sibling `..\pinch_n_print_cli\OrcaSlicerDocumented` (pinned by wayfinder ticket 08's ledger note) — workers must resolve `OrcaSlicerDocumented/` against that absolute sibling path.
 
-<!-- snippet: parity-evidence -->
 ## Parity Evidence Standard
 
-Every key this packet implements carries evidence per the map's ticket 02 standard:
-
-- **Canonical read + described behaviour.** For each key, cite the canonical consumer (file + function, never line numbers) and describe its behaviour in `requirements.md`. Reads of `OrcaSlicerDocumented/` are delegated per the orca-delegation snippet.
-- **Invariants, not goldens.** Behaviour is pinned with invariant/property tests (counts preserved, mappings hold, emitted values equal expected). Golden G-code comparison is not part of the standard — the checkout is not built and cannot be run.
-- **Ported Orca tests are acceptable evidence.** When `OrcaSlicerDocumented/tests/fff_print/` covers the behaviour, port its assertions into PnP's suite with the standard porting header (`docs/ORCASLICER_ATTRIBUTION.md`).
-- **Plumbing keys** (a threshold feeding an existing decision point): the default resolves to the canonical value AND a test proves the value reaches the consumer. No behavioural test required.
-- **Unverifiable behaviour:** surface the key and the reason to the human first; only with their sign-off file a `docs/DEVIATION_LOG.md` row (single source of truth, CI-checked by `cargo xtask check-deviations`) and proceed with documented scope. Never defer the key or block the packet on unverifiability alone, and never file a row without the human having been asked.
+Every claim below about canonical behaviour was produced by a delegated read of the sibling checkout at authoring time and is cited by file + function only, never by line number (CLAUDE.md, map Notes). A worker who disputes any row re-dispatches the read rather than re-reading in-context. In-tree citations are by crate-qualified path + symbol name.
 
 ## Per-Key Canonical Evidence
 
-Canonical evidence per ticket 02's standard (delegated canonical read; in-tree
-grounding from the authoring survey). Type/default/bounds columns record the
-manifest contract AC-1 pins.
-
 | Key | Canonical type | Canonical default | Bounds | Manifest declaration | Canonical decision point (file + function) | Disposition |
 | --- | --- | --- | --- | --- | --- | --- |
-| `skirt_type` | coEnum `SkirtType` (`"combined"`, `"perobject"`) | `combined` | — | enum, values in canonical order | `Print::_make_skirt` (per-object grouping + shared-skirt flag); `GCode::generate_object_skirt_group` gate | **Declared-with-gap** — no per-object skirt grouping exists in this tree; default `combined` already matches today's single-skirt behavior |
-| `min_skirt_length` | coFloat, min 0 | `0.0` | min 0, no max | float, min 0, no max | `Print::_make_skirt` (`extruded_length` accumulation vs `m_config.min_skirt_length.value`, per-extruder loop expansion) | **Declared-with-gap** — the port's module-level loop generator has no extruded-length or e_per_mm model (Tier-D fog); default 0 = disabled matches today |
-| `skirt_start_angle` | coFloat, min −180 max 180 | `-135` | [−180, 180] | float, min −180, max 180 | `GCode::generate_skirt` (condition `first_layer && i == loops.first`), `Skirt::find_start_point` (bbox-center + `r·(cos,sin)(angle)`) | **Wired (start corner)** — first-layer first (innermost) loop's start vertex becomes the rect corner nearest the desired start point; default −135° selects the current corner, so the default path is unchanged (AC-4) |
-| `draft_shield` | coEnum `DraftShield` (`"disabled"`, `"enabled"`) | `disabled` | — | enum, values in canonical order | `Print::has_infinite_skirt` (`dsEnabled && skirt_loops > 0` → skirt on every layer); also `Print::object_skirt_offset` (recorded-gap context) | **Wired (span gate)** — `enabled` extends the skirt layer span from `min(skirt_height, layers)` to the full layer set (AC-2) |
-| `single_loop_draft_shield` | coBool | `false` | — | bool, default false | `GCode::generate_skirt` (`start_idx = loops.second - 1` on non-first layers → innermost wall only) | **Wired (per-layer loop count)** — upper layers emit exactly the innermost loop when true (AC-3); first layer keeps the full set |
+| `skirt_type` | coEnum `SkirtType` (`"combined"`, `"perobject"`) | `combined` | — | enum, values in canonical order | `Print::_make_skirt` — union-find over per-instance `SkirtBrimGroupItem`s; `stCombined` unites all into group 0, `stPerObject` merges only groups whose hulls offset by `grouping_offset = scale_(skirt_distance + skirt_loops * spacing)` intersect. Emission split: `GCode::process_layer` (combined, before the instance loop) vs `GCode::generate_object_skirt_group` (per-object, inside the instance loop on `first_visit`) | **Built (AC-5)** — per-object bbox grouping with the same envelope-intersection fixed point |
+| `min_skirt_length` | coFloat, min 0 | `0.0` | min 0, no max | float, min 0, no max | `Print::_make_skirt`'s `append_skirt_loops_for_hull`: `mm3_per_mm` from `Print::skirt_flow`, `e_per_mm` from `Extruder::e_per_mm`, `extruded_length[idx] += unscale(loop.length()) * e_per_mm`; when the target is unmet at `i == 1` it does `++i` so loops keep being appended; each loop is `offset(hull, distance += scale_(spacing))` — strictly **outward**; generation is inward-to-outward and `reverse()`d before export | **Built (AC-6)** — module-side e-per-mm over the resolved scalar `filament_diameter`, outward expansion, bounded by `MAX_MIN_LENGTH_LOOPS` |
+| `skirt_start_angle` | coFloat | `-135` | [−180, 180] | float, min −180, max 180 | `GCode::generate_skirt`, condition `first_layer && i == loops.first`; `Skirt::find_start_point` computes bbox-center + `r·(cos θ, sin θ)` and rotates the loop to the nearest point | **Built (AC-4)** — nearest rect corner; default −135° selects `(x_min, y_min)`, today's corner, so the default path is unchanged |
+| `draft_shield` | coEnum `DraftShield` (`"disabled"`, `"enabled"`) | `disabled` | — | enum, values in canonical order | `Print::has_infinite_skirt` (`dsEnabled && skirt_loops > 0` → skirt on every layer). Canonical also handles a legacy `"limited"` value in `PrintConfigDef::handle_legacy`; this port does not carry it (AC-7 asserts it is rejected) | **Built (AC-2)** — full layer span |
+| `single_loop_draft_shield` | coBool | `false` | — | bool, default false | `GCode::generate_skirt`: `start_idx = loops.second - 1` on non-first layers → innermost wall only | **Built (AC-3)** — upper layers emit exactly the innermost ring |
 
-### Wiring notes (port-specific decisions the canonical reads forced)
+Supporting (not an Orca-gap key of this packet, declared to serve `min_skirt_length`): `filament_diameter` — canonical coFloats (per-filament array); this port's `ResolvedConfig` flattens it to a scalar `f32` via `extract_float_or_first`. Declared on `skirt-brim` at the same scalar shape other modules use for `layer_height` / `nozzle_diameter`.
 
-- **Loop ordering divergence (recorded, not fixed):** canonical generates loops
-  inward-to-outward then reverses so the *exported* `skirt.entities` is
-  outermost-first (innermost wall last, emitted on upper draft-shield layers);
-  the port's `generate_skirt_entities` emits innermost-first with no reversal.
-  Two consequences, both recorded rather than corrected: (1)
-  `single_loop_draft_shield` keys on **`global_layer_index > 0`** (first layer
-  exempt), matching canonical's `!first_layer` condition, so the
-  *selection* (innermost wall on upper layers) is preserved even though the
-  exported ordering is not; (2) canonical's `first_layer && i == loops.first`
-  condition rotates the start of its first-*emitted* loop — spatially the
-  **outermost** wall — while this port applies the start-corner wiring to its
-  first-*emitted* loop, spatially the **innermost** wall. The decision rule
-  ("the first loop in the skirt's emission order on the first layer") is
-  identical; the spatial wall it lands on differs because of the ordering
-  divergence above. Packet 257's recorded-divergence class; no reordering is
-  attempted here (reordering is geometry work, queue-sized, and would touch the
-  identity baseline all other ACs pin).
-- **`skirt_start_angle` start-corner mapping:** canonical computes a desired
-  start point from the loop's bbox center and half-diagonal; the port selects
-  the loop corner angularly nearest that desired point (the loop's start vertex
-  is a corner, not a free point — the rect loop has no mid-edge vertices).
-  Default −135° resolves to the corner the loop already starts at
-  (`(x_min, y_min)`), so **default output is byte-identical** (AC-4's identity
-  clause). In-tree reachability of a loop start point to final G-code was
-  verified at authoring time: the gcode emitter never rotates or reverses
-  closed loops (simplification can only drop interior points), path
-  optimization permutes whole entities with reversal always `false`, and no
-  seam re-selection applies to non-wall roles —
-  `crates/slicer-gcode/src/emit.rs` `emit_gcode`, `simplify_polyline_mm`,
-  `modules/core-modules/path-optimization-default/src/lib.rs`
-  `nearest_neighbor_permutation`.
-- **Tier A/B status:** AC-1/5/7 are Tier A plumbing (declare + default-matches +
-  reaches-consumer); AC-2/3/4 are behavioural wirings inside the existing
-  decision structure (span gate, loop count, start corner) — new logic in an
-  existing owner, Tier B semantics carried by an A-shaped packet, mirroring how
-  packet 257 wired its one live gate.
+## Recorded Divergences
+
+**ID convention.** The `D-258-*` labels below are **packet-local divergence identifiers** used for cross-referencing inside this packet's four files. They are *not* `docs/DEVIATION_LOG.md` row IDs — that log uses the `DEV-###` format (verified against the live log at authoring; no `D-258*` token appears in it). Step 9 registers the three divergences that change emitted output relative to canonical — **D-258-3**, **D-258-4** and **D-258-5** — as `DEV-###` rows, with each ID **re-derived from the log at write time** (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, take the next), never frozen into this packet (CLAUDE.md ledger-fact rule). **D-258-1** and **D-258-2** describe pre-existing properties of the port's skirt generator that this packet inherits rather than introduces, so they get no row.
+
+
+- **D-258-1 — bbox rings, not hull offsets.** Canonical offsets a convex hull; the port emits axis-aligned rect loops. Pre-existing in `SkirtBrim::generate_skirt_entities`, inherited by every behaviour this packet adds (grouping envelopes, start corners, and expansion rings are all rect-based). Rationale: changing skirt geometry to hull-offset is a separate geometric packet with its own parity surface; carrying the rect shape keeps this packet's five decision points independently verifiable.
+- **D-258-2 — innermost-first loop order.** The port emits skirt loops innermost-first; canonical generates inward-to-outward then `reverse()`s so the exported list is outermost-first. Consequence: canonical's `first_layer && i == loops.first` rotated-start lands on the *outermost* wall, here it lands on the *innermost*. Recorded rather than fixed — reversing the port's export order is an ordering change affecting every existing skirt baseline, out of this packet's scope.
+- **D-258-3 — single extruded-length accumulator.** Canonical tracks `extruded_length` per extruder and rotates `extruder_idx` as each target is met; the port accumulates once. Rationale: `ResolvedConfig::filament_diameter` is scalar-flattened (`extract_float_or_first`) and the port has no per-filament flow model, so per-extruder rotation would be fiction. The single-accumulator form is exact for single-material prints, which is every case this port currently produces skirts for.
+- **D-258-4 — resolved synthetic `filament_diameter` (an improvement over the pre-packet port).** `serialize.rs` today emits `; filament_diameter = 1.75,1.75,...` from a hardcoded literal whenever raw config lacks the key — which was always, because `to_config_map` never exported it. After this packet the array is built from the resolved `ResolvedConfig::filament_diameter`, so a 2.85 mm setup no longer reports 1.75 to the viewer. The array form (comma-joined, one entry per tool) is preserved exactly, because OrcaSlicer's `ConfigBase::load_from_gcode_file` infers filament count from that array's length; a bare scalar would break the inference. A raw `ConfigValue::List` supplied by the user still wins verbatim.
+- **D-258-5 — corner selection, not mid-edge seating.** `Skirt::find_start_point` rotates the loop to the polygon point nearest the computed target; on a rect loop the port selects the nearest of the four corners rather than splitting an edge. Rationale: the port's rect loop has exactly four distinct vertices, so "nearest point on the polygon" and "nearest vertex" differ only by an edge-interior seam the port cannot express without inserting a vertex, which would perturb the default path.
 
 ## Acceptance Summary
 
-Reference, never copy, criteria from `packet.spec.md`.
+| AC | Key(s) | Non-default value asserted | Home test |
+| --- | --- | --- | --- |
+| AC-1 / AC-N3 | all five + `filament_diameter` + `layer_height` | — (manifest guard) | `skirt-brim::skirt_config_schema_tdd` |
+| AC-2 | `draft_shield` | `"enabled"` | `skirt-brim::finalization_live_tdd` |
+| AC-3 | `single_loop_draft_shield` | `true` | `skirt-brim::finalization_live_tdd` |
+| AC-4 | `skirt_start_angle` | `45.0` | `skirt-brim::skirt_brim_tdd` |
+| AC-5 | `skirt_type` | `"perobject"` | `skirt-brim::skirt_brim_tdd` |
+| AC-6 / AC-N2 | `min_skirt_length` | `20.0`, `1.0e9` | `skirt-brim::skirt_brim_tdd` |
+| AC-7 | `skirt_type`, `draft_shield`, `skirt_start_angle` | rejection path | `slicer-scheduler::integration::config_bounds_enforcement_tdd` |
+| AC-8 | `filament_diameter` | `2.85` | `slicer-gcode::serialize::tests` |
+| AC-9 | `skirt_type` | `"perobject"` | `slicer-runtime::integration::gcode_header_thumbnail_config_blocks_tdd` |
+| AC-10 | all five | — (generated docs) | `cargo xtask gen-config-docs --check` |
+| AC-N1 | all five | default-path identity (**additional**, never the only evidence for any key) | `skirt-brim::skirt_brim_tdd` |
 
-- Positive: `AC-1` (manifest exactness), `AC-2` (draft_shield span), `AC-3`
-  (single-wall upper layers), `AC-4` (start corner + default identity),
-  `AC-5` (bounds/enum rejection), `AC-6` (CONFIG_BLOCK single-emission +
-  no-padding-twins), `AC-7` (generated docs).
-- Negative: `AC-N1` (declared-with-gap keys non-perturbing), `AC-N2` (schema
-  guard fails naming the drifted key).
-- Cross-packet impact: packet 257 (P05, same module/manifest) precedes this
-  packet in the queue — same-module ordering note, not a gate; no other queued
-  packet consumes `skirt-brim` keys. The five keys appear in the generated
-  doc-15 tables and in no deviation row (all manifest defaults canonical-identical).
+Map gate (b) check: every one of the five keys has at least one AC asserting a behaviour change at a non-default value — `draft_shield` AC-2, `single_loop_draft_shield` AC-3, `skirt_start_angle` AC-4, `skirt_type` AC-5, `min_skirt_length` AC-6.
 
 ## Verification Commands
 
-This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate commands.
-
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p skirt-brim --test skirt_config_schema_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1/N2 manifest guard | FACT pass/fail; SNIPPETS ≤20 lines on failure |
-| `cargo test -p skirt-brim --test finalization_live_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-2 span gate on the live path | FACT pass/fail |
-| `cargo test -p skirt-brim --test skirt_brim_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-3/4/N1 loop-count + start corner + gap keys | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test integration config_bounds_enforcement_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-5 enum/bounds rejection | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-6 CONFIG_BLOCK emission | FACT pass/fail |
-| `cargo xtask gen-config-docs --check` | AC-7 generated docs | FACT exit code |
-| `cargo xtask build-guests --check; echo "exit=$?"` | guest freshness (manifest + src edits) | FACT exit code |
+| `cargo test -p skirt-brim --test skirt_config_schema_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1 / AC-N3 manifest guard | FACT pass/fail; SNIPPETS ≤20 lines on failure |
+| `cargo test -p skirt-brim --test finalization_live_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-2 / AC-3 on the live `run_finalization` path | FACT pass/fail |
+| `cargo test -p skirt-brim --test skirt_brim_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-4 / AC-5 / AC-6 / AC-N1 / AC-N2 | FACT pass/fail |
+| `cargo test -p slicer-scheduler --test integration config_bounds_enforcement_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-7 enum/bounds rejection | FACT pass/fail |
+| `cargo test -p slicer-gcode --lib serialize::tests::config_block 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-8 CONFIG_BLOCK filament array | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-9 CONFIG_BLOCK reachability | FACT pass/fail |
+| `cargo xtask gen-config-docs --check` | AC-10 generated docs | FACT exit code |
+| `cargo xtask build-guests --check; echo "exit=$?"` | guest freshness (manifest + `src/lib.rs` edits) | FACT exit code |
 | `cargo check --workspace --all-targets` | workspace compile gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
-
-Commands must have small, parseable output suitable for delegation.
+| `cargo xtask check-literals` | struct-literal churn gate (new test fixtures) | FACT exit code |
 
 ## Step Completion Expectations
 
-Only cross-step invariants: the manifest tables (Step 1) must land before the
-guard test (Step 1, same step) and before any wiring step reads the keys; both
-wiring steps (2 and 3) keep the default paths byte-identical (AC-2/3/4 identity
-clauses); Step 5's regeneration runs after the manifest is final. `process()`
-and `run_finalization` must stay behaviorally aligned (packet 257's dual-path
-rule). None beyond that.
+- The host export (Step 2) and the CONFIG_BLOCK correction (Step 3) must land in the same commit: exporting `filament_diameter` without the serializer correction emits a bare scalar and breaks OrcaSlicer's filament-count inference. AC-8 is the guard.
+- The manifest additions (Step 1) must precede the module wiring (Steps 4–6): `bind_module_config_view` filters to declared keys, so an undeclared key reads as absent and every non-default AC silently passes on the default branch.
+- After every step that touches `skirt-brim.toml` or `skirt-brim/src/lib.rs`, `cargo xtask build-guests --check` must return exit 0 before any host-integration or CONFIG_BLOCK test result is believed (CLAUDE.md Guest WASM Staleness).
 
 ## Context Discipline Notes
 
-- `docs/15_config_keys_reference.md` is generated and ~1000 lines — never load
-  it; verify via `--check` and targeted `rg` (AC-7).
-- `SkirtBrim` (`modules/core-modules/skirt-brim/src/lib.rs`) is ~420 lines —
-  workers may read it in full (it is the change surface), but `OrcaSlicerDocumented/`
-  reads stay delegated per the snippet.
-- Do not read `crates/slicer-gcode/src/serialize.rs` beyond the padding-entry
-  question; `ORCA_CONFIG_PADDING` is read-only context and must not be edited
-  (AC-6 pins the no-twins invariant).
-
-Packet-specific: none further.
+- The implementer reads `modules/core-modules/skirt-brim/src/lib.rs` in full (it is well under the 600-line ceiling) and `crates/slicer-ir/src/resolved_config.rs` / `crates/slicer-gcode/src/serialize.rs` only in located ±40-line windows around `to_config_map` and the synthetic-`filament_diameter` branch — both files are far over the ceiling.
+- Every cargo invocation is delegated with a FACT return; output tees to `target/test-output.log` and is read from disk, never re-run for more output.

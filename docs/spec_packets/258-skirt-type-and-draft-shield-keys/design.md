@@ -1,159 +1,127 @@
 # Design: skirt-type-and-draft-shield-keys
 
-## Controlling Code Paths
+## Tier Re-derivation
 
-- Primary code path: `modules/core-modules/skirt-brim/src/lib.rs` —
-  `SkirtBrim::from_config` (the six existing `config.get` reads), the live
-  `run_finalization` (span loop, brim gate, entity pushes via
-  `FinalizationOutputBuilder::push_entity_to_layer`), the test-only `process()`
-  arm, and the generators `generate_skirt_entities` / `generate_brim_entities` /
-  `make_rect_loop`.
-- Neighboring tests/fixtures:
-  `modules/core-modules/skirt-brim/tests/{slicer_module_binding_tdd,skirt_brim_tdd,finalization_live_tdd}.rs`
-  (`finalization_live_tdd.rs` is the live-path driver with the
-  `LayerCollectionView` + `FinalizationOutputBuilder` setup this packet's AC-2
-  arms reuse); guard-pattern source
-  `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs`
-  (parses the TOML directly; part-cooling's Cargo.toml carries the `toml = "0.8"`
-  dev-dependency skirt-brim will need).
-- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+**Tier B.** Map Authoring rule 1 requires a packet that builds a decision point to be re-tiered B or C. This packet builds five: shield span, per-layer loop count, start-corner rotation, per-object grouping with envelope merging, and extruded-length loop expansion. It is B rather than C because every new decision point lands inside one existing module's existing stage (`PostPass::LayerFinalization`) over data the module already receives; there is no new geometry service, no new stage, no new claim, and no new IR carrier.
+
+## Claims
+
+`skirt-brim`'s manifest declares `holds = []` / `requires = []`; it is stage-scheduled at `PostPass::LayerFinalization`, not claim-resolved. **No behaviour in this packet holds a claim, and none should.**
+
+Map Authoring rule 4's claim-holder trigger test asks whether the Orca enum selects between *separate implementations that must live in separate modules and be resolved through the claim seam*. It does not fire here:
+
+- `skirt_type` selects between two groupings of the *same* ring generator inside one module — the rule's own "module branching internally over a mode it implements itself" case, alongside `seam_position` / `support_style` / `wall_sequence`.
+- `draft_shield` and `single_loop_draft_shield` are span/count gates on that same generator.
+- `skirt_start_angle` and `min_skirt_length` are scalars, not algorithm selectors.
+
+There is no alternative skirt *algorithm* here for a community module to supply, so introducing a `claim:skirt` seam would add a resolution surface with exactly one possible holder — the opposite of what rule 4 is for.
+
+## Which existing mechanism carries the new data
+
+Every input this packet needs already reaches the module, or reaches it through a mechanism that already exists:
+
+| New data | Carrier | Status |
+| --- | --- | --- |
+| the five skirt keys | module manifest `[config.schema]` → `bind_module_config_view` (`crates/slicer-scheduler/src/execution_plan.rs`) → `ConfigView` | existing; the keys are module-owned, so they enter the source map through `ResolvedConfig`'s `extensions` merge |
+| per-object partitioning | `PrintEntity::region_key.object_id`, already on every entity returned by `LayerCollectionView::ordered_entities` (`crates/slicer-sdk/src/traits.rs`) | existing; **no new IR field** |
+| `layer_height`, `line_width` for `mm3_per_mm` | `ResolvedConfig::to_config_map` already exports both; `skirt-brim` already declares `line_width` and gains a `layer_height` declaration | existing |
+| `filament_diameter` for the filament cross-section | `ResolvedConfig::filament_diameter` **exists as a field** but is not exported by `ResolvedConfig::to_config_map`; this packet adds the export line, mirroring the existing `filament_density` export in the same function | one added map entry, **not** a new `ResolvedConfig` field, not an IR schema bump, not a WIT change |
+
+No `PostPass` claim, prepass IR field, `SliceRegionView` metadata field, or SDK trait method is added.
+
+## Selected Approach
+
+`SkirtBrim` grows five config-derived fields and its skirt emission is restructured into three composable stages, all inside `modules/core-modules/skirt-brim/src/lib.rs`:
+
+1. **Group.** A new `fn skirt_groups(&self, layers, span) -> Vec<BBox2D>`. Under `skirt_type = "combined"` it returns the single all-entity bbox `compute_bbox` produces today. Under `"perobject"` it buckets entities by `region_key.object_id` into per-object `BBox2D`s, then runs canonical's fixed point: grow each bbox by `grouping_offset = skirt_distance + skirt_loops * line_width`, union any two grown rects that intersect, repeat until no union occurs, and return the un-grown union bbox of each surviving group. Deterministic order: groups sorted by `(x_min, y_min)` so entity push order is stable regardless of `HashMap` iteration.
+2. **Expand.** A new `fn ring_count(&self, bbox) -> u32`. Returns `skirt_loops` when `min_skirt_length <= 0.0`. Otherwise accumulates `perimeter_i * self.e_per_mm()` over successive rings and returns the smallest count reaching the target, capped at `MAX_MIN_LENGTH_LOOPS`. `perimeter_i = 2 * ((w + 2*off_i) + (h + 2*off_i))` with `off_i = skirt_distance + i * line_width` — closed-form on the rect, so no polygon offsetting is needed. `e_per_mm` is a pure function of `line_width`, `layer_height`, `filament_diameter`.
+3. **Emit.** `generate_skirt_entities` takes the group bbox and the ring count, and additionally takes the layer's position in the span so it can apply `single_loop_draft_shield` (upper layers emit ring index 0 only) and `skirt_start_angle` (first layer, ring index 0 only). Start-corner rotation is applied by `fn rotate_rect_start(points, corner)`, which re-orders the four distinct rect vertices to begin at the selected corner and re-closes the loop — the point count stays 5 and the loop stays closed.
+
+The span itself is computed once in both `process` and `run_finalization`: `let span = if draft_shield_enabled && skirt_loops > 0 { layers.len() } else { (skirt_height as usize).min(layers.len()) };` — the port's direct analogue of `Print::has_infinite_skirt`.
+
+### Rejected alternative
+
+Emitting per-object skirts from the host (a new `PostPass` arm that re-runs `skirt-brim` per object) was rejected: it would put a per-object loop in the host for a decision the module can make from data it already holds, contradicting map Authoring rule 4's "new decision points go where the architecture puts them — not as host-side special cases".
+
+## Code Change Surface (authoritative files-in-scope)
+
+- `modules/core-modules/skirt-brim/skirt-brim.toml` — seven new `[config.schema.*]` tables (`skirt_type`, `min_skirt_length`, `skirt_start_angle`, `draft_shield`, `single_loop_draft_shield`, `filament_diameter`, `layer_height`).
+- `modules/core-modules/skirt-brim/src/lib.rs` — new struct fields + `from_config` arms; new `skirt_groups`, `ring_count`, `e_per_mm`, `rotate_rect_start`, `MAX_MIN_LENGTH_LOOPS`; span computation and group/ring threading in both `process` and `run_finalization`.
+- `modules/core-modules/skirt-brim/tests/skirt_config_schema_tdd.rs` — **new file** (manifest guard; parses the real `skirt-brim.toml`).
+- `modules/core-modules/skirt-brim/tests/skirt_brim_tdd.rs` — AC-4, AC-5, AC-6, AC-N1, AC-N2.
+- `modules/core-modules/skirt-brim/tests/finalization_live_tdd.rs` — AC-2, AC-3.
+- `modules/core-modules/skirt-brim/Cargo.toml` — add `toml = "0.8"` as a dev-dependency **if absent** (needed by the new schema guard).
+- `crates/slicer-ir/src/resolved_config.rs` — one `m.insert("filament_diameter", ConfigValue::Float(...))` line inside `ResolvedConfig::to_config_map`, placed next to the existing `filament_density` export.
+- `crates/slicer-gcode/src/serialize.rs` — the synthetic-`filament_diameter` branch in `serialize_config_block`: fire when the raw value is absent **or** is a non-`List` scalar, and build the comma-joined array from that scalar; plus its unit test.
+- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — AC-7 arm.
+- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — AC-9 arm.
+- `docs/15_config_keys_reference.md` — regenerated only, via `cargo xtask gen-config-docs`.
+
+## Read-only context (allowed reads, no edits)
+
+- `crates/slicer-sdk/src/traits.rs` — `LayerCollectionView::ordered_entities` / `layer_index` / `z`, and `FinalizationOutputBuilder::push_entity_to_layer`. Located windows only; the file is over the 600-line ceiling.
+- `crates/slicer-scheduler/src/execution_plan.rs` — `bind_module_config_view` and `source_key_matches_declared`, to confirm a module-declared host key resolves. Located window only.
+- `modules/core-modules/classic-perimeters/classic-perimeters.toml` — the existing precedent for a module declaring host-owned `layer_height` / `nozzle_diameter`.
+
+## Out of bounds (must not be loaded or edited)
+
+- `crates/slicer-gcode/src/serialize.rs`'s `ORCA_CONFIG_PADDING` table and every padding twin (map Authoring rule 2).
+- Any other packet directory under `docs/spec_packets/`, in particular `257a-brim-type-and-object-gap` and `257b-brim-ears`.
+- Any other core module under `modules/core-modules/`.
+- `crates/slicer-schema/wit/` — no WIT change is required and none is permitted here.
+- Generated `target/` artifacts, `docs/ORCA_CONFIG_REFERENCE.md`'s hand-maintained ✅/❌ column (never sized off; map Notes).
+
+## Expected Dispatches
+
+| Question | Scope | Return format |
+| --- | --- | --- |
+| Confirm `Print::_make_skirt`'s union-find merge criterion and the `grouping_offset` expression (only if a worker disputes `requirements.md`'s row) | `OrcaSlicerDocumented/src/libslic3r/Print.cpp` | SUMMARY ≤ 200 words |
+| Confirm `Skirt::find_start_point`'s target-point formula | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` | SUMMARY ≤ 200 words |
+| `docs/02_ir_schemas.md` §CONFIG_BLOCK — what the viewer requires of `filament_diameter` | that section only | SUMMARY ≤ 200 words |
+| Every `cargo test` / `cargo check` / `cargo clippy` / `cargo xtask` run in this packet | — | FACT pass/fail (+ ≤ 20 lines on failure) |
 
 ## Architecture Constraints
 
+<!-- snippet: coord-system -->
+**Coordinate system:** 1 unit = 100 nm (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Any constant ported from OrcaSlicer must be divided by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()` for conversions. Full porting checklist in `docs/08_coordinate_system.md`.
+
+Applies here twice: canonical's `grouping_offset` and loop `distance` are `scale_()`d, whereas `SkirtBrim` works in **plain mm floats** (`Point3WithWidth.x/y` are mm, as `generate_skirt_entities` already shows). Do not port `scale_` or any scaled literal into this module — every offset in the new code is mm. Likewise `unscale(loop.length())` in `append_skirt_loops_for_hull` has no analogue: the port's perimeter is already mm.
+
 <!-- snippet: wasm-staleness -->
-- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
-- snake_case config key strings only (repo convention): the five new keys and all `config.get` / `ConfigKey` strings are already snake_case by construction here.
-- `run_finalization` and the test-only `process()` stay behaviorally aligned: both must implement the three gates identically (packet 257 precedent — packet 246/247-era dual-path divergence is a recorded lesson).
+**Guest WASM staleness:** `skirt-brim.toml` and `skirt-brim/src/lib.rs` are guest-fingerprint inputs (`guest_input_paths`, `xtask/src/build_guests.rs`), so the guest artifact goes stale on every step in this packet. `cargo xtask build-guests --check` must return exit `0` (`EXIT_FRESH`) before any host-integration, CONFIG_BLOCK, or dispatch test result is attributed to this packet's code. Exit `1` means rebuild (drop `--check`) and re-run; exit `3` is a `wasm-tools`-missing infrastructure error and is **not** clean.
 
-## Code Change Surface
+**Config key naming:** all new keys are snake_case in both the manifest and every `config.get(...)` call (CLAUDE.md).
 
-- Selected approach: declare the five keys in the `skirt-brim` manifest with
-  canonical defaults/bounds; widen `SkirtBrim`'s config reads by three fields
-  (`draft_shield: bool`, `single_loop_draft_shield: bool`, `start_angle: f32`);
-  implement three gates on the existing generators: (1) span — when
-  `draft_shield` is enabled choose the layer span
-  `layers.len()` instead of `min(skirt_height, layers.len())`; (2) loop count —
-  when `single_loop_draft_shield` and `global_layer_index > 0`, generate exactly
-  the innermost loop instead of all `skirt_loops`; (3) start corner — when
-  `global_layer_index == 0`, rotate the first loop's point list so it begins at
-  the corner angularly nearest the canonical desired start point
-  (`find_start_point` analogue); leave `skirt_type`/`min_skirt_length` unread
-  (declared-with-gap).
-- Exact functions, traits, manifests, tests, and fixtures:
-  `skirt-brim.toml` `[config.schema]` + five tables; `SkirtBrim` struct + 3 new
-  fields; `from_config` + 3 new reads with fallback-to-default match arms
-  (tree-support-planner's enum-read pattern for the two enums — invalid values
-  fall back to the canonical default, host enum enforcement happens earlier at
-  resolve time, AC-5); `run_finalization` + span/count/corner gates;
-  `generate_skirt_entities` signature grows the layer-index condition and the
-  corner-rotation for the first loop; `make_rect_loop` + a point-list rotation
-  (rotate the 5-point closed ring, keep `first == last` closure invariant);
-  `process()` mirrors all three gates.
-- Rejected alternatives and reasons:
-  - *Rotation via path rotation metadata* — `ExtrusionPath3D` has no start-point
-    or rotation field; the loop is the point list, so the rotation must be the
-    literal ring rotation. Rejected alternative was emitting a rotated copy of
-    the ring (same result, more code).
-  - *Teaching the emitter mid-edge placement* (canonical seats the start point
-    on the perimeter, possibly mid-edge): the port's rect loops have only corner
-    vertices, so corner-nearest selection is the faithful port; mid-edge seating
-    would invent geometry the rect loop cannot carry. Recorded as a divergence.
-  - *Adding ORCA_CONFIG_PADDING twins* for the five keys — rejected: packet
-    254/255/257 precedent says module-manifest bool/int/float/enum defaults do
-    not thread into raw config; padding twins would emit five lines the port's
-    defaults cannot produce at runtime. AC-6 pins the honest absence.
-  - *Wiring `skirt_type`/`min_skirt_length` into the rect-loop generator* —
-    rejected: decision points don't exist here (per-object grouping, extruded
-    length); declaring them live would fake parity.
+**Blast radius — `to_config_map`:** adding a key to `ResolvedConfig::to_config_map` widens *two* consumers at once, because `crates/slicer-gcode/src/serialize.rs::resolved_config_to_map` and `crates/slicer-wasm-host/src/dispatch.rs::resolved_config_to_map` both delegate to it. The module-visibility widening is the intent; the CONFIG_BLOCK widening is the hazard AC-8 pins. The step that adds the export line owns both, and must run the `slicer-gcode` serialize tests and `gcode_header_thumbnail_config_blocks_tdd` in the same step — not leave them for a later `cargo check`.
 
-## Files in Scope (read + edit)
+**Blast radius — new struct fields:** `SkirtBrim` gains fields, so every `SkirtBrim { .. }` literal in the three test files must use a `..` rest or carry an `// exhaustive: <reason>` waiver (CLAUDE.md struct-literal churn gate, `docs/21_data_defaults_and_fixtures.md`). The tests construct through `SkirtBrim::from_config`, so this should be vacuous — the step that adds the fields must confirm it with `cargo xtask check-literals`, not assume it.
 
-- `modules/core-modules/skirt-brim/skirt-brim.toml` — role: owner manifest; expected change: +5 `[config.schema]` tables (AC-1).
-- `modules/core-modules/skirt-brim/src/lib.rs` — role: owner module; expected change: +3 config fields/reads, three gates in `run_finalization` + `process()` + generators, start-corner rotation helper (AC-2/3/4, AC-N1).
-- `modules/core-modules/skirt-brim/Cargo.toml` — role: dev-dep; expected change: +`toml = "0.8"` dev-dependency (guard test), add-if-absent.
-- `modules/core-modules/skirt-brim/tests/skirt_config_schema_tdd.rs` — role: net-new guard test (AC-1/N2); expected change: created.
-- `modules/core-modules/skirt-brim/tests/skirt_brim_tdd.rs` — role: module tests; expected change: +1 loop-count test, +1 start-corner test, +1 gap-keys-inert test, +1 default-identity test (AC-3/4/N1).
-- `modules/core-modules/skirt-brim/tests/finalization_live_tdd.rs` — role: live-path driver; expected change: +2 tests (span enabled/disabled identity) (AC-2).
-- `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs` — role: scheduler arm; expected change: +2 rejection tests against the real manifest (AC-5).
-- `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — role: CONFIG_BLOCK arm; expected change: +2 tests (explicit-value single emission; default absence) (AC-6).
-- `docs/15_config_keys_reference.md` — role: generated; expected change: regenerated via `cargo xtask gen-config-docs` (AC-7).
+**Test-binary suitability:** AC-2 and AC-3 assert behaviour of the *live* `run_finalization` path and are homed in `tests/finalization_live_tdd.rs`, which already drives that path through `LayerCollectionFixtureBuilder` + `FinalizationOutputBuilder`. AC-4/5/6 assert ring geometry and are homed in `tests/skirt_brim_tdd.rs`. Neither needs an end-to-end `run_slice` driver; AC-9 does, and is homed in the runtime integration binary that already has that setup.
 
-## Read-Only Context
+## Invariants
 
-- `crates/slicer-gcode/src/serialize.rs` - lines `490-560` only - purpose: `ORCA_CONFIG_PADDING` inventory (verify the five keys are absent; never edit).
-- `crates/slicer-ir` `ExtrusionPath3D` definition - purpose: `order_lock` field semantics (None preserves start invariance but does not govern start selection).
-- `modules/core-modules/seam-planner-default/seam-planner-default.toml` lines `27-33` - purpose: canonical enum-table form (`type = "enum"` + `values = [...]`).
-- `modules/core-modules/tree-support-planner/src/lib.rs` lines `226-234` - purpose: enum config-read pattern (invalid falls back to default).
+- **INV-1 (default identity).** With all five keys absent, the emitted entity sequence is byte-identical to pre-packet output. Pinned by AC-N1. This is an *additional* guarantee, never the sole evidence for any key (map Authoring rule 1).
+- **INV-2 (loop shape).** Every emitted skirt ring has exactly 5 points and `points.first() == points.last()`, before and after start-corner rotation. Pinned by AC-4.
+- **INV-3 (termination).** `ring_count` returns at most `MAX_MIN_LENGTH_LOOPS` regardless of `min_skirt_length`. Pinned by AC-N2. Canonical terminates instead on `offset` returning an empty polygon, which a rect grown outward never does — hence the explicit cap (D-258-3's sibling rationale, recorded in `requirements.md`).
+- **INV-4 (grouping determinism).** `skirt_groups` output order is independent of `HashMap` iteration order, so entity push order is reproducible across runs. Pinned inside AC-5's per-object assertion, which asserts the two ring sets by bbox identity in sorted order.
+- **INV-5 (tool identity).** Skirt and brim keep `tool_index = 0` and `region_id` stays a pure identity, never a tool selector (D-125-TOOL-IDENTITY-SPLIT). Per-object skirts keep the `"__skirt__"` object_id marker on their `RegionKey`; the grouping partition reads the *source* entities' `object_id` and never writes it back onto skirt entities.
+- **INV-6 (padding untouched).** `ORCA_CONFIG_PADDING` gains no entries and loses none. Pinned by AC-9.
 
-## Out-of-Bounds Files
+## Risks
 
-- `OrcaSlicerDocumented/...` - delegate; never load (sibling path `..\pinch_n_print_cli\OrcaSlicerDocumented`).
-- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
-- `crates/slicer-gcode/src/serialize.rs` `ORCA_CONFIG_PADDING` - read-only; must not gain or lose entries (AC-6).
-- Unrelated crates - delegate symbol lookups; do not browse.
-
-## Expected Sub-Agent Dispatches
-
-- Question: does the real-manifest bounds index reject an undeclared enum value / out-of-range float via `resolve_global_config`?; scope: `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`; return: `FACT`; purpose: Step 4.
-- Question: does the emitted CONFIG_BLOCK contain exactly one `; skirt_type = perobject` line for an explicit value, and zero lines for the five keys at defaults?; scope: `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`; return: `FACT`; purpose: Step 4.
-- Question: did `cargo xtask gen-config-docs --check` pass after regeneration and do the five keys appear?; scope: `docs/15_config_keys_reference.md` + xtask; return: `FACT`; purpose: Step 5.
-
-## Data and Contract Notes
-
-- IR/manifest contracts: the enum tables must use the in-tree form
-  `type = "enum"` + `values = [...]` + `default` (grounded:
-  `seam-planner-default.toml` `[config.schema.seam_position]`); bounds
-  enforcement is host-side generic via `ConfigBoundsIndex::from_modules` —
-  enum membership lands in `TypeMismatch` ("one of the manifest-declared enum
-  values"), numeric min/max in `ConfigResolutionError::OutOfRange`
-  (`resolve_global_config`, `crates/slicer-scheduler/src/config_resolution.rs`).
-- WIT boundary: none touched — no WIT/world changes; the five keys ride the
-  existing `ConfigView` string/int/float/bool plumbing.
-- Determinism/scheduler constraints: the start-corner rotation must be
-  deterministic pure geometry (bbox + angle → corner index), no float ambiguity
-  beyond the angle math itself; ties (angle exactly between two corners) fall
-  to the lower-index corner — pin this in the AC-4 test so the mapping is
-  total. The loop closure invariant `points.first == points.last` holds under
-  rotation (rotate the ring, re-append the first point as the closing point).
-  `skirt_height` is unchanged in the disabled case, so the pre-packet identity
-  holds exactly.
-
-## Locked Assumptions and Invariants
-
-- Default-path identity: with the five keys absent (or at canonical defaults),
-  module output and the emitted G-code are byte-identical to pre-packet
-  behavior (AC-2 disabled arm, AC-4 identity clause, AC-6 default arm, AC-N1).
-- `ORCA_CONFIG_PADDING` is untouched (AC-6).
-- The loop ring closure invariant (`first == last` point) survives rotation.
-- No deviation rows: all five manifest defaults are canonical-identical, and
-  the two declared-with-gap keys' defaults (0.0 / "combined") match canonical.
-- No WIT/IR schema changes.
-
-## Risks and Tradeoffs
-
-- Packet 257 merges first into the same manifest and `from_config`; a
-  same-module edit conflict is expected to be trivial (disjoint key sets and
-  disjoint field additions) — resolved by implementing 257 first (queue
-  ordering), with Step 1's `toml` dev-dep add-if-absent defending either order.
-- The start-corner wiring makes the first loop's start observable in final
-  G-code (verified at authoring: the emitter never rotates closed loops; path
-  optimization permutes whole entities only). Risk: a future seam-style
-  re-selection for skirt would silently undo the wiring's observability — the
-  AC-4 module-level pin remains the contract.
-- Declared-with-gap keys are honest-but-inert today; a future packet owning
-  per-object skirt grouping or the per-filament model consumes them (queue
-  rows, not this packet).
-
-## Context Cost Estimate
-
-- Aggregate: `M`
-- Largest step: `M` (Step 2-3 wiring, bounded module file ~420 lines)
-- Highest-risk dispatch and required return format: the AC-6 CONFIG_BLOCK arm — `FACT` (a wrong-home test binary would silently pass; the dispatch must confirm the binary's setup actually drives the block: `gcode_header_thumbnail_config_blocks_tdd.rs` has `run_slice`-adjacent setup at authoring time — 1040 lines, real pipeline driver).
+- **R-1 — CONFIG_BLOCK filament-count regression.** Exporting `filament_diameter` as a scalar without the serializer correction emits `; filament_diameter = 1.75` (one value), breaking OrcaSlicer's array-length filament-count inference for multi-tool G-code. Mitigation: the two edits are one commit; AC-8 asserts the comma-joined per-tool array explicitly and asserts the pre-packet hardcoded `1.75,1.75` is gone.
+- **R-2 — silent default-branch pass.** If a key is wired in `src/lib.rs` but missing from the manifest, `bind_module_config_view` filters it out, `config.get` returns `None`, and the non-default AC passes on the default branch while asserting nothing. Mitigation: Step 1 (manifest) precedes all wiring steps, and AC-1/AC-N3 guard the manifest against drift.
+- **R-3 — 257a/257b manifest collision.** Three packets now add tables to the same `skirt-brim.toml` and arms to the same `from_config`. Mitigation: land 257a/257b first (`packet.spec.md` §Prerequisites); all edits here are additive tables and additive arms, so the conflict is textual, not semantic.
+- **R-4 — guest staleness masking.** Every step here dirties the guest fingerprint; a stale guest fails typed instantiation and looks like an unrelated integration failure. Mitigation: `cargo xtask build-guests --check` exit-0 gate after every manifest/`lib.rs` step (Architecture Constraints).
+- **R-5 — perimeter closed form vs polygon length.** `ring_count` uses the rect perimeter closed form rather than summing segment lengths. It is exact for the port's rect loops and would silently diverge if D-258-1 is ever resolved to hull-offset geometry. Mitigation: recorded here; the closed form is a private helper, so a future hull packet replaces one function.
 
 ## Open Questions
 
-- `[FWD]` If packet 257's `brim_type` gate lands first and adds shared helper
-  structure to `from_config`, may this packet's Step 2 reuse it? Answer at
-  implementation time by reading the tree then-current state; either answer
-  changes no contract here.
-- No `[BLOCK]` questions.
+- **[FWD] Wipe-tower grouping obstacle.** Canonical adds the wipe tower's first-layer corners as a non-emitting grouping item so a per-object group touching the tower merges with it. Whether wipe-tower entities carry a stable `region_key.object_id` at `PostPass::LayerFinalization` was not verified at authoring. Forwarded to whichever packet establishes a wipe-tower object-identity contract; it does not gate any AC here, and `requirements.md` §Returned to Queue names it.
+- **[FWD] `filament_diameter` as a per-filament array.** Canonical's key is coFloats; this port flattens it (`extract_float_or_first`). Widening `ResolvedConfig` to a `Vec<f32>` would make D-258-3's per-extruder rotation portable, but it is a `ResolvedConfig` *shape* change and therefore out of this packet by its own constraint. Forwarded to the Tier-D per-filament model work the map already parks.
+
+**No [BLOCK].** This packet requires no new WIT interface, no IR schema version bump, and no new `ResolvedConfig` field.
+
+## Context Cost
+
+Aggregate: **M**. Per-step costs are in `implementation-plan.md`; no step is rated L.

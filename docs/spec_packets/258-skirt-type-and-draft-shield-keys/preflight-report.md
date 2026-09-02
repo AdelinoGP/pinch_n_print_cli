@@ -1,32 +1,42 @@
-# Preflight Report: 258-skirt-type-and-draft-shield-keys
+# Preflight Gate: 258-skirt-type-and-draft-shield-keys
 
-Reviewed: 2026-08-30 · Mode: --preflight · Symbol-inventory dispatched: 1 (in-tree key survey ×1, canonical read ×2, precedent survey ×1, start-point reachability ×1, canonical ordering ×1, S5/S7 sweep ×1)
-
-## Preflight Gate
+Reviewed: 2026-09-02 · Mode: `--preflight` · Symbol-inventory dispatched: 1 packet · Re-authored under map Authoring rules 1–6
 
 | Check | Result | Offending items (≤5) |
 |-------|--------|----------------------|
-| S0 Packet structure (5 files) | PASS | — |
-| S1 Prerequisite-status truth | PASS | deps are resolved wayfinder tickets (06/05/04) + packet 257 described as queue *ordering*, never claimed implemented |
-| S2 Deviation-ID conformance | PASS | no deviation IDs referenced or created; none of the 5 keys appears in `docs/DEVIATION_LOG.md` (dispatch-verified) |
-| S3 Schema-version computed | PASS | no schema/version constants touched |
-| S4 ADR slot allocation | PASS | no ADRs authored or referenced |
-| S5 Shipped-symbol existence/shape | PASS | `SkirtBrim::from_config` / `run_finalization` / `generate_skirt_entities` / `make_rect_loop` (modules/core-modules/skirt-brim/src/lib.rs); `FinalizationOutputBuilder::push_entity_to_layer` (crates/slicer-sdk traits.rs, arity 4); `ConfigBoundsIndex::from_modules`/`from_declarations`, `BoundsDeclaration{key,min,max,module_id}`, `ConfigResolutionError::{OutOfRange,TypeMismatch}` (crates/slicer-scheduler/src/config_resolution.rs) — all verified by dispatch |
-| S6 WIT/IR identifier drift | PASS | `ExtrusionRole::{Skirt,Brim}`, `RegionKey{global_layer_index,object_id,region_id,variant_chain}`, `LayerCollectionView` — verified in the module source |
-| S7 Test-target wiring | PASS | skirt-brim tests are file-per-binary (no aggregator); new files land as their own `--test` binaries; scheduler/runtime integration additions go into files already registered in `tests/integration/main.rs` (verified: `mod config_bounds_enforcement_tdd;`, runtime aggregator greps 1 hit) |
-| S8 ADR conformance | PASS | no ADR-governed surface (no IR/WIT/claim changes) |
-| (existing) AC runnable command | PASS | 7 ACs + 2 negatives, all pipe-suffixed; every `--test` binary verified to exist and drive the asserted behavior (`config_bounds_enforcement_tdd.rs` proves the real-manifest bounds pattern incl. enum `TypeMismatch`; `gcode_header_thumbnail_config_blocks_tdd.rs` drives `run_pipeline_with_raw_config` and asserts `; key = value` block lines) |
-| (existing) Doc Impact Statement | PASS | grep corrected during preflight — the generated doc has no per-module subheadings (verified against disk), so verification is key-presence `rg -q 'single_loop_draft_shield'` + `rg -q 'skirt_start_angle'`, matching packet 257's corrected form |
+| S0 Packet structure (5 files)     | PASS | all five present and non-empty (`packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, `task-map.md`) |
+| S1 Prerequisite-status truth      | PASS | 257a / 257b are cited as **ordering, not gating**, never as implemented deps; no packet is called implemented |
+| S2 Deviation-ID conformance       | PASS | live log format is `DEV-###` (rows `DEV-157`, `DEV-158`); no `D-258*` token exists in the log; the packet declares `D-258-*` as packet-local labels and has Step 9 re-derive real `DEV-###` IDs at write time |
+| S3 Schema-version computed        | PASS | no `*_SCHEMA_VERSION` is pinned; the packet states no IR schema bump is required |
+| S4 ADR slot allocation            | PASS | no new ADR authored; `docs/adr/` runs 0001–0063, untouched |
+| S5 Shipped-symbol existence/shape | PASS | verified in tree: `serialize_config_block` (private, `crates/slicer-gcode/src/serialize.rs`), `ORCA_CONFIG_PADDING`, `resolved_config_to_map` (both `slicer-gcode` and `slicer-wasm-host`), `guest_input_paths` (`xtask/src/build_guests.rs` — includes the module `.toml` and `src/`), `gen-config-docs --check`, `ResolvedConfig::filament_diameter` + `to_config_map`, `bind_module_config_view`, `SkirtBrim::{from_config, process, run_finalization, generate_skirt_entities, compute_bbox, make_rect_loop}`, `BBox2D`, `slicer_sdk::test_prelude::{print_entity, LayerCollectionFixtureBuilder}` |
+| S6 WIT/IR identifier drift        | PASS | no WIT change claimed; `PrintEntity.region_key`, `RegionKey.object_id`, `ConfigValue::{Float, List}`, `ExtrusionRole::{Skirt, Brim}`, `Point3WithWidth` all resolve |
+| S7 Test-target wiring             | PASS | `skirt-brim/tests/` has **no** aggregator `main.rs`, so the new `skirt_config_schema_tdd.rs` is a standalone binary needing no `mod` registration; `config_bounds_enforcement_tdd` and `gcode_header_thumbnail_config_blocks_tdd` are already registered in their `tests/integration/main.rs` aggregators |
+| S8 ADR conformance                | PASS | no ADR normatively governs skirt/brim generation or `to_config_map`'s exported key set (zero `to_config_map` hits across `docs/adr/`). ADR-0015 (ConfigView as the normalized prepass export) is the nearest governing ADR; the packet conforms — it adds a key to the existing resolved map rather than introducing a parallel export path |
+| (existing) AC runnable command    | PASS | all 10 ACs and all 3 negative cases end in a single runnable pipe-suffixed command; no `cargo test --workspace` appears as an AC command |
+| (existing) Doc Impact Statement   | PASS | `docs/15_config_keys_reference.md` named, generated-only, verified by AC-10 with a key-presence grep |
 
-## Corrections made during preflight
+### Blockers (S4/S5/S6)
 
-1. **Doc-Impact grep** originally referenced a nonexistent `^## skirt-brim` heading in the generated doc; re-probed `docs/15_config_keys_reference.md` on disk (modules are table rows with an owner column, no per-module headings), corrected the grep to key-presence in the Doc Impact Statement, AC-7, and implementation-plan Step 5.
-2. Transcription typos found and fixed by a whole-packet garbled-token scan (`OrcaSlider`, a path typo, one duplicated dispatch heading, two garbled placeholder bullets in implementation-plan Steps 3–4).
+None.
 
-## Accepted FORWARD-DEPs
+### High (S1/S2/S3/S7/S8)
 
-- None — packet depends only on resolved wayfinder tickets and queue ordering.
+None.
 
-## Verdict
+### Corrections applied during the gate
 
-**PREFLIGHT PASS** (0 blockers, 0 high)
+1. `docs/03_wit_and_manifest.md`'s section is `## Host-Boundary Access Enforcement (Normative)`, not "§host-boundary enforcement" — citations corrected in `packet.spec.md`, `requirements.md`, `implementation-plan.md`.
+2. `docs/DEVIATION_LOG.md` uses `DEV-###`, not `D-###-SLUG`. The packet's `D-258-*` tokens were re-declared as packet-local labels and Step 9 now re-derives real `DEV-###` IDs from the log at write time.
+3. `AC-1`'s key count corrected from six to seven (`layer_height` is also declared) and reconciled across all four files.
+
+### Accepted FORWARD-DEPs
+
+None. Both `[FWD]` items in `design.md` (wipe-tower grouping obstacle; per-filament `filament_diameter` array) are forwarded *out* of this packet and gate no AC here.
+
+### Map gates (wayfinder Authoring rule 6)
+
+- **(a) zero declaration-only keys** — **PASS.** All five keys build or drive a behaviour-changing decision point: `draft_shield` (span), `single_loop_draft_shield` (per-layer ring count), `skirt_start_angle` (start corner), `skirt_type` (per-object grouping + envelope merge), `min_skirt_length` (outward loop expansion). Zero keys are declared-with-gap; zero are returned; zero are dead-in-canonical.
+- **(b) non-default AC per key** — **PASS.** `draft_shield` = `"enabled"` (AC-2), `single_loop_draft_shield` = `true` (AC-3), `skirt_start_angle` = `45.0` (AC-4), `skirt_type` = `"perobject"` (AC-5), `min_skirt_length` = `20.0` (AC-6). AC-N1's default-path identity is an *additional* criterion, never the sole evidence for any key.
+
+**Verdict:** PREFLIGHT PASS (0 blockers, 0 high)
