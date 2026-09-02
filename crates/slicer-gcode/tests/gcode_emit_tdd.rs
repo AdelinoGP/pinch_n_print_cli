@@ -2036,6 +2036,10 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
         "verdict CONSISTENT: coarse applied height {h_coarse} mm vs declared plane delta 0.3 mm"
     );
     assert!(
+        (h_coarse - 0.30000004_f32).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs TASK-527 recorded applied-height constant 0.30000004 mm (the height term the emitter actually applied, not a re-derivation)"
+    );
+    assert!(
         (cumulative_e[1] - 0.8315034).abs() <= 1e-6,
         "verdict CONSISTENT: coarse cumulative E {} vs recorded 0.8315034",
         cumulative_e[1]
@@ -2043,6 +2047,10 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
     assert!(
         (h_object - 0.1).abs() <= 1e-6,
         "verdict CONSISTENT: following-object applied height {h_object} mm vs declared plane delta 0.1 mm"
+    );
+    assert!(
+        (h_object - 0.10000003_f32).abs() <= 1e-6,
+        "verdict CONSISTENT: following-object applied height {h_object} mm vs TASK-527 recorded applied-height constant 0.10000003 mm (the height term the emitter actually applied, not a re-derivation)"
     );
     assert!(
         (cumulative_e[2] - 0.9978041).abs() <= 1e-6,

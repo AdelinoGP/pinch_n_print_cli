@@ -137,8 +137,10 @@ design contract now, not implementer choices:
    available to both planner callers), compared in exact canonical units with
    `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if one is
    needed (no new epsilon) — bracket the demanded planes instead of consecutive support
-   rows, using the Q1 bracket rule above; where the predicate fails (pitch <
-   `local_support_gap`), the bracket keeps the existing 239c finer derivation. Between consecutive bracket planes of a
+   rows, using the Q1 bracket rule above. Interface brackets select only genuinely coarse
+   replacement ranges; every consecutive surviving-row pair not covered by such a range,
+   including pairs below or above the outer interface brackets, keeps the existing 239c
+   finer derivation. Between consecutive bracket planes of a
    `(object_id, region_id)` contiguous run, generate the stack by the **tree-family**
    canonical rule of `plan_layer_heights` (`TreeSupport.cpp`): `n = ceil(dist / pitch)`
    (main-body spacing; **no** EPSILON bias), `step = dist / n`, planes at
@@ -207,9 +209,9 @@ design contract now, not implementer choices:
    the fixture naturally expresses it: a run with exactly one genuine interface plane keeps
    that plane as a bracket (not demoted to body), per the Q1 sort/dedup refinement.** Plus
    a **finer-direction adaptive regression**
-   `adaptive_local_gap_stays_finer` (**NET-NEW test planned by this packet**, registered in
-   the existing `tree_family_tdd` target; post-implementation runnable — it does not exist
-   before Step 2 authors it): a run whose bracket-pair `local_support_gap` (the maximum
+   `adaptive_local_gap_stays_finer` (**NET-NEW test authored by this packet**, present in
+   the existing `tree_family_tdd` target and passing): a run whose bracket-pair
+   `local_support_gap` (the maximum
    positive anchor-Z difference between consecutive surviving support-bearing rows of the
    same `(object_id, region_id)` contiguous run covered by the bracket) exceeds
    the configured pitch keeps

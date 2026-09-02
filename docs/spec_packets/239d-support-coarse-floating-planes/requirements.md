@@ -190,8 +190,9 @@ Reference, never copy, criteria from `packet.spec.md`.
   constants), `AC-5` (guest freshness gate).
 - Negative: `AC-N1` (disabled reproduces the pre-change Z sequence exactly), `AC-N2` (finer
   direction unregressed — the 239c AC-1 test stays green), `AC-N3` (sentinel 0.0 stays
-  object pitch), `AC-N4` (**NET-NEW Step-2 test planned by this packet**, registered in the
-  existing `tree_family_tdd` target; adaptive finer-direction local gap (a bracket pair
+  object pitch), `AC-N4` (**NET-NEW Step-2 test authored by this packet**, present in the
+  existing `tree_family_tdd` target and passing; adaptive finer-direction local gap (a
+  bracket pair
   whose `local_support_gap` exceeds the configured pitch) stays finer —
   bracket-local coarse/finer selection by the binding predicate).
 - Cross-packet impact: `242-support-family-orca-closure` consumes the coarse-direction
@@ -211,7 +212,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- disabled_coarse_pitch_reproduces_baseline_z_sequence --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N1: disabled reproduces baseline | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- independent_support_layer_height_emits_support_row_off_object_grid --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N2: finer direction unregressed (239c AC-1) | FACT pass/fail |
 | `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N3: sentinel 0.0 stays object pitch | FACT pass/fail |
-| `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N4: adaptive local gap stays finer (bracket-local selection) — NET-NEW test planned by this packet, registered in the existing `tree_family_tdd` target; post-implementation runnable | FACT pass/fail |
+| `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- adaptive_local_gap_stays_finer --exact 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N4: adaptive local gap stays finer (bracket-local selection) — NET-NEW test authored by this packet, present and passing in the existing `tree_family_tdd` target | FACT pass/fail |
 | `cargo check --workspace --all-targets` | compile gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask check-literals` | struct-literal churn gate | FACT pass/fail |

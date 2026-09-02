@@ -397,6 +397,25 @@ pub fn coarse_support_pitch_emits_free_floating_extruding_rows() -> Result<(), S
                     continue;
                 }
                 qualifying_rows += 1;
+                // AC-1: an enabled-only row is only "free-floating" if it is
+                // numerically OFF the 0.2 mm object grid. The on-grid/off-grid
+                // discriminator is the contract tolerance converted through the
+                // shared units helper — the same cut
+                // `disabled_coarse_pitch_reproduces_baseline_z_sequence` applies.
+                let z_mm = z_line
+                    .strip_prefix(";Z:")
+                    .ok_or_else(|| format!("invalid Z line {z_line:?}"))?
+                    .parse::<f64>()
+                    .map_err(|error| format!("invalid Z line {z_line:?}: {error}"))?;
+                let grid_distance = (z_mm / 0.2 - (z_mm / 0.2).round()).abs() * 0.2;
+                let discriminator = slicer_ir::units_to_mm(
+                    slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS,
+                ) as f64;
+                if grid_distance <= discriminator {
+                    failures.push(format!(
+                        "{z_line} is on the 0.2 mm object grid (grid_distance={grid_distance} <= {discriminator})"
+                    ));
+                }
                 let e_values = support_block_e_values_after_z(&enabled, z_line);
                 if !e_values.iter().any(|value| *value > 0.0) {
                     failures.push(format!("{z_line} has no G1 E > 0; E values: {e_values:?}"));
@@ -459,7 +478,13 @@ pub fn disabled_coarse_pitch_reproduces_baseline_z_sequence() -> Result<(), Stri
             .parse::<f64>()
             .map_err(|error| format!("invalid Z line {z_line:?}: {error}"))?;
         let grid_distance = (z_mm / 0.2 - (z_mm / 0.2).round()).abs() * 0.2;
-        if grid_distance > 1e-3 {
+        let discriminator =
+            slicer_ir::units_to_mm(slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS)
+                as f64;
+        // units_to_mm(COORDINATE_TOLERANCE_UNITS) = 10 units × 1e-4 mm/unit = 1e-3 mm,
+        // so the contract-derived discriminator is bit-for-bit the previous 1e-3 —
+        // no new tolerance, just a named source for the on-grid/off-grid cut.
+        if grid_distance > discriminator {
             return Err(format!(
                 "disabled coarse run synthesized off-grid row {z_line}"
             ));
@@ -504,6 +529,13 @@ pub fn independent_support_layer_height_emits_support_row_off_object_grid() -> R
         .iter()
         .filter(|z| !disabled_z.contains(z))
         .collect();
+    if enabled_z.len() != 273 || enabled_only.len() != 123 {
+        return Err(format!(
+            "239c finer baseline changed: expected 273 distinct Z rows and 123 off-grid rows, got {} and {}",
+            enabled_z.len(),
+            enabled_only.len()
+        ));
+    }
     if enabled_only.is_empty() {
         return Err(
             "enabled run emitted no off-grid `;Z:` rows — the enabled set must be a STRICT \

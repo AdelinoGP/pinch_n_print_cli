@@ -197,10 +197,9 @@ guard on each command is what would catch it.
   off-grid planes") is preserved by the coarse derivation. |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- zero_pitch_sentinel_stays_object_grid --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-N4 (finer-direction adaptive local gap, bracket-local selection).** **NET-NEW
-  Step-2 test planned by this packet**, registered in the existing `tree_family_tdd` target
-  (`modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs`); the command below
-  is post-implementation runnable — until Step 2 authors it, the command's non-zero
-  matched-count guard correctly reports FAIL. No pre-existing test is claimed. **Given** a
+  Step-2 test authored by this packet**, present in the existing `tree_family_tdd` target
+  (`modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs`) and runnable —
+  the test is implemented and passing. No pre-existing test is claimed. **Given** a
   `LayerPlanView` with an `(object_id, region_id)` contiguous run whose bracket pair's
   `local_support_gap` (the maximum positive anchor-Z difference between consecutive
   surviving support-bearing rows of that same run covered by the bracket; these rows are
@@ -209,7 +208,9 @@ guard on each command is what would catch it.
   global pitch >= the
   object's base layer pitch, **when** the tree planner runs, **then** that bracket keeps the
   239c finer derivation (its rows stay at the finer spacing; no pitch-spaced coarse stack is
-  synthesized for it) — the binding predicate (coarse iff configured nonzero pitch >=
+  synthesized for it), and consecutive surviving-row pairs outside the outer interface
+  brackets retain that same derivation because brackets constrain only genuinely coarse
+  replacement — the binding predicate (coarse iff configured nonzero pitch >=
   `local_support_gap`, in exact canonical units with
   `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if needed,
   no new epsilon) is evaluated per bracket pair and never decided from
