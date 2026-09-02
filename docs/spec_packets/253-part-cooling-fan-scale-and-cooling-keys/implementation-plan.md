@@ -12,9 +12,9 @@
 ### Step 1: Baseline the byte contract and the conversion helper
 
 - Task IDs: none (queue packet P01).
-- Objective: pin today's emission bytes as the percent-normalization baseline and add the shared `percent_to_fan_s` helper with its exhaustive formula test (AC-2, AC-N3's 101-value sweep).
+- Objective: pin today's emission bytes as the percent-normalization baseline and add the **three** canonical converters — `percent_to_fan_s` = `floor(255.5 * p / 100)` (`GCodeWriter::set_fan`), `percent_to_additional_fan_s` = `trunc(255.0 * p / 100)` (`set_additional_fan`), `percent_to_exhaust_fan_s` = `trunc(p / 100.0 * 255)` (`set_exhaust_fan`) — each with its exhaustive 101-value formula test, plus a test asserting they disagree for at least one percent so a future collapse into one helper fails loudly (AC-2, AC-N3).
 - Precondition: clean tree; `cargo xtask build-guests --check` exit 0; `cargo test -p part-cooling` green before any edit.
-- Postcondition: `percent_to_fan_s` exists (module-private, `pub(crate)`-style visibility inside the guest crate), exhaustive test red-green complete; no behaviour change yet.
+- Postcondition: all three converters exist (module-private inside their guest crates; the exhaust one lives in `machine-gcode-emit`, the other two in `part-cooling` — they are not shared across crates and must not be extracted into a common crate by this packet), exhaustive tests red-green complete; no behaviour change yet.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/part-cooling/src/lib.rs` - full (176 lines)
   - `crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs` - full (~240 lines) — the byte contract to preserve
@@ -30,18 +30,18 @@
 - Authoritative docs:
   - `docs/specs/orca-feature-gap/issues/02-parity-evidence-standard.md` - full (~80 lines)
 - OrcaSlicer refs:
-  - `GCodeWriter.cpp::set_fan` conversion - delegate `SNIPPETS` re-verification of `255.5 * speed / 100.0`
+  - `GCodeWriter.cpp::set_fan`, `GCodeWriter.cpp::set_additional_fan`, `GCodeWriter.cpp::set_exhaust_fan` - delegate one `SNIPPETS` re-verification covering all three conversions; they use three different constants and must not be unified (DIV-B in `design.md`)
 - Verification:
   - `cargo test -p part-cooling --test cooling_curve_parity_tdd -- percent_to_s_conversion_matches_canonical_formula_exhaustively 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT pass/fail
   - `cargo test -p part-cooling 2>&1 | tee target/test-output.log | grep -E "^test result"` - pre-existing suite stays green (no behaviour change yet)
-- Exit condition: both commands pass with the new conversion helper compiled in and unused-by-decision-path.
+- Exit condition: both commands pass with the three converters compiled in and unused-by-decision-path.
 
-### Step 2: Manifest re-key to percent + the 11 new key declarations + co-declaration
+### Step 2: Manifest re-key to percent + the new key declarations in both owners
 
 - Task IDs: none (queue packet P01).
-- Objective: make the `part-cooling` manifest declare all 19 keys with Orca-parity defaults/bounds/enums; co-declare the 4 header/footer keys in `machine-gcode-emit`; update the module's schema test expectations (AC-1's declaration list).
+- Objective: make `part-cooling` declare its 15 P01 keys (2 re-keyed to percent, 13 new) plus the role base-speed keys Step 7 reads, and make `machine-gcode-emit` declare the 4 header/footer keys plus the supporting `chamber_temperature`. The four header/footer keys are declared **only** in `machine-gcode-emit` — `part-cooling` never reads them, and declaring them there would be the declaration-only disposition the map prohibits. Update both modules' schema test expectations (AC-1, AC-1b).
 - Precondition: Step 1 complete.
-- Postcondition: both manifests parse (`read_config_schema`); schema tests updated to the 19-key list; module source still compiles (it reads 4 keys, two of which changed scale — see Step 3 before running behavioural tests that assert S-values from defaults).
+- Postcondition: both manifests parse (`read_config_schema`); `part-cooling` declares 21 cooling keys plus its speed block and `machine-gcode-emit` declares 19; schema tests updated to those lists; module source still compiles (it reads 4 keys, two of which changed scale — see Step 3 before running behavioural tests that assert S-values from defaults).
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/part-cooling/part-cooling.toml` - full (89 lines)
   - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` - `[config.schema]` section only (delegated LOCATIONS for its line range first)
@@ -50,9 +50,10 @@
   - `modules/core-modules/part-cooling/part-cooling.toml`
   - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`
   - `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs`
+  (plus `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` if and only if its declaration-count assertion fails — a mechanical count update, no behaviour)
 - Files explicitly out of bounds:
   - `crates/slicer-gcode/src/serialize.rs` (`ORCA_CONFIG_PADDING` is hand-maintained; new keys reach the block via the raw-config passthrough — editing it is not authorized by this packet); any host crate.
-- Blast-radius discipline: the schema test file hard-asserts the 8 current keys and their defaults — this step rewrites its expectations for 19 keys; no other test parses the manifest tables (verified by the Step-1 LOCATIONS dispatch: schema tests are the only manifest readers). Manifest `[compatibility]`/`[ir-access]` sections untouched.
+- Blast-radius discipline: `cooling_config_schema_tdd.rs` hard-asserts the 8 current keys and their defaults — this step rewrites its expectations; `machine-gcode-emit`'s own schema assertions (in `machine_gcode_emit_tdd.rs`) hard-assert its 14 and must be re-derived to 19 in the same step. Re-derive both counts from the manifests on disk rather than trusting these numbers. Any other test that parses either manifest is found by the Step-1 LOCATIONS dispatch before editing. Manifest `[compatibility]`/`[ir-access]`/`[claims]` sections untouched — neither module gains or loses a claim.
 - Expected sub-agent dispatches: none (all inputs already grounded).
 - Context cost: `S`
 - Authoritative docs:
@@ -147,19 +148,17 @@
   - `cargo xtask build-guests --check; echo "exit=$?"`
 - Exit condition: new tests + whole module green; re-timing provably absent under default flags (Step-4 bytes unchanged).
 
-### Step 6: Auxiliary P2 channel, emission-reachability test, bounds/enum negatives
+### Step 6: Auxiliary P2 channel + bounds/enum negatives
 
 - Task IDs: none (queue packet P01).
-- Objective: implement the `auxiliary_fan`/`additional_cooling_fan_speed` P2 channel (AC-7); write the `machine-gcode-emit` placeholder-reachability test (AC-8); extend the scheduler bounds test for the new keys' rejection paths (AC-N1) and the leakage test (AC-N2).
+- Objective: implement the `auxiliary_fan`/`additional_cooling_fan_speed` P2 channel using `percent_to_additional_fan_s` (AC-7); extend the scheduler bounds test for the new keys' rejection paths (AC-N1) and the leakage test (AC-N2). The header/footer emission is Step 8, not this step.
 - Precondition: Steps 2–5 complete.
-- Postcondition: every AC from packet.spec.md is either implemented-and-tested or explicitly its docs-regen step; no `P2` line when `auxiliary_fan` false; bounds rejections fire.
+- Postcondition: the `M106 P2` channel emits `trunc(255.0 * p / 100)` and nothing at all when `auxiliary_fan` is false; bounds and enum rejections fire for the new keys in both owners.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/machine-gcode-emit/src/lib.rs` - lines `120-260`, `770-830` only
-  - `crates/slicer-scheduler/src/config_resolution.rs` - lines `200-340` (`check`, `check_value`, `check_scalar`)
-- Files allowed to edit (at most 3 per execution round; this step runs two sequenced rounds — **Round A**: `part-cooling/src/lib.rs` + `crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs` (P2 channel + AC-N2 leakage test); **Round B**: `machine-gcode-emit/tests/cooling_placeholder_reachability_tdd.rs` (new) + `crates/slicer-scheduler/tests/config_bounds_enforcement_tdd.rs` (verify this file's existing name before extending — if absent, the negative cases live in the nearest existing scheduler test file and the rename is recorded in the step's answer)):
+  - `crates/slicer-scheduler/src/config_resolution.rs` - located by symbol (`ConfigBoundsIndex::check` and its `check_value` / `check_scalar` helpers), not by line pin
+- Files allowed to edit (at most 3):
   - `modules/core-modules/part-cooling/src/lib.rs` (P2 channel)
-  - `modules/core-modules/machine-gcode-emit/tests/cooling_placeholder_reachability_tdd.rs` (new)
-  - `crates/slicer-scheduler/tests/config_bounds_enforcement_tdd.rs` (new negative cases — **verified**: `crates/slicer-scheduler/tests/` is flat at its root, so this file is its own `--test` binary exactly as AC-N1 names; no aggregator registration is needed)
+  - `crates/slicer-scheduler/tests/config_bounds_enforcement_tdd.rs` (new negative cases — verify this file's existing name before extending; if absent, the negative cases go in the nearest existing scheduler test file and the substitution is recorded in the step's answer. `crates/slicer-scheduler/tests/` is flat at its root, so the file is its own `--test` binary exactly as AC-N1 names it; no aggregator registration is needed)
   - `crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs` (AC-N2 leakage test appended)
 - Files explicitly out of bounds:
   - `crates/slicer-gcode/src/serialize.rs` (still read-only); host config-resolution *logic* (tests prove existing enforcement; if enforcement is genuinely missing for a declared enum, STOP and record `[FWD]` in the packet answer rather than patching the host — that is a contract change needing its own scope).
@@ -173,23 +172,83 @@
   - `GCode.cpp::_do_export` header/footer structure - already summarized in `requirements.md`; no re-read needed for this step.
 - Verification:
   - `cargo test -p part-cooling --test cooling_curve_parity_tdd -- auxiliary_fan_emits_p2_channel 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT
-  - `cargo test -p machine-gcode-emit 2>&1 | tee target/test-output.log | grep -E "^test result"` - reachability; FACT
   - `cargo test -p slicer-scheduler --test config_bounds_enforcement_tdd -- new_cooling_keys_bounds_enforced 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT
   - `cargo test -p slicer-runtime --test integration -- gcode_part_cooling_emission_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - FACT
   - `cargo xtask build-guests --check; echo "exit=$?"`
-- Exit condition: all five green.
+- Exit condition: all four green.
 
-### Step 7: Docs regeneration + literal-churn gate + workspace gates + packet close
+### Step 7: Layer-time slowdown stage + `dont_slow_down_outer_wall`
+
+- Task IDs: none (queue packet P01).
+- Objective: port canonical `CoolingBuffer::calculate_layer_slowdown` (fed by `CoolingBuffer::parse_layer_gcode`'s adjustability classification) into `PartCooling::run_finalization`, writing speeds through `FinalizationOutputBuilder::modify_entity` + `EntityMutation::SetSpeedFactor` (AC-10, AC-11). This is the step that makes `dont_slow_down_outer_wall`, `slow_down_for_layer_cooling`, `slow_down_layer_time`, and `slow_down_min_speed` read for the first time.
+- Precondition: Steps 1-6 complete. In particular Step 4's layer-time estimator exists as a named helper — this step **reuses** it and must not write a second one.
+- Postcondition: a layer whose estimate is below `slow_down_layer_time` receives `SetSpeedFactor` mutations reaching the target time; a layer above it receives zero mutations; `slow_down_for_layer_cooling = false` produces zero mutations at any layer time; `OuterWall` entities are excluded exactly when `dont_slow_down_outer_wall` is true; no emitted factor is below `(slow_down_min_speed / base_speed(role)).max(0.05)`.
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/overhang-classifier-default/src/lib.rs` - the private `base_speed` and `speed` helpers and the absolute-to-factor conversion feeding `EntityMutation::SetPointSpeedFactors`; read for shape only, they are crate-private and cannot be imported.
+  - `crates/slicer-ir/src/feedrate.rs` - `SPEED_KEYS` (the authoritative `*_speed` name list the manifest copied from in Step 2).
+  - `crates/slicer-gcode/src/emit.rs` - `DefaultGCodeEmitter::resolve_feedrate`: the role-to-base-speed match the guest helper mirrors, and the `0.05..=5.0` clamp.
+  - `docs/adr/0052-per-point-speed-factor-contract.md` - the upsert and clamp contract (short).
+- Files allowed to edit (at most 3):
+  - `modules/core-modules/part-cooling/src/lib.rs`
+  - `modules/core-modules/part-cooling/tests/layer_slowdown_parity_tdd.rs` (new)
+- Files explicitly out of bounds:
+  - `crates/slicer-gcode/**` and `crates/slicer-ir/**` — the clamp and the emitter's speed table are read, never changed. If the guest table and `SPEED_KEYS` genuinely disagree, STOP and record `[FWD]`; do not "fix" the host.
+  - `modules/core-modules/overhang-classifier-default/**` — read-only precedent; this packet does not touch the other finalization writer.
+- Blast-radius discipline: `PartCooling` gains config fields for the slowdown keys and the speed block; the struct is crate-private with a two-constructor surface, so the radius is this crate's test files. New test fixtures constructing IR structs must satisfy the struct-literal churn gate (`..` rest or an `// exhaustive: <reason>` waiver) — `cargo xtask check-literals` is run in Step 9 but a violation introduced here is this step's to fix.
+- Expected sub-agent dispatches:
+  - Question: quote canonical `CoolingBuffer::calculate_layer_slowdown`'s scaling loop and the `parse_layer_gcode` line that clears `adjust_external`; scope: sibling `OrcaSlicerDocumented/src/libslic3r/GCode/CoolingBuffer.cpp`; return: `SNIPPETS` (at most 2, 30 lines each); purpose: the scaling and exclusion semantics, re-verified rather than restated from this packet.
+  - Question: does any other module write `EntityMutation::SetSpeedFactor` or `SetPointSpeedFactors` at `PostPass::LayerFinalization`, and in what scheduled order relative to `part-cooling`; scope: `modules/core-modules/**`, `crates/slicer-scheduler/**`; return: `LOCATIONS`; purpose: the composition risk in `design.md` §Risks — a per-point profile written by another module shadows a whole-entity factor for that entity.
+- Context cost: `M`
+- Authoritative docs:
+  - `docs/adr/0052-per-point-speed-factor-contract.md` - upsert semantics and the host-side clamp.
+- OrcaSlicer refs:
+  - `CoolingBuffer.cpp::calculate_layer_slowdown` and `CoolingBuffer.cpp::parse_layer_gcode` - delegated per the dispatch above.
+- Verification:
+  - `cargo test -p part-cooling --test layer_slowdown_parity_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - AC-10 + AC-11; FACT
+  - `cargo test -p part-cooling 2>&1 | tee target/test-output.log | grep -E "^test result"` - no regression in the fan suite; FACT
+  - `cargo test -p slicer-runtime --test integration -- gcode_part_cooling_emission_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - default-config emission unchanged (both slowdown bools default off); FACT
+  - `cargo xtask build-guests --check; echo "exit=$?"` - fresh after source edit
+- Exit condition: all four green, and the composition dispatch has returned — if another module writes per-point profiles to the same entities, the step's answer records how the two carriers compose before the step closes.
+
+### Step 8: Header/footer emission in `machine-gcode-emit`
+
+- Task IDs: none (queue packet P01).
+- Objective: synthesize the canonical chamber-temperature and exhaust-fan lines at the `PrintStart` and `PrintEnd` injection sites (AC-1b, AC-8, AC-8b, AC-8c), including the `custom_gcode_sets_temperature` suppression check.
+- Precondition: Step 2 complete (the five keys are declared in `machine-gcode-emit.toml`). Independent of Steps 3-7 — it touches a different crate and may run in parallel with them.
+- Postcondition: with both bools false (the defaults) the emitted stream is byte-identical to today's; with them on, the four lines appear in canonical order — `M191` before the rendered start template, `M106 P3` last in the start group, `M141 S0` then `M106 P3` after the rendered end template.
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/machine-gcode-emit/src/lib.rs` - located by symbol: `INJECTION_POINTS`, `InjectionSite`, `run_gcode_postprocess`, `substitute_placeholders`, `site_lookup`, `reemit_command` (the existing non-template `Raw` write, the `ExtrusionMode` to `M82`/`M83` bridge).
+  - `crates/slicer-sdk/src/postpass_builders.rs` - `GcodeOutputBuilder` push methods available for a synthesized `Raw` line.
+- Files allowed to edit (at most 3):
+  - `modules/core-modules/machine-gcode-emit/src/lib.rs`
+  - `modules/core-modules/machine-gcode-emit/tests/exhaust_and_chamber_emission_tdd.rs` (new)
+  - `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` (only if its stream assertions need the default-path identity restated; expectations for default config must NOT change)
+- Files explicitly out of bounds:
+  - `modules/core-modules/part-cooling/**` (the four keys are not its business), every host crate, `crates/slicer-gcode/src/serialize.rs`.
+- Blast-radius discipline: the module re-emits the whole command stream today, so an omitted command is a dropped command. Any new emission must be additive at a named site; the existing tests that assert the full default stream are the regression pin and must pass unmodified except for a declaration count.
+- Expected sub-agent dispatches:
+  - Question: quote canonical `GCodeWriter::set_exhaust_fan` and `GCodeWriter::set_chamber_temperature` verbatim, plus the static helper `custom_gcode_sets_temperature`; scope: sibling `OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp` and `GCode.cpp`; return: `SNIPPETS` (at most 3, 30 lines each); purpose: exact command text, scaling, and the suppression scan, re-verified at implementation time.
+- Context cost: `S`
+- Authoritative docs: none new.
+- OrcaSlicer refs:
+  - `GCodeWriter.cpp::set_exhaust_fan`, `GCodeWriter.cpp::set_chamber_temperature`, `GCode.cpp::_do_export`, `GCode.cpp::custom_gcode_sets_temperature` - delegated per the dispatch above.
+- Verification:
+  - `cargo test -p machine-gcode-emit --test exhaust_and_chamber_emission_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - AC-1b, AC-8, AC-8b, AC-8c; FACT
+  - `cargo test -p machine-gcode-emit 2>&1 | tee target/test-output.log | grep -E "^test result"` - default-stream regression pin; FACT
+  - `cargo xtask build-guests --check; echo "exit=$?"` - fresh after source edit
+- Exit condition: all three green, and the default-config stream is provably unchanged (the negative half of AC-8/AC-8b).
+
+### Step 9: Docs regeneration + literal-churn gate + workspace gates + packet close
 
 - Task IDs: none (queue packet P01).
 - Objective: regenerate `docs/15_config_keys_reference.md`, run the commit gates, verify AC-9's greps, and reconcile any residual deviation-row fallout.
-- Precondition: Steps 1–6 complete.
+- Precondition: Steps 1-8 complete.
 - Postcondition: all Verification commands green; AC-9's greps pass; the packet is `implemented`-ready (status flip is a swarm-closure act, not this step's).
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/15_config_keys_reference.md` - grep only (generated; never reads as prose)
 - Files allowed to edit (at most 3):
   - `docs/15_config_keys_reference.md` (via `cargo xtask gen-config-docs`, never by hand)
-  - `docs/01_project_overview.md` (only if its fan-scale prose names raw 0–255)
+  - any `docs/*.md` whose fan-scale prose names raw 0–255 (none does today — re-derive before editing)
 - Files explicitly out of bounds:
   - `docs/ORCA_CONFIG_REFERENCE.md` (snapshot reference; the map's Notes forbid editing/sizing off it); `docs/DEVIATION_LOG.md` (a row is filed only after the human signs off per ticket 02 — surface, never file, in this packet); every other `docs/spec_packets/**`.
 - Expected sub-agent dispatches:
@@ -210,13 +269,15 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | S | baseline bytes + conversion helper |
+| Step 1 | S | baseline bytes + the three canonical converters |
 | Step 2 | S | manifests + schema tests + guest freshness |
 | Step 3 | S | percent normalization, output-neutral |
 | Step 4 | M | curve port + invariant suite (deepest step) |
 | Step 5 | M | threshold + re-timing |
-| Step 6 | M | P2 channel + reachability + negatives |
-| Step 7 | S | docs regen + gates |
+| Step 6 | M | P2 channel + bounds/enum negatives |
+| Step 7 | M | layer-time slowdown stage + outer-wall exclusion |
+| Step 8 | S | header/footer emission in machine-gcode-emit |
+| Step 9 | S | docs regen + gates |
 
 Aggregate: `M` (within the `M` estimate in `packet.spec.md`; no step is `L`).
 
