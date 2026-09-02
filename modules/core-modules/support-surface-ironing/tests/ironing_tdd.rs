@@ -31,7 +31,7 @@ fn config_with(entries: Vec<(&str, ConfigValue)>) -> ConfigView {
 
 /// Create an enabled config with optional overrides.
 fn enabled_config() -> ConfigView {
-    config_with(vec![("ironing_enabled", ConfigValue::Bool(true))])
+    config_with(vec![("support_ironing", ConfigValue::Bool(true))])
 }
 
 /// Build a SliceRegionView with a 10mm square slice polygon at the given z.
@@ -52,7 +52,7 @@ fn region_with_square_at_z(z: f32) -> SliceRegionView {
 fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
-    assert!(!module.enabled());
+    assert!(!module.support_ironing());
     assert!((module.ironing_speed() - 15.0).abs() < 0.001);
     assert!((module.support_ironing_flow() - 0.1).abs() < 0.001);
     assert!((module.support_ironing_spacing() - 0.1).abs() < 0.001);
@@ -61,14 +61,14 @@ fn from_config_defaults() {
 #[test]
 fn from_config_custom() {
     let config = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("support_ironing_flow", ConfigValue::Float(0.2)),
         ("support_ironing_spacing", ConfigValue::Float(0.15)),
         ("line_width", ConfigValue::Float(0.5)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
-    assert!(module.enabled());
+    assert!(module.support_ironing());
     assert!((module.ironing_speed() - 20.0).abs() < 0.001);
     assert!((module.support_ironing_flow() - 0.2).abs() < 0.001);
     assert!((module.support_ironing_spacing() - 0.15).abs() < 0.001);
@@ -78,6 +78,30 @@ fn from_config_custom() {
 #[test]
 fn disabled_no_paths() {
     let config = ConfigView::from_map(HashMap::new());
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
+    let region = region_with_square_at_z(1.0);
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support_postprocess(0, &[region], &mut output, &config)
+        .unwrap();
+    assert!(output.support_paths().is_empty());
+}
+
+#[test]
+fn explicit_false_no_paths() {
+    let config = config_with(vec![("support_ironing", ConfigValue::Bool(false))]);
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
+    let region = region_with_square_at_z(1.0);
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support_postprocess(0, &[region], &mut output, &config)
+        .unwrap();
+    assert!(output.support_paths().is_empty());
+}
+
+#[test]
+fn legacy_ironing_enabled_is_not_a_support_gate() {
+    let config = config_with(vec![("ironing_enabled", ConfigValue::Bool(true))]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = SupportOutputBuilder::new();
@@ -152,7 +176,7 @@ fn paths_at_correct_z() {
 #[test]
 fn flow_rate_applied() {
     let config = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("support_ironing_flow", ConfigValue::Float(0.15)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
@@ -177,7 +201,7 @@ fn flow_rate_applied() {
 fn spacing_affects_density() {
     // Narrow spacing => more paths
     let config_narrow = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("support_ironing_spacing", ConfigValue::Float(0.1)),
     ]);
     let module_narrow = SupportSurfaceIroning::from_config(&config_narrow).unwrap();
@@ -189,7 +213,7 @@ fn spacing_affects_density() {
 
     // Wide spacing => fewer paths
     let config_wide = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("support_ironing_spacing", ConfigValue::Float(0.4)),
     ]);
     let module_wide = SupportSurfaceIroning::from_config(&config_wide).unwrap();
@@ -210,7 +234,7 @@ fn spacing_affects_density() {
 #[test]
 fn width_matches_config() {
     let config = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("line_width", ConfigValue::Float(0.4)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
@@ -238,7 +262,7 @@ fn rectilinear_pattern() {
     // and all scan lines should share the same Y direction (horizontal lines
     // means all points in a path have the same Y).
     let config = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("support_ironing", ConfigValue::Bool(true)),
         ("support_ironing_spacing", ConfigValue::Float(0.5)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();

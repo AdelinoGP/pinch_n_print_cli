@@ -3695,6 +3695,7 @@ dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
+ "toml 0.8.23",
  "wit-bindgen 0.60.0",
 ]
 

@@ -44,7 +44,7 @@ fn support_plan() -> SupportPlanIR {
 fn integrated_parity_support_surface_ironing() {
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (
-            "ironing_enabled".to_string(),
+            "support_ironing".to_string(),
             slicer_ir::ConfigValue::Bool(true),
         ),
         (

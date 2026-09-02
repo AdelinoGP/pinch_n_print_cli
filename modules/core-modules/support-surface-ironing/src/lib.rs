@@ -33,7 +33,7 @@ const BASE_SPEED: f32 = 50.0;
 /// Produces low-flow rectilinear scan lines over top surfaces (infill areas
 /// from perimeter regions) to smooth them, using `ExtrusionRole::Ironing`.
 pub struct SupportSurfaceIroning {
-    enabled: bool,
+    support_ironing: bool,
     ironing_speed: f32,
     support_ironing_flow: f32,
     support_ironing_spacing: f32,
@@ -41,9 +41,9 @@ pub struct SupportSurfaceIroning {
 }
 
 impl SupportSurfaceIroning {
-    /// Whether ironing is enabled.
-    pub fn enabled(&self) -> bool {
-        self.enabled
+    /// Whether support-surface ironing is enabled.
+    pub fn support_ironing(&self) -> bool {
+        self.support_ironing
     }
 
     /// Ironing speed in mm/s.
@@ -173,7 +173,7 @@ impl SupportSurfaceIroning {
 #[slicer_module]
 impl LayerModule for SupportSurfaceIroning {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("ironing_enabled") {
+        let support_ironing = match config.get("support_ironing") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
@@ -200,7 +200,7 @@ impl LayerModule for SupportSurfaceIroning {
         };
 
         Ok(Self {
-            enabled,
+            support_ironing,
             ironing_speed,
             support_ironing_flow,
             support_ironing_spacing,
@@ -215,7 +215,7 @@ impl LayerModule for SupportSurfaceIroning {
         output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if !self.enabled {
+        if !self.support_ironing {
             return Ok(());
         }
 
@@ -269,7 +269,7 @@ mod tests {
     fn from_config_defaults() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = SupportSurfaceIroning::from_config(&config).unwrap();
-        assert!(!module.enabled);
+        assert!(!module.support_ironing);
         assert!((module.ironing_speed - 15.0).abs() < 0.001);
         assert!((module.support_ironing_flow - 0.1).abs() < 0.001);
         assert!((module.support_ironing_spacing - 0.1).abs() < 0.001);
