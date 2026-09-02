@@ -1,12 +1,12 @@
 ---
 status: draft
-packet: top-surface-ironing-keys
+packet: 266-top-surface-ironing-keys
 task_ids: []
 backlog_source: docs/specs/orca-feature-gap/issues/21-author-packet-p14-quality-ironing-top-surface-ironing.md (wayfinder map: Close the OrcaSlicer FFF feature gap)
 context_cost_estimate: M
 ---
 
-# Packet Contract: top-surface-ironing-keys
+# Packet Contract: 266-top-surface-ironing-keys
 
 ## Goal
 
@@ -14,7 +14,7 @@ Replace top-surface-ironing's legacy `ironing_enabled` gate with the canonical `
 
 ## Scope Boundaries
 
-This packet changes the top-surface-ironing manifest and module, top-owned tests and configuration fixtures, scheduler bounds coverage, the existing CONFIG_BLOCK integration coverage, and the generated config reference. It preserves the existing support-surface-ironing `ironing_enabled` gate because canonical support ironing consumes `support_ironing`; that independent support migration belongs to [22 - Author packet P15 - Support / Support ironing - support-surface-ironing](../specs/orca-feature-gap/issues/22-author-packet-p15-support-support-ironing-support-surface-ironing.md), not this packet. No IR, WIT, host `ResolvedConfig` field, or new CONFIG_BLOCK padding key is required.
+This packet changes the top-surface-ironing manifest and module, top-owned tests and configuration fixtures, scheduler bounds coverage, and the generated config reference. It does **not** touch `ORCA_CONFIG_PADDING` or any CONFIG_BLOCK twin: under the map's Authoring rule 2 the padding table is not evidence and is never a deliverable, so no AC, step, or file in this packet reads or edits it. It preserves the existing support-surface-ironing `ironing_enabled` gate because canonical support ironing consumes `support_ironing`; that independent support migration belongs to [22 - Author packet P15 - Support / Support ironing - support-surface-ironing](../specs/orca-feature-gap/issues/22-author-packet-p15-support-support-ironing-support-surface-ironing.md), not this packet. No IR, WIT, or host `ResolvedConfig` field is required.
 
 ## Prerequisites and Blockers
 
@@ -24,12 +24,12 @@ This packet changes the top-surface-ironing manifest and module, top-owned tests
 
 ## Acceptance Criteria
 
-- **AC-1. Given** `modules/core-modules/top-surface-ironing/top-surface-ironing.toml`, **when** its `[config.schema]` is parsed, **then** it contains `ironing_type` as an enum with values `['no ironing', 'top', 'topmost', 'solid']` and default `'no ironing'`, `ironing_angle` as a float with default `0.0`, min `0.0`, max `359.0`, `ironing_angle_fixed` as a bool with default `false`, and `ironing_inset` as a float with default `0.0`, min `0.0`, max `100.0`; each has a `display` and `group = 'TopSurface'`, and the top manifest no longer declares `ironing_enabled`. | `cargo test -p top-surface-ironing --test top_surface_ironing_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E '^test result'`
+- **AC-1. Given** `modules/core-modules/top-surface-ironing/top-surface-ironing.toml`, **when** its `[config.schema]` is parsed, **then** it contains `ironing_type` as an enum with values `['no ironing', 'top', 'topmost', 'solid']` and default `'no ironing'`, `ironing_angle` as a float with default `0.0`, min `0.0`, max `359.0`, `ironing_angle_fixed` as a bool with default `false`, and `ironing_inset` as a float with default `0.0`, min `0.0`, max `100.0`; each has a `display` and `group = 'TopSurface'`; the manifest additionally declares `infill_direction` (float, default `45.0`, min `0.0`, max `360.0`, `group = 'Infill'`) byte-identical to the table `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` already carries, because AC-3's base angle reads it and `ConfigView::from_declared` hides undeclared keys — it is a supporting input, not a fifth P14 key; and the top manifest no longer declares `ironing_enabled`. | `cargo test -p top-surface-ironing --test top_surface_ironing_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E '^test result'`
 - **AC-2. Given** `SliceRegionView` fixtures with top, bottom, and internal solid fills, **when** `TopSurfaceIroning::run_infill` receives each `ironing_type`, **then** `no ironing` emits no paths, `topmost` emits only a region with `top_shell_index() == Some(0)`, `top` also emits deeper top-shell regions, and `solid` emits the available top/bottom/internal solid fills while excluding bridge-only regions; every emitted path has `ExtrusionRole::Ironing`. | `cargo test -p top-surface-ironing --test top_surface_ironing_emission_tdd ironing_type 2>&1 | tee target/test-output.log | grep -E '^test result'`
-- **AC-3. Given** a square top fill and a layer index, **when** `ironing_angle` and `ironing_angle_fixed` are varied, **then** a fixed 90-degree angle produces vertical scan segments, a non-fixed angle uses the deterministic layer-index base turn plus the configured degree offset, and the default layer-0 angle preserves the horizontal baseline; when `ironing_inset = 1.0`, all emitted points remain inside the one-millimetre inward offset, while `ironing_inset = 0.0` uses the module's half-`IRONING_LINE_WIDTH` effective inset. | `cargo test -p top-surface-ironing --test top_surface_ironing_emission_tdd ironing_angle 2>&1 | tee target/test-output.log | grep -E '^test result'` and `cargo test -p top-surface-ironing --test top_surface_ironing_emission_tdd ironing_inset 2>&1 | tee target/test-output.log | grep -E '^test result'`
-- **AC-4. Given** the real top-surface-ironing manifest is loaded into `ConfigBoundsIndex`, **when** global configuration resolves, **then** `ironing_type = 'sideways'`, `ironing_angle = -1.0`, and `ironing_inset = -1.0` are rejected with the existing enum `TypeMismatch` or numeric `OutOfRange` errors, while `ironing_type = 'topmost'`, `ironing_angle = 359.0`, and `ironing_inset = 100.0` resolve successfully. | `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd 2>&1 | tee target/test-output.log | grep -E '^test result'`
-- **AC-5. Given** a runtime slice with explicit raw values for `ironing_type`, `ironing_angle`, `ironing_angle_fixed`, and `ironing_inset`, **when** the CONFIG_BLOCK is serialized, **then** each exact `; key = value` line appears once, the user `ironing_type` value replaces the existing padded `no ironing` line rather than duplicating it, and no new padding/default entry is added for the three other keys. | `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks_tdd 2>&1 | tee target/test-output.log | grep -E '^test result'`
-- **AC-6. Given** the manifests are final, **when** `cargo xtask gen-config-docs` regenerates `docs/15_config_keys_reference.md`, **then** the generated module table contains the four top-surface-ironing keys under the top owner, omits the removed top-owner `ironing_enabled` row, and the existing support-surface-ironing `ironing_enabled` row remains present; the generated deviation section gains no P14 row. | `cargo xtask gen-config-docs --check && rg -q 'ironing_type' docs/15_config_keys_reference.md && rg -q 'ironing_angle_fixed' docs/15_config_keys_reference.md && rg -q 'support-surface-ironing.*ironing_enabled|ironing_enabled.*support-surface-ironing' docs/15_config_keys_reference.md`
+- **AC-3. Given** a square top fill and `infill_direction = 30.0`, **when** `ironing_angle_fixed = false` and `ironing_angle = 15.0`, **then** the emitted scan segments run at 45 degrees — the canonical base-plus-offset rule, with the base read from the same `infill_direction` key `rectilinear-infill` and `gyroid-infill` already read as their fill base angle; **when** `ironing_angle_fixed = true` and `ironing_angle = 90.0`, the segments run vertically regardless of `infill_direction`, and changing `infill_direction` to 30.0 or 0.0 does not move them. The two configurations produce different segment directions for the same polygon. | `cargo test -p top-surface-ironing --test top_surface_ironing_emission_tdd ironing_angle 2>&1 | tee target/test-output.log | grep -E '^test result'`
+- **AC-3b. Given** a square top fill, **when** `ironing_inset = 1.0`, **then** every emitted point lies inside the one-millimetre inward offset of the source polygon and at least one point of the un-inset run lies outside it (so the assertion cannot pass on an unchanged geometry); **when** `ironing_inset = 0.0`, the module uses its half-`IRONING_LINE_WIDTH` effective inset, matching canonical `Layer::make_ironing`'s zero-maps-to-half-nozzle rule. | `cargo test -p top-surface-ironing --test top_surface_ironing_emission_tdd ironing_inset 2>&1 | tee target/test-output.log | grep -E '^test result'`
+- **AC-4. Given** the real top-surface-ironing manifest is loaded into `ConfigBoundsIndex`, **when** global configuration resolves, **then** `ironing_type = 'sideways'`, `ironing_angle = -1.0`, and `ironing_inset = -1.0` are rejected with the existing `slicer_ir::resolved_config::ConfigResolutionError` variants `TypeMismatch` (enum) and `OutOfRange` (numeric) — the enum is defined in `crates/slicer-ir/src/resolved_config.rs`, not in the scheduler crate that raises it, while `ironing_type = 'topmost'`, `ironing_angle = 359.0`, and `ironing_inset = 100.0` resolve successfully. | `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement_tdd 2>&1 | tee target/test-output.log | grep -E '^test result'`
+- **AC-5. Given** the manifests are final, **when** `cargo xtask gen-config-docs` regenerates `docs/15_config_keys_reference.md`, **then** the generated module table contains the four top-surface-ironing keys under the top owner, omits the removed top-owner `ironing_enabled` row, and the existing support-surface-ironing `ironing_enabled` row remains present; the generated deviation section gains no P14 row. | `cargo xtask gen-config-docs --check && rg -q 'ironing_type' docs/15_config_keys_reference.md && rg -q 'ironing_angle_fixed' docs/15_config_keys_reference.md && rg -q 'support-surface-ironing.*ironing_enabled|ironing_enabled.*support-surface-ironing' docs/15_config_keys_reference.md`
 
 ## Negative Test Cases
 
@@ -43,7 +43,6 @@ This packet changes the top-surface-ironing manifest and module, top-owned tests
 
 ## Authoritative Docs
 
-- `docs/02_ir_schemas.md` - delegated summary of the CONFIG_BLOCK contract; it governs exact-once raw-key emission and padding behavior.
 - `docs/03_wit_and_manifest.md` - delegated summary of `[config.schema]` enum, float, and bool forms and host-enforced bounds.
 - `docs/08_coordinate_system.md` - direct geometry-unit contract; mm configuration values must cross into scaled polygon operations through the existing helpers.
 - `docs/15_config_keys_reference.md` - generated output; regenerated and checked, never hand-edited.
@@ -51,7 +50,7 @@ This packet changes the top-surface-ironing manifest and module, top-owned tests
 
 ## Doc Impact Statement (Required)
 
-- `docs/15_config_keys_reference.md` generated module-key table - regenerated by `cargo xtask gen-config-docs`; verify with `rg -q 'ironing_type' docs/15_config_keys_reference.md`, `rg -q 'ironing_angle_fixed' docs/15_config_keys_reference.md`, and the AC-6 support-owner preservation grep. No hand edit is allowed.
+- `docs/15_config_keys_reference.md` generated module-key table - regenerated by `cargo xtask gen-config-docs`; verify with `rg -q 'ironing_type' docs/15_config_keys_reference.md`, `rg -q 'ironing_angle_fixed' docs/15_config_keys_reference.md`, and the AC-5 support-owner preservation grep. No hand edit is allowed.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
