@@ -697,34 +697,42 @@ impl SupportPlanner {
                 }
             }
             for run in runs {
-                let mut interfaces: Vec<usize> = run
-                    .iter()
-                    .copied()
-                    .filter(|&i| {
-                        entries[i].roles.iter().any(|r| {
-                            matches!(
-                                r.role,
-                                slicer_ir::SupportPlanRole::TopInterface
-                                    | slicer_ir::SupportPlanRole::BaseInterface
-                                    | slicer_ir::SupportPlanRole::BottomInterface
-                            )
-                        })
+                let is_interface = |index: usize| {
+                    entries[index].roles.iter().any(|role| {
+                        matches!(
+                            role.role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BaseInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        )
+                    })
+                };
+                let mut interfaces: Vec<usize> =
+                    run.iter().copied().filter(|&i| is_interface(i)).collect();
+                interfaces.dedup_by_key(|&mut i| entries[i].anchor_z);
+                let mut bracket_pairs: Vec<(usize, usize)> = interfaces
+                    .windows(2)
+                    .filter_map(|pair| {
+                        let lower = pair[0];
+                        let upper = pair[1];
+                        run.iter()
+                            .copied()
+                            .any(|index| {
+                                entries[index].anchor_z > entries[lower].anchor_z
+                                    && entries[index].anchor_z < entries[upper].anchor_z
+                                    && !is_interface(index)
+                            })
+                            .then_some((lower, upper))
                     })
                     .collect();
-                interfaces.dedup_by_key(|&mut i| entries[i].anchor_z);
-                let mut bracket_rows = if interfaces.len() >= 2 {
-                    interfaces
-                } else {
-                    let mut rows = vec![*run.first().unwrap(), *run.last().unwrap()];
-                    rows.extend(interfaces);
-                    rows.sort_by_key(|&i| entries[i].anchor_z);
-                    rows.dedup();
-                    rows
-                };
-                bracket_rows.sort_by_key(|&i| entries[i].anchor_z);
-                for pair in bracket_rows.windows(2) {
-                    let lower_index = pair[0];
-                    let upper_index = pair[1];
+                if bracket_pairs.is_empty() {
+                    let lower = *run.first().unwrap();
+                    let upper = *run.last().unwrap();
+                    if entries[lower].anchor_z < entries[upper].anchor_z {
+                        bracket_pairs.push((lower, upper));
+                    }
+                }
+                for (lower_index, upper_index) in bracket_pairs {
                     let lower = &entries[lower_index];
                     let upper = &entries[upper_index];
                     let covered: Vec<usize> = run
@@ -775,6 +783,13 @@ impl SupportPlanner {
                         self.support_layer_height_mm as f64,
                     ) {
                         let plane = (plane_mm * slicer_ir::UNITS_PER_MM).round() as i64;
+                        let source_index = run
+                            .iter()
+                            .copied()
+                            .rev()
+                            .find(|&index| entries[index].anchor_z <= plane)
+                            .unwrap_or(lower_index);
+                        let source_z = entries[source_index].anchor_z;
                         let anchor_layer_index = layer_plan
                             .layers
                             .iter()
@@ -784,13 +799,37 @@ impl SupportPlanner {
                             })
                             .map(|(index, _)| index as u32)
                             .unwrap_or(lower.anchor_layer_index);
-                        // A physical bracket row may contain several demanded
-                        // bodies. Clone every source membership; the later
-                        // source-key dedup removes only duplicate candidates.
+                        // Prefer body geometry only within the same demanded
+                        // body membership on the selected physical row.
                         for source in entries.iter().filter(|entry| {
                             entry.region_id == region
                                 && entry.global_layer_index >= 0
-                                && entry.anchor_z == lower.anchor_z
+                                && entry.anchor_layer_index >= run_first_layer
+                                && entry.anchor_layer_index <= run_last_layer
+                                && entry.anchor_z == source_z
+                                && (entry.roles.iter().all(|role| {
+                                    !matches!(
+                                        role.role,
+                                        slicer_ir::SupportPlanRole::TopInterface
+                                            | slicer_ir::SupportPlanRole::BaseInterface
+                                            | slicer_ir::SupportPlanRole::BottomInterface
+                                    )
+                                }) || !entries.iter().any(|candidate| {
+                                    candidate.region_id == region
+                                        && candidate.global_layer_index >= 0
+                                        && candidate.anchor_layer_index >= run_first_layer
+                                        && candidate.anchor_layer_index <= run_last_layer
+                                        && candidate.anchor_z == source_z
+                                        && candidate.body_ids == entry.body_ids
+                                        && candidate.roles.iter().all(|role| {
+                                            !matches!(
+                                                role.role,
+                                                slicer_ir::SupportPlanRole::TopInterface
+                                                    | slicer_ir::SupportPlanRole::BaseInterface
+                                                    | slicer_ir::SupportPlanRole::BottomInterface
+                                            )
+                                        })
+                                }))
                         }) {
                             let mut clone = source.clone();
                             clone.anchor_layer_index = anchor_layer_index;
@@ -945,7 +984,7 @@ impl SupportPlanner {
                 ) {
                     let mut clone = lower.clone();
                     clone.anchor_z = plane;
-                    synthesized.push((clone, plane as f64 / slicer_ir::UNITS_PER_MM as f64));
+                    synthesized.push((clone, plane as f64 / slicer_ir::UNITS_PER_MM));
                 }
             }
         }
@@ -1048,8 +1087,8 @@ fn packet239d_coarse_planes(below_units: i64, above_units: i64, pitch_mm: f64) -
     if pitch_mm <= 0.0 || above_units <= below_units {
         return Vec::new();
     }
-    let below_mm = below_units as f64 / slicer_ir::UNITS_PER_MM as f64;
-    let above_mm = above_units as f64 / slicer_ir::UNITS_PER_MM as f64;
+    let below_mm = below_units as f64 / slicer_ir::UNITS_PER_MM;
+    let above_mm = above_units as f64 / slicer_ir::UNITS_PER_MM;
     let dist = above_mm - below_mm;
     let n = ((dist - EPSILON_MM) / pitch_mm).ceil().max(1.0) as i64;
     (1..=n)
