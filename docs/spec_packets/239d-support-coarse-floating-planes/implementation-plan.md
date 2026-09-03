@@ -67,14 +67,18 @@
   surviving support-bearing rows of that same `(object_id, region_id)` contiguous run
   covered by the bracket; these rows are already available to both planner callers; where
   the predicate fails, the bracket keeps the existing 239c
-  finer derivation), bracket the demanded planes per the **binding Q1
-  decision**: partition by `(object_id, region_id)` and contiguous run; with count(interface-role
-  planes (`TopInterface`/`BaseInterface`/`BottomInterface`)) >= 2 the bracket set is the
-  sorted/deduplicated interface planes (endpoints not added); with count < 2 that set is
-  supplemented with the run's first
-  and last surviving support-bearing rows, then sorted/deduplicated by `anchor_z` —
-  a run with exactly one genuine interface plane keeps it as a bracket (never demoted to
-  body). Generate the stack between brackets
+  finer derivation), bracket per the **binding measured Q1
+  decision**: partition by `(object_id, region_id)` and contiguous run; collect the exact
+  distinct interface-role
+  planes (`TopInterface`/`BaseInterface`/`BottomInterface`) and use them as bracket planes
+  only when consecutive interface bracket planes enclose at least one strictly interior
+  surviving support-bearing row with no interface role (a **body-bearing interface span**);
+  process those spans. If no body-bearing interface span exists in the run — including
+  zero/one interface plane, or an adjacent interface cluster confined to a run boundary —
+  the run's first and last surviving support-bearing rows are the **endpoint fallback**
+  brackets, then sorted/deduplicated by `anchor_z`. All genuine interface entries remain
+  protected real entries under either bracket source: never removed, never demoted to body.
+  Generate the stack between brackets
   by the **tree-family** rule of `plan_layer_heights` (`TreeSupport.cpp`):
   `n = ceil(dist / pitch)` (**no** EPSILON bias), `step = dist / n`, planes at
   `below_z + k * step`, last aligned to `above_z`. Apply the canonical grouping of
@@ -82,8 +86,8 @@
   `EPSILON`, take the midpoint; the group **minimum-height** rule is
   representation-inapplicable (`SupportPlanEntry` has no height field; effective row height
   derives from adjacent `anchor_z`) and is not reproduced. Replace only the **non-interface
-  rows strictly inside each bracket pair** (genuine interface bracket entries always
-  remain) with the stack planes per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
+  rows strictly inside each bracket pair** (genuine interface entries always
+  remain as protected real entries) with the stack planes per the **binding Q2 decision**: clone the lower bracket's geometry, rewrite
   roles to `SupportBody`, capture the source `global_layer_index` into the local duplicate
   key and clone-source provenance decision only, and assign the emitted entry's final
   `global_layer_index` from the per-plane DEV-163 synthetic identity map
@@ -99,7 +103,10 @@
   first/contact layer height alone) and the 0.0 sentinel are unchanged.
 - Precondition: Step 1 complete; the 239c tree tests are green.
 - Postcondition: the coarse direction emits free-floating `anchor_z` values; the finer
-  direction and the sentinel are bit-identical; AC-2 and AC-N3 tests pass.
+  direction and the sentinel are bit-identical; AC-2 and AC-N3 tests pass; the AC-2 test
+  asserts the measured Q1 bracket rule (adjacent interface cluster → endpoint fallback with
+  interface roles surviving and off-grid rows produced; body-bearing interface span →
+  interface planes as brackets).
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/tree-support-planner/src/lib.rs` - lines ~3580-3800 (the 239c derivation and caller) and ~3060-3480 (the emit pass, roles, entry push)
   - `modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs` - lines ~150-200 (the `layer_plan()` fixture) and ~920-990 (the 239c independent-height test)
@@ -145,11 +152,17 @@
   (`Support/SupportMaterial.cpp`): `n = ceil((dist - EPSILON) / pitch)` (**with** the
   EPSILON bias, unlike the tree rule), same step/plane/alignment shape, and the same
   `generate_support_layers` grouping/midpoint application (no group-height
-  representation). Neutralize `support_step` per the **binding Q3 decision**: set
-  `support_step = 1` exactly for bracket pairs satisfying the binding coarse predicate
-  (configured nonzero pitch >= `local_support_gap`) — no global bypass of the gate at ~511.
-  Bracket selection, body replacement (only non-interface rows strictly inside each
-  bracket pair; genuine interface bracket entries survive), and the synthesized-candidates-only
+  representation). Neutralize `support_step` per the **binding Q3 decision**: entries
+  inside the computed coarse bracket-range membership of bracket pairs satisfying the
+  binding coarse predicate (configured nonzero pitch >= `local_support_gap`) bypass the
+  `support_step` modulo/removal gate — rows outside the coarse ranges retain the computed
+  `support_step` decimation (no global bypass of the gate at ~511).
+  Bracket selection (the measured Q1 rule: interface planes bracket only across
+  body-bearing interface spans; otherwise the run's first/last surviving support-bearing
+  rows are the endpoint fallback brackets), body replacement (only non-interface rows
+  strictly inside each
+  bracket pair; genuine interface entries survive as protected real entries), and the
+  synthesized-candidates-only
   dedup follow the same Q1/Q2 rules as Step 2. Entries nondecreasing in
   `anchor_z` per object, distinct planes strictly increasing, identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`
@@ -190,7 +203,9 @@
   - `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- disabled_independent_height_copies_object_layer_print_z_exactly --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - FACT pass/fail (disabled branch unregressed)
   - `cargo xtask build-guests --check && echo FRESH` - FACT exit code
 - Exit condition: AC-3 passes; the 239c disabled test still passes; the Q3 decision
-  (`support_step = 1` per coarse bracket pair, no global bypass) is implemented as bound
+  (coarse-range entries bypass the `support_step` modulo/removal gate per coarse bracket
+  pair, rows outside the coarse ranges keep the computed decimation, no global bypass) is
+  implemented as bound
   (see `design.md` §Recorded Decisions D3).
 
 ### Step 4: Real-slice integration tests
@@ -202,7 +217,12 @@
   `#[test]` wrappers in `integration/main.rs` (the wrapper convention), plus the E-assertion
   helper (parse the `;TYPE:Support` block after an off-grid `;Z:` row, extract G1 `E` tokens,
   assert at least one `> 0`). AC-1 covers both families (the family names from the 239c
-  `run_slice_for_family_with_extra` call sites). AC-N1 hard-codes the Step 1 baseline in the
+  `run_slice_for_family_with_extra` call sites) and asserts the measured Q1 behaviour
+  exactly: on this fixture both families' interface roles form adjacent top-row clusters
+  (tree 246000/248000, traditional 244000/246000/248000) spanning no body-bearing
+  interface span, so the enabled runs must take the endpoint fallback and emit off-grid
+  rows while the `;TYPE:Support interface` blocks survive in both families' enabled G-code.
+  AC-N1 hard-codes the Step 1 baseline in the
   new `P239D_DISABLED_COARSE_PITCH_BASELINE_Z` const (following the 239c
   `DISABLED_INDEPENDENT_HEIGHT_BASELINE_Z` pattern).
 - Precondition: Steps 2-3 complete; the Step 1 baseline sequence is available.
@@ -236,14 +256,15 @@
 - Exit condition: AC-1 and AC-N1 pass; the wrapper convention is followed (bare names in
   `main.rs`); the E-assertion helper asserts `E > 0` on every off-grid support row; AC-1
   also checks the enabled run's distinct support `;Z:` sequence is a strict superset of the
-  disabled baseline in original output order.
+  disabled baseline in original output order, and that both families' interface blocks
+  survive the endpoint fallback on the measured adjacent-cluster fixture.
 
 ### Step 5: Measure-first coarse `height_delta`
 
 - Task IDs: `TASK-527`
-- Objective: Measure the three numbers for a minimal coarse off-grid case through
+- Objective: Measure the three numbers for a minimal nominal coarse off-grid case through
   `DefaultGCodeEmitter::emit_gcode` — applied height term, declared plane delta (the row's
-  own Z minus the previous extrusion Z), resulting E — for a 0.3-pitch row, plus the same
+  own Z minus the previous extrusion Z), resulting E — for a 0.45-pitch row, plus the same
   three for the immediately following object pass (observation O-1). Verdict:
   `MISSCALE_FIXED` iff the applied height term differs from the declared plane delta by more
   than `1e-6` absolute, else `CONSISTENT`. Record the verdict and the six numbers under
@@ -320,13 +341,15 @@
 - Task IDs: `TASK-529`
 - Objective: Regenerate the packet artifacts immediately after `cargo xtask build-guests
   --check` returns exit `0`: `tmp/p239d-support-coarse-tree.gcode` and
-  `tmp/p239d-support-coarse-normal.gcode` (the 0.3-pitch slices), `tmp/vd-p239d/` (the
-  visual-debug bundle), and `tmp/239d-human-validation.md` (the gate document with the
-  checklist, the `REFS-PRESENT`/`REFS-ABSENT-GATE-OPEN` record, and the recommended
-  reference nozzle per `[FWD]` Q4).
+  `tmp/p239d-support-coarse-normal.gcode` (the nominal 0.45-pitch slices, using the
+  packet-specific `tmp/p239d-config-tree-045.json` and `tmp/p239d-config-normal-045.json`
+  profiles), `tmp/vd-p239d/` plus the standalone-G-code bundles (the visual-debug bundles),
+  and `tmp/239d-human-validation.md` (the gate document with the checklist, the
+  `REFS-PRESENT`/`REFS-ABSENT-GATE-OPEN` record, and the
+  recommended reference nozzle per `[FWD]` Q4).
 - Precondition: Steps 1-6 complete; `cargo xtask build-guests --check` exits `0`.
-- Postcondition: the artifacts exist; the gate document records `REFS-ABSENT-GATE-OPEN`
-  (verified at authoring time) and the checklist.
+- Postcondition: the artifacts exist; the gate document records `REFS-PRESENT`, the
+  completed checklist, and the human approval.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/spec_packets/239c-support-layer-height-producer/packet.spec.md` - the Human Validation Gate section only
 - Files allowed to edit (at most 3):
@@ -346,9 +369,8 @@
 - Verification:
   - `test -f tmp/p239d-support-coarse-tree.gcode && test -f tmp/p239d-support-coarse-normal.gcode && test -d tmp/vd-p239d && echo ARTIFACTS-PRESENT` - FACT pass/fail
   - `test -f tmp/239d-human-validation.md && echo GATE-DOC-PRESENT` - FACT pass/fail
-- Exit condition: the artifacts exist; the gate document records the checklist and the
-  `REFS-ABSENT-GATE-OPEN` status; the packet may reach "all steps complete, sign-off
-  pending".
+- Exit condition: the artifacts exist; the gate document records the completed checklist and
+  the `REFS-PRESENT` status; the packet may proceed to implemented status.
 
 ### Step 8: Docs registration and closure
 
@@ -363,9 +385,9 @@
   --workspace --all-targets -- -D warnings`, `cargo xtask check-literals`, every pipe-suffixed
   AC command, and the full suite through `cargo xtask test --summary --workspace
   --no-fail-fast` (the packet-close ceremony).
-- Precondition: Steps 1-7 complete; the human gate is signed or explicitly pending.
-- Postcondition: the docs are registered; the closure gates pass; the packet is ready for
-  `status: implemented` (pending the human-gate sign-off).
+- Precondition: Steps 1-7 complete; the human gate is signed.
+- Postcondition: the docs are registered; the closure gates pass; the packet is at
+  `status: implemented`.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/07_implementation_status.md` - the support-family block only (delegated)
 - Files allowed to edit (at most 3):
@@ -395,7 +417,7 @@
   - `cargo xtask check-literals` - FACT pass/fail
   - `cargo xtask test --summary --workspace --no-fail-fast` - FACT pass/fail (ceremony only)
 - Exit condition: the docs are registered with re-derived ledger facts; the closure gates
-  pass; the packet is ready for `status: implemented` pending the human-gate sign-off.
+  pass; the packet is `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
@@ -418,12 +440,20 @@ Aggregate `M`; no step is `L`.
 - Every pipe-suffixed AC command returns PASS.
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read.
 - Reconcile reopened/superseded status transitions (none planned; 239c stays `implemented`).
-- `packet.spec.md` is ready for `status: implemented` (pending the human-gate sign-off).
+- `packet.spec.md` has `status: implemented` and a dated human-gate sign-off.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Record remaining packet-local risk (the human-gate `REFS-ABSENT-GATE-OPEN` status).
+- Record the packet-local risk: exact Orca toolpath identity remains out of scope, while the
+  measured nominal deltas and human visual verdict are recorded in the gate document.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+Command policy: the workspace compile/lint gates (`cargo check --workspace --all-targets`,
+`cargo clippy --workspace --all-targets -- -D warnings`) use `--all-targets` so the test,
+bench, and example targets compile. Targeted packet test commands intentionally select
+their named test target and filter (for example
+`cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact`,
+teeing combined output to `target/test-output.log`) and deliberately omit `--all-targets`.
+The broad closure suite runs through `cargo xtask test --summary --workspace --no-fail-fast`
+per repository discipline.

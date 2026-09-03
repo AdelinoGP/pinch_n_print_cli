@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 239d-support-coarse-floating-planes
 depends_on: 239c-support-layer-height-producer, 239a-anchored-host-seams, 239b-anchored-wit-contract
 task_ids:
@@ -22,15 +22,25 @@ context_cost_estimate: M
 Deliver free-floating support **stacks** in the coarse direction: when the support pitch
 (`support_layer_height_mm`) is >= the object layer pitch, both support planners generate the
 support stack at pitch spacing between the brackets of each `(object_id, region_id)`
-contiguous run — the **traditional** family following `raft_and_intermediate_support_layers`
+contiguous run — brackets selected by the measured Q1 rule (interface-role planes across
+body-bearing interface spans only; otherwise the run's surviving support-bearing endpoint
+fallback) — the **traditional** family following `raft_and_intermediate_support_layers`
 (`Support/SupportMaterial.cpp`) stepping (`ceil((dist - EPSILON) / pitch)`, `step = dist / n`,
 last plane aligned to the upper bracket) and the **tree** family following
 `plan_layer_heights` (`TreeSupport.cpp`) stepping (`ceil(dist / pitch)` for main-body
 spacing, **no** EPSILON bias, `step = dist / n`) — plus the `generate_support_layers`
 (`Support/SupportCommon.cpp`) EPSILON candidate-grouping/midpoint rule, replacing the 239c
-grid-bound degeneration — so a real 0.3-pitch slice of `SupportTest.stl` emits off-grid
+grid-bound degeneration — so a real nominal 0.45-pitch slice of `SupportTest.stl` emits off-grid
 support rows that each extrude, with the disabled flag reproducing the baseline exactly and
 the finer direction unregressed.
+
+## Nominal Acceptance Override
+
+The original 0.3 mm run is retained only as the measured pre-239d baseline and the small
+planner-fixture pitch used by the unit tests. The binding real-slice acceptance is 0.45 mm:
+the supplied human-generated references use a 0.5 mm nozzle with `max_layer_height = 0.45`
+and produce approximately 0.447273 mm effective coarse spacing. PnP uses the explicit
+`support_layer_height_mm = 0.45` override in the packet-specific `-045` configs.
 
 ## Scope Boundaries
 
@@ -40,8 +50,10 @@ binding coarse predicate (configured nonzero pitch >= `local_support_gap`, the m
 positive anchor-Z difference between consecutive surviving support-bearing rows of that
 same `(object_id, region_id)` contiguous run covered by the bracket; otherwise the 239c
 finer derivation is retained for that bracket), the traditional `support_step`
-neutralization per the binding Q3 decision (set 1 exactly for bracket pairs satisfying
-that predicate), the real-slice and planner-level tests including the
+neutralization per the binding Q3 decision (entries inside the computed coarse
+bracket-range membership bypass the `support_step` modulo/removal gate for bracket pairs
+satisfying that predicate; rows outside the coarse ranges retain the computed
+`support_step` decimation; no global bypass), the real-slice and planner-level tests including the
 extrusion-presence assertions (the DEV-161 guardrail), the measure-first coarse-direction
 `height_delta` verdict (TASK-519 pattern), and the blocking human validation gate. Out of
 scope and owned elsewhere: the renderer/row path (unchanged; the tree renderer traverses
@@ -73,12 +85,20 @@ State ACs only here; `requirements.md` references their IDs.
   `slicer_runtime::run::run_slice` of
   `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl` through the tracked
   `orca-matched-config.json` with `independent_support_layer_height = true` and
-  `support_layer_height_mm = 0.3` (coarser than `layer_height` 0.2), **when** the resulting
+  `support_layer_height_mm = 0.45` (coarser than `layer_height` 0.2), **when** the resulting
   G-code is parsed, **then** the set of distinct `;Z:` values is a strict superset of the
   same slice's `independent_support_layer_height = false` baseline, at least one Z present
   only in the enabled run is followed by a `;TYPE:Support` block, and **every** enabled-only
   `;Z:` row followed by a `;TYPE:Support` block carries at least one G1 move with `E > 0` —
-  no E=0 off-grid support row (the DEV-161 defect class). |
+  no E=0 off-grid support row (the DEV-161 defect class). **The measured adjacent interface
+  cluster must take the Q1 endpoint fallback, not block the stack**: on this fixture the
+  tree run's interface roles sit only at the adjacent top rows `anchor_z` 246000/248000 and
+  the traditional run's only at 244000/246000/248000 (measured 2026-09-02, the
+  `[DEBUG-239D-BRACKETS]` records in `target/test-output.log`), every consecutive interface
+  pair enclosing zero strictly interior non-interface rows — no body-bearing interface span —
+  so each run brackets its first and last surviving support-bearing rows, emits off-grid
+  rows, and the `;TYPE:Support interface` blocks of both families survive (the test asserts
+  interface blocks remain present in both families' enabled G-code). |
   `mkdir -p target && cargo test -p slicer-runtime --test integration -- coarse_support_pitch_emits_free_floating_extruding_rows --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-2 (tree planner: coarse direction produces free-floating `anchor_z`).** **Given** a
   `LayerPlanView` whose layers sit at 0.2 mm pitch and a support demand spanning multiple
@@ -96,22 +116,28 @@ State ACs only here; `requirements.md` references their IDs.
   the last plane aligned to the upper bracket. The test asserts the **exact expected
   bracket planes** (computed from the fixture's bracket-to-bracket Z distance — the
   `dist` in that formula — by that formula), each entry's
-  role is `SupportBody` **on synthesized stack planes only** (genuine interface bracket
-  entries survive with their interface roles; body replacement removes only non-interface
-  rows strictly inside each bracket pair), and every
+  role is `SupportBody` **on synthesized stack planes only** (genuine interface entries
+  survive with their interface roles; body replacement removes only non-interface rows
+  strictly inside each bracket pair), and every
   synthesized plane's `anchor_layer_index` is the layer whose Z is nearest by absolute
-  distance with the lower index winning ties. **Where the fixture naturally expresses a
-  run with exactly one genuine interface plane, the test also asserts that plane remains a
-  bracket (not demoted to body), per the Q1 count-conditional rule: with >= 2 interface
-  planes the bracket set is the sorted/deduplicated interface planes alone (endpoints not
-  added); with fewer than two, endpoints are supplemented.** |
+  distance with the lower index winning ties. **Bracket selection is the measured Q1 rule,
+  not a plane count:** for each `(object_id, region_id)` contiguous run, collect the exact
+  distinct interface-role planes and use them as bracket planes only when consecutive
+  interface bracket planes enclose a **body-bearing interface span** — at least one
+  strictly interior surviving support-bearing row with no interface role; process those
+  interface brackets. If no such span exists (including zero/one interface plane or an
+  adjacent interface cluster confined to a run boundary), the run's first and last
+  surviving support-bearing rows are the fallback brackets. All genuine interface entries
+  are protected real entries — never removed or demoted — under either bracket source.** |
   `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-3 (traditional planner: same, with `support_step` neutralized).** **Given** the same
   inputs, **when** the traditional planner runs, **then** at least one emitted
   `SupportPlanEntry.anchor_z` is off-grid by more than `COORDINATE_TOLERANCE_UNITS`, and the
   `support_step` decimation (`modules/core-modules/traditional-support-planner/src/lib.rs`)
   is neutralized for the coarse direction — support rows come from the pitch-spaced stack,
-  not the every-Nth-layer grid subset. The stack follows the **traditional-family** canonical
+  not the every-Nth-layer grid subset: entries inside the computed coarse bracket-range
+  membership bypass the `support_step` modulo/removal gate, while rows outside the coarse
+  ranges retain the computed `support_step` decimation (no global bypass). The stack follows the **traditional-family** canonical
   stepping of `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`):
   `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`, `step = dist /
   n_layers_extra`, planes at `below_z + k * step` with the last aligned to the upper
@@ -119,19 +145,22 @@ State ACs only here; `requirements.md` references their IDs.
   planner's original output order, that entries are nondecreasing in `anchor_z` within each
   object with strictly increasing distinct planes, that every **synthesized** stack-plane
   entry
-  carries the `SupportBody` role (the lower bracket's other fields cloned, roles rewritten —
-  the Q2 decision), that genuine interface bracket entries survive with their interface
+  carries the `SupportBody` role (the nearest surviving at-or-below source row's other fields
+  cloned, with non-interface geometry preferred per `body_ids` membership and otherwise-
+  unmatched memberships retained, roles rewritten — the Q2 decision), that genuine interface entries survive with their interface
   roles (body replacement removes only non-interface rows strictly inside each bracket
-  pair; a lone genuine interface plane stays a bracket per the Q1 count-conditional rule
-  (>= 2 interface planes: interface planes alone, endpoints not added; < 2: endpoints
-  supplemented) —
-  asserted where the fixture naturally expresses the one-interface case), and that each
+  pair; the Q1 bracket rule is the measured body-bearing-span rule, not a plane count —
+  interface planes bracket only when they enclose a body-bearing interface span, otherwise
+  the run's surviving support-bearing endpoints are the fallback brackets, and interface
+  entries stay protected real entries either way —
+  asserted where the fixture naturally expresses the adjacent-cluster fallback case), and
+  that each
   synthesized plane's `anchor_layer_index` is the
   true-nearest layer by absolute Z distance (lower index on ties). |
   `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- coarse_pitch_produces_free_floating_anchor_z --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4 (measure-first coarse `height_delta` verdict).** **Given** the Step 5 measurement
-  recorded under `TASK-527` in `docs/07_implementation_status.md` — the height term
-  `DefaultGCodeEmitter::emit_gcode` actually applies to a coarse 0.3-pitch off-grid pass,
+   recorded under `TASK-527` in `docs/07_implementation_status.md` — the height term
+   `DefaultGCodeEmitter::emit_gcode` actually applies to a coarse 0.45-pitch off-grid pass,
   that pass's declared plane delta (its own Z minus the previous extrusion Z), and the
   resulting E — **when** the verdict test runs, **then** it asserts exactly the recorded
   branch and names it in its own assertion message: `MISSCALE_FIXED` (applied height term
@@ -176,7 +205,7 @@ guard on each command is what would catch it.
 ## Negative Test Cases
 
 - **AC-N1 (disabled reproduces the pre-change Z sequence exactly).** **Given**
-  `independent_support_layer_height = false` with `support_layer_height_mm = 0.3` on the
+   `independent_support_layer_height = false` with `support_layer_height_mm = 0.45` on the
   same fixture and config, **when** a real slice runs, **then** the emitted sequence of
   distinct `;Z:` values is element-wise identical in length and value to the recorded
   pre-239d baseline captured before Step 2 (the `P239D_DISABLED_COARSE_PITCH_BASELINE_Z`
@@ -208,7 +237,7 @@ guard on each command is what would catch it.
   global pitch >= the
   object's base layer pitch, **when** the tree planner runs, **then** that bracket keeps the
   239c finer derivation (its rows stay at the finer spacing; no pitch-spaced coarse stack is
-  synthesized for it), and consecutive surviving-row pairs outside the outer interface
+  synthesized for it), and consecutive surviving-row pairs outside the outer
   brackets retain that same derivation because brackets constrain only genuinely coarse
   replacement — the binding predicate (coarse iff configured nonzero pitch >=
   `local_support_gap`, in exact canonical units with
@@ -234,32 +263,35 @@ Evidence standard is **E2 — inspection only**; exact Orca toolpath identity is
 out of scope, and behavioural parity with measured deltas is the bar.
 
 **Precondition — fresh references, HUMAN-generated with `independent_support_layer_height`
-ENABLED and `support_layer_height_mm = 0.3`.** This packet never generates them:
+ENABLED and the nominal 0.45 mm support pitch.** This packet never generates them:
 
-- `tmp/p239d-orca-ref-tree-coarse.gcode`
-- `tmp/p239d-orca-ref-normal-coarse.gcode`
+- `tmp/p239-orca-ref-tree-independent.gcode`
+- `tmp/p239-orca-ref-normal-independent.gcode`
 
 Existence gate, recorded verbatim in the gate document as `REFS-PRESENT` or
 `REFS-ABSENT-GATE-OPEN`:
 
 ```bash
-test -f tmp/p239d-orca-ref-tree-coarse.gcode && test -f tmp/p239d-orca-ref-normal-coarse.gcode && echo REFS-PRESENT
+test -f tmp/p239-orca-ref-tree-independent.gcode && test -f tmp/p239-orca-ref-normal-independent.gcode && echo REFS-PRESENT
 ```
 
-**Verified at authoring time: neither file exists (`REFS-ABSENT-GATE-OPEN`).** The gate
-cannot be signed until a human produces them. Note: canonical OrcaSlicer has no
+**Verified against the current workspace: both files exist and the command prints
+`REFS-PRESENT`.** They are the supplied human-generated nominal references. Note: canonical OrcaSlicer has no
 `support_layer_height_mm` key — its support pitch is nozzle-derived
 (`max_layer_height_from_nozzle`, `Slicing.cpp`); the human must slice with a support-extruder
-nozzle whose max layer height yields the 0.3 mm pitch the PnP run uses.
+nozzle whose `max_layer_height` yields the nominal 0.45 mm pitch represented by the PnP run.
 
 **Packet artifacts.** Regenerate each immediately after `cargo xtask build-guests --check`
 returns exit `0` (AC-5); a stale guest silently invalidates every artifact below.
 
+The coarse artifacts use the packet-specific profiles below so the shared 239c matched
+profiles retain their finer-direction `0.1` mm setting.
+
 - `tmp/p239d-support-coarse-tree.gcode` —
-  `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-tree-matched.json --output tmp/p239d-support-coarse-tree.gcode --module-dir modules/core-modules`
-  with `support_layer_height_mm` set to `0.3` in the config
+  `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/p239d-config-tree-045.json --output tmp/p239d-support-coarse-tree.gcode --module-dir modules/core-modules`
+  with `support_layer_height_mm` set to `0.45` in the config
 - `tmp/p239d-support-coarse-normal.gcode` — same fixture and invocation with
-  `tmp/support-family-config-normal-matched.json` and output
+  `tmp/p239d-config-normal-045.json` and output
   `tmp/p239d-support-coarse-normal.gcode`
 - `tmp/vd-p239d/` — a `pnp_cli visual-debug --request <request.json> --output tmp/vd-p239d`
   bundle showing the coarse support stack rows beside ordinary object rows
@@ -267,24 +299,24 @@ returns exit `0` (AC-5); a stale guest silently invalidates every artifact below
 **Checklist.** Each item is answered in writing with **layer, tap, verdict** in
 `tmp/239d-human-validation.md`:
 
-- [ ] **Termination** — support reaches the plate or the model beneath its overhangs on both
+- [x] **Termination** — support reaches the plate or the model beneath its overhangs on both
       families, including on the new coarse stack rows.
-- [ ] **Coverage** — every demanded overhang region on the fixture carries support at the
+- [x] **Coverage** — every demanded overhang region on the fixture carries support at the
       coarse pitch.
-- [ ] **Collision freedom** — no support intersects model walls at any print row, including
+- [x] **Collision freedom** — no support intersects model walls at any print row, including
       every newly synthesized off-grid coarse row.
-- [ ] **Interfaces** — roofs and floors sit carved out of the support body at interface pitch
+- [x] **Interfaces** — roofs and floors sit carved out of the support body at interface pitch
       on their own rows; the coarse stack does not disturb them.
-- [ ] **Coarse-stack comparison (the item this packet exists for)** — support rows are spaced
+- [x] **Coarse-stack comparison (the item this packet exists for)** — support rows are spaced
       at the support pitch between the interface planes, free-floating relative to the object
       grid; every placement difference against the fresh references is recorded as a
       **measurement**, not a characterization.
-- [ ] **Block counts** — `;TYPE:Support` and `;TYPE:Support interface` counts recorded for
-      both families and compared against `tmp/p239d-orca-ref-tree-coarse.gcode` and
-      `tmp/p239d-orca-ref-normal-coarse.gcode`.
+- [x] **Block counts** — `;TYPE:Support` and `;TYPE:Support interface` counts recorded for
+      both families and compared against `tmp/p239-orca-ref-tree-independent.gcode` and
+      `tmp/p239-orca-ref-normal-independent.gcode`.
 
-Sign-off: `_date_ _verdict_`. The packet may not reach `status: implemented` without a
-completed sign-off line.
+Sign-off: **2026-09-02 — APPROVED**. The human gate owner approved all six checklist items;
+the packet is implemented.
 
 Note for implementers: `assert_no_test_reads_orca_gcode`
 (`crates/slicer-runtime/tests/integration/support_family_closure.rs`) forbids any test from
@@ -339,7 +371,7 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch (flag enabled) brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the **AC-3 (traditional-family)** stepping rule and the bracket-selection ground truth; the AC-2 (tree-family) rule is `plan_layer_heights` (`TreeSupport.cpp`) with no EPSILON bias.
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch (flag enabled) brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the **AC-3 (traditional-family)** stepping rule. Canonical's `extremes` span many object layers by construction; PnP's measured fixture does not (its interface roles sit in adjacent top-row clusters), so the bracket-**selection** ground truth is the measured Q1 rule (body-bearing interface spans, endpoint fallback) — canonical's `extremes` bracketing motivates it but does not transfer as a plane-count rule. The AC-2 (tree-family) rule is `plan_layer_heights` (`TreeSupport.cpp`) with no EPSILON bias.
 - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`: the grouping predicate (`print_z <= first.print_z + EPSILON`), the midpoint Z rule (`zavg = 0.5 * (first + last)`), and the group-height rule (minimum). PnP reproduces the grouping predicate and midpoint only; the group-height rule is representation-inapplicable (`SupportPlanEntry` has no height field; effective row height derives from adjacent `anchor_z`). This is the grouping/midpoint step the coarse stack applies after stepping.
 - `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` — `max_suport_layer_height = max_layer_height` (nozzle-derived via `max_layer_height_from_nozzle`, clamped >= object layer height). Confirms canonical has no `support_layer_height_mm` key; PnP's key is the pitch knob this packet uses.
 - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — the parallel support-layer

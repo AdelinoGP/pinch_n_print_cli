@@ -81,15 +81,19 @@
 
 ## Code Change Surface
 
-**Selected approach — the coarse stack brackets the demanded interface/contact planes.**
+**Selected approach — the coarse stack brackets across body-bearing intervals, with
+endpoint fallback.**
 
 The 239c derivation brackets consecutive support rows (dense, object-grid). The coarse
-direction must bracket the **demanded planes** — the layers whose entries carry
-`TopInterface`/`BaseInterface`/`BottomInterface` roles, which sit at support-region
-boundaries and span many object layers (mirroring canonical's sorted `extremes`). Between
-consecutive demanded planes the stack is generated at pitch spacing by the canonical rule,
+direction must bracket intervals that span support body — the layers whose entries carry
+`TopInterface`/`BaseInterface`/`BottomInterface` roles when consecutive ones enclose at
+least one strictly interior non-interface support-bearing row (a body-bearing interface
+span), and otherwise the run's first and last surviving support-bearing rows (the
+endpoint fallback), because the measured real slice's interface roles sit only in adjacent
+top-row clusters that span no body-bearing interval. Between consecutive bracket planes the
+stack is generated at pitch spacing by the canonical rule,
 and only the **non-interface rows strictly inside each bracket pair** are replaced by the
-stack planes — genuine interface bracket entries always remain. This is a
+stack planes — genuine interface entries always remain. This is a
 planner-side derivation change only; the renderer/row path is untouched.
 
 Exact functions, tests, and fixtures:
@@ -100,34 +104,47 @@ design contract now, not implementer choices:
 - **Q1 — bracket selection (binding).** The bracket set is computed per
   `(object_id, region_id)` over each **contiguous run** of demanded support-bearing rows
   (consecutive layers with surviving entries for that object+region). Let I be the run's
-  interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`). The bracket set
-  is:
-  - **count(I) >= 2:** the sorted/deduplicated I itself — the run's endpoints are **not**
-    added.
-  - **count(I) < 2 (zero or one interface plane):** I supplemented with the run's first and
-    last surviving support-bearing rows, then sorted/deduplicated by `anchor_z`. A lone
-    genuine interface plane therefore stays a bracket, and is never demoted to body or
-    removed.
-  Within a run the consecutive bracket pairs are ordered by `anchor_z`.
-- **Q2 — clone source for synthesized stack planes (binding).** Each synthesized stack
-  plane **clones the lower bracket's geometry** (its skeleton and other entry fields) and
-  **rewrites the roles to `SupportBody`**; genuine interface bracket entries are **not**
-  cloned-over — they survive with their interface roles intact. The source
-  `global_layer_index` is captured only
-  as part of the local duplicate key and clone-source provenance decision (the
-  duplicate-key rule below); the **emitted** entry's final `global_layer_index` is assigned
-  from the existing per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`), so all
-  entries at one synthesized plane share that plane identity. Other provenance fields are
-  preserved. No interface role
-  or interface geometry may appear at a body plane.
-- **Q3 — `support_step` neutralization form (binding).** The neutralization **sets
-  `support_step = 1`** exactly for bracket pairs satisfying the binding coarse predicate —
+  exact distinct interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`).
+  The bracket set is:
+  - **Body-bearing interface spans (the only interface brackets):** an interface plane is
+    used as a bracket plane only when it participates in a bracket pair that encloses at
+    least one strictly interior surviving support-bearing row with no interface role (a
+    body-bearing span). Consecutive interface bracket planes enclosing only other interface
+    rows — an **adjacent interface cluster** — span no body-bearing interval and are not
+    processed as interface brackets.
+  - **Endpoint fallback:** if no body-bearing interface span exists in the run (including
+    zero or one interface plane, or an interface cluster confined to a run boundary), the
+    bracket set is the run's first and last surviving support-bearing rows, then
+    sorted/deduplicated by `anchor_z`.
+  All genuine interface entries remain protected real entries under either bracket source —
+  they are never removed, demoted to body, or replaced. Within a run the consecutive
+  bracket pairs are ordered by `anchor_z`.
+ - **Q2 — source selection for synthesized stack planes (binding).** Each synthesized stack
+   plane selects the nearest surviving source row at or below that plane within the current
+   `(object_id, region_id)` run. The lower bracket is the fallback source when no such row
+   exists. From that physical source row, prefer non-interface geometry for each ordered
+   `body_ids` membership; if a membership has no non-interface source entry, retain its
+   interface-bearing source entry so the membership is not lost. Clone every selected source
+   entry and **rewrite all cloned roles to `SupportBody`**; genuine interface entries remain
+   real entries with their interface roles intact. The source `global_layer_index` is captured
+   only as part of the local duplicate key and clone-source provenance decision (the
+   duplicate-key rule below); the **emitted** entry's final `global_layer_index` is assigned
+   from the existing per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`), so all
+   entries at one synthesized plane share that plane identity. Other provenance fields are
+   preserved. No interface role remains on a synthesized body plane; interface-only source
+   geometry is used there only when required to preserve a distinct membership.
+- **Q3 — `support_step` neutralization form (binding).** The neutralization **bypasses the
+  `support_step` modulo/removal gate** for entries inside the computed coarse
+  bracket-range membership of bracket pairs satisfying the binding coarse predicate —
   configured nonzero pitch >= `local_support_gap`, the maximum positive anchor-Z
   difference between consecutive surviving support-bearing rows of that same
   `(object_id, region_id)` contiguous run covered by the bracket — i.e. the condition is
   evaluated per bracket pair by the same `local_support_gap` predicate as the
-  coarse/finer selection, not globally. The finer direction (where `support_step` is
-  already 1) is bit-identical, and no global bypass of the decimation gate is added.
+  coarse/finer selection, not globally. `support_step` keeps its computed
+  `round(pitch / gap).max(1)` value: rows outside the coarse ranges retain the computed
+  decimation, and rows inside the coarse ranges are retained regardless of the modulo.
+  The finer direction (where the computed `support_step` is already 1) is bit-identical,
+  and no global bypass of the decimation gate is added.
 
 1. **Tree planner** (`modules/core-modules/tree-support-planner/src/lib.rs`): in the 239c
    caller (~3649-3705), for each consecutive demanded bracket pair where the binding coarse
@@ -136,10 +153,14 @@ design contract now, not implementer choices:
    `(object_id, region_id)` contiguous run covered by the bracket (these rows are already
    available to both planner callers), compared in exact canonical units with
    `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` as the only tolerance if one is
-   needed (no new epsilon) — bracket the demanded planes instead of consecutive support
-   rows, using the Q1 bracket rule above. Interface brackets select only genuinely coarse
+   needed (no new epsilon) — bracket per the measured Q1 rule above: interface-role planes
+   bracket only across body-bearing interface spans (consecutive interface bracket planes
+   enclosing at least one strictly interior surviving support-bearing row with no interface
+   role); runs with no such span, including the measured adjacent interface clusters,
+   bracket their first and last surviving support-bearing rows (endpoint fallback).
+   Interface brackets select only genuinely coarse
    replacement ranges; every consecutive surviving-row pair not covered by such a range,
-   including pairs below or above the outer interface brackets, keeps the existing 239c
+   including pairs below or above the outer brackets, keeps the existing 239c
    finer derivation. Between consecutive bracket planes of a
    `(object_id, region_id)` contiguous run, generate the stack by the **tree-family**
    canonical rule of `plan_layer_heights` (`TreeSupport.cpp`): `n = ceil(dist / pitch)`
@@ -154,14 +175,18 @@ design contract now, not implementer choices:
    derives from the `anchor_z` of its adjacent rows, so a per-entry "group height" has no
    representation here — this is a recorded deviation-by-inapplicability, not an omission.
    The entries between the brackets are replaced by the stack planes, **except** genuine
-   interface bracket entries, which always remain (only **non-interface rows strictly
-   inside** each bracket pair are removed). The stack planes are each cloned from
-   the lower bracket with roles rewritten to `SupportBody`: the source `global_layer_index`
-   is captured into the local duplicate key and clone-source provenance decision only, the
-   emitted entry's final `global_layer_index` comes from the per-plane DEV-163 synthetic
-   identity map (`BTreeMap<i64, i32>`) so all entries at one synthesized plane share that
-   plane identity, and other provenance fields are preserved; the insertion-time identity
-   key is the duplicate-key rule's stable
+   interface entries, which always remain (only **non-interface rows strictly
+   inside** each bracket pair are removed). For each synthesized plane, the nearest
+   surviving source row at or below that plane within the same run is selected; the lower
+   bracket is the fallback. Non-interface source geometry is preferred independently for
+   each ordered `body_ids` membership, while a membership with no body-only alternative is
+   retained from its interface-bearing source. Each selected source is cloned with roles
+   rewritten to `SupportBody`: the source `global_layer_index` is captured into the local
+   duplicate key and clone-source provenance decision only, the emitted entry's final
+   `global_layer_index` comes from the per-plane DEV-163 synthetic identity map
+   (`BTreeMap<i64, i32>`) so all entries at one synthesized plane share that plane identity,
+   and other provenance fields are preserved; the insertion-time identity key is the
+   duplicate-key rule's stable
    `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)`), per
    Q2. The sentinel
    (`support_layer_height_mm == 0.0` → object pitch) is separate and takes priority: it
@@ -177,18 +202,23 @@ design contract now, not implementer choices:
    grouping/midpoint rule (group within `EPSILON`, midpoint; no group-height representation
    — same inapplicability as above). Plus the `support_step` neutralization per Q3: for each
    bracket pair satisfying the binding coarse predicate (configured nonzero pitch >=
-   `local_support_gap`), `support_step` is set to 1 (the floating stack replaces
-   the every-Nth-layer grid subset; the decimation gate at ~511 then passes every layer and
-   the stack provides the coarse rows). `support_step` stays as-is for the finer direction
-   (where it is already 1).
+   `local_support_gap`), entries inside that bracket's computed coarse-range membership
+   bypass the `support_step` modulo/removal gate (the floating stack replaces
+   the every-Nth-layer grid subset; the decimation gate still removes entries outside the
+   coarse ranges using the computed `support_step`, and the stack provides the coarse
+   rows inside them). `support_step` stays at its computed value everywhere; rows outside
+   the coarse ranges keep the decimation for the finer direction
+   (where the computed `support_step` is already 1).
    **Duplicate-key prevention (stable key, no false collisions).** Before inserting a
-   synthesized or surviving entry, its identity key
+   synthesized candidate, its identity key
    `(source global_layer_index, object_id, region_id, ordered body_ids, anchor_z)` is
-   deduplicated — the key is the cloned lower bracket's source-entry identity (its
-   `global_layer_index`, owning `object_id`/`region_id`, and ordered `body_ids: Vec<String>`)
+   deduplicated — the key is the selected source-entry identity (its `global_layer_index`,
+   owning `object_id`/`region_id`, and ordered `body_ids: Vec<String>`)
    plus the plane's `anchor_z`; a second entry with the same key is dropped, so the
-   per-object entry map never carries two rows with one identity. There is no entry `id`
-   field on `SupportPlanEntry` to key on, and the key deliberately spans the full source
+   per-object entry map never carries two rows with one identity. The source is the nearest
+    surviving at-or-below row in the same run; the lower bracket is only the fallback, and
+    non-interface geometry is preferred per `body_ids` membership while all otherwise-unmatched
+    memberships are retained. There is no entry `id` field on `SupportPlanEntry` to key on, and the key deliberately spans the full source
    identity (global layer origin + object + region + full body membership) so it cannot
    collapse two legitimately distinct geometries. **This dedup applies to synthesized
    candidates only: surviving real entries are never deduplicated by emitted
@@ -205,9 +235,12 @@ design contract now, not implementer choices:
    bracket planes per the tree `plan_layer_heights` (`TreeSupport.cpp`) formula, the
    original output order, the nondecreasing-per-object / strictly-increasing-distinct
    planes rule, `SupportBody` role replacement, and true-nearest `anchor_layer_index`
-   anchoring with the lower-index tie break. **AC-2 also asserts the one-interface case if
-   the fixture naturally expresses it: a run with exactly one genuine interface plane keeps
-   that plane as a bracket (not demoted to body), per the Q1 sort/dedup refinement.** Plus
+   anchoring with the lower-index tie break. **AC-2 also asserts the measured Q1 bracket
+   rule where the fixture expresses it: a run whose interface roles form an adjacent
+   cluster (consecutive interface planes spanning no strictly interior non-interface row)
+   takes the endpoint fallback and still produces off-grid stack rows, while the interface
+   entries survive with their roles; a run whose interface planes enclose a body-bearing
+   interface span uses those planes as brackets.** Plus
    a **finer-direction adaptive regression**
    `adaptive_local_gap_stays_finer` (**NET-NEW test authored by this packet**, present in
    the existing `tree_family_tdd` target and passing): a run whose bracket-pair
@@ -225,7 +258,9 @@ design contract now, not implementer choices:
    bare `#[test]` wrappers in `integration/main.rs` (the wrapper convention), and a new
    E-assertion helper (parse the `;TYPE:Support` block after an off-grid `;Z:` row, extract
    G1 `E` tokens, assert at least one `> 0`; the `extract_e_values` precedent is in a
-   different crate's test binary and cannot be imported). `gcode_emit_tdd.rs`:
+   different crate's test binary and cannot be imported). AC-1 also asserts the measured
+   adjacent interface cluster takes the endpoint fallback (off-grid rows emitted) while
+   `;TYPE:Support interface` blocks survive in both families. `gcode_emit_tdd.rs`:
    `coarse_pass_height_delta_matches_recorded_verdict` (AC-4), mirroring the 239c verdict
    test (~1883) with the Step 5 measured constants (applied-height term, declared plane
    delta, resulting E).
@@ -250,16 +285,24 @@ design contract now, not implementer choices:
   canonical `dist/n`.
 - *Bracket the run boundaries only (first/last demanded layers of each contiguous run),
   regardless of interface entries.* Rejected: ignores the interface structure canonical
-  uses; the interface entries are the closer analog of canonical's `extremes`. **Binding
-  refinement (Q1):** with count(interface planes) >= 2 the bracket set is the
-  sorted/deduplicated interface planes themselves (endpoints not added); with fewer than
-  two, that set is supplemented with the run's first/last surviving support-bearing rows and
-  sorted/deduped — so a lone genuine interface plane stays a bracket. User decision
-  2026-08-31 (interface entries as skeleton); refined
-  2026-09-01 (two-row threshold + per-`(object_id, region_id)` run partition); refined
-  again (count-conditional supplement so lone interface planes survive as brackets).
-- *Remove `support_step` entirely.* Rejected: the neutralization (set to 1 exactly for
-  bracket pairs where pitch >= `local_support_gap`) is sufficient and avoids the blast
+  uses; interface planes that genuinely enclose support body are the closer analog of
+  canonical's `extremes`. **Binding refinement (Q1):** interface-role planes bracket only
+  when consecutive ones enclose a body-bearing interface span (at least one strictly
+  interior surviving support-bearing row with no interface role); a run with no such span —
+  including zero/one interface plane or the measured adjacent interface cluster confined to
+  a run boundary — falls back to the run's first/last surviving support-bearing rows, so the
+  stack can never silently stay grid-bound for interface-less or cluster-only runs. All
+  genuine interface entries stay protected real entries under either bracket source. User
+  decision 2026-08-31 (interface entries as skeleton); refined
+  2026-09-01 (per-`(object_id, region_id)` run partition); refined
+  again 2026-09-02 from the measured real slice (tree interfaces only at adjacent top rows
+  246000/248000, traditional at 244000/246000/248000 — a bare plane count brackets no
+  body-bearing interval, so the rule keys on the body-bearing span with endpoint fallback,
+  and interface entries are protected, not demoted).
+- *Remove `support_step` entirely.* Rejected: the neutralization (coarse-range entries
+  bypass the modulo/removal gate for bracket pairs where pitch >= `local_support_gap`,
+  with rows outside coarse ranges keeping the computed decimation) is sufficient and
+  avoids the blast
   radius of deleting a mechanism the traditional
   planner's tests pin. User decision 2026-08-31: floating stack replaces decimation.
 - *Transport a `support_layer_height` field on `SupportPlanEntry`.* Rejected (as in 239c):
@@ -362,9 +405,9 @@ Include ranges for files over 300 lines.
   decided per node (`support_interface_top_layers`, `support_interface_bottom_layers`,
   `num_top_base_interface_layers`); scope: `modules/core-modules/tree-support-planner/src/lib.rs`
   (~3060-3480); return: `SUMMARY` (<= 200 words); purpose: Step 2 bracket selection.
-- Question: the three measurement numbers for a minimal coarse off-grid case through
+- Question: the three measurement numbers for a minimal nominal coarse off-grid case through
   `DefaultGCodeEmitter::emit_gcode` — applied height term, declared plane delta, resulting E
-  — for a 0.3-pitch row; scope: `crates/slicer-gcode/`; return: `FACT` (three numbers plus
+  — for a 0.45-pitch row; scope: `crates/slicer-gcode/`; return: `FACT` (three numbers plus
   the verdict word); purpose: Step 5. **Highest-risk dispatch.**
 - Question: every test in the workspace that hard-asserts the traditional planner's
   `support_step` decimation behaviour (row counts or layer multiples); scope: `crates/`,
@@ -433,24 +476,29 @@ Include ranges for files over 300 lines.
   0.2) keeps the
   239c
   finer behaviour even when the global pitch >= the object's base layer pitch.
-- **Locked:** the coarse stack follows the canonical `dist/n` stepping between consecutively
-  demanded interface/contact planes, with the canonical grouping/midpoint rule applied
+- **Locked:** the coarse stack follows the canonical `dist/n` stepping between consecutive
+  bracket planes (interface brackets across body-bearing interface spans, or the D1
+  endpoint fallback), with the canonical grouping/midpoint rule applied
   (user decision 2026-08-31).
 - **Locked:** the on-grid/off-grid discriminator is
   `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units = 1e-3 mm), in both
   planner and renderer (239c).
 - **Locked (Q1-Q3, binding):** bracket selection is per `(object_id, region_id)` contiguous
-  run: with count(interface-role planes) >= 2 the bracket set is the sorted/deduplicated
-  interface planes (endpoints not added); with fewer than two, that set is supplemented
-  with the run's first/last surviving support-bearing rows and sorted/deduped by `anchor_z`
-  (a lone
-  genuine interface plane remains a bracket); stack planes clone the lower bracket with roles rewritten to `SupportBody`,
-  capturing the source `global_layer_index` into the local duplicate key and
+  run: interface-role planes bracket only when consecutive ones enclose a body-bearing
+  interface span (at least one strictly interior surviving support-bearing row with no
+  interface role); otherwise the run's first/last surviving support-bearing rows are the
+  fallback brackets, sorted/deduped by `anchor_z` (a run with no body-bearing interface
+  span — including zero/one interface plane or an adjacent interface cluster confined to a
+  run boundary — uses the endpoint fallback); stack planes select the nearest surviving
+  at-or-below source row within the run, prefer non-interface geometry per `body_ids`
+  membership, retain otherwise-unmatched memberships, and rewrite cloned roles to
+  `SupportBody`, capturing the source `global_layer_index` into the local duplicate key and
   clone-source provenance decision only, assigning the emitted entry's final
   `global_layer_index` from the per-plane DEV-163 synthetic identity map
   (`BTreeMap<i64, i32>` — one plane identity shared by all entries at a synthesized plane),
   and preserving other provenance fields;
-  `support_step` neutralization sets 1 per coarse bracket
+  `support_step` neutralization lets entries inside the computed coarse bracket-range
+  membership bypass the modulo/removal gate per coarse bracket
   pair only. See §Code Change Surface.
 - **Locked (family-specific stepping):** the traditional stack uses
   `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`)
@@ -473,36 +521,38 @@ Include ranges for files over 300 lines.
   object layer by absolute Z distance to the plane's `anchor_z`, with the lower
   `anchor_layer_index` winning a tie deterministically.
 - **Locked by measurement, not by assumption:** whether `DefaultGCodeEmitter::emit_gcode`
-  mis-scales a coarse 0.3-pitch off-grid pass. Nothing in this packet may state a flow figure
-  or a verdict that the Step 5 record does not contain.
+  mis-scales a nominal coarse 0.45-pitch off-grid pass. Nothing in this packet may state a
+  flow figure or a verdict that the Step 5 record does not contain.
 
 ## Risks and Tradeoffs
 
 - **The bracket selection is the design's crux.** The tree planner's interface roles are
   per-node/per-layer (Roof/Floor/Base counters seeded at contact creation), not per
-  contiguous run; the demanded planes are the layers whose entries carry interface roles,
-  which sit at region boundaries. The Q1 binding decision resolves this: partition by
-  `(object_id, region_id)` contiguous run; with count(interface-role planes) >= 2 the
-  bracket set is the sorted/deduplicated interface planes (endpoints not added); with
-  fewer than two, that set is supplemented with the run's first/last surviving
-  support-bearing rows and sorted/deduped. The fallback is now specified, so the stack can no
-  longer silently stay grid-bound for interface-less regions, and a lone genuine interface
-  plane is never demoted to body.
-- **The body-row replacement touches the skeleton.** The Q2 binding decision resolves the
-  source: clone the lower bracket, rewrite roles to `SupportBody`, capture the source
-  `global_layer_index` into the local duplicate key/clone-source provenance decision, and
-  assign the emitted final `global_layer_index` from the per-plane DEV-163 synthetic
-  identity map.
-  A wrong implementation would produce interface geometry at body planes; AC-2/AC-3 now
-  assert the role rewrite directly.
+  contiguous run; the measured real slice's interface roles sit only in adjacent top-row
+  clusters (tree 246000/248000, traditional 244000/246000/248000) that span no
+  body-bearing interval. The Q1 binding decision resolves this: partition by
+  `(object_id, region_id)` contiguous run; interface-role planes bracket only when
+  consecutive ones enclose a body-bearing interface span; a run with no such span —
+  including an adjacent interface cluster confined to a run boundary — falls back to the
+  run's first/last surviving support-bearing rows. The fallback is specified from measured
+  evidence, so the stack can no longer silently stay grid-bound for cluster-only or
+  interface-less regions, and genuine interface entries are protected real entries —
+  never removed or demoted to body.
+- **The body-row replacement touches the source geometry and membership.** The Q2 binding
+   decision selects the nearest at-or-below source row within the current run, prefers
+   non-interface geometry per `body_ids` membership, retains memberships with no body-only
+   alternative, rewrites roles to `SupportBody`, and assigns the emitted final
+   `global_layer_index` from the per-plane DEV-163 synthetic identity map. A wrong
+   implementation would clone the lower bracket at every height, drop a distinct membership
+   on a mixed interface/body source row, or leave interface roles on a body plane;
+   AC-2/AC-3 assert source geometry and role rewrite directly.
 - **The `support_step` neutralization has a blast radius.** The traditional planner's tests
   pin the decimation behaviour; the Step 3 dispatch inventories them before editing. Widening
   a tolerance to make a change pass is gaming the gate and is forbidden.
-- **The human gate cannot close today.** Both reference files are verified absent
-  (`REFS-ABSENT-GATE-OPEN`), and only a human can produce them (with a support-extruder
-  nozzle whose max layer height yields the 0.3 mm pitch — canonical has no
-  `support_layer_height_mm` key). The packet reaches "all steps complete, sign-off pending"
-  and stops there; that is the designed outcome, not a failure.
+- **The human gate is signed.** The supplied reference files use a 0.5 mm nozzle with
+   `max_layer_height = 0.45` and measure approximately 0.447273 mm effective spacing; the
+   existence command is `REFS-PRESENT`. The human gate owner approved the nominal artifacts
+   and all six checklist items on 2026-09-02.
 - **Guest staleness.** Every step here edits guest-feeding paths, so essentially every
   failure in this packet is a stale-guest suspect until `cargo xtask build-guests --check`
   returns exit `0`.
@@ -521,22 +571,25 @@ Include ranges for files over 300 lines.
 
 ## Open Questions
 
-- **[FWD] Q4 — human-gate reference nozzle (the only remaining open question; human-reference
-  only, non-code, non-blocking).** The human producing
-  `tmp/p239d-orca-ref-*-coarse.gcode` must choose a support-extruder nozzle whose
-  `max_layer_height_from_nozzle` yields the 0.3 mm pitch. The implementer records the
-  recommended nozzle diameter in the gate document at Step 7; the gate stays
-  `REFS-ABSENT-GATE-OPEN` until a human produces the references.
+- **Q4 — human-gate reference setup (resolved for nominal acceptance).** The supplied human
+   references are `tmp/p239-orca-ref-{tree,normal}-independent.gcode`, produced with a 0.5 mm
+   nozzle and `max_layer_height = 0.45`; their measured effective coarse spacing is
+    approximately 0.447273 mm. The references are present (`REFS-PRESENT`); the human gate
+    owner approved the nominal artifacts and all six checklist items on 2026-09-02.
 
 ## Recorded Decisions (binding; formerly `[FWD]` Q1-Q3)
 
 - **Decision D1 (bracket selection, resolves Q1).** Partition demanded rows by
-  `(object_id, region_id)` and contiguous run. Let I be the run's interface-role planes
-  (`TopInterface`/`BaseInterface`/`BottomInterface`). With count(I) >= 2 the bracket set is
-  the sorted/deduplicated I (endpoints not added); with count(I) < 2 that set is
-  supplemented with the run's first and last surviving support-bearing rows, then
-  sorted/deduplicated by `anchor_z`. A run with exactly one genuine interface plane keeps it
-  as a bracket (never demoted to body).
+  `(object_id, region_id)` and contiguous run. Let I be the run's exact distinct
+  interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`). Interface
+  planes are bracket planes only when consecutive interface bracket planes enclose at
+  least one strictly interior surviving support-bearing row with no interface role (a
+  body-bearing interface span); those spans are processed as interface brackets. If the
+  run has no body-bearing interface span — including zero/one interface plane, or an
+  adjacent interface cluster confined to a run boundary — the run's first and last
+  surviving support-bearing rows are the fallback brackets, sorted/deduplicated by
+  `anchor_z`. All genuine interface entries remain protected real entries under either
+  bracket source: never removed, never demoted to body.
 - **Decision D1a (binding coarse/finer predicate).** For each consecutive demanded bracket
   pair, `local_support_gap` is the maximum positive anchor-Z difference between
   consecutive surviving support-bearing rows of that same `(object_id, region_id)`
@@ -550,18 +603,26 @@ Include ranges for files over 300 lines.
   0.2. The `support_layer_height_mm == 0.0` sentinel is separate: it bypasses the coarse
   path entirely and preserves the existing 239c object-grid behavior; never claim a
   resolved pitch equals the varying `local_support_gap` values.
-- **Decision D2 (stack-plane clone source, resolves Q2).** Clone the lower bracket's
-  geometry; rewrite the roles to `SupportBody`; capture the source `global_layer_index`
-  into the local duplicate key and clone-source provenance decision only, and assign the
-  emitted entry's final `global_layer_index` from the per-plane DEV-163 synthetic identity
-  map (`BTreeMap<i64, i32>`); preserve other provenance fields.
-  Never produce interface roles/geometry at body planes. Genuine interface bracket entries
-  survive untouched (only non-interface rows strictly inside each bracket pair are
-  replaced). The stable dedup key applies to synthesized candidates only; surviving real
-  entries are never deduplicated by emitted `global_layer_index`.
-- **Decision D3 (`support_step` neutralization, resolves Q3).** Set `support_step = 1`
-  exactly for bracket pairs satisfying the binding coarse predicate (configured nonzero
-  pitch >= `local_support_gap`, per D1a's predicate); no
+- **Decision D2 (stack-plane source selection, resolves Q2).** Select the nearest surviving
+   source row at or below each candidate plane within the current contiguous run, falling
+   back to the lower bracket. For each ordered `body_ids` membership on that physical row,
+   prefer a non-interface source entry and otherwise retain the interface-bearing entry so
+   every membership survives; clone selected geometry, rewrite cloned roles to `SupportBody`,
+   capture the source `global_layer_index` into the local duplicate key and clone-source
+   provenance decision only, and assign the emitted entry's final `global_layer_index` from
+   the per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`); preserve other
+   provenance fields. No interface role remains on a synthesized body plane. Genuine
+   interface entries survive untouched (only non-interface rows strictly inside each bracket
+   pair are replaced); they are protected real entries under either D1 bracket source. The
+   stable dedup key applies to synthesized candidates only; surviving real entries are never
+   deduplicated by emitted `global_layer_index`.
+- **Decision D3 (`support_step` neutralization, resolves Q3).** Entries inside the computed
+  coarse bracket-range membership of bracket pairs satisfying the binding coarse predicate
+  (configured nonzero
+  pitch >= `local_support_gap`, per D1a's predicate) bypass the `support_step`
+  modulo/removal gate; `support_step` keeps its computed `round(pitch / gap).max(1)` value,
+  so rows outside the coarse ranges retain the computed decimation while coarse-range rows
+  are retained regardless of the modulo; no
   global bypass of the decimation gate; the finer direction stays bit-identical.
 - **Decision D4 (grouping).** Reproduce `generate_support_layers`
   (`Support/SupportCommon.cpp`) EPSILON candidate grouping + midpoint. Do **not**

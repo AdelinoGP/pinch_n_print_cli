@@ -5,7 +5,7 @@
 - Grouped task IDs: `TASK-523`..`TASK-530` (this packet's step mapping; re-derive the
   registration range against `docs/07_implementation_status.md` at registration time)
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -27,13 +27,28 @@ config, flag true:
 Root cause: the 239c intermediate-plane derivation (`packet239c_intermediate_planes` in both
 planners) brackets consecutive support rows, which sit at object-grid spacing; when the
 support pitch >= the object gap, `n_layers_extra == 1` and the stack stays grid-bound.
+The 239d bracket selection measured 2026-09-02 against the real slice adds a second
+degeneration: interface roles are per-layer flags, not spanning markers, and on this fixture
+they appear only in adjacent top-row clusters — tree interface roles at exactly
+`anchor_z` 246000/248000, traditional at 244000/246000/248000 (`[DEBUG-239D-BRACKETS]`
+records in `target/test-output.log`; all surviving-row gaps 2000 units; every consecutive
+interface pair encloses zero strictly interior non-interface rows). A rule that uses a bare
+interface-plane count as the bracket set therefore brackets intervals with no
+body-bearing support rows, and the stack has nothing between its brackets to replace.
 Canonical OrcaSlicer does not degenerate: `raft_and_intermediate_support_layers`
 (`Support/SupportMaterial.cpp`) brackets the sorted `extremes` — the top/bottom contact
 layers, which span many object layers — and fills between consecutive ones at
 `step = dist / n_layers_extra ≈ pitch`, free-floating relative to the object grid. That is
 the user-visible speed purpose of the toggle ("supports are waste material; print them
 coarser"). 239c delivered free-floating planes; 239d must deliver free-floating STACKS in
-the coarse direction.
+the coarse direction, bracketing intervals that actually carry support body: interface
+planes only across body-bearing interface spans, with the run's surviving support-bearing
+endpoints as the fallback brackets when no such span exists.
+
+The original 0.3 mm slice is retained as historical baseline evidence. The binding nominal
+acceptance is `support_layer_height_mm = 0.45`: the supplied human-generated Orca references
+use a 0.5 mm nozzle with `max_layer_height = 0.45` and measure approximately 0.447273 mm
+effective coarse spacing; the packet-specific PnP evidence uses the explicit 0.45 override.
 
 The decimation question is answered by measurement: `build_emit_schedule`
 (`crates/slicer-core/src/algos/support_geometry.rs`) gates the host-side `SupportGeometryIR`
@@ -64,18 +79,28 @@ rows must therefore come from a new floating stack, not from either decimation m
   `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`) — its EPSILON bias
   is part of the rule; tree: `n_layers_extra = ceil(dist / pitch)`, same step/plane shape,
   **no** EPSILON bias, per `plan_layer_heights` (`TreeSupport.cpp`). One shared formula for
-  both families is a spec defect, not a simplification. Bracket selection is binding: let I
-  be the run's interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`).
-  With count(I) >= 2 the bracket set is the sorted/deduplicated I (endpoints not added);
-  with count(I) < 2 (zero or one interface plane) that set is supplemented with the run's
-  first and last surviving support-bearing rows, then sorted/deduped by `anchor_z` — so a
-  run with exactly one genuine interface plane keeps it as a bracket (never demoted to
-  body). Synthesized
-  stack planes **clone the lower bracket's geometry and rewrite roles to `SupportBody`**:
-  the source `global_layer_index` is captured into the local duplicate key and clone-source
-  provenance decision only, the emitted entry's final `global_layer_index` is assigned from
-  the per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`) so all entries at one
-  synthesized plane share that plane identity, and other provenance fields are preserved.
+  both families is a spec defect, not a simplification. Bracket selection is binding and
+  measured (Q1): for each `(object_id, region_id)` contiguous run, collect the exact
+  distinct interface-role planes (`TopInterface`/`BaseInterface`/`BottomInterface`) and use
+  them as bracket planes only when consecutive interface bracket planes enclose at least
+  one strictly interior surviving support-bearing row with no interface role (a
+  **body-bearing interface span**); process those spans. If no body-bearing interface span
+  exists in the run — including zero/one interface plane, or an adjacent interface cluster
+  confined to a run boundary (the measured real slice: tree interface roles only at
+  adjacent top rows 246000/248000, traditional at 244000/246000/248000) — the run's first
+  and last surviving support-bearing rows are the **endpoint fallback** brackets, then
+  sorted/deduplicated by `anchor_z`. All genuine interface entries remain protected real
+  entries under either bracket source: never removed, never demoted to body.
+  Synthesized
+  stack planes select the nearest surviving source row at or below each candidate plane
+  within the same run, falling back to the lower bracket. Non-interface geometry is
+  preferred per `body_ids` membership; a membership with no body-only source is retained
+  from its interface-bearing source. Selected entries are cloned with all roles rewritten to
+  `SupportBody`; the source `global_layer_index` is captured into the local duplicate key and
+  clone-source provenance decision only, the emitted entry's final `global_layer_index` is
+  assigned from the per-plane DEV-163 synthetic identity map (`BTreeMap<i64, i32>`) so all
+  entries at one synthesized plane share that plane identity, and other provenance fields
+  are preserved.
   After
   stepping, apply the canonical grouping rule of
   `generate_support_layers` (`Support/SupportCommon.cpp`): group candidate print-Z within
@@ -84,11 +109,12 @@ rows must therefore come from a new floating stack, not from either decimation m
   derives from the `anchor_z` of its adjacent rows, so a per-entry group height has no
   representation in PnP — a recorded inapplicability, not an omission. Only the
   **non-interface rows strictly inside each bracket pair** are replaced by the pitch-spaced
-  stack; genuine interface bracket entries always remain. Entries per object are
+  stack; genuine interface entries always remain (protected real entries under either Q1
+  bracket source). Entries per object are
   nondecreasing in `anchor_z` in original output order, distinct planes strictly increasing,
   and duplicate synthesized candidates are prevented at insertion by the stable identity key
   `(source global_layer_index, object_id, region_id, ordered body_ids, synthesized anchor_z)`
-  — the cloned lower bracket's source-entry identity (its `global_layer_index`, owning
+  — the selected source-entry identity (its `global_layer_index`, owning
   `object_id`/`region_id`, and ordered `body_ids: Vec<String>`) plus the synthesized plane's
   `anchor_z`; no entry `id` field exists to key on, and because the key spans the full source
   identity it cannot collide two legitimately distinct geometries (a second entry with the
@@ -105,16 +131,18 @@ rows must therefore come from a new floating stack, not from either decimation m
 - **Decimation reconciliation.** The floating stack is the source of coarse rows. The
   traditional `support_step` decimation is neutralized for bracket pairs satisfying the
   binding coarse predicate (configured nonzero pitch >= `local_support_gap`)
-  (binding form: set `support_step = 1` exactly for those coarse brackets; no global
-  gate bypass; the stack replaces it; `support_step` stays for the finer direction where it
-  is already 1).
+  (binding form: entries inside the computed coarse bracket-range membership bypass the
+  `support_step` modulo/removal gate for those coarse brackets; rows outside the coarse
+  ranges retain the computed `support_step` decimation; no global
+  gate bypass; the stack replaces the decimated coarse rows; `support_step` keeps its
+  computed value for the finer direction where it is already 1).
   `build_emit_schedule` stays read-only (out of scope; documented as ineffective for the
   planner path).
 - **Extrusion-presence ACs.** AC-1 asserts every off-grid support row carries at least one
   G1 move with `E > 0` — the DEV-161 defect class (off-grid rows whose moves carry no E) is
   a FAIL, not a human-gate-only finding.
 - **Measure-first coarse `height_delta` verdict.** A TASK-519-pattern measurement of the
-  height term `DefaultGCodeEmitter::emit_gcode` applies to a coarse 0.3-pitch off-grid pass
+  height term `DefaultGCodeEmitter::emit_gcode` applies to a nominal coarse 0.45-pitch off-grid pass
   (applied height, declared plane delta, resulting E), recorded under `TASK-527`, with a
   verdict AC (AC-4) asserting the recorded branch.
 - **Blocking human validation gate.** Visual-debug bundle + inspection checklist, signed
@@ -160,7 +188,7 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the **AC-3 (traditional-family)** stepping rule and the bracket-selection ground truth; the AC-2 (tree-family) rule is `plan_layer_heights` (`TreeSupport.cpp`) with no EPSILON bias.
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` — `raft_and_intermediate_support_layers`: the non-synchronized branch brackets the sorted `extremes` (top/bottom contact layers) and fills between consecutive ones at `n_layers_extra = ceil((dist - EPSILON) / max_suport_layer_height)`, `step = dist / n_layers_extra`, `print_z = extr1z + i * step`, last layer aligned to `extr2z`; the synchronized branch (flag disabled) snaps to object layers. This is the **AC-3 (traditional-family)** stepping rule. Canonical's `extremes` span many object layers by construction; PnP's measured fixture does not share that property (its interface roles sit in adjacent top-row clusters), so the bracket-**selection** ground truth for this packet is the measured Q1 rule (body-bearing interface spans, endpoint fallback) — canonical's `extremes` bracketing motivates it but does not transfer as a plane-count rule. The AC-2 (tree-family) rule is `plan_layer_heights` (`TreeSupport.cpp`) with no EPSILON bias.
 - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`: the grouping predicate (`print_z <= first.print_z + EPSILON`), the midpoint Z rule (`zavg = 0.5 * (first + last)`), and the group-height rule (minimum). This is the grouping/midpoint step the coarse stack applies after stepping.
 - `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` — `max_suport_layer_height = max_layer_height` (nozzle-derived via `max_layer_height_from_nozzle`, clamped >= object layer height). Confirms canonical has no `support_layer_height_mm` key; PnP's key is the pitch knob this packet uses.
 - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — the parallel support-layer generation loop (`n_layers_extra = ceil(dist / max_layer_height)`, `step = dist / n_layers_extra`, `print_z = z1 + step`): the tree-family stepping, **no** EPSILON bias — the AC-2 rule; `raft_and_intermediate_support_layers` (with its EPSILON bias) is the AC-3 rule. One shared formula for both families would be wrong.
@@ -181,11 +209,15 @@ Every key this packet implements carries evidence per the map's ticket 02 standa
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (real-slice coarse proof: off-grid rows, strict superset, every off-grid
-  support row extrudes), `AC-2` (tree planner free-floating `anchor_z` + exact expected
+  support row extrudes, and the measured adjacent interface cluster takes the endpoint
+  fallback while `;TYPE:Support interface` blocks survive in both families), `AC-2` (tree
+  planner free-floating `anchor_z` + exact expected
   bracket planes per the `plan_layer_heights` (`TreeSupport.cpp`) formula, original output
-  order, `SupportBody` role replacement, nearest anchoring),
+  order, `SupportBody` role replacement, nearest anchoring, and the measured Q1
+  body-bearing-span/endpoint-fallback bracket rule),
   `AC-3` (traditional planner same + `support_step` neutralized, exact planes per the
-  `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`) formula), `AC-4`
+  `raft_and_intermediate_support_layers` (`Support/SupportMaterial.cpp`) formula, and the
+  same measured Q1 bracket rule), `AC-4`
   (measure-first coarse `height_delta` verdict asserting the recorded applied-height
   constants), `AC-5` (guest freshness gate).
 - Negative: `AC-N1` (disabled reproduces the pre-change Z sequence exactly), `AC-N2` (finer
@@ -228,8 +260,8 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
   authored in Step 6.
 - Ledger facts (task high-water in `docs/07`, next free `DEV-###`, next free `G-` row) are
   re-derived at Step 8, never quoted from this packet.
-- The human gate's `REFS-PRESENT` precondition is verified at Step 7; the packet may reach
-  "all steps complete, sign-off pending" and stop there.
+- The human gate's `REFS-PRESENT` precondition is verified at Step 7; the human gate owner
+  approved all six checklist items on 2026-09-02, so the packet is implemented.
 
 ## Context Discipline Notes
 
