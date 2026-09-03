@@ -48,7 +48,7 @@ fn integrated_parity_support_surface_ironing() {
             slicer_ir::ConfigValue::Bool(true),
         ),
         (
-            "ironing_speed".to_string(),
+            "support_ironing_speed".to_string(),
             slicer_ir::ConfigValue::Float(30.0),
         ),
         (

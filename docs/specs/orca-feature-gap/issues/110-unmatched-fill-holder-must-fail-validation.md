@@ -1,8 +1,8 @@
 # 110 — An unmatched `*_fill_holder` must fail validation
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_f9ac241ccffenKo2FEY43lZSvG) — claimed 2026-09-03
 Blocked by: —
 Map: ../map.md
 
@@ -59,3 +59,48 @@ Decide:
 Scheduler-scoped; not a queue key, so it does not change the queue count.
 
 ## Answer
+
+Resolved 2026-09-03.
+
+The premise was corrected: `resolve_held_claims`
+(`crates/slicer-scheduler/src/validation.rs`) already returns the declared fill
+claims when a configured holder matches the module. The missing safety net was
+the case where no loaded manifest matches the configured holder, leaving every
+module with an empty effective set.
+
+The check lives in `validate_configured_claim_holders`
+(`crates/slicer-scheduler/src/validation.rs`) and is composed into startup
+validation by `validate_startup_dag_with_configured_holders`. It receives the
+same complete `DagValidationRequest::modules` set used by the other startup
+passes. The runtime resolves the global `ResolvedConfig` first, validates the
+four global fill holders, and rejects before any module dispatch.
+
+Two structured `SchedulerError` variants make the failure modes distinct:
+
+- `UnmatchedClaimHolder { claim, holder, candidates }` means the configured
+  holder matches no loaded module. `candidates` contains the deterministic,
+  sorted IDs of loaded modules declaring that claim.
+- `ClaimHolderDoesNotDeclareClaim { claim, holder, matched_modules,
+  candidates }` means the holder matches a loaded module ID, but none of the
+  matched modules declares the selected claim. The diagnostic includes both
+  the matched IDs and the eligible declaring-module IDs.
+
+Full module IDs and the built-in `com.core.` short names use the existing
+`module_id_matches_holder` rule. The runtime emits fatal
+`validation_error` code `VALIDATION_CLAIM_HOLDER_CODE` (402), completes the
+validation phase with `FatalError`, and returns a `SliceRunError`. Per-object
+and per-region holder overrides remain dispatch-time behavior and are outside
+this global-holder validation boundary.
+
+Regression coverage is in
+`crates/slicer-scheduler/tests/integration/claim_holder_validation_tdd.rs`:
+both error variants, deterministic candidates, and full/short valid holders
+are covered.
+
+Verification:
+
+- `cargo test -p slicer-scheduler --test scheduler_integration` (84 passed)
+- `cargo check --workspace --all-targets`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo xtask check-literals`
+- `cargo xtask build-guests --check` (fresh, exit 0)

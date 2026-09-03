@@ -39,11 +39,11 @@ fn support_ironing_is_the_only_gate_and_sibling_schema_is_unchanged() {
     assert_eq!(
         actual_keys,
         vec![
-            "ironing_speed",
             "line_width",
             "support_ironing",
             "support_ironing_flow",
             "support_ironing_spacing",
+            "support_ironing_speed",
         ]
     );
 
@@ -59,9 +59,15 @@ fn support_ironing_is_the_only_gate_and_sibling_schema_is_unchanged() {
         actual_schema.get("ironing_enabled").is_none(),
         "the legacy support gate must not remain declared"
     );
+    assert!(
+        !slicer_ir::feedrate::SPEED_KEYS
+            .iter()
+            .any(|(key, _)| *key == "support_ironing_speed"),
+        "support_ironing_speed is module-owned, not a host feedrate key"
+    );
 
     let expected: Value = r#"
-[config.schema.ironing_speed]
+[config.schema.support_ironing_speed]
 type = "float"
 default = 30.0
 min = 1.0
@@ -102,9 +108,9 @@ group = "Support"
         .expect("expected [config.schema] must be a table");
 
     for key in [
-        "ironing_speed",
         "support_ironing_flow",
         "support_ironing_spacing",
+        "support_ironing_speed",
         "line_width",
     ] {
         assert_eq!(

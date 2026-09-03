@@ -68,6 +68,10 @@ pub const VALIDATION_DAG_CONSTRUCTION_CODE: u32 = 400;
 /// version-compatibility failure during the 14-pass startup validation.
 pub const VALIDATION_VERSION_COMPAT_CODE: u32 = 401;
 
+/// Stable `ProgressError.code` for a `validation_error` raised when a
+/// configured claim holder cannot be resolved to a declaring module.
+pub const VALIDATION_CLAIM_HOLDER_CODE: u32 = 402;
+
 /// Stable `ProgressError.code` for a `module_error` raised by a fatal module
 /// dispatch or commit failure (prepass, per-layer, or postpass).
 pub const MODULE_DISPATCH_FATAL_CODE: u32 = 500;

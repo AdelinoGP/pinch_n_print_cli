@@ -166,11 +166,13 @@ off-map, after.
        `sparse_infill_pattern = gyroid` is silently dropped (the port has no
        opinion on keys it does not implement, and a "recognised but
        unimplemented" reject list is itself a form of declaration that
-       drifts); and a holder naming a module no manifest matches must **fail
-       validation** rather than yield a silently hollow part, which today it
-       does — `resolve_held_claims`
-       (`crates/slicer-scheduler/src/validation.rs`) returns empty for every
-       module and no `SchedulerError` variant covers it.
+       drifts); and a holder naming no loaded module must **fail validation**
+       rather than yield a silently hollow part.
+       `validate_startup_dag_with_configured_holders`
+       (`crates/slicer-scheduler/src/validation.rs`) now checks the configured
+       holder against the full loaded module set and emits a fatal structured
+       error; a matching module that does not declare the selected claim has
+       its own error variant.
      - New decision points go where the architecture puts them (prepass IR,
        `SliceRegionView` metadata, `PostPass` claims, manifests + SDK) — not
        as host-side special cases or hardcoded module constants.
@@ -780,7 +782,16 @@ off-map, after.
   two-module re-base would silently miss it; (c) the feedrate table is
   `SPEED_KEYS`, never `FEEDRATE_KEYS`. Ticket 110 is the load-bearing one: Q3(a)
   makes `*_fill_holder` the *only* selection channel for ten enums, and it
-  currently has no safety net.
+  Ticket 110 adds the holder-resolution safety net.
+
+- [109 — Rename `ironing_speed` → `support_ironing_speed` and decide `SPEED_KEYS` membership](issues/109-rename-support-ironing-speed-and-decide-speed-keys-membership.md)
+  — renamed the support module's PnP-specific normalization key, aligned its
+  absent-key fallback to `30.0`, and kept it out of `SPEED_KEYS`: canonical has
+  one global `ironing_speed`, while the support module owns its `speed_factor`.
+- [110 — An unmatched `*_fill_holder` must fail validation](issues/110-unmatched-fill-holder-must-fail-validation.md)
+  — startup validation now rejects a configured holder that matches no loaded
+  module, and separately rejects a matching module that does not declare the
+  selected claim; diagnostics include deterministic candidate module IDs.
 
 ## Not yet specified
 

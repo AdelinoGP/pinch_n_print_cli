@@ -53,7 +53,7 @@ fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(!module.support_ironing());
-    assert!((module.ironing_speed() - 15.0).abs() < 0.001);
+    assert!((module.support_ironing_speed() - 30.0).abs() < 0.001);
     assert!((module.support_ironing_flow() - 0.1).abs() < 0.001);
     assert!((module.support_ironing_spacing() - 0.1).abs() < 0.001);
 }
@@ -62,17 +62,24 @@ fn from_config_defaults() {
 fn from_config_custom() {
     let config = config_with(vec![
         ("support_ironing", ConfigValue::Bool(true)),
-        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("support_ironing_speed", ConfigValue::Float(20.0)),
         ("support_ironing_flow", ConfigValue::Float(0.2)),
         ("support_ironing_spacing", ConfigValue::Float(0.15)),
         ("line_width", ConfigValue::Float(0.5)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(module.support_ironing());
-    assert!((module.ironing_speed() - 20.0).abs() < 0.001);
+    assert!((module.support_ironing_speed() - 20.0).abs() < 0.001);
     assert!((module.support_ironing_flow() - 0.2).abs() < 0.001);
     assert!((module.support_ironing_spacing() - 0.15).abs() < 0.001);
     assert!((module.line_width() - 0.5).abs() < 0.001);
+}
+
+#[test]
+fn legacy_ironing_speed_is_ignored() {
+    let config = config_with(vec![("ironing_speed", ConfigValue::Float(20.0))]);
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
+    assert!((module.support_ironing_speed() - 30.0).abs() < 0.001);
 }
 
 #[test]

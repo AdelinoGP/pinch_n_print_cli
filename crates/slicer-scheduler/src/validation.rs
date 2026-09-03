@@ -104,6 +104,62 @@ pub fn resolve_held_claims(
         .collect()
 }
 
+/// Validate configured claim-holder names against the loaded module manifests.
+///
+/// `configured_holders` contains `(claim, holder)` pairs. A holder must match a
+/// loaded module using [`module_id_matches_holder`], and that module must
+/// declare the selected claim. Candidate IDs in diagnostics are the loaded
+/// modules that declare the requested claim, sorted for deterministic output.
+pub fn validate_configured_claim_holders(
+    modules: &[LoadedModule],
+    configured_holders: &[(&str, &str)],
+) -> Vec<SchedulerError> {
+    configured_holders
+        .iter()
+        .filter_map(|&(claim, holder)| {
+            let candidates: Vec<ModuleId> = modules
+                .iter()
+                .filter(|module| module.claims().iter().any(|declared| declared == claim))
+                .map(|module| module.id().to_string())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let matching_modules: Vec<&LoadedModule> = modules
+                .iter()
+                .filter(|module| module_id_matches_holder(module.id(), holder))
+                .collect();
+
+            if matching_modules.is_empty() {
+                return Some(SchedulerError::UnmatchedClaimHolder {
+                    claim: claim.to_string(),
+                    holder: holder.to_string(),
+                    candidates,
+                });
+            }
+
+            if matching_modules
+                .iter()
+                .all(|module| !module.claims().iter().any(|declared| declared == claim))
+            {
+                let matched_modules: Vec<ModuleId> = matching_modules
+                    .iter()
+                    .map(|module| module.id().to_string())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+                return Some(SchedulerError::ClaimHolderDoesNotDeclareClaim {
+                    claim: claim.to_string(),
+                    holder: holder.to_string(),
+                    matched_modules,
+                    candidates,
+                });
+            }
+
+            None
+        })
+        .collect()
+}
+
 /// Structured scheduler error surfaced by DAG validation and DAG construction APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchedulerError {
@@ -126,6 +182,26 @@ pub enum SchedulerError {
         module_b: ModuleId,
         /// Scope in which the conflict was observed.
         scope: ConflictScope,
+    },
+    /// A configured claim holder does not match any loaded module.
+    UnmatchedClaimHolder {
+        /// Claim selected by the holder configuration.
+        claim: String,
+        /// Configured module ID or built-in short name.
+        holder: String,
+        /// Loaded modules that declare the selected claim.
+        candidates: Vec<ModuleId>,
+    },
+    /// A configured holder matches loaded modules, but none declares the claim.
+    ClaimHolderDoesNotDeclareClaim {
+        /// Claim selected by the holder configuration.
+        claim: String,
+        /// Configured module ID or built-in short name.
+        holder: String,
+        /// Loaded modules matched by the holder identifier.
+        matched_modules: Vec<ModuleId>,
+        /// Loaded modules that declare the selected claim.
+        candidates: Vec<ModuleId>,
     },
     /// Two modules were declared incompatible.
     IncompatibleModules {
@@ -439,6 +515,24 @@ pub fn validate_startup_dag(request: &DagValidationRequest) -> DagValidationRepo
     validate_cross_stage_dependencies(&request.modules, &modules_by_id, &stage_order, &mut report);
     validate_transitive_dependencies(&request.modules, &modules_by_id, &stage_order, &mut report);
 
+    report
+}
+
+/// Runs startup DAG validation and validates the configured claim-holder names
+/// against the same loaded module set.
+///
+/// Holder selection is configuration data rather than a manifest declaration,
+/// so it is supplied separately from [`DagValidationRequest`]. The diagnostics
+/// are attached to the global claim-conflict pass because an invalid selection
+/// cannot produce a valid claim route.
+pub fn validate_startup_dag_with_configured_holders(
+    request: &DagValidationRequest,
+    configured_holders: &[(&str, &str)],
+) -> DagValidationReport {
+    let mut report = validate_startup_dag(request);
+    for error in validate_configured_claim_holders(&request.modules, configured_holders) {
+        report.push_error(DagValidationPass::GlobalClaimConflicts, error);
+    }
     report
 }
 

@@ -225,11 +225,11 @@ is the authoritative catalog of their defaults and ranges.
 | `skirt_distance` | float | `3.0` | [0.0, 20.0] | `skirt-brim` |
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
-| `ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
 | `support_ironing` | bool | `false` | — | `support-surface-ironing` |
 | `support_ironing_flow` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `support_ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
+| `support_ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
 | `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
 | `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | `top-surface-ironing` |
@@ -461,7 +461,6 @@ upstream or has no upstream equivalent.
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |
 | `internal_solid_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |
-| `ironing_speed` | `support-surface-ironing` | `30.0` | `20.0` |
 | `nozzle_temperature_initial_layer` | `machine-gcode-emit` | `215` | `200.0` |
 | `outer_wall_speed` | `classic-perimeters` | `30.0` | `60.0` |
 | `precise_outer_wall` | `arachne-perimeters` | `false` | `1.0` |

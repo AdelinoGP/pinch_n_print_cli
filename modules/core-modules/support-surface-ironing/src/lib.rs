@@ -34,7 +34,7 @@ const BASE_SPEED: f32 = 50.0;
 /// from perimeter regions) to smooth them, using `ExtrusionRole::Ironing`.
 pub struct SupportSurfaceIroning {
     support_ironing: bool,
-    ironing_speed: f32,
+    support_ironing_speed: f32,
     support_ironing_flow: f32,
     support_ironing_spacing: f32,
     line_width: f32,
@@ -46,9 +46,9 @@ impl SupportSurfaceIroning {
         self.support_ironing
     }
 
-    /// Ironing speed in mm/s.
-    pub fn ironing_speed(&self) -> f32 {
-        self.ironing_speed
+    /// Support ironing speed in mm/s.
+    pub fn support_ironing_speed(&self) -> f32 {
+        self.support_ironing_speed
     }
 
     /// Ironing flow multiplier (canonical `support_ironing_flow`, 10% default).
@@ -178,10 +178,10 @@ impl LayerModule for SupportSurfaceIroning {
             _ => false,
         };
 
-        let ironing_speed = match config.get("ironing_speed") {
+        let support_ironing_speed = match config.get("support_ironing_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 15.0,
+            _ => 30.0,
         };
 
         let support_ironing_flow = match config.get("support_ironing_flow") {
@@ -201,7 +201,7 @@ impl LayerModule for SupportSurfaceIroning {
 
         Ok(Self {
             support_ironing,
-            ironing_speed,
+            support_ironing_speed,
             support_ironing_flow,
             support_ironing_spacing,
             line_width,
@@ -219,7 +219,7 @@ impl LayerModule for SupportSurfaceIroning {
             return Ok(());
         }
 
-        let speed_factor = self.ironing_speed / BASE_SPEED;
+        let speed_factor = self.support_ironing_speed / BASE_SPEED;
 
         for region in regions {
             // Tag every path pushed below with this region's identity. Without
@@ -270,7 +270,7 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = SupportSurfaceIroning::from_config(&config).unwrap();
         assert!(!module.support_ironing);
-        assert!((module.ironing_speed - 15.0).abs() < 0.001);
+        assert!((module.support_ironing_speed - 30.0).abs() < 0.001);
         assert!((module.support_ironing_flow - 0.1).abs() < 0.001);
         assert!((module.support_ironing_spacing - 0.1).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);

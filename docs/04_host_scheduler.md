@@ -354,6 +354,13 @@ pub enum SchedulerError {
     ClaimConflict {
         claim: String, module_a: ModuleId, module_b: ModuleId, scope: ConflictScope,
     },
+    UnmatchedClaimHolder {
+        claim: String, holder: String, candidates: Vec<ModuleId>,
+    },
+    ClaimHolderDoesNotDeclareClaim {
+        claim: String, holder: String, matched_modules: Vec<ModuleId>,
+        candidates: Vec<ModuleId>,
+    },
     IncompatibleModules {
         declared_by: ModuleId, conflicting: ModuleId, reason: String,
     },
@@ -411,7 +418,7 @@ active per region at a time.
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. See DEV-065 (2026-06-09) for the regression history. family-scoped support claims are likewise exempted globally, while family planner writes to `SupportPlanIR` and `SupportIR` are orderable through host aggregation rather than blanket-exempted.
+2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. See DEV-065 (2026-06-09) for the regression history. family-scoped support claims are likewise exempted globally, while family planner writes to `SupportPlanIR` and `SupportIR` are orderable through host aggregation rather than blanket-exempted. The configured holder check in `validate_startup_dag_with_configured_holders` (`crates/slicer-scheduler/src/validation.rs`) is attached to this pass: `UnmatchedClaimHolder` means no loaded module matches the configured ID, while `ClaimHolderDoesNotDeclareClaim` means a matching module does not declare the selected claim. Both are fatal.
 3. **Per-region claim conflicts** — same claim remains after region-level filtering
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
@@ -469,6 +476,7 @@ Rules:
 - A disabled module does not participate in claim conflicts.
 - Region overrides may disable one holder and enable another; the region-level result must still be unique.
 - If no holder remains for a required claim, this is a configuration error (`MissingDependency`/unfulfilled capability).
+- A configured holder must match a loaded module that declares the selected claim. An unmatched name fails with `SchedulerError::UnmatchedClaimHolder`; a matching module without the claim fails with `SchedulerError::ClaimHolderDoesNotDeclareClaim`. There is no silent empty-set fallback for either case.
 - Claim holder consistency is required per `(object_id, claim)` across all global layers.
 - If region overrides produce claim holder transitions across layers for the same object, validation fails as non-deterministic.
 

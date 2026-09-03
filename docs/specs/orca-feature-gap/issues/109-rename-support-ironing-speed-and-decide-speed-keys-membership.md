@@ -1,8 +1,8 @@
 # 109 — Rename `ironing_speed` → `support_ironing_speed` and decide `SPEED_KEYS` membership
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_f9ac241ccffenKo2FEY43lZSvG) — claimed 2026-09-03
 Blocked by: —
 Map: ../map.md
 
@@ -47,3 +47,28 @@ Not a queue key: `support_ironing_speed` is a PnP naming fix with no canonical
 counterpart, so it does not change the queue's key count either way.
 
 ## Answer
+
+Resolved 2026-09-03.
+
+`support-surface-ironing` now declares and reads `support_ironing_speed`; its
+module field and public accessor use the same name. The absent-key fallback is
+`30.0`, matching the manifest. The old `ironing_speed` input is deliberately
+ignored rather than aliased. The module tests cover the new key, the aligned
+fallback, and the legacy key's ignored behavior, and the integrated parity
+fixture uses the new key. The generated config reference was refreshed, and the
+support guest was rebuilt because config names are embedded in the artifact.
+
+`support_ironing_speed` does **not** join `SPEED_KEYS`. Canonical
+`PrintConfig.cpp` defines one global `ironing_speed`, which canonical
+`Fill.cpp::make_ironing` and `GCode.cpp::_extrude` use for the `Ironing` role;
+canonical `SupportParameters` has no support-ironing speed key. In Pinch 'n
+Print, this support-only value is a module-local normalization input that
+produces the path `speed_factor`. Registering it in the host feedrate table
+would create a second feedrate mechanism for the same `Ironing` role and would
+also require a new host field with no canonical counterpart. Keeping it
+module-owned satisfies the Authoring rule 5 constraint.
+
+Verification: the support-surface-ironing crate tests, integrated native/WASM
+support-ironing parity, `cargo xtask gen-config-docs --check`,
+`cargo xtask check-literals`, focused clippy, and
+`cargo xtask build-guests --check` all pass.

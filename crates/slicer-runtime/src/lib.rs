@@ -238,7 +238,8 @@ pub use slicer_core::algos::prepass_slice::{execute_prepass_slice_single_layer, 
 pub use slicer_wasm_host::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
 pub use topology::topological_sort;
 pub use validation::{
-    resolve_held_claims, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,
+    resolve_held_claims, validate_configured_claim_holders, validate_startup_dag,
+    validate_startup_dag_with_configured_holders, AccessKind, ClaimHolder, ConflictScope,
     DagValidationDiagnostic, DagValidationPass, DagValidationReport, DagValidationRequest,
     FillHolders, ModuleAccessAudit, SchedulerError, StageDag, FILL_CLAIM_IDS,
 };

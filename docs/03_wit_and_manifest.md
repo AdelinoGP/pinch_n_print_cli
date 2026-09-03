@@ -763,6 +763,16 @@ packet 35). At dispatch time the host computes the effective held set per
 region by intersecting each module's manifest `[claims].holds` with the
 configured holders (see `slicer_runtime::resolve_held_claims`).
 
+Before execution, `validate_configured_claim_holders` in
+`crates/slicer-scheduler/src/validation.rs` checks each configured holder against
+the loaded manifests using the same `module_id_matches_holder` rule. A holder
+that matches no loaded module produces `SchedulerError::UnmatchedClaimHolder`;
+a holder that matches a loaded module but whose module does not declare the
+selected claim produces `SchedulerError::ClaimHolderDoesNotDeclareClaim`.
+Both diagnostics are fatal and include the claim, configured holder, and the
+loaded modules that declare the claim, so a bad selection cannot silently
+produce an empty fill role.
+
 The set is exposed across the WIT boundary via
 `slice-region-view.held-claims` and consumed by guest modules through
 `SliceRegionView::should_emit(role)`. An **empty held-claims list suppresses all

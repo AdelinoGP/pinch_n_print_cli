@@ -84,7 +84,9 @@ use crate::progress_events::{
 use crate::progress_instrumentation::{now_unix_ms, ProgressPipelineInstrumentation, ProgressTier};
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
-use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
+use crate::validation::{
+    validate_startup_dag_with_configured_holders, DagValidationPass, SchedulerError, StageDag,
+};
 use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
@@ -677,6 +679,12 @@ pub fn run_slice_with_collector(
         );
     }
 
+    let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
+    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
+        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+    let dag_modules: Vec<crate::manifest::LoadedModule> =
+        loaded.bindings.iter().map(|b| b.module.clone()).collect();
+
     // Static-DAG snapshot for the HTML report's "Pipeline (DAG)" section.
     // Captured here so it can borrow the same `dag_producers` slice the
     // validator builds below; the snapshot itself stores owned strings so
@@ -751,8 +759,6 @@ pub fn run_slice_with_collector(
             }
         }
 
-        let dag_modules: Vec<crate::manifest::LoadedModule> =
-            loaded.bindings.iter().map(|b| b.module.clone()).collect();
         // Build global-scope ClaimHolder entries from each loaded module's
         // declared `claims` so the validator can resolve fill-role-claim
         // owners (claim:sparse-fill, claim:top-fill, claim:bottom-fill,
@@ -775,14 +781,55 @@ pub fn run_slice_with_collector(
         let host_version = crate::manifest::parse_semver(env!("CARGO_PKG_VERSION"))
             .expect("slicer-runtime CARGO_PKG_VERSION must be valid semver");
         let request = crate::validation::DagValidationRequest {
-            modules: dag_modules,
+            modules: dag_modules.clone(),
             stage_dags,
             host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
             host_version,
             claim_holders,
             access_audits: Vec::new(),
         };
-        let report = validate_startup_dag(&request);
+        let configured_fill_holders = [
+            (
+                "claim:top-fill",
+                default_resolved_config.top_fill_holder.as_str(),
+            ),
+            (
+                "claim:bottom-fill",
+                default_resolved_config.bottom_fill_holder.as_str(),
+            ),
+            (
+                "claim:bridge-fill",
+                default_resolved_config.bridge_fill_holder.as_str(),
+            ),
+            (
+                "claim:sparse-fill",
+                default_resolved_config.sparse_fill_holder.as_str(),
+            ),
+        ];
+        let report =
+            validate_startup_dag_with_configured_holders(&request, &configured_fill_holders);
+
+        let holder_errors: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    &diagnostic.detail,
+                    SchedulerError::UnmatchedClaimHolder { .. }
+                        | SchedulerError::ClaimHolderDoesNotDeclareClaim { .. }
+                )
+            })
+            .collect();
+        if !holder_errors.is_empty() {
+            let detail = holder_errors
+                .iter()
+                .map(|diagnostic| format!("{:?}", diagnostic.detail))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let msg = format!("startup DAG claim-holder validation failed: {detail}");
+            emit_validation_failure(crate::progress_events::VALIDATION_CLAIM_HOLDER_CODE, &msg);
+            return Err(SliceRunError(msg));
+        }
 
         let version_errors: Vec<_> = report
             .errors
@@ -834,11 +881,6 @@ pub fn run_slice_with_collector(
             ProgressStatus::Ok,
         ));
     }
-
-    let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
-        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
     let resolved_configs_map = resolve_per_object_configs(
