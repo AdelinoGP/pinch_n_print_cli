@@ -2112,8 +2112,9 @@ fn push_slice_regions(
 /// Support is planned in the free air under an overhang, so a family may hold
 /// bodies on a layer where its region has NO cross-section at all — a
 /// modifier-minted sub-region below the overhang it modifies, or a floating
-/// part above nothing. Both Tier-2 gates (`module_receives_slice_region` and
-/// the per-layer scheduler in slicer-runtime `layer_executor.rs`) key on
+/// part above nothing. Both Tier-2 gates (`module_receives_slice_region` in
+/// this file, and the per-layer scheduler in
+/// `crates/slicer-runtime/src/layer_executor.rs`) key on
 /// `layer.active_regions`, which only lists regions with geometry, so the
 /// family renderer was never invoked there and the planned column vanished
 /// between the plan and the G-code (measured: traditional support planned on

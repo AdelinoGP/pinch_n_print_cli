@@ -16,8 +16,8 @@
 //! a sub-region body keeps `roles ∩ own`; a base-region body keeps
 //! `roles - inflate(foreign, clearance)`. The clearance sits on the base side
 //! only, so the two families never touch and the downstream swept-path guard
-//! (`LayerStageCommit::Support` in slicer-runtime `layer_executor.rs`) has
-//! nothing to reject.
+//! (`LayerStageCommit::Support` in
+//! `crates/slicer-runtime/src/layer_executor.rs`) has nothing to reject.
 //!
 //! Orca has no per-region support family, so none of this has a canonical
 //! counterpart (see `docs/DEVIATION_LOG.md`).

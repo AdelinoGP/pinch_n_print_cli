@@ -321,6 +321,7 @@ fn modifier_support_territory_gcode_has_support_on_both_sides_up_to_the_overhang
         .arg(&output_path)
         .arg("--module-dir")
         .arg(root.join("modules/core-modules"))
+        .arg("--instrument-stderr")
         .output()
         .expect("pnp_cli must execute");
     assert!(
@@ -328,6 +329,17 @@ fn modifier_support_territory_gcode_has_support_on_both_sides_up_to_the_overhang
         "pnp_cli slice failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    // The plan's red signal: the reject-both guard used to mint 2121 of these
+    // on this fixture, each carrying a 1200 "support demand unmet" warning.
+    // Territory arbitrates by clipping (Info 1205), so both must be gone.
+    let events = String::from_utf8_lossy(&output.stderr);
+    let rejections = events.matches("cross-family positive-area overlap").count();
+    assert_eq!(
+        rejections, 0,
+        "cross-family arbitration must clip, not reject"
+    );
+    let unmet = events.matches("\"code\":1200").count();
+    assert_eq!(unmet, 0, "no support demand may be reported unmet");
     let gcode = std::fs::read_to_string(&output_path).expect("read gcode");
     let layers = support_layers(&gcode);
     let with_support: Vec<&(f32, usize, bool)> =
@@ -344,6 +356,46 @@ fn modifier_support_territory_gcode_has_support_on_both_sides_up_to_the_overhang
     assert!(
         modifier_half_layers > 0,
         "support must be printed in the modifier half (x > 105.3, y > 98.6)"
+    );
+
+    // Control: the same object with the modifier volume removed still reaches
+    // the overhang, and carries no support in the half the modifier used to
+    // own beyond what the tree already put there. The point is that the
+    // territory machinery is inert without a modifier.
+    let mut control_mesh = slicer_model_io::load_model(&fixture()).expect("load fixture");
+    control_mesh.objects[0].modifier_volumes.clear();
+    let control_model = target.join("modifier_support_territory_control.3mf");
+    slicer_model_io::write_3mf(
+        &control_mesh,
+        std::fs::File::create(&control_model).expect("create control 3mf"),
+    )
+    .expect("write control 3mf");
+    let control_out = target.join("modifier_support_territory_control.gcode");
+    let control_run = Command::new(&bin)
+        .args(["slice", "--model"])
+        .arg(&control_model)
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--output")
+        .arg(&control_out)
+        .arg("--module-dir")
+        .arg(root.join("modules/core-modules"))
+        .output()
+        .expect("pnp_cli must execute");
+    assert!(
+        control_run.status.success(),
+        "control slice failed: {}",
+        String::from_utf8_lossy(&control_run.stderr)
+    );
+    let control_layers = support_layers(&std::fs::read_to_string(&control_out).expect("read"));
+    let control_top = control_layers
+        .iter()
+        .filter(|layer| layer.1 > 0)
+        .map(|layer| layer.0)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        control_top >= 24.6,
+        "control must still reach the overhang; last support layer z = {control_top}"
     );
     // Every layer from the plate to the interface band carries support in
     // the modifier half: the traditional column is a straight prism.
