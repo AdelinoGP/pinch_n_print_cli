@@ -20,7 +20,8 @@ depends_on:
   - 238b-tree-planner-canonical-fidelity
   - 238c-support-renderer-flow-interfaces
   - 239-support-independent-layer-z
-  - 240-support-raft
+  - 240a-support-raft-substrate
+  - 240b-support-raft-module
   - 241-support-agg-rasterizer
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
@@ -55,7 +56,8 @@ parser/renderer reason.
   other packet in the queue and cannot activate until each reaches `implemented`):
   237-support-analysis-parity, 238a-support-pattern-config-keys,
   238b-tree-planner-canonical-fidelity, 238c-support-renderer-flow-interfaces,
-  239-support-independent-layer-z, 240-support-raft, 241-support-agg-rasterizer.
+  239-support-independent-layer-z, 240a-support-raft-substrate,
+  240b-support-raft-module, 241-support-agg-rasterizer.
 - Unblocks: merge of `parity/support-planners-clean` to master after the human gate signs
   (plan §14 rule 8); nothing else — this is the terminal packet.
 - Activation blockers: any dependency packet not yet `implemented`; fresh Orca references

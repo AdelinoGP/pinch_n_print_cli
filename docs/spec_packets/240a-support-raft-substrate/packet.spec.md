@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 240-support-raft
+packet: 240a-support-raft-substrate
 depends_on: 236-support-stabilization
 task_ids:
   - TASK-409
@@ -8,159 +8,189 @@ task_ids:
   - TASK-411
   - TASK-412
   - TASK-413
-  - TASK-414
-  - TASK-415
-  - TASK-416
-  - TASK-417
-  - TASK-418
+  - TASK-531
+  - TASK-532
+  - TASK-533
+  - TASK-534
 backlog_source: docs/specs/support-families-anchored-entities-plan.md
-context_cost_estimate: M
+context_cost_estimate: L
 ---
 
-# Packet Contract: 240-support-raft
+# Packet Contract: 240a-support-raft-substrate
 
 ## Goal
 
-Implement raft geometry end-to-end: a new `com.core.raft-default` `Layer::Infill`
-synthesizer holding `claim:raft-fill` that reads `SupportPlanIR.raft_plan`,
-`SliceIR`, and `LayerPlanIR` and writes the new `SlicedRegion.raft_fill` with
-deterministic fill polygons (extrusion-path conversion happens downstream
-under the claim-holder emit path — design.md §ADR-0009 Reconciliation, which
-also records the formal ADR-0009 Decision-5 claim reassignment to
-`com.core.raft-default`); the u32→i32 signed-layer-index migration;
-and the canonical raft config keys — preserving the ADR-0009 contract that rafts
-stay signed negative global-layer PREFIX entries, never anchored entities.
+Build the signed negative-index substrate a raft consumer needs: migrate the
+layer-index surface from `u32` to `i32`, teach `PrePass::LayerPlanning` to emit
+a raft PREFIX band at global indices `-N .. -1`, repair every consumer that
+today assumes `GlobalLayer.index == Vec position`, add the
+`SlicedRegion.raft_fill` carrier plus its WIT accessors, and expose
+`SupportPlanIR.raft_plan` to `Layer::*` guests through `paint-region-layer-view`.
+No raft geometry is synthesized here — that is 240b.
 
 ## Scope Boundaries
 
-The packet owns the raft consumer for the built-but-unconsumed `RaftPlan`
-transport (G-06), the signed negative-index substrate it requires, and the
-raft key surface. It absorbs the full scope of deleted-draft 215-raft-geometry
-(mapping recorded in `requirements.md`). Independent support-Z (239) and the
-AGG rasterizer (241) are excluded.
+This packet owns the substrate only: types, index assignment, transport, and the
+consumers that break when indices go negative. The `com.core.raft-default`
+module, the `generate_raft_base` geometry port, the raft config keys, the
+ADR-0009 amendment, and the Human Validation Gate all belong to
+**240b-support-raft-module**. Independent support-Z (239) and the AGG
+rasterizer (241) are excluded.
 
 ## Prerequisites and Blockers
 
-- Depends on: **236-support-stabilization** (FORWARD DEPENDENCY — 236 is
-  generated as `draft` itself; this packet may be authored now but must not be
-  activated until 236 closes its green gate. All phrasing here treats 236's
-  outcomes — AC-8 per-region ruling, G-21 validator update, ADR-0059
-  acceptance — as expected-to-exist, never as verified facts).
-- Unblocks: 242-support-family-orca-closure (queue row #9 depends on this row).
-- Activation blockers: none local; activation additionally requires the §9
-  raft-enabled Orca references to exist under `tmp/` (human-owned) before the
-  Human Validation Gate can sign — authoring is not blocked.
+- Depends on: **236-support-stabilization** — SATISFIED. Re-derive before
+  activation (`grep '^status:' docs/spec_packets/236-support-stabilization/packet.spec.md`);
+  at authoring time it reads `implemented`, so 236's outcomes (AC-8 per-region
+  ruling, G-21 validator update, ADR-0059 acceptance) are shipped facts.
+  236's AC-10 has already deleted `docs/spec_packets/215-raft-geometry/`.
+- Unblocks: **240b-support-raft-module** (hard dependency — 240b cannot start
+  until AC-1..AC-7 here are green), and through it
+  242-support-family-orca-closure.
+- Activation blockers: none. This packet has no human-gate artifact dependency;
+  the visual gate lives in 240b.
 
 ## Acceptance Criteria
 
 - **AC-1. Given** the workspace builds, **when** the signed-index migration
   lands, **then** `GlobalLayer.index`, `ObjectLayerRef.local_layer_index`,
   `ObjectLayerRef.global_layer_index`, `SliceIR.global_layer_index`,
-  `InfillIR.global_layer_index`, and `SupportIR.global_layer_index` are `i32`,
-  `LayerModule::run_infill` takes `layer_index: i32`, a negative
-  `SliceIR.global_layer_index` round-trips through serde unchanged, and every
-  `Layer::Infill` guest still instantiates against rebuilt wasm artifacts. |
+  `PerimeterIR.global_layer_index`, `InfillIR.global_layer_index`,
+  `SupportIR.global_layer_index`, `LayerCollectionIR.global_layer_index`,
+  `RegionKey.global_layer_index`, `SupportCandidateSource.global_layer_index`,
+  `SupportGeometryKey.global_support_layer_index`,
+  `AnchoredEntity.anchor_global_layer_index`,
+  `OrderedEventCollection.anchor_global_layer_index`,
+  `SupportPlanEntry.anchor_layer_index`, and `PaintRegionLayerView.layer_index`
+  are all `i32`, `LayerModule::run_infill` takes `layer_index: i32`, and a
+  `SliceIR` carrying `global_layer_index: -2` round-trips through serde
+  unchanged. |
   `mkdir -p target && cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-2. Given** `SlicedRegion` carries the new field, **when**
-  `com.core.raft-default` runs on a layer whose
-  `SupportPlanIR.raft_plan` is `Some`, **then** it populates
-  `SlicedRegion.raft_fill: Vec<ExPolygon>` with deterministic raft
-  polygons (identical inputs → identical output across two runs), the
-  `slice-region-view` WIT resource exposes a `raft-fill` accessor, and the
-  `SliceIR` schema version minor-bumps with the bump recorded in the version
-  history doc comment. | `cargo test -p slicer-ir --test sliced_region_raft_fill_tdd -- raft_fill_defaults_empty_and_deterministic --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-3. Given** the new module directory `modules/core-modules/raft-default/`,
-  **when** the host loads the module directory, **then** the module manifest
-  declares id `com.core.raft-default`, stage `Layer::Infill`,
-  `holds = ["claim:raft-fill"]`, `reads = ["SliceIR", "LayerPlanIR",
-  "SupportPlanIR"]`, `writes = ["SliceIR"]`, the guest compiles to a fresh
-  component artifact, and `should_emit(ExtrusionRole::RaftInfill)` returns true
-  for its held-claim set. | `cargo xtask build-guests --check && cargo test -p slicer-sdk --test should_emit_raft_fill_claim_tdd -- raft_infill_claim_emits --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-4. Given** `support_raft_layers > 0`, **when** the pipeline executes,
-  **then** raft layers are emitted as signed negative global-layer prefix
-  entries (`-1, ..., -N`) that sort strictly before model layer `0`, the
-  synthesized geometry honors `raft_expansion` and
-  `raft_first_layer_expansion` (mm, divided by 100 at the unit boundary per
-  E8), and no `AnchoredEntity` is minted for any raft entry. |
-  `cargo test -p slicer-runtime --test integration -- raft_prefix_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-5. Given** the canonical raft keys, **when** `com.core.raft-default` is
-  dispatched, **then** `raft_contact_distance` (default 0.1),
-  `raft_expansion` (default 1.5), and `raft_first_layer_expansion` (default
-  2.0) are declared in its manifest `[config.schema]`, each wired to the
-  geometry it controls; and for each of the four support-module manifests
-  (`tree-support-planner`, `traditional-support-planner`, `tree-support`,
-  `traditional-support`) a written wire-or-record decision exists in this
-  packet for every raft key it declares or deliberately omits. |
-  `cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-  (single-test form; the AC-5 contract case lives in
-  `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs`, registered in
-  Step 6b)
-- **AC-6. Given** DEV-124 was closed 2026-08-07 (perimeter modules gate
-  `only_one_wall_first_layer` on `layer_index == support_raft_layers`),
-  **when** the raft path becomes live, **then** the existing contract tests
-  pass unchanged under a raft-configured config view and the verify-record
-  outcome (including the deliberately-unported `has_bottom_shell_layers`
-  residual) is written into this packet's requirements. |
-  `cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-2. Given** the guest bridge, **when** a negative layer index crosses the
+  WIT boundary, **then** it arrives unchanged rather than wrapping — the
+  `as u32` truncation in the `slicer-macros` paint-view bridge (which turns
+  `-1` into `4294967295`) is gone, `PaintRegionLayerView::layer_index()`
+  returns `i32`, and a guest dispatched at index `-1` observes `-1`. |
+  `mkdir -p target && cargo test -p slicer-macros --test binding_surface_tdd -- negative_layer_index_survives_paint_view_bridge --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-3. Given** `index != Vec position` for the first time, **when** the layer
+  loop hydrates a raft layer, **then** `hydrate_slice_arena`
+  (`crates/slicer-runtime/src/layer_executor.rs`) resolves the `SliceIR` by
+  matching `index` rather than by `slice_vec.get(layer.index as usize)`,
+  `raw_polygons_by_layer` in
+  `crates/slicer-runtime/src/builtins/prepass_slice_producer.rs` is keyed
+  `HashMap<i32, _>`, the Z lookup in
+  `crates/slicer-runtime/src/builtins/support_analysis_producer.rs` finds by
+  `index` identity, and no `FatalLayer` carrying "slice_ir Vec missing entry
+  for layer index -1" is produced. |
+  `mkdir -p target && cargo test -p slicer-runtime --test executor -- negative_index_layer_hydrates_slice_arena --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-4. Given** `layer-proposal` gains `is-raft-prefix: bool`
+  (`crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`),
+  **when** a `PrePass::LayerPlanning` guest pushes `N` prefix proposals ahead of
+  the model proposals, **then** BOTH harvest legs — `harvest_layer_plan_ir_from`
+  (`crates/slicer-wasm-host/src/marshal/in_.rs`) and the
+  `PrePass::LayerPlanning` arm of `crates/slicer-wasm-host/src/marshal/native.rs`
+  — assign those layers indices `-N .. -1` in push order and the remainder
+  `0 ..`, the `MAX_LAYERS` bound is re-derived signed with a matching lower
+  bound, and the native arm's positional resolved-config carry-over
+  (`input_layer_plan.and_then(|plan| plan.global_layers.get(index))`) is
+  re-keyed by `index` so it cannot skew when only one side has a prefix band. |
+  `mkdir -p target && cargo test -p slicer-wasm-host --test marshal_layer_plan_prefix_tdd -- prefix_band_indices_are_negative_on_both_legs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-5. Given** `support_raft_layers > 0` in config, **when**
+  `com.core.layer-planner-default` runs, **then** it pushes exactly
+  `support_raft_layers` proposals with `is-raft-prefix: true` before any model
+  proposal, each carrying a Z computed in `f64` with a single `as f32` cast at
+  the end (matching the existing `generate_object_layers` discipline) and at
+  least one `active_regions` entry so the empty-region fallback in
+  `derive_layer_output_envelope_from_input` (a hardcoded 0.2 mm envelope) never
+  fires for a raft layer; and with `support_raft_layers = 0` it pushes none. |
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_prefix_band_emitted_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- no_raft_prefix_band_when_raft_layers_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-6. Given** the new carrier, **when** the IR is extended, **then**
+  `SlicedRegion.raft_fill: Vec<ExPolygon>` exists with `#[serde(default)]`, a
+  `raft-fill` accessor returning `list<ex-polygon>` is present on BOTH
+  `slice-region-view` and the perimeter region resource in
+  `crates/slicer-schema/wit/deps/ir-types.wit`, `region_partition.rs` carries a
+  `split_field!(raft_fill);` line so the field survives modifier-region
+  splitting, and `CURRENT_SLICE_IR_SCHEMA_VERSION` is `4.9.0` with a
+  version-history doc-comment entry. |
+  `mkdir -p target && cargo test -p slicer-ir --test sliced_region_raft_fill_tdd -- raft_fill_defaults_empty_and_survives_roundtrip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && test "$(rg -c 'raft-fill: func' crates/slicer-schema/wit/deps/ir-types.wit)" -eq 2 && rg -q 'split_field..raft_fill' crates/slicer-runtime/src/region_partition.rs`
+- **AC-7. Given** `SupportPlanIR.raft_plan` has no read-side transport today,
+  **when** a `Layer::Infill` guest asks for it, **then**
+  `paint-region-layer-view` exposes a `raft-plan` accessor returning
+  `option<raft-plan-view>` (a `raft-plan-view` record declared in
+  `ir-types.wit`, mirroring how `support-plan-entry-view` mirrors the prepass
+  `support-plan-entry` rather than importing across worlds), the host
+  `PaintRegionLayerData` gains a `raft_plan` field populated in
+  `build_paint_layer_data_with_plan` (`crates/slicer-wasm-host/src/dispatch.rs`)
+  with `SupportPlanIR` pushed to `runtime_reads`, the `slicer-macros` guest shim
+  mirrors it, and the SDK `PaintRegionLayerView::raft_plan()` getter returns it
+  on the native leg with no other native change. |
+  `mkdir -p target && cargo test -p slicer-wasm-host --test raft_plan_read_accessor_tdd -- raft_plan_reaches_layer_infill_guest --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 Every AC names exact fields, paths, counts, errors, variants, or output
 fragments and ends with its own runnable command. Repeat shared commands; never
 write "see AC-N". Commands that dump more than 200 successful output lines must
 be wrapped or filtered so a subagent can return a FACT.
 
-AC verification command rule: AC-1..AC-6 name test binaries that either exist
-today (`should_emit_raft_fill_claim_tdd`, `contract`/
-`only_one_wall_first_layer_tdd` cases) or are authored by this packet's steps
-into binaries with the required driver setup (`signed_layer_indices_tdd` and
-`sliced_region_raft_fill_tdd` in `slicer-ir`; integration cases in
-`slicer-runtime/tests/integration/main.rs`; `raft_keys_declared_and_wired` in
-the contract binary). No AC relies on a driver that does not exist by the time
-its step completes.
+AC verification command rule: every binary named above either exists today
+(`slicer-runtime --test executor`, `slicer-runtime --test integration`,
+`slicer-macros --test binding_surface_tdd`) or is a new auto-discovered
+top-level test file authored by the step that first needs it
+(`crates/slicer-ir/tests/signed_layer_indices_tdd.rs`,
+`crates/slicer-ir/tests/sliced_region_raft_fill_tdd.rs`,
+`crates/slicer-wasm-host/tests/marshal_layer_plan_prefix_tdd.rs`,
+`crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs`). `slicer-ir`,
+`slicer-macros`, and `slicer-wasm-host` auto-discover `tests/*.rs` with no
+`required-features`; the aggregated `slicer-runtime` binaries (`executor`,
+`integration`) need an explicit `mod` registration, called out in the owning
+step. Note `executor` is auto-discovered from `tests/executor/main.rs` rather
+than declared as a `[[test]]` in `crates/slicer-runtime/Cargo.toml` (only
+`integration` and five others are declared); it is nonetheless a real runnable
+binary today.
 
 ## Negative Test Cases
 
-- **AC-N1. Given** `com.core.raft-default` (the intended single holder per
-  plan §12) plus a second loaded `Layer::Infill` module manifest both declare
-  `claim:raft-fill`, **when** startup DAG validation runs, **then** the
-  scheduler surfaces the duplicate holder as a structured `ClaimConflict`
-  advisory naming both module ids — `com.core.raft-default` and the second
-  id (not silence, not a panic), and per-region dispatch resolves to exactly
-  one emitter deterministically. |
-  `cargo test -p slicer-scheduler --test validation_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-N2. Given** bounds where they exist, **when** a raft prefix entry
-  carries `global_layer_index < -(raft_layers)` (an index outside the declared
-  raft band), **then** the host rejects it with a typed validation error
-  instead of emitting geometry at an unprintable Z. |
-  `cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-N3. Given** the E9 silent-default mechanism, **when** a raft key is
-  consumed by `com.core.raft-default` but missing from its manifest
-  `[config.schema]`, **then** the manifest-lint check fails the step (a module
-  config view filtered to declared keys would otherwise resolve an in-code
-  default invisibly). | `rg -q 'raft_contact_distance' modules/core-modules/raft-default/raft-default.toml && rg -q 'raft_expansion' modules/core-modules/raft-default/raft-default.toml && rg -q 'raft_first_layer_expansion' modules/core-modules/raft-default/raft-default.toml`
+- **AC-N1. Given** the signed band, **when** a `LayerPlanIR` is harvested whose
+  prefix-marked run is not contiguous at the front (an `is-raft-prefix: true`
+  proposal pushed AFTER a model proposal), **then** harvest rejects it with a
+  typed error naming the offending push position rather than silently
+  interleaving negative and positive indices. |
+  `mkdir -p target && cargo test -p slicer-wasm-host --test marshal_layer_plan_prefix_tdd -- noncontiguous_prefix_band_rejected --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-N2. Given** the finalization monotonic gate in
+  `execute_layer_finalization_with_instrumentation` (which rejects a reversal
+  with "layer indices must be monotonic"), **when** the raft band is present,
+  **then** the emitted `LayerCollectionIR` sequence is still monotonic
+  non-decreasing across the `-N .. -1 .. 0 ..` boundary and G-code Vec order
+  matches index order. |
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_band_satisfies_finalization_monotonic_gate --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-N3. Given** a raft prefix layer whose Z lies below all object geometry,
+  **when** `PrePass::Slice` runs, **then** it yields a `SliceIR` with zero
+  region polygons (canonical `slice_mesh_ex` returns an empty `Vec<ExPolygon>`
+  for a non-intersecting Z) and NOT a `FatalLayer`. |
+  `mkdir -p target && cargo test -p slicer-runtime --test executor -- raft_layer_below_geometry_slices_empty_not_fatal --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- `mkdir -p target && cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Authoritative Docs
 
 - `docs/specs/support-families-anchored-entities-plan.md` - §12 brief
-  "240-support-raft", §10 absorption mapping, §7 evidence standards, §8 human
-  gate, §13 traps T1/T4/T5/T8; direct range read.
-- `docs/adr/0009-raft-as-layer-infill-role.md` - role/claim pattern and
-  synthesizer shape; direct read (<110 lines).
+  "240-support-raft", §10 absorption mapping, §13 traps T1/T4/T5/T8/T9;
+  direct range read.
+- `docs/adr/0009-raft-as-layer-infill-role.md` - the negative-prefix contract
+  this packet implements; direct read (93 lines).
 - `docs/02_ir_schemas.md` - sections edited by this packet; delegated SUMMARY.
-- `docs/19_visual_debug.md` + `docs/17_agent_debugging.md` - only for the
-  human-gate visual-debug bundle; delegated SUMMARY.
+- `docs/21_data_defaults_and_fixtures.md` - literal-gate rules for the
+  migration's test-literal fallout; delegated SUMMARY.
 
 ## Doc Impact Statement (Required)
 
-- `docs/02_ir_schemas.md` section "SliceIR" (schema bump + `SlicedRegion.raft_fill` + signed indices) - `rg -q 'raft_fill' docs/02_ir_schemas.md`
-- `docs/02_ir_schemas.md` section on signed layer indices - `rg -q 'global_layer_index.*i32|negative.*raft' docs/02_ir_schemas.md`
-- `docs/adr/0009-raft-as-layer-infill-role.md` formal amendment (status → Accepted; additive Amendments section recording the Decision-5 claim reassignment to `com.core.raft-default`, quoting the original clause) - `rg -q 'Accepted' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'Amendments' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'com\.core\.raft-default' docs/adr/0009-raft-as-layer-infill-role.md`
-- `docs/15_config_keys_reference.md` regenerated for the three new keys - `rg -q 'raft_contact_distance' docs/15_config_keys_reference.md`
+- `docs/02_ir_schemas.md` section "IR 6 — SliceIR" (schema bump to 4.9.0 + `SlicedRegion.raft_fill`) - `rg -q 'raft_fill' docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` signed-layer-index semantics (the `-N .. -1` raft prefix band and the `index != Vec position` consequence) - `rg -q 'raft prefix band' docs/02_ir_schemas.md`
+- `docs/03_wit_and_manifest.md` - the new `layer-proposal.is-raft-prefix` field, the `raft-plan-view` record, and the `raft-fill` accessors - `rg -q 'is-raft-prefix' docs/03_wit_and_manifest.md && rg -q 'raft-plan-view' docs/03_wit_and_manifest.md`
+- `docs/DEVIATION_LOG.md` gains the DEV-124 reopen row (the shipped `layer_index == support_raft_layers` clamp is wrong under a negative prefix band — see `requirements.md` §DEV-124 Reopen). Re-derive the next free ID at write time (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`) rather than trusting any ID written here - `rg -q 'raft prefix band' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -169,9 +199,8 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_raft_base`: object-independent raft layer construction; first-layer expansion via `raft_first_layer_expansion` (`inflate_factor_1st_layer`), contact/inflate logic, separate loops for base-raft and interface-raft layers, "Inflate in multiple steps to avoid leaking", classic-columns-above-raft vs organic-raft-on-bed branches; consumes `brim_type`/`brim_object_gap` and `slicing_params.raft_layers()`/`base_raft_layers`/`interface_raft_layers`.
-- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers` → `object.add_support_layer(...)`: insertion of `SupportLayers` at print_z BELOW layer 0 — the canonical analogue of PnP's signed negative prefix indices. Cite functions, never line numbers.
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — `init_fff_params`: canonical defaults `raft_contact_distance = 0.1`, `raft_expansion = 1.5`, `raft_first_layer_expansion = 2.0` (mm).
+- `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` — `generate_support_layers`, specifically its `object.add_support_layer(...)` insertion of `SupportLayers` at print_z BELOW layer 0. This is the canonical analogue of the signed negative prefix band and the only OrcaSlicer behaviour this packet needs. Cite functions, never line numbers.
+- `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` — `generate_object_layers`: the f64-until-the-final-cast Z discipline that AC-5's raft Z generator must match.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
@@ -183,34 +212,14 @@ This packet was generated against the context_discipline preamble shared by `spe
 - delegate every cargo run and authoritative-doc fact-check
 - obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
-Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
+Aggregate context cost is `L` because the u32→i32 migration is inherently wide.
+`design.md` §Why This Packet Carries An L justifies why it cannot be split
+further, and Step 2 is pre-split into 2a/2b for that reason. Do not activate
+this packet on a standard band without the swarm escalation.
 
 ## Human Validation Gate
 
-Blocking sign-off; a date + verdict line recorded below flips nothing until
-every artifact-producing command has run and every checklist item has a
-written verdict (E2: inspection is satisfied by the written checklist, never
-by PNG existence).
-
-Artifact-producing commands (run from repo root; matched profiles
-`tmp/support-family-config-tree-matched.json` / `-normal-matched.json`):
-
-- `cargo run --bin pnp_cli --release -- slice --input crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240-profile.json`)
-- Regenerated Orca references (§9, human-owned): `tmp/p240-orca-tree-raft.gcode` and `tmp/p240-orca-normal-raft.gcode` sliced with `raft_layers > 0`. **These references must exist before this gate can sign** — the gate blocks without them.
-- Visual-debug bundle for the raft boundary: `tmp/p240-vd-raft.json` request → PNGs + `manifest.json` per `docs/19_visual_debug.md`.
-
-Checklist — standard five items (each: source, layer/tap, verdict):
-
-1. Termination: raft reaches the plate beneath the object overhang for both families.
-2. Coverage: raft area covers the supported footprint at every raft layer.
-3. Collision freedom: raft does not intersect object walls above it.
-4. Interfaces: interface-raft layers distinct from base-raft layers in spacing/density.
-5. Block counts vs Orca references: raft `;TYPE:` block counts compared against `tmp/p240-orca-*-raft.gcode`.
-
-Raft-specific observations (required additions):
-
-6. Raft layers present below plate contact (negative-index entries emitted before model layer 0 in Z order).
-7. First-layer expansion visible: first printed raft layer wider than upper raft layers by roughly `raft_first_layer_expansion` (2.0 mm canonical).
-8. No anchored-entity leakage: no raft geometry appears through the anchored-event path (G-code viewer shows raft as ordinary ordered entities at negative-index layers).
-
-Sign-off: _(date + verdict pending; required before `status: implemented`)_
+**None.** This packet ships no printable geometry — it is types, index
+assignment, and transport. Visual verification of raft output is 240b's gate,
+which cannot sign until this packet is green. Recording a visual verdict here
+would be inspection of an artifact this packet does not produce.

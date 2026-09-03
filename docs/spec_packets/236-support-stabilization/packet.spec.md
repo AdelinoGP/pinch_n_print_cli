@@ -30,7 +30,7 @@ This packet is a stabilization sweep over nine independently-small surfaces alre
 ## Prerequisites and Blockers
 
 - Depends on: none (first packet of the support-families completion queue).
-- Unblocks: 237-support-analysis-parity, 238a-support-pattern-config-keys, 240-support-raft (all depend on queue row #1).
+- Unblocks: 237-support-analysis-parity, 238a-support-pattern-config-keys, 240a-support-raft-substrate (all depend on queue row #1).
 - Activation blockers: none. Status stays `draft` until `/spec-review --preflight` passes and the Human Validation Gate below is signed.
 
 ## Acceptance Criteria

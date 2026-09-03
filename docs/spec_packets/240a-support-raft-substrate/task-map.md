@@ -1,21 +1,26 @@
-# Task Map: 240-support-raft
+# Task Map: 240a-support-raft-substrate
 
-Crosswalk for the TASK-409..TASK-418 allocation (queue row #7 of
-`docs/specs/support-families-anchored-entities-plan.md`). IDs are exclusive to
-this packet; packets 238c owns TASK-381..398, row #6 owns 399..408, rows 8+
-start at 419.
+Crosswalk for this packet's share of queue row #7 of
+`docs/specs/support-families-anchored-entities-plan.md`. Row #7 originally
+allocated `TASK-409`..`TASK-418` to a single `240-support-raft` packet; that
+packet was split at preflight into **240a-support-raft-substrate** (this one,
+`TASK-409`..`TASK-413`) and **240b-support-raft-module**
+(`TASK-414`..`TASK-418`). The split exposed scope the original allocation did
+not cover, so this packet also carries `TASK-531`..`TASK-534`, taken from the
+free range above the highest ID then in use. **Re-derive the free range before
+allocating any further ID** — `rg -o 'TASK-[0-9]{3}' docs/ -N --no-filename | sort -u | tail -1`
+— rather than trusting the boundary implied here.
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `TASK-409` | `Step 1` | `docs/specs/support-families-anchored-entities-plan.md` §12 | `crates/slicer-ir/tests/{signed_layer_indices_tdd,sliced_region_raft_fill_tdd}.rs` | none | S | Red-first IR contract |
-| `TASK-410` | `Step 2` | `docs/02_ir_schemas.md` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs` + sweep fallout | none | M | u32→i32 migration; split trigger if >~20 files |
-| `TASK-411` | `Step 3` | `docs/02_ir_schemas.md` | `slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`, marshal legs | none | M | raft_fill carrier + accessor + schema bump |
-| `TASK-412` | `Step 4` | `docs/03_wit_and_manifest.md`, ADR-0009 | `modules/core-modules/raft-default/*` (manifest+Cargo+wit-guest) | none | M | new guest; rebuild in-step |
-| `TASK-413` | `Step 4` | same | same | none | M | claim:raft-fill single holder resolves |
-| `TASK-414` | `Step 5` | `docs/08_coordinate_system.md` | `raft-default/src/lib.rs`, runtime integration cases | `SupportCommon.cpp::generate_raft_base` (delegated) | M | geometry port; determinism |
-| `TASK-415` | `Step 5` | same | same | `SupportCommon.cpp::generate_support_layers` (analogue only) | M | negative-prefix ordering; zero anchored entities |
-| `TASK-416` | `Step 6a` | `docs/15_config_keys_reference.md` | four support manifests, `validation_tdd.rs`, regenerated config doc | `PrintConfig.cpp init_fff_params` (defaults FACT) | M | wire-or-record + claim-conflict negative |
-| `TASK-417` | `Step 6b` | same + §13 traps | `contract/raft_bounds_tdd.rs`, `contract/main.rs` (registration) | none | S | AC-N2/AC-5 green; mod registered |
-| `TASK-418` | `Steps 7+8` | ADR-0009 (formal amendment), `docs/02_ir_schemas.md`, `docs/19_visual_debug.md` | docs edits; tmp/p240-* artifacts | references comparison | S | DEV-124 record; ADR Decision-5 claim reassignment amendment; human gate |
+| `TASK-409` | `Step 1` | plan §12 | `crates/slicer-ir/tests/{signed_layer_indices_tdd,sliced_region_raft_fill_tdd}.rs` | none | S | Red-first IR contract |
+| `TASK-410` | `Step 2a` | `docs/02_ir_schemas.md` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs` + crates-side sweep fallout | none | M | u32→i32, crates half; split trigger if >~20 files |
+| `TASK-411` | `Step 2b` | `docs/21_data_defaults_and_fixtures.md` | `crates/slicer-sdk/src/test_support/fixtures.rs`, macro test files, modules + test fallout | none | M | u32→i32, modules/tests half; literal gate |
+| `TASK-412` | `Step 3` | `docs/03_wit_and_manifest.md` | `crates/slicer-macros/src/lib.rs`, `crates/slicer-macros/tests/binding_surface_tdd.rs` | none | S | kills the `as u32` sign truncation |
+| `TASK-413` | `Step 4` | `design.md` §Positional Consumer Ruling | `crates/slicer-runtime/src/layer_executor.rs`, `builtins/{prepass_slice_producer,support_analysis_producer}.rs`, `tests/executor/*` | none | M | `index != Vec position` repair |
+| `TASK-531` | `Step 5` | `docs/03_wit_and_manifest.md` | `prepass-layer-planning.wit`, `crates/slicer-wasm-host/src/marshal/{in_,native}.rs`, `tests/marshal_layer_plan_prefix_tdd.rs` | `SupportCommon.cpp::generate_support_layers` (delegated) | M | `is-raft-prefix` + negative index assignment, both legs |
+| `TASK-532` | `Step 6` | `docs/08_coordinate_system.md` | `modules/core-modules/layer-planner-default/*`, `crates/slicer-runtime/tests/integration/*` | `Slicing.cpp::generate_object_layers` (delegated) | M | planner emits the `-N..-1` band; guest rebuild |
+| `TASK-533` | `Step 7` | `docs/02_ir_schemas.md` | `slice_ir.rs`, `ir-types.wit`, `region_partition.rs` + carrier footprint | none | M | `raft_fill` carrier + both accessors + 4.9.0 bump |
+| `TASK-534` | `Steps 8+9` | `docs/03_wit_and_manifest.md`, `docs/02_ir_schemas.md` | `ir-types.wit`, `host.rs`, `dispatch.rs`, `traits.rs`; then docs + `DEVIATION_LOG.md` | none | M+S | `raft_plan` read path; DEV-124 reopen row |
 
-Copy costs from `implementation-plan.md`. Aggregate is M; no row is L.
+Copy costs from `implementation-plan.md`. Aggregate is `L`; no row is `L`.

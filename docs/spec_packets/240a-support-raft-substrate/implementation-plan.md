@@ -1,404 +1,440 @@
-# Implementation Plan: 240-support-raft
+# Implementation Plan: 240a-support-raft-substrate
 
 ## Execution Rules
 
 - Work one atomic step at a time; map every step to grouped task IDs
-  (TASK-409..TASK-418 only).
+  (`TASK-409`..`TASK-413`, `TASK-531`..`TASK-534` only).
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled
   independently; never write "see Step N".
-- Guest-facing steps: run `cargo xtask build-guests --check` before attributing
-  any failure; a step that creates or edits guest code rebuilds guests in-step.
+- Guest-facing steps: run `cargo xtask build-guests --check` and judge by its
+  exit code before attributing any failure; a step that edits guest code
+  rebuilds guests in-step.
 - WIT-editing steps end with `cargo build --tests`.
-- All test commands tee to `target/test-output.log`; read results from the file.
+- All test commands tee to `target/test-output.log`; read results from the file,
+  never re-run for more output.
+- A new test file under an aggregated `slicer-runtime` binary gets its
+  `mod` registration in the SAME step, or it compiles to zero tests and reports
+  a false pass.
 
 ## Steps
 
-### Step 1: Author signed-index + raft-fill IR tests (red)
+### Step 1: Author signed-index + carrier IR tests (red)
 
 - Task IDs: `TASK-409`
-- Objective: create the failing tests that pin AC-1 and AC-2's Rust half:
-  `crates/slicer-ir/tests/signed_layer_indices_tdd.rs` (i32 field types via a
-  compile-time assertion helper, serde round-trip of
-  `SliceIR { global_layer_index: -2, .. }`, negative-index ordering vs 0) and
-  `crates/slicer-ir/tests/sliced_region_raft_fill_tdd.rs`
-  (`SlicedRegion.raft_fill` defaults empty, serde-default backward compat,
-  determinism of two identical syntheses).
-- Precondition: clean tree; 236 forward-dep acknowledged (tests must compile
-  against current u32 fields as RED).
-- Postcondition: both new test files exist and fail to compile / fail asserts
-  for exactly the intended reasons.
+- Objective: create the failing tests pinning AC-1 and AC-6's Rust half —
+  `crates/slicer-ir/tests/signed_layer_indices_tdd.rs` (compile-time type
+  assertions on the migrated fields, serde round-trip of a `SliceIR` with
+  `global_layer_index: -2`, ordering of `-2 < -1 < 0`) and
+  `crates/slicer-ir/tests/sliced_region_raft_fill_tdd.rs` (`raft_fill` defaults
+  empty, serde-default backward compat with a 4.8.0 fixture, round-trip
+  stability).
+- Precondition: clean tree; 236 confirmed `implemented` (re-derive with
+  `grep '^status:' docs/spec_packets/236-support-stabilization/packet.spec.md`).
+- Postcondition: both files exist and fail to compile / fail asserts for
+  exactly the intended reasons (missing `i32` types, missing `raft_fill`).
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-ir/src/slice_ir.rs` - lines 1020-1200, 1760-1840
+  - `crates/slicer-ir/src/slice_ir.rs` - symbol-scoped ranges only, located at
+    read time via `rg -n 'pub struct (GlobalLayer|ObjectLayerRef|SlicedRegion|SliceIR)'`
 - Files allowed to edit (at most 3):
   - `crates/slicer-ir/tests/signed_layer_indices_tdd.rs` (new)
   - `crates/slicer-ir/tests/sliced_region_raft_fill_tdd.rs` (new)
-  - `crates/slicer-ir/Cargo.toml` (register test targets if auto-discovery off)
-- Files explicitly out of bounds:
-  - everything else under `crates/`, all modules
+- Files explicitly out of bounds: everything else under `crates/`, all modules
 - Expected sub-agent dispatches: none
 - Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/support-families-anchored-entities-plan.md` - §12 brief 240
+- Authoritative docs: `docs/specs/support-families-anchored-entities-plan.md` §12
 - OrcaSlicer refs: none this step
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact 2>&1 | tee target/test-output.log; grep -q 'error\[' target/test-output.log || grep -q 'FAILED\|panicked' target/test-output.log` - FACT: RED confirmed
-- Exit condition: log shows the new tests red for missing i32 types /
-  missing `raft_fill` field — nothing else broken.
+  - `mkdir -p target && cargo test -p slicer-ir --test signed_layer_indices_tdd 2>&1 | tee target/test-output.log; grep -q 'error\[' target/test-output.log || grep -q 'FAILED\|panicked' target/test-output.log` - FACT: RED confirmed
+- Exit condition: log shows the new tests red for missing `i32` types / missing
+  `raft_fill` — nothing else broken.
 
-### Step 2: Signed-index migration u32→i32 (green Step 1's AC-1)
+### Step 2a: Signed-index migration, crates half
 
 - Task IDs: `TASK-410`
-- Objective: retype the six fields + `LayerModule::run_infill` parameter to
-  i32 per design.md §Migration Table; fix every blast-radius site from the
-  dispatched LOCATIONS list; keep unrelated u32 fields untouched.
+- Objective: retype every field in `design.md` §Migration Table that lives
+  under `crates/`, change `LayerModule::run_infill`'s parameter to `i32`,
+  retype `PaintRegionLayerView.layer_index` and its getter, and fix the
+  crates-side blast-radius sites so the workspace compiles. Do NOT touch the
+  positional-consumer logic yet (Step 3) beyond what compilation demands.
 - Precondition: Step 1 red; **LOCATIONS sweep dispatched and its result pasted
   into this step's working notes before editing** (question verbatim in
-  design.md). If the sweep exceeds ~20 affected files, STOP and split this
-  step into 2a (crates) / 2b (modules+tests) with fresh IDs from the free range.
-- Postcondition: `cargo check --workspace --all-targets` green;
-  AC-1 command green.
+  `design.md` §Enumerated Blast Radius). If the crates half exceeds ~20 files,
+  STOP and split again with fresh IDs re-derived from the free range.
+- Postcondition: `cargo check -p slicer-ir -p slicer-sdk -p slicer-macros -p slicer-wasm-host --all-targets` green.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-ir/src/slice_ir.rs` - ranged reads around each hit only
   - LOCATIONS sweep output (working notes)
-- Files allowed to edit (at most 3 primaries; sweep fallout is owned here):
+- Files allowed to edit (at most 3 primaries; sweep fallout under `crates/` is
+  owned here and listed explicitly in the working notes before the first edit,
+  so the cap is a review checkpoint rather than a blank cheque):
   - `crates/slicer-ir/src/slice_ir.rs`
   - `crates/slicer-sdk/src/traits.rs`
   - `crates/slicer-macros/src/lib.rs`
-  plus LOCATIONS-listed call-site/test files (`views.rs`,
-  `marshal/{in_,out,native}.rs`, `blackboard.rs`, `layer_executor.rs`,
-  gcode consumers, macro test files) edited strictly to restore compilation —
-  no behavior changes beyond the sign semantics.
-- Files explicitly out of bounds:
-  - `modules/core-modules/tree-support-planner/src/lib.rs` beyond the
-    `push_raft_plan` range; planner/renderer algorithm files (238b/238c)
-- Blast-radius discipline: struct literals of `GlobalLayer`, `ObjectLayerRef`,
-  `SliceIR`, `InfillIR`, `SupportIR` in TEST code gain `..` rest or an
-  `// exhaustive: <reason>` waiver (literal gate); production literals stay
-  exhaustive. Tests hard-asserting u32 wrap/ordering get sign-correct updates,
-  never deleted.
+  plus the LOCATIONS-listed call sites under `crates/` edited strictly to
+  restore compilation — no behavior change beyond sign semantics.
+- Files explicitly out of bounds: `modules/**`, all test files (Step 2b)
+- Blast-radius discipline: production struct literals stay exhaustive.
 - Expected sub-agent dispatches:
-  - LOCATIONS blast-radius sweep; scope `crates/ modules/`; return LOCATIONS
-    (per-file aggregated counts); purpose: edit list
-- Context cost: `M` (split trigger above)
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` - delegated SUMMARY of the layer-index sections
+  - LOCATIONS blast-radius sweep; scope `crates/`; return LOCATIONS with
+    per-file counts; purpose: edit list
+- Context cost: `M`
+- Authoritative docs: `docs/02_ir_schemas.md` - delegated SUMMARY of the
+  layer-index sections
+- OrcaSlicer refs: none this step
+- Verification:
+  - `mkdir -p target && cargo check -p slicer-ir -p slicer-sdk -p slicer-macros -p slicer-wasm-host --all-targets 2>&1 | tail -5 | tee target/test-output.log` - FACT pass/fail
+- Exit condition: the four crates check green with `--all-targets`.
+
+### Step 2b: Signed-index migration, modules + tests half
+
+- Task IDs: `TASK-411`
+- Objective: fix the remaining blast-radius sites under `modules/` and in test
+  code so `cargo check --workspace --all-targets` is green and AC-1 passes.
+- Precondition: Step 2a green.
+- Postcondition: `cargo check --workspace --all-targets` green; AC-1 command
+  green.
+- Files allowed to read, with ranges when over 300 lines:
+  - LOCATIONS sweep output (working notes)
+  - `modules/core-modules/tree-support-planner/src/lib.rs` - only ranges the
+    sweep names; never the whole ~5.9k-line file
+- Files allowed to edit (at most 3 primaries plus the LOCATIONS-listed test and
+  module files, enumerated in the working notes before editing):
+  - `crates/slicer-sdk/src/test_support/fixtures.rs`
+  - `crates/slicer-macros/tests/binding_surface_tdd.rs`
+  - `crates/slicer-macros/tests/slicer_module_tdd.rs`
+- Files explicitly out of bounds: `modules/core-modules/raft-default/**` (240b)
+- Blast-radius discipline: any watched-type struct literal in TEST code gains a
+  `..` rest or an `// exhaustive: <reason>` waiver per
+  `docs/21_data_defaults_and_fixtures.md`; tests hard-asserting `u32`
+  wrap/ordering get sign-correct updates, never deletion.
+- Expected sub-agent dispatches:
+  - LOCATIONS sweep, `modules/` + `tests/` scope; return LOCATIONS; purpose:
+    edit list
+- Context cost: `M`
+- Authoritative docs: `docs/21_data_defaults_and_fixtures.md` - delegated SUMMARY
 - OrcaSlicer refs: none this step
 - Verification:
   - `mkdir -p target && cargo check --workspace --all-targets 2>&1 | tail -5 | tee target/test-output.log` - FACT pass/fail
-  - `cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-1 green
-- Exit condition: AC-1 command passes with non-zero count; workspace check green.
+  - `mkdir -p target && cargo test -p slicer-ir --test signed_layer_indices_tdd -- signed_layer_indices_round_trip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-1 green
+  - `cargo xtask check-literals` - FACT exit 0
+- Exit condition: AC-1 green with non-zero count; workspace check green;
+  literal gate exit 0.
 
-### Step 3: SlicedRegion.raft_fill + WIT accessor + schema bump
+### Step 3: Kill the sign-truncating bridge cast
 
-- Task IDs: `TASK-411`
-- Objective: add `pub raft_fill: Vec<ExPolygon>` (serde default) to
-  `SlicedRegion`; add `raft-fill: func() -> list<ex-polygon>` to
-  `slice-region-view` in `crates/slicer-schema/wit/deps/ir-types.wit`;
-  minor-bump `CURRENT_SLICE_IR_SCHEMA_VERSION` with a version-history doc
-  comment line; project the field through BOTH marshal legs
-  (`in_.rs` resource construction + `native.rs` native request).
-- Precondition: Step 2 green.
-- Postcondition: AC-2 green; `cargo build --tests` green after the WIT edit;
-  SliceIR schema-version assertions updated in the same step.
+- Task IDs: `TASK-412`
+- Objective: remove the `paint.layer_index() as u32` truncation in the
+  `slicer-macros` paint-view bridge and every other `as u32` applied to a layer
+  index, so a negative index survives the WIT→SDK hop. Author
+  `negative_layer_index_survives_paint_view_bridge` in the existing
+  `crates/slicer-macros/tests/binding_surface_tdd.rs`.
+- Precondition: Step 2b green.
+- Postcondition: AC-2 green; a repo-wide grep finds no `as u32` applied to a
+  layer-index expression.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-wasm-host/src/marshal/in_.rs` - region-projection range only
-  - `crates/slicer-wasm-host/src/marshal/native.rs` - same
+  - `crates/slicer-macros/src/lib.rs` - the paint-view bridge range only
+    (locate with `rg -n 'layer_index\(\) as u32'`)
 - Files allowed to edit (at most 3):
+  - `crates/slicer-macros/src/lib.rs`
+  - `crates/slicer-macros/tests/binding_surface_tdd.rs`
+  - `crates/slicer-sdk/src/traits.rs` (only if the getter signature needs a
+    follow-up touch)
+- Files explicitly out of bounds: runtime consumers (Step 4), WIT files
+- Expected sub-agent dispatches:
+  - LOCATIONS: every `as u32` within 3 lines of a `layer_index` /
+    `global_layer_index` identifier; scope `crates/ modules/`; return LOCATIONS
+- Context cost: `S`
+- Authoritative docs: `docs/03_wit_and_manifest.md` - delegated SUMMARY of the
+  guest-bridge section
+- OrcaSlicer refs: none this step
+- Verification:
+  - `mkdir -p target && cargo test -p slicer-macros --test binding_surface_tdd -- negative_layer_index_survives_paint_view_bridge --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-2
+  - `rg -n 'layer_index\(\) as u32' crates/ modules/; test $? -ne 0` - FACT: truncation gone
+- Exit condition: AC-2 green; the truncation grep finds nothing.
+
+### Step 4: Repair the positional consumers
+
+- Task IDs: `TASK-413`
+- Objective: apply `design.md` §Positional Consumer Ruling verbatim — convert
+  `hydrate_slice_arena`'s `slice_vec.get(layer.index as usize)` to an identity
+  lookup, re-key `raw_polygons_by_layer` to `HashMap<i32, _>`, convert the
+  `support_analysis_producer.rs` Z lookup to find-by-index, re-key the
+  `native.rs` resolved-config carry-over by `index`, and LEAVE the two rulings
+  marked "leave" untouched. Author
+  `negative_index_layer_hydrates_slice_arena` and
+  `raft_layer_below_geometry_slices_empty_not_fatal` in
+  `crates/slicer-runtime/tests/executor/`, registering both `mod` lines.
+- Precondition: Step 3 green.
+- Postcondition: AC-3 and AC-N3 green.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-runtime/src/layer_executor.rs` - the `hydrate_slice_arena`
+    range only
+  - `crates/slicer-runtime/tests/executor/main.rs` - registration list only
+- Files allowed to edit (at most 3 primaries + the two new/registered test
+  files, which are named here so the registration cannot be forgotten):
+  - `crates/slicer-runtime/src/layer_executor.rs`
+  - `crates/slicer-runtime/src/builtins/prepass_slice_producer.rs`
+  - `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`
+  - `crates/slicer-runtime/tests/executor/raft_negative_index_tdd.rs` (new)
+  - `crates/slicer-runtime/tests/executor/main.rs` (add `mod raft_negative_index_tdd;`)
+- Files explicitly out of bounds: `crates/slicer-wasm-host/src/marshal/in_.rs`
+  (Step 5), the perimeter generators
+- Expected sub-agent dispatches:
+  - FACT: does `SupportGeometryKey.global_support_layer_index` index a
+    `Vec<LayerCollisionCache>` directly anywhere? scope `crates/`; return
+    LOCATIONS — resolves the [FWD] open question
+- Context cost: `M`
+- Authoritative docs: none beyond `design.md`
+- OrcaSlicer refs: none this step
+- Verification:
+  - `mkdir -p target && cargo test -p slicer-runtime --test executor -- negative_index_layer_hydrates_slice_arena --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3
+  - `mkdir -p target && cargo test -p slicer-runtime --test executor -- raft_layer_below_geometry_slices_empty_not_fatal --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N3
+  - `grep -q 'mod raft_negative_index_tdd;' crates/slicer-runtime/tests/executor/main.rs` - FACT registration present
+- Exit condition: both ACs green with non-zero counts; registration grep passes;
+  the two "leave positional" sites are unchanged in `git diff`.
+
+### Step 5: WIT prefix marking + negative index assignment on both legs
+
+- Task IDs: `TASK-531`
+- Objective: add `is-raft-prefix: bool` to `layer-proposal`
+  (`crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`);
+  in `harvest_layer_plan_ir_from` (`crates/slicer-wasm-host/src/marshal/in_.rs`)
+  and the `PrePass::LayerPlanning` arm of
+  `crates/slicer-wasm-host/src/marshal/native.rs`, count the leading
+  prefix-marked run of length `N`, assign it `-N .. -1` in push order and the
+  remainder `0 ..`, re-derive `MAX_LAYERS` signed with a lower bound, re-key
+  the native arm's resolved-config carry-over by `index`, and reject a
+  non-contiguous prefix run with a typed error naming the push position.
+  Author `crates/slicer-wasm-host/tests/marshal_layer_plan_prefix_tdd.rs`.
+- Precondition: Step 4 green.
+- Postcondition: AC-4 and AC-N1 green; `cargo build --tests` green after the
+  WIT edit; guests rebuilt.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-wasm-host/src/marshal/in_.rs` - the `harvest_layer_plan_ir_from` range
+  - `crates/slicer-wasm-host/src/marshal/native.rs` - the `PrePass::LayerPlanning` arm
+- Files allowed to edit (at most 3 primaries + the new test file):
+  - `crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`
+  - `crates/slicer-wasm-host/src/marshal/in_.rs`
+  - `crates/slicer-wasm-host/src/marshal/native.rs`
+  - `crates/slicer-wasm-host/tests/marshal_layer_plan_prefix_tdd.rs` (new;
+    auto-discovered, no registration needed)
+- Files explicitly out of bounds: `modules/**` (Step 6), `ir-types.wit`
+- Expected sub-agent dispatches:
+  - OrcaSlicer SUMMARY: `generate_support_layers` below-zero print_z insertion;
+    return SUMMARY; purpose: confirm band semantics
+- Context cost: `M`
+- Authoritative docs: `docs/03_wit_and_manifest.md` - delegated SUMMARY
+- OrcaSlicer refs:
+  - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` - delegate; never load
+- Verification:
+  - `cargo build --tests 2>&1 | tail -3` - FACT pass/fail
+  - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
+  - `mkdir -p target && cargo test -p slicer-wasm-host --test marshal_layer_plan_prefix_tdd -- prefix_band_indices_are_negative_on_both_legs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-4
+  - `mkdir -p target && cargo test -p slicer-wasm-host --test marshal_layer_plan_prefix_tdd -- noncontiguous_prefix_band_rejected --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N1
+- Exit condition: AC-4 and AC-N1 green; guests fresh (exit 0); both legs assign
+  identical indices for the same push sequence.
+
+### Step 6: layer-planner-default emits the raft prefix band
+
+- Task IDs: `TASK-532`
+- Objective: teach `com.core.layer-planner-default` to read
+  `support_raft_layers` (declared in its manifest `[config.schema]` so E9's
+  silent-default trap cannot fire) and push exactly that many
+  `is-raft-prefix: true` proposals before any model proposal, with Z computed
+  in `f64` and cast once at the end, and at least one `active_regions` entry
+  per raft layer. Author the two integration cases plus the monotonic-gate
+  case, registering their `mod` line.
+- Precondition: Step 5 green.
+- Postcondition: AC-5 and AC-N2 green; guests rebuilt.
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/layer-planner-default/src/lib.rs` - the
+    `generate_object_layers` and `DefaultLayerPlanner::from_config` ranges
+    (there is no `LayerPlannerConfig` type; the config is read by
+    `DefaultLayerPlanner`'s `from_config`)
+  - `crates/slicer-runtime/tests/integration/main.rs` - registration list only
+- Files allowed to edit (at most 3 primaries + the new/registered test files):
+  - `modules/core-modules/layer-planner-default/src/lib.rs`
+  - `modules/core-modules/layer-planner-default/layer-planner-default.toml`
+  - `crates/slicer-runtime/tests/integration/raft_prefix_band.rs` (new; holds
+    `raft_prefix_band_emitted_before_model_layers`,
+    `no_raft_prefix_band_when_raft_layers_zero`,
+    `raft_band_satisfies_finalization_monotonic_gate`)
+  - `crates/slicer-runtime/tests/integration/main.rs` (add `mod raft_prefix_band;`)
+- Files explicitly out of bounds: the support planners, `modules/core-modules/raft-default/**`
+- Expected sub-agent dispatches:
+  - FACT: what does `derive_layer_output_envelope_from_input` return for a
+    layer with empty `active_regions`? scope `crates/slicer-wasm-host/src/dispatch.rs`;
+    return SNIPPETS ≤10 lines — resolves the [FWD] seeding question
+- Context cost: `M`
+- Authoritative docs: `docs/08_coordinate_system.md` - delegated SUMMARY
+- OrcaSlicer refs:
+  - `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp` - delegate: `generate_object_layers` f64 discipline; return SUMMARY
+- Verification:
+  - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_prefix_band_emitted_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- no_raft_prefix_band_when_raft_layers_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-5
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_band_satisfies_finalization_monotonic_gate --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N2
+  - `grep -q 'mod raft_prefix_band;' crates/slicer-runtime/tests/integration/main.rs` - FACT registration present
+- Exit condition: AC-5 and AC-N2 green; registration grep passes; guests fresh.
+
+### Step 7: SlicedRegion.raft_fill carrier + WIT accessors + schema bump
+
+- Task IDs: `TASK-533`
+- Objective: add `pub raft_fill: Vec<ExPolygon>` with `#[serde(default)]` to
+  `SlicedRegion`; add the `raft-fill` accessor to BOTH region resources in
+  `crates/slicer-schema/wit/deps/ir-types.wit`; add
+  `split_field!(raft_fill);` in `crates/slicer-runtime/src/region_partition.rs`;
+  project the field through the host accessor impls, the macro marshal legs,
+  the SDK views and both fixture builders, the visual-debug render and the
+  pnp-cli manifest emission; minor-bump `CURRENT_SLICE_IR_SCHEMA_VERSION` to
+  `4.9.0` with a version-history doc-comment line and update every test
+  asserting the old value in the same step. Follow
+  `design.md` §`raft_fill` Carrier Footprint as the site checklist.
+- Precondition: Step 6 green.
+- Postcondition: AC-6 green; `cargo build --tests` green after the WIT edit.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-ir/src/slice_ir.rs` - the `SlicedRegion` and
+    `CURRENT_SLICE_IR_SCHEMA_VERSION` ranges, located at read time
+  - `crates/slicer-runtime/src/region_partition.rs` - the `split_field!` block
+- Files allowed to edit (at most 3 primaries; the remaining footprint sites
+  from `design.md` are owned here and enumerated in the working notes before
+  the first edit):
   - `crates/slicer-ir/src/slice_ir.rs`
   - `crates/slicer-schema/wit/deps/ir-types.wit`
-  - `crates/slicer-wasm-host/src/marshal/in_.rs` (+ `native.rs` as the
-    second-leg mirror; T9 discipline: both legs or neither)
-- Files explicitly out of bounds:
-  - `modules/core-modules/**` (guests rebuilt in later steps), scheduler
-- Blast-radius discipline: schema-bump fallout — grep
-  `CURRENT_SLICE_IR_SCHEMA_VERSION` assertions; every test hard-asserting the
-  old value is updated in THIS step (bump + fallout together).
+  - `crates/slicer-runtime/src/region_partition.rs`
+- Files explicitly out of bounds: `modules/**`, the scheduler
+- Blast-radius discipline: grep `CURRENT_SLICE_IR_SCHEMA_VERSION` assertion
+  sites and update every one in THIS step (bump + fallout together).
 - Expected sub-agent dispatches:
-  - FACT: locate schema-version assert sites; scope `crates/`; return LOCATIONS ≤20
+  - LOCATIONS: `CURRENT_SLICE_IR_SCHEMA_VERSION` assertion sites; scope
+    `crates/`; return LOCATIONS ≤20
 - Context cost: `M`
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` - SliceIR section; delegated SUMMARY before editing
+- Authoritative docs: `docs/02_ir_schemas.md` - SliceIR section; delegated
+  SUMMARY before editing
 - OrcaSlicer refs: none this step
 - Verification:
   - `cargo build --tests 2>&1 | tail -3` - FACT pass/fail
-  - `mkdir -p target && cargo test -p slicer-ir --test sliced_region_raft_fill_tdd -- raft_fill_defaults_empty_and_deterministic --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-2 Rust half green
-- Exit condition: AC-2 Rust-half green; both legs project the new field.
+  - `mkdir -p target && cargo test -p slicer-ir --test sliced_region_raft_fill_tdd -- raft_fill_defaults_empty_and_survives_roundtrip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-6 Rust half
+  - `test "$(rg -c 'raft-fill: func' crates/slicer-schema/wit/deps/ir-types.wit)" -eq 2 && rg -q 'split_field..raft_fill' crates/slicer-runtime/src/region_partition.rs` - FACT: both resources + region split
+- Exit condition: AC-6 green; exactly two WIT accessors; the split line present;
+  no test still asserts the pre-bump version.
 
-### Step 4: New guest module com.core.raft-default (manifest + skeleton)
+### Step 8: raft_plan read accessor
 
-- Task IDs: `TASK-412`, `TASK-413`
-- Objective: create `modules/core-modules/raft-default/`: `Cargo.toml`
-  mirroring `rectilinear-infill/Cargo.toml`; manifest
-  `raft-default.toml` with id `com.core.raft-default`, stage
-  `Layer::Infill`, `[claims] holds = ["claim:raft-fill"]`,
-  `[ir-access] reads = ["SliceIR", "LayerPlanIR", "SupportPlanIR"]`,
-  `writes = ["SliceIR"]`, `[config.schema]` declaring
-  `raft_contact_distance` (float, default 0.1, min 0.0),
-  `raft_expansion` (float, default 1.5, min 0.0),
-  `raft_first_layer_expansion` (float, default 2.0, min 0.0);
-  `wit-guest/` binding the existing `slicer:layer-infill` world; guest src
-  implementing `LayerModule::run_infill(layer_index: i32, ...)` that reads
-  `SupportPlanIR.raft_plan` and returns Ok(()) with TODO-free synthesis
-  scaffolding deferred to Step 5 (this step: module loads, claims resolve).
-  Rebuild guests IN-STEP (new artifact).
-- Precondition: Steps 1-3 green.
-- Postcondition: `cargo xtask build-guests --check` exit 0 including the new
-  artifact; host discovers the module; claim registry contains exactly one
-  `claim:raft-fill` holder (typo-guard: exact string `claim:raft-fill`);
-  `should_emit_raft_fill_claim_tdd` green.
+- Task IDs: `TASK-534`
+- Objective: declare a `raft-plan-view` record in
+  `crates/slicer-schema/wit/deps/ir-types.wit` (local mirror of the prepass
+  `raft-plan`, no cross-world import) and a `raft-plan` accessor on
+  `paint-region-layer-view`; add `PaintRegionLayerData.raft_plan` in
+  `crates/slicer-wasm-host/src/host.rs` with an accessor impl that pushes
+  `"SupportPlanIR"` to `runtime_reads`; populate it in
+  `build_paint_layer_data_with_plan` (`crates/slicer-wasm-host/src/dispatch.rs`)
+  with no layer filter; mirror it in the `slicer-macros` guest shim; add
+  `PaintRegionLayerView::raft_plan()` in `crates/slicer-sdk/src/traits.rs`. The
+  native leg needs no further change. Move the 8 existing
+  `PaintRegionLayerData` construction sites to FRU or `Default`. Author
+  `crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs`.
+- Precondition: Step 7 green.
+- Postcondition: AC-7 green; `cargo build --tests` green; guests rebuilt.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/rectilinear-infill/Cargo.toml` (full; small)
-  - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` (full; small)
-  - `crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` (full; 20 lines)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/raft-default/Cargo.toml` (new)
-  - `modules/core-modules/raft-default/raft-default.toml` (new)
-  - `modules/core-modules/raft-default/src/lib.rs` (new)
-  (`wit-guest/` copy rides with src; counts as part of the new directory)
-- Files explicitly out of bounds:
-  - existing support/infill modules' manifests (Step 6a), scheduler
+  - `crates/slicer-wasm-host/src/host.rs` - the `support_plan_entries` impl range
+  - `crates/slicer-wasm-host/src/dispatch.rs` - the
+    `build_paint_layer_data_with_plan` range
+- Files allowed to edit (at most 3 primaries + the SDK getter and the new test
+  file, both named here):
+  - `crates/slicer-schema/wit/deps/ir-types.wit`
+  - `crates/slicer-wasm-host/src/host.rs`
+  - `crates/slicer-wasm-host/src/dispatch.rs`
+  - `crates/slicer-sdk/src/traits.rs`
+  - `crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs` (new)
+- Files explicitly out of bounds: `modules/**`, `region_partition.rs`
 - Expected sub-agent dispatches:
-  - FACT: confirm `slicer:layer-infill` world import set suffices; scope
-    `crates/slicer-schema/wit/deps/layer-infill/`; return FACT
+  - FACT: does `ir-types.wit` resolve with a locally-declared `raft-plan-view`
+    record (no cross-world import / world-satisfaction failure)? scope
+    `crates/slicer-schema/wit/`; return FACT
 - Context cost: `M`
-- Authoritative docs:
-  - `docs/03_wit_and_manifest.md` - manifest section; delegated SUMMARY if >300 lines
-  - `docs/adr/0009-raft-as-layer-infill-role.md` - direct read
+- Authoritative docs: `docs/03_wit_and_manifest.md` - delegated SUMMARY
 - OrcaSlicer refs: none this step
 - Verification:
+  - `cargo build --tests 2>&1 | tail -3` - FACT pass/fail
   - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
-  - `mkdir -p target && cargo test -p slicer-sdk --test should_emit_raft_fill_claim_tdd -- raft_infill_claim_emits --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3 claim half green
-  - `rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml` - FACT
-- Exit condition: fresh guest artifact; single-holder claim resolves; AC-N3
-  grep passes for the three keys.
+  - `mkdir -p target && cargo test -p slicer-wasm-host --test raft_plan_read_accessor_tdd -- raft_plan_reaches_layer_infill_guest --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-7
+- Exit condition: AC-7 green; guests fresh; a `Layer::Infill` guest can read
+  `raft_plan` on both legs.
 
-### Step 5: Raft geometry synthesis (deterministic polygons)
+### Step 9: DEV-124 reopen row + docs
 
-- Task IDs: `TASK-414`, `TASK-415`
-- Objective: implement the port inside `run_infill`: given
-  `Some(raft_plan)` on layers with negative indices, synthesize
-  object-independent raft footprint POLYGONS for the declared band
-  (`raft_layers` = first + `base_raft_layers` + `interface_raft_layers`),
-  apply `raft_expansion` inflation staged in multiple steps, first printed
-  layer expanded by `raft_first_layer_expansion`, interface-band footprints at
-  contact-distance-derived spacing — deterministic pure geometry into
-  `SlicedRegion.raft_fill`. Polygons only: no scan-line pattern math, no
-  extrusion paths in this module (design.md §ADR-0009 Reconciliation; the
-  claim-holder pattern stage consumes the polygons downstream). All mm
-  constants ÷100 at the unit boundary (coord-system bullet). No anchored
-  entities anywhere.
-- Precondition: Step 4 green.
-- Postcondition: integration cases green (ordering, no-anchored); determinism
-  assert in `sliced_region_raft_fill_tdd` extended and green; guests rebuilt.
-- Files allowed to read, with ranges when over 300 lines:
-  - delegated Orca SUMMARY of `generate_raft_base` staging (working notes)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/raft-default/src/lib.rs`
-  - `crates/slicer-runtime/tests/integration/main.rs` (register two cases)
-  - `crates/slicer-runtime/tests/integration/raft_prefix_layers.rs` (new; holds
-    `raft_prefix_orders_before_model_layers` + `raft_mints_no_anchored_entities`)
-- Files explicitly out of bounds:
-  - `OrcaSlicerDocumented/**` (delegate); `rectilinear-infill` src and other
-    pattern modules stay UNTOUCHED this packet (pattern dispatch rides the
-    existing claim machinery; any needed holder-side wiring is a follow-up
-    recorded in design.md §ADR-0009 Reconciliation, not silent scope growth)
-- Blast-radius discipline: none (no struct-field change this step).
-- Expected sub-agent dispatches:
-  - OrcaSlicer SUMMARY: `generate_raft_base` staging order + multi-step
-    inflation + classic-vs-organic branch selection relevant to PnP's v1
-    rectilinear path; return SUMMARY
-- Context cost: `M`
-- Authoritative docs:
-  - `docs/08_coordinate_system.md` - porting checklist; delegated SUMMARY
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` - delegate;
-    never load
-- Verification:
-  - `cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
-  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_prefix_orders_before_model_layers --exact --nocapture && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-4 green
-- Exit condition: AC-4 green with non-zero count; two identical runs produce
-  byte-identical `raft_fill`.
-
-### Step 6a: Keys wiring-or-record + claim-conflict negative
-
-- Task IDs: `TASK-416`
-- Objective: (a) write wire-or-record rows for each dead raft key in the four
-  support-module manifests — declare-and-wire where the module genuinely
-  consumes it, otherwise a TOML comment recording why it stays (each row names
-  the decision owner); (b) author scheduler test
-  `raft_fill_double_holder_conflicts` proving a second `claim:raft-fill`
-  holder surfaces as structured `ClaimConflict` naming both module ids;
-  (c) regenerate `docs/15_config_keys_reference.md` via the gen-config-docs
-  gate (T8).
-- Precondition: Step 5 green.
-- Postcondition: AC-5 and AC-N1 green.
-- Files allowed to read, with ranges when over 300 lines:
-  - four support-module manifests (small; full read fine)
-- Files allowed to edit (at most 3):
-  - `modules/core-modules/{tree-support-planner,traditional-support-planner,tree-support,traditional-support}/*.toml` (annotation edits across these four counts as one logical surface)
-  - `crates/slicer-scheduler/tests/validation_tdd.rs`
-  - `docs/15_config_keys_reference.md` (regenerated output only)
-- Files explicitly out of bounds:
-  - `crates/slicer-scheduler/src/validation.rs` (G-21 validator shape is
-    236-owned; this packet only tests its observable contract)
-- Expected sub-agent dispatches:
-  - FACT: current validator advisory shape for duplicate claims (post-G-21
-    expectation); scope `crates/slicer-scheduler/`; return SNIPPETS ≤20 lines
-- Context cost: `M`
-- Authoritative docs:
-  - `docs/15_config_keys_reference.md` - regenerated output only
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - delegate: confirm
-    the three key defaults/mins; return FACT
-- Verification:
-  - `mkdir -p target && cargo test -p slicer-scheduler --test validation_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N1
-  - `rg -q 'raft_contact_distance' modules/core-modules/raft-default/raft-default.toml && rg -q 'raft_first_layer_expansion' modules/core-modules/raft-default/raft-default.toml && rg -q 'raft_contact_distance' docs/15_config_keys_reference.md` - AC-N3 + doc regen
-- Exit condition: both commands green; every dead-key decision recorded.
-
-### Step 6b: Raft bounds negative case
-
-- Task IDs: `TASK-417`
-- Objective: author `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs`
-  with case `raft_index_outside_band_rejected`, registering
-  `mod raft_bounds_tdd;` in `crates/slicer-runtime/tests/contract/main.rs`;
-  plus the AC-5 keys-consumption case `raft_keys_declared_and_wired` in the
-  same new file. Registration is part of this step — an unregistered file
-  compiles to zero tests (T2 blindness).
-- Precondition: Step 6a green.
-- Postcondition: AC-N2 and AC-5 green; binary count for `--test contract`
-  unchanged-or-grown with the two cases visible in output.
-- Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/contract/main.rs` (registration list only)
-- Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` (new)
-  - `crates/slicer-runtime/tests/contract/main.rs` (add `mod raft_bounds_tdd;`)
-  - `modules/core-modules/raft-default/raft-default.toml` (only if the
-    bounds case exposes a schema-range gap; otherwise untouched)
-- Files explicitly out of bounds:
-  - all other contract test files; scheduler internals
-- Expected sub-agent dispatches: none
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/support-families-anchored-entities-plan.md` - §13 T2/T8 traps
-- OrcaSlicer refs: none this step
-- Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N2 + AC-5
-  - `grep -q 'mod raft_bounds_tdd;' crates/slicer-runtime/tests/contract/main.rs` - FACT registration present
-- Exit condition: both cases pass with non-zero count; registration grep passes.
-
-### Step 7: DEV-124 verify-record + formal ADR-0009 amendment + docs
-
-- Task IDs: `TASK-418`
-- Objective: run the DEV-124 protocol (AC-6 commands) and write the verdict +
-  residual note into requirements.md §DEV-124 Verify-Record; execute a FORMAL
-  AMENDMENT of ADR-0009 inside its own document (Amendments section
-  convention, status `Proposed` → `Accepted`), recording that Decision 5's
-  claim assignment is superseded by the support-families completion plan
-  (`docs/specs/support-families-anchored-entities-plan.md` §12 240 brief):
-  the amendment QUOTES the original Decision 5 clause ("Pattern variety is
-  provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill`
-  in their manifest. v1 ships with `rectilinear-infill` declaring the
-  claim…"), states the reassignment of `claim:raft-fill` to
-  `com.core.raft-default`, and preserves Decision 4 / the zero-pattern-
-  algorithm clause / the "Do not re-suggest making `raft-default` a renderer"
-  Future-Reviewer Note UNCHANGED (the module still writes polygons only; no
-  extrusion-path/flow/speed rendering moves into it). Also update
-  `docs/02_ir_schemas.md` (SliceIR section: raft_fill + signed indices +
-  bump). The ADR's inline Decision-5 text itself stays verbatim — the
-  amendment is additive, per ADR immutability convention.
-- Precondition: Steps 1-6a/6b green.
-- Postcondition: AC-6 green; doc greps in packet.spec.md §Doc Impact Statement
-  all pass; the amendment grep below passes.
+- Task IDs: `TASK-534`
+- Objective: file the DEV-124 reopen deviation row per `requirements.md`
+  §DEV-124 Reopen — re-derive the next free ID at write time
+  (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`), name
+  the two pinning tests, and state the corrected predicate. Do NOT edit the
+  perimeter generators. Update `docs/02_ir_schemas.md` (SliceIR section:
+  `raft_fill`, signed indices, the `-N .. -1` raft prefix band, and the
+  `index != Vec position` consequence) and `docs/03_wit_and_manifest.md`
+  (`is-raft-prefix`, `raft-plan-view`, the `raft-fill` accessors).
+- Precondition: Steps 1-8 green.
+- Postcondition: every `packet.spec.md` §Doc Impact Statement grep passes.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/02_ir_schemas.md` - SliceIR section only
+  - `docs/DEVIATION_LOG.md` - the header row and the last 3 rows only
 - Files allowed to edit (at most 3):
-  - `docs/spec_packets/240-support-raft/requirements.md`
-  - `docs/adr/0009-raft-as-layer-infill-role.md` (additive Amendments
-    section + status flip only)
+  - `docs/DEVIATION_LOG.md`
   - `docs/02_ir_schemas.md`
-- Files explicitly out of bounds:
-  - `docs/DEVIATION_LOG.md` unless a NEW DEV-124 finding forces a row (then
-    re-derive next free ID at write time; run `cargo xtask check-deviations`)
+  - `docs/03_wit_and_manifest.md`
+- Files explicitly out of bounds: `docs/adr/**` (240b owns the ADR amendment),
+  the perimeter generators and their contract tests
 - Expected sub-agent dispatches: none
 - Context cost: `S`
-- Authoritative docs:
-  - `docs/adr/0009-raft-as-layer-infill-role.md` - direct read (<110 lines)
-  - `docs/specs/support-families-anchored-entities-plan.md` - §12 240 brief
-    only (amendment citation source); direct range read
+- Authoritative docs: `docs/adr/0009-raft-as-layer-infill-role.md` - direct read
+  (93 lines), for the negative-prefix contract wording only
 - OrcaSlicer refs: none this step
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-6
-  - `rg -q 'raft_fill' docs/02_ir_schemas.md && rg -q 'Accepted' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'Amendments' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'claim:raft-fill' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'com\.core\.raft-default' docs/adr/0009-raft-as-layer-infill-role.md` - FACT: amendment present with reassignment
-  - `rg -q 'rectilinear-infill. declaring the' docs/adr/0009-raft-as-layer-infill-role.md` - FACT: original Decision-5 clause quoted verbatim in the amendment
-- Exit condition: verdict recorded; all greps pass; Decision 4 text unchanged
-  (`git diff` on the ADR shows additions only, no modifications to existing
-  Decision/Future-Reviewer lines).
-
-### Step 8: Acceptance gates + Human Validation Gate execution
-
-- Task IDs: `TASK-418`
-- Objective: run packet-level gates; produce human-gate artifacts
-  (tmp/p240-* G-code + visual-debug bundle); record checklist verdicts;
-  leave sign-off to the human.
-- Precondition: Step 7 green; §9 raft-enabled Orca references exist under
-  `tmp/p240-orca-*-raft.gcode` (human-owned precondition — if absent, the
-  gate stays open and the packet reports blocked-on-human, not done).
-- Postcondition: gates green; checklist written in packet.spec.md
-  §Human Validation Gate.
-- Files allowed to read, with ranges when over 300 lines: n/a
-- Files allowed to edit (at most 3):
-  - `docs/spec_packets/240-support-raft/packet.spec.md` (checklist verdicts only)
-  - `tmp/p240-profile.json` (matched-profile copy with `support_raft_layers >= 2`)
-  - `tmp/p240-vd-raft.json` (visual-debug request)
-- Files explicitly out of bounds:
-  - anything under `docs/spec_packets/` other than this packet
-- Expected sub-agent dispatches:
-  - cargo runs delegated; visual-debug bundle generation via pnp_cli
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/19_visual_debug.md` - bundle format; delegated SUMMARY
-- OrcaSlicer refs: comparison against regenerated references only
-- Verification:
-  - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
-  - `cargo xtask check-literals --report` - FACT: violation count unchanged from G-15 baseline (61 inherited; no new ones from this packet)
-- Exit condition: gates green; artifacts present; checklist filled except the
-  human sign-off line.
+  - `rg -q 'raft_fill' docs/02_ir_schemas.md && rg -q 'raft prefix band' docs/02_ir_schemas.md` - FACT
+  - `rg -q 'is-raft-prefix' docs/03_wit_and_manifest.md && rg -q 'raft-plan-view' docs/03_wit_and_manifest.md` - FACT
+  - `rg -q 'raft prefix band' docs/DEVIATION_LOG.md && cargo xtask check-deviations; echo EXIT:$?` - FACT exit 0
+- Exit condition: all Doc Impact greps pass; `check-deviations` exit 0.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
 | Step 1 | S | red tests, IR-only |
-| Step 2 | M | split trigger documented (LOCATIONS > ~20 files → 2a/2b) |
-| Step 3 | M | WIT + both marshal legs + schema bump |
-| Step 4 | M | new guest dir + first rebuild |
-| Step 5 | M | geometry port + integration cases |
-| Step 6a | M | keys decisions + claim-conflict + doc regen |
-| Step 6b | S | bounds negative + contract registration |
-| Step 7 | S | records + ADR + IR doc |
-| Step 8 | S | gates + human-gate artifacts |
+| Step 2a | M | crates half of the migration; split again if >~20 files |
+| Step 2b | M | modules + tests half; literal gate runs here |
+| Step 3 | S | truncation removal; narrow |
+| Step 4 | M | positional-consumer ruling applied verbatim |
+| Step 5 | M | WIT + both harvest legs |
+| Step 6 | M | planner emits band; guest rebuild |
+| Step 7 | M | carrier footprint + schema bump |
+| Step 8 | M | raft-plan read path |
+| Step 9 | S | deviation row + docs |
 
-Split before activation if aggregate cost exceeds M or any step is L.
+Aggregate is `L`; no single step is `L`. `design.md` §Why This Packet Carries
+An L records why the aggregate cannot be reduced further, and activation
+therefore requires the swarm extended band with a logged ESCALATION.
 
 ## Packet Completion Gate
 
 - All steps and exits complete.
 - Every pipe-suffixed AC command returns PASS.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a
-  full backlog read.
-- Reconcile superseded transitions: stub-support-raft.md consumed at authoring
-  (done); G-06 destination rerouted (done); 215 deletion belongs to 236.
-- `packet.spec.md` is ready for `status: implemented` only after the Human
-  Validation Gate sign-off line is dated.
+- `cargo xtask check-literals` exit 0 (count equal to the count recorded on a
+  clean tree immediately BEFORE this packet's first edit — re-derive it then;
+  do not trust any number written here).
+- Update `docs/07_implementation_status.md` with `TASK-409`..`TASK-413` and
+  `TASK-531`..`TASK-534` through a worker dispatch, never a full backlog read.
+- Confirm 240b is unblocked: AC-1..AC-7 green.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Record remaining packet-local risk (leg-skew on future transports; pattern
-  takeover by another claim holder).
-- Confirm context stayed at or below 150k standard, or at/below 300k only with
-  a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
+- Run `cargo xtask test --summary --workspace` once, dispatched to a sub-agent
+  under the FACT contract — this packet retypes a field touched by most of the
+  workspace, so the narrow runs alone do not bound the risk.
+- Record remaining packet-local risk (leg skew on future transports; any
+  layer-parallel Vec added later that re-introduces positional indexing).
+- Confirm context stayed within the escalated band; otherwise record a
+  packet-authoring lesson.
 
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and
 verification commands use `--all-targets` where applicable so test, bench, and

@@ -576,7 +576,15 @@ Known traps: T4, T5, T6, T8.
 
 Known traps: T1, T4, T5.
 
-### 240-support-raft
+### 240-support-raft (split into 240a + 240b)
+
+> Split at preflight. The substrate half (signed-index migration, the raft
+> prefix band and its WIT marking, the positional-consumer repair, the
+> `SlicedRegion.raft_fill` carrier, the `raft-plan` read accessor) is
+> `docs/spec_packets/240a-support-raft-substrate`; the consumer half
+> (`com.core.raft-default`, the `generate_raft_base` port, the raft keys,
+> the ADR-0009 amendment, the human gate) is
+> `docs/spec_packets/240b-support-raft-module`. 240b hard-depends on 240a.
 
 - **All of 215's scope + G-06** (canonical reference `SupportCommon.cpp::generate_raft_base`;
   ADR-0009 contract preserved — rafts stay signed negative global-layer prefix entries, never
@@ -750,6 +758,7 @@ the column records what was allocated.
 | 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | TASK-369..TASK-380 | #3 | generated | docs/spec_packets/238b-tree-planner-canonical-fidelity |
 | 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | TASK-381..TASK-398 | #4 | generated | docs/spec_packets/238c-support-renderer-flow-interfaces |
 | 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | TASK-399..TASK-408 | #5 | generated | docs/spec_packets/239-support-independent-layer-z |
-| 7 | support-raft | Raft geometry: `raft-default` synthesizer, `claim:raft-fill`, signed negative layer indices, raft keys. | TASK-409..TASK-418 | #1 | generated | docs/spec_packets/240-support-raft |
+| 7a | support-raft-substrate | Signed-index migration, raft prefix band, positional-consumer repair, `raft_fill` carrier, `raft-plan` read accessor. | TASK-409..TASK-413, TASK-531..TASK-534 | #1 | generated | docs/spec_packets/240a-support-raft-substrate |
+| 7b | support-raft-module | `raft-default` synthesizer, `claim:raft-fill`, `generate_raft_base` port, raft keys, ADR-0009 amendment, human gate. | TASK-414..TASK-418, TASK-535 | #7a | generated | docs/spec_packets/240b-support-raft-module |
 | 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | TASK-419..TASK-428 | #5 | generated | docs/spec_packets/241-support-agg-rasterizer |
 | 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | TASK-429..TASK-440 | #2,#3,#4,#5,#6,#7,#8 | generated | docs/spec_packets/242-support-family-orca-closure |

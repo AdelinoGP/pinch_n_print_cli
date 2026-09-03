@@ -20,4 +20,5 @@ Crosswalk for the `TASK-399`..`TASK-408` slice. Registration in
 Copy costs from `implementation-plan.md`. No row is L; aggregate is M. Dependency note:
 activation requires `238c-support-renderer-flow-interfaces` to reach `implemented`
 (FORWARD DEPENDENCY — 238c is generated as `draft`). This packet shares no file surface
-with 240-support-raft or 241-support-agg-rasterizer.
+with 240a-support-raft-substrate, 240b-support-raft-module, or
+241-support-agg-rasterizer.
