@@ -100,7 +100,10 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
             demand_ids: vec!["test-demand".into()],
             body_ids: vec!["test-body".into()],
             anchor_layer_index: 0,
-            anchor_z: 0,
+            // Packet 239c: anchor_z is the declared print plane; this fixture
+            // renders on-grid at the region's own 0.3 mm plane (3000 units).
+            // The old 0 silently routed the entry into the anchored branch.
+            anchor_z: 3_000,
             skeleton: None,
             capabilities: vec![],
             provenance: vec!["test".into()],
@@ -125,7 +128,14 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(
@@ -147,7 +157,14 @@ fn unpainted_region_keeps_existing_behaviour() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(
@@ -171,7 +188,14 @@ fn default_eligible_region_generates_support() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(
@@ -192,7 +216,14 @@ fn enforcer_overrides_needs_support_false() {
 
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(
@@ -266,7 +297,11 @@ fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerVi
                 demand_ids: vec!["test-demand".into()],
                 body_ids: vec!["test-body".into()],
                 anchor_layer_index: 0,
-                anchor_z: 0,
+                // Packet 239c: anchor_z is the declared print plane; this
+                // fixture renders on-grid at the region's own z (3000 units
+                // = 0.3 mm). The old 0 silently routed the entry into the
+                // anchored branch.
+                anchor_z: 3_000,
                 skeleton: None,
                 capabilities: vec![],
                 provenance: vec!["test".into()],

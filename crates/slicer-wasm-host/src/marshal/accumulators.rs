@@ -99,6 +99,13 @@ pub struct SupportOutputCollected {
     pub raft_path_origins: Vec<Option<OriginId>>,
 }
 
+/// Anchored event collection emitted during a call.
+#[derive(Debug, Default)]
+pub struct AnchoredEventsCollected {
+    /// The most recently emitted collection.
+    pub collection: Option<slicer_ir::OrderedEventCollection>,
+}
+
 // ---------------------------------------------------------------------------
 // GcodeOutputCollected + GcodeCommandCollected
 // ---------------------------------------------------------------------------

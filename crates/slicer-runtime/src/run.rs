@@ -944,6 +944,7 @@ pub fn run_slice_with_collector(
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
         wasm_handles,
+        anchored_entities: Vec::new(),
     };
 
     // Run the pipeline through the 4-way instrumentation fork.

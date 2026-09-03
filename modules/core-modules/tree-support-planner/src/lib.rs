@@ -177,6 +177,15 @@ pub struct SupportPlanner {
     /// declared in the manifest but read nowhere, so tree support printed its
     /// top interface fused to the model.
     support_top_z_distance_mm: f32,
+    /// Support layer height in mm (0.0 = use the object's effective layer
+    /// height, the documented sentinel).
+    support_layer_height_mm: f32,
+    /// Packet 239c: support rows may leave the object layer grid. When true,
+    /// canonical `bottom_contact_layer` (enabled branch) plus `generate_support_layers`
+    /// let intermediate support rows print between object planes; when false,
+    /// `anchor_z` stays a grid-exact copy of the object plane (canonical
+    /// `sync_gap_with_object_layer`).
+    independent_support_layer_height: bool,
     /// Canonical `TreeSupportData::m_xy_distance` — the horizontal clearance
     /// every collision volume is inflated by. Defect F-16: the planner used to
     /// inflate avoidance by `tree_support_branch_distance / 2`, which is
@@ -1732,6 +1741,21 @@ impl PrepassModule for SupportPlanner {
             _ => DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
         }
         .max(0.0);
+        // Existing key: 0.0 is the documented "same as the model layer height"
+        // sentinel.
+        let support_layer_height_mm = match config.get("support_layer_height_mm") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => 0.0,
+        };
+        // Packet 239c: default true, matching the manifest declaration and
+        // canonical `PrintConfig.cpp` `init_fff_params` (coBool, default true).
+        // When true, `plan_for_object` derives free-floating intermediate
+        // support planes from `support_layer_height_mm`; when false the plan
+        // is byte-identical to the pre-239c grid-exact behavior.
+        let independent_support_layer_height = config
+            .get_bool("independent_support_layer_height")
+            .unwrap_or(true);
         let max_bridge_length_mm = match config.get("max_bridge_length") {
             Some(ConfigValue::Float(length)) if *length > 0.0 => *length as f32,
             Some(ConfigValue::Int(length)) if *length > 0 => *length as f32,
@@ -1760,6 +1784,8 @@ impl PrepassModule for SupportPlanner {
             support_interface_bottom_layers,
             support_on_build_plate_only,
             support_top_z_distance_mm,
+            support_layer_height_mm,
+            independent_support_layer_height,
             support_object_xy_distance,
             max_bridge_length_mm,
         })
@@ -3606,7 +3632,7 @@ impl SupportPlanner {
                             "tree-body-{}-{}",
                             obj.object_id, current_global_layer_index
                         )],
-                        anchor_layer_index: current_global_layer_index,
+                        anchor_layer_index: layer_rev as u32,
                         // SupportPlanIR stores physical Z in canonical slicer
                         // units (1 unit = 100 nm), not a WIT-specific scale.
                         anchor_z: mm_to_units(z_current),
@@ -3700,6 +3726,399 @@ impl SupportPlanner {
             }
         }
 
+        // ── Packet 239c Step 2: off-grid intermediate support planes ─────
+        //
+        // `independent_support_layer_height` (default true, read in
+        // `from_config`): when a configured support pitch is finer than the
+        // gap between two adjacent support-bearing object planes, canonical
+        // `generate_support_layers` interleaves intermediate rows between
+        // them (`n_layers_extra = ceil((dist - EPSILON) /
+        // max_support_layer_height)`, `step = dist / n_layers_extra`,
+        // `print_z = bottom_z + k * step`). Each interpolated entry clones
+        // the lower bracketing row's geometry — the column cross-section
+        // changes by at most one step across the bracketed 0.2 mm gap — and
+        // carries its own strictly-between plane as the declared
+        // `anchor_z`. The bracketing grid rows themselves keep their exact
+        // grid `anchor_z`, so nothing is deleted, duplicated, or inverted
+        // and the disabled branch (and every default profile, via the 0.0
+        // sentinel) stays byte-identical to pre-239c:
+        // `sync_gap_with_object_layer`.
+        let support_pitch_mm = if self.support_layer_height_mm > 0.0 {
+            self.support_layer_height_mm as f64
+        } else {
+            // [FWD] 0.0 sentinel decision, option (b) of design.md §Open
+            // Questions: the pitch defaults to the object's own
+            // effective-layer pitch. No pair of adjacent object planes is
+            // ever finer than that pitch, so the enabled branch degrades to
+            // grid-exact on every default profile. Option (a) — deriving the
+            // pitch from the interface line width, closer to canonical
+            // `bottom_contact_layer`'s interface-flow height — was rejected
+            // here because this tree does not model the interface flow
+            // height, and option (b) is the safer default-profile behavior.
+            // AC-1's fixture config sets an explicit pitch, so the feature
+            // stays provable.
+            layer_plan
+                .layers
+                .first()
+                .map(|layer| layer.effective_layer_height as f64)
+                .unwrap_or(0.0)
+        };
+        if self.independent_support_layer_height && self.support_layer_height_mm > 0.0 {
+            // Support-bearing rows, ascending by global layer index. A row
+            // prints iff it survived with real geometry (the same predicate
+            // the template pass above uses); declined/empty rows print
+            // nothing and therefore bracket nothing.
+            let mut support_rows_by_object: std::collections::BTreeMap<
+                (String, String),
+                std::collections::BTreeMap<u32, Vec<&SupportPlanEntry>>,
+            > = std::collections::BTreeMap::new();
+            let mut support_rows_239c_by_object: std::collections::BTreeMap<
+                String,
+                std::collections::BTreeMap<u32, Vec<&SupportPlanEntry>>,
+            > = std::collections::BTreeMap::new();
+            for entry in entries_in_order
+                .iter()
+                .filter(|entry| entry.decline_reason.is_none() && entry.skeleton.is_some())
+            {
+                support_rows_by_object
+                    .entry((entry.object_id.clone(), entry.region_id.clone()))
+                    .or_default()
+                    .entry(entry.anchor_layer_index)
+                    .or_default()
+                    .push(entry);
+                support_rows_239c_by_object
+                    .entry(entry.object_id.clone())
+                    .or_default()
+                    .entry(entry.anchor_layer_index)
+                    .or_default()
+                    .push(entry);
+            }
+            let z_of_layer = |index: u32| -> Option<f32> {
+                layer_plan.layers.get(index as usize).map(|layer| layer.z)
+            };
+            let mut interpolated: Vec<SupportPlanEntry> = Vec::new();
+            let mut coarse_candidates = Vec::<(f64, i32, SupportPlanEntry)>::new();
+            let mut intermediate_plane_indices = std::collections::BTreeMap::<i64, i32>::new();
+            let mut coarse_ranges = Vec::<(String, String, u32, u32)>::new();
+            let mut coarse_used = false;
+            let explicit_pitch = self.support_layer_height_mm > 0.0;
+            let pitch_units = slicer_ir::mm_to_units(support_pitch_mm as f32);
+            for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+                let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
+                for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
+                    if run.len() < 2 {
+                        continue;
+                    }
+                    let mut interface_layers: Vec<u32> = run
+                        .iter()
+                        .copied()
+                        .filter(|layer| {
+                            support_rows_by_layer[layer].iter().any(|entry| {
+                                entry.roles.iter().any(|role| {
+                                    matches!(
+                                        role.role,
+                                        slicer_ir::SupportPlanRole::TopInterface
+                                            | slicer_ir::SupportPlanRole::BaseInterface
+                                            | slicer_ir::SupportPlanRole::BottomInterface
+                                    )
+                                })
+                            })
+                        })
+                        .collect();
+                    // Q1 uses exact distinct interface planes only when a
+                    // consecutive pair encloses a surviving body row.
+                    interface_layers.sort_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
+                    interface_layers.dedup_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
+                    let mut bracket_pairs: Vec<(u32, u32)> = interface_layers
+                        .windows(2)
+                        .filter_map(|pair| {
+                            let has_interior_body = run.iter().copied().any(|layer| {
+                                layer > pair[0]
+                                    && layer < pair[1]
+                                    && support_rows_by_layer[&layer].iter().all(|entry| {
+                                        entry.roles.iter().all(|role| {
+                                            !matches!(
+                                                role.role,
+                                                slicer_ir::SupportPlanRole::TopInterface
+                                                    | slicer_ir::SupportPlanRole::BaseInterface
+                                                    | slicer_ir::SupportPlanRole::BottomInterface
+                                            )
+                                        })
+                                    })
+                            });
+                            has_interior_body.then_some((pair[0], pair[1]))
+                        })
+                        .collect();
+                    if bracket_pairs.is_empty() {
+                        bracket_pairs.push((run[0], *run.last().unwrap()));
+                    }
+                    for (below_layer, above_layer) in bracket_pairs {
+                        let covered: Vec<u32> = run
+                            .iter()
+                            .copied()
+                            .filter(|layer| *layer >= below_layer && *layer <= above_layer)
+                            .collect();
+                        let local_support_gap = covered
+                            .windows(2)
+                            .filter_map(|layers| {
+                                let below = support_rows_by_layer[&layers[0]][0].anchor_z;
+                                let above = support_rows_by_layer[&layers[1]][0].anchor_z;
+                                (above > below).then_some(above - below)
+                            })
+                            .max()
+                            .unwrap_or(0);
+                        let coarse = explicit_pitch
+                            && local_support_gap > 0
+                            && pitch_units >= local_support_gap;
+                        if coarse {
+                            coarse_used = true;
+                            coarse_ranges.push((
+                                object_id.clone(),
+                                region_id.clone(),
+                                below_layer,
+                                above_layer,
+                            ));
+                            let (Some(below_z), Some(above_z)) =
+                                (z_of_layer(below_layer), z_of_layer(above_layer))
+                            else {
+                                continue;
+                            };
+                            for candidate_z in
+                                packet239d_coarse_planes(below_z, above_z, support_pitch_mm)
+                            {
+                                if candidate_z == above_z as f64 {
+                                    continue;
+                                }
+                                let source_layer = run
+                                    .iter()
+                                    .copied()
+                                    .rev()
+                                    .find(|layer| {
+                                        z_of_layer(*layer).is_some_and(|z| z as f64 <= candidate_z)
+                                    })
+                                    .unwrap_or(below_layer);
+                                let source_entries = &support_rows_by_layer[&source_layer];
+                                for lower_entry in select_coarse_source_entries(source_entries) {
+                                    let source_global_layer_index = lower_entry.global_layer_index;
+                                    let mut clone = (*lower_entry).clone();
+                                    clone.roles = clone
+                                        .roles
+                                        .into_iter()
+                                        .map(|role| slicer_ir::SupportPlanRoleRegion {
+                                            role: slicer_ir::SupportPlanRole::SupportBody,
+                                            regions: role.regions,
+                                        })
+                                        .collect();
+                                    coarse_candidates.push((
+                                        candidate_z,
+                                        source_global_layer_index,
+                                        clone,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if coarse_used {
+                // Coarse brackets replace only their covered row pairs. Every other
+                // pair keeps the 239c candidate multiplicity and insertion order.
+                for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+                    let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
+                    for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
+                        for pair in run.windows(2) {
+                            let prev = pair[0];
+                            let layer = pair[1];
+                            if let (Some(below_z), Some(above_z)) =
+                                (z_of_layer(prev), z_of_layer(layer))
+                            {
+                                for plane in packet239c_intermediate_planes(
+                                    below_z,
+                                    above_z,
+                                    support_pitch_mm,
+                                ) {
+                                    for lower_entry in &support_rows_by_layer[&prev] {
+                                        let belongs_to_coarse_range = coarse_ranges.iter().any(
+                                            |(coarse_object, coarse_region, below, above)| {
+                                                object_id == coarse_object
+                                                    && region_id == coarse_region
+                                                    && prev >= *below
+                                                    && layer <= *above
+                                            },
+                                        );
+                                        if belongs_to_coarse_range {
+                                            continue;
+                                        }
+                                        let mut clone = (*lower_entry).clone();
+                                        let plane_ordinal =
+                                            i32::try_from(intermediate_plane_indices.len())
+                                                .map_err(|_| {
+                                                    ModuleError::fatal(
+                                                        1,
+                                                        "too many intermediate tree-support planes",
+                                                    )
+                                                })?;
+                                        let next_index = i32::MIN
+                                            .checked_add(plane_ordinal)
+                                            .ok_or_else(|| {
+                                                ModuleError::fatal(
+                                                    1,
+                                                    "too many intermediate tree-support planes",
+                                                )
+                                            })?;
+                                        clone.global_layer_index = *intermediate_plane_indices
+                                            .entry(plane)
+                                            .or_insert(next_index);
+                                        clone.anchor_layer_index = prev;
+                                        clone.anchor_z = plane;
+                                        interpolated.push(clone);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let mut synthesized_seen =
+                    std::collections::BTreeSet::<(i32, String, String, Vec<String>, i64)>::new();
+                coarse_candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+                let mut first = 0;
+                while first < coarse_candidates.len() {
+                    let mut last = first;
+                    while last + 1 < coarse_candidates.len()
+                        && coarse_candidates[last + 1].0 - coarse_candidates[first].0
+                            <= CANONICAL_EPSILON_MM as f64
+                    {
+                        last += 1;
+                    }
+                    let plane = slicer_ir::mm_to_units(
+                        (0.5 * (coarse_candidates[first].0 + coarse_candidates[last].0)) as f32,
+                    );
+                    let plane_ordinal =
+                        i32::try_from(intermediate_plane_indices.len()).map_err(|_| {
+                            ModuleError::fatal(1, "too many intermediate tree-support planes")
+                        })?;
+                    let next_index = i32::MIN.checked_add(plane_ordinal).ok_or_else(|| {
+                        ModuleError::fatal(1, "too many intermediate tree-support planes")
+                    })?;
+                    let global_layer_index = *intermediate_plane_indices
+                        .entry(plane)
+                        .or_insert(next_index);
+                    let anchor_layer_index = layer_plan
+                        .layers
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(index, layer)| {
+                            (plane.abs_diff(slicer_ir::mm_to_units(layer.z)), *index)
+                        })
+                        .map(|(index, _)| index as u32)
+                        .unwrap_or(0);
+                    for (_, source_global_layer_index, mut clone) in
+                        coarse_candidates[first..=last].iter().cloned()
+                    {
+                        clone.global_layer_index = global_layer_index;
+                        clone.anchor_layer_index = anchor_layer_index;
+                        clone.anchor_z = plane;
+                        if synthesized_seen.insert((
+                            source_global_layer_index,
+                            clone.object_id.clone(),
+                            clone.region_id.clone(),
+                            clone.body_ids.clone(),
+                            clone.anchor_z,
+                        )) {
+                            interpolated.push(clone);
+                        }
+                    }
+                    first = last + 1;
+                }
+                entries_in_order.retain(|entry| {
+                    !coarse_ranges
+                        .iter()
+                        .any(|(object_id, region_id, below, above)| {
+                            entry.object_id == *object_id
+                                && entry.region_id == *region_id
+                                && entry.anchor_layer_index > *below
+                                && entry.anchor_layer_index < *above
+                                && !entry.roles.iter().any(|role| {
+                                    matches!(
+                                        role.role,
+                                        slicer_ir::SupportPlanRole::TopInterface
+                                            | slicer_ir::SupportPlanRole::BaseInterface
+                                            | slicer_ir::SupportPlanRole::BottomInterface
+                                    )
+                                })
+                        })
+                });
+                entries_in_order.extend(interpolated);
+                // A coarse-active object is emitted Z-first as one stack. A
+                // stable sort keeps the 239c identity and multiplicity of
+                // finer candidates, including their relative order at one Z.
+                entries_in_order.sort_by_key(|entry| entry.anchor_z);
+            } else {
+                // Exact packet-239c path: object grouping, candidate identity,
+                // multiplicity, and append order are intentionally unchanged.
+                for (_, support_rows_by_layer) in support_rows_239c_by_object {
+                    let mut previous_layer: Option<&u32> = None;
+                    for layer in support_rows_by_layer.keys() {
+                        if let Some(prev) = previous_layer {
+                            if let (Some(below_z), Some(above_z)) =
+                                (z_of_layer(*prev), z_of_layer(*layer))
+                            {
+                                for plane in packet239c_intermediate_planes(
+                                    below_z,
+                                    above_z,
+                                    support_pitch_mm,
+                                ) {
+                                    if let Some(lower_entries) = support_rows_by_layer.get(prev) {
+                                        for lower_entry in lower_entries {
+                                            let mut clone = (*lower_entry).clone();
+                                            let plane_ordinal =
+                                                i32::try_from(intermediate_plane_indices.len())
+                                                    .map_err(|_| {
+                                                        ModuleError::fatal(
+                                                    1,
+                                                    "too many intermediate tree-support planes",
+                                                )
+                                                    })?;
+                                            let next_index = i32::MIN
+                                                .checked_add(plane_ordinal)
+                                                .ok_or_else(|| {
+                                                    ModuleError::fatal(
+                                                        1,
+                                                        "too many intermediate tree-support planes",
+                                                    )
+                                                })?;
+                                            clone.global_layer_index = *intermediate_plane_indices
+                                                .entry(plane)
+                                                .or_insert(next_index);
+                                            clone.anchor_layer_index = *prev;
+                                            clone.anchor_z = plane;
+                                            interpolated.push(clone);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        previous_layer = Some(layer);
+                    }
+                }
+                entries_in_order.extend(interpolated);
+                // Preserve the pre-239c final identity gate on the finer-only
+                // path. Coarse synthesis has its own source-aware key above;
+                // applying that key here would change legacy identity and
+                // multiplicity semantics.
+                let mut seen = std::collections::BTreeSet::<(String, i32, String, i64)>::new();
+                entries_in_order.retain(|entry| {
+                    seen.insert((
+                        entry.object_id.clone(),
+                        entry.global_layer_index,
+                        entry.region_id.clone(),
+                        entry.anchor_z,
+                    ))
+                });
+            }
+        }
+
         // Smoothing happens *before* the emit pass (canonical `smooth_nodes`,
         // above), never here: the entry-level `smooth_branches` translates
         // already-validated role polygons, which can move a previously legal
@@ -3729,6 +4148,98 @@ impl SupportPlanner {
         }
         Ok(())
     }
+}
+
+fn select_coarse_source_entries<'a>(
+    source_entries: &[&'a SupportPlanEntry],
+) -> Vec<&'a SupportPlanEntry> {
+    source_entries
+        .iter()
+        .copied()
+        .filter(|entry| {
+            entry.roles.iter().all(|role| {
+                !matches!(
+                    role.role,
+                    slicer_ir::SupportPlanRole::TopInterface
+                        | slicer_ir::SupportPlanRole::BaseInterface
+                        | slicer_ir::SupportPlanRole::BottomInterface
+                )
+            }) || !source_entries.iter().any(|candidate| {
+                candidate.body_ids == entry.body_ids
+                    && candidate.roles.iter().all(|role| {
+                        !matches!(
+                            role.role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BaseInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        )
+                    })
+            })
+        })
+        .collect()
+}
+
+/// Packet 239c (Step 2): canonical `generate_support_layers`
+/// (`Support/SupportCommon.cpp`) intermediate-row stepping for one vertical
+/// gap between two bracketing object planes.
+///
+/// Canonical rule (flag-independent there; gated here by
+/// `independent_support_layer_height`):
+/// `n_layers_extra = ceil((dist - EPSILON) / max_support_layer_height)`,
+/// `step = dist / n_layers_extra`, `print_z = bottom_z + k * step`.
+///
+/// `below_z_mm` / `above_z_mm` are the two bracketing object planes
+/// (ascending, mm); the plate at Z 0 brackets the bottom-most object row.
+/// Returns the k = 1..n rows strictly between the brackets, in canonical
+/// units, ascending. EPSILON is canonical's 1e-4 mm — exactly one canonical
+/// unit. Insertion happens only when the configured pitch is finer than the
+/// gap (`n >= 2`), so the bracketing grid planes themselves never move and
+/// no plane is duplicated, deleted, or inverted. Deterministic: pure
+/// function of the pair plus the pitch.
+fn packet239c_intermediate_planes(below_z_mm: f32, above_z_mm: f32, pitch_mm: f64) -> Vec<i64> {
+    const EPSILON_MM: f64 = 1e-4;
+    let below_units = slicer_ir::mm_to_units(below_z_mm);
+    let above_units = slicer_ir::mm_to_units(above_z_mm);
+    if pitch_mm <= 0.0 || above_units <= below_units {
+        return Vec::new();
+    }
+    let dist = (above_z_mm - below_z_mm) as f64;
+    let n = ((dist - EPSILON_MM) / pitch_mm).ceil();
+    if n < 2.0 {
+        return Vec::new();
+    }
+    let step = dist / n;
+    let n = n as i64;
+    (1..n)
+        .map(|k| slicer_ir::mm_to_units((below_z_mm as f64 + k as f64 * step) as f32))
+        .filter(|plane| *plane > below_units && *plane < above_units)
+        .collect()
+}
+
+/// Packet 239d coarse stack: include the aligned upper bracket so callers can
+/// deduplicate it against the demanded interface row.
+fn packet239d_coarse_planes(below_z_mm: f32, above_z_mm: f32, pitch_mm: f64) -> Vec<f64> {
+    let below_units = slicer_ir::mm_to_units(below_z_mm);
+    let above_units = slicer_ir::mm_to_units(above_z_mm);
+    if pitch_mm <= 0.0 || above_units <= below_units {
+        return Vec::new();
+    }
+    let dist = (above_z_mm - below_z_mm) as f64;
+    let n = ((dist / pitch_mm).ceil() as i64).max(1);
+    let step = dist / n as f64;
+    (1..=n)
+        .map(|k| {
+            if k == n {
+                above_z_mm as f64
+            } else {
+                below_z_mm as f64 + k as f64 * step
+            }
+        })
+        .filter(|plane| {
+            let units = slicer_ir::mm_to_units(*plane as f32);
+            units > below_units && units <= above_units
+        })
+        .collect()
 }
 
 fn candidate_contact_point(polygons: &[ExPolygon]) -> Option<(f32, f32)> {
@@ -5193,6 +5704,57 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn coarse_source_selection_prefers_body_per_membership() {
+        let interface_membership = SupportPlanEntry {
+            body_ids: vec!["membership-1".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::TopInterface,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let body_membership = SupportPlanEntry {
+            body_ids: vec!["membership-1".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::SupportBody,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let interface_only_membership = SupportPlanEntry {
+            body_ids: vec!["membership-2".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::TopInterface,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let source_entries = vec![
+            &interface_membership,
+            &body_membership,
+            &interface_only_membership,
+        ];
+
+        let selected = select_coarse_source_entries(&source_entries);
+
+        assert_eq!(selected.len(), 2);
+        assert!(selected.iter().any(|entry| {
+            entry.body_ids == ["membership-1"]
+                && entry
+                    .roles
+                    .iter()
+                    .all(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+        }));
+        assert!(selected.iter().any(|entry| {
+            entry.body_ids == ["membership-2"]
+                && entry
+                    .roles
+                    .iter()
+                    .all(|role| role.role == slicer_ir::SupportPlanRole::TopInterface)
+        }));
+    }
+
     // ── Volumes layer (defect F-16) ───────────────────────────────────────
 
     /// F-35: the lattice span comes from the *rotated* bbox dimensions, so
@@ -6003,6 +6565,8 @@ mod tests {
             support_interface_bottom_layers: -1,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
+            support_layer_height_mm: 0.0,
+            independent_support_layer_height: true,
             support_object_xy_distance: DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
             max_bridge_length_mm: DEFAULT_MAX_BRIDGE_LENGTH_MM,
         }

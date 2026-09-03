@@ -166,6 +166,18 @@ max     = 1.0
 display = "Support Layer Height"
 group   = "Support"
 
+# Packet 239c: when true, support layers are planned on their own pitch
+# (`support_layer_height_mm`) as free-floating off-grid `anchor_z` planes;
+# when false, support rows are grid-exact copies of the object layer grid.
+# Declared byte-identically in traditional-support-planner.toml so both
+# families read one key (`ConfigBoundsIndex::from_modules` intersects
+# declarations across modules).
+[config.schema.independent_support_layer_height]
+type    = "bool"
+default = true
+display = "Independent Support Layer Height"
+group   = "Support"
+
 # Canonical `TreeSupportData::m_xy_distance`: the horizontal clearance every
 # collision volume is inflated by. Declaration copied verbatim from
 # traditional-support-planner.toml so both families read one key.

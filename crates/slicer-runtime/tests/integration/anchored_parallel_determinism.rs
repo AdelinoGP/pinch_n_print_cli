@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, GlobalLayer, Point3,
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ExtrusionRole, GlobalLayer,
+    Point3WithWidth,
 };
 use slicer_runtime::layer_executor::execute_anchored_event_collections_with_mode;
 use slicer_scheduler::execution_plan::ExecutionPlan;
@@ -33,17 +34,24 @@ fn event(local_id: u64, z: f32) -> AnchoredEntity {
             source_plan_entry: format!("entry-{local_id}"),
         },
         path_points: vec![
-            Point3 {
+            Point3WithWidth {
                 x: z,
                 y: 0.0,
                 z: 0.2,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             },
-            Point3 {
+            Point3WithWidth {
                 x: z + 1.0,
                 y: 1.0,
                 z: 0.2,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
             },
         ],
+        role: ExtrusionRole::SupportMaterial,
     }
 }
 

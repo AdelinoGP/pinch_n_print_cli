@@ -1878,3 +1878,183 @@ fn emit_e_uses_volumetric_flow_formula() {
         "E/mm {e_per_mm:.4} is implausibly high (over-extrusion regression)"
     );
 }
+
+#[test]
+fn offgrid_pass_height_delta_matches_recorded_verdict() {
+    // Behaviour lock for packet 239c (support-layer-height-producer) Step 5
+    // measurement record (docs/07_implementation_status.md TASK-519,
+    // measured 2026-08-30): three two-point extrusion rows at Z = 0.2 / 0.35 /
+    // 0.4 mm, distance 10 mm, width 0.4 mm, flow 1.0, filament Ø 1.75 mm. The
+    // off-grid pass (0.35 − 0.2 = 0.15 mm plane delta) and the following-object
+    // pass (0.4 − 0.35 = 0.05 mm plane delta) both had |h_applied − plane_delta|
+    // ≤ 1e-6, so verdict = CONSISTENT — the emitter applies its own row-Z gap
+    // height term. If this fails, the emitter's height term has been changed.
+    let row_points = |z: f32| {
+        vec![
+            Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: 10.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+        ]
+    };
+    let layers: Vec<LayerCollectionIR> = [0.2_f32, 0.35, 0.4]
+        .into_iter()
+        .enumerate()
+        .map(|(i, z)| {
+            layer_with_entity(
+                i as u32,
+                z,
+                print_entity_fixture(row_points(z), ExtrusionRole::OuterWall),
+            )
+        })
+        .collect();
+
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let gcode_ir = emitter
+        .emit_gcode(&layers)
+        .expect("emit_gcode must succeed");
+
+    // Emitted E is cumulative (absolute). Each two-point row produces exactly
+    // one extrusion Move (first point e_delta == 0 → e: None); collect the
+    // cumulative E per row in emission order.
+    let cumulative_e: Vec<f32> = gcode_ir
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            GCodeCommand::Move { e: Some(e), .. } => Some(*e),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        cumulative_e.len(),
+        3,
+        "expected exactly one cumulative E per extrusion row, got {:?}",
+        cumulative_e,
+    );
+
+    // Per-pass applied height: h = E_increment × filament_area / (distance × width).
+    let filament_area = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
+    let dist_width = 10.0 * 0.4_f32;
+    let increment = |cum: &[f32], idx: usize| cum[idx] - cum[idx - 1];
+    let h_offgrid = increment(&cumulative_e, 1) * filament_area / dist_width;
+    let h_object = increment(&cumulative_e, 2) * filament_area / dist_width;
+
+    assert!(
+        (h_offgrid - 0.15).abs() <= 1e-6,
+        "recorded verdict CONSISTENT (docs/07 TASK-519, 2026-08-30): off-grid \
+         applied height {h_offgrid} mm vs declared plane delta 0.15 mm — emitter \
+         applies its own row-Z gap height term, no mis-scale; assert-only lock, \
+         no emitter change authorized",
+    );
+    assert!(
+        (h_object - 0.05).abs() <= 1e-6,
+        "recorded verdict CONSISTENT (docs/07 TASK-519, 2026-08-30): \
+         following-object applied height {h_object} mm vs declared plane delta \
+         0.05 mm — emitter applies its own row-Z gap height term, no mis-scale; \
+         assert-only lock, no emitter change authorized",
+    );
+}
+
+#[test]
+fn coarse_pass_height_delta_matches_recorded_verdict() {
+    // Behaviour lock for packet 239d (support-coarse-floating-planes) Step 6
+    // measurement record (docs/07_implementation_status.md TASK-527,
+    // measured 2026-09-02): three two-point extrusion rows at Z = 0.2 / 0.65 /
+    // 0.75 mm, distance 10 mm, width 0.4 mm, flow 1.0, filament Ø 1.75 mm.
+    let row_points = |z: f32| {
+        vec![
+            Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: 10.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+        ]
+    };
+    let layers: Vec<LayerCollectionIR> = [0.2_f32, 0.65, 0.75]
+        .into_iter()
+        .enumerate()
+        .map(|(i, z)| {
+            layer_with_entity(
+                i as u32,
+                z,
+                print_entity_fixture(row_points(z), ExtrusionRole::OuterWall),
+            )
+        })
+        .collect();
+
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let gcode_ir = emitter
+        .emit_gcode(&layers)
+        .expect("emit_gcode must succeed");
+
+    let cumulative_e: Vec<f32> = gcode_ir
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            GCodeCommand::Move { e: Some(e), .. } => Some(*e),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        cumulative_e.len(),
+        3,
+        "expected exactly one cumulative E per extrusion row, got {:?}",
+        cumulative_e,
+    );
+
+    let filament_area = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
+    let dist_width = 10.0 * 0.4_f32;
+    let increment = |cum: &[f32], idx: usize| cum[idx] - cum[idx - 1];
+    let h_coarse = increment(&cumulative_e, 1) * filament_area / dist_width;
+    let h_object = increment(&cumulative_e, 2) * filament_area / dist_width;
+
+    assert!(
+        (h_coarse - 0.45).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs declared plane delta 0.45 mm"
+    );
+    assert!(
+        (h_coarse - 0.45000002_f32).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs TASK-527 recorded applied-height constant 0.45000002 mm (the height term the emitter actually applied, not a re-derivation)"
+    );
+    assert!(
+        (cumulative_e[1] - 1.0809543).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse cumulative E {} vs recorded 1.0809543",
+        cumulative_e[1]
+    );
+    assert!(
+        (h_object - 0.1).abs() <= 1e-6,
+        "verdict CONSISTENT: following-object applied height {h_object} mm vs declared plane delta 0.1 mm"
+    );
+    assert!(
+        (h_object - 0.10000003_f32).abs() <= 1e-6,
+        "verdict CONSISTENT: following-object applied height {h_object} mm vs TASK-527 recorded applied-height constant 0.10000003 mm (the height term the emitter actually applied, not a re-derivation)"
+    );
+    assert!(
+        (cumulative_e[2] - 1.247255).abs() <= 1e-6,
+        "verdict CONSISTENT: following-object cumulative E {} vs recorded 1.247255",
+        cumulative_e[2]
+    );
+}

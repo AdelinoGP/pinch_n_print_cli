@@ -111,7 +111,7 @@ impl LayerCollectionBuilder {
     ) -> Result<(), String> {
         if self.anchored_proposal.is_some() {
             return Err(
-                "set-anchored-event-collection called twice within one run-path-optimization"
+                "set-anchored-event-collection called twice within one anchored-events dispatch"
                     .to_string(),
             );
         }

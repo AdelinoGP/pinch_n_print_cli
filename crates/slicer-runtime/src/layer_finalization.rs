@@ -121,12 +121,13 @@ pub fn execute_layer_finalization_with_instrumentation(
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             res?;
 
-            // Validate that the layer indices remain strictly monotonic
+            // Synthesized anchored rows reuse their upper model layer's index,
+            // so equal adjacent indices are valid while reversals are not.
             for window in layers.windows(2) {
-                if window[0].global_layer_index >= window[1].global_layer_index {
+                if window[0].global_layer_index > window[1].global_layer_index {
                     return Err(FinalizationError::Validation {
                         message: format!(
-                            "layer indices must be strictly monotonic, found {} followed by {}",
+                            "layer indices must be monotonic, found {} followed by {}",
                             window[0].global_layer_index, window[1].global_layer_index
                         ),
                     });

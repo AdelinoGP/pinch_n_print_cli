@@ -2,12 +2,13 @@ package slicer:layer-support@1.0.0;
 
 interface support {
     use slicer:ir-handles/ir-handles.{layer-idx, slice-region-view,
-        paint-region-layer-view, support-output-builder};
+        paint-region-layer-view, support-output-builder, layer-collection-builder};
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
 
     run: func(layer-index: layer-idx, regions: list<slice-region-view>,
         paint: paint-region-layer-view, output: support-output-builder,
+        collection: layer-collection-builder,
         config: config-view) -> result<_, module-error>;
 }
 

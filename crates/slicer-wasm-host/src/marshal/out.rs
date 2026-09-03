@@ -17,6 +17,255 @@ use crate::marshal::leaf::{
 };
 use crate::marshal::origin::{MarshalError, OriginBucket, OriginId};
 
+/// Lift an anchored event collection from the WIT representation without
+/// scaling its canonical integer geometry coordinates.
+pub fn convert_anchored_events(
+    collection: &crate::host::layer_anchored_events::slicer::ir_handles::ir_handles::OrderedEventCollection,
+) -> Result<slicer_ir::OrderedEventCollection, String> {
+    let events = collection
+        .events
+        .iter()
+        .map(|event| {
+            let geometry = match event.geometry {
+                crate::host::layer_anchored_events::slicer::ir_handles::ir_handles::AnchoredGeometryContract::Planar(z) =>
+                    slicer_ir::AnchoredGeometryContract::Planar { z },
+                crate::host::layer_anchored_events::slicer::ir_handles::ir_handles::AnchoredGeometryContract::ZSpanning((min_z, max_z)) =>
+                    slicer_ir::AnchoredGeometryContract::ZSpanning { min_z, max_z },
+            };
+            let entity = slicer_ir::AnchoredEntity {
+                local_id: event.local_id,
+                anchor_global_layer_index: event.anchor_global_layer_index,
+                geometry,
+                input_capabilities: event.input_capabilities.clone(),
+                output_capabilities: event.output_capabilities.clone(),
+                provenance: slicer_ir::AnchoredEntityProvenance {
+                    requesting_feature: event.provenance.requesting_feature.clone(),
+                    source_plan_entry: event.provenance.source_plan_entry.clone(),
+                },
+                path_points: event
+                    .path_points
+                    .iter()
+                    .enumerate()
+                    .map(|(index, point)| convert_anchored_point(point, index))
+                    .collect::<Result<Vec<_>, _>>()?,
+                role: convert_extrusion_role(&event.role),
+            };
+            Ok(entity)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(slicer_ir::OrderedEventCollection {
+        anchor_global_layer_index: collection.anchor_global_layer_index,
+        events,
+        runtime_hooks: slicer_ir::AnchoredEventRuntimeHooks {
+            optimize_paths: collection.runtime_hooks.optimize_paths,
+            account_cooling: collection.runtime_hooks.account_cooling,
+            account_time: collection.runtime_hooks.account_time,
+        },
+    })
+}
+
+fn convert_anchored_point(
+    point: &crate::host::layer_anchored_events::slicer::types::geometry::Point3WithWidth,
+    index: usize,
+) -> Result<slicer_ir::Point3WithWidth, String> {
+    let point = crate::marshal::leaf::convert_point(point, index)?;
+    if point.width <= 0.0 {
+        return Err(format!(
+            "anchored entity point[{index}].width must be positive, got {}",
+            point.width
+        ));
+    }
+    if point.flow_factor <= 0.0 {
+        return Err(format!(
+            "anchored entity point[{index}].flow_factor must be positive, got {}",
+            point.flow_factor
+        ));
+    }
+    Ok(point)
+}
+
+/// Validate an anchored entity's path against its declared Z contract.
+pub fn validate_anchored_entity_geometry(entity: &slicer_ir::AnchoredEntity) -> Result<(), String> {
+    for point in &entity.path_points {
+        let Some(z) = point.z.is_finite().then(|| slicer_ir::mm_to_units(point.z)) else {
+            return Err(match entity.geometry {
+                slicer_ir::AnchoredGeometryContract::Planar { .. } => {
+                    "anchored entity planar z mismatch: path point Z is not finite".to_string()
+                }
+                slicer_ir::AnchoredGeometryContract::ZSpanning { .. } => {
+                    "anchored entity z-span violation: path point Z is not finite".to_string()
+                }
+            });
+        };
+        match entity.geometry {
+            slicer_ir::AnchoredGeometryContract::Planar { z: plane }
+                if (z - plane).abs()
+                    > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity planar z mismatch: path point Z {z} differs from plane {plane}"
+                ));
+            }
+            slicer_ir::AnchoredGeometryContract::ZSpanning { min_z, max_z }
+                if z < min_z - slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                    || z > max_z
+                        + slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS =>
+            {
+                return Err(format!(
+                    "anchored entity z-span violation: path point Z {z} is outside [{min_z}, {max_z}]"
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod anchored_events_tests {
+    use super::*;
+    use crate::host::layer_anchored_events::slicer::ir_handles::ir_handles as wit;
+
+    fn wit_entity(geometry: wit::AnchoredGeometryContract) -> wit::AnchoredEntity {
+        // exhaustive: test-only WIT fixture intentionally names every contract field
+        wit::AnchoredEntity {
+            local_id: 7,
+            anchor_global_layer_index: 2,
+            geometry,
+            input_capabilities: vec!["input".into()],
+            output_capabilities: vec!["output".into()],
+            provenance: wit::AnchoredEntityProvenance {
+                requesting_feature: "feature".into(),
+                source_plan_entry: "entry".into(),
+            },
+            // exhaustive: WIT boundary fixture must populate every transported point field
+            path_points: vec![wit::Point3WithWidth {
+                x: 1.0,
+                y: 2.0,
+                z: 0.3,
+                width: 0.45,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }],
+            role: wit::ExtrusionRole::SupportMaterial,
+        }
+    }
+
+    #[test]
+    fn convert_anchored_events_preserves_integer_contracts() {
+        let collection = wit::OrderedEventCollection {
+            anchor_global_layer_index: 2,
+            events: vec![
+                wit_entity(wit::AnchoredGeometryContract::Planar(3000)),
+                wit_entity(wit::AnchoredGeometryContract::ZSpanning((3000, 5000))),
+            ],
+            runtime_hooks: wit::AnchoredEventRuntimeHooks {
+                optimize_paths: true,
+                account_cooling: false,
+                account_time: true,
+            },
+        };
+        let converted = convert_anchored_events(&collection).unwrap();
+        assert_eq!(
+            converted.events[0].geometry,
+            slicer_ir::AnchoredGeometryContract::Planar { z: 3000 }
+        );
+        assert_eq!(
+            converted.events[1].geometry,
+            slicer_ir::AnchoredGeometryContract::ZSpanning {
+                min_z: 3000,
+                max_z: 5000
+            }
+        );
+    }
+
+    #[test]
+    fn convert_anchored_point_rejects_non_positive_width() {
+        let mut entity = wit_entity(wit::AnchoredGeometryContract::Planar(3000));
+        entity.path_points[0].width = 0.0;
+        let collection = wit::OrderedEventCollection {
+            anchor_global_layer_index: 2,
+            events: vec![entity],
+            runtime_hooks: wit::AnchoredEventRuntimeHooks {
+                optimize_paths: false,
+                account_cooling: false,
+                account_time: false,
+            },
+        };
+
+        assert!(convert_anchored_events(&collection)
+            .unwrap_err()
+            .contains("width must be positive"));
+    }
+
+    #[test]
+    fn convert_anchored_point_rejects_non_positive_flow_factor() {
+        let mut entity = wit_entity(wit::AnchoredGeometryContract::Planar(3000));
+        entity.path_points[0].flow_factor = 0.0;
+        let collection = wit::OrderedEventCollection {
+            anchor_global_layer_index: 2,
+            events: vec![entity],
+            runtime_hooks: wit::AnchoredEventRuntimeHooks {
+                optimize_paths: false,
+                account_cooling: false,
+                account_time: false,
+            },
+        };
+
+        assert!(convert_anchored_events(&collection)
+            .unwrap_err()
+            .contains("flow_factor must be positive"));
+    }
+
+    #[test]
+    fn validate_anchored_entity_geometry_rejects_both_contract_violations() {
+        // exhaustive: test-only IR fixture intentionally names every contract field
+        let planar = slicer_ir::AnchoredEntity {
+            local_id: 1,
+            anchor_global_layer_index: 0,
+            geometry: slicer_ir::AnchoredGeometryContract::Planar { z: 3000 },
+            input_capabilities: vec![],
+            output_capabilities: vec![],
+            provenance: slicer_ir::AnchoredEntityProvenance {
+                requesting_feature: String::new(),
+                source_plan_entry: String::new(),
+            },
+            path_points: vec![slicer_ir::Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.04,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
+            }],
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
+        };
+        assert!(validate_anchored_entity_geometry(&planar)
+            .unwrap_err()
+            .contains("anchored entity planar z mismatch"));
+        let spanning = slicer_ir::AnchoredEntity {
+            geometry: slicer_ir::AnchoredGeometryContract::ZSpanning {
+                min_z: 3000,
+                max_z: 5000,
+            },
+            path_points: vec![slicer_ir::Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.06,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
+            }],
+            ..planar
+        };
+        assert!(validate_anchored_entity_geometry(&spanning)
+            .unwrap_err()
+            .contains("anchored entity z-span violation"));
+    }
+}
+
 // ── infill_ir_to_prior_regions ───────────────────────────────────────────
 
 /// Marshal the committed `InfillIR`'s region buckets into the WIT

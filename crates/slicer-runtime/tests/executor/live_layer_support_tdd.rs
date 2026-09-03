@@ -1205,8 +1205,16 @@ mod planner_consuming_tier {
             .with_support_plan(plan)
             .with_slice_ir(Arc::new(slice_ir));
         let mut output = SupportOutputBuilder::new();
+        let mut collection = slicer_sdk::LayerCollectionBuilder::new();
         module
-            .run_support(layer_index, &regions, &paint, &mut output, &config)
+            .run_support(
+                layer_index,
+                &regions,
+                &paint,
+                &mut output,
+                &mut collection,
+                &config,
+            )
             .expect("run_support must succeed");
         output.support_paths().to_vec()
     }

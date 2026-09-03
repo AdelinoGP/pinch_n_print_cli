@@ -1004,7 +1004,7 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   line width). The tree planner also folds foreign territory into its
   collision ladder so avoidance routes around it; the traditional planner
   clips its carry; host aggregation re-applies the rule and reports the trim
-  as Info diagnostic 1205 instead of rejecting both families (DEV-159).
+  as Info diagnostic 1205 instead of rejecting both families (DEV-165).
 
 **Determinism:** `family_assignments` is a `BTreeMap` keyed by
 `(ObjectId, RegionId)`, so per-region family assignment is deterministic and
@@ -1308,7 +1308,9 @@ above; read them from source rather than from a copy here.
 Anchored events are represented by the additive `AnchoredEntity` contract
 beside the ordinary layer collection. Each entity has a stable `local_id`, an
 `anchor_global_layer_index`, planar or Z-spanning geometry, input/output
-capabilities, provenance, and ordered `path_points`. `AnchoredEntityProvenance`
+capabilities, provenance, a mandatory extrusion role, and ordered `path_points`
+carrying the same width and flow-factor metadata as `Point3WithWidth`.
+`AnchoredEntityProvenance`
 records the producing module and source identity needed to retain attribution.
 
 The host groups entities into an `OrderedEventCollection`. The collection is
@@ -1318,6 +1320,13 @@ it, but must not reorder across physical event boundaries. An
 capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
 cooling accounting, and time accounting. These types are additive beside the
 layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
+
+#### Anchored-event WIT transport
+
+The anchored-event transport is exposed by the `Layer::AnchoredEvents` stage
+through the `slicer:layer-anchored-events@1.0.0` package. Its lift rule
+preserves anchored coordinates exactly: 1 unit is 100 nm, and `s64` values are
+carried as `i64` with no scaling or intermediate `f32` conversion.
 
 ### Extrusion-role default priority (Normative)
 

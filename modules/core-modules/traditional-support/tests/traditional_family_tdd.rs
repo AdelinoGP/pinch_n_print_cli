@@ -53,7 +53,11 @@ fn fixture_with_config(
         demand_ids: vec!["demand-1".into()],
         body_ids: vec!["body-1".into()],
         anchor_layer_index: 0,
-        anchor_z: 300,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 300 (0.03 mm) silently routed the entry into the anchored
+        // branch.
+        anchor_z: 3_000,
         roles,
         skeleton: None,
         capabilities: vec![],
@@ -100,7 +104,14 @@ fn planned_polygon_renderer() {
     let module = TraditionalSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     assert!(
         !output.support_paths().is_empty(),
@@ -143,7 +154,14 @@ fn interface_spacing_config_controls_scan_fill() {
     let module = TraditionalSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     let default_count = output.interface_paths().len();
 
@@ -159,7 +177,14 @@ fn interface_spacing_config_controls_scan_fill() {
     let module = TraditionalSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     let wide_count = output.interface_paths().len();
 
@@ -175,14 +200,28 @@ fn mismatched_or_missing_plan() {
     let (config, region, paint) = fixture("tree", body_and_interface_roles());
     let module = TraditionalSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &[region],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
     assert!(result.is_err(), "non-traditional family must be rejected");
     assert!(output.support_paths().is_empty());
     assert!(output.interface_paths().is_empty());
 
     let (config, region, paint) = fixture("traditional", Vec::new());
     let mut output = SupportOutputBuilder::new();
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &[region],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
     assert!(result.is_err(), "plan without polygons must be rejected");
     assert!(output.support_paths().is_empty());
     assert!(output.interface_paths().is_empty());

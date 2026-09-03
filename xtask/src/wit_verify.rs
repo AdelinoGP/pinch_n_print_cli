@@ -66,7 +66,7 @@ impl std::error::Error for VerifyError {}
 /// Return exactly the `.wit` paths the macro `include_str!`s, derived by a
 /// multiline-aware parse of `crates/slicer-macros/src/lib.rs`.
 ///
-/// The 20-file list (5 flat + 15 per-stage) excludes `root.wit`.
+/// The 21-file list (5 flat + 16 per-stage) excludes `root.wit`.
 /// Both the function and its audit test derive the list by reading the macro
 /// source at runtime — neither hardcodes a constant the other compares against.
 pub fn macro_embedded_wit_files(ws_root: &Path) -> Result<Vec<PathBuf>, VerifyError> {
@@ -1302,8 +1302,8 @@ mod tests {
 
         assert_eq!(
             expected.len(),
-            20,
-            "expected 20 distinct .wit include_str! paths, got {}: {:?}",
+            21,
+            "expected 21 distinct .wit include_str! paths, got {}: {:?}",
             expected.len(),
             expected
         );
@@ -1368,8 +1368,8 @@ mod tests {
         }
         assert_eq!(
             expected.len(),
-            20,
-            "expected 20 distinct .wit include_str! paths, got {}: {:?}",
+            21,
+            "expected 21 distinct .wit include_str! paths, got {}: {:?}",
             expected.len(),
             expected
         );
@@ -1405,8 +1405,8 @@ mod tests {
 
         assert_eq!(
             actual.len(),
-            20,
-            "build.rs must watch exactly 20 .wit files, got {}: {:?}",
+            21,
+            "build.rs must watch exactly 21 .wit files, got {}: {:?}",
             actual.len(),
             actual
         );
@@ -1432,8 +1432,8 @@ mod tests {
             .collect();
         assert_eq!(
             per_stage_expected.len(),
-            15,
-            "expected 15 per-stage wit files in canonical set, got {}: {:?}",
+            16,
+            "expected 16 per-stage wit files in canonical set, got {}: {:?}",
             per_stage_expected.len(),
             per_stage_expected
         );
@@ -1446,7 +1446,7 @@ mod tests {
 
         assert_eq!(
             actual, expected,
-            "build.rs rerun-if-changed set must equal the macro's 20-file include_str! set"
+            "build.rs rerun-if-changed set must equal the macro's 21-file include_str! set"
         );
     }
 

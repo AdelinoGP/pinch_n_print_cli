@@ -344,8 +344,8 @@ fn host_bindgen_paths_target_shared_root() {
 
     assert_eq!(
         paths.len(),
-        15,
-        "Expected exactly 15 `path:` literals in host.rs bindgen! invocations (one per stage), \
+        16,
+        "Expected exactly 16 `path:` literals in host.rs bindgen! invocations (one per stage), \
          found {}: {paths:?}",
         paths.len()
     );
