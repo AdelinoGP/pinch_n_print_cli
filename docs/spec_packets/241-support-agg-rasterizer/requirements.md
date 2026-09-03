@@ -4,11 +4,15 @@
 
 - Grouped task IDs: `TASK-419`..`TASK-428`
 - Backlog source: `docs/specs/support-families-anchored-entities-plan.md` §12 brief
-  "241-support-agg-rasterizer" (queue row #8); absorbs stub
-  `docs/spec_packets/stubs/stub-support-agg-rasterizer.md` and register row G-07.
+  "241-support-agg-rasterizer" (queue row #8), which also reserves TASK-419..TASK-428 for
+  this packet. Absorbs register row G-07 (`docs/specs/support-parity-gap-register.md`). The
+  stub `docs/spec_packets/stubs/stub-support-agg-rasterizer.md` no longer exists — it was
+  deleted when the G-07 premise was corrected (the register records "stub deleted"), so
+  there is nothing left to absorb and no `docs/spec_packets/stubs/` directory to touch.
 - Packet status: `draft`
-- Depends on: `238c-support-renderer-flow-interfaces` (FORWARD DEPENDENCY — 238c is
-  generated but itself `draft`; this packet must not activate before 238c is `implemented`).
+- Depends on: `238c-support-renderer-flow-interfaces` — SATISFIED (verified 2026-09-03: its
+  `packet.spec.md` frontmatter reads `status: implemented`, as do 236, 238a and 238b). No
+  forward dependency blocks activation. Ledger fact — re-derive at activation.
 - Aggregate context cost: `M` (per-step roll-up in `implementation-plan.md`; no step rated L)
 
 ## Problem Statement
@@ -22,8 +26,9 @@ expansion restricted inside the cell; `a95607d7bf` fixed support columns missing
 going down (a coverage/termination defect) caused by grid-extraction contour filtering. The
 research question is settled — this packet is a PORT.
 
-PnP's traditional planner (`modules/core-modules/traditional-support-planner/src/lib.rs`, ~687
-lines, port of the `SupportMaterial.cpp` orchestration) implements only the *semantic* half:
+PnP's traditional planner (`modules/core-modules/traditional-support-planner/src/lib.rs`,
+1274 lines as of 2026-09-03, port of the `SupportMaterial.cpp` orchestration) implements
+only the *semantic* half:
 propagate-without-growth carry, trimmed per layer at `support_object_xy_distance`. It has no
 byte-grid projection, no oversampling, no in-cell expansion restriction, no seed fill, and no
 contour extraction — so it reproduces neither fix. This packet ports the rasterizer as a
@@ -48,10 +53,15 @@ both paths tested; parity evidence runs the default.
 - Measurement harness (integration tests): pre-port baseline capture, post-port wall-leakage
   (penetration events + penetrated area vs occupancy grown by `support_object_xy_distance`) and
   column-continuity (abrupt column drops, total-area drift guard) metrics per AC-6/AC-7/AC-8.
-- New test binary `crates/slicer-runtime/tests/integration/support_agg_rasterizer_tdd.rs`
-  registered in `crates/slicer-runtime/tests/integration/main.rs`; new guest test file
-  `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs` registered in
-  the crate's `Cargo.toml`.
+- New test SUBMODULE `crates/slicer-runtime/tests/integration/support_agg_rasterizer_tdd.rs`
+  — not a new test binary. It joins the existing aggregated `integration` binary and MUST be
+  registered with a `mod support_agg_rasterizer_tdd;` line in
+  `crates/slicer-runtime/tests/integration/main.rs` (which currently aggregates 70 modules).
+  Without that line the file never compiles and `cargo test --test integration <name>`
+  reports "0 tests run" — a false pass. Separately, a new guest test file
+  `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs` needs its own
+  `[[test]]` stanza in the crate's `Cargo.toml`: that crate declares test targets explicitly
+  (`name = "traditional_family_tdd"`), so autodiscovery will NOT pick the file up.
 - Doc impact items listed in `packet.spec.md` §Doc Impact Statement (config-key reference regen;
   TASK registration).
 
@@ -99,8 +109,12 @@ Reference, never copy, criteria from `packet.spec.md`.
   measurement; both-modes divergence).
 - Negative: `AC-N1` (invalid knob value rejected at module boundary, never defaulted);
   `AC-N2` (explicit `legacy_semantic` keeps every existing planner behavior green).
-- Cross-packet impact: none outside `modules/core-modules/traditional-support-planner/**` +
-  the two doc files above; 238c/239/240 packets' directories are untouched. The knob adds one
+- Cross-packet impact: confined to `modules/core-modules/traditional-support-planner/**`, the
+  two doc files above, and the runtime test surface
+  (`crates/slicer-runtime/tests/integration/{main.rs,support_agg_rasterizer_tdd.rs}` plus the
+  new `crates/slicer-runtime/tests/fixtures/golden/` directory, which does not yet exist and
+  must be created). No production `crates/**` code changes. 238c/239/240 packets' directories
+  are untouched. The knob adds one
   key to the shared config surface — no WIT, IR, or schema-version change.
 
 ## Verification Commands
@@ -109,7 +123,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 6 && echo PASS` | Full guest rasterizer suite (AC-2..AC-5, AC-N1) | FACT pass/fail; SNIPPETS ≤20 lines on failure |
+| `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -ge 6 && echo PASS` | Full guest rasterizer suite (AC-2..AC-5, AC-N1) | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd 2>&1 \| tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 10 && echo PASS` | Legacy-mode regression guard (AC-N2) | FACT pass/fail |
 | `( cargo test -p slicer-runtime --test integration -- agg_wall_leakage_measurement_beats_baseline --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 ) && ( cargo test -p slicer-runtime --test integration -- agg_column_continuity_measurement_beats_baseline --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 ) && ( cargo test -p slicer-runtime --test integration -- agg_and_legacy_modes_both_function_and_diverge --exact 2>&1 \| tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 ) && echo PASS` | Measurement-as-gate trio on real fixture slices (AC-6..AC-8); three exact commands chained with `&&` — Cargo accepts one TESTNAME per invocation | FACT pass/fail + recorded metric numbers |
 | `cargo xtask build-guests --check && echo FRESH` | Guest freshness gate (E4/T4) before any attribution | exit code 0 + FRESH |
@@ -134,6 +148,7 @@ Commands must have small, parseable output suitable for delegation.
 - `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` is ~3.3k lines — delegate
   everything; ranged reads only via LOCATIONS/SUMMARY returns (T1: verify existence by direct
   listing, globs miss gitignored paths).
-- `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` is ~1.1k
-  lines; ranged reads only (helpers at top, then targeted tests).
+- `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` is **2466
+  lines** with **28** `#[test]` functions (verified 2026-09-03; AC-N2's `-gt 10` guard is
+  therefore satisfiable). Ranged reads only — helpers at the top, then targeted tests.
 - Do NOT load `target/`, golden fixture bodies, or generated WASM bindings.

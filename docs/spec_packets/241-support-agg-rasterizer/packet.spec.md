@@ -38,10 +38,12 @@ planner propagates area); raft is 240; independent support-layer Z is 239.
 
 ## Prerequisites and Blockers
 
-- Depends on: `238c-support-renderer-flow-interfaces` — FORWARD DEPENDENCY: 238c is authored
-  (status `draft`) ahead of this packet in the queue rooted at `236-support-stabilization`;
-  this packet must not activate until 238c reaches `implemented`. Chain: … → 238a → 238b →
-  238c → 241.
+- Depends on: `238c-support-renderer-flow-interfaces` — SATISFIED. Verified 2026-09-03:
+  `docs/spec_packets/238c-support-renderer-flow-interfaces/packet.spec.md` frontmatter reads
+  `status: implemented`, as do `236-support-stabilization`, `238a-support-pattern-config-keys`,
+  and `238b-tree-planner-canonical-fidelity`. The chain 236 → 238a → 238b → 238c is fully
+  landed, so no forward dependency blocks activation. This is a ledger fact — re-derive it at
+  activation (`head -3` each dep's `packet.spec.md`) rather than trusting this line.
 - Unblocks: `242-support-family-orca-closure`.
 - Activation blockers: none beyond the dependency above; `[BLOCK]`-tagged questions live in
   `design.md` §Open Questions.
@@ -55,7 +57,7 @@ planner propagates area); raft is 240; independent support-layer Z is 239.
   following the manifest enum pattern of `retract_mode`
   (`modules/core-modules/path-optimization-default/path-optimization-default.toml`) — and
   `docs/15_config_keys_reference.md` names the key with its two values (T8: declaration +
-  doc regen in one commit). | `rg -q '^\[config\.schema\.support_area_rasterizer\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q '"agg", "legacy_semantic"' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support_area_rasterizer' docs/15_config_keys_reference.md && echo PASS || echo FAIL`
+  doc regen in one commit). | `rg -q '^\[config\.schema\.support_area_rasterizer\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q '"agg", "legacy_semantic"' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support_area_rasterizer' docs/15_config_keys_reference.md && echo PASS`
 - **AC-2 (grid construction is canonical).** Given the new guest-side rasterizer module, **when**
   support polygons are projected onto the byte grid at default config, **then** the construction
   matches canonical `SupportGridPattern`'s `#ifdef SUPPORT_USE_AGG_RASTERIZER` branch exactly at
@@ -68,14 +70,18 @@ planner propagates area); raft is 240; independent support-layer Z is 239.
   contours are extracted, **then** the extraction chains cell-boundary edges into closed loops
   (marching-squares equivalent of canonical `contours_simplified`), honors `fill_holes`
   left/right + top/bottom neighbor filling, applies `offset_in_grid` expansion/shrink via the
-  loop offset, splits islands by the trimming polygons (`difference_ex`), and keeps only islands
+  loop offset, splits islands by the trimming polygons via
+  `host::clip_polygons(.., ClipOperation::Difference)` (canonical uses `difference_ex`, which
+  in this tree is host-only and NOT reachable from a guest), and keeps only islands
   containing an input-island sample point (canonical `extract_support`'s sample-containment
   filter — the column-continuity fix from upstream `a95607d7bf`). | `cargo test -p traditional-support-planner --test agg_rasterizer_tdd contour_extraction_filters_islands_by_samples -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-4 (in-cell expansion restriction).** Given an extracted layer polygon with positive
   `expansion_to_slice`, **when** the printed area is derived, **then** expansion happens inside
   each oversampled macro cell during extraction (per-cell `offset_in_grid`), never as a global
-  polygon offset — the wall-leakage fix from upstream `fb7b995050`; a global
-  `host::offset_polygons` call must not appear inside the rasterizer module. | `( ! rg -q 'offset_polygons' modules/core-modules/traditional-support-planner/src/agg_raster.rs ) && mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd expansion_is_restricted_inside_the_macro_cell -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  polygon offset — the wall-leakage fix from upstream `fb7b995050`. No `host::offset_polygons`
+  call may appear inside `agg_raster.rs` at all: island-sample generation is the one step that
+  needs an offset, and it runs at the `lib.rs` call site and is passed into `extract_support`
+  as its `samples` argument, so the rasterizer module is offset-free by construction. | `( ! rg -q 'offset_polygons' modules/core-modules/traditional-support-planner/src/agg_raster.rs ) && mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd expansion_is_restricted_inside_the_macro_cell -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-5 (propagation consumes the rasterizer by default).** Given default config
   (`support_area_rasterizer` unset or `"agg"`), **when** the traditional planner propagates a
   contact region downward through ≥ 2 layers against model occupancy, **then** the emitted
@@ -114,10 +120,16 @@ command. Commands tee to `target/test-output.log` with a non-zero matched-count 
 - **AC-N1 (invalid knob value rejected).** Given a config supplying
   `support_area_rasterizer = "marching_squares"` (not in the declared enum set), **when** the
   traditional planner module parses its config view, **then** it fails with a fatal
-  `ModuleError` naming the key and the allowed values — mirroring the enum-bounds rejection
-  precedent (`ConfigBoundsIndex` enforces numeric bounds host-side; string enums are rejected at
-  the consuming module boundary, as `canonical_support_family` vocabulary enforcement does
-  elsewhere). No silent fallback to either mode. | `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd invalid_rasterizer_value_is_rejected_not_defaulted -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
+  `ModuleError` naming the key and the allowed values — the defense-in-depth pattern already used
+  by `SeamPlacer::from_config` (`modules/core-modules/seam-placer/src/lib.rs`), which rejects an
+  unknown `seam_mode` with `ModuleError::fatal` even though `seam_mode` is a manifest-declared
+  enum. No silent fallback to either mode. NOTE: the host rejects out-of-vocabulary enum values
+  first — `ConfigBoundsIndex::from_modules` harvests `values` from every loaded module's
+  `[config.schema]` and `resolve_global_config` calls `bounds.check(..)?`, aborting the slice
+  with `config resolution failed: …`. The host check is therefore NOT numeric-only. The guest
+  check still carries weight (it fires for a `ConfigView` built directly, when no loaded module
+  declares the key, and when a colliding declaration wins `or_insert_with`), so this AC's test
+  drives `from_config` on a constructed `ConfigView` rather than a full slice. | `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd invalid_rasterizer_value_is_rejected_not_defaulted -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-N2 (legacy mode still functions).** Given `support_area_rasterizer = "legacy_semantic"`
   explicitly selected, **when** the planner runs the full propagation suite inputs (blocked
   route → structured decline; plate termination; top-z lowering), **then** all existing
@@ -130,7 +142,7 @@ command. Commands tee to `target/test-output.log` with a non-zero matched-count 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo xtask check-literals`
-- Primary targeted proof: `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 6 && echo PASS`
+- Primary targeted proof: `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -ge 6 && echo PASS`
 
 ## Authoritative Docs
 
@@ -140,7 +152,9 @@ command. Commands tee to `target/test-output.log` with a non-zero matched-count 
 - `docs/specs/support-parity-gap-register.md` - row G-07 (premise corrected per Ruling 7;
   destination rerouted to this packet); direct range read.
 - `docs/19_visual_debug.md` - visual-debug bundle contract for the human-gate taps; ranged
-  read around Request Shape + Stage Tap Inventory.
+  read around `## Request Shape` and `### Tap Classes And Execution Closure`. The "Stage Tap
+  Inventory" heading itself is NOT in this file — it lives in
+  `docs/specs/_OLD/visual-pipeline-debug.md`, which `19_visual_debug.md` only references.
 - `docs/specs/support-families-anchored-entities-plan.md` §17-agent debugging companion
   (`docs/17_agent_debugging.md`) - timing/DAG diagnosis boundaries; consult only if a gate
   command misbehaves.
@@ -152,7 +166,11 @@ command. Commands tee to `target/test-output.log` with a non-zero matched-count 
   `"agg"`, values `"agg"|"legacy_semantic"`, owner `traditional-support-planner`) after the
   manifest lands - `rg -q 'support_area_rasterizer' docs/15_config_keys_reference.md`
 - `docs/07_implementation_status.md` - TASK-419..TASK-428 registered at packet-owned closure
-  (Step 9) - `rg -q 'TASK-419' docs/07_implementation_status.md`
+  (Step 9) - `rg -q 'TASK-419' docs/07_implementation_status.md`. These IDs are RESERVED for
+  this packet by queue row #8 of `docs/specs/support-families-anchored-entities-plan.md` and
+  are below the live high-water mark in `docs/07_implementation_status.md`. Step 9 must verify
+  the reserved range is still unused (`rg -o 'TASK-4(1[9]|2[0-8])' docs/07_implementation_status.md`
+  returns nothing), NOT allocate the "next free" ID — that query returns a much higher number.
 - `docs/DEVIATION_LOG.md` - no edit (G-07 premise correction lives in the gap register row
   itself; no new deviation is filed by this packet — the port IS the canonical behavior).
 - Queue table of `docs/specs/support-families-anchored-entities-plan.md` - orchestrator-owned;

@@ -54,9 +54,19 @@ invariant in the extraction entry.
 
 - Selected approach: self-contained guest-side rasterizer module + a mode switch at the top of
   the propagation loop. The legacy loop stays verbatim under `legacy_semantic`. No WIT change:
-  everything runs inside the guest using `slicer_sdk::host` polygon ops it already links
-  (`clip_polygons`, `offset_polygons` for sample generation only) plus pure Rust grid code.
+  everything runs inside the guest using pure Rust grid code plus the ONE host polygon op the
+  rasterizer needs, `slicer_sdk::host::clip_polygons` (already linked by `lib.rs`).
+  `host::offset_polygons` is NOT called from `agg_raster.rs`: the two offsets this packet
+  needs — the occupancy clearance mask and island-sample generation — both run at the
+  `lib.rs` call site and are passed into the rasterizer as ready-made polygons. This is what
+  makes AC-4's `! rg -q 'offset_polygons' src/agg_raster.rs` satisfiable by construction.
+  There is no `difference_ex` on the guest side: that symbol lives in
+  `crates/slicer-core/src/polygon_ops.rs` (host-only, not re-exported by `slicer-sdk`), so
+  every set difference here is `host::clip_polygons(a, b, ClipOperation::Difference)`.
 - Exact functions, traits, manifests, tests, and fixtures:
+  - NEW `agg_raster::SupportGrid { params: GridParams, support: Vec<u8>, trimming: Vec<u8> }`
+    — the `SupportGridPattern` equivalent; owns the two byte grids for one candidate and is
+    the receiver for `extract_support`. Built once per candidate, extracted per layer.
   - NEW `agg_raster::GridParams { pixel_size: i64, origin: Point2, grid_size: (usize, usize),
     macro: usize }` — derived from support polygons bbox + spacing/line-width exactly per the
     canonical constructor formulas (AC-2).
@@ -69,15 +79,18 @@ invariant in the extraction entry.
   - NEW `agg_raster::contours_simplified(&[u8], offset_in_grid: i64, fill_holes: bool,
     &GridParams) -> Vec<ExPolygon>` — boundary-edge collection + lexicographic chaining +
     `fill_holes` neighbor rule + per-loop offset by `offset_in_grid` (in-cell restriction, AC-4).
-  - NEW `agg_raster::extract_support(&self, offset_in_grid, fill_holes, samples) ->
-    Vec<ExPolygon>` — difference vs trimming polygons (`difference_ex`), island
-    sample-containment filter (ray-crossing point-in-island, canonical `extract_support`),
-    expanding-vs-shrinking sample choice by offset sign.
+  - NEW `agg_raster::SupportGrid::extract_support(&self, offset_in_grid: i64,
+    fill_holes: bool, samples: &[Point2]) -> Vec<ExPolygon>` — difference vs the trimming
+    polygons via `host::clip_polygons(.., ClipOperation::Difference)` (NOT `difference_ex`,
+    which is host-only), then the island sample-containment filter (ray-crossing
+    point-in-island, canonical `extract_support`). The expanding-vs-shrinking sample choice
+    is made by the CALLER in `lib.rs` (it needs `host::offset_polygons`) and handed in as
+    `samples`, keeping `agg_raster.rs` offset-free per AC-4.
   - MODIFIED `SupportPlanner` (`from_config`): new field `support_area_rasterizer:
     RasterizerMode` parsed from `"agg" | "legacy_semantic"`; unknown strings → fatal
     `ModuleError` naming key + allowed values (AC-N1). Default `Agg`.
-  - MODIFIED `plan_candidate` propagation loop: when `Agg`, build one `SupportGridPattern`
-    equivalent per candidate from the contact geometry (support polygons = current carry,
+  - MODIFIED `plan_candidate` propagation loop: when `Agg`, build one `agg_raster::SupportGrid`
+    per candidate from the contact geometry (support polygons = current carry,
     trimming polygons = occupancy grown by `support_object_xy_distance` via the EXISTING
     `host::offset_polygons` clearance code — that offset builds the *trimming mask*, which is
     canonical; what disappears from the agg path is any post-extraction global polygon
@@ -102,7 +115,13 @@ invariant in the extraction entry.
     `fb7b995050` fixed; AC-4 forbids it on the agg path.
   - *Knob defaulting silently on unknown values* (mirroring lenient string keys elsewhere):
     rejected — Ruling 8 knobs replace legitimate behavior, so an out-of-vocabulary value must be
-    loud (AC-N1), matching enum-bounds precedent rather than string-key leniency.
+    loud (AC-N1). The precedent is `SeamPlacer::from_config`
+    (`modules/core-modules/seam-placer/src/lib.rs`), which returns `ModuleError::fatal` on an
+    unknown `seam_mode` even though that key is a manifest-declared enum. (NOT
+    `canonical_support_family` — that helper in `crates/slicer-ir/src/slice_ir.rs` does the
+    opposite, silently falling back to `SUPPORT_FAMILY_TRADITIONAL`.) The host also rejects
+    bad enum values first via `ConfigBoundsIndex::check` from `resolve_global_config`; the
+    module check is defense-in-depth, not the sole enforcement point.
 
 ## Files in Scope (read + edit)
 
@@ -125,17 +144,26 @@ Target at most 3 primary files per step; the packet total spans:
 
 ## Read-Only Context
 
-- `modules/core-modules/traditional-support-planner/src/lib.rs` - full file is ~687 lines;
-  read lines 30–150 (config parse) and 300–470 (propagation loop + bottom contact) directly;
-  delegate the rest if needed.
-- `crates/slicer-runtime/tests/integration/support_family_closure.rs` - ranges around
-  `run_slice_for_family_with_interface_layers` (~159–190) and `matched_config_base` (~67–110)
-  only, as driver patterns to mirror; do not edit.
-- `crates/slicer-runtime/tests/common/support_wedge.rs` - whole file (~160 lines) as the T7
-  wedge-driver pattern.
+- `modules/core-modules/traditional-support-planner/src/lib.rs` - full file is **1274 lines**
+  (verified 2026-09-03). Read by symbol, not by remembered range: `from_config` (the
+  `PrepassModule` trait method, ~L83-146) for the config-parse conventions, and the
+  propagation loop `for layer in (termination_layer..trim_end).rev()` (~L406-487) which ends
+  at the `propagated_by_layer.insert(layer, carry.clone())` and CONTAINS the `code: 1203`
+  diagnostic (~L471) — any read range that stops before the loop's closing brace hides the
+  termination bookkeeping AC-5 must preserve. The separate emit loop starts at ~L557.
+  Delegate the rest.
+- `crates/slicer-runtime/tests/integration/support_family_closure.rs` - **1906 lines**; read
+  only the driver symbols: `support_test_path` (~L35), `matched_config_base` (~L67-88; the
+  neighbouring `matched_config_for` is ~L105-115), `run_slice_for_family` (~L159) and
+  `run_slice_for_family_with_interface_layers` (~L163-190), and the block-count helper
+  `interface_block_count` (~L191-196). There is no local `run_slice` — the file calls
+  `slicer_runtime::run::run_slice(opts)`. Do not edit.
+- `crates/slicer-runtime/tests/common/support_wedge.rs` - whole file (173 lines) as the T7
+  wedge-driver pattern; `prepare_wedge_context_with_overrides(support_enabled, overrides)`
+  (~L54) is the entry that takes config overrides.
 - `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` - NEVER load; delegate
-  LOCATIONS/SUMMARY around `SupportGridPattern` (class starts ~line 637 of the local checkout;
-  cite by symbol, never line).
+  LOCATIONS/SUMMARY around class `SupportGridPattern` and its statics; cite by symbol
+  name, never by line number (the checkout revision differs per developer).
 
 ## Out-of-Bounds Files
 
@@ -212,9 +240,10 @@ Target at most 3 primary files per step; the packet total spans:
 ## Context Cost Estimate
 
 - Aggregate: `M`
-- Largest step: `M` (Step 2 port itself; mitigated by the SNIPPETS fidelity dispatch before
-  coding and by splitting grid-construction from extraction into two sub-commits within the
-  step)
+- Largest step: `M` — Steps 3 and 4, the port itself (grid construction, then seed fill +
+  extraction). Step 2 is a read-only canonical fidelity probe rated `S`. The port is already
+  split across two steps precisely so neither reaches `L`; the Step-2 SNIPPETS dispatch
+  lands the canonical constants before either one starts coding.
 - Highest-risk dispatch and required return format: canonical constant verification —
   `SNIPPETS` ≤30 lines ×3, else redispatch narrower.
 

@@ -27,16 +27,24 @@
   `run_slice` with the matched normal profile.
 - Precondition: 238c implemented; `cargo xtask build-guests --check` exit 0; working tree
   clean at the pre-port commit.
-- Postcondition: new test file
+- Postcondition: new test SUBMODULE (not a new binary)
   `crates/slicer-runtime/tests/integration/support_agg_rasterizer_tdd.rs` exists with
   `capture_pre_port_baseline` (writes `target/p241-baseline.json` via a `#[ignore]`d recording
-  entry, mirroring the repo's `record_*` discipline) and metric helper functions; the baseline
-  JSON is committed under `crates/slicer-runtime/tests/fixtures/golden/p241_baseline.json`;
-  `main.rs` carries the `mod support_agg_rasterizer_tdd;` line.
+  entry, mirroring the repo's `record_*` discipline), the metric helper functions, and the
+  non-ignored guard test `p241_metric_helpers_agree_on_baseline_fixture` this step's
+  verification command runs. The directory
+  `crates/slicer-runtime/tests/fixtures/golden/` DOES NOT EXIST yet and must be created by
+  this step; the baseline JSON is committed under it as `p241_baseline.json`. `main.rs`
+  carries the `mod support_agg_rasterizer_tdd;` line — without it the file never compiles and
+  the verification command reports "0 tests run" as a false pass.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - lines 1–200 (driver
-    patterns: `support_test_path`, `matched_config_base`, `run_slice_for_family_with_interface_layers`)
-  - `crates/slicer-runtime/tests/integration/main.rs` - lines 1–40 (mod-registration shape)
+  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` (1906 lines) - read by
+    symbol: `support_test_path` (~L35), `matched_config_base` (~L67-88), `run_slice_for_family`
+    (~L159) and `run_slice_for_family_with_interface_layers` (~L163-190). Note there is no
+    local `run_slice`; the file calls `slicer_runtime::run::run_slice(opts)`.
+  - `crates/slicer-runtime/tests/integration/main.rs` (212 lines) - lines 1–40 for the
+    mod-registration shape; note both conventions exist there (plain fns wrapped in `#[test]`
+    shims in `main.rs`, and `#[test]` fns inline in the submodule). Either is acceptable.
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/tests/integration/support_agg_rasterizer_tdd.rs` (new)
   - `crates/slicer-runtime/tests/integration/main.rs`
@@ -105,15 +113,15 @@
   byte grid (boundary ring unset); `dilate_trimming_region` erodes the mask to the 3×3 all-set
   interior.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/traditional-support-planner/src/lib.rs` - lines 30–150 (module
-    imports/config conventions)
+  - `modules/core-modules/traditional-support-planner/src/lib.rs` (1274 lines) - read the
+    imports/struct header (~L1-82) and `from_config` (~L83-146) for module conventions only
 - Files allowed to edit (at most 3):
   - `modules/core-modules/traditional-support-planner/src/agg_raster.rs` (new)
   - `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs` (new)
   - `modules/core-modules/traditional-support-planner/Cargo.toml` ([[test]] target)
 - Files explicitly out of bounds:
-  - `modules/core-modules/traditional-support-planner/src/lib.rs` (wiring is Step 5),
-    `crates/**`, other modules
+  - `modules/core-modules/traditional-support-planner/src/lib.rs` (the knob parse is Step 5;
+    the propagation rewiring is Step 6), `crates/**`, other modules
 - Blast-radius discipline: new module, no existing struct literals change; `Cargo.toml` gains
   one `[[test]]` stanza — no test asserts the target list today (verify with
   `rg -n 'agg_rasterizer_tdd' modules/core-modules/traditional-support-planner/` before/after).
@@ -173,17 +181,26 @@
 - Precondition: Steps 3–4 green.
 - Postcondition: AC-1 and AC-N1 hold; unset key resolves to `Agg`.
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/path-optimization-default/path-optimization-default.toml` - lines
-    50–62 (enum declaration pattern)
+  - `modules/core-modules/path-optimization-default/path-optimization-default.toml` -
+    `[config.schema.retract_mode]` at ~L55-60 (the enum declaration pattern: `type = "enum"`,
+    `values = [...]`, `default`, `display`, `group`)
 - Files allowed to edit (at most 3):
   - `modules/core-modules/traditional-support-planner/traditional-support-planner.toml`
   - `modules/core-modules/traditional-support-planner/src/lib.rs` (parse block ONLY — no
     propagation rewiring this step)
   - `docs/15_config_keys_reference.md` (regen)
 - Files explicitly out of bounds:
-  - propagation loop body, other modules, `crates/slicer-scheduler/**` (host bounds index is
-    numeric-only; the module-boundary rejection is the enforcement point — do not extend the
-    scheduler)
+  - propagation loop body, other modules, `crates/slicer-scheduler/**`. Do NOT extend the
+    scheduler — but do not repeat the false rationale either: `ConfigBoundsIndex` is NOT
+    numeric-only. `ConfigBoundsIndex::from_modules` harvests `values` from every loaded
+    module's `type = "enum"` entries into `enum_values`, and `resolve_global_config` calls
+    `bounds.check(..)?`, so declaring the knob in the manifest ALREADY makes a bad value abort
+    the slice host-side with `config resolution failed: …`. The module-side rejection this
+    step adds is defense-in-depth, matching `SeamPlacer::from_config`
+    (`modules/core-modules/seam-placer/src/lib.rs`), which rejects an unknown `seam_mode` with
+    `ModuleError::fatal` despite `seam_mode` being a manifest-declared enum. Because the host
+    fires first, AC-N1's test MUST drive `from_config` on a directly-constructed `ConfigView`,
+    not a full slice.
 - Blast-radius discipline: `rg -n 'support_area_rasterizer' modules/ crates/ docs/` before
   editing to confirm zero prior references; `rg -n 'from_config' modules/core-modules/traditional-support-planner/tests/` to catch config-shape assertions; fix any fallout in-step.
 - Expected sub-agent dispatches:
@@ -195,7 +212,7 @@
 - OrcaSlicer refs:
   - none
 - Verification:
-  - `rg -q '^\[config\.schema\.support_area_rasterizer\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q '"agg", "legacy_semantic"' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support_area_rasterizer' docs/15_config_keys_reference.md && echo PASS || echo FAIL`
+  - `rg -q '^\[config\.schema\.support_area_rasterizer\]' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q '"agg", "legacy_semantic"' modules/core-modules/traditional-support-planner/traditional-support-planner.toml && rg -q 'support_area_rasterizer' docs/15_config_keys_reference.md && echo PASS`
   - `mkdir -p target && cargo test -p traditional-support-planner --test agg_rasterizer_tdd invalid_rasterizer_value_is_rejected_not_defaulted -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
   - `cargo xtask build-guests --check && echo FRESH`
 - Exit condition: declaration + parse + rejection green; doc regen committed; guests fresh.
@@ -215,18 +232,23 @@
   assertion that legitimately tightens is updated in this step with the measured new value, not
   weakened).
 - Files allowed to read, with ranges when over 300 lines:
-  - `modules/core-modules/traditional-support-planner/src/lib.rs` - lines 300–470 (loop) +
-    30–150 (parse)
-  - `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` - lines
-    1–245 (helpers) + targeted failing tests on demand
+  - `modules/core-modules/traditional-support-planner/src/lib.rs` (1274 lines) - the
+    propagation loop `for layer in (termination_layer..trim_end).rev()` spans ~L406-487 and
+    ENDS at `propagated_by_layer.insert(layer, carry.clone())`; the `code: 1203` diagnostic is
+    at ~L471, INSIDE it. Do not read a range that stops before the loop's closing brace — that
+    hides exactly the termination bookkeeping AC-5 must preserve. Also read `from_config`
+    (~L83-146) for the mode field. The separate emit loop begins ~L557 and is not rewired here.
+  - `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` (2466
+    lines, 28 `#[test]` fns) - helpers at the top, then targeted failing tests on demand
 - Files allowed to edit (at most 3):
   - `modules/core-modules/traditional-support-planner/src/lib.rs`
   - `modules/core-modules/traditional-support-planner/src/agg_raster.rs` (integration glue)
   - `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs`
     (routing test)
 - Files explicitly out of bounds:
-  - `tests/traditional_family_tdd.rs` EXCEPT assertion-value updates forced by agg-default
-    output (each update must cite the measured value in a comment); other modules; `crates/**`
+  - `tests/traditional_family_tdd.rs` (any assertion-value fallout from the agg default is
+    Step 6b's edit, not this step's — keeping this step inside the 3-file cap), other modules,
+    `crates/**`
 - Blast-radius discipline: dispatch a `LOCATIONS` worker for every test asserting body outline
   geometry or diagnostic 1203 BEFORE editing (design.md §Expected Sub-Agent Dispatches);
   pre-bake the fallout list into this step's edits; no follow-up `cargo check` discovery.
@@ -246,9 +268,43 @@
   - `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 10 && echo PASS`
   - `cargo xtask build-guests --check && echo FRESH`
 - Exit condition: routing + legacy suites green; guests fresh; knob default active end-to-end
-  in the guest artifact. Also update the stale `lib.rs` comment block ("See the needs-research
-  deviation on the grid pattern", propagation-loop comment ~line 350) to cite this packet's
-  rasterizer path — the needs-research framing is retired by Ruling 7.
+  in the guest artifact. Also update the stale `lib.rs` comment line "See the needs-research
+  deviation on the grid pattern" (~L391, inside the explanatory block above
+  `let mut propagated_by_layer`) to cite this packet's rasterizer path — the needs-research
+  framing is retired by Ruling 7. Note the referenced item is NOT in `docs/DEVIATION_LOG.md`
+  (no such row exists); it is gap-register row G-07, which already routes to this packet.
+
+### Step 6b: Legacy-guard assertion reconciliation
+
+- Task IDs: `TASK-424` (continues Step 6; separate sub-step so each stays inside the
+  3-file edit cap)
+- Objective: re-run the existing `traditional_family_tdd` suite under the NEW agg default and
+  reconcile any geometric assertion whose expected value legitimately tightens, citing the
+  measured value in a comment on each change. Never weaken an assertion to make it pass; a
+  loosened bound is a defect, a re-baselined exact value with a measured citation is not.
+- Precondition: Step 6 green (routing test passes; guests fresh).
+- Postcondition: AC-N2 holds under BOTH explicit `legacy_semantic` selection and the agg
+  default; every changed assertion carries a `// measured: <value> (p241 Step 6b)` comment.
+- Files allowed to read, with ranges when over 300 lines:
+  - `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs` (2466
+    lines) - only the tests reported failing by the Step-6 run; read from `target/test-output.log`
+- Files allowed to edit (at most 3):
+  - `modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs`
+- Files explicitly out of bounds:
+  - `src/lib.rs`, `src/agg_raster.rs` (no behavior change may be made to fix a test here),
+    other modules, `crates/**`
+- Expected sub-agent dispatches:
+  - none; the failing set comes from Step 6's logged run
+- Context cost: `S`
+- Authoritative docs:
+  - `docs/specs/support-families-anchored-entities-plan.md` - §3 Ruling 8 range
+- OrcaSlicer refs:
+  - none
+- Verification:
+  - `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 10 && echo PASS`
+  - `cargo xtask build-guests --check && echo FRESH`
+- Exit condition: full legacy suite green under the agg default; every re-baselined assertion
+  carries its measured citation; guests fresh.
 
 ### Step 7: Measurement gate tests (wall-leak + column-continuity + divergence)
 
@@ -262,16 +318,25 @@
 - Postcondition: AC-6, AC-7, AC-8 hold with recorded numbers; the wedge invariant
   `support_segments_stay_outside_the_model_and_within_the_build_volume` stays green.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - lines 159–200
-    (run_slice driver), 845–885 (block-count pattern)
-  - `crates/slicer-runtime/tests/common/support_wedge.rs` - full (~160 lines)
+  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` (1906 lines) - by
+    symbol: `run_slice_for_family_with_interface_layers` (~L163-190) for the slice driver and
+    `interface_block_count` (~L191-196) for the block-count pattern. NOTE: the earlier draft
+    cited ~L845-885 for block counts — that range is cross-family overlap rejection
+    (`try_aggregate_support_plan_irs_with_diagnostics`), not block counting.
+  - `crates/slicer-runtime/tests/common/support_wedge.rs` - full (173 lines);
+    `prepare_wedge_context_with_overrides` (~L54) is the override-taking entry
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/tests/integration/support_agg_rasterizer_tdd.rs`
   - `crates/slicer-runtime/tests/fixtures/golden/p241_baseline.json` (only if the metric
     helper signatures changed in Step 6 — re-record with justification comment)
-  - `crates/slicer-runtime/tests/integration/main.rs` (only if a new #[test] wrapper is needed)
+  - `docs/spec_packets/241-support-agg-rasterizer/requirements.md` (recorded-metrics appendix
+    — this step's exit condition writes the measured numbers, so the file must be editable
+    here, not only in Step 9)
 - Files explicitly out of bounds:
-  - `modules/**`, other integration files, goldens other than p241_baseline.json
+  - `modules/**`, other integration files, goldens other than p241_baseline.json,
+    `crates/slicer-runtime/tests/integration/main.rs` (its `mod` line landed in Step 1; if a
+    new `#[test]` wrapper is genuinely needed, declare the tests inline in the submodule
+    instead — both conventions exist in that binary — so this step stays inside the 3-file cap)
 - Expected sub-agent dispatches:
   - none; drivers mirror Step-1 patterns
 - Context cost: `M`
@@ -338,7 +403,12 @@
 - Files explicitly out of bounds:
   - plan queue table, `docs/DEVIATION_LOG.md`, other packets
 - Expected sub-agent dispatches:
-  - Question: FACT next free TASK id range + exact insertion point; scope:
+  - Question: FACT — is the RESERVED range TASK-419..TASK-428 still unused in
+    `docs/07_implementation_status.md` (`rg -o 'TASK-4(1[9]|2[0-8])'` returns nothing), and
+    what is the exact insertion point? Do NOT ask for the "next free" ID: that file already
+    runs past TASK-530, and this packet's IDs are reserved below the high-water mark by queue
+    row #8 of `docs/specs/support-families-anchored-entities-plan.md`. If the reserved range
+    is no longer free, stop and re-map in the packet frontmatter before registering. Scope:
     `docs/07_implementation_status.md`; return: `FACT`
 - Context cost: `S`
 - Authoritative docs:
@@ -362,7 +432,8 @@
 | Step 3 | M | grid math + red tests |
 | Step 4 | M | extraction + red tests |
 | Step 5 | S | manifest + parse + rejection |
-| Step 6 | M | loop rewiring + legacy guard |
+| Step 6 | M | loop rewiring (3-file cap) |
+| Step 6b | S | legacy-guard assertion reconciliation |
 | Step 7 | M | three measurement proofs |
 | Step 8 | S | wedge + timing honesty |
 | Step 9 | S | gates + registration |
