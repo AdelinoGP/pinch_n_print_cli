@@ -703,8 +703,10 @@ off-map, after.
   grounding corrected the ticket's both-manifest premise: all four P14 keys are
   consumed only by top-surface ironing, so the packet replaces the top module's
   gate and leaves support-surface-ironing for P15. Exact canonical relative-angle
-  parity is recorded as fog because the current region view has no solid-infill
-  direction metadata; the packet specifies a deterministic layer-index fallback.
+  parity is recorded as a bounded divergence (`DIV-266-B`): the base is the
+  shared `infill_direction` input, exact for rectilinear-filled regions and off
+  by `CORRECTION_ANGLE_DEG` for gyroid-filled ones; the earlier layer-index
+  fallback was withdrawn (`DIV-266-A`).
 - [22 — Author packet P15 — Support / Support ironing — support-surface-ironing](issues/22-author-packet-p15-support-support-ironing-support-surface-ironing.md)
   — the generated packet was discarded and its single atomic change was
   implemented directly in session. **P15 covers one key, not two.** `support_ironing`
@@ -935,23 +937,25 @@ off-map, after.
   (`crates/slicer-sdk/src/traits.rs`) hands it only `&[SliceRegionView]` — there
   is no support-interface geometry at that seam to select — so it scan-fills
   every slice-region polygon it receives and pushes the result as support paths.
-  Packet 267 records this (`DIV-267-A`/`DIV-267-B`) rather than changing it: it
-  moves the gate's *key*, not the gate's *subject*, and rewriting the subject
-  would change output for everyone already using the feature under a packet
-  whose claim is default-path identity. Closing it means carrying support
-  contact/interface polygons across the WIT boundary to a `SupportPostProcess`
-  module — an IR field plus a WIT accessor, so queue-sized geometry/contract
-  work. Note this makes P15 a **key-parity** packet only; nobody should read the
-  queue's `support_ironing` coverage as geometry parity. Fog until a packet
-  picks it up; the neighbouring support-interface work
-  (packet `260b-support-interface-fill-claim-holders`) is the natural host, and
-  the returned-to-queue `support_ironing_pattern` claim seam should be scoped
-  with it.
+  Ticket 22's answer records this (`DIV-267-A`/`DIV-267-B`) rather than changing
+  it: the direct implementation moves the gate's *key*, not the gate's
+  *subject*, and rewriting the subject would change output for everyone already
+  using the feature under a change whose claim is default-path identity. Closing
+  it means carrying support contact/interface polygons across the WIT boundary
+  to a `SupportPostProcess` module — an IR field plus a WIT accessor, so
+  queue-sized geometry/contract work. Note this makes P15 a **key-parity**
+  packet only; nobody should read the queue's `support_ironing` coverage as
+  geometry parity. Fog until a packet picks it up; the neighbouring
+  support-interface work (packet `260b-support-interface-fill-claim-holders`)
+  is the natural host, and the returned-to-queue `support_ironing_pattern`
+  claim seam should be scoped with it.
 - **Exact canonical relative ironing-angle parity.** The P14 packet's top module
-   has no solid-infill direction or rotation-template metadata in `SliceRegionView`,
-   so it uses a deterministic zero-degree base plus a layer-index turn. Whether the
-   IR gains the canonical base direction, and which other ironing consumers use it,
-   is future IR/geometry work; fog until a packet picks it up.
+   reads the shared `infill_direction` input as its base angle (packet 266,
+   `DIV-266-B`), so the residual gap is the per-region rotation template
+   canonical folds into the solid fill's own direction — the region view has no
+   solid-infill direction or rotation-template metadata. Whether the IR gains
+   the canonical base direction, and which other ironing consumers use it, is
+   future IR/geometry work; fog until a packet picks it up.
 
 ## Out of scope
 
