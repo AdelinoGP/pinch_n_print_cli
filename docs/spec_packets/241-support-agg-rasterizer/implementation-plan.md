@@ -75,9 +75,13 @@
   `seed_fill_block` propagation-step order, `dilate_trimming_region` mask, `contours_simplified`
   chaining + `fill_holes` rule, `extract_support` sample filter.
 - Precondition: Step 1 committed.
-- Postcondition: dispatch return recorded in this packet's `design.md` §Plan Corrections
-  (append-only note) if ANY constant differs from the plan's pre-verified evidence; no code
-  change.
+- Postcondition: a `## Plan Corrections` section exists in this packet's `design.md`
+  containing at least one line that begins with the literal token `p241 fidelity probe:`.
+  The note is written UNCONDITIONALLY (append-only): if a constant differs from the plan's
+  pre-verified evidence, record the difference; if none differs, record an explicit
+  `p241 fidelity probe: no-diff` line naming the constants checked. No code change.
+  The token is what the verification command greps for — a pre-existing heading must never
+  be able to satisfy this step's gate (E1: no vacuous assertions).
 - Files allowed to read, with ranges when over 300 lines:
   - none directly; all reads delegated
 - Files allowed to edit (at most 3):
@@ -99,8 +103,12 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` - delegate; never load
 - Verification:
-  - `rg -q 'Plan Corrections|## Open Questions' docs/spec_packets/241-support-agg-rasterizer/design.md && echo PROBE-RECORDED`
-- Exit condition: fidelity note recorded (or explicit no-diff note); dispatch returns ≤ caps.
+  - `rg -q '^p241 fidelity probe:' docs/spec_packets/241-support-agg-rasterizer/design.md && echo PROBE-RECORDED`
+    (verified 2026-09-03 to return NOTHING against the pre-work tree — the token does not yet
+    exist, so this gate is falsifiable. Do NOT relax it to grep a section heading: `## Open
+    Questions` already exists in `design.md` and would make the gate pass before the probe runs.)
+- Exit condition: fidelity note recorded (either a differing-constant note or an explicit
+  `p241 fidelity probe: no-diff` line); dispatch returns ≤ caps.
 
 ### Step 3: Grid construction + rasterization (red-first)
 
@@ -201,8 +209,14 @@
     `ModuleError::fatal` despite `seam_mode` being a manifest-declared enum. Because the host
     fires first, AC-N1's test MUST drive `from_config` on a directly-constructed `ConfigView`,
     not a full slice.
-- Blast-radius discipline: `rg -n 'support_area_rasterizer' modules/ crates/ docs/` before
-  editing to confirm zero prior references; `rg -n 'from_config' modules/core-modules/traditional-support-planner/tests/` to catch config-shape assertions; fix any fallout in-step.
+- Blast-radius discipline: `rg -n 'support_area_rasterizer' modules/ crates/` before editing —
+  this MUST return zero hits (the code-side key is genuinely net-new). Do NOT include `docs/`
+  in that precheck: as of 2026-09-03 the key is already named in 3 pre-existing doc locations
+  (`docs/specs/support-families-anchored-entities-plan.md` ×2 and
+  `docs/spec_packets/236-support-stabilization/requirements.md` ×1, plus this packet's own
+  files), and a worker seeing those hits could wrongly conclude the key already exists.
+  Then `rg -n 'from_config' modules/core-modules/traditional-support-planner/tests/` to catch
+  config-shape assertions; fix any fallout in-step.
 - Expected sub-agent dispatches:
   - Question: current `[config.schema]` tail of the manifest + any test asserting manifest key
     counts; scope: `modules/core-modules/traditional-support-planner/`; return: `SNIPPETS`

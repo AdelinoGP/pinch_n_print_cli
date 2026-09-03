@@ -34,7 +34,8 @@ The traditional planner's per-layer area propagation only:
 guest, one manifest knob, and the propagation loop that consumes it. Renderer flow/density is
 238c (done there); tree-side rasterization does not exist canonically for tree styles (canonical
 maps every tree style to `smsGrid`, but this packet wires the knob only where PnP's traditional
-planner propagates area); raft is 240; independent support-layer Z is 239.
+planner propagates area); raft is 240a-support-raft-substrate / 240b-support-raft-module;
+independent support-layer Z is 239-support-independent-layer-z.
 
 ## Prerequisites and Blockers
 
@@ -71,8 +72,12 @@ planner propagates area); raft is 240; independent support-layer Z is 239.
   (marching-squares equivalent of canonical `contours_simplified`), honors `fill_holes`
   left/right + top/bottom neighbor filling, applies `offset_in_grid` expansion/shrink via the
   loop offset, splits islands by the trimming polygons via
-  `host::clip_polygons(.., ClipOperation::Difference)` (canonical uses `difference_ex`, which
-  in this tree is host-only and NOT reachable from a guest), and keeps only islands
+  `host::clip_polygons(.., ClipOperation::Difference)` (canonical uses `difference_ex`; in
+  this tree that symbol is NOT re-exported by `slicer-sdk` and `slicer-core` is not a
+  dependency of this module, so it is unavailable here — note it is NOT a host/guest boundary:
+  `slicer_core::polygon_ops` is ungated and does compile to wasm32, as `arachne-perimeters`
+  demonstrates. We route through the SDK host op rather than adding a `slicer-core`
+  dependency, keeping this module's dependency surface unchanged), and keeps only islands
   containing an input-island sample point (canonical `extract_support`'s sample-containment
   filter — the column-continuity fix from upstream `a95607d7bf`). | `cargo test -p traditional-support-planner --test agg_rasterizer_tdd contour_extraction_filters_islands_by_samples -- --exact 2>&1 | tee target/test-output.log && grep -q "^test result: ok" target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && echo PASS`
 - **AC-4 (in-cell expansion restriction).** Given an extracted layer polygon with positive

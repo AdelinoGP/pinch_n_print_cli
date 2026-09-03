@@ -4,8 +4,10 @@
 
 - Grouped task IDs: `TASK-419`..`TASK-428`
 - Backlog source: `docs/specs/support-families-anchored-entities-plan.md` §12 brief
-  "241-support-agg-rasterizer" (queue row #8), which also reserves TASK-419..TASK-428 for
-  this packet. Absorbs register row G-07 (`docs/specs/support-parity-gap-register.md`). The
+  "241-support-agg-rasterizer". TASK-419..TASK-428 are reserved for this packet by row #8 of
+  that file's trailing `## Packet Queue` table (NOT by the §12 brief, and NOT by the §11
+  "Packet queue" table — §11 carries no TASK column at all). Absorbs register row G-07
+  (`docs/specs/support-parity-gap-register.md`). The
   stub `docs/spec_packets/stubs/stub-support-agg-rasterizer.md` no longer exists — it was
   deleted when the G-07 premise was corrected (the register records "stub deleted"), so
   there is nothing left to absorb and no `docs/spec_packets/stubs/` directory to touch.
@@ -59,9 +61,16 @@ both paths tested; parity evidence runs the default.
   `crates/slicer-runtime/tests/integration/main.rs` (which currently aggregates 70 modules).
   Without that line the file never compiles and `cargo test --test integration <name>`
   reports "0 tests run" — a false pass. Separately, a new guest test file
-  `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs` needs its own
-  `[[test]]` stanza in the crate's `Cargo.toml`: that crate declares test targets explicitly
-  (`name = "traditional_family_tdd"`), so autodiscovery will NOT pick the file up.
+  `modules/core-modules/traditional-support-planner/tests/agg_rasterizer_tdd.rs` gets its own
+  `[[test]]` stanza in the crate's `Cargo.toml`, matching the existing explicit
+  `[[test]] name = "traditional_family_tdd" / path = "tests/traditional_family_tdd.rs"` stanza.
+  Note this is a CONVENTION choice, not a compilation requirement: the workspace is edition
+  2021 (`Cargo.toml` `[workspace.package] edition = "2021"`) and the crate sets no
+  `autotests = false`, so target autodiscovery remains ON and the file would be picked up
+  even without the stanza. Declaring it explicitly keeps the crate's two test targets
+  symmetric and keeps the `--test agg_rasterizer_tdd` name pinned rather than inferred.
+  (Do not carry the older, false rationale that an explicit `[[test]]` stanza disables
+  autodiscovery — it does not.)
 - Doc impact items listed in `packet.spec.md` §Doc Impact Statement (config-key reference regen;
   TASK registration).
 
@@ -72,7 +81,9 @@ both paths tested; parity evidence runs the default.
   traditional planner's area propagation; extending it elsewhere is not this slice.
 - Renderer flow/density/interface semantics (G-10/G-11/G-12/G-13/G-18, base-interface role,
   regularize consolidation) — owned by 238c; consumed as its output state.
-- Raft geometry (`RaftPlan` consumer, raft keys, signed negative layers) — owned by 240.
+- Raft geometry (`RaftPlan` consumer, raft keys, signed negative layers) — owned by
+  `240a-support-raft-substrate` / `240b-support-raft-module` (packet 240 was split; there is no
+  bare `240-support-raft` directory).
 - Independent support-layer Z (`is_same_z_entity` filter, off-grid entities) — owned by 239.
 - The EdgeGrid/SDF branch (`SUPPORT_USE_AGG_RASTERIZER` compiled-out path) — canonical itself
   does not use it; we port the active AGG path only, no dual implementation behind a cfg.
@@ -113,7 +124,7 @@ Reference, never copy, criteria from `packet.spec.md`.
   two doc files above, and the runtime test surface
   (`crates/slicer-runtime/tests/integration/{main.rs,support_agg_rasterizer_tdd.rs}` plus the
   new `crates/slicer-runtime/tests/fixtures/golden/` directory, which does not yet exist and
-  must be created). No production `crates/**` code changes. 238c/239/240 packets' directories
+  must be created). No production `crates/**` code changes. 238c / 239 / 240a / 240b packets' directories
   are untouched. The knob adds one
   key to the shared config surface — no WIT, IR, or schema-version change.
 

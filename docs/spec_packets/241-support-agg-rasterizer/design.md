@@ -60,9 +60,15 @@ invariant in the extraction entry.
   needs — the occupancy clearance mask and island-sample generation — both run at the
   `lib.rs` call site and are passed into the rasterizer as ready-made polygons. This is what
   makes AC-4's `! rg -q 'offset_polygons' src/agg_raster.rs` satisfiable by construction.
-  There is no `difference_ex` on the guest side: that symbol lives in
-  `crates/slicer-core/src/polygon_ops.rs` (host-only, not re-exported by `slicer-sdk`), so
-  every set difference here is `host::clip_polygons(a, b, ClipOperation::Difference)`.
+  `difference_ex` is not available in this module: it lives in
+  `crates/slicer-core/src/polygon_ops.rs`, is NOT re-exported by `slicer-sdk` (the SDK
+  re-exports only `slicer_core::perimeter_utils::WallSequence`), and `slicer-core` is not a
+  dependency of `traditional-support-planner`. This is a dependency-surface fact, NOT a
+  host/guest boundary: `pub mod polygon_ops` is ungated and compiles to wasm32 today —
+  `arachne-perimeters` depends on `slicer-core` unconditionally and calls `difference_ex` in
+  its guest code. We deliberately do NOT add that dependency here (it would widen this
+  module's dependency surface for one operation the SDK already exposes), so every set
+  difference in this packet is `host::clip_polygons(a, b, ClipOperation::Difference)`.
 - Exact functions, traits, manifests, tests, and fixtures:
   - NEW `agg_raster::SupportGrid { params: GridParams, support: Vec<u8>, trimming: Vec<u8> }`
     — the `SupportGridPattern` equivalent; owns the two byte grids for one candidate and is
@@ -82,7 +88,8 @@ invariant in the extraction entry.
   - NEW `agg_raster::SupportGrid::extract_support(&self, offset_in_grid: i64,
     fill_holes: bool, samples: &[Point2]) -> Vec<ExPolygon>` — difference vs the trimming
     polygons via `host::clip_polygons(.., ClipOperation::Difference)` (NOT `difference_ex`,
-    which is host-only), then the island sample-containment filter (ray-crossing
+    which this module does not depend on — see the dependency-surface note above), then the
+    island sample-containment filter (ray-crossing
     point-in-island, canonical `extract_support`). The expanding-vs-shrinking sample choice
     is made by the CALLER in `lib.rs` (it needs `host::offset_polygons`) and handed in as
     `samples`, keeping `agg_raster.rs` offset-free per AC-4.
@@ -169,7 +176,7 @@ Target at most 3 primary files per step; the packet total spans:
 
 - `OrcaSlicerDocumented/**` - delegate; never load
 - `target/`, `Cargo.lock`, generated code, vendored dependencies - never load
-- Packets 236–238c / 239 / 240 directories and their owned modules (`tree-support`,
+- Packets 236–238c / 239 / 240a / 240b directories and their owned modules (`tree-support`,
   `traditional-support`, `tree-support-planner`, raft surfaces) - other packets' scope
 - `crates/slicer-schema/wit/**` - no WIT change is authorized by this packet
 - `docs/specs/support-families-anchored-entities-plan.md` queue table - orchestrator-owned
@@ -198,6 +205,21 @@ Target at most 3 primary files per step; the packet total spans:
   regions: Vec<ExPolygon> }` transport — no new IR type. The knob is manifest-declared
   snake_case; undeclared keys silently default (E9/T8) so declaration + parse + doc-regen are
   one commit.
+- **Duplicate-type disambiguation (pin these; both names resolve two ways in this tree):**
+  - `SupportPlanEntry` exists twice — the IR type (`crates/slicer-ir/src/slice_ir.rs`) and an
+    SDK mirror (`crates/slicer-sdk/src/prepass_types.rs`, which derives `Default` where the IR
+    one does not). `slicer_sdk::prelude` re-exports the **SDK** one, so guest code that imports
+    the prelude gets the SDK type. This packet's planner code uses the **SDK** type, exactly as
+    `lib.rs` does today — do not "correct" it to `slicer_ir::SupportPlanEntry`.
+    `SupportPlanRoleRegion` / `SupportPlanRole` / `SupportPlanDeclineReason` are IR types in
+    both paths, so they are unambiguous.
+  - `ClipOperation` exists twice — `slicer_sdk::host::ClipOperation` (re-exported by
+    `slicer_sdk::prelude`) and `slicer_core::polygon_ops::ClipOperation`, bridged internally by
+    `to_core_clip_op`. This packet uses the **SDK** one, reached through the prelude, matching
+    the existing `host::clip_polygons(..)` call sites in `lib.rs`.
+  - `Point2` likewise has an unrelated same-named type in
+    `crates/slicer-core/src/arachne/sparse_point_grid.rs`; the one this packet means is the IR
+    `Point2` re-exported by `slicer_sdk::prelude`.
 - Grid ↔ polygon contract: `GridParams.origin` is the rotated-bbox min in PnP units;
   `pixel_size` ≥ extrusion width so extracted contours stay printable; the one-pixel boundary
   ring is guaranteed unset by construction (canonical "Grid has to have the boundary pixels
