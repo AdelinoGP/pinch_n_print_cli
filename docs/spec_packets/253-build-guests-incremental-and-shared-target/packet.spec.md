@@ -99,6 +99,31 @@ figures were taken.
 - **D-A (AC-7 reworded mid-implementation, with user approval).** The authored AC-7 defined divergence as "two guest locks resolve different versions of the same registry crate". Taken literally that flags legitimate intra-lock semver-major coexistence — a single guest lock holds `syn` 1.0.109, 2.0.119 and 3.0.4 simultaneously, which is ordinary Cargo resolution — making AC-8 (`--check` exits `0`) permanently unreachable. All 7 residual crates were exactly this shape (see `measurements.md` §"Note on the 7 residual divergences"). AC-7 now defines divergence **per semver-compatibility line**. Rationale: this follows `design.md`'s own locked principle that a legitimate second artifact variant (the `arachne-perimeters` `default-features = false` `slicer-core` dependency) "is not lock drift and must not be normalised". The criterion was NARROWED, not hollowed — `same_compat_line_disagreement_is_divergence` proves two guests on `syn` 2.0.117 vs 2.0.119 are still reported.
 - **D-B (`guest_owns_lockfile` / `partition_lock_owners` are outside `design.md`'s declared code-change surface).** They were added to fix a defect found during Step 5: `sync_locks_command` ran `cargo generate-lockfile` inside four test-guests that are ROOT-WORKSPACE MEMBERS carrying no `[workspace]` sentinel (`crates/slicer-wasm-host/test-guests/sdk-{finalization,layer-infill,postpass-text,prepass}-guest`). Cargo walked up and clobbered the root `Cargo.lock` while the command still printed `synced` — a silent failure. Those guests now skip lock sync and are excluded from divergence analysis. Per ADR-0014 this is an ADDED shape predicate, not a relaxation, so no row in `docs/DEVIATION_LOG.md` is required; guest discovery is unchanged and all 46 guests still build.
 
+- **D-C (Phase C probe/canonical memoization completed after the closure review).** The
+  as-merged Phase C removed the PER-GUEST probe and canonical-parse overhead but left a
+  PER-PHASE duplicate, so AC-10's and AC-11's literal "exactly once for the whole
+  invocation" did not hold: `check_command` called `wasm_tools_version` for its
+  infrastructure gate and then `CheckContext::new` probed again, and the check phase and
+  the rebuild phase of one default `build-guests` run each parsed canonical WIT for
+  themselves — four `wasm-tools --version` spawns and two canonical parses per invocation.
+  Neither verifying test could observe this: both injected their counters through an
+  `impl FnOnce` seam, so `assert_eq!(calls, 1)` was guaranteed by the type signature
+  rather than by the code under test.
+  Fixed by introducing `Invocation` in `xtask/src/build_guests.rs` — one context per entry
+  point holding the single `VersionProbes` and a lazily memoized canonical world — and
+  threading it through `build_command`'s two phases, `check_command_in`,
+  `build_stale_command`, `build_all_command`, and `xtask/src/test.rs`'s freshness gate.
+  `VersionProbes` is now the only door to `rustc -vV` and `wasm-tools --version`:
+  `ensure_wasm_tools_available` (a third spawn) is deleted and its callers read
+  `VersionProbes::wasm_tools_available` instead. `build_all_command` and
+  `build_stale_command` keep their names and gain an `&Invocation` parameter;
+  `CheckContext::new` becomes test-only and production uses `CheckContext::with_probes`.
+  Both tests were rewritten against the production composition and their falsifiability was
+  verified by mutation: re-introducing the direct probe in the check path, in the build
+  path, and defeating `Invocation::canonical`'s memoization each turns the corresponding
+  test RED, where the previous versions stayed green. `FINGERPRINT_VERSION` stays `"v2"`
+  and no fingerprint input changed, so no sidecar is invalidated.
+
 ## Authoritative Docs
 
 - `CLAUDE.md` §"Guest WASM Staleness" — direct ranged read; normative statement of guest freshness rules, and it asserts the retired test-guest target path this packet moves.

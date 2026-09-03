@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs;
@@ -433,13 +434,6 @@ pub fn tail_lines(s: &str, n: usize) -> String {
 // Preflight check
 // ---------------------------------------------------------------------------
 
-pub fn ensure_wasm_tools_available() -> Result<(), BuildError> {
-    match Command::new("wasm-tools").arg("--version").output() {
-        Ok(out) if out.status.success() => Ok(()),
-        _ => Err(BuildError::WasmToolsNotFound),
-    }
-}
-
 pub fn wasm_tools_version() -> Result<String, BuildError> {
     let out = Command::new("wasm-tools")
         .arg("--version")
@@ -462,16 +456,24 @@ pub fn rustc_version_verbose() -> Result<String, BuildError> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Toolchain version strings, probed at most once per xtask invocation.
+/// Toolchain version strings, probed exactly once per xtask invocation.
 ///
 /// `rustc -vV` and `wasm-tools --version` are invariant for the lifetime of one
 /// invocation, but they feed every guest's fingerprint. Probing them per guest
 /// spawns two processes per guest for no new information, so they are captured
 /// once and threaded through the check and build paths.
+///
+/// This type is the ONLY door to those two binaries. `wasm_tools_result` and
+/// `wasm_tools_available` replay the single probe rather than re-spawning, so
+/// the wasm-tools availability gate on the build and check paths costs no extra
+/// process. Adding a second call site for `wasm_tools_version` or
+/// `rustc_version_verbose` anywhere outside `probe` reintroduces the duplicate
+/// spawn this type exists to remove.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionProbes {
     rustc: String,
     wasm_tools: String,
+    wasm_tools_available: bool,
 }
 
 impl VersionProbes {
@@ -480,17 +482,101 @@ impl VersionProbes {
         Self::from_probes(rustc_version_verbose, wasm_tools_version)
     }
 
-    /// Seam for tests: the two probes are injected so they can be counted.
-    /// The unavailable-fallback strings are identical to the per-guest code
-    /// this replaced, so fingerprint values are unchanged.
+    /// Seam for tests: the two probes are injected so an unavailable toolchain
+    /// can be simulated without touching the machine. The unavailable-fallback
+    /// strings are identical to the per-guest code this replaced, so
+    /// fingerprint values are unchanged.
     fn from_probes(
         rustc: impl FnOnce() -> Result<String, BuildError>,
         wasm_tools: impl FnOnce() -> Result<String, BuildError>,
     ) -> Self {
+        let wasm_tools = wasm_tools();
         Self {
             rustc: rustc().unwrap_or_else(|_| "<rustc-unavailable>".to_string()),
-            wasm_tools: wasm_tools().unwrap_or_else(|_| "<wasm-tools-unavailable>".to_string()),
+            wasm_tools_available: wasm_tools.is_ok(),
+            wasm_tools: wasm_tools.unwrap_or_else(|_| "<wasm-tools-unavailable>".to_string()),
         }
+    }
+
+    /// The `wasm-tools --version` outcome, replayed from the single probe.
+    /// Used by the freshness check's infrastructure-error gate.
+    fn wasm_tools_result(&self) -> Result<String, BuildError> {
+        if self.wasm_tools_available {
+            Ok(self.wasm_tools.clone())
+        } else {
+            Err(BuildError::WasmToolsNotFound)
+        }
+    }
+
+    /// Whether the single probe found a usable `wasm-tools`. Replaces the
+    /// separate `ensure_wasm_tools_available` spawn on the build paths.
+    fn wasm_tools_available(&self) -> bool {
+        self.wasm_tools_available
+    }
+}
+
+/// Everything an xtask invocation may evaluate at most once: the toolchain
+/// probes and the canonical WIT world.
+///
+/// A default `cargo xtask build-guests` runs two phases — the freshness check,
+/// then the rebuild of whatever it reported stale. Before this type each phase
+/// probed the toolchain and parsed the canonical WIT set for itself, so a
+/// single invocation spawned `wasm-tools --version` four times and parsed
+/// canonical twice. One `Invocation` is created per entry point and shared by
+/// both phases; the canonical set is parsed lazily, so `--check` (which needs
+/// it) and a no-op default build (which does not reach the rebuild phase) each
+/// still parse it at most once.
+pub struct Invocation {
+    probes: VersionProbes,
+    load_canonical: Box<
+        dyn Fn() -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
+    >,
+    canonical:
+        OnceCell<Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>>,
+}
+
+impl Invocation {
+    /// Probe the real toolchain once and bind the real canonical WIT loader.
+    pub fn new(ws_root: &Path) -> Self {
+        let root = ws_root.to_path_buf();
+        Self {
+            probes: VersionProbes::probe(),
+            load_canonical: Box::new(move || {
+                crate::wit_verify::canonical_world_model_memoizable(&root)
+            }),
+            canonical: OnceCell::new(),
+        }
+    }
+
+    /// Seam for tests: inject already-captured probes and a counting canonical
+    /// loader, so "evaluated once per invocation" can be asserted against the
+    /// real production composition rather than against a type signature.
+    #[cfg(test)]
+    fn with_parts(
+        probes: VersionProbes,
+        load_canonical: Box<
+            dyn Fn() -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
+        >,
+    ) -> Self {
+        Self {
+            probes,
+            load_canonical,
+            canonical: OnceCell::new(),
+        }
+    }
+
+    pub fn probes(&self) -> &VersionProbes {
+        &self.probes
+    }
+
+    /// The canonical WIT world, parsed at most once for this invocation.
+    /// The error is flattened to its rendered text because `VerifyError` is not
+    /// `Clone` and every consumer only prints it.
+    fn canonical(&self) -> Result<&crate::wit_verify::WorldModel, String> {
+        self.canonical
+            .get_or_init(|| (self.load_canonical)())
+            .as_ref()
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -854,10 +940,13 @@ pub fn build_guests_flag_exit_code(flag: &BuildGuestsFlag) -> Option<i32> {
 /// aborts with code 3 and NEVER falls back to a full rebuild — an
 /// infrastructure error is not evidence about staleness.
 pub fn build_command(ws_root: &Path, force: bool) -> i32 {
+    // ONE invocation context for both phases: the freshness check and the
+    // rebuild share the toolchain probes and the parsed canonical WIT world.
+    let inv = Invocation::new(ws_root);
     build_command_with(
-        || check_command(ws_root),
-        |stale| build_stale_command(ws_root, stale),
-        || build_all_command(ws_root),
+        || check_command_in(ws_root, &inv),
+        |stale| build_stale_command(ws_root, stale, &inv),
+        || build_all_command(ws_root, &inv),
         force,
     )
 }
@@ -885,9 +974,12 @@ fn build_command_with(
 }
 
 /// Unconditional full rebuild of every discovered guest (`--force`).
-pub fn build_all_command(ws_root: &Path) -> i32 {
-    if let Err(e) = ensure_wasm_tools_available() {
-        eprintln!("error: {e}");
+///
+/// Takes the caller's invocation context so `--force` costs one toolchain probe
+/// and one canonical-WIT parse, exactly like the freshness-aware default.
+fn build_all_command(ws_root: &Path, inv: &Invocation) -> i32 {
+    if !inv.probes().wasm_tools_available() {
+        eprintln!("error: {}", BuildError::WasmToolsNotFound);
         return 1;
     }
 
@@ -897,11 +989,9 @@ pub fn build_all_command(ws_root: &Path) -> i32 {
         eprintln!("{reason}");
     }
 
-    // Probe versions and parse the canonical WIT once for the whole invocation.
-    let probes = VersionProbes::probe();
-    let canonical = match crate::wit_verify::canonical_world_model_memoizable(ws_root) {
+    let canonical = match inv.canonical() {
         Ok(m) => m,
-        Err(e) => {
+        Err(reason) => {
             eprintln!(
                 "error: {}",
                 BuildError::CanonicalWitUnavailable {
@@ -909,7 +999,7 @@ pub fn build_all_command(ws_root: &Path) -> i32 {
                         .first()
                         .map(|g| g.crate_name.clone())
                         .unwrap_or_default(),
-                    reason: e.to_string(),
+                    reason,
                 }
             );
             return 1;
@@ -918,7 +1008,7 @@ pub fn build_all_command(ws_root: &Path) -> i32 {
 
     let mut count = 0usize;
     for spec in &guests {
-        match build_one(spec, ws_root, &canonical, &probes) {
+        match build_one(spec, ws_root, canonical, inv.probes()) {
             Ok(()) => count += 1,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -1306,7 +1396,10 @@ pub struct CheckContext {
 }
 
 impl CheckContext {
-    /// Build a context that probes the real toolchain once.
+    /// Build a context that probes the real toolchain once. Test-only: every
+    /// production path already holds an `Invocation`'s probes and must pass
+    /// them to `with_probes` rather than spawning a second time.
+    #[cfg(test)]
     pub fn new(closure: ClosureCache, canonical: crate::wit_verify::WorldModel) -> Self {
         Self {
             closure,
@@ -1315,8 +1408,7 @@ impl CheckContext {
         }
     }
 
-    /// Seam for tests: inject already-captured probes.
-    #[cfg(test)]
+    /// Build a context over already-captured probes.
     fn with_probes(
         closure: ClosureCache,
         canonical: crate::wit_verify::WorldModel,
@@ -1497,8 +1589,15 @@ pub struct CheckOutcome {
 /// stale guest plus a markerless reason line. wasm-tools missing or unusable
 /// canonical => EXIT_INFRA_ERROR with no STALE: printed.
 pub fn check_command(ws_root: &Path) -> CheckOutcome {
-    let wasm_tools = wasm_tools_version();
-    let canonical = crate::wit_verify::canonical_world_model(ws_root, None);
+    check_command_in(ws_root, &Invocation::new(ws_root))
+}
+
+/// `check_command` against a caller-owned invocation context. Both the
+/// infrastructure-error gate and the per-guest fingerprints read the SINGLE
+/// toolchain probe held by `inv`; nothing here spawns `wasm-tools` or `rustc`.
+pub fn check_command_in(ws_root: &Path, inv: &Invocation) -> CheckOutcome {
+    let wasm_tools = inv.probes().wasm_tools_result();
+    let canonical = inv.canonical();
     let (guests, _skips) = discover_guests(ws_root);
     let locks = collect_guest_locks(&guests);
     check_command_core(
@@ -1507,6 +1606,7 @@ pub fn check_command(ws_root: &Path) -> CheckOutcome {
         canonical,
         &guests,
         &locks,
+        inv.probes(),
         &mut std::io::stdout(),
     )
 }
@@ -1522,7 +1622,15 @@ fn check_command_with(
     guests: &[GuestSpec],
     out: &mut dyn std::io::Write,
 ) -> CheckOutcome {
-    check_command_core(ws_root, wasm_tools, canonical, guests, &[], out)
+    check_command_core(
+        ws_root,
+        wasm_tools,
+        canonical.as_ref().map_err(|e| e.to_string()),
+        guests,
+        &[],
+        &VersionProbes::probe(),
+        out,
+    )
 }
 
 /// Testable core of `check_command` including the guest-lockfile divergence
@@ -1531,9 +1639,10 @@ fn check_command_with(
 fn check_command_core(
     ws_root: &Path,
     wasm_tools: Result<String, BuildError>,
-    canonical: Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
+    canonical: Result<&crate::wit_verify::WorldModel, String>,
     guests: &[GuestSpec],
     locks: &[(String, Vec<(String, String)>)],
+    probes: &VersionProbes,
     out: &mut dyn std::io::Write,
 ) -> CheckOutcome {
     // wasm-tools missing => infrastructure error, never staleness (R5-3).
@@ -1557,7 +1666,7 @@ fn check_command_core(
     };
 
     let closure = ClosureCache::new();
-    let mut ctx = CheckContext::new(closure, canonical);
+    let mut ctx = CheckContext::with_probes(closure, canonical.clone(), probes.clone());
     // Lock divergence is judged AHEAD of the per-guest loop. It is an
     // opinion about the tree, so it folds into EXIT_STALE and NEVER into
     // EXIT_INFRA_ERROR (which means "could not form an opinion").
@@ -1799,31 +1908,35 @@ pub fn sync_locks_command(ws_root: &Path) -> i32 {
     }
 }
 
-pub fn build_stale_command(ws_root: &Path, stale: &[GuestSpec]) -> i32 {
+/// Rebuild exactly the guests a freshness check reported stale.
+///
+/// Takes the caller's invocation context: the wasm-tools availability gate
+/// replays `inv`'s single probe instead of spawning the binary again, and the
+/// canonical world is whatever the check phase already parsed.
+pub fn build_stale_command(ws_root: &Path, stale: &[GuestSpec], inv: &Invocation) -> i32 {
     if stale.is_empty() {
         println!("built 0 guest(s)");
         return 0;
     }
-    if let Err(e) = ensure_wasm_tools_available() {
-        eprintln!("error: {e}");
+    if !inv.probes().wasm_tools_available() {
+        eprintln!("error: {}", BuildError::WasmToolsNotFound);
         return 1;
     }
-    let probes = VersionProbes::probe();
     build_stale_command_core(
         stale,
-        || crate::wit_verify::canonical_world_model_memoizable(ws_root),
-        |spec, canonical| build_one(spec, ws_root, canonical, &probes),
+        || inv.canonical(),
+        |spec, canonical| build_one(spec, ws_root, canonical, inv.probes()),
         &mut std::io::stdout(),
     )
 }
 
-/// Testable core of `build_stale_command`. The canonical loader is `FnOnce`,
-/// which is what makes "parsed once per invocation, never once per guest" a
-/// property of the type rather than of the loop body.
-fn build_stale_command_core(
+/// Testable core of `build_stale_command`. `load_canonical` hands back a
+/// BORROWED world owned by the invocation context, so the loop cannot re-parse
+/// even in principle, and a caller that bypassed the context would have to
+/// produce its own owned model to compile.
+fn build_stale_command_core<'a>(
     stale: &[GuestSpec],
-    load_canonical: impl FnOnce()
-        -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
+    load_canonical: impl FnOnce() -> Result<&'a crate::wit_verify::WorldModel, String>,
     mut build: impl FnMut(&GuestSpec, &crate::wit_verify::WorldModel) -> Result<(), BuildError>,
     out: &mut dyn std::io::Write,
 ) -> i32 {
@@ -1833,12 +1946,12 @@ fn build_stale_command_core(
     }
     let canonical = match load_canonical() {
         Ok(m) => m,
-        Err(e) => {
+        Err(reason) => {
             eprintln!(
                 "error: {}",
                 BuildError::CanonicalWitUnavailable {
                     guest: stale[0].crate_name.clone(),
-                    reason: e.to_string(),
+                    reason,
                 }
             );
             return 1;
@@ -1846,7 +1959,7 @@ fn build_stale_command_core(
     };
     let mut count = 0usize;
     for spec in stale {
-        match build(spec, &canonical) {
+        match build(spec, canonical) {
             Ok(()) => count += 1,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -3471,21 +3584,38 @@ mod tests {
             .map(|n| memo_guest(&temp, n))
             .collect();
 
-        let rustc_calls = std::cell::Cell::new(0usize);
-        let wasm_tools_calls = std::cell::Cell::new(0usize);
-        let probes = VersionProbes::from_probes(
-            || {
-                rustc_calls.set(rustc_calls.get() + 1);
-                Ok("rustc-stub".to_string())
-            },
-            || {
-                wasm_tools_calls.set(wasm_tools_calls.get() + 1);
-                Ok("wasm-tools-stub".to_string())
-            },
-        );
+        // Sentinel probes: `wasm-tools` reports UNAVAILABLE even though the real
+        // binary is present on the machine running this test. Any production
+        // path that spawns `wasm-tools --version` for itself instead of
+        // replaying the invocation's single probe would observe the real,
+        // working binary and NOT take the infrastructure-error branch. That is
+        // what makes the two phase assertions below able to FAIL — the call
+        // counters alone cannot observe a spawn that bypasses the seam, which
+        // is how a duplicate `wasm-tools --version` per invocation survived the
+        // first version of this test.
+        let rustc_calls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let wasm_tools_calls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let probes = {
+            let r = std::rc::Rc::clone(&rustc_calls);
+            let w = std::rc::Rc::clone(&wasm_tools_calls);
+            VersionProbes::from_probes(
+                move || {
+                    r.set(r.get() + 1);
+                    Ok("rustc-stub".to_string())
+                },
+                move || {
+                    w.set(w.get() + 1);
+                    Err(BuildError::WasmToolsNotFound)
+                },
+            )
+        };
+        assert_eq!(rustc_calls.get(), 1, "probed once at construction");
+        assert_eq!(wasm_tools_calls.get(), 1, "probed once at construction");
+
         let canonical =
             crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").expect("canonical");
-        let mut ctx = CheckContext::with_probes(ClosureCache::new(), canonical, probes);
+        let mut ctx =
+            CheckContext::with_probes(ClosureCache::new(), canonical, probes.clone());
 
         for spec in &specs {
             // No sidecar exists, so every guest must reach and fail the
@@ -3500,15 +3630,51 @@ mod tests {
             );
         }
 
+        let inv = Invocation::with_parts(
+            probes,
+            Box::new(|| {
+                crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").map_err(|e| {
+                    crate::wit_verify::VerifyError::Parse {
+                        artifact: "canonical.wit".to_string(),
+                        reason: e.to_string(),
+                    }
+                })
+            }),
+        );
+
+        // Phase 1 — the check path's infrastructure gate must come from the
+        // replayed probe, not from a fresh spawn of the real binary.
+        assert_eq!(
+            check_command_in(&temp.0, &inv).code,
+            EXIT_INFRA_ERROR,
+            "the check phase must gate on the invocation's single wasm-tools probe"
+        );
+
+        // Phase 2 — same gate on the build path. `build_one` removes the
+        // fingerprint sidecar as its first act, so a surviving sidecar proves
+        // the gate aborted before any guest was touched.
+        let sidecar = fingerprint_metadata_path(&temp.0, &specs[0]);
+        fs::create_dir_all(sidecar.parent().expect("sidecar parent")).expect("create sidecar dir");
+        fs::write(&sidecar, "v2-sentinel").expect("write sidecar");
+        assert_eq!(
+            build_stale_command(&temp.0, std::slice::from_ref(&specs[0]), &inv),
+            1,
+            "the build phase must gate on the invocation's single wasm-tools probe"
+        );
+        assert!(
+            sidecar.exists(),
+            "the gate must abort before build_one; a re-spawned probe would have found the real wasm-tools and started building"
+        );
+
         assert_eq!(
             rustc_calls.get(),
             1,
-            "rustc -vV must be probed once per invocation, not once per guest"
+            "rustc -vV must be probed once per invocation, not once per guest and not once per phase"
         );
         assert_eq!(
             wasm_tools_calls.get(),
             1,
-            "wasm-tools --version must be probed once per invocation, not once per guest"
+            "wasm-tools --version must be probed once per invocation, not once per guest and not once per phase"
         );
     }
 
@@ -3520,21 +3686,55 @@ mod tests {
             .map(|n| memo_guest(&temp, n))
             .collect();
 
-        let loads = std::cell::Cell::new(0usize);
+        // The loader is a `Box<dyn Fn>`, NOT an `FnOnce`: it can be called any
+        // number of times, so `loads == 1` below is a property of
+        // `Invocation::canonical`'s memoization and of the call sites, not of a
+        // type signature. The first version of this test used an `FnOnce` seam,
+        // which made its central assertion unfalsifiable.
+        let loads = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let inv = {
+            let l = std::rc::Rc::clone(&loads);
+            Invocation::with_parts(
+                VersionProbes::from_probes(
+                    || Ok("rustc-stub".to_string()),
+                    || Ok("wasm-tools-stub".to_string()),
+                ),
+                Box::new(move || {
+                    l.set(l.get() + 1);
+                    crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").map_err(
+                        |e| crate::wit_verify::VerifyError::Parse {
+                            artifact: "canonical.wit".to_string(),
+                            reason: e.to_string(),
+                        },
+                    )
+                }),
+            )
+        };
+
+        // Phase 1 — the freshness check parses the canonical set.
+        assert_eq!(
+            check_command_in(&temp.0, &inv).code,
+            EXIT_FRESH,
+            "an empty temp tree discovers no guests"
+        );
+        assert_eq!(loads.get(), 1, "the check phase parses canonical once");
+
+        // Phase 2 — the rebuild, bound exactly as `build_stale_command`
+        // binds it. `load_canonical` yields a BORROW of the invocation's world,
+        // so a caller that re-parsed for itself would have to produce an owned
+        // model and would not compile against this signature.
+        let expected = inv.canonical().expect("sentinel canonical").clone();
         let builds = std::cell::Cell::new(0usize);
+        let matched = std::cell::Cell::new(0usize);
         let mut out: Vec<u8> = Vec::new();
         let code = build_stale_command_core(
             &specs,
-            || {
-                loads.set(loads.get() + 1);
-                crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit")
-                    .map_err(|e| crate::wit_verify::VerifyError::Parse {
-                        artifact: "canonical.wit".to_string(),
-                        reason: e.to_string(),
-                    })
-            },
-            |_spec, _canonical| {
+            || inv.canonical(),
+            |_spec, canonical| {
                 builds.set(builds.get() + 1);
+                if *canonical == expected {
+                    matched.set(matched.get() + 1);
+                }
                 Ok(())
             },
             &mut out,
@@ -3543,9 +3743,14 @@ mod tests {
         assert_eq!(code, 0, "all stub builds succeed");
         assert_eq!(builds.get(), specs.len(), "every stale guest must be built");
         assert_eq!(
+            matched.get(),
+            specs.len(),
+            "every build must receive the invocation's canonical world, not one of its own"
+        );
+        assert_eq!(
             loads.get(),
             1,
-            "canonical WIT must be parsed once per invocation, not once per guest"
+            "canonical WIT must be parsed ONCE per invocation — not once per guest, and not once per phase"
         );
         let text = String::from_utf8(out).expect("utf8 output");
         assert!(text.contains("built 3 guest(s)"), "got {text}");
@@ -4023,9 +4228,10 @@ edition = \"2021\"
         let outcome = check_command_core(
             Path::new("."),
             Ok("wasm-tools 1.0.0".to_string()),
-            Ok(canonical),
+            Ok(&canonical),
             &[],
             &locks,
+            &VersionProbes::probe(),
             &mut out,
         );
         assert_eq!(outcome.code, EXIT_STALE, "divergence is an opinion => EXIT_STALE");
