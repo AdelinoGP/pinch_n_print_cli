@@ -164,8 +164,17 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
                     pipeline_source.insert(key.clone(), cv);
                 }
             }
+            "enum" => {
+                // Enum defaults are single-token and bounds-checked by
+                // `ConfigBoundsIndex` against the manifest's `values` list, so the
+                // empty-string sentinel below is not a legal value for them. Route
+                // the real default into both sources, like int/float/bool.
+                let cv = slicer_ir::ConfigValue::String(default_str.clone());
+                binding_source.insert(key.clone(), cv.clone());
+                pipeline_source.insert(key.clone(), cv);
+            }
             _ => {
-                // String / enum: real value into binding_source; empty sentinel into
+                // String: real value into binding_source; empty sentinel into
                 // pipeline_source so CONFIG_BLOCK writes `; key = ` (not the template).
                 binding_source.insert(
                     key.clone(),
@@ -992,5 +1001,57 @@ fn start_block_not_inside_other_blocks() {
     assert!(
         gcode.contains("\nM190"),
         "M190 must appear somewhere in gcode (start block) â€” not yet emitted (red)"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `printer_structure` time-lapse gate (wayfinder ticket 27 / P20)
+//
+// Proves the key crosses the live transport: `printer_structure` has no
+// `ResolvedConfig` field, so it rides `ResolvedConfig::extensions` into
+// `to_config_map()` and reaches the `machine-gcode-emit` guest's `ConfigView`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn timelapse_line_count(structure: Option<&str>) -> usize {
+    let mut raw = HashMap::new();
+    raw.insert(
+        ConfigKey::from("time_lapse_gcode"),
+        ConfigValue::String("; PNP_TIMELAPSE".to_string()),
+    );
+    if let Some(structure) = structure {
+        raw.insert(
+            ConfigKey::from("printer_structure"),
+            ConfigValue::String(structure.to_string()),
+        );
+    }
+    let gcode = try_slice_with_raw(raw).expect("pipeline must succeed");
+    gcode
+        .lines()
+        .filter(|line| line.trim() == "; PNP_TIMELAPSE")
+        .count()
+}
+
+#[test]
+fn printer_structure_gates_time_lapse_injection_end_to_end() {
+    let default_count = timelapse_line_count(None);
+    assert!(
+        default_count > 0,
+        "with no printer_structure set, time_lapse_gcode must still inject \
+         (recorded divergence from canonical's undefined-structure suppression)"
+    );
+
+    assert_eq!(
+        timelapse_line_count(Some("i3")),
+        default_count,
+        "psI3 is canonical's injecting structure, so an i3 printer must match \
+         the ungated injection count"
+    );
+
+    assert_eq!(
+        timelapse_line_count(Some("corexy")),
+        0,
+        "printer_structure = corexy is not psI3, so a single-tool print must \
+         emit no time-lapse G-code — this is the behaviour change at a \
+         non-default value that the key now drives"
     );
 }

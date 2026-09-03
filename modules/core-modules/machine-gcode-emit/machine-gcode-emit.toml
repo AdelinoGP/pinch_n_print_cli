@@ -85,6 +85,18 @@ type    = "string"
 default = ""
 group   = "Machine G-code"
 
+# Canonical `GCode::process_layer` gates time-lapse injection on the printer's
+# physical structure: `need_insert_timelapse_gcode_for_traditional` is
+# `(is_i3_printer && !m_spiral_vase) || is_multi_extruder`, where `is_i3_printer`
+# is `printer_structure == PrinterStructure::psI3`. Declared here rather than on
+# the emitter because this module owns the `time_lapse_gcode` injection site.
+[config.schema.printer_structure]
+type    = "enum"
+values  = ["undefine", "corexy", "i3", "hbot", "delta"]
+default = "undefine"
+display = "Printer Structure"
+group   = "Machine G-code"
+
 [config.schema.bed_temperature_initial_layer_single]
 type    = "int"
 default = 60

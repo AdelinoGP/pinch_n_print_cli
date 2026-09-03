@@ -198,9 +198,34 @@ emitter is the wrong owner. Their real home is the wipe-tower packet tickets
 (28–31). Everything else canonical does with them is diagnostics or GUI, and
 several of those functions have no caller at all.
 
-### P20 — Printer / Machine / Printer identity — emitter (2 keys, Tier A)
+### P20 — Printer / Machine / Printer identity — emitter (2 keys closed, no packet)
 
-`printer_model`, `printer_structure`
+Closed by ticket 27 through **direct implementation**, no packet.
+
+`printer_structure` — **implemented directly**. Declared as an enum
+(`undefine`/`corexy`/`i3`/`hbot`/`delta`) on **`machine-gcode-emit`**, not on the
+emitter: the tier table's `crates/slicer-gcode` owner was wrong, because the key's
+only non-GUI canonical behaviour is the time-lapse injection gate in
+`GCode::process_layer` (`need_insert_timelapse_gcode_for_traditional`), and this
+port's `time_lapse_gcode` injection site belongs to that module. It now suppresses
+time-lapse injection on non-i3 single-tool prints. Three recorded divergences in
+`DEV-168` (the `undefine` default does not suppress; the `!spiral_vase` clause is
+unwirable here; `is_multi_extruder` stands in as "the print performs a
+toolchange").
+
+`printer_model` — **already covered, no code change**. A user-set `printer_model`
+already reaches the emitter's live decision point: `serialize_config_block`
+(`crates/slicer-gcode/src/serialize.rs`) synthesizes `Generic PNP Printer` only
+when `raw_config` lacks the key, so a supplied value wins through the
+`emit_config_kv` dedup path. Both arms are pinned by
+`config_block_synthesizes_non_bbl_printer_model` and
+`config_block_fork_keys_never_shadowed`
+(`crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`),
+and the contract is documented in `docs/02_ir_schemas.md`. Canonical's remaining
+pipeline reads of the key are vendor-proprietary branches —
+`is_bambu_x2d_printer` (`GCode.cpp`), `GCodeProcessor::s_IsBBLPrinter`, and the
+Elegoo M6211 time estimate (`ElegooGCodeProcessorHelper.cpp`) — which fall in
+ticket 03's Bambu-proprietary / vendor-hardware out-of-scope class.
 
 ## Tier B — 65 packets
 

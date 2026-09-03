@@ -1360,3 +1360,97 @@ fn next_extruder_in_filament_start_gcode_passes_through_verbatim() {
         "the warning must name the unavailable key and filament-start injection point: {warnings:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// `printer_structure` time-lapse gate (wayfinder ticket 27 / P20)
+// ---------------------------------------------------------------------------
+
+/// One layer-marker triple followed by a move, so the layer-scoped injection
+/// window fires exactly once.
+fn one_layer_commands() -> Vec<GCodeCommand> {
+    vec![
+        GCodeCommand::Raw {
+            text: ";LAYER_CHANGE".into(),
+        },
+        GCodeCommand::Raw {
+            text: ";Z:0.200".into(),
+        },
+        GCodeCommand::Raw {
+            text: ";HEIGHT:0.200".into(),
+        },
+        GCodeCommand::Raw {
+            text: "G1 X1".into(),
+        },
+    ]
+}
+
+fn timelapse_config(structure: Option<&str>) -> Vec<(&'static str, ConfigValue)> {
+    let mut pairs: Vec<(&'static str, ConfigValue)> = vec![
+        ("time_lapse_gcode", ConfigValue::String("TIMELAPSE".into())),
+        ("layer_change_gcode", ConfigValue::String("CHANGE".into())),
+    ];
+    if let Some(structure) = structure {
+        pairs.push((
+            "printer_structure",
+            ConfigValue::String(structure.to_string()),
+        ));
+    }
+    pairs
+}
+
+#[test]
+fn timelapse_injects_when_printer_structure_is_absent_or_undefine() {
+    for structure in [None, Some("undefine")] {
+        let output = run(&timelapse_config(structure), &one_layer_commands());
+        assert!(
+            raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+            "printer_structure {structure:?} must not suppress time-lapse injection \
+             (recorded divergence: canonical suppresses on undefined single-extruder \
+             machines; this port keeps the pre-gate behaviour at the default)"
+        );
+    }
+}
+
+#[test]
+fn timelapse_injects_on_i3_printers() {
+    let output = run(&timelapse_config(Some("i3")), &one_layer_commands());
+    assert!(
+        raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+        "canonical `need_insert_timelapse_gcode_for_traditional` is true for psI3, \
+         so an i3 printer must inject time_lapse_gcode"
+    );
+}
+
+#[test]
+fn timelapse_is_suppressed_on_non_i3_single_tool_printers() {
+    for structure in ["corexy", "hbot", "delta"] {
+        let output = run(&timelapse_config(Some(structure)), &one_layer_commands());
+        let texts = raw_texts(&output);
+        assert!(
+            !texts.contains(&"TIMELAPSE".to_string()),
+            "printer_structure = {structure} is not psI3, so canonical injects no \
+             time-lapse G-code on a single-tool print; got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"CHANGE".to_string()),
+            "the gate must suppress only the time-lapse site, not the neighbouring \
+             layer_change_gcode injection; got {texts:?}"
+        );
+    }
+}
+
+#[test]
+fn timelapse_survives_suppression_when_the_print_performs_a_toolchange() {
+    let mut commands = one_layer_commands();
+    commands.push(GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    });
+    let output = run(&timelapse_config(Some("corexy")), &commands);
+    assert!(
+        raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+        "canonical's `is_multi_extruder` arm forces injection regardless of structure; \
+         the port's stand-in for it is the presence of a toolchange in the print"
+    );
+}

@@ -461,8 +461,8 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Printer / Machine / Printer identity
 | `allow_mix_temp` | X | out of scope — dead in canonical |
-| `printer_model` | A | crates/slicer-gcode (printer_technology in serialize.rs) |
-| `printer_structure` | A | crates/slicer-gcode (printer_technology in serialize.rs) |
+| `printer_model` | A | crates/slicer-gcode — **closed by ticket 27, no code change**: already live through `serialize_config_block`'s `raw_config.contains_key` synthesis guard; canonical's other pipeline reads are vendor-proprietary (out-of-scope class) |
+| `printer_structure` | A | **owner corrected by ticket 27: machine-gcode-emit, not crates/slicer-gcode** — its only non-GUI canonical behaviour is the time-lapse injection gate in `GCode::process_layer`; implemented directly, divergences in `DEV-168` |
 | `printer_technology` | X | out of scope — preset-management (03 class) |
 | `printer_variant` | X | out of scope — preset-management (03 class; SLA-only metadata consumer in Format/SL1.cpp) |
 

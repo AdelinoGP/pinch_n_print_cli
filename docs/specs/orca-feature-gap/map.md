@@ -115,6 +115,13 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
     zero-occurrence keys); a twelve-key ticket that only declares can still go
     direct. Size the work at claim time, from the tree, not from the tier
     table.
+  - **Re-derive the *owner* too, not just the size.** Ticket 27 found both P20
+    keys assigned to `crates/slicer-gcode` on the strength of a neighbouring
+    key's read site; `printer_structure` has no emitter behaviour whatever, and
+    its real owner is `machine-gcode-emit`. Ticket 04's owner column was
+    reviewed against canonical, not against *this tree's* module seams — check
+    which module owns the decision point the key actually drives before
+    declaring it anywhere.
   - **Authoring rules 1–6 below still bind direct work.** They govern what
     counts as *covering* a key, not what counts as a packet: no
     declaration-only keys, no `ORCA_CONFIG_PADDING` as evidence, the
@@ -890,7 +897,40 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   `slicer-gcode` 16/16 green (CONFIG_BLOCK byte-stable), clippy + check-literals
   clean.
 
+- [27 — Close P20 — Printer / Machine / Printer identity — emitter](issues/27-author-packet-p20-printer-machine-printer-identity-emitter.md)
+  — **both keys closed with no packet; the tier table's owner for one of them was
+  wrong.** `printer_structure` has no emitter behaviour at all: its only non-GUI,
+  non-Bambu canonical footprint is
+  `need_insert_timelapse_gcode_for_traditional` in `GCode::process_layer`, so it
+  is declared as an enum on **`machine-gcode-emit`** (which owns this port's
+  `time_lapse_gcode` injection site) and now suppresses time-lapse injection on
+  non-i3 single-tool prints, verified end-to-end through the real guest. Three
+  divergences filed as **DEV-168**: the `undefine` default does not suppress
+  (canonical would — same "don't silently drop existing users' output" ruling as
+  ticket 26), the `!spiral_vase` clause is unwirable (no spiral mode in this
+  port), and `is_multi_extruder` is approximated by "the print performs a
+  toolchange" because no extruder-count key reaches a `PostPass` module.
+  `printer_model` needed **no code change** — a user value already beats the
+  `Generic PNP Printer` synthesis in `serialize_config_block`, with both arms
+  already pinned by tests; canonical's other reads are Bambu/Elegoo vendor
+  branches in ticket 03's out-of-scope class. Also fixed a harness defect that
+  would have blocked any future enum key on this module: the schema sweep in
+  `machine_start_end_gcode_emission_tdd.rs` seeded enums with an empty-string
+  sentinel, which is not a legal enum value.
+
 ## Not yet specified
+
+- **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
+  ticket 27, recorded as `DEV-168`. `machine-gcode-emit` now gates
+  `time_lapse_gcode` on `printer_structure`, but canonical's gate is
+  `(is_i3 && !spiral_vase) || is_multi_extruder` and this port can express
+  neither trailing term: it has no spiral mode (`spiral_mode` is an
+  unimplemented queue key, owner `crates/slicer-gcode` + orchestration), and no
+  extruder-count key reaches a `PostPass` module, so `is_multi_extruder` is
+  approximated by "this print performs a toolchange". Whichever packet lands
+  spiral mode inherits the obligation to extend the gate; whether a printer-level
+  extruder count should reach the postpass seam is a config-surface question for
+  the extruder/nozzle packets. Fog until one of them picks it up.
 
 - **The prepass seam plan never covers painted-variant regions.** Surfaced
   by ticket 102: `PrePass::SeamPlanning` runs before

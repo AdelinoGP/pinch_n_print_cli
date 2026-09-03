@@ -268,6 +268,44 @@ impl PostpassModule for MachineGcodeEmit {
                 }
             })
             .collect();
+        // `printer_structure` gates time-lapse injection, matching canonical
+        // `GCode::process_layer`'s `need_insert_timelapse_gcode_for_traditional`
+        // (`(is_i3_printer && !m_spiral_vase) || is_multi_extruder`). Suppression
+        // is applied to the template itself, so every emission site observes it.
+        //
+        // Three recorded divergences from canonical, all documented on the
+        // ticket-27 rows of `docs/DEVIATION_LOG.md`:
+        //  - `undefine` (the default) does **not** suppress here; canonical
+        //    injects nothing on an undefined single-extruder machine. This port
+        //    had no structure gate at all, and setting `time_lapse_gcode` has
+        //    always been sufficient to get injection; suppressing at the default
+        //    would silently drop output for every existing user.
+        //  - the `!m_spiral_vase` clause is not wired: this port has no spiral
+        //    mode (`spiral_mode` is an unimplemented queue key). When spiral
+        //    lands it must extend this gate.
+        //  - `is_multi_extruder` is `nozzle_diameter.size() > 1` in canonical; no
+        //    extruder-count key reaches a `PostPass` module here, so the stand-in
+        //    is "this print performs a toolchange".
+        let multi_tool = commands
+            .iter()
+            .any(|cmd| matches!(cmd, GCodeCommand::ToolChange { .. }));
+        let structure_suppresses_timelapse = !multi_tool
+            && matches!(
+                config.get("printer_structure"),
+                Some(ConfigValue::String(s)) if matches!(s.as_str(), "corexy" | "hbot" | "delta")
+            );
+        let templates: Vec<Option<String>> = if structure_suppresses_timelapse {
+            INJECTION_POINTS
+                .iter()
+                .zip(templates)
+                .map(|(point, template)| match &point.site {
+                    InjectionSite::TimeLapse => None,
+                    _ => template,
+                })
+                .collect()
+        } else {
+            templates
+        };
         // Unresolved [key]s gathered per site, so one aggregated warning at
         // the end can name every contributing site. An unresolved key is
         // **not** a slice error: a module's `ConfigView` is scoped to its own
