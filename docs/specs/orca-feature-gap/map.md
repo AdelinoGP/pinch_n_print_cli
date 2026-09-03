@@ -253,6 +253,20 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   layer, equalised depth, and an outer wall as the wipe target — so it lands
   with the body, not with config plumbing. Its one cross-module clause (the
   traditional-injection suppression in `DEV-168` (d)) lands there too.
+- **Sequential printing (`print_sequence == ByObject`) is a missing *feature*,
+  and its keys are scattered across three packets that cannot close alone.**
+  Ticket 32 found `nozzle_height`'s only slicing-pipeline decision points inside
+  canonical's `Print::sequential_print_clearance_valid` — which also reads all
+  three `extruder_clearance_*` keys (P79 / ticket 86) and guards the mode
+  `print_sequence` selects (P69 / ticket 76). This port has no sequential mode,
+  no clearance model, and no per-object skirt grouping.
+  [124 — Author packet — sequential printing (print-by-object) and toolhead
+  clearance validation](issues/124-author-packet-sequential-printing-and-toolhead-clearance.md)
+  owns the feature; tickets 76 and 86 carry a note to fold their keys in when
+  claimed. **Its first act is a scope ruling from the human** — validation-only
+  (which closes every key) versus real object-by-object emission (which reorders
+  the layer loop) — on the ticket-29 precedent. Do not declare any of these keys
+  in the meantime.
 - **The queue is only as complete as its source, and that has not been checked.**
   Ticket 30 found two keys canonical's flush path reads
   (`flush_multiplier_fast`, `prime_volume_mode`) that appear **nowhere** in
@@ -1024,6 +1038,24 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   module ran — would leave a smooth print with *no* timelapse mechanism at all.
   Recorded as clause (d) of `DEV-168` with ticket 122 as owner; no code change,
   no key declared, no packet number taken.
+
+- [32 — Author packet P25 — Extruder / Nozzle / Nozzle — skirt-brim](issues/32-author-packet-p25-extruder-nozzle-nozzle-skirt-brim.md)
+  — **P25 dissolved; `nozzle_height` folded into ticket 124.** Two findings. First,
+  the owner is wrong: canonical's only non-GUI read outside
+  `Print::is_all_objects_are_short` sits in a function *called*
+  `Print::object_skirt_offset`, but that value never reaches skirt generation —
+  neither `Print::_make_skirt` nor `_make_brim` calls it. Its `libslic3r/` caller
+  is `Print::sequential_print_clearance_valid`; the rest are the GUI arranger. It
+  is a clearance computation that accounts for per-object skirts, not a skirt
+  computation. The ticket-27 lesson again. Second, both decision points
+  `nozzle_height` drives sit inside a validator guarding
+  `print_sequence == ByObject`, and this port has **neither**: `nozzle_height`,
+  `extruder_clearance_radius`, `extruder_clearance_height_to_rod`, `skirt_type`
+  and `draft_shield` have zero occurrences under `crates/`/`modules/`/`xtask/`,
+  and `print_sequence` appears only as an `ORCA_CONFIG_PADDING` row (rule 2: not
+  evidence). The key passes rule 3 — it is live in `libslic3r/` — so it stays in
+  the queue, unimplemented. No key declared, no packet number taken, no code
+  change, no deviation.
 
 ## Not yet specified
 
