@@ -254,9 +254,37 @@ framework / brim-width / infill-gap / flat-ironing keys; the user ruled the body
 **in scope at full canonical parity**. `wipe_tower_filament` folds into ticket
 122 (prime tower body parity) and is not authored separately.
 
-### P23 — Multimaterial / Flush options — wipe-tower (2 keys, Tier B)
+### P23 — Multimaterial / Flush options — wipe-tower (2 keys closed, no packet)
 
-`flush_multiplier`, `flush_volumes_matrix`
+Closed by ticket 30 through **direct implementation**, no packet. The "Tier B new
+logic" sizing did not survive contact with the tree: `WipeTower::generate_purge_paths`
+already converted a purge volume into the scan-line box depth and the prime entity's
+extruded length — the same arithmetic canonical's `get_wipe_depth` does — and simply
+ignored which tool change it was serving. The work was a per-pair lookup in front of
+an existing consumer.
+
+`flush_volumes_matrix` — **implemented directly**. A flat row-major `N*N` float list
+indexed `[from_tool][to_tool]`, matching canonical `WipeTower2::extract_wipe_volumes`.
+`WipeTower::purge_volume_for` selects the entry for each tool change; a non-square
+length is rejected rather than truncated. Unset, it falls back to the flat
+`prime_volume`, so no existing print's g-code changes.
+
+`flush_multiplier` — **implemented directly**. Scales matrix entries only, never the
+fallback. Canonical default `0.3` lives in code, not the manifest, because a plain
+`float` manifest default never reaches a module (only `percent` /
+`float_or_percent` schema defaults are threaded into `ResolvedConfig`).
+
+Four recorded divergences in `DEV-169`: the fallback (canonical zeroes the matrix
+unless `purge_in_prime_tower && single_extruder_multi_material`, neither of which
+exists here — both are P02); the multiplier not scaling the fallback; one scalar
+multiplier rather than canonical's per-extruder `coFloats` (blocked on ticket 118's
+per-tool config mechanism); and no `filament_minimal_purge_on_wipe_tower` clamp
+(Tier D per-filament config, not in this tree). `flush_multiplier_fast` and
+`prime_volume_mode` are canonical's fast-purge branch and are not in this queue.
+
+Verified by `cargo test -p wipe-tower` (7 new tests) plus narrow no-regression runs
+on `gcode_toolchange_wrapping`, the runtime `contract` wipe-tower parity test, and
+`finalization_live`.
 
 ### P24 — Others / Special mode — wipe-tower (1 keys, Tier B)
 

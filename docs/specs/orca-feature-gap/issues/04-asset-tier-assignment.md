@@ -327,8 +327,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `flush_into_infill` | B | tool-ordering (ToolOrdering.cpp) |
 | `flush_into_objects` | B | tool-ordering (ToolOrdering.cpp) |
 | `flush_into_support` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_multiplier` | B | wipe-tower |
-| `flush_volumes_matrix` | B | wipe-tower |
+| `flush_multiplier` | B | wipe-tower — **live** (ticket 30, direct implementation): scales `flush_volumes_matrix` entries in `WipeTower::purge_volume_for`. Scalar, not canonical's per-extruder `coFloats` (blocked on ticket 118); divergences in `DEV-169` |
+| `flush_volumes_matrix` | B | wipe-tower — **live** (ticket 30, direct implementation): flat row-major `N*N` per-pair purge volumes driving the purge-box depth and prime length in `WipeTower::generate_purge_paths`; falls back to `prime_volume` when unset; divergences in `DEV-169` |
 | `flush_volumes_vector` | X | out of scope — preset-management metadata (03 class) |
 | `wiping_volumes_extruders` | X | out of scope — dead in canonical |
 

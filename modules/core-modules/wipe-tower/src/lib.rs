@@ -43,6 +43,44 @@ pub struct WipeTower {
     enabled: bool,
     retract_length: f32,
     printable_area: Vec<(f32, f32)>,
+    /// Per-filament-pair purge volumes in mm^3, indexed `[from_tool][to_tool]`.
+    /// Empty when the profile supplied no `flush_volumes_matrix`, in which case
+    /// every tool change falls back to the flat `purge_volume`.
+    flush_volumes: Vec<Vec<f32>>,
+    /// Scale applied to every `flush_volumes` entry. Inert while `flush_volumes`
+    /// is empty — it never scales the `purge_volume` fallback.
+    flush_multiplier: f32,
+}
+
+/// Canonical OrcaSlicer default for `flush_multiplier` (`PrintConfig.cpp`).
+const DEFAULT_FLUSH_MULTIPLIER: f32 = 0.3;
+
+/// Parse a flat, row-major `N*N` float list into `[from_tool][to_tool]` rows.
+///
+/// Mirrors canonical `WipeTower2::extract_wipe_volumes`, which derives the
+/// extruder count as `sqrt(size)` and slices the flat vector into rows. Unlike
+/// canonical this rejects a non-square length instead of truncating it: a
+/// mis-sized matrix silently mis-indexes every pair, which is worse than a
+/// startup error.
+fn parse_flush_volumes_matrix(raw: &[f64]) -> Result<Vec<Vec<f32>>, ModuleError> {
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    let n = (raw.len() as f64).sqrt().round() as usize;
+    if n == 0 || n * n != raw.len() {
+        return Err(ModuleError::fatal(
+            5,
+            format!(
+                "flush_volumes_matrix has {} entries; expected a perfect square (N*N for N tools)",
+                raw.len()
+            ),
+        ));
+    }
+    let mut rows = Vec::with_capacity(n);
+    for i in 0..n {
+        rows.push(raw[i * n..(i + 1) * n].iter().map(|v| *v as f32).collect());
+    }
+    Ok(rows)
 }
 
 /// Parse a flat `[x0, y0, x1, y1, …]` float list into `(x, y)` vertex pairs.
@@ -192,6 +230,20 @@ impl WipeTower {
             _ => default_bed(),
         };
 
+        // `flush_volumes_matrix` / `flush_multiplier`: the manifest default of a
+        // plain float or float-list key never reaches a module (only `percent` /
+        // `float_or_percent` schema defaults are threaded into `ResolvedConfig`
+        // by `resolve_global_config`), so the effective defaults live here.
+        let flush_volumes = match float_list_from_config(config, "flush_volumes_matrix") {
+            Some(raw) => parse_flush_volumes_matrix(&raw)?,
+            None => Vec::new(),
+        };
+
+        let flush_multiplier = match config.get("flush_multiplier") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            _ => DEFAULT_FLUSH_MULTIPLIER,
+        };
+
         Ok(Self {
             tower_x,
             tower_y,
@@ -201,6 +253,8 @@ impl WipeTower {
             enabled,
             retract_length,
             printable_area,
+            flush_volumes,
+            flush_multiplier,
         })
     }
 
@@ -279,18 +333,22 @@ impl WipeTower {
     /// builder primitives that can place a real `TravelRetract` from the
     /// module side (see packet 58 tool-rotation scheduling contract follow-up (i), DEV-054 closed).
     ///
-    /// The `tc` parameter is used to contextualise which tool change this purge serves.
+    /// The purge volume is per filament pair: `tc` selects the
+    /// `flush_volumes_matrix` entry for this tool change (see
+    /// [`WipeTower::purge_volume_for`]).
     fn generate_purge_paths(
         &self,
         z: f32,
         layer_height: f32,
         global_layer_index: u32,
-        _tc: &slicer_ir::ToolChange,
+        tc: &slicer_ir::ToolChange,
     ) -> Vec<(ExtrusionPath3D, RegionKey)> {
         let cross_section = self.line_width * layer_height * self.tower_width;
         if cross_section <= 0.0 {
             return Vec::new();
         }
+
+        let purge_volume = self.purge_volume_for(tc.from_tool, tc.to_tool);
 
         let region_key = RegionKey {
             global_layer_index,
@@ -334,7 +392,7 @@ impl WipeTower {
         pairs.push((travel_path, region_key.clone()));
 
         // ── 2. Rectilinear scan-line wall entities ───────────────────────────
-        let purge_depth = self.purge_volume / cross_section;
+        let purge_depth = purge_volume / cross_section;
         let x_min = self.tower_x;
         let x_max = self.tower_x + self.tower_width;
         let y_min = self.tower_y;
@@ -392,7 +450,7 @@ impl WipeTower {
         // E = length * line_width * flow; length = purge_volume / (line_width * layer_height),
         // but capped at tower_width so the geometry stays within the tower rectangle.
         let prime_length_full = if layer_height > 0.0 {
-            self.purge_volume / (self.line_width * layer_height)
+            purge_volume / (self.line_width * layer_height)
         } else {
             0.0
         };
@@ -451,9 +509,49 @@ impl WipeTower {
         self.tower_width
     }
 
-    /// Purge volume in mm^3.
+    /// Flat purge volume in mm^3 (`prime_volume`), used as the fallback when no
+    /// `flush_volumes_matrix` is configured.
     pub fn purge_volume(&self) -> f32 {
         self.purge_volume
+    }
+
+    /// Purge volume in mm^3 for a `from_tool` -> `to_tool` change.
+    ///
+    /// Canonical (`WipeTower2::extract_wipe_volumes`) builds `wipe_volumes[from][to]`
+    /// from `flush_volumes_matrix` scaled by `flush_multiplier`, and feeds it to
+    /// `plan_toolchange`, where it sets the depth of that toolchange's purge box.
+    /// This port routes the same value into the scan-line depth and the prime
+    /// entity's extruded length.
+    ///
+    /// Recorded divergences from canonical:
+    /// - **No matrix means `prime_volume`, not zero.** Canonical always has a
+    ///   matrix (a preset supplies one) and zeroes it unless
+    ///   `purge_in_prime_tower && single_extruder_multi_material` — neither key
+    ///   exists in this tree yet (both sit in P02). Falling back to the flat
+    ///   `prime_volume` keeps the tower working for prints that configure no
+    ///   matrix, instead of silently emitting an empty tower.
+    /// - **`flush_multiplier` scales matrix entries only.** Applying it to the
+    ///   `prime_volume` fallback would cut every unconfigured print's purge to
+    ///   30% of its declared volume, which no key in canonical does.
+    /// - **One scalar multiplier, not one per extruder.** Canonical's
+    ///   `flush_multiplier` is a `coFloats`; `WipeTower2::extract_wipe_volumes`
+    ///   reads `get_at(0)` and `ToolOrdering::prepare_flush_matrices` indexes it
+    ///   per nozzle. Per-tool config scoping is inventoried by ticket 118 and
+    ///   is not available here; this matches the `WipeTower2` reading.
+    /// - **`filament_minimal_purge_on_wipe_tower`** (canonical's per-filament
+    ///   lower clamp on each entry) is Tier D per-filament config and is not in
+    ///   this tree; no clamp is applied.
+    pub fn purge_volume_for(&self, from_tool: u32, to_tool: u32) -> f32 {
+        let (from, to) = (from_tool as usize, to_tool as usize);
+        match self.flush_volumes.get(from).and_then(|row| row.get(to)) {
+            Some(v) => v * self.flush_multiplier,
+            None => self.purge_volume,
+        }
+    }
+
+    /// Scale applied to `flush_volumes_matrix` entries.
+    pub fn flush_multiplier(&self) -> f32 {
+        self.flush_multiplier
     }
 
     /// Line width in mm.
@@ -768,5 +866,178 @@ mod tests {
             "NC4 FAIL: expected fatal error, got non-fatal: {}",
             err.message
         );
+    }
+
+    // ── Ticket 30 (P23 — Multimaterial / Flush options): per-pair purge volume ──
+    //
+    // `flush_volumes_matrix` / `flush_multiplier` replace the flat `prime_volume`
+    // with canonical's per-filament-pair volume
+    // (`WipeTower2::extract_wipe_volumes` -> `plan_toolchange`). The observable
+    // behaviour here is the depth of the purge box: the scan-line count and the
+    // prime entity's extruded length both scale with the selected volume.
+
+    /// Config identical to `default_config` plus a 2x2 flush matrix and an
+    /// explicit multiplier. `[0][1]` = 480 mm^3, so at multiplier 0.5 the
+    /// 0 -> 1 change purges 240 mm^3 against `prime_volume`'s 70 mm^3.
+    fn config_with_flush_matrix(multiplier: f64, matrix: &[f64]) -> ConfigView {
+        let mut pairs: Vec<(&str, ConfigValue)> = vec![
+            ("enable_prime_tower", ConfigValue::Bool(true)),
+            ("wipe_tower_x", ConfigValue::Float(10.0)),
+            ("wipe_tower_y", ConfigValue::Float(10.0)),
+            ("prime_tower_width", ConfigValue::Float(60.0)),
+            ("prime_volume", ConfigValue::Float(70.0)),
+            ("line_width", ConfigValue::Float(0.4)),
+            ("retract_length", ConfigValue::Float(2.0)),
+            ("flush_multiplier", ConfigValue::Float(multiplier)),
+        ];
+        let matrix_value = ConfigValue::List(matrix.iter().map(|v| ConfigValue::Float(*v)).collect());
+        pairs.push(("flush_volumes_matrix", matrix_value));
+        pairs.push((
+            "printable_area",
+            ConfigValue::List(vec![
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+            ]),
+        ));
+        config_from_pairs(&pairs)
+    }
+
+    /// Number of scan-line entities in a purge burst: total pairs minus the
+    /// leading travel entity and the trailing prime entity.
+    fn scan_line_count(pairs: &[(ExtrusionPath3D, RegionKey)]) -> usize {
+        pairs.len().saturating_sub(2)
+    }
+
+    fn tool_change(from_tool: u32, to_tool: u32) -> slicer_ir::ToolChange {
+        slicer_ir::ToolChange {
+            after_entity_index: 0,
+            from_tool,
+            to_tool,
+        }
+    }
+
+    /// With no matrix configured, every pair purges the flat `prime_volume` —
+    /// the pre-ticket-30 behaviour, unchanged.
+    #[test]
+    fn absent_flush_matrix_falls_back_to_prime_volume() {
+        let tower = WipeTower::from_config(&default_config()).expect("valid config");
+        assert_eq!(tower.purge_volume_for(0, 1), 70.0);
+        assert_eq!(tower.purge_volume_for(1, 0), 70.0);
+    }
+
+    /// A configured matrix selects per-pair volumes, scaled by the multiplier.
+    #[test]
+    fn flush_matrix_selects_per_pair_volume() {
+        let tower = WipeTower::from_config(&config_with_flush_matrix(
+            0.5,
+            &[0.0, 480.0, 120.0, 0.0],
+        ))
+        .expect("valid config");
+
+        assert_eq!(tower.purge_volume_for(0, 1), 240.0);
+        assert_eq!(tower.purge_volume_for(1, 0), 60.0);
+        assert_eq!(tower.purge_volume_for(0, 0), 0.0);
+    }
+
+    /// `flush_multiplier` is the only thing that changes between these two
+    /// towers, and it changes the emitted geometry.
+    #[test]
+    fn flush_multiplier_scales_emitted_purge_geometry() {
+        let matrix = [0.0, 480.0, 480.0, 0.0];
+        let low = WipeTower::from_config(&config_with_flush_matrix(0.5, &matrix))
+            .expect("valid config");
+        let high = WipeTower::from_config(&config_with_flush_matrix(1.0, &matrix))
+            .expect("valid config");
+
+        let tc = tool_change(0, 1);
+        let low_lines = scan_line_count(&low.generate_purge_paths(0.2, 0.2, 0, &tc));
+        let high_lines = scan_line_count(&high.generate_purge_paths(0.2, 0.2, 0, &tc));
+
+        // cross_section = line_width * layer_height * tower_width = 0.4*0.2*60 = 4.8 mm^2.
+        // depth = volume / cross_section; lines are spaced `line_width` apart
+        // starting at line_width/2.
+        let expected = |volume: f32| {
+            let depth = volume / 4.8;
+            let mut y = 0.2 / 2.0;
+            let mut n = 0;
+            while y < depth {
+                n += 1;
+                y += 0.4;
+            }
+            n
+        };
+        assert_eq!(low_lines, expected(240.0), "multiplier 0.5 -> 240 mm^3");
+        assert_eq!(high_lines, expected(480.0), "multiplier 1.0 -> 480 mm^3");
+        assert!(
+            high_lines > low_lines,
+            "raising flush_multiplier must deepen the purge box: {} vs {}",
+            high_lines,
+            low_lines
+        );
+    }
+
+    /// The matrix changes geometry against the `prime_volume` baseline — the
+    /// non-default-value behaviour assertion the map's authoring rule 1 requires.
+    #[test]
+    fn flush_matrix_changes_emitted_purge_geometry_against_prime_volume() {
+        let baseline = WipeTower::from_config(&default_config()).expect("valid config");
+        let matrixed =
+            WipeTower::from_config(&config_with_flush_matrix(1.0, &[0.0, 480.0, 480.0, 0.0]))
+                .expect("valid config");
+
+        let tc = tool_change(0, 1);
+        let baseline_lines = scan_line_count(&baseline.generate_purge_paths(0.2, 0.2, 0, &tc));
+        let matrixed_lines = scan_line_count(&matrixed.generate_purge_paths(0.2, 0.2, 0, &tc));
+
+        assert!(
+            matrixed_lines > baseline_lines,
+            "480 mm^3 from the matrix must out-purge prime_volume's 70 mm^3: {} vs {}",
+            matrixed_lines,
+            baseline_lines
+        );
+    }
+
+    /// A tool index outside the matrix falls back rather than panicking — the
+    /// matrix is sized for the profile's tool count, which need not match the
+    /// tool indices a given print actually uses.
+    #[test]
+    fn tool_index_outside_matrix_falls_back_to_prime_volume() {
+        let tower =
+            WipeTower::from_config(&config_with_flush_matrix(1.0, &[0.0, 480.0, 480.0, 0.0]))
+                .expect("valid config");
+        assert_eq!(tower.purge_volume_for(0, 5), 70.0);
+        assert_eq!(tower.purge_volume_for(5, 0), 70.0);
+    }
+
+    /// A non-square matrix mis-indexes every pair, so it is rejected at
+    /// construction instead of silently truncated.
+    #[test]
+    fn non_square_flush_matrix_returns_fatal() {
+        let err = match WipeTower::from_config(&config_with_flush_matrix(1.0, &[0.0, 480.0, 480.0]))
+        {
+            Ok(_) => panic!("non-square flush_volumes_matrix must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.message.contains("flush_volumes_matrix"),
+            "error must name the offending key, got: {}",
+            err.message
+        );
+    }
+
+    /// The canonical default multiplier applies when the profile supplies none.
+    /// The manifest default of a plain float key never reaches a module, so this
+    /// pins the in-code fallback.
+    #[test]
+    fn flush_multiplier_defaults_to_canonical_value() {
+        let tower = WipeTower::from_config(&default_config()).expect("valid config");
+        assert_eq!(tower.flush_multiplier(), DEFAULT_FLUSH_MULTIPLIER);
+        assert_eq!(tower.flush_multiplier(), 0.3);
     }
 }

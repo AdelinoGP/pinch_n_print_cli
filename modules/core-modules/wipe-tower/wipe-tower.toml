@@ -63,6 +63,20 @@ max     = 50.0
 display = "Wipe Tower Purge Volume"
 group   = "Wipe Tower"
 
+[config.schema.flush_volumes_matrix]
+type    = "float-list"
+display = "Flushing Volumes"
+group   = "Wipe Tower"
+description = "Per-filament-pair purge volumes in mm^3, flattened row-major as an N*N matrix indexed [from_tool][to_tool]. When supplied, it replaces `prime_volume` as the purge volume for each tool change. No default: the tool count is per-print, so a fixed matrix would be wrong for any other count (see ticket 30)."
+
+[config.schema.flush_multiplier]
+type    = "float"
+default = 0.3
+min     = 0.0
+display = "Flush Multiplier"
+group   = "Wipe Tower"
+description = "Scale applied to every `flush_volumes_matrix` entry. Inert when no matrix is supplied. Canonical default 0.3 (OrcaSlicer `flush_multiplier`)."
+
 [config.schema.line_width]
 type    = "float"
 default = 0.4

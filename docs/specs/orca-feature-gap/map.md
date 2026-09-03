@@ -248,6 +248,14 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   is blocked on building the body, not on config plumbing. Ticket 122 carries it.
   **Do not declare any of those keys anywhere in the meantime**, and do not
   re-derive the census — ticket 29 holds it, classified per body class.
+- **The queue is only as complete as its source, and that has not been checked.**
+  Ticket 30 found two keys canonical's flush path reads
+  (`flush_multiplier_fast`, `prime_volume_mode`) that appear **nowhere** in
+  `docs/ORCA_CONFIG_REFERENCE.md`, and so nowhere in the queue. Ticket 01 audited
+  the reference's ✅/❌ column, not its row set. [123 — Audit the gap source's key
+  set for completeness against upstream](issues/123-audit-gap-source-key-set-completeness.md)
+  measures it. Until it resolves, treat "the queue is closed" as weaker than "the
+  destination is reached".
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -976,6 +984,22 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   body at full canonical parity**; purge-only is rejected as a design and no
   census key goes out of scope. All of it, including `wipe_tower_filament`, is
   carried by [122 — Author packet — prime tower body parity](issues/122-author-packet-prime-tower-body-parity.md).
+
+- [30 — Author packet P23 — Multimaterial / Flush options — wipe-tower](issues/30-author-packet-p23-multimaterial-flush-options-wipe-tower.md)
+  — **closed by direct implementation, no packet.** The "Tier B new logic" sizing
+  did not survive the tree: `WipeTower::generate_purge_paths` already converted a
+  purge volume into the scan-line box depth and the prime entity's length — the
+  same arithmetic as canonical's `get_wipe_depth` — and ignored which tool change
+  it served. `flush_volumes_matrix` (flat row-major `N*N`, indexed
+  `[from_tool][to_tool]`, per canonical `WipeTower2::extract_wipe_volumes`) and
+  `flush_multiplier` are now declared on `wipe-tower` and consumed by the new
+  `WipeTower::purge_volume_for`. Unset, the matrix falls back to the flat
+  `prime_volume`, so no existing print changes. Four divergences in `DEV-169` —
+  the fallback (canonical zeroes the matrix unless `purge_in_prime_tower &&
+  single_extruder_multi_material`, **neither key exists here**; both are P02), the
+  multiplier not scaling the fallback, one scalar multiplier where canonical has a
+  per-extruder `coFloats` (blocked on ticket 118), and no
+  `filament_minimal_purge_on_wipe_tower` clamp (Tier D). 7 new tests.
 
 ## Not yet specified
 
