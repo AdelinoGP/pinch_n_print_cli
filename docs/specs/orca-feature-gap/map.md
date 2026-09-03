@@ -739,6 +739,16 @@ off-map, after.
   `nozzle_diameter` and passed to the widening strategy. Added
   `percent_min_feature_size_reaches_widening_threshold`, proving a `0.15 mm`
   strip emits at `25%` and is rejected at `50%` of a `0.4 mm` nozzle.
+- [24 — Author packet P17 — Quality / Seam — seam-placer](issues/24-author-packet-p17-quality-seam-seam-placer.md)
+  — user chose direct closure over packet authoring for the single
+  `staggered_inner_seams` key. The seam-placer manifest and
+  `SeamPlacer::from_config` now expose the canonical `false` default, and
+  `run_wall_postprocess` shifts associated inner closed loops forward while
+  preserving the outer seam, wall metadata, and unrelated contours. Focused
+  geometry regressions cover interpolation, width clamping, wraparound,
+  closure metadata, winding, and disjoint/nested wall ownership. Canonical
+  candidate-local angle metadata is unavailable in the current IR, so the
+  implementation records a deterministic outer-geometry approximation.
 - [Key correction inventory — grilling rulings](issues/key-correction-inventory.md)
   — 26 rulings over the 140 in-scope rows of the 212-row key audit, in that
   file's `## Decisions — 2026-09-01` section. Five are map-level and are folded
