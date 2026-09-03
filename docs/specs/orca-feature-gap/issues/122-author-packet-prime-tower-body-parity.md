@@ -49,6 +49,25 @@ matters: intra-layer tool changes are emitted only from `layer.tool_changes`
 (`crates/slicer-gcode/src/emit.rs`), so a forced-filament body must sit at the
 layer boundary or record a `ToolChange`. This packet owns that choice.
 
+`timelapse_type` was folded in from P24 (dissolved by
+[ticket 31](./31-author-packet-p24-others-special-mode-wipe-tower.md), which
+holds the canonical read-site analysis). Smooth mode is a *body* selector, not a
+timelapse toggle: it forces the tower to exist for a single filament
+(`Print::has_wipe_tower` via `Print::enable_timelapse_print`), forces a tower
+layer on every object layer (`ToolOrdering`), floors and then equalises every
+layer's depth to layer 0's (`WipeTower::plan_tower`), and makes
+`only_generate_out_wall` the per-layer deliverable (`WipeTower::generate`,
+`finish_layer`'s `only_generate_wall`). It carries one obligation outside this
+module: canonical's traditional-timelapse gate is suppressed by
+`(!m_wipe_tower || !m_wipe_tower->enable_timelapse_print())` in
+`GCode::process_layer`, and this port's gate — `run_gcode_postprocess`
+(`modules/core-modules/machine-gcode-emit/src/lib.rs`), recorded as clause (d) of
+`DEV-168` — cannot express it, because a `PostPass` module has no view of whether
+the wipe-tower module ran. Wiring that clause, and choosing the seam that lets
+one module observe the other's presence, is this packet's, and must land with the
+smooth wall (suppressing without it leaves a print with no timelapse mechanism at
+all).
+
 ### Authoring obligations
 
 - Use `/spec-packet-generator`; the authoring gate is `/spec-review <packet>

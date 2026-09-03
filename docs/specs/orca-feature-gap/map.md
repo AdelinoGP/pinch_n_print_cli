@@ -248,6 +248,11 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   is blocked on building the body, not on config plumbing. Ticket 122 carries it.
   **Do not declare any of those keys anywhere in the meantime**, and do not
   re-derive the census — ticket 29 holds it, classified per body class.
+  **Ticket 31 added `timelapse_type` to that set** (P24 dissolved): smooth mode
+  is a tower-body selector — single-filament tower, a layer on every object
+  layer, equalised depth, and an outer wall as the wipe target — so it lands
+  with the body, not with config plumbing. Its one cross-module clause (the
+  traditional-injection suppression in `DEV-168` (d)) lands there too.
 - **The queue is only as complete as its source, and that has not been checked.**
   Ticket 30 found two keys canonical's flush path reads
   (`flush_multiplier_fast`, `prime_volume_mode`) that appear **nowhere** in
@@ -1000,6 +1005,25 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   multiplier not scaling the fallback, one scalar multiplier where canonical has a
   per-extruder `coFloats` (blocked on ticket 118), and no
   `filament_minimal_purge_on_wipe_tower` clamp (Tier D). 7 new tests.
+
+- [31 — Author packet P24 — Others / Special mode — wipe-tower](issues/31-author-packet-p24-others-special-mode-wipe-tower.md)
+  — **P24 dissolved; `timelapse_type` folded into ticket 122.** Third ticket in a
+  row (28, 29, 31) whose keys turn out to be prime-tower-body work. Smooth mode
+  (`tlSmooth`) is a body selector, not a timelapse toggle: it makes the tower
+  exist for a single filament (`Print::has_wipe_tower` via
+  `Print::enable_timelapse_print`), puts a tower layer on every object layer
+  (`ToolOrdering`), floors and equalises every layer's depth to layer 0's
+  (`WipeTower::plan_tower`), and makes `only_generate_out_wall` the per-layer
+  deliverable (`WipeTower::generate`) — the wall *is* the surface the nozzle wipes
+  on before each snapshot. All four are ticket 122's. The fifth read is the
+  tempting one and was **deliberately not wired**: canonical suppresses the
+  traditional injection when a tower has smooth timelapse enabled
+  (`GCode::process_layer`'s outer `(!m_wipe_tower ||
+  !m_wipe_tower->enable_timelapse_print())`), and doing that here — where no
+  smooth wall exists and `machine-gcode-emit` cannot even observe that the tower
+  module ran — would leave a smooth print with *no* timelapse mechanism at all.
+  Recorded as clause (d) of `DEV-168` with ticket 122 as owner; no code change,
+  no key declared, no packet number taken.
 
 ## Not yet specified
 
