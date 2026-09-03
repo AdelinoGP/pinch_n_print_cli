@@ -218,6 +218,7 @@ is the authoritative catalog of their defaults and ranges.
 | `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `top_surface_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
+| `staggered_inner_seams` | bool | `false` | — | `seam-placer` |
 | `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |

@@ -32,6 +32,12 @@ default = "aligned"
 display = "Seam Position"
 group   = "Seam"
 
+[config.schema.staggered_inner_seams]
+type    = "bool"
+default = false
+display = "Staggered Inner Seams"
+group   = "Seam"
+
 [config.overridable-per-region]
 keys = []
 
