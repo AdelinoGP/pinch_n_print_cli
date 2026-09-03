@@ -206,12 +206,12 @@ findings (the one flagged row was a stale-asset artifact).
 | `printer_extruder_variant` | B | crates/slicer-gcode (toolchange emission) |
 
 ### Extruder / Nozzle / MMU Hardware
-| `cooling_tube_length` | B | wipe-tower |
-| `cooling_tube_retraction` | B | wipe-tower |
-| `extra_loading_move` | B | wipe-tower |
+| `cooling_tube_length` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `cooling_tube_retraction` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `extra_loading_move` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
 | `grab_length` | B | crates/slicer-gcode (toolchange) |
-| `high_current_on_filament_swap` | B | wipe-tower |
-| `parking_pos_retraction` | B | wipe-tower |
+| `high_current_on_filament_swap` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `parking_pos_retraction` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload/Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
 | `start_end_points` | B | crates/slicer-gcode (get_path_of_change_filament) |
 
 ### Extruder / Nozzle / Nozzle
@@ -319,7 +319,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `solid_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
 | `sparse_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
 | `wall_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `wipe_tower_filament` | B | wipe-tower (tower filament, global) |
+| `wipe_tower_filament` | B | wipe-tower (tower filament, global) — **blocked, unimplemented** by ticket 29: a selector over the tower's *finish extrusions* (`ToolOrdering::insert_wipe_tower_extruder`, `WipeTower2::first_toolchange_to_nonsoluble_nonsupport`), and this port's tower is purge-only — no shell/brim/infill, no idle-layer body, every path stamped `tool_index = tc.to_tool`; folded into ticket 122 (prime tower body parity), which the user ruled in scope at full canonical parity |
 
 ### Multimaterial / Flush options
 | `filament_flush_temp` | B | crates/slicer-gcode (toolchange flush) |
@@ -455,8 +455,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `extruder_clearance_height_to_lid` | B | print/orchestration (Print.cpp arrangement) |
 | `extruder_clearance_height_to_rod` | B | print/orchestration (Print.cpp arrangement) |
 | `extruder_clearance_radius` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_printable_area` | B | wipe-tower (multi-extruder shared print bed) — **returned to queue, unimplemented** by ticket 26: per-extruder polygon group, inert single-extruder; canonical's only behaviour path is `Print::get_extruder_shared_printable_polygon` → `WipeTower::set_shared_print_bed` |
-| `extruder_printable_height` | B | wipe-tower (multi-extruder last-layer validity) — **returned to queue, unimplemented** by ticket 26: per-extruder float vector, inert single-extruder; canonical's only behaviour path is `WipeTower::is_valid_last_layer`, gated on `m_is_multi_extruder` |
+| `extruder_printable_area` | B | wipe-tower (multi-extruder shared print bed) — **returned to queue, unimplemented** by ticket 26: per-extruder polygon group, inert single-extruder; canonical's only behaviour path is `Print::get_extruder_shared_printable_polygon` → `WipeTower::set_shared_print_bed`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — `nozzle_diameter` is a scalar `f32` in `ResolvedConfig`, this port has no per-extruder vector model |
+| `extruder_printable_height` | B | wipe-tower (multi-extruder last-layer validity) — **returned to queue, unimplemented** by ticket 26: per-extruder float vector, inert single-extruder; canonical's only behaviour path is `WipeTower::is_valid_last_layer`, gated on `m_is_multi_extruder`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — no per-extruder vector model in this port |
 | `printable_height` | A | **implemented** by ticket 26 (2026-09-03): `ResolvedConfig::printable_height` → `validate_printable_height` (`crates/slicer-model-io/src/loader.rs`), called from `run_slice`; emitted from resolved config, shadowing the padding literal. Default 250.0 is a recorded deviation from canonical's 100.0 |
 
 ### Printer / Machine / Printer identity

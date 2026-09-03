@@ -233,9 +233,26 @@ ticket 03's Bambu-proprietary / vendor-hardware out-of-scope class.
 
 `cooling_tube_length`, `cooling_tube_retraction`, `extra_loading_move`, `high_current_on_filament_swap`, `parking_pos_retraction`
 
+**Blocked and re-filed (ticket 28, 2026-09-03).** Not authorable: all five keys
+are live only in `WipeTower2`'s Type2 SEMM unload/load choreography, fused with
+Tier D per-filament ramming values, and gated on `single_extruder_multi_material`
++ `enable_filament_ramming` — neither of which exists in this tree. A packet
+today would be 100% declaration-only (Authoring rule 1). Re-filed as ticket 119,
+which also adopts `extruder_printable_area` / `extruder_printable_height`
+(returned to the queue by ticket 26); both are blocked on ticket 118.
+
 ### P22 — Multimaterial / Filament for Features — wipe-tower (1 keys, Tier B)
 
 `wipe_tower_filament`
+
+**Dissolved (ticket 29, 2026-09-03).** P22 is not a packet boundary. The key
+selects which filament prints the tower's *finish extrusions* (shell, brim,
+sparse infill), and this port's tower is **purge-only** — so the key has no
+subject, and wiring it to the purge's tool would invert its meaning. Ticket 29's
+census found the same absent body under packet 255's ten with-gap keys and P02's
+framework / brim-width / infill-gap / flat-ironing keys; the user ruled the body
+**in scope at full canonical parity**. `wipe_tower_filament` folds into ticket
+122 (prime tower body parity) and is not authored separately.
 
 ### P23 — Multimaterial / Flush options — wipe-tower (2 keys, Tier B)
 

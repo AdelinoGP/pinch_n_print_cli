@@ -240,6 +240,14 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
      per-packet findings are marked on their Decisions entries below with
      ⚠. Open packet tickets keep their key lists but their "Work: declare in
      the owner's manifest + wire" line is read under rules 1–6.
+- **The prime tower is a stub, and closing it is in scope at full canonical
+  parity (user ruling, 2026-09-03, ticket 29).** This port's tower emits purge
+  scan-lines only — no shell, brim, sparse infill, or idle-layer body — so every
+  key that *selects* over that geometry (packet 255's ten with-gap keys, P02's
+  framework / brim-width / infill-gap / flat-ironing keys, `wipe_tower_filament`)
+  is blocked on building the body, not on config plumbing. Ticket 122 carries it.
+  **Do not declare any of those keys anywhere in the meantime**, and do not
+  re-derive the census — ticket 29 holds it, classified per body class.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -918,6 +926,57 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   `machine_start_end_gcode_emission_tdd.rs` seeded enums with an empty-string
   sentinel, which is not a legal enum value.
 
+- [28 — Author packet P21 — Extruder / Nozzle / MMU Hardware — wipe-tower](issues/28-author-packet-p21-extruder-nozzle-mmu-hardware-wipe-tower.md)
+  — **not authored: P21 is Tier B+ feature work blocked on the per-tool config
+  model.** All five MMU keys pass rule 3 (live in canonical) but only on the
+  Type2 path: in the BBS `WipeTower` the constructor's assignment block and both
+  `toolchange_Unload` / `toolchange_Load` bodies are `#if 0`, delegated to
+  `change_filament_gcode` — a hook this port already has on `machine-gcode-emit`,
+  so the port is at **Type1-equivalent parity today**. The live reads are
+  `WipeTower2::toolchange_Unload` / `toolchange_Load`, selected by
+  `Print::wipe_tower_type` (non-BBL default `type2`), gated on
+  `single_extruder_multi_material` and `enable_filament_ramming` — **neither key
+  exists in this tree** (`single_extruder_multi_material` is an
+  `ORCA_CONFIG_PADDING` row only, which rule 2 rejects as evidence). Every use
+  site multiplies a P21 key by a **Tier D** per-filament ramming value
+  (`filament_cooling_moves` = 0 alone disables the only use of
+  `cooling_tube_length`), so a packet today would be 100% declaration-only —
+  prohibited by rule 1. Re-filed as
+  [119 — Author packet P21 (re-filed)](issues/119-author-packet-p21-mmu-hardware-wipe-tower-refiled.md),
+  which also **adopts** `extruder_printable_area` / `extruder_printable_height`
+  (ticket 26's returned keys — the same missing subsystem seen from the extruder
+  side: `nozzle_diameter` is a scalar `f32` in `ResolvedConfig`, not canonical's
+  per-extruder vector). Both blocked on the new
+  [118 — Inventory the port's per-tool config mechanism](issues/118-inventory-per-tool-config-mechanism.md).
+  Owner hazard confirmed again (ticket 27's): the feature is wipe-tower's, the
+  **seam is not** — `wipe-tower.toml` is `PostPass::LayerFinalization` geometry,
+  and choreography is writer output interleaved with tower moves.
+
+- [29 — Author packet P22 — Multimaterial / Filament for Features — wipe-tower](issues/29-author-packet-p22-multimaterial-filament-for-features-wipe-tower.md)
+  — **P22 dissolved: the key's subject does not exist, so the map ruled the
+  subject in scope instead.** `wipe_tower_filament` (1-based, `0` = auto) never
+  touches the purge; it forces which filament prints the tower's **finish
+  extrusions** — sparse infill, wall, brim — through
+  `ToolOrdering::insert_wipe_tower_extruder` and
+  `WipeTower2::first_toolchange_to_nonsoluble_nonsupport`. This port's tower is
+  **purge-only**: `WipeTowerModule::generate_purge_paths` emits travel + purge
+  lines + a prime entity per `ToolChange`, both module paths skip a layer whose
+  `tool_changes` is empty, and every path is stamped `tool_index = tc.to_tool`.
+  Distinct failure from ticket 28's — the Tier D per-filament fog is **not**
+  engaged, because the forced branch short-circuits `filament_soluble` via the
+  `set_extruder` masking. The ticket then took the **census once for every
+  dependent packet** (body classes shell / infill / brim / idle layer, per-key
+  table in the ticket), pinned canonical's body to `WipeTower2::finish_layer` +
+  `plan_tower`'s top-down depth propagation, and established that **the port's
+  seam can already carry it**: `run_finalization` receives all layers,
+  `push_entity_with_priority` needs no toolchange anchor and takes an explicit
+  `tool_index`, and no WIT/schema/IR change is implied — the single constraint
+  being that intra-layer tool changes come only from `layer.tool_changes`
+  (`crates/slicer-gcode/src/emit.rs`). **User ruling: the port grows a real tower
+  body at full canonical parity**; purge-only is rejected as a design and no
+  census key goes out of scope. All of it, including `wipe_tower_filament`, is
+  carried by [122 — Author packet — prime tower body parity](issues/122-author-packet-prime-tower-body-parity.md).
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
@@ -961,13 +1020,19 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   orchestration — depends on whether the print-orchestration packets
   (P18/P19, tickets 86/87) stand up a `Print::validate`-level stage. Fog
   until those packets' grounding decides.
-- **Where filament-level config even lives.** 47 keys (Tier D) are deferred
-  on this question: does Pinch 'n Print have a per-filament config model at
-  all, or do these keys imply a new subsystem? 11 filament keys were found
-  to be global (not per-filament) and are assignable now (ticket 04).
-  Revisit once the queue reaches Tier D. Graduating with it: 2 fog-blocked
-  Tier A keys (`filament_density`, `filament_diameter` — declare-in-manifest
-  work whose manifest home depends on the model).
+- **Whether the per-tool config model generalises — and the ruling that
+  follows.** The *inventory* half of this patch graduated to
+  [118 — Inventory the port's per-tool config mechanism](issues/118-inventory-per-tool-config-mechanism.md)
+  when ticket 28 found the model is not absent but **partial**: `ResolvedConfig`
+  already carries `filament_density: Vec<f64>` under a `@filament` scope marker
+  with a tool-indexed `filament_density_for` accessor. What stays fog is the
+  **ruling** 118 feeds — does the port adopt a general per-tool config surface
+  (filament *and* extruder), or explode these keys some other way? 47 Tier D
+  keys, 2 fog-blocked Tier A keys (`filament_density`, `filament_diameter` —
+  declare-in-manifest work whose manifest home depends on the model), and now
+  ticket 119's 7 keys all hang on it. 11 filament keys were found to be global
+  (not per-filament) and are assignable now (ticket 04). Sharpens once 118
+  reports.
 - **Hole-loop identification in the wall IR.** Surfaced by ticket 14's
   authoring: canonical `fuzzy_skin = "hole"` / `"all"` (contour+hole) cannot
   be wired because `LoopType` has no `Hole` variant and classic-perimeters
