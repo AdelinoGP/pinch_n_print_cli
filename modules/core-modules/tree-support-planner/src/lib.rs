@@ -3676,23 +3676,34 @@ impl SupportPlanner {
                             })
                         })
                         .collect();
-                    // Q1 counts distinct physical interface planes, not the
-                    // number of object layers carrying an interface role.
+                    // Q1 uses exact distinct interface planes only when a
+                    // consecutive pair encloses a surviving body row.
                     interface_layers.sort_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
                     interface_layers.dedup_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
-                    let mut brackets = if interface_layers.len() >= 2 {
-                        interface_layers
-                    } else {
-                        let mut supplemented = interface_layers;
-                        supplemented.push(run[0]);
-                        supplemented.push(*run.last().unwrap());
-                        supplemented
-                    };
-                    brackets.sort_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
-                    brackets.dedup_by_key(|layer| support_rows_by_layer[layer][0].anchor_z);
-                    for pair in brackets.windows(2) {
-                        let below_layer = pair[0];
-                        let above_layer = pair[1];
+                    let mut bracket_pairs: Vec<(u32, u32)> = interface_layers
+                        .windows(2)
+                        .filter_map(|pair| {
+                            let has_interior_body = run.iter().copied().any(|layer| {
+                                layer > pair[0]
+                                    && layer < pair[1]
+                                    && support_rows_by_layer[&layer].iter().all(|entry| {
+                                        entry.roles.iter().all(|role| {
+                                            !matches!(
+                                                role.role,
+                                                slicer_ir::SupportPlanRole::TopInterface
+                                                    | slicer_ir::SupportPlanRole::BaseInterface
+                                                    | slicer_ir::SupportPlanRole::BottomInterface
+                                            )
+                                        })
+                                    })
+                            });
+                            has_interior_body.then_some((pair[0], pair[1]))
+                        })
+                        .collect();
+                    if bracket_pairs.is_empty() {
+                        bracket_pairs.push((run[0], *run.last().unwrap()));
+                    }
+                    for (below_layer, above_layer) in bracket_pairs {
                         let covered: Vec<u32> = run
                             .iter()
                             .copied()
@@ -3729,7 +3740,16 @@ impl SupportPlanner {
                                 if candidate_z == above_z as f64 {
                                     continue;
                                 }
-                                for lower_entry in &support_rows_by_layer[&below_layer] {
+                                let source_layer = run
+                                    .iter()
+                                    .copied()
+                                    .rev()
+                                    .find(|layer| {
+                                        z_of_layer(*layer).is_some_and(|z| z as f64 <= candidate_z)
+                                    })
+                                    .unwrap_or(below_layer);
+                                let source_entries = &support_rows_by_layer[&source_layer];
+                                for lower_entry in select_coarse_source_entries(source_entries) {
                                     let source_global_layer_index = lower_entry.global_layer_index;
                                     let mut clone = (*lower_entry).clone();
                                     clone.roles = clone
@@ -3979,6 +3999,35 @@ impl SupportPlanner {
         }
         Ok(())
     }
+}
+
+fn select_coarse_source_entries<'a>(
+    source_entries: &[&'a SupportPlanEntry],
+) -> Vec<&'a SupportPlanEntry> {
+    source_entries
+        .iter()
+        .copied()
+        .filter(|entry| {
+            entry.roles.iter().all(|role| {
+                !matches!(
+                    role.role,
+                    slicer_ir::SupportPlanRole::TopInterface
+                        | slicer_ir::SupportPlanRole::BaseInterface
+                        | slicer_ir::SupportPlanRole::BottomInterface
+                )
+            }) || !source_entries.iter().any(|candidate| {
+                candidate.body_ids == entry.body_ids
+                    && candidate.roles.iter().all(|role| {
+                        !matches!(
+                            role.role,
+                            slicer_ir::SupportPlanRole::TopInterface
+                                | slicer_ir::SupportPlanRole::BaseInterface
+                                | slicer_ir::SupportPlanRole::BottomInterface
+                        )
+                    })
+            })
+        })
+        .collect()
 }
 
 /// Packet 239c (Step 2): canonical `generate_support_layers`
@@ -5505,6 +5554,57 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn coarse_source_selection_prefers_body_per_membership() {
+        let interface_membership = SupportPlanEntry {
+            body_ids: vec!["membership-1".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::TopInterface,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let body_membership = SupportPlanEntry {
+            body_ids: vec!["membership-1".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::SupportBody,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let interface_only_membership = SupportPlanEntry {
+            body_ids: vec!["membership-2".to_string()],
+            roles: vec![slicer_ir::SupportPlanRoleRegion {
+                role: slicer_ir::SupportPlanRole::TopInterface,
+                regions: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let source_entries = vec![
+            &interface_membership,
+            &body_membership,
+            &interface_only_membership,
+        ];
+
+        let selected = select_coarse_source_entries(&source_entries);
+
+        assert_eq!(selected.len(), 2);
+        assert!(selected.iter().any(|entry| {
+            entry.body_ids == ["membership-1"]
+                && entry
+                    .roles
+                    .iter()
+                    .all(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+        }));
+        assert!(selected.iter().any(|entry| {
+            entry.body_ids == ["membership-2"]
+                && entry
+                    .roles
+                    .iter()
+                    .all(|role| role.role == slicer_ir::SupportPlanRole::TopInterface)
+        }));
+    }
 
     // ── Volumes layer (defect F-16) ───────────────────────────────────────
 

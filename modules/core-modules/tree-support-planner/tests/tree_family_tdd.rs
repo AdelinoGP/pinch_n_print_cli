@@ -1110,6 +1110,32 @@ fn run_multi_layer_demand_on_plan(
 }
 
 #[test]
+fn coarse_synthesized_rows_use_height_local_geometry() {
+    let output = run_multi_layer_demand_on_plan(0.3, &layer_plan());
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .collect();
+    let anchors: Vec<_> = synthesized.iter().map(|entry| entry.anchor_z).collect();
+
+    assert!(
+        synthesized.len() >= 2,
+        "coarse demand must emit at least two synthesized rows; anchors: {anchors:?}"
+    );
+    assert!(
+        synthesized.iter().all(|entry| entry.skeleton.is_some()),
+        "coarse synthesized rows must retain skeleton geometry; anchors: {anchors:?}"
+    );
+    assert!(
+        synthesized
+            .windows(2)
+            .any(|pair| pair[0].skeleton != pair[1].skeleton),
+        "coarse synthesized rows must use height-local skeleton geometry; anchors: {anchors:?}"
+    );
+}
+
+#[test]
 fn coarse_pitch_produces_free_floating_anchor_z() {
     let mut non_dense_identity_plan = layer_plan();
     for (layer, global_layer_index) in non_dense_identity_plan
@@ -1156,23 +1182,48 @@ fn coarse_pitch_produces_free_floating_anchor_z() {
         vec![(2000, 0), (5000, 1), (8000, 3), (11000, 4), (14000, 6)],
         "anchor_layer_index must be positional, true-nearest, and choose the lower index on ties"
     );
-    let interface_planes: std::collections::BTreeSet<i64> = output
-        .entries()
-        .iter()
-        .filter(|entry| {
-            entry.roles.iter().any(|role| {
-                matches!(
-                    role.role,
-                    SupportPlanRole::TopInterface
-                        | SupportPlanRole::BaseInterface
-                        | SupportPlanRole::BottomInterface
-                )
-            })
-        })
-        .map(|entry| entry.anchor_z)
-        .collect();
+    let fallback = run_near_distinct_interface_fixture();
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 5000, 8000, 11000, 13999, 14000],
+        "AC-2 endpoint fallback must preserve the exact ordered plane sequence"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index < 0)
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![5000, 8000, 11000],
+        "AC-2 endpoint fallback must emit the exact off-grid planes"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()))
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![13999, 14000],
+        "AC-2 endpoint fallback must retain both protected interface planes"
+    );
     for entry in output.entries() {
-        let is_interface_bracket = interface_planes.contains(&entry.anchor_z);
+        let is_interface_bracket = entry.roles.iter().any(|role| {
+            matches!(
+                role.role,
+                SupportPlanRole::TopInterface
+                    | SupportPlanRole::BaseInterface
+                    | SupportPlanRole::BottomInterface
+            )
+        });
         assert!(
             (is_interface_bracket
                 && entry.roles.iter().any(|role| {
@@ -1210,6 +1261,70 @@ fn coarse_pitch_produces_free_floating_anchor_z() {
             entry.anchor_z
         );
     }
+
+    // This second production-path fixture has interface planes at 0.8 and
+    // 1.6 mm with a surviving body row between them. The expected 1.2 mm
+    // plane distinguishes the body-bearing interface-span brackets from the
+    // endpoint fallback, which would start at the run's 0.2 mm row.
+    let body_span = run_mixed_source_tree_fixture();
+    let interface_planes: std::collections::BTreeSet<i64> = body_span
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.roles.iter().any(|role| {
+                matches!(
+                    role.role,
+                    SupportPlanRole::TopInterface
+                        | SupportPlanRole::BaseInterface
+                        | SupportPlanRole::BottomInterface
+                ) && !role.regions.is_empty()
+            })
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        interface_planes,
+        std::collections::BTreeSet::from([8000, 16000]),
+        "body-bearing interface span must use its two interface planes as brackets"
+    );
+    assert!(body_span.entries().iter().any(|entry| {
+        entry.anchor_z == 12000
+            && entry.global_layer_index < 0
+            && entry
+                .roles
+                .iter()
+                .all(|role| role.role == SupportPlanRole::SupportBody)
+    }));
+}
+
+fn run_near_distinct_interface_fixture() -> SupportGeometryOutput {
+    let object = overhang("near-interface", 0.0, 0.0, 4.0);
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        30.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+            ("support_interface_top_layers", ConfigValue::Int(2)),
+        ],
+    ))
+    .unwrap();
+    let mut near_plan = layer_plan();
+    near_plan.layers[4].z = 1.1;
+    near_plan.layers[5].z = 1.3999;
+    near_plan.layers[6].z = 1.4;
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[object.clone()],
+            &near_plan,
+            &regions(&object.object_id),
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+    output
 }
 
 #[test]
@@ -1300,31 +1415,7 @@ fn coarse_pitch_preserves_lone_interface_bracket() {
 
 #[test]
 fn near_distinct_interface_planes_count_separately() {
-    let object = overhang("near-interface", 0.0, 0.0, 4.0);
-    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
-        true,
-        5.0,
-        30.0,
-        &[
-            ("support_layer_height_mm", ConfigValue::Float(0.3)),
-            ("support_interface_top_layers", ConfigValue::Int(2)),
-        ],
-    ))
-    .unwrap();
-    let mut near_plan = layer_plan();
-    near_plan.layers[5].z = 1.3999;
-    near_plan.layers[6].z = 1.4;
-    let mut output = SupportGeometryOutput::new();
-    planner
-        .run_support_geometry(
-            &[object.clone()],
-            &near_plan,
-            &regions(&object.object_id),
-            &SupportGeometryView::default(),
-            &mut output,
-            &ConfigView::new(),
-        )
-        .unwrap();
+    let output = run_near_distinct_interface_fixture();
 
     let interface_sequence: Vec<_> = output
         .entries()
@@ -1353,8 +1444,8 @@ fn near_distinct_interface_planes_count_separately() {
         .collect();
     assert_eq!(
         synthesized,
-        vec![12000],
-        "exact interface count must avoid endpoint-fallback coarse planes while preserving the finer pair outside the brackets"
+        vec![5000, 8000, 11000],
+        "adjacent interface planes with no interior body row must use the run endpoint fallback"
     );
     let planes: Vec<_> = output
         .entries()
@@ -1363,8 +1454,8 @@ fn near_distinct_interface_planes_count_separately() {
         .collect();
     assert_eq!(
         planes,
-        vec![2000, 4000, 6000, 8000, 10000, 12000, 13999, 14000],
-        "mixed coarse/finer output must retain every finer row and place coarse rows first: {planes:?}"
+        vec![2000, 5000, 8000, 11000, 13999, 14000],
+        "endpoint fallback must emit the exact coarse stack while retaining both adjacent interface planes: {planes:?}"
     );
     assert_eq!(
         output
@@ -1379,14 +1470,14 @@ fn near_distinct_interface_planes_count_separately() {
         vec![13999, 14000],
         "both canonical interface brackets must retain TopInterface roles"
     );
-    assert!(
-        output
-            .entries()
+    assert!(output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .all(|entry| entry
+            .roles
             .iter()
-            .filter(|entry| entry.global_layer_index < 0)
-            .all(|entry| entry.anchor_z != 2000),
-        "endpoint fallback must not be selected for the mixed interface bracket"
-    );
+            .all(|role| role.role == SupportPlanRole::SupportBody)));
 }
 
 #[test]
@@ -1718,40 +1809,33 @@ fn coarse_same_region_sources_keep_geometry_and_membership() {
             .collect::<Vec<_>>(),
         vec![
             (6000, vec!["tree-body-same-region-coarse-1".to_string()]),
-            (11000, vec!["tree-body-same-region-coarse-3".to_string()]),
+            (11000, vec!["tree-body-same-region-coarse-4".to_string()]),
         ],
-        "each coarse row must clone its bracket pair's lower entry"
+        "each coarse plane must use the nearest same-region source layer at or below it"
     );
-    let lower_brackets: Vec<_> = [4000, 8000]
-        .iter()
-        .map(|anchor_z| {
-            output
-                .entries()
+    assert_ne!(
+        synthesized[0].body_ids, synthesized[1].body_ids,
+        "same-region source layers must retain distinct body membership"
+    );
+    assert_ne!(
+        synthesized[0].skeleton, synthesized[1].skeleton,
+        "same-region source layers must retain distinct skeleton geometry"
+    );
+    assert_ne!(
+        synthesized[0].roles[0].regions, synthesized[1].roles[0].regions,
+        "same-region source layers must retain distinct contour geometry"
+    );
+    for synthesized in &synthesized {
+        assert!(
+            synthesized
+                .roles
                 .iter()
-                .find(|entry| entry.anchor_z == *anchor_z)
-                .expect("genuine lower bracket entry")
-        })
-        .collect();
-    assert!(
-        lower_brackets[0].body_ids != lower_brackets[1].body_ids
-            && lower_brackets[0].skeleton != lower_brackets[1].skeleton
-            && lower_brackets[0].roles[0].regions != lower_brackets[1].roles[0].regions,
-        "fixture lower brackets must have distinct membership, skeleton, and contour geometry"
-    );
-    for (synthesized, lower) in synthesized.iter().zip(lower_brackets) {
-        assert_eq!(synthesized.body_ids, lower.body_ids);
-        assert_eq!(synthesized.demand_ids, lower.demand_ids);
-        assert_eq!(synthesized.skeleton, lower.skeleton);
-        assert_eq!(synthesized.capabilities, lower.capabilities);
-        assert_eq!(synthesized.provenance, lower.provenance);
-        assert_eq!(synthesized.roles.len(), lower.roles.len());
-        for (synthesized_role, lower_role) in synthesized.roles.iter().zip(&lower.roles) {
-            assert_eq!(synthesized_role.role, SupportPlanRole::SupportBody);
-            assert_eq!(synthesized_role.regions, lower_role.regions);
-        }
-        assert_ne!(
-            synthesized.global_layer_index, lower.global_layer_index,
-            "the clone source identity must not replace DEV-163 physical-plane identity"
+                .all(|role| role.role == SupportPlanRole::SupportBody),
+            "synthesized source roles must be rewritten to SupportBody"
+        );
+        assert!(
+            synthesized.global_layer_index < 0,
+            "synthesized source rows must retain a distinct physical-plane identity"
         );
         assert!(
             output
@@ -1770,6 +1854,120 @@ fn coarse_same_region_sources_keep_geometry_and_membership() {
             "entries sharing a physical plane must share its DEV-163 identity"
         );
     }
+}
+
+fn run_mixed_source_tree_fixture() -> SupportGeometryOutput {
+    let object = overhang("mixed-source-tree", 0.0, 0.0, 12.0);
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 1.0),
+                Point2::from_mm(x + 2.0, 1.0),
+                Point2::from_mm(x + 2.0, 3.0),
+                Point2::from_mm(x, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 111,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 4,
+                z_units: slicer_ir::mm_to_units(1.25),
+                geometry: vec![square(1.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 112,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![square(8.0)],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.4, 0.6, 0.8, 1.25, 1.6, 1.8]
+            .into_iter()
+            .enumerate()
+            .map(|(index, z)| LayerPlanViewEntry {
+                global_layer_index: index as u32,
+                z,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.45)),
+            ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_top_z_distance_mm", ConfigValue::Float(0.0)),
+        ],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layers,
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
+#[test]
+fn coarse_mixed_source_entry_rewrites_interface_geometry_to_body() {
+    let output = run_mixed_source_tree_fixture();
+    let source = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 8000 && entry.global_layer_index >= 0)
+        .expect("the lower interface bracket must survive as a real source entry");
+    assert!(source
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::TopInterface));
+    assert!(source
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::SupportBody));
+
+    let synthesized = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 12000 && entry.global_layer_index < 0)
+        .expect("the mixed source entry must seed the first coarse plane");
+    assert!(synthesized
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    assert_eq!(
+        synthesized
+            .roles
+            .iter()
+            .flat_map(|role| role.regions.iter())
+            .collect::<Vec<_>>(),
+        source
+            .roles
+            .iter()
+            .flat_map(|role| role.regions.iter())
+            .collect::<Vec<_>>(),
+        "rewriting the mixed source must retain both body and interface geometry"
+    );
 }
 
 fn run_two_region_demand(pitch_mm: f64, distinct_grouping_brackets: bool) -> SupportGeometryOutput {
