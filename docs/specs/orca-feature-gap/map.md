@@ -4,11 +4,17 @@ Label: `wayfinder:map`
 
 ## Destination
 
-A queue of **fully authored, preflighted spec packets** under `docs/spec_packets/` that
-together **implement** every FFF (non-SLA) OrcaSlicer *feature* Pinch 'n Print is
-still missing — each packet complete with `packet.spec.md`, `requirements.md`,
-`design.md`, `implementation-plan.md`, and passing `/spec-review --preflight`.
-Packets are ordered **cheapest-first** (smallest diff before new geometry).
+Every FFF (non-SLA) OrcaSlicer *feature* Pinch 'n Print is still missing is
+**closed** — each one either landed in the tree or consciously ruled out of
+scope. Work is ordered **cheapest-first** (smallest diff before new geometry).
+
+How a feature closes depends on its size, per the **Packets are for complex
+implementation only** rule in Notes: small config-key work is **implemented
+directly in its ticket's session**; only work needing new geometry, a new
+IR/WIT field, a new module, or more than one session gets a **fully authored,
+preflighted spec packet** under `docs/spec_packets/` (`packet.spec.md`,
+`requirements.md`, `design.md`, `implementation-plan.md`, passing
+`/spec-review --preflight`).
 
 The config keys are the *inventory* of the gap, not the deliverable. A key is
 "covered" only when the behaviour OrcaSlicer attaches to it exists in this
@@ -16,9 +22,9 @@ tree and the key drives it. A packet that declares keys in a manifest, pads
 them into the CONFIG_BLOCK, and records the behaviour as a "gap" covers
 nothing — see **Authoring rules** in Notes.
 
-The map is done when every in-scope feature is either implemented-by-packet
-or has been consciously ruled out of scope. Implementation (`/swarm`) runs
-off-map, after.
+The map is done when every in-scope feature is either landed in the tree,
+carried by an authored packet, or consciously ruled out of scope. Packet
+implementation (`/swarm`) runs off-map, after; direct implementation does not.
 
 ## Notes
 
@@ -87,7 +93,39 @@ off-map, after.
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
 - **Execution override:** this map deliberately carries execution — packet
-  *authoring* happens inside the map, not after it. Implementation does not.
+  *authoring* happens inside the map, not after it, and under the rule below so
+  does the *implementation* of small config-key work. Only packeted
+  implementation runs off-map.
+- **Packets are for complex implementation only (user ruling, 2026-09-03).**
+  A spec packet is ceremony worth paying for when the work is genuinely
+  complex; it is dead weight on a key that needs declaring and wiring. So:
+  - **Implement directly, in the ticket's own session** — no packet number, no
+    `/spec-packet-generator`, no `/spec-review --preflight` — when the whole
+    remaining work is declaring config keys in a manifest or `ResolvedConfig`
+    and wiring them to a decision point that either already exists or is small
+    enough to build in that same session. The ticket resolves with the commit;
+    its answer names the keys, the decision points they now drive, and the
+    tests that prove it.
+  - **Author a packet** when the work needs new geometry, a new IR field, a WIT
+    or schema change, a new module, a new claim seam, or is simply too large
+    for one session. Roughly: the old Tier B/C work, not Tier A.
+  - **The trigger is the code, not the key count.** A three-key ticket whose
+    keys have no decision point anywhere in the tree can still need a packet
+    (ticket 26 was sized "Tier A plumbing" and turned out to be three
+    zero-occurrence keys); a twelve-key ticket that only declares can still go
+    direct. Size the work at claim time, from the tree, not from the tier
+    table.
+  - **Authoring rules 1–6 below still bind direct work.** They govern what
+    counts as *covering* a key, not what counts as a packet: no
+    declaration-only keys, no `ORCA_CONFIG_PADDING` as evidence, the
+    dead-in-canonical check per key, the PnP-way rule, and — standing in for
+    the preflight gates — every key must end the session driving a
+    behaviour-changing decision point with a test asserting that change at a
+    non-default value.
+  - **Retroactive on the open queue.** Tickets 26–98 are still titled "Author
+    packet P<NN>"; read every one of them under this rule and re-size it at
+    claim time. The title is a ledger fact that has rotted, not an
+    instruction. Packets 253–274 already authored stay as they are.
 - **Authoring rules — binding on every packet ticket (08–98), supersede
   anything earlier in this map or in ticket 02/04/05 that reads otherwise.**
   Adopted after review of packets 253–265 found most of them declaring keys
@@ -831,6 +869,26 @@ off-map, after.
   — startup validation now rejects a configured holder that matches no loaded
   module, and separately rejects a matching module that does not declare the
   selected claim; diagnostics include deterministic candidate module IDs.
+
+- [26 — Close P19 — Printer / Machine / Print volume — emitter](issues/26-author-packet-p19-printer-machine-print-volume-emitter.md)
+  — **first ticket closed by direct implementation instead of a packet**, under
+  the new "Packets are for complex implementation only" rule. The ticket's "3
+  keys, Tier A plumbing" sizing was wrong: all three keys had zero read sites,
+  and the tree had no build-volume validation at all. `printable_height` is now
+  live — `ResolvedConfig::printable_height` → `validate_printable_height`
+  (`crates/slicer-model-io/src/loader.rs`) → called per object from `run_slice`,
+  rejecting with the stable `EXCEEDS_PRINTABLE_HEIGHT` code, and emitted from the
+  resolved config so it shadows the frozen `ORCA_CONFIG_PADDING` literal without
+  editing the padding table. Default **250.0 deviates from canonical's 100.0**
+  (user ruling, **DEV-167**): canonical's value is a preset fallback, and adopting
+  it with a new hard rejection would newly fail every model over 100 mm tall.
+  `extruder_printable_area` / `extruder_printable_height` were **returned to the
+  queue as unimplemented** — inert single-extruder, their only canonical
+  behaviour paths are multi-extruder wipe-tower ones — re-tiered A → B and
+  pointed at ticket 28. Required promoting `slicer-model-io` to a real dependency
+  of `slicer-runtime`. Verified: 8 validator tests, 2 slice-path wiring tests,
+  `slicer-gcode` 16/16 green (CONFIG_BLOCK byte-stable), clippy + check-literals
+  clean.
 
 ## Not yet specified
 

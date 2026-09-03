@@ -43,6 +43,7 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "support_bottom_z_distance" => c.support_bottom_z_distance as f64,
         "support_object_first_layer_gap" => c.support_object_first_layer_gap as f64,
         "enforce_support_layers" => c.enforce_support_layers as f64,
+        "printable_height" => c.printable_height as f64,
         // Float-or-percent keys lock on the numeric magnitude; the doc rows'
         // notes carry the percent semantics.
         "support_threshold_overlap" => c.support_threshold_overlap.value,

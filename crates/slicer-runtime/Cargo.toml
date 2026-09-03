@@ -36,6 +36,9 @@ slicer-integrated-modules = { path = "../slicer-integrated-modules", features = 
     "machine-gcode-emit",
 ] }
 slicer-gcode = { path = "../slicer-gcode" }
+# Model validators reached from the slice path (build-volume height gate in
+# `run_slice`). Depends on `slicer-ir` only, so this adds no cycle.
+slicer-model-io = { path = "../slicer-model-io" }
 toml = "0.8"
 rayon = "1.10"
 serde = { workspace = true, features = ["derive"] }
@@ -50,7 +53,6 @@ png = "0.18"
 
 [dev-dependencies]
 wasmtime = { workspace = true }
-slicer-model-io = { path = "../slicer-model-io" }
 witness = { path = "../slicer-wasm-host/test-guests/witness" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 stl_io = "0.11"

@@ -884,6 +884,19 @@ pub fn run_slice_with_collector(
     validate_support_layer_heights(&resolved_configs_map)
         .map_err(|e| SliceRunError(format!("{e}")))?;
 
+    // Build-volume height gate. Canonical rejects the same condition in
+    // `Print::validate` (`Print.cpp`); here it runs on the object's world-space
+    // Z extent before slicing. Per-object config wins so a per-object
+    // `printable_height` override is honoured, falling back to the global value.
+    for object in &mesh_ir.objects {
+        let printable_height = resolved_configs_map
+            .get(object.id.as_str())
+            .unwrap_or(&default_resolved_config)
+            .printable_height;
+        slicer_model_io::loader::validate_printable_height(object, printable_height)
+            .map_err(|e| SliceRunError(format!("{e}")))?;
+    }
+
     // Per-tool/extruder config overlays (`tool_config:<idx>:<key>`). Applied at
     // emit time (the entity's tool is only known there). Empty unless the user
     // sets `tool_config:` keys, so default behaviour is unchanged.

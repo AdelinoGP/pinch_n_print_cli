@@ -56,6 +56,7 @@ support_resolution      = { default = 0.0375, range = ">= 0", note = "D-P tolera
 min_segment_length      = { default = 0.05,   range = ">= 0", note = "short-segment dropper" }
 support_threshold_angle = { default = 30.0,   range = "[0, 90]", note = "overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves." }
 support_expansion       = { default = 0.0, range = ">= 0" }
+printable_height        = { default = 250.0, range = ">= 0", note = "build-volume height; objects taller are rejected before slicing. Intended deviation from canonical's 100.0 — matches this tree's 250 × 250 mm printable_area default and the value the emitter has always advertised." }
 support_top_z_distance  = { default = 0.2, range = ">= 0" }
 support_bottom_z_distance = { default = 0.2, range = ">= 0" }
 support_threshold_overlap = { default = 50.0, range = ">= 0", note = "default is 50%" }

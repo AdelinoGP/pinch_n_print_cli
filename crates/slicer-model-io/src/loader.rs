@@ -82,6 +82,18 @@ pub enum ModelLoadError {
         /// Full path of the second, colliding input.
         second: std::path::PathBuf,
     },
+    /// EXCEEDS_PRINTABLE_HEIGHT — an object's world-space Z maximum is above the
+    /// configured build-volume height (`printable_height`). Canonical rejects the
+    /// same condition in `Print::validate` (`Print.cpp`) with "The object %1%
+    /// exceeds the maximum build volume height."
+    ExceedsPrintableHeight {
+        /// Id of the offending object.
+        object_id: String,
+        /// The maximum world-space Z found on the object, in mm.
+        z_max: f32,
+        /// The configured build-volume height, in mm.
+        printable_height: f32,
+    },
     /// 3MF paint metadata is malformed or contains an unrecognized value.
     PaintMetadata {
         /// Human-readable reason for the failure.
@@ -110,6 +122,10 @@ impl fmt::Display for ModelLoadError {
                  collide. Rename one input or stage them apart.",
                 first.display(),
                 second.display()
+            ),
+            Self::ExceedsPrintableHeight { object_id, z_max, printable_height } => write!(
+                f,
+                "EXCEEDS_PRINTABLE_HEIGHT: object '{object_id}' reaches world-space Z {z_max} mm,                  above the build volume height {printable_height} mm. Reduce the object's size or                  raise `printable_height`."
             ),
             Self::PaintMetadata { reason, byte_offset } => write!(
                 f,
@@ -2872,6 +2888,51 @@ pub fn validate_world_z_floor(object: &ObjectMesh) -> Result<(), ModelLoadError>
     if let Some((z_min, _z_max)) = object_world_z_extent(object) {
         if z_min < 0.0 {
             return Err(ModelLoadError::WorldZBelowFloor { z_min });
+        }
+    }
+    Ok(())
+}
+
+/// Validate that an [`ObjectMesh`] fits under the configured build-volume
+/// height.
+///
+/// Uses [`object_world_z_extent`] to compute the world-space Z range — the same
+/// canonical surface [`validate_world_z_floor`] reads — and rejects the object
+/// when its maximum Z exceeds `printable_height`.
+///
+/// Objects with no geometry or a degenerate extent are treated as valid, matching
+/// [`validate_world_z_floor`]'s convention.
+///
+/// A non-positive `printable_height` disables the check, so a caller that has no
+/// meaningful build volume cannot accidentally reject every object.
+///
+/// # Divergence from canonical
+///
+/// Canonical `Print::validate` (`Print.cpp`) compares the **last sliced layer's**
+/// Z against `printable_height`, so it can distinguish "the object is too tall"
+/// from "the object fits but its last layer does not". This check runs before
+/// slicing and compares the object's mesh extent instead, which needs no layer
+/// plan and rejects earlier. The two agree except within one layer height of the
+/// limit, where this form is the stricter of the two.
+///
+/// # Errors
+///
+/// Returns `Err(ExceedsPrintableHeight { .. })` when the object's world-space Z
+/// maximum is above `printable_height`.
+pub fn validate_printable_height(
+    object: &ObjectMesh,
+    printable_height: f32,
+) -> Result<(), ModelLoadError> {
+    if printable_height <= 0.0 {
+        return Ok(());
+    }
+    if let Some((_z_min, z_max)) = object_world_z_extent(object) {
+        if z_max > printable_height {
+            return Err(ModelLoadError::ExceedsPrintableHeight {
+                object_id: object.id.to_string(),
+                z_max,
+                printable_height,
+            });
         }
     }
     Ok(())

@@ -21,6 +21,7 @@ mod modifier_infill_tdd;
 mod modifier_support_territory_e2e_tdd;
 mod modifier_support_type_family_e2e_tdd;
 mod painted_fixture_parity_tdd;
+mod printable_height_gate_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;
 mod slice_end_to_end_tdd;

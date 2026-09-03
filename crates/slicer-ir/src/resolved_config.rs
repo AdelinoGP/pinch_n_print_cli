@@ -298,6 +298,15 @@ impl ResolvedConfig {
                 ),
             );
         }
+        // `printable_height` is emitted so the CONFIG_BLOCK reports the value
+        // the slice actually validated against, rather than the frozen
+        // `ORCA_CONFIG_PADDING` literal of the same name. The dedup in
+        // `emit_config_kv` (`crates/slicer-gcode/src/serialize.rs`) makes this
+        // real key shadow that literal; the padding table itself is untouched.
+        m.insert(
+            "printable_height".into(),
+            ConfigValue::Float(f64::from(self.printable_height)),
+        );
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
         // prints, breaking byte-identicality vs baseline.
@@ -1841,6 +1850,21 @@ declare_resolved_config! {
     /// Printer bed polygon as [x0, y0, x1, y1, ...] in mm.
     /// Default: 250 × 250 mm square.
     cli "printable_area" printable_area: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
+    /// Maximum build-volume height in mm. An object whose world-space Z extent
+    /// exceeds this is rejected before slicing (see `validate_printable_height`
+    /// in `crates/slicer-model-io/src/loader.rs`).
+    ///
+    /// Default 250.0 is an intended deviation from canonical's 100.0
+    /// (`PrintConfigDef::init_fff_params`, `PrintConfig.cpp`): it matches this
+    /// tree's own 250 x 250 mm `printable_area` default and the value the
+    /// emitter has always advertised for this key. See DEVIATION_LOG.
+    cli "printable_height" printable_height: f32 = 250.0 => extract_float @ {
+        display: Some("Printable height"),
+        description: Some("Maximum build-volume height (mm). Objects taller than this are rejected before slicing."),
+        group: Some("Printer"),
+        unit: Some("mm"),
+        min: Some(0.0),
+    };
     /// Retract length in mm before tool change.
     cli "retract_length" retract_length: f32 = 2.0 => extract_float;
     /// Whether the wipe tower is enabled for multi-material purge.

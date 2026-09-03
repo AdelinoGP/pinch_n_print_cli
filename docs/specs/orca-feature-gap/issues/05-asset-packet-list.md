@@ -179,9 +179,24 @@ A → B: both build new emitter logic (canonical `GCode::print_machine_envelope`
 and `GCodeWriter::enable_power_loss_recovery`). P18 becomes a mixed A/B packet;
 packet counts are now 17 A, 68 B, 6 C.)
 
-### P19 — Printer / Machine / Print volume — emitter (3 keys, Tier A)
+### P19 — Printer / Machine / Print volume — emitter (1 key implemented, 2 returned)
 
-`extruder_printable_area`, `extruder_printable_height`, `printable_height`
+`printable_height` — **implemented directly** (no packet) by ticket 26 on
+2026-09-03, under the map's "Packets are for complex implementation only" rule.
+It now drives a build-volume height rejection (`validate_printable_height`,
+`crates/slicer-model-io/src/loader.rs`) and is emitted from the resolved config
+rather than from `ORCA_CONFIG_PADDING`. Default deviates from canonical at
+250.0 mm (DEVIATION_LOG).
+
+`extruder_printable_area`, `extruder_printable_height` — **returned to the queue
+as unimplemented** by ticket 26 under Authoring rule 1. Both are per-extruder
+vectors defaulting to empty/`{0}` and are inert on a single-extruder printer;
+their only behaviour-changing canonical paths are multi-extruder wipe-tower ones
+(`Print::get_extruder_shared_printable_polygon` feeding
+`WipeTower::set_shared_print_bed`, and `WipeTower::is_valid_last_layer`), so the
+emitter is the wrong owner. Their real home is the wipe-tower packet tickets
+(28–31). Everything else canonical does with them is diagnostics or GUI, and
+several of those functions have no caller at all.
 
 ### P20 — Printer / Machine / Printer identity — emitter (2 keys, Tier A)
 

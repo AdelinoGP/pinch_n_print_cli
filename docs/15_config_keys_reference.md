@@ -400,6 +400,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | `resolved_config.rs::ResolvedConfig` |
 | `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | `resolved_config.rs::ResolvedConfig` |
 | `min_segment_length` | float | `0.05` | >= 0 (short-segment dropper) | `resolved_config.rs::ResolvedConfig` |
+| `printable_height` | float | `250.0` | >= 0 (build-volume height; objects taller are rejected before slicing. Intended deviation from canonical's 100.0 — matches this tree's 250 × 250 mm printable_area default and the value the emitter has always advertised.) | `resolved_config.rs::ResolvedConfig` |
 | `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | `resolved_config.rs::ResolvedConfig` |
 | `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `support_bottom_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
@@ -468,6 +469,7 @@ upstream or has no upstream equivalent.
 | `outer_wall_speed` | `classic-perimeters` | `30.0` | `60.0` |
 | `precise_outer_wall` | `arachne-perimeters` | `false` | `1.0` |
 | `precise_outer_wall` | `classic-perimeters` | `false` | `1.0` |
+| `printable_height` | `resolved_config.rs::ResolvedConfig` | `250.0` | `100.0` |
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
 | `support_angle` | `traditional-support` | `60.0` | `0.0` |

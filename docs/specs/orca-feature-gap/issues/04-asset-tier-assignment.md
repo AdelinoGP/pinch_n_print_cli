@@ -455,9 +455,9 @@ findings (the one flagged row was a stale-asset artifact).
 | `extruder_clearance_height_to_lid` | B | print/orchestration (Print.cpp arrangement) |
 | `extruder_clearance_height_to_rod` | B | print/orchestration (Print.cpp arrangement) |
 | `extruder_clearance_radius` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_printable_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `extruder_printable_height` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `printable_height` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
+| `extruder_printable_area` | B | wipe-tower (multi-extruder shared print bed) — **returned to queue, unimplemented** by ticket 26: per-extruder polygon group, inert single-extruder; canonical's only behaviour path is `Print::get_extruder_shared_printable_polygon` → `WipeTower::set_shared_print_bed` |
+| `extruder_printable_height` | B | wipe-tower (multi-extruder last-layer validity) — **returned to queue, unimplemented** by ticket 26: per-extruder float vector, inert single-extruder; canonical's only behaviour path is `WipeTower::is_valid_last_layer`, gated on `m_is_multi_extruder` |
+| `printable_height` | A | **implemented** by ticket 26 (2026-09-03): `ResolvedConfig::printable_height` → `validate_printable_height` (`crates/slicer-model-io/src/loader.rs`), called from `run_slice`; emitted from resolved config, shadowing the padding literal. Default 250.0 is a recorded deviation from canonical's 100.0 |
 
 ### Printer / Machine / Printer identity
 | `allow_mix_temp` | X | out of scope — dead in canonical |
