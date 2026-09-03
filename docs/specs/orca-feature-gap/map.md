@@ -253,6 +253,20 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   layer, equalised depth, and an outer wall as the wipe target — so it lands
   with the body, not with config plumbing. Its one cross-module clause (the
   traditional-injection suppression in `DEV-168` (d)) lands there too.
+- **A per-tool config axis already exists — do not build a second one.**
+  Ticket 118 measured it: `tool_config:<tool_index>:<key>` on the raw config
+  source yields a whole `ResolvedConfig` per tool
+  (`resolve_per_tool_configs`, `crates/slicer-scheduler/src/config_resolution.rs`),
+  covering every CLI-bound field plus module-manifest keys, at precedence
+  `global < per_object < per_paint_semantic < per_tool`. Before treating any key
+  as "blocked on there being no per-tool model", read
+  [118's asset](issues/118-asset-per-tool-config-inventory.md) — the blockers are
+  ingest, `overlay_resolved`'s 29-of-83 narrowing, and the paint-chain-only tool
+  identity, not the absence of a mechanism. Two traps it corrects: the
+  `@filament` / `@printer` scope markers are **GUI preset-routing labels with no
+  runtime semantics** (`filament_diameter` is `@filament` *and* a scalar), and
+  `tool-count()` **is** callable from a `PostPass` module — it returns 1 only
+  because no core module declares `filament_density`, its sole source of truth.
 - **Sequential printing (`print_sequence == ByObject`) is a missing *feature*,
   and its keys are scattered across three packets that cannot close alone.**
   Ticket 32 found `nozzle_height`'s only slicing-pipeline decision points inside
@@ -1057,6 +1071,26 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   the queue, unimplemented. No key declared, no packet number taken, no code
   change, no deviation.
 
+- [118 — Inventory the port's per-tool (filament / extruder) config mechanism](issues/118-inventory-per-tool-config-mechanism.md)
+  — **A general per-tool mechanism already exists: `tool_config:<idx>:<key>`.**
+  `resolve_per_tool_configs` (`crates/slicer-scheduler/src/config_resolution.rs`)
+  yields a whole `ResolvedConfig` per tool, reaching all CLI-bound fields plus any
+  module-manifest key, at precedence
+  `global < per_object < per_paint_semantic < per_tool`. Per-stage inventory in
+  [118's asset](issues/118-asset-per-tool-config-inventory.md). Four gaps, none of
+  them the mechanism: nothing ingests an Orca `coFloats` vector *onto* that axis
+  (and `extract_float_or_first` silently keeps element 0, so a two-filament 3MF
+  loses filament 2's `filament_diameter`); `overlay_resolved` is a 29-of-83
+  hand-written allowlist that silently drops the rest; the tool axis reaches
+  geometry only via a `("material", ToolIndex(n))` paint chain; and no core module
+  declares `filament_density`, so `tool-count()` is 1 everywhere. Three beliefs
+  corrected — `@filament`/`@printer` are GUI preset labels with no runtime meaning,
+  `tool-count` *is* reachable from a `PostPass` module (`host-services` is imported
+  by `world gcode-postprocess-module`), and `nozzle_diameter` is an `extensions`
+  scalar, not a `ResolvedConfig` field. Filed tickets 125 (the ruling) and 126 (the
+  narrowing + a suspected precedence defect, read from code and not yet
+  reproduced). No key declared, no code change.
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
@@ -1100,19 +1134,20 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   orchestration — depends on whether the print-orchestration packets
   (P18/P19, tickets 86/87) stand up a `Print::validate`-level stage. Fog
   until those packets' grounding decides.
-- **Whether the per-tool config model generalises — and the ruling that
-  follows.** The *inventory* half of this patch graduated to
-  [118 — Inventory the port's per-tool config mechanism](issues/118-inventory-per-tool-config-mechanism.md)
-  when ticket 28 found the model is not absent but **partial**: `ResolvedConfig`
-  already carries `filament_density: Vec<f64>` under a `@filament` scope marker
-  with a tool-indexed `filament_density_for` accessor. What stays fog is the
-  **ruling** 118 feeds — does the port adopt a general per-tool config surface
-  (filament *and* extruder), or explode these keys some other way? 47 Tier D
-  keys, 2 fog-blocked Tier A keys (`filament_density`, `filament_diameter` —
-  declare-in-manifest work whose manifest home depends on the model), and now
-  ticket 119's 7 keys all hang on it. 11 filament keys were found to be global
-  (not per-filament) and are assignable now (ticket 04). Sharpens once 118
-  reports.
+- **How far the per-tool config axis must reach into geometry.** The
+  *inventory* and the *ruling* halves of this patch have both graduated —
+  [118](issues/118-inventory-per-tool-config-mechanism.md) measured the mechanism,
+  and the ruling is now
+  [125 — Rule on the port's per-tool config model](issues/125-rule-per-tool-config-model.md),
+  gated on
+  [126 — Close `overlay_resolved`'s field narrowing](issues/126-overlay-resolved-field-narrowing.md).
+  What stays fog is what 125's answer implies downstream: a region's tool identity
+  exists today only inside a `("material", ToolIndex(n))` paint variant chain, so
+  "this object prints with tool 2" has no representation anywhere in the prepass
+  IR. Whether that needs one — and whether an *extruder* axis is distinct from the
+  *tool* axis at all — is not phraseable as a ticket until 125 picks a model. The
+  deferred Tier D keys and ticket 119's keys hang on 125; take their counts from
+  [04's tier table](issues/04-asset-tier-assignment.md) at the point of use.
 - **Hole-loop identification in the wall IR.** Surfaced by ticket 14's
   authoring: canonical `fuzzy_skin = "hole"` / `"all"` (contour+hole) cannot
   be wired because `LoopType` has no `Hole` variant and classic-perimeters
