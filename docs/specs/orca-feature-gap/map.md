@@ -749,6 +749,33 @@ off-map, after.
   closure metadata, winding, and disjoint/nested wall ownership. Canonical
   candidate-local angle metadata is unavailable in the current IR, so the
   implementation records a deterministic outer-geometry approximation.
+- [25 — Author packet P18 — Printer / Machine / Power / recovery — emitter](issues/25-author-packet-p18-printer-machine-power-recovery-emitter.md)
+  — packet `docs/spec_packets/267-printer-machine-power-recovery-emitter/`
+  authored as `draft`, preflight **PASS**. Re-derivation split the four scoped
+  keys three ways: **`disable_m73` is Tier A plumbing** — the decision point is
+  already live (`DefaultGCodeEmitter::emit_gcode`'s `if !self.resolved_config.disable_m73`
+  gate around `crate::m73::inject_m73`, proven end-to-end by
+  `crates/pnp-cli/tests/m73_progress_tdd.rs`); the packet declares it in
+  `machine-gcode-emit.toml`, closing ticket 04's ResolvedConfig-only contract
+  violation. **`emit_machine_limits_to_gcode` and `enable_power_loss_recovery`
+  are Tier B** — both true zero-occurrence gaps; the packet builds the canonical
+  machine envelope (`GCode::print_machine_envelope`) as the PnP scalar subset
+  (M203 from `machine_max_speed_x/y/z/e` with RRF × 60, M204 P/T from
+  `machine_max_acceleration_extruding`/`machine_max_acceleration_travel` with
+  Marlin-legacy T = extruding, M205 from `machine_max_jerk_x/y/z/e` with RRF
+  M566 × 60; flavor-gated to Marlin/Marlin2/RepRapFirmware; prepended ahead of
+  `machine_start_gcode` via a postpass PrintStart rule change) and the recovery
+  emission (`GCodeWriter::enable_power_loss_recovery`: `enable` → M413 S1 at the
+  second emitted layer + M413 S0 at the end; `disable` → M413 S0 at the second
+  emitted layer; `printer_configuration` → nothing; Marlin2 only). Missing
+  envelope groups (M201, M204 R, M205 J, M593) and the Bambu M1003 form are
+  recorded as divergences — the P47 fields and a Bambu flavor do not exist and
+  are not invented. **`silent_mode` is returned to the queue as unimplemented**:
+  canonical reads stride-2 normal/stealth `machine_max_*` pairs and PnP's scalar
+  `Option<f32>` fields have no variant dimension; the missing per-variant
+  machine-limit model is named in the tier table and filed as ticket 117. P18
+  is now **mixed A/B, 3 keys**; the 04/05 assets are updated. No user rulings,
+  no deviation rows, no `ORCA_CONFIG_PADDING` edit (AC-N3).
 - [Key correction inventory — grilling rulings](issues/key-correction-inventory.md)
   — 26 rulings over the 140 in-scope rows of the 212-row key audit, in that
   file's `## Decisions — 2026-09-01` section. Five are map-level and are folded

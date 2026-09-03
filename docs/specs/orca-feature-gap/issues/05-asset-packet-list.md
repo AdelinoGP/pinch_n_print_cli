@@ -1,12 +1,14 @@
 # Asset — Packet list for the FFF gap queue (ticket 05)
 
 Derived from ticket 04's per-key tier assignment by applying the grouping rule
-below. **91 packets, 358 keys** (Tier A 117, Tier B 226, Tier C 15 — plus 2
+below. **91 packets, 357 keys** (Tier A 114, Tier B 228, Tier C 15 — plus 2
 fog-blocked Tier A keys and 47 Tier D keys, deferred). Packet order is the
 queue order: **tier-major (A, B, C), then owning module, then Orca UI section**.
 (Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A];
 amended by ticket 99: P01 +`fan_max_speed`/`fan_min_speed` [B]. P01 and P14
-become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C.)
+become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C. Amended by
+ticket 25: P18 becomes mixed A/B and sheds `silent_mode` (returned to the
+queue) — packet counts are now 17 A, 68 B, 6 C.)
 
 ## The grouping rule (all rulings confirmed with the human, ticket 05 session)
 
@@ -162,9 +164,20 @@ holder seam remains a separate follow-up with packet
 
 `staggered_inner_seams`
 
-### P18 — Printer / Machine / Power / recovery — emitter (4 keys, Tier A)
+### P18 — Printer / Machine / Power / recovery — emitter (3 keys — 1 Tier A plumbing + 2 Tier B logic)
 
-`disable_m73`, `emit_machine_limits_to_gcode`, `enable_power_loss_recovery`, `silent_mode`
+`disable_m73`, `emit_machine_limits_to_gcode`, `enable_power_loss_recovery`
+
+(Amended by ticket 25, at authoring: **`silent_mode` is removed from this packet
+and returned to the queue as unimplemented.** Canonical reads every
+`machine_max_*` key as a stride-2 normal/stealth variant pair and `silent_mode`
+selects the variant; PnP's scalar `Option<f32>` machine-limit fields have no
+variant dimension, so the key cannot drive anything — a per-variant
+machine-limit model (P47 family) is the missing feature, filed as ticket 117.
+`emit_machine_limits_to_gcode` and `enable_power_loss_recovery` are re-tiered
+A → B: both build new emitter logic (canonical `GCode::print_machine_envelope`
+and `GCodeWriter::enable_power_loss_recovery`). P18 becomes a mixed A/B packet;
+packet counts are now 17 A, 68 B, 6 C.)
 
 ### P19 — Printer / Machine / Print volume — emitter (3 keys, Tier A)
 

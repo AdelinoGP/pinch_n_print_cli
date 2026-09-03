@@ -121,7 +121,7 @@ ticket 99's two fan-scale reclassifications).
 | Others / G-code output | B | crates/slicer-gcode (6) + host export orchestration (1) | canonical GCodeWriter.cpp, GCode.cpp, Print.cpp::output_filename; `gcode_add_line_number` is GUI post-processor → host export |
 | Others / Post-processing Scripts | B | host export orchestration (crates/slicer-runtime) | canonical GUI/PostProcessor.cpp::run_post_process_scripts |
 | Printer / Machine / Motion limits, Timing, Resonance, Bed mesh | B | crates/slicer-gcode | canonical `GCode::print_machine_envelope` (M201/M203), GCodeProcessor.cpp, GCode.cpp G29 |
-| Printer / Machine / Power / recovery | A | crates/slicer-gcode | `disable_m73` consumed in emit.rs; canonical GCodeWriter::set_m73 |
+| Printer / Machine / Power / recovery | A/B | crates/slicer-gcode | `disable_m73` consumed in emit.rs; canonical GCodeWriter::set_m73; envelope + recovery emission built by packet 267 (mixed A/B) |
 | Printer / Machine / Printer identity | A | crates/slicer-gcode | `printer_model`/`printer_structure` in GCode.cpp / GCodeProcessor.cpp; 3 keys out of scope (preset-management) |
 | Printer / Machine / Print volume | A/B | wipe-tower + crates/slicer-gcode + print/orchestration | `bed_shape` read by wipe-tower; `printable_height` in emitter; clearance keys in Print.cpp arrangement |
 | Extruder / Nozzle / Extruder geometry, Nozzle, Pressure advance | B | crates/slicer-gcode + config-resolution + tool-ordering + skirt-brim | canonical GCode.cpp toolchange, GCodeProcessor.cpp, AdaptivePAProcessor.cpp; `extruder_ams_count`/`nozzle_volume_type` in ToolOrdering.cpp; `default_nozzle_volume_type` in PresetBundle.cpp; `nozzle_height` in Print.cpp skirt check |
@@ -445,10 +445,10 @@ findings (the one flagged row was a stale-asset artifact).
 | `machine_min_travel_rate` | B | crates/slicer-gcode (M201/M203 emission) |
 
 ### Printer / Machine / Power / recovery
-| `disable_m73` | A | crates/slicer-gcode (consumed in emit.rs) + declare in machine-gcode-emit manifest |
-| `emit_machine_limits_to_gcode` | A | crates/slicer-gcode (disable_m73 consumed) |
-| `enable_power_loss_recovery` | A | crates/slicer-gcode (disable_m73 consumed) |
-| `silent_mode` | A | crates/slicer-gcode (disable_m73 consumed) |
+| `disable_m73` | A | crates/slicer-gcode (consumed in emit.rs) + declare in machine-gcode-emit manifest | (packet 267: declared in machine-gcode-emit.toml; gate already live) |
+| `emit_machine_limits_to_gcode` | B | crates/slicer-gcode (envelope emission) | (packet 267 re-tier: new emitter logic — canonical `GCode::print_machine_envelope`) |
+| `enable_power_loss_recovery` | B | crates/slicer-gcode (recovery emission) | (packet 267 re-tier: new emitter logic — canonical `GCodeWriter::enable_power_loss_recovery`) |
+| `silent_mode` | — | returned to queue, unimplemented | (packet 267 ruling: needs a per-variant machine-limit model — canonical reads stride-2 normal/stealth `machine_max_*` pairs; PnP's scalar `Option<f32>` fields have no variant dimension. Follow-up ticket 117.) |
 
 ### Printer / Machine / Print volume
 | `bed_exclude_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
