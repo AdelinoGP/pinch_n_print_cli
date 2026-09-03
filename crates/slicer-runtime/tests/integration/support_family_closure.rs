@@ -361,14 +361,20 @@ pub fn coarse_support_pitch_emits_free_floating_extruding_rows() -> Result<(), S
                 support_type,
                 &[
                     ("independent_support_layer_height", ConfigValue::Bool(true)),
-                    ("support_layer_height_mm", ConfigValue::Float(0.3)),
+                    ("support_layer_height_mm", ConfigValue::Float(0.45)),
                 ],
             )?;
+            let interface_blocks = interface_block_count(&enabled);
+            if interface_blocks == 0 {
+                return Err(
+                    "enabled coarse run must retain at least one Support interface block".into(),
+                );
+            }
             let disabled = run_slice_for_family_with_extra(
                 support_type,
                 &[
                     ("independent_support_layer_height", ConfigValue::Bool(false)),
-                    ("support_layer_height_mm", ConfigValue::Float(0.3)),
+                    ("support_layer_height_mm", ConfigValue::Float(0.45)),
                 ],
             )?;
             let enabled_z = distinct_z_sequence(&enabled);
@@ -456,7 +462,7 @@ pub fn disabled_coarse_pitch_reproduces_baseline_z_sequence() -> Result<(), Stri
         "normal(auto)",
         &[
             ("independent_support_layer_height", ConfigValue::Bool(false)),
-            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+            ("support_layer_height_mm", ConfigValue::Float(0.45)),
         ],
     )?;
     let actual = distinct_z_sequence(&gcode);

@@ -1971,8 +1971,8 @@ fn offgrid_pass_height_delta_matches_recorded_verdict() {
 fn coarse_pass_height_delta_matches_recorded_verdict() {
     // Behaviour lock for packet 239d (support-coarse-floating-planes) Step 6
     // measurement record (docs/07_implementation_status.md TASK-527,
-    // measured 2026-09-01): three two-point extrusion rows at Z = 0.2 / 0.5 /
-    // 0.6 mm, distance 10 mm, width 0.4 mm, flow 1.0, filament Ø 1.75 mm.
+    // measured 2026-09-02): three two-point extrusion rows at Z = 0.2 / 0.65 /
+    // 0.75 mm, distance 10 mm, width 0.4 mm, flow 1.0, filament Ø 1.75 mm.
     let row_points = |z: f32| {
         vec![
             Point3WithWidth {
@@ -1993,7 +1993,7 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
             },
         ]
     };
-    let layers: Vec<LayerCollectionIR> = [0.2_f32, 0.5, 0.6]
+    let layers: Vec<LayerCollectionIR> = [0.2_f32, 0.65, 0.75]
         .into_iter()
         .enumerate()
         .map(|(i, z)| {
@@ -2032,16 +2032,16 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
     let h_object = increment(&cumulative_e, 2) * filament_area / dist_width;
 
     assert!(
-        (h_coarse - 0.3).abs() <= 1e-6,
-        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs declared plane delta 0.3 mm"
+        (h_coarse - 0.45).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs declared plane delta 0.45 mm"
     );
     assert!(
-        (h_coarse - 0.30000004_f32).abs() <= 1e-6,
-        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs TASK-527 recorded applied-height constant 0.30000004 mm (the height term the emitter actually applied, not a re-derivation)"
+        (h_coarse - 0.45000002_f32).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse applied height {h_coarse} mm vs TASK-527 recorded applied-height constant 0.45000002 mm (the height term the emitter actually applied, not a re-derivation)"
     );
     assert!(
-        (cumulative_e[1] - 0.8315034).abs() <= 1e-6,
-        "verdict CONSISTENT: coarse cumulative E {} vs recorded 0.8315034",
+        (cumulative_e[1] - 1.0809543).abs() <= 1e-6,
+        "verdict CONSISTENT: coarse cumulative E {} vs recorded 1.0809543",
         cumulative_e[1]
     );
     assert!(
@@ -2053,8 +2053,8 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
         "verdict CONSISTENT: following-object applied height {h_object} mm vs TASK-527 recorded applied-height constant 0.10000003 mm (the height term the emitter actually applied, not a re-derivation)"
     );
     assert!(
-        (cumulative_e[2] - 0.9978041).abs() <= 1e-6,
-        "verdict CONSISTENT: following-object cumulative E {} vs recorded 0.9978041",
+        (cumulative_e[2] - 1.247255).abs() <= 1e-6,
+        "verdict CONSISTENT: following-object cumulative E {} vs recorded 1.247255",
         cumulative_e[2]
     );
 }
