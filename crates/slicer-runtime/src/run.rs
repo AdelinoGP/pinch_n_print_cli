@@ -9,18 +9,8 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
-use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+use slicer_ir::resolved_config::resolve_support_line_width_mm;
 use slicer_ir::{ConfigValue, MeshIR};
-
-fn resolve_support_line_width_mm(value: ResolvedFloatOrPercent, nozzle_diameter_mm: f32) -> f32 {
-    if value.is_percent {
-        value.value as f32 / 100.0 * nozzle_diameter_mm
-    } else if value.value == 0.0 {
-        nozzle_diameter_mm
-    } else {
-        value.value as f32
-    }
-}
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values

@@ -887,7 +887,7 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles = push_slice_regions(
+                let mut region_handles = push_slice_regions(
                     &mut store,
                     slice_ir,
                     layer_z,
@@ -897,6 +897,24 @@ impl WasmRuntimeDispatcher {
                     false,
                 )
                 .map_err(mk_ctx_err)?;
+                // Ticket 19: planned bodies with no slice geometry on this
+                // layer still need a region the renderer can look them up by.
+                for carrier in
+                    support_carrier_regions(module_claims, layer_index, support_plan_ir, slice_ir)
+                {
+                    let data = host::sliced_region_to_data(
+                        &carrier,
+                        layer_z,
+                        Vec::new(),
+                        surface_classification,
+                        layer_index,
+                    );
+                    let handle = store
+                        .data_mut()
+                        .push_slice_region(data)
+                        .map_err(mk_ctx_err)?;
+                    region_handles.push(handle);
+                }
                 let paint_data = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
@@ -1404,6 +1422,7 @@ impl WasmRuntimeDispatcher {
                     .unwrap_or_else(|| host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
                         candidates: Vec::new(), model_occupancy: Vec::new(), termination_surfaces: Vec::new(),
                         shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
+                        support_territory: Vec::new(),
                     });
                 let output = store
                     .data_mut()
@@ -2086,6 +2105,86 @@ fn push_slice_regions(
         handles.push(handle);
     }
     Ok(handles)
+}
+
+/// Support carrier regions (SchemaBridgeMap ticket 19).
+///
+/// Support is planned in the free air under an overhang, so a family may hold
+/// bodies on a layer where its region has NO cross-section at all — a
+/// modifier-minted sub-region below the overhang it modifies, or a floating
+/// part above nothing. Both Tier-2 gates (`module_receives_slice_region` and
+/// the per-layer scheduler in slicer-runtime `layer_executor.rs`) key on
+/// `layer.active_regions`, which only lists regions with geometry, so the
+/// family renderer was never invoked there and the planned column vanished
+/// between the plan and the G-code (measured: traditional support planned on
+/// layers 0..=123 of `resources/support_test_modifier_normal_in_tree.3mf`,
+/// renderer dispatched on 125..=149 only).
+///
+/// Returns one empty-geometry `SlicedRegion` per `(object, region)` that the
+/// support plan claims on `layer_index` for a family the module holds and
+/// that the slice does not already carry. The renderer only reads the
+/// identity (and `effective_layer_height`, borrowed from a sibling region of
+/// the same object when one exists) to look up its plan entries.
+pub fn support_carrier_regions(
+    module_claims: &[String],
+    layer_index: u32,
+    support_plan: Option<&slicer_ir::SupportPlanIR>,
+    slice: Option<&slicer_ir::SliceIR>,
+) -> Vec<slicer_ir::SlicedRegion> {
+    let families: Vec<&str> = module_claims
+        .iter()
+        .filter_map(|claim| claim.strip_prefix("support-family:"))
+        .map(|family| slicer_ir::canonical_support_family(Some(family)))
+        .collect();
+    let Some(plan) = support_plan else {
+        return Vec::new();
+    };
+    if families.is_empty() {
+        return Vec::new();
+    }
+    let present = |object_id: &str, region_id: u64| {
+        slice.is_some_and(|slice| {
+            slice
+                .regions
+                .iter()
+                .any(|region| region.object_id == object_id && region.region_id == region_id)
+        })
+    };
+    let mut carriers: Vec<slicer_ir::SlicedRegion> = Vec::new();
+    for entry in &plan.entries {
+        if entry.global_layer_index != layer_index as i32
+            || entry.decline_reason.is_some()
+            || !entry.roles.iter().any(|role| !role.regions.is_empty())
+            || !families.contains(&slicer_ir::canonical_support_family(Some(&entry.family_id)))
+            || present(&entry.object_id, entry.region_id)
+            || carriers.iter().any(|carrier| {
+                carrier.object_id == entry.object_id && carrier.region_id == entry.region_id
+            })
+        {
+            continue;
+        }
+        let effective_layer_height = slice
+            .and_then(|slice| {
+                slice
+                    .regions
+                    .iter()
+                    .find(|region| region.object_id == entry.object_id)
+                    .map(|region| region.effective_layer_height)
+            })
+            .unwrap_or(0.0);
+        carriers.push(slicer_ir::SlicedRegion {
+            object_id: entry.object_id.clone(),
+            region_id: entry.region_id,
+            effective_layer_height,
+            ..slicer_ir::SlicedRegion::default()
+        });
+    }
+    carriers.sort_by(|a, b| {
+        a.object_id
+            .cmp(&b.object_id)
+            .then(a.region_id.cmp(&b.region_id))
+    });
+    carriers
 }
 
 fn module_receives_slice_region(

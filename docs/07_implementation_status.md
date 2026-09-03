@@ -475,12 +475,14 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-148** (Open — 2026-08-24: row filed at the closure edition's spec-review so the standing deviation has a ledger entry; closure owned by docs/spec_packets/234a-internal-bridge-support-gating (this packet), which revises in place to terminate it) — Packet 234a (original edition) — internal-bridge-over-infill qualifies ZERO sites on calicat where canonical produces EXACTLY ONE near Z≈29.45.
 - **DEV-149** (Open — 2026-08-25: filed by packet 234a closure; explicitly out of scope under the owner ruling.) — Matched-profile low-z mid-stack internal-bridge qualification diverges from canonical.
 - **DEV-150** (Open — 2026-08-25: filed by packet 234a closure; explicitly out of scope under the owner ruling.) — Matched-profile cavity-site coverage is below canonical.
-- **DEV-153** (Open — 2026-08-25: filed by packet 234a closure review; explicitly out of scope under the owner ruling.) — Matched-profile internal-bridge role-labeling gap.
+- **DEV-153** (Open — 2026-08-25: filed by packet 234a closure review; explicitly out of scope under the owner ruling. Label half closed 2026-09-02 by SchemaBridgeMap ticket 19; classification half remains.) — Matched-profile internal-bridge role-labeling gap.
 - **DEV-151** (Open — 2026-08-25: filed by packet 234a closure.) — enable_extra_bridge_layer duplicates carry anchor-derived angles instead of canonical parent+π/2.
 - **DEV-152** (Open — 2026-08-25: filed by packet 234a closure.) — top_solid_infill_flow_ratio is unrepresentable in the config schema.
 - **DEV-154** (Open — 2026-08-24: filed by packet 238a, intentional representation divergence. Renumbered from the originally-filed DEV-148 during the 2026-08-28 merge of `origin/master` into `parity/support-features`: that ID was independently allocated on mainline by packet 234a.) — Support line width is key-based rather than flow-model based.
 - **DEV-156** (Open — 2026-08-27: alias + Warn implemented; organic engine port queued. Renumbered from the originally-filed DEV-150 during the 2026-08-28 merge of `origin/master` into `parity/support-features`: that ID was independently allocated on mainline by packet 234a.) — Organic tree engine not implemented; canonically-organic styles alias to the classic engine's Strong style.
 - **DEV-157** (Open — 2026-08-28: filed by packet `212-extra-perimeters-parity` as the surviving half of DEV-132; canonical dead-field status and the PnP per-region seam gap both verified.) — PnP models extra_perimeters as a global config key while canonical carries it per-Surface; carried forward from DEV-132 half (b) when packet 212-extra-perimete…
+- **DEV-158** (Open — 2026-08-28: filed by packet 247.) — Raft layers are not rendered in silhouette side views.
+- **DEV-159** (Open — 2026-09-02: filed by SchemaBridgeMap ticket 19 (reopened).) — Per-region support territory: a modifier-minted sub-region whose support_type family differs from its parent's confines each family to its own side of the modi…
 <!-- END GENERATED: open-deviations -->
 
 

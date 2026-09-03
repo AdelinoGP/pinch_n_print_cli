@@ -2082,6 +2082,10 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
                 object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
             }).collect(),
+            support_territory: support_analysis.support_territory.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
         };
         let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
         let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(
@@ -2467,6 +2471,14 @@ fn layer_light_helpers() -> TokenStream2 {
                     .iter()
                     .map(__slicer_wit_expolygon_to_ir)
                     .collect();
+                // Ticket 19 (R1): this field was never marshalled, so every
+                // guest saw an empty `internal_solid_fill` and the shell
+                // shadow read as exposed top.
+                let internal_solid_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .internal_solid_fill()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
                 let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .sparse_infill_area()
                     .iter()
@@ -2481,6 +2493,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_is_bridge(r.is_bridge());
                 sdk_view.set_bridge_areas(bridge_areas);
                 sdk_view.set_internal_bridge_areas(internal_bridge_areas);
+                sdk_view.set_internal_solid_fill(internal_solid_fill);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);
                 sdk_view.set_held_claims(r.held_claims());

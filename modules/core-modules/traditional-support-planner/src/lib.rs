@@ -391,6 +391,40 @@ impl SupportPlanner {
                 };
                 carry = host::clip_polygons(&carry, &trimming, ClipOperation::Difference);
             }
+            // Ticket 19: keep the column on the side of a modifier boundary
+            // this family owns. A minted sub-region keeps `carry ∩ own`; a
+            // base region keeps `carry - inflate(foreign, line width)` so the
+            // two families never touch. Orca has no per-region support family;
+            // this has no canonical counterpart. An emptied carry falls into
+            // the `NoRoute` decline below.
+            if !carry.is_empty() {
+                if let Some(own) =
+                    support_analysis.region_territory(&obj.object_id, layer, &candidate.region_id)
+                {
+                    carry = host::clip_polygons(&carry, own, ClipOperation::Intersection);
+                } else if let Some(partition) =
+                    support_analysis.territory_partition(&obj.object_id, layer, "traditional")
+                {
+                    if !partition.foreign.is_empty() {
+                        let bar = if self.line_width_mm > 0.0 {
+                            let grown = host::offset_polygons(
+                                &partition.foreign,
+                                self.line_width_mm,
+                                OffsetJoinType::Miter,
+                                0.0,
+                            );
+                            if grown.is_empty() {
+                                partition.foreign
+                            } else {
+                                grown
+                            }
+                        } else {
+                            partition.foreign
+                        };
+                        carry = host::clip_polygons(&carry, &bar, ClipOperation::Difference);
+                    }
+                }
+            }
             if carry.is_empty() {
                 // The object closes off every route below this layer. The demand
                 // is unmet and must be recorded as such — never silently

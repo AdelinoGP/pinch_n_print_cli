@@ -279,9 +279,14 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// only enforcer-covered geometry yields candidates, and `enforced`/`blocked`
 /// are now derived from sliced modifier volumes instead of being hardcoded
 /// `false`.
+///
+/// Bumped to 1.3.0 by SchemaBridgeMap ticket 19 (reopened): additive
+/// `support_territory` map — the per-layer XY territory owned by each minted
+/// modifier sub-region, so support families that disagree across a modifier
+/// boundary can be clipped to their own side instead of annihilated.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -1551,6 +1556,16 @@ pub struct SupportAnalysisIR {
     pub baseline_feasible_envelope: Vec<ExPolygon>,
     /// Per-object/per-region family assignments.
     pub family_assignments: BTreeMap<(ObjectId, RegionId), String>,
+    /// Support territory owned by each minted modifier sub-region, keyed
+    /// `(global_layer_index, object_id, modifier_sub_region_id)`. The value is
+    /// the modifier mesh's full cross-section at that layer's Z — NOT clipped
+    /// by the model, because support lives in the free air under it. Base
+    /// regions get no entry; consumers derive their own/foreign split from
+    /// `family_assignments` (see `SupportAnalysisView::territory_partition`).
+    /// Orca has no per-region support family, so this carrier has no
+    /// canonical counterpart (see `docs/DEVIATION_LOG.md`).
+    #[serde(default)]
+    pub support_territory: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
 }
 
 impl Default for SupportAnalysisIR {
@@ -1564,6 +1579,7 @@ impl Default for SupportAnalysisIR {
             shared_settings: BTreeMap::new(),
             baseline_feasible_envelope: Vec::new(),
             family_assignments: BTreeMap::new(),
+            support_territory: HashMap::new(),
         }
     }
 }

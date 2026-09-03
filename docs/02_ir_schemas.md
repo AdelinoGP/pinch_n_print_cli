@@ -937,9 +937,12 @@ resolved region/config values, rather than hardcoded constants or a literal
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 1.2.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by packet 237 — additive
-`cantilever_surfaces` map (see below), `#[serde(default)]` and host-only. Prior
+**Current schema_version: 1.3.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by SchemaBridgeMap ticket 19
+(reopened, 2026-09-02) — additive `support_territory` map (see below),
+`#[serde(default)]`, mirrored on the WIT `support-analysis-view` as
+`support-territory`. Prior version 1.2.0 by packet 237 — additive
+`cantilever_surfaces` map, `#[serde(default)]` and host-only. Prior
 version 1.1.0 by F-19 — the shape was otherwise unchanged, but the
 candidate-population semantics changed: under a *manual* `support_type` only
 enforcer-covered geometry yields candidates, and `enforced` / `blocked` are
@@ -986,6 +989,22 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   feasible envelope before any family-specific tightening.
 - `family_assignments: BTreeMap<(ObjectId, RegionId), String>` — the
   deterministic per-region family assignment (region → family id).
+- `support_territory: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the XY
+  territory owned by each minted modifier sub-region, keyed
+  `(global_layer_index, object_id, modifier_sub_region_id)`. The value is the
+  modifier mesh's full cross-section at the layer Z, sliced per layer exactly
+  as `split_modifier_sub_regions_for_prepass` slices it (so the FNV id from
+  `slicer_ir::modifier_sub_region_id` matches the region map byte-for-byte)
+  and deliberately NOT clipped by the model — support lives in the free air
+  under it. Base regions get no entry. Consumers derive own/foreign through
+  `SupportAnalysisView::territory_partition` and apply one clip rule: a
+  sub-region body keeps `roles ∩ own`; a base-region body keeps
+  `roles − inflate(foreign, clearance)` with the clearance published in
+  `shared_settings["support_territory_clearance_mm"]` (the resolved support
+  line width). The tree planner also folds foreign territory into its
+  collision ladder so avoidance routes around it; the traditional planner
+  clips its carry; host aggregation re-applies the rule and reports the trim
+  as Info diagnostic 1205 instead of rejecting both families (DEV-159).
 
 **Determinism:** `family_assignments` is a `BTreeMap` keyed by
 `(ObjectId, RegionId)`, so per-region family assignment is deterministic and

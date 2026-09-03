@@ -731,6 +731,15 @@ fn execute_single_layer_inner(
                         region,
                     )
                 })
+                // Ticket 19: a family renderer must also run where its plan
+                // holds bodies but no region has geometry (support carriers).
+                && slicer_wasm_host::dispatch::support_carrier_regions(
+                    module.claims(),
+                    layer.index,
+                    blackboard.support_plan().map(Arc::as_ref),
+                    arena.slice(),
+                )
+                .is_empty()
             {
                 continue;
             }

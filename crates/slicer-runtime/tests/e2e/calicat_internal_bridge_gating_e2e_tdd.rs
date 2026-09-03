@@ -3,9 +3,15 @@
 //! Slices `resources/calicat.stl` twice and asserts:
 //! 1. **Byte-identity** of the two outputs (determinism of the new
 //!    ShellClassification internal-bridge pass).
-//! 2. **Matched-profile label pin**: the fresh matched-oracle slice has no
-//!    `;TYPE:Internal Bridge` sections; bridge geometry is currently emitted
-//!    under other role labels (see DEV-153).
+//! 2. **Internal-bridge label**: host-qualified internal-bridge sites carry
+//!    `;TYPE:Internal Bridge`, and the combined bridge-labelled extrusion is
+//!    unchanged by that labelling — the sites moved from the `Bridge` bucket
+//!    to the `Internal Bridge` one (DEV-153 first half, closed by
+//!    SchemaBridgeMap ticket 19). Measured on this fixture: 3 internal-bridge
+//!    layers at z = 4.45 / 18.45 / 29.45, combined 25.49 mm against 25.39 mm
+//!    before the split. The remaining DEV-153 gap is the distance from either
+//!    number to canonical's ~950.56 mm: most calicat bridge geometry is still
+//!    not classified as bridge at all.
 //! 3. **External-row guard** (packet-235 regression): at the layer nearest
 //!    Z≈3.2 the `;TYPE:Bridge` row keeps a dominant direction within
 //!    [85°, 95°] (baseline after packet 235: 90.0° over 74 segments /
@@ -223,13 +229,15 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
     let zs: Vec<f32> = ib_layers.iter().map(|layer| layer.z).collect();
     println!("internal-bridge layers={} (z={zs:?})", ib_layers.len());
     assert!(
-        ib_layers.is_empty(),
-        "AC-6: matched-profile Internal-Bridge-labelled layers = {}, expected 0 (zs={zs:?})",
-        ib_layers.len()
+        !ib_layers.is_empty(),
+        "AC-6: internal bridges must carry the Internal Bridge label (DEV-153 closed          by SchemaBridgeMap ticket 19); found none"
     );
 
-    // Informational: combined bridge-labelled extrusion (Bridge + Internal
-    // Bridge), for comparison against the canonical reference (~950.56 mm).
+    // Combined bridge-labelled extrusion (Bridge + Internal Bridge), against
+    // the canonical reference (~950.56 mm). This is the conservation check
+    // that makes the label flip above a RELABEL rather than new or lost
+    // geometry: the sites moved from the `Bridge` bucket to the
+    // `Internal Bridge` one, so only the per-role flow/density differ.
     let combined: f64 = layers
         .iter()
         .map(|layer| {
@@ -238,6 +246,10 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         })
         .sum();
     println!("combined bridge-labelled extrusion = {combined:.2} mm");
+    assert!(
+        (24.0..=27.0).contains(&combined),
+        "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the          relabel to conserve it (measured: 25.39 mm before the internal-bridge          split, 25.49 mm after). A large move means geometry was gained or lost,          not relabelled."
+    );
 
     // (3) External-row guard at Z≈3.2: dominant angle within [85°, 95°].
     let (ext_layer, ext_z) = layers

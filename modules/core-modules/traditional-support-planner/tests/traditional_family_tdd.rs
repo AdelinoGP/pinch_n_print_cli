@@ -9,6 +9,7 @@ use slicer_ir::{
     SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
+use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
@@ -317,10 +318,10 @@ fn contact_area_planning() {
         }
     }
     assert!(
-        output
-            .entries()
+        output.entries().iter().any(|e| e
+            .roles
             .iter()
-            .any(|e| e.roles.iter().any(|r| r.role == SupportPlanRole::SupportBody)),
+            .any(|r| r.role == SupportPlanRole::SupportBody)),
         "a multi-layer column must carry body geometry below its interface band"
     );
     assert!(
@@ -1142,4 +1143,140 @@ fn short_plate_column_keeps_its_plate_layer_in_the_top_band() {
          the top-interface band: {:?}",
         plate_entry.roles
     );
+}
+
+fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x0, y0),
+                Point2::from_mm(x1, y0),
+                Point2::from_mm(x1, y1),
+                Point2::from_mm(x0, y1),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+fn territory_entries(region_id: &str, footprint: &ExPolygon) -> Vec<SupportAnalysisGeometryEntry> {
+    (0..10)
+        .map(|layer| SupportAnalysisGeometryEntry {
+            global_support_layer_index: layer,
+            object_id: "territory".into(),
+            region_id: region_id.into(),
+            polygons: vec![footprint.clone()],
+        })
+        .collect()
+}
+
+/// Ticket 19: a candidate planned for a minted sub-region keeps every role
+/// inside that sub-region's own footprint.
+#[test]
+fn sub_region_column_stays_inside_own_territory() {
+    let own = rect(1.0, 0.0, 3.0, 4.0);
+    let output = run_planner_with_analysis(
+        true,
+        overhang_object("territory"),
+        SupportAnalysisView {
+            candidates: vec![SupportAnalysisCandidate {
+                id: 19,
+                object_id: "territory".into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            }],
+            family_assignments: vec![traditional_assignment("territory")],
+            support_territory: territory_entries("0", &own),
+            ..Default::default()
+        },
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|entry| entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "column must still be planned inside its own footprint"
+    );
+    for entry in output.entries() {
+        for role in &entry.roles {
+            let outside =
+                host::clip_polygons(&role.regions, &[own.clone()], ClipOperation::Difference);
+            assert!(
+                outside.is_empty(),
+                "layer {} role {:?} leaves the sub-region footprint: {:?}",
+                entry.global_layer_index,
+                role.role,
+                outside
+            );
+        }
+    }
+}
+
+/// Ticket 19: a base-region column keeps clear of territory owned by another
+/// family, by at least the line width.
+#[test]
+fn base_column_keeps_clear_of_foreign_territory() {
+    let foreign = rect(2.0, 0.0, 4.0, 4.0);
+    let output = run_planner_with_analysis(
+        true,
+        overhang_object("territory"),
+        SupportAnalysisView {
+            candidates: vec![SupportAnalysisCandidate {
+                id: 19,
+                object_id: "territory".into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            }],
+            family_assignments: vec![
+                traditional_assignment("territory"),
+                SupportFamilyAssignment {
+                    object_id: "territory".into(),
+                    region_id: "1".into(),
+                    family_id: "tree".into(),
+                },
+            ],
+            support_territory: territory_entries("1", &foreign),
+            ..Default::default()
+        },
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|entry| entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "column must still be planned on its own side"
+    );
+    for entry in output.entries() {
+        for role in &entry.roles {
+            let inside = host::clip_polygons(
+                &role.regions,
+                &[foreign.clone()],
+                ClipOperation::Intersection,
+            );
+            assert!(
+                inside.is_empty(),
+                "layer {} role {:?} enters the foreign footprint: {:?}",
+                entry.global_layer_index,
+                role.role,
+                inside
+            );
+            for region in &role.regions {
+                for point in &region.contour.points {
+                    assert!(
+                        point.x <= slicer_ir::mm_to_units(2.0),
+                        "layer {} role {:?} point {:?} crosses the boundary",
+                        entry.global_layer_index,
+                        role.role,
+                        point
+                    );
+                }
+            }
+        }
+    }
 }

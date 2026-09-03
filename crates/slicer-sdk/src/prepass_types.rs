@@ -466,6 +466,87 @@ pub struct SupportAnalysisView {
     pub baseline_feasible_envelope: Vec<ExPolygon>,
     /// Per-object/per-region family assignments.
     pub family_assignments: Vec<SupportFamilyAssignment>,
+    /// Support territory owned by each minted modifier sub-region, keyed by
+    /// `(global_support_layer_index, object_id, region_id)`. The polygons are
+    /// the modifier mesh's full cross-section at the layer Z, unclipped by the
+    /// model. Base regions have no entry.
+    pub support_territory: Vec<SupportAnalysisGeometryEntry>,
+}
+
+/// The own/foreign split of one object's support territory at one layer,
+/// as seen by one support family. See
+/// [`SupportAnalysisView::territory_partition`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TerritoryPartition {
+    /// Territory of the sub-regions assigned to the querying family.
+    pub own: Vec<ExPolygon>,
+    /// Territory of the sub-regions assigned to any other family.
+    pub foreign: Vec<ExPolygon>,
+}
+
+impl SupportAnalysisView {
+    /// Family of an object region, when the host assigned one.
+    pub fn family_of(&self, object_id: &str, region_id: &str) -> Option<&str> {
+        self.family_assignments
+            .iter()
+            .find(|assignment| {
+                assignment.object_id == object_id && assignment.region_id == region_id
+            })
+            .map(|assignment| assignment.family_id.as_str())
+    }
+
+    /// Territory owned by one region at one layer, or `None` when the region
+    /// is a base region (holds no territory) or the layer carries none.
+    pub fn region_territory(
+        &self,
+        object_id: &str,
+        layer: u32,
+        region_id: &str,
+    ) -> Option<&[ExPolygon]> {
+        self.support_territory
+            .iter()
+            .find(|entry| {
+                entry.object_id == object_id
+                    && entry.global_support_layer_index == layer
+                    && entry.region_id == region_id
+            })
+            .map(|entry| entry.polygons.as_slice())
+    }
+
+    /// Split one object's territory at one layer into the parts owned by
+    /// `family_id` and the parts owned by other families. Pure collection: no
+    /// geometry is computed, so both host and guest can consume it and apply
+    /// their own clipping.
+    ///
+    /// Returns `None` when the object carries no territory at that layer, so a
+    /// consumer can tell "no modifier here" apart from "everything is foreign".
+    ///
+    /// Clip rule shared by every consumer (planners and host aggregation):
+    /// a base-region body keeps `roles - inflate(foreign, clearance)`; a
+    /// sub-region body keeps `roles ∩ own`. The clearance is applied on the
+    /// base side only, so the two families never touch.
+    pub fn territory_partition(
+        &self,
+        object_id: &str,
+        layer: u32,
+        family_id: &str,
+    ) -> Option<TerritoryPartition> {
+        let mut partition = TerritoryPartition::default();
+        let mut found = false;
+        for entry in self.support_territory.iter().filter(|entry| {
+            entry.object_id == object_id && entry.global_support_layer_index == layer
+        }) {
+            found = true;
+            let owned = self.family_of(object_id, &entry.region_id) == Some(family_id);
+            let bucket = if owned {
+                &mut partition.own
+            } else {
+                &mut partition.foreign
+            };
+            bucket.extend(entry.polygons.iter().cloned());
+        }
+        found.then_some(partition)
+    }
 }
 
 /// Severity level for a diagnostic message.

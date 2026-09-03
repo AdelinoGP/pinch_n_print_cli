@@ -9,11 +9,12 @@ use slicer_ir::{
     SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
+use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisView,
-    SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
+    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -1249,4 +1250,145 @@ fn radius_raises_to_base_under_interfaces() {
         interface_adjusted_radius(ordinary, base_radius, 0, true),
         ordinary
     );
+}
+
+/// Ticket 19: territory owned by another family is barred like the model.
+/// The tree is the base family here; a traditional sub-region owns the right
+/// half of the overhang. No tree role area and no skeleton point may enter
+/// that half, while the branch still reaches the plate on its own side.
+#[test]
+fn foreign_territory_bars_tree_roles_and_skeleton() {
+    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: vec![],
+        }
+    }
+    fn area(poly: &ExPolygon) -> f64 {
+        let ring = |points: &[Point2]| -> f64 {
+            points
+                .iter()
+                .enumerate()
+                .map(|(i, a)| {
+                    let b = &points[(i + 1) % points.len()];
+                    (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64)
+                })
+                .sum::<f64>()
+                .abs()
+                * 0.5
+        };
+        ring(&poly.contour.points) - poly.holes.iter().map(|h| ring(&h.points)).sum::<f64>()
+    }
+    let foreign = rect(2.0, 0.0, 4.0, 4.0);
+    let candidate = SupportAnalysisCandidate {
+        id: 19,
+        object_id: "territory".into(),
+        region_id: "0".into(),
+        global_layer_index: 8,
+        z_units: slicer_ir::mm_to_units(1.8),
+        geometry: vec![rect(0.0, 0.0, 2.0, 4.0)],
+        ..Default::default()
+    };
+    let assignments = vec![
+        SupportFamilyAssignment {
+            object_id: "territory".into(),
+            region_id: "0".into(),
+            family_id: "tree".into(),
+        },
+        SupportFamilyAssignment {
+            object_id: "territory".into(),
+            region_id: "1".into(),
+            family_id: "traditional".into(),
+        },
+    ];
+    let with_territory = run_planner_with_analysis_and_diameter(
+        true,
+        overhang("territory", 0.0, 0.0, 4.0),
+        SupportAnalysisView {
+            candidates: vec![candidate.clone()],
+            family_assignments: assignments.clone(),
+            support_territory: (0..10)
+                .map(|layer| SupportAnalysisGeometryEntry {
+                    global_support_layer_index: layer,
+                    object_id: "territory".into(),
+                    region_id: "1".into(),
+                    polygons: vec![foreign.clone()],
+                })
+                .collect(),
+            ..Default::default()
+        },
+        1.0,
+    );
+    let control = run_planner_with_analysis_and_diameter(
+        true,
+        overhang("territory", 0.0, 0.0, 4.0),
+        SupportAnalysisView {
+            candidates: vec![candidate],
+            family_assignments: assignments,
+            ..Default::default()
+        },
+        1.0,
+    );
+    let role_area = |output: &SupportGeometryOutput| -> f64 {
+        output
+            .entries()
+            .iter()
+            .flat_map(|entry| entry.roles.iter())
+            .flat_map(|role| role.regions.iter())
+            .map(area)
+            .sum()
+    };
+    assert!(
+        role_area(&control) > 0.0,
+        "control must plan support, or the territory assertions prove nothing"
+    );
+    assert!(
+        role_area(&with_territory) > 0.0,
+        "tree support must survive on its own side of the boundary"
+    );
+    assert!(
+        with_territory
+            .entries()
+            .iter()
+            .any(|entry| entry.global_layer_index == 0
+                && entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "branch must still reach the plate outside the foreign half; entries={:?}",
+        with_territory
+            .entries()
+            .iter()
+            .map(|e| e.global_layer_index)
+            .collect::<Vec<_>>()
+    );
+    for entry in with_territory.entries() {
+        for role in &entry.roles {
+            let inside = host::clip_polygons(
+                &role.regions,
+                &[foreign.clone()],
+                ClipOperation::Intersection,
+            );
+            let inside_area: f64 = inside.iter().map(area).sum();
+            assert_eq!(
+                inside_area, 0.0,
+                "layer {} role {:?} has area inside the foreign half",
+                entry.global_layer_index, role.role
+            );
+        }
+        if let Some(skeleton) = &entry.skeleton {
+            for point in &skeleton.points {
+                let inside_foreign = point.x > 2.0 && point.y > 0.0 && point.y < 4.0;
+                assert!(
+                    !inside_foreign,
+                    "layer {} skeleton point {:?} lies inside the foreign half",
+                    entry.global_layer_index, point
+                );
+            }
+        }
+    }
 }

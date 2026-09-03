@@ -414,6 +414,7 @@ fn execute_prepass_with_instrumentation_collecting(
                 aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
                     support_plans,
                     &exact_z,
+                    blackboard.support_analysis().map(Arc::as_ref),
                 );
             let aggregation_module = ModuleId::from("host:support_plan_aggregation");
             // The aggregate is a host-owned stage result, but its diagnostics

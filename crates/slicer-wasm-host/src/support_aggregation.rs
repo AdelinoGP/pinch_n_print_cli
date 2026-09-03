@@ -1,11 +1,13 @@
 //! Host-owned support-family aggregation and degraded validation.
 
 use slicer_ir::{
-    units_to_mm, ExPolygon, RaftPlan, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR,
+    units_to_mm, ExPolygon, RaftPlan, SupportAnalysisIR, SupportPlanDeclineReason,
+    SupportPlanEntry, SupportPlanIR,
 };
 use std::collections::{HashMap, HashSet};
 
 use crate::exact_z_query::ExactZQueryService;
+use crate::support_territory::TerritoryClipper;
 
 /// Edge length of one deterministic host routing cell, in canonical
 /// coordinate units. Routing cells partition feasible space into a fixed grid
@@ -38,6 +40,10 @@ pub struct SupportAggregationInput<'a> {
     pub plans: Vec<SupportPlanIR>,
     /// Host-owned exact-Z query service used for validation.
     pub exact_z: &'a ExactZQueryService,
+    /// Committed support analysis, read for its `support_territory` map
+    /// (ticket 19). `None`, or an analysis without territory, keeps the
+    /// territory-free cross-family guard for every layer.
+    pub territory: Option<&'a SupportAnalysisIR>,
 }
 
 /// What aggregation does when two *different* families claim one
@@ -107,6 +113,27 @@ pub struct SupportRoutingDiagnostics {
 
 const SUPPORT_OVERLAP_TOLERANCE: i64 = 0;
 
+/// One body trimmed to its family's support territory (ticket 19). Trimming
+/// is expected behaviour where two families meet across a modifier boundary,
+/// so it is reported as Info code 1205 — never as `unmet`, never `degraded`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClippedSupportBody {
+    /// Family that owned the trimmed body.
+    pub family_id: String,
+    /// Body identities carried by the trimmed entry.
+    pub body_ids: Vec<String>,
+    /// Object the entry belongs to.
+    pub object_id: String,
+    /// Layer the entry belongs to.
+    pub global_layer_index: i32,
+    /// Region the entry was planned for.
+    pub region_id: u64,
+    /// Area removed, in canonical units squared.
+    pub removed_area: f64,
+    /// Whether nothing of the body survived and the entry was dropped.
+    pub dropped: bool,
+}
+
 /// Validated aggregate. Invalid bodies are removed as complete entries.
 #[derive(Debug, Default)]
 pub struct SupportAggregationResult {
@@ -116,6 +143,8 @@ pub struct SupportAggregationResult {
     pub unmet: Vec<UnmetSupportDemand>,
     /// Whether at least one body was rejected.
     pub degraded: bool,
+    /// Bodies trimmed to their family's support territory (ticket 19).
+    pub clipped: Vec<ClippedSupportBody>,
     /// Duplicate identities rejected in deterministic input order.
     pub duplicates: Vec<DuplicateSupportPlanEntry>,
     /// Raft metadata merged from all family plans.
@@ -343,6 +372,60 @@ pub fn try_aggregate_support_plans_with_policy(
     // union cannot introduce an overlap that was absent from every input -- so
     // re-checking it after merging would be redundant as well.
     union_same_family_entries(&mut result.retained);
+    // Ticket 19: where the host published support territory for an
+    // `(object, layer)`, each retained body is clipped to the side its family
+    // owns (sub-region: `∩ own`; base: `- inflate(foreign, clearance)`).
+    // Two families meeting across a modifier boundary is the *intended*
+    // outcome there, so the clip is recorded as Info 1205 and the reject-both
+    // guard below is skipped for those layers. Layers without territory keep
+    // the guard unchanged.
+    let clipper = input.territory.and_then(TerritoryClipper::from_ir);
+    let has_territory = |entry: &SupportPlanEntry| {
+        entry.global_layer_index >= 0
+            && clipper.as_ref().is_some_and(|clipper| {
+                clipper.has_territory(&entry.object_id, entry.global_layer_index as u32)
+            })
+    };
+    if let Some(clipper) = clipper.as_ref() {
+        let retained = std::mem::take(&mut result.retained);
+        for mut entry in retained {
+            if !has_territory(&entry) {
+                result.retained.push(entry);
+                continue;
+            }
+            let layer = entry.global_layer_index as u32;
+            let region_id = entry.region_id.to_string();
+            let before = roles_area(&entry);
+            for role in &mut entry.roles {
+                if let Some(kept) = clipper.clip(
+                    &entry.object_id,
+                    layer,
+                    &region_id,
+                    &entry.family_id,
+                    &role.regions,
+                ) {
+                    role.regions = kept;
+                }
+            }
+            entry.roles.retain(|role| !role.regions.is_empty());
+            let after = roles_area(&entry);
+            let dropped = entry.roles.is_empty();
+            if dropped || after < before {
+                result.clipped.push(ClippedSupportBody {
+                    family_id: entry.family_id.clone(),
+                    body_ids: entry.body_ids.clone(),
+                    object_id: entry.object_id.clone(),
+                    global_layer_index: entry.global_layer_index,
+                    region_id: entry.region_id,
+                    removed_area: before - after,
+                    dropped,
+                });
+            }
+            if !dropped {
+                result.retained.push(entry);
+            }
+        }
+    }
     // Cross-family overlap is a FAMILY-ARBITRATION guard, not a plate-wide
     // collision check: it exists because two families that both claim positive
     // area for the same slice of the same object would double-extrude there,
@@ -367,6 +450,7 @@ pub fn try_aggregate_support_plans_with_policy(
             if a.object_id == b.object_id
                 && a.global_layer_index == b.global_layer_index
                 && a.family_id != b.family_id
+                && !has_territory(a)
                 && entries_overlap(a, b)
             {
                 rejected[left] = true;
@@ -400,6 +484,15 @@ pub fn try_aggregate_support_plans_with_policy(
         }
     }
     Ok(result)
+}
+
+fn roles_area(entry: &SupportPlanEntry) -> f64 {
+    entry
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .map(expolygon_area)
+        .sum()
 }
 
 fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cmp::Ordering {
@@ -569,6 +662,7 @@ pub fn aggregate_support_plan_ir(
     let aggregate = try_aggregate_support_plans(SupportAggregationInput {
         plans: vec![plan.clone()],
         exact_z,
+        territory: None,
     })?;
     Ok(SupportPlanIR {
         schema_version: plan.schema_version,
@@ -664,28 +758,37 @@ pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
 ///
 /// This is the form the prepass uses: it needs to attach each diagnostic to
 /// the audit of the module that actually produced the offending plan, not to
-/// whichever family writer happened to run last.
+/// whichever family writer happened to run last. It is also the only wrapper
+/// that takes the committed support analysis, whose `support_territory`
+/// (ticket 19) clips cross-family bodies instead of rejecting them; the
+/// other wrappers serve territory-free callers and pass `None`.
 pub fn aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
+    territory: Option<&SupportAnalysisIR>,
 ) -> (SupportPlanIR, Vec<AttributedDiagnostic>) {
-    aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, FamilyConflictPolicy::Degrade)
-        .unwrap_or_else(|error| {
-            // Unreachable under `Degrade`, which never returns `Err`.
-            (
-                SupportPlanIR::default(),
-                vec![AttributedDiagnostic {
-                    plan_index: None,
-                    diagnostic: slicer_ir::Diagnostic {
-                        severity: slicer_ir::DiagnosticSeverity::Error,
-                        code: 1204,
-                        layer: None,
-                        object_id: None,
-                        message: format!("support family routing mismatch: {error:?}"),
-                    },
-                }],
-            )
-        })
+    aggregate_support_plan_irs_with_policy_attributed(
+        plans,
+        exact_z,
+        territory,
+        FamilyConflictPolicy::Degrade,
+    )
+    .unwrap_or_else(|error| {
+        // Unreachable under `Degrade`, which never returns `Err`.
+        (
+            SupportPlanIR::default(),
+            vec![AttributedDiagnostic {
+                plan_index: None,
+                diagnostic: slicer_ir::Diagnostic {
+                    severity: slicer_ir::DiagnosticSeverity::Error,
+                    code: 1204,
+                    layer: None,
+                    object_id: None,
+                    message: format!("support family routing mismatch: {error:?}"),
+                },
+            }],
+        )
+    })
 }
 
 fn aggregate_support_plan_irs_with_policy(
@@ -694,7 +797,7 @@ fn aggregate_support_plan_irs_with_policy(
     conflict_policy: FamilyConflictPolicy,
 ) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
     let (plan, attributed) =
-        aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, conflict_policy)?;
+        aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, None, conflict_policy)?;
     Ok((
         plan,
         attributed
@@ -707,6 +810,7 @@ fn aggregate_support_plan_irs_with_policy(
 fn aggregate_support_plan_irs_with_policy_attributed(
     plans: Vec<SupportPlanIR>,
     exact_z: &ExactZQueryService,
+    territory: Option<&SupportAnalysisIR>,
     conflict_policy: FamilyConflictPolicy,
 ) -> Result<(SupportPlanIR, Vec<AttributedDiagnostic>), SupportAggregationError> {
     let schema_version = plans
@@ -717,6 +821,7 @@ fn aggregate_support_plan_irs_with_policy_attributed(
         SupportAggregationInput {
             plans: plans.clone(),
             exact_z,
+            territory,
         },
         conflict_policy,
     )?;
@@ -785,6 +890,25 @@ fn aggregate_support_plan_irs_with_policy_attributed(
                 duplicate.region_id,
                 duplicate.first_family_id,
                 duplicate.duplicate_family_id
+            ),
+        },
+    }));
+    // Ticket 19: territory clips are expected where two families meet across
+    // a modifier boundary. Info, not Warn: nothing is unmet.
+    diagnostics.extend(aggregate.clipped.iter().map(|clipped| AttributedDiagnostic {
+        plan_index: family_to_plan.get(clipped.family_id.as_str()).copied(),
+        diagnostic: slicer_ir::Diagnostic {
+            severity: slicer_ir::DiagnosticSeverity::Info,
+            code: 1205,
+            layer: Some(clipped.global_layer_index),
+            object_id: Some(clipped.object_id.clone()),
+            message: format!(
+                "support body clipped to family territory: family='{}', bodies={:?}, region={}, removed_area={:.0}{}",
+                clipped.family_id,
+                clipped.body_ids,
+                clipped.region_id,
+                clipped.removed_area,
+                if clipped.dropped { ", entry dropped" } else { "" }
             ),
         },
     }));

@@ -1298,6 +1298,19 @@ struct TreeVolumes {
     max_move_distances: Vec<f32>,
     /// Canonical `m_xy_distance` — the `support_object_xy_distance` setting.
     xy_distance: f32,
+    /// Ticket 19: per-layer support territory owned by sub-regions of OTHER
+    /// families (raw modifier cross-sections). Kept OUT of `layer_outlines`
+    /// (those drive the per-part MST grouping and `to_buildplate` decisions)
+    /// and folded into the collision ladder only, so avoidance routes branches
+    /// around it exactly as it routes them around the model. Orca has no
+    /// per-region support family; this has no canonical counterpart.
+    foreign_territory: Vec<Vec<ExPolygon>>,
+    /// `foreign_territory` grown by the base-side clearance (the support
+    /// line width), used by the emit pass to carve role areas and reject
+    /// skeleton points.
+    foreign_bar: Vec<Vec<ExPolygon>>,
+    /// Clearance a tree body keeps from foreign territory, in mm.
+    territory_clearance: f32,
     collision: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
     avoidance: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
 }
@@ -1323,10 +1336,54 @@ impl TreeVolumes {
     fn new(
         layer_plan: &LayerPlanView,
         support_geometry: &SupportGeometryView,
+        support_analysis: &SupportAnalysisView,
         branch_angle_deg: f32,
         xy_distance: f32,
+        territory_clearance: f32,
     ) -> Self {
         let layer_count = layer_plan.layers.len();
+        let territory_clearance = territory_clearance.max(0.0);
+        // Ticket 19: territory owned by any family other than tree is an
+        // obstacle for every tree branch on that layer.
+        let mut foreign_territory: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+        for entry in &support_analysis.support_territory {
+            let layer_idx = entry.global_support_layer_index as usize;
+            if layer_idx >= layer_count {
+                continue;
+            }
+            let owned_by_tree = support_analysis
+                .family_of(&entry.object_id, &entry.region_id)
+                .is_some_and(|family| canonical_support_family_alias(Some(family)) == "tree");
+            if !owned_by_tree {
+                foreign_territory[layer_idx].extend(entry.polygons.iter().cloned());
+            }
+        }
+        let foreign_layers: Vec<usize> = (0..layer_count)
+            .filter(|l| !foreign_territory[*l].is_empty())
+            .collect();
+        let mut foreign_bar: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+        if territory_clearance > 0.0 {
+            let inflated = slicer_sdk::host_batch::batch_offset(&foreign_layers, |layer| {
+                slicer_sdk::host_batch::OffsetRequest {
+                    polygons: foreign_territory[*layer].clone(),
+                    delta_mm: territory_clearance,
+                    join: OffsetJoinType::Miter,
+                    arc_tolerance_mm: 0.0,
+                    miter_limit: Some(3.0),
+                }
+            });
+            for (layer, polys) in inflated {
+                foreign_bar[*layer] = if polys.is_empty() {
+                    foreign_territory[*layer].clone()
+                } else {
+                    polys
+                };
+            }
+        } else {
+            for layer in &foreign_layers {
+                foreign_bar[*layer] = foreign_territory[*layer].clone();
+            }
+        }
         let mut layer_outlines: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
         for entry in &support_geometry.entries {
             let layer_idx = entry.global_support_layer_index as usize;
@@ -1374,9 +1431,20 @@ impl TreeVolumes {
             layer_outlines_below,
             max_move_distances,
             xy_distance: xy_distance.max(0.0),
+            foreign_territory,
+            foreign_bar,
+            territory_clearance,
             collision: std::cell::RefCell::new(std::collections::HashMap::new()),
             avoidance: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Ticket 19: foreign territory at a layer, grown by the base-side
+    /// clearance. Empty when no other family owns territory there.
+    fn foreign_bar_at(&self, layer: usize) -> &[ExPolygon] {
+        self.foreign_bar
+            .get(layer)
+            .map_or(&[][..], |v| v.as_slice())
     }
 
     fn layer_count(&self) -> usize {
@@ -1425,28 +1493,54 @@ impl TreeVolumes {
     /// `collision(r, l) = simplify(offset_ex(outlines[l], r + xy_distance))`.
     /// Every layer's inflation is independent, so the whole stack goes to the
     /// host in one batch (ADR-0049) rather than one call per layer.
+    ///
+    /// Ticket 19: foreign support territory joins the ladder at
+    /// `radius + territory_clearance` (the clearance plays the role
+    /// `xy_distance` plays for the model), so the drop gates and the avoidance
+    /// recurrence keep branches out of the other family's half.
     fn ensure_collision(&self, radius_mm: f32) {
         let key = radius_key(radius_mm);
         if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
             return;
         }
         let inflate = ceil_radius(radius_mm) + self.xy_distance;
+        let inflate_foreign = ceil_radius(radius_mm) + self.territory_clearance;
         let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
-        let indexed: Vec<usize> = (0..self.layer_count())
-            .filter(|l| !self.layer_outlines[*l].is_empty())
+        // `(layer, is_foreign)`: one request per non-empty source per layer.
+        let indexed: Vec<(usize, bool)> = (0..self.layer_count())
+            .flat_map(|l| {
+                let outlines = (!self.layer_outlines[l].is_empty()).then_some((l, false));
+                let foreign = (!self.foreign_territory[l].is_empty()).then_some((l, true));
+                outlines.into_iter().chain(foreign)
+            })
             .collect();
-        let inflated = slicer_sdk::host_batch::batch_offset(&indexed, |layer| {
+        let inflated = slicer_sdk::host_batch::batch_offset(&indexed, |(layer, is_foreign)| {
             slicer_sdk::host_batch::OffsetRequest {
-                polygons: self.layer_outlines[*layer].clone(),
-                delta_mm: inflate,
+                polygons: if *is_foreign {
+                    self.foreign_territory[*layer].clone()
+                } else {
+                    self.layer_outlines[*layer].clone()
+                },
+                delta_mm: if *is_foreign {
+                    inflate_foreign
+                } else {
+                    inflate
+                },
                 join: OffsetJoinType::Miter,
                 arc_tolerance_mm: 0.0,
                 miter_limit: Some(3.0),
             }
         });
+        let mut raw_by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
+        for ((layer, _), polys) in inflated {
+            raw_by_layer[*layer].extend(polys);
+        }
         let mut by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
-        for (layer, polys) in inflated {
-            by_layer[*layer] = expolygons_simplify(&polys, tolerance_units);
+        for (layer, polys) in raw_by_layer.into_iter().enumerate() {
+            if polys.is_empty() {
+                continue;
+            }
+            by_layer[layer] = expolygons_simplify(&union_expolys(polys), tolerance_units);
         }
         let mut cache = self.collision.borrow_mut();
         for (layer, polys) in by_layer.into_iter().enumerate() {
@@ -1743,8 +1837,10 @@ impl PrepassModule for SupportPlanner {
         let volumes = TreeVolumes::new(
             layer_plan,
             support_geometry,
+            support_analysis,
             self.branch_angle_deg,
             self.support_object_xy_distance,
+            self.support_line_width_mm,
         );
         // Both ladders are now keyed on the canonical *avoidance query radius*
         // `calc_radius(dist_mm_to_top + height)` (global base-radius taper) and
@@ -2972,11 +3068,20 @@ impl SupportPlanner {
                     .collect::<Vec<_>>(),
                 self.support_object_xy_distance,
             );
-            let collision_polys: &[ExPolygon] = if model_collision.is_empty() {
+            // Ticket 19: foreign support territory (grown by the clearance)
+            // is carved like the model, so no tree role area survives inside
+            // the other family's half.
+            let foreign_bar = volumes.foreign_bar_at(cache_idx);
+            let collision_with_territory: Vec<ExPolygon> = if model_collision.is_empty() {
                 collision_polys.as_slice()
             } else {
                 model_collision.as_slice()
-            };
+            }
+            .iter()
+            .chain(foreign_bar.iter())
+            .cloned()
+            .collect();
+            let collision_polys: &[ExPolygon] = collision_with_territory.as_slice();
             // ── Drop only what the model swallows whole ───────────────────
             //
             // Canonical has two distinct rules and this module had collapsed
@@ -3400,10 +3505,33 @@ impl SupportPlanner {
                             .collect::<Vec<_>>(),
                         self.support_object_xy_distance,
                     );
-                    let role_collision = if model_occupancy.is_empty() {
-                        collision_polys
+                    let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
+                        collision_polys.to_vec()
                     } else {
-                        model_occupancy.as_slice()
+                        model_occupancy
+                            .into_iter()
+                            .chain(foreign_bar.iter().cloned())
+                            .collect()
+                    };
+                    let role_collision = role_collision.as_slice();
+                    // Ticket 19: a tree sub-region minted by a modifier keeps
+                    // only what falls inside its own footprint; a base region
+                    // keeps what the foreign carve above left. Skeleton points
+                    // follow the same rule so the renderer never draws a
+                    // branch through the other family's half.
+                    let own_territory = support_analysis.region_territory(
+                        &obj.object_id,
+                        current_global_layer_index,
+                        &region_id,
+                    );
+                    let territory_allows = |x: f32, y: f32| -> bool {
+                        match own_territory {
+                            Some(own) => point_inside_collision_volume(own, x, y),
+                            None => {
+                                foreign_bar.is_empty()
+                                    || !point_inside_collision_volume(foreign_bar, x, y)
+                            }
+                        }
                     };
                     let mut roles = build_roles(
                         &branch_segments,
@@ -3441,6 +3569,15 @@ impl SupportPlanner {
                     // the plan terminated at z = 8.0 instead of the plate.
                     // Canonical Orca prints tree support down to Z0.2 on this
                     // fixture (`SupportTest_Tree_Orca.gcode`).
+                    if let Some(own) = own_territory {
+                        for role in &mut roles {
+                            role.regions = host::clip_polygons(
+                                &role.regions,
+                                own,
+                                ClipOperation::Intersection,
+                            );
+                        }
+                    }
                     roles.retain(|role| !role.regions.is_empty());
                     if roles.is_empty() {
                         continue;
@@ -3469,6 +3606,7 @@ impl SupportPlanner {
                                 .chain(interface_segments.iter())
                                 .chain(floor_segments.iter())
                                 .flat_map(|segment| segment.iter())
+                                .filter(|point| territory_allows(point.x, point.y))
                                 .collect();
                             let points = skeleton_points
                                 .iter()
@@ -5607,7 +5745,14 @@ mod tests {
             }],
         };
 
-        let volumes = TreeVolumes::new(&layer_plan, &support_geometry, 40.0, 0.35);
+        let volumes = TreeVolumes::new(
+            &layer_plan,
+            &support_geometry,
+            &SupportAnalysisView::default(),
+            40.0,
+            0.35,
+            0.0,
+        );
         assert_eq!(
             volumes.outlines_at(0).len(),
             1,
@@ -5701,9 +5846,7 @@ mod tests {
         };
         // Centres 1.0mm apart with radius 1.0mm: the discs overlap.
         let areas = vec![circle(0.0), circle(1.0)];
-        let roles = build_roles(
-            &[], &[], &[], &[], &areas, &[], &[], &[], 1.0, &[], 0, 0.4,
-        );
+        let roles = build_roles(&[], &[], &[], &[], &areas, &[], &[], &[], 1.0, &[], 0, 0.4);
         let body = &roles
             .iter()
             .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)

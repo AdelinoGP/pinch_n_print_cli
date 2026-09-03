@@ -382,9 +382,41 @@ impl LayerModule for RectilinearInfill {
             }
 
             // BridgeInfill over bridge_areas at the region's bridge orientation.
-            let bridge = region.bridge_areas();
-            if !bridge.is_empty() && region.should_emit(ExtrusionRole::BridgeInfill) {
-                let is_internal_bridge = region.is_internal_bridge();
+            //
+            // `bridge_areas` also carries the qualified internal-bridge sites
+            // the host's `gate_internal_bridge_sites` appended (they are
+            // mirrored in `internal_bridge_areas`). Those are bridges over
+            // sparse infill, not over air: canonical `bridge_over_infill`
+            // classifies them `stInternalBridge`, printed at the internal
+            // bridge speed/flow/density and labelled "Internal Bridge". They
+            // were emitted here as external `BridgeInfill`, so a shell layer
+            // sitting on sparse infill printed as one whole-layer external
+            // bridge (SchemaBridgeMap ticket 19, R1). Split the two.
+            let internal_bridge_areas = region.internal_bridge_areas();
+            let (external_bridge, internal_bridge): (Vec<ExPolygon>, Vec<ExPolygon>) =
+                if internal_bridge_areas.is_empty() {
+                    (region.bridge_areas().to_vec(), Vec::new())
+                } else {
+                    (
+                        slicer_sdk::host::clip_polygons(
+                            region.bridge_areas(),
+                            internal_bridge_areas,
+                            slicer_sdk::host::ClipOperation::Difference,
+                        ),
+                        slicer_sdk::host::clip_polygons(
+                            region.bridge_areas(),
+                            internal_bridge_areas,
+                            slicer_sdk::host::ClipOperation::Intersection,
+                        ),
+                    )
+                };
+            for (bridge, is_internal_bridge) in [
+                (external_bridge.as_slice(), region.is_internal_bridge()),
+                (internal_bridge.as_slice(), true),
+            ] {
+                if bridge.is_empty() || !region.should_emit(ExtrusionRole::BridgeInfill) {
+                    continue;
+                }
                 let bridge_role = if is_internal_bridge {
                     ExtrusionRole::InternalBridgeInfill
                 } else {

@@ -354,6 +354,7 @@ pub fn project_support_analysis_view(
                 family_id: family_id.clone(),
             })
             .collect(),
+        support_territory: project_geometry(&analysis.support_territory),
     }
 }
 
