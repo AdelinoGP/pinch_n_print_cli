@@ -1,8 +1,8 @@
 ---
-status: draft
+status: implemented
 packet: 253-build-guests-incremental-and-shared-target
 task_ids:
-  - TASK-NEW-BUILD-GUESTS-PERF
+  - TASK-531
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 task_id_note: >
@@ -45,7 +45,7 @@ State ACs only here; `requirements.md` references their IDs.
 
 - **AC-5. Given** the helper `guest_target_dir(ws_root)` in `xtask/src/build_guests.rs`, **when** `build_one_inner` builds any guest of either `GuestTree` variant, **then** it sets `CARGO_TARGET_DIR` to `<ws_root>/target/guests` for every guest, and both the intermediate `<lib_name>.wasm` lookup and the `<lib_name>-component-input.wasm` staging path derive from `<ws_root>/target/guests/wasm32-unknown-unknown/<profile-dir>`. | `cargo test -p xtask -- every_guest_builds_into_the_shared_target_dir 2>&1 | rg '^test' | tail -6`
 - **AC-6. Given** `force_rebuild_wit_bindings` in `xtask/src/build_guests.rs`, **when** it issues its `cargo clean -p slicer-macros` and `cargo clean -p slicer-schema` commands, **then** each command carries `CARGO_TARGET_DIR` set to the same `guest_target_dir(ws_root)` value the build uses, so the stale-WIT recovery path cleans the directory the build actually reads. | `cargo test -p xtask -- force_rebuild_wit_bindings_cleans_the_shared_target_dir 2>&1 | rg '^test' | tail -6`
-- **AC-7. Given** a lock-divergence analyser over the parsed `[[package]]` name and version pairs of a set of guest `Cargo.lock` files, **when** two guest locks resolve different versions of the same registry crate, **then** it reports exactly one line per diverging crate naming the crate and every distinct version, and reports nothing when all locks agree. | `cargo test -p xtask -- lock_divergence 2>&1 | rg '^test' | tail -9`
+- **AC-7. Given** a lock-divergence analyser over the parsed `[[package]]` name and version pairs of a set of guest `Cargo.lock` files, **when** two guest locks resolve different versions of the same registry crate **within the same semver-compatibility line** (line `X` for `X.Y.Z` with `X > 0`, line `0.Y` for `0.Y.Z` with `Y > 0`, line `0.0.Z` otherwise), **then** it reports exactly one line per diverging crate naming the crate and every distinct version of the diverging line, and reports nothing when all locks agree; intra-lock semver-major coexistence is NOT divergence — a single guest lock holding `syn` 1.x, 2.x and 3.x at once is ordinary Cargo resolution, and versions on different compatibility lines are separately-keyed artifacts (the same reasoning that exempts the `arachne-perimeters` feature variant). | `cargo test -p xtask -- lock_divergence 2>&1 | rg '^test' | tail -15`
 - **AC-8. Given** the real tree after `cargo xtask build-guests --sync-locks` has regenerated every guest lockfile, **when** `cargo xtask build-guests --check` runs, **then** it exits `0` and prints no divergence line. | `cargo xtask build-guests --check >/dev/null 2>&1; echo "exit=$?"`
 - **AC-9. Given** the shared target move is complete, **when** the tree is searched for the retired per-tree target path, **then** no occurrence of `test-guests/target` remains in `xtask/src` or in `CLAUDE.md`, and the search prints the sentinel instead. | `rg 'test-guests/target' xtask/src CLAUDE.md || echo NO_STALE_PATH_REFS`
 
@@ -58,6 +58,23 @@ State ACs only here; `requirements.md` references their IDs.
 ### Phase D — conditional fast local profile
 
 Phase D ships only if Step 8's measurement shows a net win for the edit-test loop. If Step 8 rejects it, AC-13 through AC-15 and AC-N3 are recorded as not-applicable with the measured numbers, and `FINGERPRINT_VERSION` stays `"v2"`.
+
+**Outcome: measured, rejected.** Step 8 measured the `dev` guest profile and Phase D
+did NOT ship. **AC-13, AC-14, AC-15, and AC-N3 are NOT APPLICABLE** — they are
+retained below only as the record of what was evaluated. No `PNP_GUEST_PROFILE`
+environment variable exists, `FINGERPRINT_VERSION` in `xtask/src/build_guests.rs`
+stays `"v2"`, and no `PNP_GUEST_PROFILE` doc row was written.
+
+Measured on AdelinoDesktop, nproc 12:
+
+| Measurement | release | dev |
+|---|---|---|
+| Warm forced guest build (`build-guests --force`) | 9.974 s | 13.792 s |
+| `cargo test -p slicer-runtime` (same 11 binaries) | 1869.56 s | 3991.31 s |
+
+The `dev` profile was slower to build the guests *and* 2.135x slower on the
+runtime test suite, so it loses on both halves of the edit-test loop. No further
+figures were taken.
 
 - **AC-13. Given** Phase D shipped, **when** `PNP_GUEST_PROFILE` is unset, set to `release`, or set to `dev`, **then** the resolved cargo profile is `release`, `release`, and `dev` respectively, and any other value is a hard error naming the two accepted values. | `cargo test -p xtask -- guest_profile_env 2>&1 | rg '^test' | tail -9`
 - **AC-14. Given** Phase D shipped, **when** the guest fingerprint is computed, **then** the resolved profile appears as its own synthetic fingerprint entry and `FINGERPRINT_VERSION` in `xtask/src/build_guests.rs` equals `"v3"`. | `cargo test -p xtask -- fingerprint 2>&1 | rg '^test' | tail -11`
@@ -77,6 +94,11 @@ Phase D ships only if Step 8's measurement shows a net win for the edit-test loo
 - `cargo test -p xtask 2>&1 | tail -15`
 - `cargo xtask build-guests --check >/dev/null 2>&1; echo "exit=$?"`
 
+## Deviations from Design (recorded at closure)
+
+- **D-A (AC-7 reworded mid-implementation, with user approval).** The authored AC-7 defined divergence as "two guest locks resolve different versions of the same registry crate". Taken literally that flags legitimate intra-lock semver-major coexistence — a single guest lock holds `syn` 1.0.109, 2.0.119 and 3.0.4 simultaneously, which is ordinary Cargo resolution — making AC-8 (`--check` exits `0`) permanently unreachable. All 7 residual crates were exactly this shape (see `measurements.md` §"Note on the 7 residual divergences"). AC-7 now defines divergence **per semver-compatibility line**. Rationale: this follows `design.md`'s own locked principle that a legitimate second artifact variant (the `arachne-perimeters` `default-features = false` `slicer-core` dependency) "is not lock drift and must not be normalised". The criterion was NARROWED, not hollowed — `same_compat_line_disagreement_is_divergence` proves two guests on `syn` 2.0.117 vs 2.0.119 are still reported.
+- **D-B (`guest_owns_lockfile` / `partition_lock_owners` are outside `design.md`'s declared code-change surface).** They were added to fix a defect found during Step 5: `sync_locks_command` ran `cargo generate-lockfile` inside four test-guests that are ROOT-WORKSPACE MEMBERS carrying no `[workspace]` sentinel (`crates/slicer-wasm-host/test-guests/sdk-{finalization,layer-infill,postpass-text,prepass}-guest`). Cargo walked up and clobbered the root `Cargo.lock` while the command still printed `synced` — a silent failure. Those guests now skip lock sync and are excluded from divergence analysis. Per ADR-0014 this is an ADDED shape predicate, not a relaxation, so no row in `docs/DEVIATION_LOG.md` is required; guest discovery is unchanged and all 46 guests still build.
+
 ## Authoritative Docs
 
 - `CLAUDE.md` §"Guest WASM Staleness" — direct ranged read; normative statement of guest freshness rules, and it asserts the retired test-guest target path this packet moves.
@@ -93,7 +115,9 @@ Specific same-packet doc edits:
 - `CLAUDE.md` §"Guest WASM Staleness" — document the lock-convergence gate as a second failure mode of `--check`. Verify: `rg -q 'sync-locks' CLAUDE.md`
 - `CONTEXT.md` — add the shared-guest-target term adjacent to "Artifact-verified freshness". Verify: `rg -q 'target/guests' CONTEXT.md`
 - `docs/03_wit_and_manifest.md` — update the `build-guests` command rows so the documented default matches the implemented default and the lock gate is listed. Verify: `rg -q 'sync-locks' docs/03_wit_and_manifest.md`
-- Phase-D-conditional: `CLAUDE.md` and `CONTEXT.md` gain `PNP_GUEST_PROFILE` and the v3 fingerprint only if Step 8 ships Phase D. Verify when shipped: `rg -q 'PNP_GUEST_PROFILE' CLAUDE.md CONTEXT.md`. If Step 8 rejects Phase D, this row is not applicable; verify the rejection instead with `rg -q 'Phase D: measured, rejected' docs/spec_packets/253-build-guests-incremental-and-shared-target/measurements.md`
+- Phase-D-conditional — **NOT APPLICABLE (Phase D measured and rejected in Step 8).** No `PNP_GUEST_PROFILE` or v3-fingerprint text was written to `AGENTS.md`/`CLAUDE.md` or `CONTEXT.md`. Verify the rejection path instead: `rg -q 'PNP_GUEST_PROFILE' AGENTS.md CLAUDE.md CONTEXT.md` must return non-zero, and the rejection record lives in §Phase D above plus `measurements.md` in this packet directory.
+
+Note on canonicality: `CLAUDE.md` is gitignored and is a byte-identical local mirror of the committed `AGENTS.md`. The rows above were satisfied by editing **`AGENTS.md`** (canonical, version-controlled) and mirroring it into `CLAUDE.md`; both files are byte-identical (`md5sum AGENTS.md CLAUDE.md` matches), so every `CLAUDE.md` grep above passes against either file.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: one new backlog row, id re-derived at registration (see `packet.spec.md` `task_id_note`). No existing docs/07 row covers build-time performance.
+- Grouped task IDs: `TASK-531` — one new backlog row, id re-derived and registered at Step 10 (see `packet.spec.md` `task_id_note`). No pre-existing docs/07 row covers build-time performance.
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -40,7 +40,7 @@ Guest count is a ledger fact; re-derive it with `cargo xtask build-guests --list
 - Phase B: fix `force_rebuild_wit_bindings` to pass the same `CARGO_TARGET_DIR` the build uses, repairing a latent defect that already misdirects the stale-WIT recovery path for test-guests today.
 - Phase B: add `cargo xtask build-guests --sync-locks`, which regenerates every core `wit-guest/Cargo.lock` and every test-guest `Cargo.lock` in one pass.
 - Phase B: regenerate the whole guest lockfile set once and commit the result.
-- Phase B: add a lock-divergence analyser to the freshness check that reports one line per crate resolving to more than one version across guest locks and names `--sync-locks` as the remedy.
+- Phase B: add a lock-divergence analyser to the freshness check that reports one line per crate on which two guest locks resolve different versions within the same semver-compatibility line, and names `--sync-locks` as the remedy. Intra-lock semver-major coexistence (one lock holding `syn` 1.x, 2.x and 3.x) is ordinary Cargo resolution, not drift, and is not reported.
 - Phase C: memoize the `rustc -vV` and `wasm-tools --version` probes so each runs at most once per xtask invocation.
 - Phase C: memoize the canonical world model so it is parsed at most once per invocation across both the check path and the build path.
 - Phase C: delete the duplicate `verify_embedded_world` decode in `stale_reason`, moving its error mapping onto the single remaining path: `Decode` and `Parse` map to `StaleReason::Undecodable`; `CanonicalEmpty` and `CanonicalUnreadable` map to the synthetic `DriftKind::MissingStagePackage` drift.
@@ -76,6 +76,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 - Positive: `AC-1` through `AC-16`. Phase A is `AC-1` to `AC-4`; Phase B is `AC-5` to `AC-9`; Phase C is `AC-10` to `AC-12`; Phase D is `AC-13` to `AC-16`.
 - Negative: `AC-N1` through `AC-N4`.
 - Conditional: `AC-13`, `AC-14`, `AC-15`, and `AC-N3` apply only if Step 8 ships Phase D. If Step 8 rejects it, they are recorded not-applicable with the measured numbers, `FINGERPRINT_VERSION` stays `"v2"`, and the `PNP_GUEST_PROFILE` doc rows are not written.
+- **Outcome: Step 8 measured Phase D and REJECTED it.** `AC-13`, `AC-14`, `AC-15`, and `AC-N3` are **not applicable**. No `PNP_GUEST_PROFILE` env var shipped, `FINGERPRINT_VERSION` stays `"v2"`, and no `PNP_GUEST_PROFILE` doc row was written. See `packet.spec.md` §Phase D for the measured numbers.
 - Measurable refinements absent from the Given/When/Then text: `AC-8` must be run after `AC-7`'s analyser exists and after the lockfile regeneration step, otherwise it proves nothing. `AC-12` treats the pre-existing unit tests as the behavioural oracle; no assertion in them may be weakened to make the removal pass.
 - Cross-packet impact: none. No other packet is active, and no packet directory outside this one is read or modified.
 
@@ -92,7 +93,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only three gate co
 | `cargo test -p xtask -- dist_args_parse_force_guests 2>&1 \| rg '^test' \| tail -6` | AC-4 | FACT pass/fail, quoting the result line |
 | `cargo test -p xtask -- every_guest_builds_into_the_shared_target_dir 2>&1 \| rg '^test' \| tail -6` | AC-5 | FACT pass/fail, quoting the result line |
 | `cargo test -p xtask -- force_rebuild_wit_bindings_cleans_the_shared_target_dir 2>&1 \| rg '^test' \| tail -6` | AC-6 | FACT pass/fail, quoting the result line |
-| `cargo test -p xtask -- lock_divergence 2>&1 \| rg '^test' \| tail -9` | AC-7, AC-N2 | FACT pass/fail, quoting the result line |
+| `cargo test -p xtask -- lock_divergence 2>&1 \| rg '^test' \| tail -15` | AC-7, AC-N2 | FACT pass/fail, quoting the result line |
 | `cargo xtask build-guests --check >/dev/null 2>&1; echo "exit=$?"` | AC-8; also the packet's guest-freshness gate | FACT single line |
 | `rg 'test-guests/target' xtask/src CLAUDE.md \|\| echo NO_STALE_PATH_REFS` | AC-9 | FACT single line |
 | `cargo test -p xtask -- version_probes_are_invoked_once_per_invocation 2>&1 \| rg '^test' \| tail -6` | AC-10 | FACT pass/fail, quoting the result line |

@@ -843,3 +843,19 @@ authoring-language dimension, not where the module ships from.
 ### Artifact-verified freshness
 The property that a guest artifact's embedded WIT world matches the canonical WIT for its stage, established by decoding the artifact (`wasm-tools component wit`) and comparing declarations package-qualified, rather than by fingerprinting WIT input files. The fingerprint covers code inputs only; WIT staleness is answered by the artifact itself.
 
+### Shared guest target
+The single cargo target directory `<ws_root>/target/guests` (real layout
+`target/guests/wasm32-unknown-unknown/release/`) into which every guest of both
+trees builds, replacing the retired per-tree directory under
+`crates/slicer-wasm-host/test-guests/`. Guests keep their per-guest
+`[workspace]` sentinels and remain separate workspaces; only the build output
+is shared, so dependency compilation is reused across guests. The location
+inherits the existing `**/target/` gitignore rule and the CI `./target` cache.
+
+### Lock convergence
+The property that all guest lockfiles resolve the same version of any shared
+crate within a semver-compatibility line. Divergence is reported by
+`cargo xtask build-guests --check` as staleness (exit `1`), one deterministic
+line per diverging crate, and is repaired by `--sync-locks`. Semver-major
+coexistence inside one lock is not divergence.
+

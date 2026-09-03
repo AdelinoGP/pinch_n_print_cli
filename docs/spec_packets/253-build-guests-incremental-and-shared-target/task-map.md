@@ -1,6 +1,6 @@
 # Task Map: 253-build-guests-incremental-and-shared-target
 
-This packet groups one new backlog row. Its numeric `TASK-` id is a mutable ledger fact and is deliberately not frozen here or in `packet.spec.md`. Step 10 re-derives it with `rg -o 'TASK-[0-9]+' docs/07_implementation_status.md | sort -uV | tail -1`, takes the next free number, registers the row through a worker dispatch, and then replaces the `TASK-NEW-BUILD-GUESTS-PERF` placeholder in `packet.spec.md`, `requirements.md`, and this file.
+This packet groups one new backlog row. Its numeric `TASK-` id is a mutable ledger fact and is deliberately not frozen here or in `packet.spec.md`. Step 10 re-derived it with `rg -o 'TASK-[0-9]+' docs/07_implementation_status.md | sort -uV | tail -1` (highest at that moment: `TASK-530`), took the next free number, and registered **`TASK-531`** in `docs/07_implementation_status.md`; the id now appears in `packet.spec.md`, `requirements.md`, and this file.
 
 The map is emitted despite the single-task grouping because the row spans four separable phases with distinct code surfaces and one conditional phase, and a reader needs the phase-to-step crosswalk to know which steps may legitimately be skipped.
 

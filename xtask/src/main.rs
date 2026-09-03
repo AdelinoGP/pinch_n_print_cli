@@ -19,8 +19,13 @@ USAGE:
     cargo xtask <SUBCOMMAND> [OPTIONS]
 
 SUBCOMMANDS:
-    build-guests          Build every core-module and test-guest WASM component.
-    build-guests --check  Exit 1 if any guest artifact is stale.
+    build-guests          Rebuild only the core-module / test-guest WASM
+                          components the freshness check reports stale.
+    build-guests --force  Unconditionally rebuild every discovered guest, ignoring freshness.
+    build-guests --check  Exit 1 if any guest artifact is stale or guest lockfiles diverge.
+    build-guests --sync-locks
+                          Remove and regenerate every guest Cargo.lock in one pass so all
+                          guests resolve a single version per crate.
     build-guests --list   Print every discovered guest (crate name, manifest, expected artifact path).
     check-deviations          Regenerate doc 07 Open Deviation Map + doc 15 config tables.
     check-deviations --check  Exit 1 if doc 07 or doc 15 generated sections are stale.
@@ -67,9 +72,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("build-guests") => {
-            let flag = args.get(1).map(String::as_str);
-            match flag {
-                Some("--list") => {
+            let flag = build_guests::parse_build_guests_flag(&args[1..]);
+            match &flag {
+                build_guests::BuildGuestsFlag::List => {
                     let ws = build_guests::workspace_root();
                     match build_guests::list_command(&ws) {
                         Ok(code) => ExitCode::from(code as u8),
@@ -79,18 +84,27 @@ fn main() -> ExitCode {
                         }
                     }
                 }
-                None => {
+                build_guests::BuildGuestsFlag::Default => {
                     let ws = build_guests::workspace_root();
-                    std::process::exit(build_guests::build_command(&ws));
+                    std::process::exit(build_guests::build_command(&ws, false));
                 }
-                Some("--check") => {
+                build_guests::BuildGuestsFlag::Force => {
+                    let ws = build_guests::workspace_root();
+                    std::process::exit(build_guests::build_command(&ws, true));
+                }
+                build_guests::BuildGuestsFlag::Check => {
                     let ws = build_guests::workspace_root();
                     std::process::exit(build_guests::check_command(&ws).code);
                 }
-                Some(other) => {
+                build_guests::BuildGuestsFlag::SyncLocks => {
+                    let ws = build_guests::workspace_root();
+                    std::process::exit(build_guests::sync_locks_command(&ws));
+                }
+                build_guests::BuildGuestsFlag::Unknown(other) => {
                     eprintln!("xtask: unknown flag '{other}' for build-guests\n");
                     eprintln!("{USAGE}");
-                    ExitCode::from(2)
+                    let code = build_guests::build_guests_flag_exit_code(&flag).unwrap_or(2);
+                    ExitCode::from(code as u8)
                 }
             }
         }

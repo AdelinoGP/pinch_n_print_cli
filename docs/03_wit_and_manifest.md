@@ -179,7 +179,7 @@ What actually enforces compatibility today:
 | Guard | Catches |
 |---|---|
 | wasmtime typed instantiation (`crates/slicer-wasm-host/src/dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
-| `cargo xtask build-guests --check` | Stale in-tree guest (artifact verification — decodes embedded WIT world and compares against canonical) |
+| `cargo xtask build-guests --check` | Stale in-tree guest (artifact verification — decodes embedded WIT world and compares against canonical), and guest-lockfile divergence within a semver-compatibility line (remedy: `--sync-locks`) |
 | `[compatibility]` min/max-ir-schema (`crates/slicer-scheduler/src/validation.rs`) | IR range, fatal at startup |
 
 The package version is therefore load-bearing for `bindgen!`/`generate!` resolution and
@@ -1700,17 +1700,40 @@ guests against `crates/slicer-schema/wit/`.
 
 Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
 followed by `wasm-tools component new` to produce the `.component.wasm` artifact.
+Every guest of both trees builds into the single shared target directory
+`<ws_root>/target/guests` (real layout
+`target/guests/wasm32-unknown-unknown/release/`), so dependency compilation is
+reused across guests. Per-guest `[workspace]` sentinels are retained; guests
+remain separate workspaces.
 
-- `cargo xtask build-guests` — build any stale guests.
+- `cargo xtask build-guests` — consults the freshness check and rebuilds **only
+  the guests it reports stale**; a clean tree is a no-op. An infrastructure
+  error (exit `3`) aborts and never falls back to a full rebuild.
+- `cargo xtask build-guests --force` — unconditional full rebuild of every
+  discovered guest, the pre-packet-253 behaviour; skips the freshness check
+  entirely.
 - `cargo xtask build-guests --check` — verify only; decodes each
   `.component.wasm` artifact and compares its embedded WIT world against the
   canonical WIT for its stage, answering freshness by exit code: `0` fresh,
   `1` stale (embedded world drift), `3` infrastructure error when
-  `wasm-tools` is unavailable.
+  `wasm-tools` is unavailable. The check has a second staleness source:
+  **guest-lockfile divergence**, where two guest lockfiles resolve different
+  versions of the same crate within one semver-compatibility line. It prints one
+  deterministic line per diverging crate naming `--sync-locks` as the remedy, and
+  it folds into exit `1`, never exit `3`. Semver-major coexistence inside a
+  single lock (syn 1.x alongside 2.x) is not divergence.
+- `cargo xtask build-guests --sync-locks` — regenerates every guest lockfile in
+  one pass. It skips guests that are members of the root workspace (those
+  without their own `[workspace]` sentinel), because `cargo generate-lockfile`
+  there would clobber the ROOT `Cargo.lock`; those guests resolve against the
+  root workspace lock, and their own committed lockfiles are vestigial and are
+  excluded from divergence analysis.
+- `cargo xtask build-guests --list` — list the discovered guests without
+  building.
 
 There are two independent gates that enforce freshness, each with its own owner and rule:
 
-- **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure.
+- **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies; never `dev-dependencies`). Version probes (`rustc -vV`, `wasm-tools --version`) and the canonical-WIT parse are memoized once per invocation rather than once per guest. This gate also carries the lock-convergence check described above.
 
 - **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is), and is documented in `docs/spec_packets/232-freshness-gate-docs/requirements.md` §"Reported, not fixed" rather than fixed here. See that section (heading `## Reported, not fixed`).
 

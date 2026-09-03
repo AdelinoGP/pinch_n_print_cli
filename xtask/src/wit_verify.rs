@@ -1028,6 +1028,16 @@ pub fn canonical_world_model(
     Ok(model)
 }
 
+/// Load the canonical world model in a form callers can memoize.
+///
+/// `canonical_world_model` ignores its `stage` argument (see its `let _ = stage`),
+/// so its result is invariant across every guest within a single xtask
+/// invocation. Callers that would otherwise parse the canonical WIT tree once
+/// per guest must call this exactly once and reuse the value.
+pub fn canonical_world_model_memoizable(ws_root: &Path) -> Result<WorldModel, VerifyError> {
+    canonical_world_model(ws_root, None)
+}
+
 /// Build a WorldModel from a built component's embedded WIT.
 pub fn embedded_world_model(artifact: &Path) -> Result<WorldModel, VerifyError> {
     let text = embedded_wit_text(artifact)?;

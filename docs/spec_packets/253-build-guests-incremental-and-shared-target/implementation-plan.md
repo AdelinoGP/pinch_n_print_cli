@@ -269,7 +269,7 @@
 
 ### Step 10: Docs, CI confirmation, and backlog registration
 
-- Task IDs: this packet's single new backlog row; re-derive its id here with `rg -o 'TASK-[0-9]+' docs/07_implementation_status.md | sort -uV | tail -1` and take the next free number. Then replace the `TASK-NEW-BUILD-GUESTS-PERF` placeholder in `packet.spec.md` and in `requirements.md`.
+- Task IDs: this packet's single new backlog row. Re-derived at execution time with `rg -o 'TASK-[0-9]+' docs/07_implementation_status.md | sort -uV | tail -1` (highest at that moment: `TASK-530`), took the next free number, and registered **`TASK-531`** in `docs/07_implementation_status.md`. The placeholder has been replaced with that id in `packet.spec.md`, `requirements.md`, and `task-map.md`.
 - Objective: bring the normative docs in line with the implemented behaviour and register the work in the backlog.
 - Precondition: Steps 1 to 8 complete, and Step 9 either complete or explicitly skipped.
 - Postcondition: `CLAUDE.md`, `CONTEXT.md`, and `docs/03_wit_and_manifest.md` describe the freshness-aware default, the shared target location, the `--force` and `--sync-locks` flags, and the lock-divergence gate; the `PNP_GUEST_PROFILE` and v3 fingerprint text is present only if Step 9 ran; the CI ordering is confirmed unchanged; the backlog row is registered; `measurements.md` holds the final table and the sccache deferral with its trigger.
